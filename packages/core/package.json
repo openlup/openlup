@@ -48,13 +48,13 @@
     "typecheck:smoke": "tsc -p tsconfig.smoke.json --noEmit"
   },
   "dependencies": {
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "^24.13.4",
     "@vitest/coverage-v8": "^4.1.11",
     "typescript": "^6.0.3",
-    "vite": "^8.1.5",
+    "vite": "^8.3.0",
     "vitest": "^4.1.11"
   },
   "exports": {
