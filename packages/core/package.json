@@ -1,0 +1,222 @@
+{
+  "name": "@openlup/core",
+  "version": "0.1.0-rc.1",
+  "private": true,
+  "description": "Private portability proof for neutral D2C subscription and bundle commerce kernels.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "packageManager": "npm@11.19.0",
+  "publishConfig": {
+    "registry": "http://127.0.0.1:9"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist/**",
+    "src/**",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "MAINTAINERS.md",
+    "README.md",
+    "SECURITY.md",
+    "release-gates.json"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+    "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
+    "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
+    "ci": "npm run test:coverage && npm run typecheck:smoke && npm run api:check && npm run docs:check && npm run release:check && npm run test:consumer",
+    "docs:check": "node --experimental-strip-types ./scripts/documentation-contract.ts",
+    "prepack": "npm run build",
+    "prepublishOnly": "node --experimental-strip-types ./scripts/refuse-publish.ts",
+    "release:audit": "node --experimental-strip-types ./scripts/release-check.ts audit",
+    "release:bundle": "node --experimental-strip-types ./scripts/release-bundle.ts",
+    "release:check": "npm run build && node --experimental-strip-types ./scripts/release-check.ts all",
+    "release:licenses": "node --experimental-strip-types ./scripts/release-check.ts licenses",
+    "release:lock": "node --experimental-strip-types ./scripts/release-check.ts lock",
+    "release:pack": "node --experimental-strip-types ./scripts/release-check.ts pack",
+    "release:publish-block": "node --experimental-strip-types ./scripts/release-check.ts publish",
+    "release:sbom": "node --experimental-strip-types ./scripts/release-check.ts sbom",
+    "test:consumer": "node --experimental-strip-types ./scripts/core-package-consumer-smoke.ts",
+    "test:coverage": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts --coverage && node --experimental-strip-types ./test/assertNoZeroCoverage.ts",
+    "test:runtime-import": "node -e \"const p=require('./package.json'); Promise.all(Object.keys(p.exports).map((s)=>import(s==='.'?p.name:p.name+'/'+s.slice(2)))).then((m)=>console.log('core runtime import ok', m.length))\"",
+    "test:smoke": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts",
+    "typecheck:smoke": "tsc -p tsconfig.smoke.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.11"
+  },
+  "exports": {
+    "./bundle": {
+      "core-source": "./src/bundle/contracts.ts",
+      "types": "./dist/bundle/contracts.d.ts",
+      "module": "./dist/bundle/contracts.js",
+      "node": "./dist/bundle/contracts.js",
+      "development": "./dist/bundle/contracts.js",
+      "production": "./dist/bundle/contracts.js",
+      "import": "./dist/bundle/contracts.js",
+      "default": "./dist/bundle/contracts.js"
+    },
+    "./checkout": {
+      "core-source": "./src/checkout/index.ts",
+      "types": "./dist/checkout/index.d.ts",
+      "module": "./dist/checkout/index.js",
+      "node": "./dist/checkout/index.js",
+      "development": "./dist/checkout/index.js",
+      "production": "./dist/checkout/index.js",
+      "import": "./dist/checkout/index.js",
+      "default": "./dist/checkout/index.js"
+    },
+    "./company-identity": {
+      "core-source": "./src/company-identity/index.ts",
+      "types": "./dist/company-identity/index.d.ts",
+      "module": "./dist/company-identity/index.js",
+      "node": "./dist/company-identity/index.js",
+      "development": "./dist/company-identity/index.js",
+      "production": "./dist/company-identity/index.js",
+      "import": "./dist/company-identity/index.js",
+      "default": "./dist/company-identity/index.js"
+    },
+    "./fulfillment": {
+      "core-source": "./src/fulfillment/index.ts",
+      "types": "./dist/fulfillment/index.d.ts",
+      "module": "./dist/fulfillment/index.js",
+      "node": "./dist/fulfillment/index.js",
+      "development": "./dist/fulfillment/index.js",
+      "production": "./dist/fulfillment/index.js",
+      "import": "./dist/fulfillment/index.js",
+      "default": "./dist/fulfillment/index.js"
+    },
+    "./inventory": {
+      "core-source": "./src/inventory/index.ts",
+      "types": "./dist/inventory/index.d.ts",
+      "module": "./dist/inventory/index.js",
+      "node": "./dist/inventory/index.js",
+      "development": "./dist/inventory/index.js",
+      "production": "./dist/inventory/index.js",
+      "import": "./dist/inventory/index.js",
+      "default": "./dist/inventory/index.js"
+    },
+    "./shipping": {
+      "core-source": "./src/shipping/index.ts",
+      "types": "./dist/shipping/index.d.ts",
+      "module": "./dist/shipping/index.js",
+      "node": "./dist/shipping/index.js",
+      "development": "./dist/shipping/index.js",
+      "production": "./dist/shipping/index.js",
+      "import": "./dist/shipping/index.js",
+      "default": "./dist/shipping/index.js"
+    },
+    "./catalog": {
+      "core-source": "./src/catalog/index.ts",
+      "types": "./dist/catalog/index.d.ts",
+      "module": "./dist/catalog/index.js",
+      "node": "./dist/catalog/index.js",
+      "development": "./dist/catalog/index.js",
+      "production": "./dist/catalog/index.js",
+      "import": "./dist/catalog/index.js",
+      "default": "./dist/catalog/index.js"
+    },
+    "./pricing": {
+      "core-source": "./src/pricing/index.ts",
+      "types": "./dist/pricing/index.d.ts",
+      "module": "./dist/pricing/index.js",
+      "node": "./dist/pricing/index.js",
+      "development": "./dist/pricing/index.js",
+      "production": "./dist/pricing/index.js",
+      "import": "./dist/pricing/index.js",
+      "default": "./dist/pricing/index.js"
+    },
+    "./promo": {
+      "core-source": "./src/promo/index.ts",
+      "types": "./dist/promo/index.d.ts",
+      "module": "./dist/promo/index.js",
+      "node": "./dist/promo/index.js",
+      "development": "./dist/promo/index.js",
+      "production": "./dist/promo/index.js",
+      "import": "./dist/promo/index.js",
+      "default": "./dist/promo/index.js"
+    },
+    "./risk": {
+      "core-source": "./src/risk/index.ts",
+      "types": "./dist/risk/index.d.ts",
+      "module": "./dist/risk/index.js",
+      "node": "./dist/risk/index.js",
+      "development": "./dist/risk/index.js",
+      "production": "./dist/risk/index.js",
+      "import": "./dist/risk/index.js",
+      "default": "./dist/risk/index.js"
+    },
+    "./marketing/research": {
+      "core-source": "./src/marketing/research/index.ts",
+      "types": "./dist/marketing/research/index.d.ts",
+      "module": "./dist/marketing/research/index.js",
+      "node": "./dist/marketing/research/index.js",
+      "development": "./dist/marketing/research/index.js",
+      "production": "./dist/marketing/research/index.js",
+      "import": "./dist/marketing/research/index.js",
+      "default": "./dist/marketing/research/index.js"
+    },
+    "./partners": {
+      "core-source": "./src/partners/index.ts",
+      "types": "./dist/partners/index.d.ts",
+      "module": "./dist/partners/index.js",
+      "node": "./dist/partners/index.js",
+      "development": "./dist/partners/index.js",
+      "production": "./dist/partners/index.js",
+      "import": "./dist/partners/index.js",
+      "default": "./dist/partners/index.js"
+    },
+    "./payment": {
+      "core-source": "./src/payment/index.ts",
+      "types": "./dist/payment/index.d.ts",
+      "module": "./dist/payment/index.js",
+      "node": "./dist/payment/index.js",
+      "development": "./dist/payment/index.js",
+      "production": "./dist/payment/index.js",
+      "import": "./dist/payment/index.js",
+      "default": "./dist/payment/index.js"
+    },
+    "./platform-runtime": {
+      "core-source": "./src/platform-runtime/index.ts",
+      "types": "./dist/platform-runtime/index.d.ts",
+      "module": "./dist/platform-runtime/index.js",
+      "node": "./dist/platform-runtime/index.js",
+      "development": "./dist/platform-runtime/index.js",
+      "production": "./dist/platform-runtime/index.js",
+      "import": "./dist/platform-runtime/index.js",
+      "default": "./dist/platform-runtime/index.js"
+    },
+    "./subscription": {
+      "core-source": "./src/subscription/index.ts",
+      "types": "./dist/subscription/index.d.ts",
+      "module": "./dist/subscription/index.js",
+      "node": "./dist/subscription/index.js",
+      "development": "./dist/subscription/index.js",
+      "production": "./dist/subscription/index.js",
+      "import": "./dist/subscription/index.js",
+      "default": "./dist/subscription/index.js"
+    },
+    "./testing": {
+      "core-source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "module": "./dist/testing.js",
+      "node": "./dist/testing.js",
+      "development": "./dist/testing.js",
+      "production": "./dist/testing.js",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
+    }
+  }
+}

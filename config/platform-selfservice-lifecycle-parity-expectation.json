@@ -1,0 +1,229 @@
+{
+  "transitions": 21,
+  "payload": {
+    "T1.pause_opens_a_window": {
+      "status": "applied",
+      "refusal": null
+    },
+    "T2.same_key_replays_instead_of_pausing_twice": {
+      "status": "replayed",
+      "refusal": null
+    },
+    "T3.a_new_key_still_meets_the_state_machine": {
+      "status": null,
+      "refusal": "invalid_transition"
+    },
+    "T4.resume_rolls_whole_cadences_forward": {
+      "status": "applied",
+      "refusal": null
+    },
+    "T5.resume_on_active_is_refused": {
+      "status": null,
+      "refusal": "invalid_transition"
+    },
+    "T6.skip_advances_exactly_one_cadence": {
+      "status": "applied",
+      "refusal": null
+    },
+    "T7.skip_replays": {
+      "status": "replayed",
+      "refusal": null
+    },
+    "T8.slide_inside_the_window": {
+      "status": "applied",
+      "refusal": null
+    },
+    "T9.slide_below_the_lower_bound": {
+      "status": null,
+      "refusal": "invalid_slide"
+    },
+    "T10.slide_onto_the_same_day_is_a_noop": {
+      "status": "noop",
+      "refusal": null
+    },
+    "T11.cancel_records_the_survey_reason": {
+      "status": "applied",
+      "refusal": null
+    },
+    "T12.cancel_from_a_terminal_state": {
+      "status": null,
+      "refusal": "invalid_transition"
+    },
+    "T13.resume_from_a_terminal_state": {
+      "status": null,
+      "refusal": "invalid_transition"
+    },
+    "T14.locked_cycle_blocks_a_skip": {
+      "status": null,
+      "refusal": "payment_blocked"
+    },
+    "T15.a_held_order_blocks_a_slide": {
+      "status": null,
+      "refusal": "payment_blocked"
+    },
+    "T16.a_short_idempotency_key_is_refused": {
+      "status": null,
+      "refusal": "invalid_idempotency_key"
+    },
+    "T17.another_clients_subscription_is_forbidden": {
+      "status": null,
+      "refusal": "forbidden"
+    },
+    "T18.an_owner_that_does_not_exist_is_not_found": {
+      "status": null,
+      "refusal": "not_found"
+    },
+    "T19.final_ledger": {
+      "subscriptions": [
+        {
+          "label": "S1",
+          "status": "active",
+          "cadenceDays": 28,
+          "nextCycleAt": "2026-03-29T09:00:00.000Z",
+          "endedAt": null,
+          "cancellationReason": null
+        },
+        {
+          "label": "S2",
+          "status": "active",
+          "cadenceDays": 28,
+          "nextCycleAt": "2026-04-18T09:00:00.000Z",
+          "endedAt": null,
+          "cancellationReason": null
+        },
+        {
+          "label": "S3",
+          "status": "active",
+          "cadenceDays": 28,
+          "nextCycleAt": "2026-03-11T09:00:00.000Z",
+          "endedAt": null,
+          "cancellationReason": null
+        },
+        {
+          "label": "S4",
+          "status": "cancelled",
+          "cadenceDays": 28,
+          "nextCycleAt": "2026-03-21T09:00:00.000Z",
+          "endedAt": "2026-03-01T09:00:00.000Z",
+          "cancellationReason": "too_much_stock"
+        },
+        {
+          "label": "S5",
+          "status": "active",
+          "cadenceDays": 28,
+          "nextCycleAt": "2026-03-21T09:00:00.000Z",
+          "endedAt": null,
+          "cancellationReason": null
+        },
+        {
+          "label": "S6",
+          "status": "active",
+          "cadenceDays": 28,
+          "nextCycleAt": "2026-03-21T09:00:00.000Z",
+          "endedAt": null,
+          "cancellationReason": null
+        },
+        {
+          "label": "S7",
+          "status": "active",
+          "cadenceDays": 28,
+          "nextCycleAt": "2026-03-21T09:00:00.000Z",
+          "endedAt": null,
+          "cancellationReason": null
+        },
+        {
+          "label": "S8",
+          "status": "active",
+          "cadenceDays": 28,
+          "nextCycleAt": "2026-03-21T09:00:00.000Z",
+          "endedAt": null,
+          "cancellationReason": null
+        }
+      ],
+      "events": [
+        {
+          "label": "S1",
+          "eventType": "subscription.customer_self_service.pause",
+          "key": "lifecycle-probe-pause-1",
+          "occurredAt": "2026-03-01T09:00:00.000Z",
+          "action": "pause",
+          "reason": "lifecycle probe pause",
+          "request": {
+            "reason": "lifecycle probe pause",
+            "pausePreset": "2_weeks"
+          }
+        },
+        {
+          "label": "S1",
+          "eventType": "subscription.customer_self_service.resume",
+          "key": "lifecycle-probe-resume-1",
+          "occurredAt": "2026-03-01T09:00:00.000Z",
+          "action": "resume",
+          "reason": null,
+          "request": {}
+        },
+        {
+          "label": "S2",
+          "eventType": "subscription.customer_self_service.skip_next_cycle",
+          "key": "lifecycle-probe-skip-1",
+          "occurredAt": "2026-03-01T09:00:00.000Z",
+          "action": "skip_next_cycle",
+          "reason": null,
+          "request": {}
+        },
+        {
+          "label": "S3",
+          "eventType": "subscription.customer_self_service.slide_next_cycle",
+          "key": "lifecycle-probe-slide-1",
+          "occurredAt": "2026-03-01T09:00:00.000Z",
+          "action": "slide_next_cycle",
+          "reason": null,
+          "request": {
+            "newNextCycleAt": "2026-03-11T09:00:00.000Z"
+          }
+        },
+        {
+          "label": "S4",
+          "eventType": "subscription.customer_self_service.cancel",
+          "key": "lifecycle-probe-cancel-1",
+          "occurredAt": "2026-03-01T09:00:00.000Z",
+          "action": "cancel",
+          "reason": null,
+          "request": {
+            "survey": {
+              "reasonCode": "too_much_stock"
+            }
+          }
+        }
+      ],
+      "pauseWindows": [
+        {
+          "label": "S1",
+          "preset": "2_weeks",
+          "startsAt": "2026-03-01T09:00:00.000Z",
+          "endsAt": "2026-03-15T09:00:00.000Z",
+          "resumedAt": "2026-03-01T09:00:00.000Z",
+          "reason": "lifecycle probe pause",
+          "key": "lifecycle-probe-pause-1",
+          "linkedToEvent": true
+        }
+      ]
+    },
+    "T20.same_key_race_resolves_to_one_action": {
+      "resolved": [
+        "applied",
+        "replayed"
+      ],
+      "events": 1,
+      "status": "paused"
+    },
+    "T21.distinct_key_race_resolves_to_one_winner": {
+      "resolved": [
+        "applied",
+        "refused:invalid_transition"
+      ],
+      "events": 1,
+      "status": "cancelled"
+    }
+  }
+}

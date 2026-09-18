@@ -1,0 +1,12 @@
+{
+  "vocabulary": "AWAITING_SELLER_ACTION",
+  "externalOrderRef": "SIM-1003",
+  "detail": "order state the connector has no mapping for",
+  "payload": {
+    "orderId": "SIM-1003",
+    "state": "AWAITING_SELLER_ACTION",
+    "raw": {
+      "source": "simulator"
+    }
+  }
+}

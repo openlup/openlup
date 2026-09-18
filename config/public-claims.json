@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "lastReviewed": "2026-08-13",
+  "$note": "Public/default owner of the claim registry: the Example Store's claims. A deployment does NOT edit this file to describe itself - it ships its own registry at src/overlays/<deployment>/publicClaims.json, which scripts/public-claims.mjs prefers when present. Every source listed here must be a PUBLISHED path, because the published tree validates this file with src/overlays/** physically absent.",
+  "claims": [
+    {
+      "id": "store-operator",
+      "status": "approved",
+      "owner": "repository-brand-contract",
+      "approvedAt": "2026-08-13",
+      "reviewBy": "2027-08-13",
+      "sources": ["src/lib/brand/appBrand.ts"],
+      "surfaces": [
+        { "route": "/llms.txt", "locale": "pl", "channel": "llms" },
+        { "route": "/llms.txt", "locale": "en", "channel": "llms" }
+      ],
+      "text": {
+        "pl": "Example Store to przykładowy sklep demonstracyjny działający na tej platformie.",
+        "en": "Example Store is the demonstration storefront this platform ships with."
+      }
+    },
+    {
+      "id": "catalogue-range",
+      "status": "approved",
+      "owner": "repository-product-catalog",
+      "approvedAt": "2026-08-13",
+      "reviewBy": "2027-08-13",
+      "sources": ["config/site-routes.json"],
+      "surfaces": [
+        { "route": "/llms.txt", "locale": "pl", "channel": "llms" },
+        { "route": "/llms.txt", "locale": "en", "channel": "llms" }
+      ],
+      "text": {
+        "pl": "Przykładowy katalog zawiera dwie pozycje w opakowaniach 400 g, sprzedawane pojedynczo lub w subskrypcji.",
+        "en": "The example catalogue contains two 400 g items, available as one-off purchases or on a subscription."
+      }
+    },
+    {
+      "id": "self-service-terms",
+      "status": "approved",
+      "owner": "repository-brand-contract",
+      "approvedAt": "2026-08-13",
+      "reviewBy": "2027-08-13",
+      "sources": ["src/domains/subscription/exampleCancelSurveyReasons.ts"],
+      "surfaces": [
+        { "route": "/llms.txt", "locale": "pl", "channel": "llms" },
+        { "route": "/llms.txt", "locale": "en", "channel": "llms" }
+      ],
+      "text": {
+        "pl": "Subskrypcję można wstrzymać, przesunąć, zmienić lub anulować z poziomu konta przed kolejnym obciążeniem.",
+        "en": "A subscription can be paused, skipped, resized or cancelled from the account area before the next charge."
+      }
+    },
+    {
+      "id": "dispatch-window",
+      "status": "approved",
+      "owner": "repository-brand-contract",
+      "approvedAt": "2026-08-13",
+      "reviewBy": "2027-08-13",
+      "sources": ["src/domains/subscription/exampleDispatchPolicy.ts"],
+      "surfaces": [
+        { "route": "/llms.txt", "locale": "pl", "channel": "llms" },
+        { "route": "/llms.txt", "locale": "en", "channel": "llms" }
+      ],
+      "text": {
+        "pl": "Zamówienia potwierdzone w dzień roboczy przed godziną odcięcia wychodzą tego samego dnia; przewidywany czas transportu to jeden do dwóch dni roboczych.",
+        "en": "Orders confirmed on a working day before the cut-off hour dispatch the same day, with an estimated one to two working days in transit."
+      }
+    }
+  ],
+  "llms": {
+    "claimIds": ["store-operator", "catalogue-range", "self-service-terms", "dispatch-window"],
+    "routeKeys": ["home", "science", "ourStory", "contact", "terms", "privacyPolicy", "cookiePolicy"]
+  }
+}

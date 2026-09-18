@@ -1,0 +1,579 @@
+@import 'tailwindcss';
+
+/* Dev-only visual harnesses are DEV-gated routes (dead-code-eliminated from prod
+   bundles) — keep their classes out of the production CSS scan too. */
+@source not "./pages/account/v2/__harness__";
+
+@plugin 'tailwindcss-animate';
+
+@custom-variant dark (&:is(.dark *));
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+  @media (width >= --theme(--breakpoint-sm)) {
+    max-width: none;
+  }
+  @media (width >= 1400px) {
+    max-width: 1400px;
+  }
+}
+
+@theme {
+  --font-display: 'Clash Display', sans-serif;
+  --font-body: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'Plus Jakarta Sans', sans-serif;
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  --color-teal: hsl(var(--teal));
+  --color-teal-dark: hsl(var(--teal-dark));
+  --color-teal-deep: hsl(var(--teal-deep));
+
+  --color-purple: hsl(var(--purple));
+  --color-green: hsl(var(--green));
+  --color-amber: hsl(var(--amber));
+  --color-copper: hsl(var(--copper));
+  --color-dog-lamb: hsl(var(--dog-lamb));
+  --color-dog-venison: hsl(var(--dog-venison));
+  --color-cat-chicken: hsl(var(--cat-chicken));
+  --color-cat-salmon: hsl(var(--cat-salmon));
+  --color-void: hsl(var(--void));
+  --color-charcoal: hsl(var(--charcoal));
+  --color-offwhite: hsl(var(--offwhite));
+  --color-surface: hsl(var(--surface));
+  --color-light-teal: hsl(var(--light-teal));
+  --color-warm-cream: hsl(var(--warm-cream));
+  --color-soft-sage: hsl(var(--soft-sage));
+  --color-warm-sand: hsl(var(--warm-sand));
+  --color-border-dark: hsl(var(--border-dark));
+  --color-border-light: hsl(var(--border-light));
+  --color-text-on-dark: hsl(var(--text-on-dark));
+  --color-text-on-light: hsl(var(--text-on-light));
+  --color-text-muted: hsl(var(--text-muted));
+  --color-sage-mint: hsl(var(--sage-mint));
+  --color-warm-coral: hsl(var(--warm-coral));
+  /* Semantic action roles (see :root --cta*) — themable primary/secondary. */
+  --color-cta: hsl(var(--cta));
+  --color-cta-foreground: hsl(var(--cta-foreground));
+  --color-cta-hover: hsl(var(--cta-hover));
+  --color-cta-secondary: hsl(var(--cta-secondary));
+  --color-cta-secondary-foreground: hsl(var(--cta-secondary-foreground));
+  --color-soft-lavender: hsl(var(--soft-lavender));
+  --color-warm-amber: hsl(var(--warm-amber));
+  --color-teal-mint: hsl(var(--teal-mint));
+  --color-light-lavender: hsl(var(--light-lavender));
+  --color-sage-tint: hsl(var(--sage-tint));
+  --color-lavender-tint: hsl(var(--lavender-tint));
+  --color-lavender: hsl(var(--lavender));
+  --color-field-haze: hsl(var(--field-haze));
+  --color-coral-tint: hsl(var(--coral-tint));
+  --color-sky-tint: hsl(var(--sky-tint));
+  --color-terracotta-tint: hsl(var(--terracotta-tint));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-3xl: 24px;
+
+  /* Semantic radius aliases — preferred for new code. See DESIGN.md §5.
+     Additive: existing rounded-sm/md/lg/xl/2xl/3xl unchanged. */
+  --radius-control: 12px; /* buttons, inputs → rounded-control */
+  --radius-card: 20px;    /* cards, modals → rounded-card */
+
+  /* Intermediate type sizes — fill gaps so we stop writing text-[Npx].
+     See DESIGN.md §3. Additive: defaults (xs/sm/base/lg…) untouched. */
+  --text-xxs: 11px;       /* → text-xxs */
+  --text-xs-plus: 13px;   /* → text-xs-plus */
+  --text-sm-plus: 15px;   /* → text-sm-plus */
+  --text-base-plus: 17px; /* → text-base-plus */
+  --text-2xl-plus: 26px;  /* → text-2xl-plus (stat values, between 2xl/3xl) */
+  --text-3xl-plus: 32px;  /* → text-3xl-plus (summary total, between 3xl/4xl) */
+  --text-4xl-plus: 40px;  /* → text-4xl-plus (hero numbers, between 4xl/5xl) */
+
+  /* Marketing display scale — nagłówki sekcji stron programmatic (rasy).
+     See DESIGN.md §3. Additive: defaults (xl…7xl) untouched. */
+  --text-display-xs: 26px; /* → text-display-xs (wyróżniki liczbowe w kartach) */
+  --text-display-sm: 28px; /* → text-display-sm (h2 mobile) */
+  --text-display-md: 34px; /* → text-display-md (h1 mobile) */
+  --text-display-lg: 40px; /* → text-display-lg (h2 desktop) */
+  --text-display-xl: 56px; /* → text-display-xl (h1 desktop) */
+
+  /* CTA glow — coral-tinted elevation for marketing buttons. See DESIGN.md §6.
+     Mirrors Tailwind shadow-lg geometry with warm-coral/25 color so it's a
+     drop-in for the legacy `shadow-lg shadow-warm-coral/25` CTA pattern. */
+  --shadow-warm: 0 10px 15px -3px hsl(var(--warm-coral) / 0.25), 0 4px 6px -4px hsl(var(--warm-coral) / 0.25);
+  /* CTA elevation tinted with the semantic --cta hue (follows re-theming). */
+  --shadow-cta: 0 10px 15px -3px hsl(var(--cta) / 0.28), 0 4px 6px -4px hsl(var(--cta) / 0.28);
+
+  /* Soft card elevation for the cream account surface. See design handoff
+     §Design Tokens (shadow-card / hover lift). Additive — no existing utility
+     changed (does NOT touch Tailwind's shadow-md/lg). */
+  --shadow-card: 0 2px 24px rgb(0 0 0 / 0.06);
+  --shadow-card-hover: 0 6px 28px rgb(0 0 0 / 0.08);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+/* Nagłówki globalnie w wadze 600 (Clash Display Semibold) — redesign
+   ujednolica ciężar nagłówków w całym serwisie. Jawna utility (font-bold)
+   nadal wygrywa, ale w publicznym storefroncie już jej nie używamy
+   przy font-display. */
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+  }
+}
+
+@utility font-display {
+  font-family: 'Clash Display', sans-serif;
+}
+
+@utility font-body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+@utility font-mono {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+@utility label-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+@utility micro-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Technical "mono" eyebrow — the lab/science counterpart to .label-text.
+   See DESIGN.md §9.1. Invariant only (font + size + uppercase); tracking and
+   color stay inline because they vary intentionally per section. */
+@utility mono-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+/* Named z-index layers. See DESIGN.md §6. Tailwind v4 has no z-index theme
+   namespace, so these are explicit utilities. Use these for new UI instead of
+   magic values (cookie consent is the one documented z-9999 exception). */
+@utility z-dropdown { z-index: 10; }
+@utility z-sticky { z-index: 20; }
+@utility z-header { z-index: 30; }
+@utility z-overlay { z-index: 40; }
+@utility z-modal { z-index: 50; }
+@utility z-toast { z-index: 60; }
+@utility z-tooltip { z-index: 70; }
+
+/* Keyboard-only focus ring (teal, 2px offset). See DESIGN.md §8.
+   Prefer over ad-hoc focus-visible:ring-* chains. */
+@utility focus-ring {
+  outline: none;
+
+  &:focus-visible {
+    /* --ring is scope-aware: dark teal (5.23:1) on light :root/.account-light,
+       bright teal (3.4:1) on .configurator-dark. Was hardcoded --teal = 2.36:1. */
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@utility pill-btn {
+  @apply rounded-full font-body font-bold transition-all duration-200;
+}
+
+@utility animate-marquee {
+  /* Marquee */
+  animation: marquee 30s linear infinite;
+}
+
+@layer base {
+  :root {
+    /* OPENLUP Brand — from brand box design */
+    --teal: 181 47% 50%;           /* #45babc Primary Teal */
+    --teal-dark: 181 85% 9%;       /* #042b2c Dark Teal */
+    --teal-deep: 181 85% 9%;       /* same as dark teal */
+    --copper: 28 48% 46%;
+
+    /* Product variant colors */
+    --dog-lamb: 181 47% 50%;       /* Primary Teal */
+    --dog-venison: 259 46% 66%;    /* Soft Lilac */
+    --cat-chicken: 106 48% 53%;    /* Fresh Mid-Green */
+    --cat-salmon: 28 88% 61%;      /* Accent Amber #f39643 */
+
+    /* Legacy aliases */
+    --purple: 259 46% 66%;
+    --green: 106 48% 53%;
+    --amber: 28 88% 61%;
+
+    /* Brand Backgrounds */
+    --void: 181 85% 9%;            /* Dark Teal for dark sections */
+    --charcoal: 0 0% 18%;          /* Deep Charcoal #2d2d2d */
+    --offwhite: 37 76% 96%;        /* Warm Cream #fdf8f0 */
+    --surface: 181 85% 9%;
+    --light-teal: 180 53% 92%;     /* #e0f4f4 Light Teal Pastel */
+    --warm-cream: 37 76% 96%;      /* #fdf8f0 Warm Cream */
+    --soft-sage: 100 33% 92%;      /* #e8f0e4 Soft Sage */
+    --warm-sand: 36 48% 93%;       /* #f5efe6 Warm Sand */
+
+    /* Can Palette — pastel accents from product labels */
+    --sage-mint: 90 27% 71%;       /* #B8C9A3 Lamb can */
+    --warm-coral: 17 76% 64%;      /* #E8845C Deer/Trout */
+    /* Accent-as-TEXT. Identical to the brand accents by default; only the cream
+       configurator scope darkens them, because #E8845C on cream is 2.1:1. */
+    --accent-teal: var(--teal);
+    --accent-coral: var(--warm-coral);
+    --accent-amber: var(--warm-amber);
+    --soft-lavender: 275 27% 76%;  /* #C5B3D1 Rabbit */
+    --warm-amber: 36 77% 59%;      /* #E8A845 Quail */
+    --teal-mint: 163 33% 62%;      /* #7DBCB0 Trout Cat */
+    --light-lavender: 275 33% 82%; /* #D5C3E0 Rabbit Cat */
+    --sage-tint: 90 27% 95%;       /* very light sage bg — Lamb */
+    --lavender-tint: 275 27% 95%;  /* very light lavender bg — Venison */
+    --lavender: 263 85% 95%;       /* #EFE6FD Figma Purple/100 — section bg */
+    --field-haze: 30 67% 99%;      /* #FEFCFA — matches the top edge of the field photo (seamless blend) */
+    --coral-tint: 17 76% 96%;      /* very light coral bg — legacy */
+
+    /* --- Semantic action roles -------------------------------------------
+       Decouple the *role* (primary / secondary action) from a specific hue so
+       the CTA color is themable in one place instead of ~286 warm-coral uses.
+       See DESIGN.md §2. Values are HSL triples (reuse existing brand tokens). */
+    --cta: var(--teal);                        /* Signal Teal — primary action */
+    --cta-foreground: var(--void);             /* dark label → AA-safe on teal */
+    --cta-hover: var(--teal-dark);             /* primary hover fill */
+    --cta-secondary: var(--purple);            /* Lilac Pop — secondary action */
+    --cta-secondary-foreground: var(--void);   /* dark label → AA-safe on lilac */
+    --terracotta-tint: 12 65% 94%; /* jasny terrakota — Beef (#e06040) */
+    --sky-tint: 200 70% 94%;       /* jasny błękit — Turkey (#50b0dc) */
+    --peach-tint: 25 85% 95%;      /* jasny brzoskwiniowy — Salmon (#e6a050) */
+    --rose-tint: 345 55% 95%;      /* jasny róż — Pork (#d88e9c) */
+
+    /* Borders */
+    --border-dark: 181 85% 9%;
+    --border-light: 180 20% 82%;
+
+    /* Text */
+    --text-on-dark: 37 76% 96%;
+    --text-on-light: 0 0% 18%;
+    --text-muted: 0 0% 45%;
+
+    /* Semantic mappings */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 18%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 18%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 18%;
+    /* Interactive teal, decoupled from the brand --teal (which stays 50% for its
+       196 fill/tint/product uses). Darkened to 32% so WHITE button/badge text
+       clears AA 4.5:1 (5.23:1). Fixes bg-primary + white-fg buttons app-wide
+       (default Button, badge, StepBadge, checkbox check, calendar, payment CTAs)
+       without a per-component edit. See DESIGN.md §8 / a11y Fala 1. */
+    --primary: 181 48% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 180 53% 92%;
+    --secondary-foreground: 181 85% 9%;
+    --muted: 36 48% 93%;
+    --muted-foreground: 0 0% 40%;    /* was 45% — clears 4.5:1 on warm-sand --muted (5.03:1) */
+    --accent: 28 88% 61%;
+    --accent-foreground: 181 85% 9%; /* was white (2.27:1 on amber) — dark teal on amber = 6.76:1 */
+    --destructive: 12 85% 42%;       /* was 12 100% 61% (text 3.01:1) — 5.38:1 on white, 5.05:1 on cream; fills stay clearly red + cream-fg now 5.05:1 */
+    --destructive-foreground: 37 76% 96%;
+    --border: 180 18% 50%;           /* was 82% (1.45:1) — 3.28:1 UI-component contrast */
+    --input: 180 18% 50%;
+    --ring: 181 48% 32%;             /* was 50% (2.36:1) — focus ring 5.23:1 on light */
+    --radius: 0.5rem;
+
+    --sidebar-background: 181 85% 9%;
+    --sidebar-foreground: 37 76% 96%;
+    --sidebar-primary: 181 47% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 180 53% 92%;
+    --sidebar-accent-foreground: 181 85% 9%;
+    --sidebar-border: 180 20% 82%;
+    --sidebar-ring: 181 47% 50%;
+  }
+}
+
+/* Global fallback for the configurator role tokens. The `cfg-*` utilities only
+   get real values inside `.account-light` / `.configurator-dark`, but Radix
+   dialogs portal to <body> — outside both scopes. Without a :root default a
+   portaled `bg-cfg-surface` resolves to an empty `var()` and the panel renders
+   transparent. Default to the dark/public values so any portaled surface stays
+   opaque even if a component forgets to re-apply its host scope class. */
+@layer base {
+  :root {
+    --cfg-ink: 37 76% 96%;
+    --cfg-surface: 181 85% 9%;
+    --cfg-card: 181 61% 11%;
+    --cfg-on-accent: 181 85% 9%;
+  }
+}
+
+/* Account redesign (V2) — cream/light scope. Overrides semantic CSS variables
+   Inside the account and public configurator (`.account-light`); global :root
+   tokens stay untouched. App bg = warm cream, cards = white, text = dark teal.
+   See design handoff §Motyw + plan §3. */
+@layer base {
+  .account-light {
+    --background: 37 76% 96%;       /* warm cream app bg */
+    --foreground: 181 85% 9%;       /* dark teal text/headings */
+    --card: 0 0% 100%;              /* white cards */
+    --card-foreground: 181 85% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 181 85% 9%;
+    --muted: 36 48% 93%;            /* warm sand */
+    --muted-foreground: 181 12% 38%;
+    --border: 181 16% 50%;          /* was 30% 90% (1.20:1) — input/control boundary 3.37:1 */
+    --input: 181 16% 50%;
+    --ring: 181 48% 32%;            /* was 47% 50% (2.36:1) — teal focus ring 5.23:1 on white cards */
+    --secondary: 180 53% 92%;
+    --secondary-foreground: 181 85% 9%;
+
+    --sidebar-background: 37 76% 96%;
+    --sidebar-foreground: 181 85% 9%;
+    --sidebar-border: 181 30% 90%;
+
+    /* Configurator role tokens (cream). See `.configurator-dark` for the dark
+       twin + the `@theme inline` block that exposes them as Tailwind colors. */
+    --cfg-ink: 181 85% 9%;          /* primary text / borders / subtle fills (teal-dark) */
+    --cfg-surface: 37 76% 96%;      /* page / image-tile backdrop (cream) */
+    --cfg-card: 0 0% 100%;          /* card + option-tile panel (white) */
+    --cfg-on-accent: 0 0% 100%;     /* check/icon on a teal accent (white) */
+  }
+}
+
+/* Readable accents for the cream configurator, including its portals.
+   ⚠️ This scope used to override `--color-teal` / `--color-warm-coral` /
+   `--color-warm-amber` outright, which fixed the contrast of accent TEXT and
+   repainted every accent FILL along with it: the step-progress dot, the
+   „−50% na start" pill and the hero CTA all turned maroon, which is not a brand
+   colour. Fills are brand and stay brand — they carry dark ink on top, so their
+   contrast never depended on the accent being dark. Only the accent-as-TEXT
+   variants move here, exposed as their own `accent-*` utilities so a call site
+   states which role it means. */
+@layer base {
+  .configurator-light {
+    --accent-teal: var(--primary);      /* 181 48% 32% — 5.2:1 on white */
+    --accent-coral: 17 65% 36%;
+    --accent-amber: 36 77% 30%;
+    /* What sits ON a filled brand accent. `.account-light` sets this white,
+       which is 2.35:1 over teal and 2.63:1 over coral — under the 4.5:1 floor
+       for a button label and under 3:1 even for a glyph. The brand accents are
+       LIGHT fills, so their foreground is the dark ink, exactly as `--cta` and
+       `--cta-foreground` already pair. */
+    --cfg-on-accent: var(--void);
+  }
+}
+
+/* Configurator dark scope. The product configurator (`skomponuj-pakiet`) is
+   shared 1:1 between the public marketing flow and the in-account flow — one
+   money path, two contexts. Its step components are theme-agnostic: they use
+   the semantic tokens (`background`/`foreground`/`card`/`border`/`muted`), which
+   flip per host. Both production hosts render `.account-light` (cream). The
+   development gallery can use `.configurator-dark`, which restores the
+   original dark (void/offwhite) values for the development reference.
+   Values here mirror the pre-migration literals (`bg-void`, `text-offwhite`,
+   `bg-offwhite/3` cards, `border-offwhite/12` hairlines). */
+@layer base {
+  .configurator-dark {
+    --background: 181 85% 9%;        /* void */
+    --foreground: 37 76% 96%;        /* offwhite ink (used at low opacity for hairlines/fills) */
+    --card: 181 61% 11%;            /* solid panel ≈ offwhite/3 over void */
+    --card-foreground: 37 76% 96%;
+    --popover: 181 70% 10%;
+    --popover-foreground: 37 76% 96%;
+    --muted: 181 40% 16%;
+    --muted-foreground: 37 40% 86%;
+    --border: 37 76% 96%;           /* offwhite — consumed at low opacity */
+    --input: 37 76% 96%;
+    --ring: 181 47% 50%;            /* teal focus ring */
+    --secondary: 181 60% 14%;
+    --secondary-foreground: 37 76% 96%;
+
+    /* Configurator role tokens (dark) — mirror the pre-reskin literals:
+       ink=offwhite, surface=void, card≈offwhite/3 panel, on-accent=void. */
+    --cfg-ink: 37 76% 96%;
+    --cfg-surface: 181 85% 9%;
+    --cfg-card: 181 61% 11%;
+    --cfg-on-accent: 181 85% 9%;
+  }
+}
+
+/* Expose the configurator role tokens as Tailwind colors. `inline` makes the
+   utilities re-resolve `var(--cfg-*)` per element (unlike the main non-inline
+   `@theme`, whose `--color-*` freeze at :root), so `bg-cfg-card`, `text-cfg-ink/70`,
+   `border-cfg-ink/12` flip between `.account-light` (cream) and `.configurator-dark`
+   (dark) AND still accept the `/opacity` modifier. */
+@theme inline {
+  --color-cfg-ink: hsl(var(--cfg-ink));
+  --color-cfg-surface: hsl(var(--cfg-surface));
+  --color-cfg-card: hsl(var(--cfg-card));
+  --color-cfg-on-accent: hsl(var(--cfg-on-accent));
+  /* Text/icon twins of the brand accents; see `.configurator-light`. They belong
+     HERE and not in the main `@theme`: that block freezes every `--color-*` at
+     its `:root` value, so the utilities kept painting the bright brand accent
+     while the scope's own variable was already the dark, readable one. */
+  --color-accent-teal: hsl(var(--accent-teal));
+  --color-accent-coral: hsl(var(--accent-coral));
+  --color-accent-amber: hsl(var(--accent-amber));
+}
+
+@layer base {
+  :root {
+    --header-height: 72px;
+    /* Wysokość paska promocyjnego NAD przyklejoną nawigacją. Domyślnie 0 na
+       każdej powierzchni. Strona z paskiem nadpisuje lokalnie tę zmienną oraz
+       zależne `--hero-top`; custom property odziedziczona z `:root` nie
+       przelicza się ponownie po nadpisaniu jej zależności na potomku. */
+    --announcement-height: 0px;
+    /* Wyliczone raz tutaj, a nie przez `calc()` w klasach Tailwinda: każda
+       arbitralna wartość to osobna reguła w Critical CSS, a ten budżet jest
+       twardy (20480 B). Ta jedna zmienna obsługuje wszystkie trzy offsety hero
+       — zdjęcie, pasek tła pod nagłówkiem i górny margines treści. */
+    --hero-top: calc(var(--header-height) + var(--announcement-height));
+  }
+
+  html {
+    scroll-padding-top: calc(var(--header-height) + var(--announcement-height));
+  }
+
+  /* `scroll-padding-top` należy do root scrollportu i zachowuje globalne 72 px.
+     Homepage dodaje brakującą wysokość lokalnie na swoich celach kotwicowych,
+     dzięki czemu inne trasy pozostają bit-for-bit bez zmian. */
+  [id] {
+    scroll-margin-top: var(--announcement-height);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Clash Display', sans-serif;
+  }
+
+}
+
+@layer utilities {
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  @keyframes productEnter {
+    from { opacity: 0; transform: translateY(18px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes productExit {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(-12px) scale(1.02); }
+  }
+  @keyframes progressFill {
+    from { width: 0%; }
+    to   { width: 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    @keyframes productEnter { from, to { opacity: 1; transform: none; } }
+    @keyframes productExit { from, to { opacity: 0; transform: none; } }
+    @keyframes progressFill { from, to { width: 100%; } }
+  }
+}
+
+/* Forced-colors (WHCM): box-shadow focus rings are stripped; restore a real
+   outline. Unlayered to win over the utilities-layer ring. DESIGN.md §8. */
+@media (forced-colors: active) {
+  :where(
+    a[href], button, input, select, textarea, summary,
+    [role="button"], [role="radio"], [role="checkbox"], [role="switch"],
+    [role="tab"], [role="menuitem"], [role="option"], [role="combobox"],
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}

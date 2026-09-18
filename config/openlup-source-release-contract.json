@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "node": "24.x",
+    "npm": "11.19.0"
+  },
+  "inventory": {
+    "digest": "sha256-9eebbf8bbd293daea8893858051987dfee95ef5e5c40b7be0f96c1812add732e",
+    "classDigest": "sha256-ebe6be1111a83ba1693a3288d13b188ae1c4aa48d79bb34caeb4a037f2785b0f"
+  },
+  "packages": {
+    "manifestDigest": "sha256-02b74eb14540447ef700dcfe5de2f28781a3fbb35183d4ceb4e3f1de33fbce51",
+    "rootLockDigest": "sha256-d6e9222b849c4b64f15fc21b1f02a91702a46bca0607bcbd4488578132d45bb6",
+    "coreLockDigest": "sha256-22544155fe9f2eb12c19d1f3a0ae9c7178979b7ade878df588dc5c8d87625b19"
+  },
+  "platformMigrationManifest": {
+    "path": "config/platform-migration-manifest.json",
+    "digest": "sha256-e142d369f7185687249163ceece1e68cf8450caac47f1b0d4d7c75316bd25733"
+  },
+  "databaseSchema": {
+    "path": "src/integrations/supabase/types.ts",
+    "binding": "unbound",
+    "replacement": "adopter-generated-required",
+    "digest": "sha256-3489eb0469e3e148f7097981882cfcccabb82a9e758cc5a19ac767d3689f5f62"
+  },
+  "policy": {
+    "registryDigest": "sha256-19738c711bef792342483d6153060495dee23b69076e260a5a344c9089c0cc03",
+    "publicationCatalogDigest": "sha256-1861dc7017078cca14bb019f5cc8e642ca90122eaf28b232354f654fb95d5357"
+  },
+  "compatibility": {
+    "typecheck": {
+      "projects": [
+        "tsconfig.app.json",
+        "tsconfig.node.json",
+        "tsconfig.api.json",
+        "tsconfig.mcp.json",
+        "tsconfig.tests.json"
+      ],
+      "signedPreviewDebt": {
+        "unresolvedEdges": {
+          "mode": "exact-ratchet",
+          "pairs": 0,
+          "importers": 0,
+          "targets": 0,
+          "digest": "sha256-e3b0c44298fc1c149afbf4c8996fb924",
+          "pairHashes": []
+        },
+        "inferenceCascades": {
+          "mode": "ceiling-ratchet",
+          "diagnostics": 0
+        }
+      }
+    }
+  },
+  "repository": {
+    "coordinate": "https://github.com/openlup/openlup",
+    "securityRoute": "dev@openlup.com",
+    "owner": {
+      "name": "Bartłomiej Roszkowski",
+      "email": "dev@openlup.com"
+    }
+  },
+  "release": {
+    "posture": "development-preview",
+    "stability": "preview",
+    "evidenceClass": "activation-candidate"
+  }
+}

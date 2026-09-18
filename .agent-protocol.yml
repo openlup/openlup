@@ -1,0 +1,26 @@
+# Agent Protocol Kit configuration.
+# The validator intentionally parses only simple "key: value" lines and comma
+# separated lists. Keep this file boring and portable.
+
+branch_prefixes: codex/,claude/
+plan_dir: docs/plan
+template_file: docs/templates/wave-plan.md
+
+min_section_bytes: 100
+source_file_max_loc: 300
+default_churn_budget: 1500
+soft_churn_warn: 750
+# Insertions only, so a deletion wave stays cheap. Over this line a wave needs an
+# owner_budget_authorization block written in a docs-only commit.
+insertion_ceiling: 6000
+
+test_debt_ledger: .context/test-debt-ledger.jsonl
+exceptions_ledger: .context/exceptions.jsonl
+
+docs_only_patterns: .md,docs/,.ai/,README,CHANGELOG
+source_extensions: .ts,.tsx,.js,.jsx,.py,.go,.rs,.rb,.java,.kt,.cs,.php,.swift
+test_file_patterns: .test.,.spec.,__tests__,/tests/,/test/
+
+db_change_patterns: migrations/,migration/,schema.sql,prisma/schema.prisma,prisma/migrations/,supabase/migrations/,db/migrate/,database/migrations/
+
+protocol_exception_label: protocol-exception

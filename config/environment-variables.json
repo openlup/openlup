@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "description": "Public-build environment variables for the bounded reference tree.",
+  "variables": [
+    {
+      "name": "VITE_SUPABASE_PUBLISHABLE_KEY",
+      "owner": "platform",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [
+        "local",
+        "production"
+      ],
+      "secret": false,
+      "source": "src/integrations/supabase/client.ts",
+      "blastRadius": "Canonical browser Supabase publishable key provisioned by env templates and native stores. It is public, not a secret; wrong values break auth/data reads or point users at the wrong project."
+    },
+    {
+      "name": "VITE_SUPABASE_ANON_KEY",
+      "owner": "platform",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/integrations/supabase/client.ts",
+      "blastRadius": "Compatibility fallback used only when VITE_SUPABASE_PUBLISHABLE_KEY is absent. When both names exist, browser clients always prefer the canonical publishable key; a stale alias therefore does not override the configured target."
+    },
+    {
+      "name": "VITE_SUPABASE_URL",
+      "owner": "platform",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [
+        "local",
+        "production"
+      ],
+      "secret": false,
+      "source": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "blastRadius": "Selects browser Supabase project; wrong values break auth/data reads or point users at the wrong project."
+    },
+    {
+      "name": "VITE_COMMERCE_AUTH_PROVIDER_KIND",
+      "owner": "customers",
+      "category": "public-build",
+      "default": "supabase",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/auth/customerAuthPortFactory.ts",
+      "blastRadius": "Selects the shipped browser customer-auth adapter. `supabase` keeps managed behavior; `node-postgres` uses the bounded passwordless reference session API; unknown values fall back to supabase."
+    },
+    {
+      "name": "VITE_COMMERCE_SOCIAL_PROVIDERS",
+      "owner": "customers",
+      "category": "public-build",
+      "default": "google",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/auth/socialProviders.ts",
+      "blastRadius": "Parsed by the social-provider helper and tests. The current login page still renders Google directly; empty values do not disable the Google button until LoginPage is wired to the helper."
+    },
+    {
+      "name": "COMMERCE_SETTLEMENT_CURRENCY",
+      "owner": "commerce",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/currency/platformCurrency.ts",
+      "blastRadius": "The ISO 4217 currency this deployment prices and settles in. Unset resolves to PLATFORM_DEFAULT_CURRENCY, which is why no live environment sets it today. A value that is not three uppercase letters is refused at read time rather than corrected to the default, so a typo fails the commerce path closed instead of quietly pricing in the wrong currency. Changing it on a deployment that already has orders would reinterpret existing minor-unit amounts as a different currency; it is a launch-time decision, not an operational toggle. Browser-exposed: it matches a PUBLIC_BUNDLE_ENV_PREFIXES entry in scripts/check-client-secret-boundary.ts, so the build inlines it into the shipped JavaScript where the presentation layer reads it from import.meta.env. Never put a credential under this prefix."
+    },
+    {
+      "name": "COMMERCE_SETTLEMENT_REGION",
+      "owner": "commerce",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/currency/platformCurrency.ts",
+      "blastRadius": "The ISO 3166-1 alpha-2 region this deployment prices for. It selects which price list the pricing resolver reads, and it is a fact separate from the settlement currency because neither determines the other: many countries share one currency. Unset resolves to PLATFORM_DEFAULT_REGION, which is why no live environment sets it today. A value that is not two uppercase letters is refused at read time rather than corrected to the default. Setting it to a region with no active price list fails every quote closed with PRICE_NOT_CONFIGURED rather than pricing from another region's list. Browser-exposed: it matches a PUBLIC_BUNDLE_ENV_PREFIXES entry in scripts/check-client-secret-boundary.ts, so the build inlines it into the shipped JavaScript where the presentation layer reads it from import.meta.env. Never put a credential under this prefix."
+    },
+    {
+      "name": "COMMERCE_MIN_PRODUCT_PAYABLE_MINOR",
+      "owner": "commerce",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/currency/fiscalProfile.ts",
+      "blastRadius": "The smallest amount a product line may be sold for, in minor units. Unset, it is derived as one major unit from the settlement currency's own exponent, so a deployment settling in a currency without hundredths gets 1 rather than the 100 the code used to hard-code. It is the ceiling on how far a promotion may discount a line, so a value read as zero would let a discount drive a price below what the business approved; anything that is not a positive integer is refused at read time rather than corrected. Read at module evaluation on the server, so a malformed value stops the process instead of the first customer. It does not read commerce_settings.min_product_payable_minor, which is the database-side mirror consulted by SQL. Browser-exposed: it matches a PUBLIC_BUNDLE_ENV_PREFIXES entry in scripts/check-client-secret-boundary.ts, so the build inlines it into the shipped JavaScript where the presentation layer reads it from import.meta.env. Never put a credential under this prefix."
+    },
+    {
+      "name": "COMMERCE_FISCAL_COUNTRY",
+      "owner": "commerce",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/currency/fiscalProfile.ts",
+      "blastRadius": "The ISO 3166-1 alpha-2 jurisdiction whose tax law issued documents cite. It is a fact separate from COMMERCE_SETTLEMENT_REGION, which selects a price list: selling from one region's list into another jurisdiction's tax regime is an ordinary arrangement and the quote port's tests pin exactly that case, so neither value is derived from the other. Unset resolves to the reference deployment's jurisdiction, which is why no live environment sets it. A value that is not two uppercase letters is refused at read time; a document issued to a tax authority under a treatment nobody chose is not something a later correction fully undoes. Browser-exposed: it matches a PUBLIC_BUNDLE_ENV_PREFIXES entry in scripts/check-client-secret-boundary.ts, so the build inlines it into the shipped JavaScript where the presentation layer reads it from import.meta.env. Never put a credential under this prefix."
+    },
+    {
+      "name": "COMMERCE_FISCAL_CATEGORY",
+      "owner": "commerce",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/currency/fiscalProfile.ts",
+      "blastRadius": "Which supply the configured VAT rate applies to, as a free-text category name carried onto every quote's tax breakdown and every invoice's tax snapshot. Unset resolves to the reference deployment's category. It has no malformed state: the platform is in no position to tell a valid category name from an invalid one, and an empty value is treated as unset like every other key in this group. Browser-exposed: it matches a PUBLIC_BUNDLE_ENV_PREFIXES entry in scripts/check-client-secret-boundary.ts, so the build inlines it into the shipped JavaScript where the presentation layer reads it from import.meta.env. Never put a credential under this prefix."
+    },
+    {
+      "name": "COMMERCE_FISCAL_VAT_RATE_BPS",
+      "owner": "commerce",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/currency/fiscalProfile.ts",
+      "blastRadius": "The VAT rate applied to product lines, in basis points (800 = 8 percent). It reaches every quoted amount through the included-VAT split and every issued document through the tax snapshot, so it carries the widest blast radius in this group: a wrong value misstates the net and VAT halves of every order taken while it is set. Unset resolves to the reference deployment's rate. A value that is not a whole number from 0 to 10000 is refused at read time rather than coerced. Browser-exposed: it matches a PUBLIC_BUNDLE_ENV_PREFIXES entry in scripts/check-client-secret-boundary.ts, so the build inlines it into the shipped JavaScript where the presentation layer reads it from import.meta.env. Never put a credential under this prefix."
+    },
+    {
+      "name": "COMMERCE_FISCAL_LEGAL_BASIS",
+      "owner": "commerce",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/lib/currency/fiscalProfile.ts",
+      "blastRadius": "The statutory citation printed on issued documents to justify the configured rate, as free text. Unset resolves to the reference deployment's citation. Like the category it has no malformed state this code can detect; a wrong citation is refused by a tax authority, not here. Browser-exposed: it matches a PUBLIC_BUNDLE_ENV_PREFIXES entry in scripts/check-client-secret-boundary.ts, so the build inlines it into the shipped JavaScript where the presentation layer reads it from import.meta.env. Never put a credential under this prefix."
+    },
+    {
+      "name": "VITE_STRIPE_PUBLISHABLE_KEY",
+      "owner": "payment",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/domains/payment/components/useStripePromise.ts",
+      "blastRadius": "Exposes Stripe publishable key to browser bundles; wrong values break checkout or point UI at the wrong account."
+    },
+    {
+      "name": "VITE_INPOST_GEOWIDGET_KEY",
+      "owner": "fulfillment",
+      "category": "public-build",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "src/domains/shipping/inpostGeowidgetLoader.ts",
+      "blastRadius": "Public InPost Geowidget v5 browsing token (JWT) baked into the browser bundle. Empty => the map picker is disabled and the list fallback is used; wrong/expired values break only the InPost map overlay."
+    }
+  ]
+}

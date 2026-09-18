@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "description": "Legacy backend Supabase boundary allowlist. Counts are maximums; entries must only shrink as BFF/cron routes move behind DataGatewayPort.",
+  "scannedRoots": [
+    "api/_cron",
+    "api/cron",
+    "server/bff"
+  ],
+  "patterns": [
+    "supabaseImport",
+    "createClient",
+    "dbChain",
+    "functionsInvoke"
+  ],
+  "entries": []
+}

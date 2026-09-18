@@ -1,0 +1,131 @@
+{
+  "transitions": 12,
+  "payload": {
+    "S1.an_offer_the_stock_evidence_can_sell_reads_sellable": {
+      "forSale": 10,
+      "sellable": true
+    },
+    "S2.an_offer_nothing_is_left_of_reads_unsellable": {
+      "forSale": 0,
+      "sellable": false
+    },
+    "S3.the_unsellable_offer_leaves_a_way_back_and_asks_for_no_money": {
+      "continuations": 1,
+      "intents": 0
+    },
+    "S4.asking_twice_is_one_wait_not_two": {
+      "continuations": 1
+    },
+    "S5.a_second_asker_waits_for_the_same_offer_separately": {
+      "continuations": 2
+    },
+    "S6.an_order_whose_money_never_arrived_cannot_activate_a_subscription": {
+      "refused": "activation_order_not_paid",
+      "subscriptions": 0
+    },
+    "S7.the_first_captured_payment_activates_the_subscription": {
+      "activated": true,
+      "orderStatus": "paid",
+      "subscriptionStatus": "active",
+      "cadenceDays": 28,
+      "slidDays": 28,
+      "subscriptions": 1
+    },
+    "S8.replaying_the_same_captured_payment_activates_nothing_twice": {
+      "subscriptions": 1,
+      "orderStatus": "paid",
+      "subscriptionStatus": "active",
+      "cadenceDays": 28,
+      "slidDays": 28
+    },
+    "S9.a_different_payment_identity_under_that_key_is_refused": {
+      "refused": "activation_payment_identity_conflict",
+      "subscriptions": 1
+    },
+    "S10.an_interrupted_checkout_is_compensated": {
+      "cancelled": true,
+      "orderStatus": "cancelled",
+      "cancelledOrders": 1
+    },
+    "S11.compensating_it_again_moves_nothing": {
+      "orderStatus": "cancelled",
+      "cancelledOrders": 1
+    },
+    "S12.a_checkout_whose_money_moved_is_never_compensated": {
+      "cancelled": false,
+      "orderStatus": "paid"
+    }
+  },
+  "kernelOnly": {
+    "K1.a_way_back_from_an_offer_that_is_on_the_shelf_is_refused": {
+      "refused": "continuation_offer_available"
+    },
+    "K2.the_way_back_stores_no_contact_value_at_all": {
+      "columns": [
+        "id",
+        "source_key",
+        "sku",
+        "contact_ref",
+        "consent_ref",
+        "status",
+        "idempotency_key",
+        "requested_at",
+        "released_at"
+      ]
+    },
+    "K3.after_restock_the_way_back_re_enters_through_the_same_readiness": {
+      "sku": "probe-sku-empty",
+      "forSale": 7,
+      "waiting": true,
+      "sellable": true,
+      "readiness": "ready",
+      "continuationStatus": "waiting"
+    },
+    "K4.a_payment_that_never_reached_its_activation_is_a_row_not_a_silence": {
+      "open": 1,
+      "openForOrder": true
+    },
+    "K5.the_gap_is_repaired_once_and_the_repair_is_safe_to_repeat": {
+      "repaired": {
+        "overdue": 0,
+        "repaired": 1
+      },
+      "settled": {
+        "overdue": 0,
+        "repaired": 0
+      }
+    },
+    "K6.a_repaired_activation_is_the_same_activation_a_first_call_would_have_made": {
+      "orderStatus": "paid",
+      "subscriptionStatus": "active",
+      "cadenceDays": 28,
+      "slidDays": 28,
+      "replayed": {
+        "state": "active",
+        "repaired": true,
+        "replayed": true,
+        "cadenceDays": 28
+      }
+    },
+    "K7.a_compensated_checkout_can_never_be_activated_afterwards": {
+      "activation": {
+        "refused": "activation_order_compensated"
+      },
+      "state": "compensated"
+    },
+    "K8.activating_a_checkout_nobody_declared_is_refused": {
+      "refused": "activation_not_declared"
+    },
+    "K9.a_repeated_compensation_answers_from_the_ledger_not_from_the_order": {
+      "reason": "abandoned_checkout",
+      "replayed": true,
+      "cancelled": true,
+      "orderStatus": "cancelled",
+      "cancelledOrders": 1
+    },
+    "K10.the_activation_writes_the_cycle_the_captured_payment_paid_for": {
+      "cycleStatus": "paid",
+      "cycles": 1
+    }
+  }
+}

@@ -1,0 +1,20 @@
+name: Historical Release Candidate Tombstone
+
+# Historical evidence only. This private package must not activate an
+# independent repository, artifact channel, release, tag, or cutover path.
+
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  blocked:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse historical standalone-library activation
+        run: |
+          echo "This historical workflow is permanently inactive."
+          echo "Private core portability is verified in the platform monorepo."
+          echo "Any public activation belongs only to the phase-5 platform plan."
+          exit 1

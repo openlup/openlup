@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 5,
+  "repository": {
+    "packageName": "@openlup/core",
+    "currentPhase": "private-portability-proof",
+    "packageVisibility": "private",
+    "activation": {
+      "target": "platform-monorepo-phase-5",
+      "separateRepositoryActivation": "forbidden",
+      "publicSourceOpening": "phase-5-only"
+    }
+  },
+  "localGovernance": {
+    "pullRequestsRequired": true,
+    "requiredStatusChecks": [
+      "Core CI / verify",
+      "Core CI / gitleaks"
+    ],
+    "mergeMethods": {
+      "squash": true,
+      "mergeCommit": false,
+      "rebase": false
+    },
+    "allowForcePushes": false,
+    "allowDeletions": false,
+    "bypassActors": []
+  },
+  "ownership": {
+    "codeOwners": [
+      "@broszkowski"
+    ],
+    "codeOwnerReviewRequired": false,
+    "rationale": "sole-maintainer"
+  },
+  "security": {
+    "scanning": {
+      "required": true,
+      "workflowCheck": "Core CI / gitleaks",
+      "tool": "gitleaks",
+      "pinnedVersion": "8.30.1",
+      "checksumVerified": true
+    },
+    "dependabot": {
+      "required": true,
+      "ecosystems": [
+        "npm",
+        "github-actions"
+      ]
+    }
+  },
+  "localProofToolchain": {
+    "node": "24.20.0",
+    "npm": "11.19.0"
+  }
+}

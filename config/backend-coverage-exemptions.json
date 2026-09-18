@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "thinEntrypointRules": [
+    {
+      "id": "vercel-cron-and-ops-adapters",
+      "pathPattern": "^api/(?:cron|ops)/[^/]+\\.ts$",
+      "maxLines": 12,
+      "owner": "platform",
+      "reason": "Vercel config plus a direct call into a separately tested cron or ops runner."
+    },
+    {
+      "id": "bff-route-adapters",
+      "pathPattern": "^server/bff/.+\\.ts$",
+      "maxLines": 80,
+      "owner": "platform",
+      "reason": "Observed-route, auth and dependency-wiring adapters; behavior is owned by handler, port and golden-master suites."
+    },
+    {
+      "id": "overlay-receipt-launchers",
+      "pathPattern": "^src/overlays/[^/]+/tooling/catalog/run-[^/]+\\.ts$",
+      "maxLines": 45,
+      "owner": "catalog",
+      "reason": "A receipt launcher only re-spawns the generator beside it under the loader and resolve condition that bare type stripping lacks, forwarding argv and the exit code. The generator it starts is instrumented and covered; the forwarding itself is proven by the receipts battery reporting STALE on a one-byte drift of the artifact and OK after the revert, which an in-process test could only re-state."
+    }
+  ],
+  "baselineDebt": []
+}

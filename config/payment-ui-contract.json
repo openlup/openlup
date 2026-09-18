@@ -1,0 +1,74 @@
+{
+  "$comment": "Single source of truth for the required payment posture: customer-facing checkout methods, build-time VITE_* gates and server runtime gates. Vite flags can silently hide a method and runtime flags can silently disable execution, webhooks or renewals. Staging and confirmed-production builds, the production env-plan parity test and deployed-bundle proof all read THIS reviewed contract. Changing a required rail or method therefore requires a git change; a dashboard edit cannot quietly remove card/wallet, Tpay one-time or Model O subscription payments. See scripts/payment-ui-contract.ts.",
+  "environments": ["staging", "production"],
+  "checkoutModes": [
+    {
+      "mode": "one_time",
+      "expectedMethods": ["card", "blik", "transfer"],
+      "comment": "Stripe card/wallet plus Tpay BLIK with code and Pay-By-Link. Saved-alias one-click is optional and separately gated; it is not part of the minimum live rail."
+    },
+    {
+      "mode": "subscription",
+      "expectedMethods": ["card", "blik"],
+      "comment": "Stripe card/wallet plus initial Tpay BLIK code that registers a Model O PAYID mandate. Pay-By-Link is one-time only and must never appear here."
+    }
+  ],
+  "requiredRuntimeFlags": [
+    { "flag": "COMMERCE_V2_W11_CHECKOUT_LIVE", "requiredIn": ["staging", "production"], "reason": "the public checkout BFF must remain admitted" },
+    { "flag": "COMMERCE_PAYMENT_PROVIDER_EXECUTION_ENABLED", "requiredIn": ["staging", "production"], "reason": "provider execution must not be silently disabled" },
+    { "flag": "COMMERCE_PROVIDER_PAYMENTS_ENABLED", "requiredIn": ["staging", "production"], "reason": "payment status and provider payment paths require the master gate" },
+    { "flag": "COMMERCE_PROVIDER_WEBHOOKS_ENABLED", "requiredIn": ["staging", "production"], "reason": "verified PSP callbacks are payment truth" },
+    { "flag": "COMMERCE_V2_W11_PROVIDER_REGISTRY", "requiredIn": ["staging", "production"], "reason": "checkout must resolve the configured execution adapters" },
+    { "flag": "COMMERCE_V2_W11_SUBSCRIPTION_CHECKOUT_CONTRACT_ENABLED", "requiredIn": ["staging", "production"], "reason": "subscription checkout must remain admitted server-side" },
+    { "flag": "COMMERCE_SUBSCRIPTION_RENEWAL_RUNTIME_ENABLED", "requiredIn": ["staging", "production"], "reason": "active subscriptions must continue renewing" },
+    { "flag": "PAYMENTS_STRIPE_SANDBOX_ENABLED", "requiredIn": ["staging", "production"], "reason": "legacy-named Stripe payment-execution master gate must remain on" },
+    { "flag": "STRIPE_PROVIDER_ENABLED", "requiredIn": ["staging", "production"], "reason": "card and wallet execution must remain available" },
+    { "flag": "STRIPE_LIVE_CONFIRMED", "requiredIn": ["production"], "reason": "production Stripe must use the explicitly confirmed live posture" },
+    { "flag": "PAYMENTS_TPAY_ENABLED", "requiredIn": ["staging", "production"], "reason": "Tpay one-time and subscription execution must remain available" },
+    { "flag": "VITE_PAYMENTS_TPAY_BLIK_MODEL_O_ENABLED", "requiredIn": ["staging", "production"], "reason": "one reviewed public switch admits new subscription BLIK Model O mandates server-side" },
+    { "flag": "PAYMENTS_TPAY_PRODUCTION_ENABLED", "requiredIn": ["production"], "reason": "production Tpay must use live-settlement mode" },
+    { "flag": "TPAY_PRODUCTION_CONFIRMED", "requiredIn": ["production"], "reason": "production Tpay must use the already-confirmed live-settlement posture" }
+  ],
+  "requiredBuildFlags": [
+    { "flag": "VITE_COMMERCE_V2_W11_SUBSCRIPTION_CHECKOUT_CONTRACT_ENABLED", "requiredIn": ["staging", "production"], "reason": "subscription checkout must remain admitted in the customer bundle" },
+    { "flag": "VITE_PAYMENTS_TPAY_BLIK_MODEL_O_ENABLED", "requiredIn": ["staging", "production"], "reason": "the same switch exposes subscription BLIK together with its mandatory bank picker; refuseNoPayId remains binding" }
+  ],
+  "providers": [
+    {
+      "kind": "stripe",
+      "label": "Stripe (Karta / Apple Pay / Google Pay)",
+      "visibilityFlag": "VITE_COMMERCE_STRIPE_CHECKOUT_UI_ENABLED",
+      "requiredVisibleIn": ["staging", "production"],
+      "requiredNonEmptyFlags": ["VITE_STRIPE_PUBLISHABLE_KEY"],
+      "forwardedBuildFlags": ["VITE_COMMERCE_STRIPE_CHECKOUT_UI_ENABLED"],
+      "comment": "The visibility TOGGLE is forwarded from git (deploy workflow + deploy-hidden-preview.sh) so it is single-sourced + reviewed, like Tpay. VITE_STRIPE_PUBLISHABLE_KEY stays an environment-specific value in the Vercel project env (test key on staging, live key on prod) — it is a credential value, not a toggle — but is still asserted non-empty in the built bundle."
+    },
+    {
+      "kind": "tpay",
+      "label": "Tpay (BLIK z kodem / Pay-By-Link / BLIK Model O)",
+      "visibilityFlag": "VITE_PAYMENTS_TPAY_CHECKOUT_SCAFFOLDING",
+      "$scopeComment": "Production requires Tpay BLIK-code and PBL for one-time checkout plus BLIK Model O activation for subscriptions. Saved-alias one-click remains a distinct optional UI and stays forbidden on production until its own application evidence exists.",
+      "requiredVisibleIn": ["staging", "production"],
+      "requiredNonEmptyFlags": [],
+      "forwardedBuildFlags": [
+        "VITE_PAYMENTS_TPAY_CHECKOUT_SCAFFOLDING",
+        "VITE_PAYMENTS_TPAY_SIMULATOR_UI",
+        "VITE_PAYMENTS_TPAY_ONE_CLICK_UI",
+        "VITE_PAYMENTS_TPAY_BLIK_MODEL_O_ENABLED"
+      ]
+    }
+  ],
+  "$forbiddenFlagsComment": "The mirror image of providers[].requiredVisibleIn. Those entries prove a payment method is VISIBLE where it must be; these prove one is NOT visible where it must not be. Both are enforced against the built bundle by scripts/payment-ui-contract.ts, so the same assertion guards the staging deploy (--assert-deploy), the production cutover (release-production.yml), and PR CI (--assert-dist). A flag listed here must be absent or bake anything other than 'true'; being in config/production-env-plan.json `unset` is the intended way to satisfy it, but this reads the OUTPUT, so an out-of-band Vercel dashboard value cannot slip past — the same reason the positive direction exists (CJ01-H).",
+  "forbiddenFlags": [
+    {
+      "flag": "VITE_PAYMENTS_TPAY_SIMULATOR_UI",
+      "forbiddenIn": ["production"],
+      "reason": "Staging fake-payment simulator. On production it would offer customers a checkout path that never takes real money — an order that looks paid and is not."
+    },
+    {
+      "flag": "VITE_PAYMENTS_TPAY_ONE_CLICK_UI",
+      "forbiddenIn": ["production"],
+      "reason": "Saved-alias one-click is distinct from initial Model O activation. Keep it hidden until its own application/webhook/ledger evidence exists; Model O subscriptions start with an ordinary six-digit BLIK code."
+    }
+  ]
+}

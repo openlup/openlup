@@ -1,0 +1,200 @@
+# The checks this tree runs on itself.
+#
+# Six public checks, each carrying a falsifier: every proposed commit is signed off, the
+# tree compiles to its signed debt, it installs and clears its prebuild chain, a measured scope of
+# its tests passes, and its own inventory still matches the manifest that describes it. Nothing
+# here deploys or publishes; network use is limited to the package registry and the GitHub API
+# download of the checksum-verified gitleaks release.
+#
+# The workflow stays product-name-neutral so a future rename does not churn CI. The current public
+# name is settled as OpenLup; neutrality here is an automation-maintenance choice, not indecision.
+#
+# This workflow is also carried by the private source checkout, so every one of the exact six
+# public contexts applies the same trusted event-metadata fence directly. No helper job creates a
+# seventh context. Repository visibility comes from GitHub's event context, never checked-out bytes.
+
+name: Published Tree CI
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: published-tree-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # CONTRIBUTING.md requires a Developer Certificate of Origin sign-off on every commit and states
+  # that there is no CLA; GOVERNANCE.md names that file as the single source. This job is what
+  # makes that a rule rather than a sentence. It is deliberately first, deliberately the cheapest -
+  # no install, seconds not minutes - and deliberately not a third-party action: the reasons are in
+  # scripts/dco-signoff-check.ts, a small local Git reader with no dependency installation.
+  #
+  # The first push uses GitHub's all-zero before value to select the one-parentless-root mode.
+  # Pull requests retain the complete base..head measurement; neither mode can certify zero commits.
+  dco:
+    name: dco
+    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # The whole range, not the tip. A shallow checkout has neither end of it, and the check
+          # refuses to pass on a range it could not read rather than reporting success over zero.
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      # No install: the check reads git and nothing else, so it runs on the bare runtime.
+      - name: Sign-off on every pull-request commit
+        if: github.event_name == 'pull_request'
+        # Through the environment rather than into the command line, and re-validated as full
+        # digests inside the script, so nothing here can reach `git` as an option.
+        env:
+          RANGE_BASE: ${{ github.event.pull_request.base.sha }}
+          RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: npm run check:dco-signoff -- "$RANGE_BASE" "$RANGE_HEAD"
+      - name: Sign-off on the non-empty first root
+        if: github.event_name == 'push'
+        env:
+          RANGE_BASE: ${{ github.event.before }}
+          RANGE_HEAD: ${{ github.sha }}
+        run: |
+          test "$RANGE_BASE" = "0000000000000000000000000000000000000000"
+          npm run check:dco-signoff -- "$RANGE_BASE" "$RANGE_HEAD"
+
+  typecheck:
+    name: typecheck
+    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Assert Node and npm contract
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      - run: npm ci
+      # NOT `npm run typecheck`. The release contract names every compiler project and carries the
+      # signed preview-debt ratchet. The source-only measurement baseline is deliberately absent.
+      # A new unresolved edge fails, and so does a signed edge that is gone.
+      - run: npm run oss:published-tree -- --typecheck
+
+  install-proof:
+    name: install-proof
+    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # The public root build is the complete build truth. Its bounded chain is projected into
+      # package.json and catalogued; CI does not call a source-only prebuild or deployment guard.
+      - name: Assert Node and npm contract
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      - run: npm ci --prefer-offline --no-audit --fund=false
+      - run: npm run build
+
+  test:
+    name: test
+    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Assert Node and npm contract
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      - run: npm ci
+      # ⛔ NOT the whole suite. Some source-tree tests depend on withheld modules, individual
+      # migrations flattened by publication, or repository history. Their compatibility debt is
+      # owned by the public typecheck/inventory gates and must close in dedicated changes, not by
+      # loosening this job or copying a volatile test-file denominator into YAML.
+      #
+      # The projected `npm test` owns the runnable scope as whole directories - no file is picked
+      # out of one - so the consumer command and CI cannot drift. A new failing test in a selected
+      # directory turns this job red instead of being quietly skipped.
+      - name: Scoped test run
+        run: npm test
+      - name: Materialized command-contract falsifier
+        run: npx vitest run scripts/oss-published-tree-check.test.ts
+
+  self-check:
+    name: self-check
+    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      # No install: the check reads the tracked inventory, the surface catalog and the root
+      # manifest, and imports nothing outside this tree. It fails when a path appears that no
+      # publishable family claims, when one appears that a withholding family would have removed,
+      # or when the root manifest still carries an unresolved conditional seam. It prints the path
+      # count and the manifest digest, which are the two headline numbers of the export receipt
+      # this tree was created from.
+      - run: npm run oss:published-tree -- --policy
+      - run: npm run oss:published-tree -- --inventory
+
+  gitleaks:
+    name: gitleaks
+    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install checksum-verified gitleaks 8.30.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz"
+          install_dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$install_dir"
+          gh api -H "Accept: application/octet-stream" \
+            repos/gitleaks/gitleaks/releases/assets/378332058 > "$archive"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$install_dir" gitleaks
+          echo "$install_dir" >> "$GITHUB_PATH"
+          "$install_dir/gitleaks" version
+      - name: Scan the complete available history
+        run: gitleaks git . --config config/gitleaks.toml --redact --no-banner

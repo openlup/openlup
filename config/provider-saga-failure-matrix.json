@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 1,
+  "description": "High-blast-radius provider and saga failure matrix for checkout -> payment -> fulfillment -> accounting -> email hardening.",
+  "providers": [
+    {
+      "id": "stripe",
+      "owner": "payment",
+      "sagaStages": [
+        "checkout-payment",
+        "webhook-ingestion",
+        "payment-recovery"
+      ],
+      "stateOwner": "server/domains/payment",
+      "infraBoundary": "server/infra/stripe",
+      "adapterBoundary": "server/adapters/stripe",
+      "runbook": "server/infra/stripe/README.md",
+      "rollbackPosture": "disable STRIPE_PROVIDER_ENABLED and PAYMENTS_STRIPE_SANDBOX_ENABLED; keep webhooks fail-closed and reconcile local payment-control state before retrying.",
+      "envRefs": [
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_LIVE_CONFIRMED"
+      ],
+      "flagRefs": [
+        "STRIPE_PROVIDER_ENABLED",
+        "PAYMENTS_STRIPE_SANDBOX_ENABLED",
+        "COMMERCE_PROVIDER_PAYMENTS_ENABLED"
+      ],
+      "failureModes": [
+        {
+          "id": "stripe-webhook-signature-rejected",
+          "trigger": "Stripe webhook signature, timestamp, or raw body mismatch.",
+          "expectedPosture": "reject before persistence and do not apply payment-control business state.",
+          "compensation": "operator verifies provider event in Stripe dashboard and replays only through verified webhook/event-ingestion path.",
+          "executableEvidenceFiles": [
+            "server/infra/stripe/stripeApiClient.test.ts",
+            "server/adapters/stripe/stripeWebhookNormalizer.test.ts"
+          ]
+        },
+        {
+          "id": "stripe-provider-local-mismatch",
+          "trigger": "provider paid/local unpaid, local paid/provider unpaid, or amount/currency mismatch.",
+          "expectedPosture": "surface sanitized observability evidence without issuing fulfillment or accounting side effects.",
+          "compensation": "use payment-control recovery/reconciliation before fulfillment eligibility can advance.",
+          "executableEvidenceFiles": [
+            "src/lib/stripeAccountingPreviewSmokeGuardrails.test.ts"
+          ],
+          "evidenceDocs": [
+            "docs/STRIPE_LIVE_ACTIVATION_RUNBOOK.md",
+            "docs/TPAY_RUNBOOK.md",
+            "src/domains/payment/README.md"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tpay",
+      "owner": "payment",
+      "sagaStages": [
+        "checkout-payment",
+        "blik-recurring",
+        "webhook-ingestion"
+      ],
+      "stateOwner": "server/domains/payment",
+      "infraBoundary": "server/infra/tpay",
+      "adapterBoundary": "server/adapters/tpay",
+      "runbook": "server/infra/tpay/README.md",
+      "rollbackPosture": "disable PAYMENTS_TPAY_ENABLED/PAYMENTS_TPAY_SANDBOX_ENABLED and keep simulator-only flows until signed sandbox evidence is restored.",
+      "envRefs": [
+        "TPAY_CLIENT_ID",
+        "TPAY_CLIENT_SECRET",
+        "TPAY_WEBHOOK_JWS_ROOT_CERT_URL",
+        "TPAY_WEBHOOK_JWS_CERT_PREFIX"
+      ],
+      "flagRefs": [
+        "PAYMENTS_TPAY_ENABLED",
+        "PAYMENTS_TPAY_SANDBOX_ENABLED",
+        "PAYMENTS_TPAY_SIMULATOR_ENABLED"
+      ],
+      "failureModes": [
+        {
+          "id": "tpay-jws-rejected",
+          "trigger": "Tpay notification has invalid JWS signature, certificate origin, or mutable raw payload.",
+          "expectedPosture": "reject before provider event persistence and exclude bearer/JWS/BLIK data from logs.",
+          "compensation": "operator replays only a valid signed notification after certificate/root-certificate posture is corrected.",
+          "executableEvidenceFiles": [
+            "server/infra/tpay/webhookJwsVerifier.test.ts",
+            "server/infra/tpay/webhookNormalizer.test.ts"
+          ]
+        },
+        {
+          "id": "tpay-recurring-alias-unsafe",
+          "trigger": "A new BLIK Model O activation is disabled, or a saved/renewal PAYID lacks explicit stored Model O consent.",
+          "expectedPosture": "fail closed before durable provider-attempt preparation and keep local subscription recovery actionable.",
+          "compensation": "enable the single Model O activation switch for a reviewed new mandate, or repair the exact subscription to a valid stored Model O/card method; never infer consent.",
+          "executableEvidenceFiles": [
+            "server/adapters/tpay/tpayPaymentExecutionAdapter.test.ts"
+          ],
+          "evidenceDocs": [
+            "server/infra/tpay/README.md"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fakturownia",
+      "owner": "accounting",
+      "sagaStages": [
+        "invoice-issue",
+        "pdf-download",
+        "ksef-status"
+      ],
+      "stateOwner": "server/domains/accounting",
+      "infraBoundary": "server/infra/fakturownia",
+      "adapterBoundary": "server/domains/accounting",
+      "runbook": "server/infra/fakturownia/README.md",
+      "rollbackPosture": "disable COMMERCE_ACCOUNTING_MUTATIONS_ENABLED/FAKTUROWNIA_PROVIDER_ENABLED and continue shadow/test-PDF evidence only.",
+      "envRefs": [
+        "FAKTUROWNIA_API_TOKEN",
+        "FAKTUROWNIA_BASE_URL",
+        "FAKTUROWNIA_ENV",
+        "FAKTUROWNIA_PREVIEW_DEMO_CONFIRMED"
+      ],
+      "flagRefs": [
+        "COMMERCE_ACCOUNTING_MUTATIONS_ENABLED",
+        "COMMERCE_ACCOUNTING_CREATE_ENABLED",
+        "FAKTUROWNIA_PROVIDER_ENABLED"
+      ],
+      "failureModes": [
+        {
+          "id": "fakturownia-provider-write-blocked",
+          "trigger": "invoice create/send requested without provider mode, demo posture, or accounting mutation gate.",
+          "expectedPosture": "fail closed before HTTP mutation and keep local ledger unchanged.",
+          "compensation": "operator re-enables only the missing accounting gate after demo/hidden-preview evidence is documented.",
+          "executableEvidenceFiles": [
+            "server/infra/fakturownia/client.test.ts",
+            "src/lib/accountingPreviewSmokeGuardrails.test.ts"
+          ]
+        },
+        {
+          "id": "ksef-convergence-unsafe",
+          "trigger": "KSeF convergence attempts a Fakturownia mutation, staging polling is requested, or a staging mutation falls outside the exact confirmed DEMO profile.",
+          "expectedPosture": "leave submission authority in the Fakturownia account, allow only the short-lived confirmed DEMO mutation rail with account-global KSeF off, and use GET-only provider reads to converge sanitized local evidence.",
+          "compensation": "disable government polling or the unconfirmed mutation posture, verify the Fakturownia account configuration, then replay the appropriate existing issue or read-only status job.",
+          "executableEvidenceFiles": [
+            "server/domains/accounting/accountingJobService.test.ts",
+            "server/infra/fakturownia/activationGate.test.ts",
+            "server/infra/fakturownia/client.test.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "omnipack",
+      "owner": "fulfillment",
+      "sagaStages": [
+        "fulfillment-dispatch",
+        "stock-sync",
+        "webhook-reconciliation"
+      ],
+      "stateOwner": "server/domains/fulfillment",
+      "infraBoundary": "server/infra/omnipack",
+      "adapterBoundary": "server/domains/fulfillment",
+      "runbook": "server/infra/omnipack/README.md",
+      "rollbackPosture": "disable COMMERCE_OMNIPACK_DISPATCH_ENABLED/COMMERCE_OMNIPACK_STOCK_SYNC_ENABLED and keep simulator or shadow evidence only.",
+      "envRefs": [
+        "OMNIPACK_USERNAME",
+        "OMNIPACK_PASSWORD",
+        "OMNIPACK_BASE_URL",
+        "OMNIPACK_ENV",
+        "OMNIPACK_WEBHOOK_TOKEN"
+      ],
+      "flagRefs": [
+        "OMNIPACK_PROVIDER_ENABLED",
+        "COMMERCE_OMNIPACK_DISPATCH_ENABLED",
+        "COMMERCE_OMNIPACK_STOCK_SYNC_ENABLED",
+        "COMMERCE_OMNIPACK_WEBHOOKS_ENABLED"
+      ],
+      "failureModes": [
+        {
+          "id": "omnipack-dispatch-replay",
+          "trigger": "fulfillment dispatch retries or idempotency replay after local draft evidence already exists.",
+          "expectedPosture": "do not double-call provider; record replay/readback evidence and preserve local state.",
+          "compensation": "operator reviews dispatch attempt ledger and replays only idempotent handoff worker.",
+          "executableEvidenceFiles": [
+            "server/domains/fulfillment/omnipackDispatchWorker.test.ts",
+            "scripts/omnipack-stage-one-order-ladder.test.ts"
+          ]
+        },
+        {
+          "id": "omnipack-stock-or-status-mismatch",
+          "trigger": "provider/local stock mismatch, low-stock threshold, or webhook/reconciliation status drift.",
+          "expectedPosture": "record evidence and alerts without mutating checkout inventory or DHL state.",
+          "compensation": "disable stock-sync/webhook flags and reconcile local fulfillment state from recorded provider facts.",
+          "executableEvidenceFiles": [
+            "server/domains/fulfillment/omnipackStockSyncWorker.test.ts",
+            "server/domains/fulfillment/omnipackReconciliationWorker.test.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dhl",
+      "owner": "fulfillment",
+      "sagaStages": [
+        "direct-carrier-dispatch",
+        "label-fetch",
+        "courier-booking"
+      ],
+      "stateOwner": "server/domains/fulfillment",
+      "infraBoundary": "server/infra/dhl",
+      "adapterBoundary": "server/adapters/dhl",
+      "runbook": "server/infra/dhl/README.md",
+      "rollbackPosture": "unset DHL_LIVE_PREVIEW_CONFIRMED and keep DHL direct-carrier actions manual/operator-triggered only.",
+      "envRefs": [
+        "DHL_API_USERNAME",
+        "DHL_API_PASSWORD",
+        "DHL_ACCOUNT_NUMBER",
+        "DHL_LIVE_PREVIEW_CONFIRMED"
+      ],
+      "flagRefs": [
+        "COMMERCE_DHL_ONLY_DELIVERY",
+        "COMMERCE_FULFILLMENT_AUTO_DISPATCH_ENABLED"
+      ],
+      "failureModes": [
+        {
+          "id": "dhl-credentials-or-live-confirmation-missing",
+          "trigger": "DHL selected without credentials, account number, or explicit live-preview confirmation.",
+          "expectedPosture": "fail closed before provider call and keep fulfillment handoff pending.",
+          "compensation": "operator restores DHL env/confirmation or switches fulfillment provider back to simulator/manual.",
+          "executableEvidenceFiles": [
+            "server/adapters/dhl/commerceFulfillmentPort.test.ts",
+            "api/_cron/outboxFulfillmentProvider.test.ts"
+          ]
+        },
+        {
+          "id": "dhl-provider-error-sanitized",
+          "trigger": "DHL SOAP (or, historically, the retired DHL Edge Function) returns provider fault, HTML error, or already-booked courier state.",
+          "expectedPosture": "surface sanitized operator evidence only; do not leak credentials, raw XML, or customer payloads.",
+          "compensation": "operator retries the specific DHL adapter action after checking provider state and local shipment refs.",
+          "executableEvidenceFiles": [
+            "server/infra/dhl/commerceShipmentSoap.test.ts",
+            "server/adapters/dhl/courierAdapter.test.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resend-outbox",
+      "owner": "communications",
+      "sagaStages": [
+        "transactional-email",
+        "outbox-dispatch",
+        "subscription-dunning"
+      ],
+      "stateOwner": "server/domains/commerce",
+      "infraBoundary": "server/infra/resend",
+      "adapterBoundary": "server/adapters/resend",
+      "runbook": "server/infra/resend/README.md",
+      "rollbackPosture": "disable COMMERCE_OUTBOX_DISPATCH_ENABLED and Resend sandbox/live provider mode; keep events queued for replay.",
+      "envRefs": [
+        "RESEND_PROVIDER_MODE",
+        "RESEND_SANDBOX_API_KEY",
+        "RESEND_API_KEY"
+      ],
+      "flagRefs": [
+        "COMMERCE_OUTBOX_DISPATCH_ENABLED",
+        "COMMERCE_SUBSCRIPTION_RENEWAL_RUNTIME_ENABLED",
+        "COMMERCE_SUBSCRIPTION_SWEEP_ENABLED"
+      ],
+      "failureModes": [
+        {
+          "id": "resend-provider-unavailable",
+          "trigger": "Resend API rejects, times out, or returns unavailable during outbox dispatch.",
+          "expectedPosture": "retry or discard according to outbox worker policy without losing the event audit trail.",
+          "compensation": "operator replays queued outbox rows after provider/sandbox mode is restored.",
+          "executableEvidenceFiles": [
+            "server/adapters/resend/transactionalEmailPortFailures.test.ts",
+            "server/domains/commerce/outboxDispatchWorkerResilience.test.ts"
+          ]
+        },
+        {
+          "id": "outbox-preview-matrix-not-green",
+          "trigger": "hidden-preview outbox matrix cannot prove send, destination, or cleanup contract.",
+          "expectedPosture": "keep hidden-preview closeout on HOLD and do not claim platform green.",
+          "compensation": "fix matrix blocker, rerun Auto Deploy Staging, and require CLEAN post-merge closeout.",
+          "executableEvidenceFiles": [
+            "src/lib/outboxPreviewWorkflow.test.ts",
+            "scripts/smoke-outbox-preview-matrix.test.ts"
+          ]
+        }
+      ]
+    }
+  ]
+}

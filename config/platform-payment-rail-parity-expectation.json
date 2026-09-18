@@ -1,0 +1,104 @@
+{
+  "transitions": 10,
+  "payload": {
+    "S1.a_guest_order_declares_lines_that_sum_to_its_total": {
+      "orderStatus": "pending_payment",
+      "totalMinor": 3900,
+      "currencyCode": "XTS",
+      "lines": 2,
+      "linesMinor": 3900,
+      "settled": null
+    },
+    "S2.asking_for_more_than_the_order_declares_is_refused": {
+      "refused": "amount_mismatch",
+      "intents": 0
+    },
+    "S3.opening_a_settlement_asks_for_exactly_the_declared_total": {
+      "opened": true,
+      "intents": 1
+    },
+    "S4.opening_it_again_under_the_same_key_writes_no_second_intent": {
+      "intents": 1
+    },
+    "S5.opening_it_under_a_different_key_is_refused": {
+      "refused": "order_already_has_intent",
+      "intents": 1
+    },
+    "S6.the_order_is_paid_once_the_channel_answers": {
+      "orderStatus": "paid",
+      "totalMinor": 3900,
+      "currencyCode": "XTS",
+      "lines": 2,
+      "linesMinor": 3900,
+      "settled": true
+    },
+    "S7.settling_again_under_the_same_key_moves_no_second_amount": {
+      "settlements": 1
+    },
+    "S8.a_declined_settlement_leaves_the_order_payable": {
+      "opened": true,
+      "orderStatus": "pending_payment",
+      "totalMinor": 3900,
+      "currencyCode": "XTS",
+      "lines": 2,
+      "linesMinor": 3900,
+      "settled": false
+    },
+    "S9.the_declined_order_settles_on_the_next_attempt": {
+      "orderStatus": "paid",
+      "totalMinor": 3900,
+      "currencyCode": "XTS",
+      "lines": 2,
+      "linesMinor": 3900,
+      "settled": true
+    },
+    "S10.settling_an_intent_that_does_not_exist": {
+      "refused": "intent_not_found"
+    }
+  },
+  "kernelOnly": {
+    "K1.a_second_settlement_of_a_settled_intent_is_refused": {
+      "refused": "intent_already_settled",
+      "settlements": 1
+    },
+    "K2.an_order_that_declares_a_total_must_carry_lines": {
+      "refused": "line_sum_mismatch"
+    },
+    "K3.a_line_on_an_order_that_declares_nothing_is_refused": {
+      "refused": "line_sum_mismatch"
+    },
+    "K4.the_external_reference_is_written_once": {
+      "opened": true,
+      "first": {
+        "outcome": "failed",
+        "status": "failed",
+        "externalRef": "handle-one"
+      },
+      "second": {
+        "refused": "external_reference_immutable"
+      }
+    },
+    "K5.an_order_nobody_can_pay_for_any_more": {
+      "refused": "open_order_not_payable"
+    },
+    "K6.a_settled_cycle_slides_the_subscription_one_cadence": {
+      "cycleStatus": "paid",
+      "subscriptionStatus": "active",
+      "slidDays": 28,
+      "events": 1
+    },
+    "K7.both_notifications_land_once_and_drain": {
+      "commerce.order.paid": 1,
+      "commerce.settlement.settled": 1,
+      "drained": 3,
+      "refusedDrains": 0
+    },
+    "K8.two_connections_resolve_to_one_settlement": {
+      "outcomes": [
+        "answered",
+        "refused:intent_already_settled"
+      ],
+      "settlements": 1
+    }
+  }
+}

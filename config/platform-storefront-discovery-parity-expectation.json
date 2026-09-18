@@ -1,0 +1,42 @@
+{
+  "routes": 7,
+  "refused": 4,
+  "products": 2,
+  "payload": {
+    "A1.the_listing_route_answers_both_schemas_the_same_way": {
+      "status": 200,
+      "cacheControl": "public, max-age=0, s-maxage=5, must-revalidate",
+      "bodySha256": "a5bd18fc0c84f6f98044d5ea6188527876fd2cfd26cfd94660f74bb1e5ee6978"
+    },
+    "A2.an_item_the_operator_published_is_read_by_its_own_slug": {
+      "status": 200,
+      "cacheControl": "public, max-age=0, s-maxage=5, must-revalidate",
+      "bodySha256": "23bc2f86071ca45f37a5de9525458c1e52877200d50cb19dbe6c3309cbbf8263"
+    },
+    "A3.an_item_the_operator_withdrew_is_refused": {
+      "status": 404,
+      "cacheControl": "no-store",
+      "bodySha256": "44593094e41a3b75fed185c6050f3859105c2592858ab615bfcd5a928862fd01"
+    },
+    "A4.a_slug_nobody_seeded_is_refused_not_invented": {
+      "status": 404,
+      "cacheControl": "no-store",
+      "bodySha256": "44593094e41a3b75fed185c6050f3859105c2592858ab615bfcd5a928862fd01"
+    },
+    "A5.a_slug_the_contract_rejects_never_reaches_the_database": {
+      "status": 404,
+      "cacheControl": "no-store",
+      "bodySha256": "44593094e41a3b75fed185c6050f3859105c2592858ab615bfcd5a928862fd01"
+    },
+    "A6.the_derived_registry_answers_over_the_same_rows": {
+      "status": 200,
+      "cacheControl": "public, s-maxage=300, stale-while-revalidate=86400",
+      "bodySha256": "28f33eaf8f36be32d67a9c0aeb0276255813190c05b36c89fe2ee015706b5a91"
+    },
+    "A7.a_write_verb_on_a_read_route_is_refused": {
+      "status": 405,
+      "cacheControl": "no-store",
+      "bodySha256": "a54e48285bfd2ed77e4c4ae4333fdef7cc5feea227483345f94050e6afa0316f"
+    }
+  }
+}

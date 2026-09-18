@@ -1,0 +1,10 @@
+# Public secret-scanning policy.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "idempotency keys are caller-supplied de-duplication tokens, never credentials"
+regexTarget = "match"
+regexes = [
+  '''(?i)^(?:p_)?idempotency[_-]?key\s*[:=]''',
+]

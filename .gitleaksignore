@@ -1,0 +1,23 @@
+# gitleaks false-positive allowlist (by finding fingerprint).
+# Each entry is a fingerprint gitleaks itself reports on a flagged finding:
+#   <commit>:<file>:<rule-id>:<line>
+# These are literal test-fixture idempotency-key strings (e.g.
+# "oms-mark-refunded-1"), not real secrets — gitleaks' generic-api-key
+# heuristic flags them on string length/entropy alone.
+15375bc13e14db4472d478d594cb122f54d38adb:server/domains/commerce/commerceOmsHandlersTestKit.ts:generic-api-key:143
+15375bc13e14db4472d478d594cb122f54d38adb:server/bff/admin/commerce/orders/mark-refunded.test.ts:generic-api-key:29
+15375bc13e14db4472d478d594cb122f54d38adb:src/domains/commerce/omsClient.test.ts:generic-api-key:124
+15375bc13e14db4472d478d594cb122f54d38adb:server/domains/commerce/supabaseCommerceOmsPort.test.ts:generic-api-key:45
+15375bc13e14db4472d478d594cb122f54d38adb:server/domains/commerce/supabaseCommerceOmsPort.test.ts:generic-api-key:52
+15375bc13e14db4472d478d594cb122f54d38adb:server/domains/commerce/supabaseCommerceOmsPort.test.ts:generic-api-key:67
+# C-D7 shipment-spine binding fixture idempotency keys. These values identify
+# deterministic test operations; they are neither credentials nor runtime config.
+5ef9888a6a3f0ecb782d0513d713817f2dc58bec:server/runtime/fulfillment/shipmentSpineBinding.test.ts:generic-api-key:95
+5ef9888a6a3f0ecb782d0513d713817f2dc58bec:server/runtime/fulfillment/shipmentSpineBinding.test.ts:generic-api-key:139
+# C-D14 fixed SHA-256 oracle for the public input "raw-recovery-token". This is
+# deterministic test evidence, not a credential; keep the exact commit finding.
+bca9f16ced27bfeb5d7be2d6e0179f59b246c90f:server/adapters/postgres/checkoutRecovery.test.ts:generic-api-key:37
+# C-D17 historical declaration-idempotency test fixture. The value was replaced
+# with a deliberately low-entropy fixture on the final tree; this exact finding
+# covers only the immutable earlier commit and is not a credential.
+180e76e81511e8a62b0b8815edc790d80febc25b:server/adapters/postgres/subscriptionActivation.test.ts:generic-api-key:57

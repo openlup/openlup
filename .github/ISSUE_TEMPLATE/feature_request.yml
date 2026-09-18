@@ -1,0 +1,53 @@
+name: Feature request
+description: Something the platform should do and does not.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The platform ships a working core and expects adopters to build their
+        own specifics on top of it. A request is strongest when it names
+        something the **core** cannot express, not something you could add in
+        your own project. See `.github/GOVERNANCE.md` for how accepted work
+        returns to the core.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: >-
+        The concrete situation you are in. Describe the problem, not the
+        solution you already picked.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you can build yourself today
+      description: >-
+        What happens if you build this on top of the platform instead, and why
+        that is not good enough. "I would rather not" is a valid answer; write
+        it down so the trade is visible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Why this belongs in the core
+      description: >-
+        Name who else has this problem. A request that serves exactly one
+        deployment is usually that deployment's own work.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: ai-disclosure
+    attributes:
+      label: AI assistance
+      description: >-
+        Disclosure, never a ban. See `.github/AI_CONTRIBUTION_POLICY.md`.
+      options:
+        - label: An AI tool helped produce this request, and I have verified every claim in it myself.
+          required: false

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "candidate": "netlify",
+  "factCheckedOn": "2026-08-21",
+  "officialSources": {
+    "functionLimits": "https://docs.netlify.com/build/functions/configuration/",
+    "scheduledFunctions": "https://docs.netlify.com/build/functions/scheduled-functions/",
+    "deployButton": "https://docs.netlify.com/deploy/create-deploys/"
+  },
+  "requirements": {
+    "synchronousExecutionSeconds": 90,
+    "scheduledExecutionSeconds": 60,
+    "bufferedBinaryUploadBytes": 20971520
+  },
+  "providerLimits": {
+    "synchronousExecutionSeconds": 60,
+    "scheduledExecutionSeconds": 30,
+    "bufferedRequestResponseBytes": 6291456
+  },
+  "expectedBlockers": [
+    "buffered_binary_payload_limit",
+    "scheduled_execution_limit",
+    "synchronous_execution_limit"
+  ],
+  "candidateStatus": "blocked",
+  "generatedArtifact": null
+}

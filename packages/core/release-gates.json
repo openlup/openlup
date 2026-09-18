@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 3,
+  "compatibilityPolicies": {
+    "internal-candidate": "Candidate package surfaces may change until the platform phase-5 activation explicitly freezes a public API.",
+    "testing-internal": "Test-support surfaces may change and are not runtime compatibility promises."
+  },
+  "privatePackage": {
+    "proofVersion": "0.1.0-rc.1",
+    "activationTarget": "platform-monorepo-phase-5",
+    "publicStability": "not-claimed",
+    "artifactChannel": "local-pack-only"
+  },
+  "evidence": {
+    "packageSmokeEvidence": {
+      "state": "required",
+      "meaning": "Hermetic build, import, pack and private publish-refusal proof for this package."
+    },
+    "conformanceEvidence": {
+      "state": "required-for-declared-ports",
+      "meaning": "A framework-free port/adapter suite is required only when this package declares that seam."
+    },
+    "dogfoodEvidence": {
+      "state": "private-current-seams",
+      "meaning": "openlup currently imports private package seams; this is not evidence that the phase-5 public platform seam is established."
+    },
+    "externalConsumerEvidence": {
+      "state": "not-evaluated",
+      "meaning": "Requires a real independent adopter or public platform artifact in phase 4 or 5; first-party packed consumers remain package smoke evidence."
+    }
+  },
+  "packageSurface": {
+    "./subscription": {
+      "role": "kernel",
+      "maturity": "candidate",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/subscriptionBundleStandalone.test.ts"],
+      "entrypoint": "dist/subscription/index.d.ts",
+      "snapshot": "api/subscription.api.md"
+    },
+    "./bundle": {
+      "role": "kernel",
+      "maturity": "candidate",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/subscriptionBundleStandalone.test.ts"],
+      "entrypoint": "dist/bundle/contracts.d.ts",
+      "snapshot": "api/bundle.api.md"
+    },
+    "./pricing": {
+      "role": "kernel",
+      "maturity": "candidate",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/pricingStandalone.test.ts"],
+      "entrypoint": "dist/pricing/index.d.ts",
+      "snapshot": "api/pricing.api.md"
+    },
+    "./checkout": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/checkoutStandalone.test.ts"],
+      "entrypoint": "dist/checkout/index.d.ts",
+      "snapshot": "api/checkout.api.md"
+    },
+    "./company-identity": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/companyIdentityStandalone.test.ts"],
+      "entrypoint": "dist/company-identity/index.d.ts",
+      "snapshot": "api/company-identity.api.md"
+    },
+    "./fulfillment": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/fulfillmentStandalone.test.ts"],
+      "entrypoint": "dist/fulfillment/index.d.ts",
+      "snapshot": "api/fulfillment.api.md"
+    },
+    "./inventory": {
+      "role": "kernel",
+      "maturity": "candidate",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/inventoryStandalone.test.ts"],
+      "entrypoint": "dist/inventory/index.d.ts",
+      "snapshot": "api/inventory.api.md"
+    },
+    "./shipping": {
+      "role": "kernel",
+      "maturity": "candidate",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/shippingStandalone.test.ts"],
+      "entrypoint": "dist/shipping/index.d.ts",
+      "snapshot": "api/shipping.api.md"
+    },
+    "./catalog": {
+      "role": "kernel",
+      "maturity": "candidate",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/catalogStandalone.test.ts"],
+      "entrypoint": "dist/catalog/index.d.ts",
+      "snapshot": "api/catalog.api.md"
+    },
+    "./promo": {
+      "role": "kernel",
+      "maturity": "candidate",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/promoStandalone.test.ts"],
+      "entrypoint": "dist/promo/index.d.ts",
+      "snapshot": "api/promo.api.md"
+    },
+    "./risk": {
+      "role": "kernel",
+      "maturity": "candidate",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/riskStandalone.test.ts"],
+      "entrypoint": "dist/risk/index.d.ts",
+      "snapshot": "api/risk.api.md"
+    },
+    "./marketing/research": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/marketingResearchStandalone.test.ts"],
+      "entrypoint": "dist/marketing/research/index.d.ts",
+      "snapshot": "api/marketing-research.api.md"
+    },
+    "./partners": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/partnersStandalone.test.ts"],
+      "entrypoint": "dist/partners/index.d.ts",
+      "snapshot": "api/partners.api.md"
+    },
+    "./payment": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/paymentStandalone.test.ts"],
+      "entrypoint": "dist/payment/index.d.ts",
+      "snapshot": "api/payment.api.md"
+    },
+    "./platform-runtime": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/platformRuntimeStandalone.test.ts"],
+      "entrypoint": "dist/platform-runtime/index.d.ts",
+      "snapshot": "api/platform-runtime.api.md"
+    },
+    "./testing": {
+      "role": "testing",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing-internal",
+      "packageSmokeEvidence": ["smoke/testingStandalone.test.ts"],
+      "entrypoint": "dist/testing.d.ts",
+      "snapshot": "api/testing.api.md"
+    }
+  },
+  "requiredRepositoryArtifacts": [
+    ".github/CODEOWNERS",
+    ".github/dependabot.yml",
+    ".github/workflows/ci.yml",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "MAINTAINERS.md",
+    "README.md",
+    "SECURITY.md",
+    "package-lock.json",
+    "package.json",
+    "release-gates.json",
+    "repository-policy.json",
+    "scripts/api-contract.ts",
+    "scripts/core-package-consumer-audit.ts",
+    "scripts/core-package-consumer-fixed-box-fixture.ts",
+    "scripts/core-package-consumer-fixed-catalog-subscription-fixture.ts",
+    "scripts/core-package-consumer-smoke.ts",
+    "scripts/documentation-contract.ts",
+    "scripts/neutrality-shell-fold.ts",
+    "scripts/neutrality-source-scanner.ts",
+    "scripts/public-api-config.ts",
+    "scripts/refuse-publish.ts",
+    "scripts/release-bundle.ts",
+    "scripts/release-check.ts",
+    "scripts/release-npm-checks.ts",
+    "scripts/repository-policy-check.ts",
+    "test/assertNoZeroCoverage.ts",
+    "test/documentationContract.test.ts",
+    "test/publicApiConfig.test.ts",
+    "test/releaseBundle.test.ts",
+    "test/repositoryPolicy.test.ts"
+  ],
+  "productionLicenses": {
+    "allow": [
+      "Apache-2.0",
+      "MIT"
+    ]
+  },
+  "audit": {
+    "maximumVulnerabilities": {
+      "critical": 0,
+      "high": 0,
+      "moderate": 0,
+      "low": 0,
+      "info": 0
+    }
+  },
+  "pack": {
+    "$raiseReason": "2026-09-11, owner-approved: checkout refusal recovery adds two neutral contract and policy modules with their normal source, JavaScript and declaration outputs. The reviewed artifact measured 122504 packed bytes, 533693 unpacked bytes and 192 files before this note. Packed allowance increases by 2048 bytes and unpacked by 6144 bytes; maxFiles stays 192. Exports, dependencies, runtime behavior and all other release gates remain unchanged by this exception.",
+    "maxPackedBytes": 122880,
+    "maxUnpackedBytes": 534528,
+    "maxFiles": 192,
+    "requiredFiles": [
+      "CHANGELOG.md",
+      "CODE_OF_CONDUCT.md",
+      "CONTRIBUTING.md",
+      "LICENSE",
+      "MAINTAINERS.md",
+      "README.md",
+      "SECURITY.md",
+      "package.json",
+      "release-gates.json"
+    ]
+  },
+  "publish": {
+    "private": true,
+    "prepublishOnly": "node --experimental-strip-types ./scripts/refuse-publish.ts",
+    "refusalMarker": "CORE_PUBLICATION_BLOCKED",
+    "blockedRegistry": "http://127.0.0.1:9"
+  }
+}

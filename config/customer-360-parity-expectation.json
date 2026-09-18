@@ -1,0 +1,739 @@
+{
+  "contractVersion": "customer-360-parity.v1",
+  "normalizers": {
+    "public": {
+      "/subject/lifecycle/0/enteredAt": "<timestamp:public.subject.lifecycle.0.enteredat>",
+      "/subject/lifecycle/0/exitedAt": "<timestamp:public.subject.lifecycle.0.exitedat>",
+      "/subject/lifecycle/1/enteredAt": "<timestamp:public.subject.lifecycle.0.exitedat>",
+      "/subject/lifecycle/1/exitedAt": "<timestamp:public.subject.lifecycle.1.exitedat>",
+      "/subject/lifecycle/2/enteredAt": "<timestamp:public.subject.lifecycle.1.exitedat>",
+      "/subject/lifecycle/2/exitedAt": "<timestamp:public.subject.lifecycle.2.exitedat>",
+      "/subject/lifecycle/3/enteredAt": "<timestamp:public.subject.lifecycle.2.exitedat>",
+      "/subject/firstSeenAt": "<timestamp:public.subject.lifecycle.0.enteredat>",
+      "/subject/lastActivityAt": "<timestamp:public.subject.lastactivityat>",
+      "/orders/0/orderId": "<id:public.orders.0.orderid>",
+      "/orders/0/createdAt": "<timestamp:public.orders.0.createdat>",
+      "/subscriptions/0/nextCycleAt": "<timestamp:public.subscriptions.0.nextcycleat>",
+      "/subscriptions/0/latestOrderId": "<id:public.orders.0.orderid>",
+      "/payment/0/orderId": "<id:public.orders.0.orderid>",
+      "/payment/0/lastAttemptAt": "<timestamp:public.payment.0.lastattemptat>",
+      "/dunningCases/0/caseId": "<id:public.dunningcases.0.caseid>",
+      "/dunningCases/0/orderId": "<id:public.orders.0.orderid>",
+      "/dunningCases/0/nextRetryAt": "<timestamp:public.dunningcases.0.nextretryat>",
+      "/recovery/0/caseId": "<id:public.dunningcases.0.caseid>",
+      "/recovery/0/lastIssuedAt": "<timestamp:public.recovery.0.lastissuedat>",
+      "/auditTrail/0/eventId": "<id:public.audittrail.0.eventid>",
+      "/auditTrail/0/occurredAt": "<timestamp:public.subject.lastactivityat>",
+      "/auditTrail/1/eventId": "<id:public.audittrail.1.eventid>",
+      "/auditTrail/1/occurredAt": "<timestamp:public.audittrail.1.occurredat>",
+      "/auditTrail/1/entity/id": "<id:public.dunningcases.0.caseid>",
+      "/auditTrail/2/eventId": "<id:public.audittrail.2.eventid>",
+      "/auditTrail/2/occurredAt": "<timestamp:public.audittrail.2.occurredat>",
+      "/auditTrail/2/entity/id": "<id:public.dunningcases.0.caseid>",
+      "/auditTrail/3/eventId": "<id:public.audittrail.3.eventid>",
+      "/auditTrail/3/occurredAt": "<timestamp:public.payment.0.lastattemptat>",
+      "/auditTrail/3/entity/id": "<id:public.orders.0.orderid>",
+      "/auditTrail/4/eventId": "<id:public.dunningcases.0.caseid>",
+      "/auditTrail/4/occurredAt": "<timestamp:public.payment.0.lastattemptat>",
+      "/auditTrail/4/entity/id": "<id:public.dunningcases.0.caseid>",
+      "/auditTrail/5/eventId": "<id:public.audittrail.5.eventid>",
+      "/auditTrail/5/occurredAt": "<timestamp:public.payment.0.lastattemptat>",
+      "/auditTrail/5/entity/id": "<id:public.orders.0.orderid>",
+      "/auditTrail/6/eventId": "<id:public.audittrail.6.eventid>",
+      "/auditTrail/6/occurredAt": "<timestamp:public.subject.lifecycle.2.exitedat>",
+      "/auditTrail/7/eventId": "<id:public.audittrail.7.eventid>",
+      "/auditTrail/7/occurredAt": "<timestamp:public.subject.lifecycle.1.exitedat>",
+      "/auditTrail/8/eventId": "<id:public.audittrail.8.eventid>",
+      "/auditTrail/8/occurredAt": "<timestamp:public.subject.lifecycle.0.exitedat>",
+      "/auditTrail/9/eventId": "<id:public.audittrail.9.eventid>",
+      "/auditTrail/9/occurredAt": "<timestamp:public.subject.lifecycle.0.enteredat>"
+    },
+    "managed": {
+      "/subject/lifecycle/0/enteredAt": "<timestamp:managed.audittrail.0.occurredat>",
+      "/subject/firstSeenAt": "<timestamp:managed.audittrail.0.occurredat>",
+      "/subject/lastActivityAt": "<timestamp:managed.subject.lastactivityat>",
+      "/subscriptions/0/nextCycleAt": "<timestamp:managed.subscriptions.0.nextcycleat>",
+      "/payment/0/lastAttemptAt": "<timestamp:managed.payment.0.lastattemptat>",
+      "/recovery/0/lastIssuedAt": "<timestamp:managed.recovery.0.lastissuedat>",
+      "/auditTrail/0/eventId": "<id:managed.audittrail.0.eventid>",
+      "/auditTrail/0/occurredAt": "<timestamp:managed.audittrail.0.occurredat>",
+      "/auditTrail/1/eventId": "<id:managed.audittrail.1.eventid>",
+      "/auditTrail/1/occurredAt": "<timestamp:managed.audittrail.1.occurredat>",
+      "/auditTrail/2/eventId": "<id:managed.audittrail.2.eventid>",
+      "/auditTrail/2/occurredAt": "<timestamp:managed.audittrail.2.occurredat>",
+      "/auditTrail/3/eventId": "<id:managed.audittrail.3.eventid>",
+      "/auditTrail/3/occurredAt": "<timestamp:managed.audittrail.3.occurredat>",
+      "/auditTrail/4/eventId": "<id:managed.audittrail.4.eventid>",
+      "/auditTrail/4/occurredAt": "<timestamp:managed.subject.lastactivityat>"
+    }
+  },
+  "snapshots": {
+    "public": {
+      "contractVersion": "support.customer_360.v2",
+      "lookup": {
+        "query": "11111111-1111-4111-8111-111111111111",
+        "matchedBy": "subject_id",
+        "confidence": "exact",
+        "warnings": []
+      },
+      "subject": {
+        "subjectId": "11111111-1111-4111-8111-111111111111",
+        "displayName": "Portable",
+        "email": "portable-payer@example.invalid",
+        "lifecycleStage": "customer",
+        "lifecycle": [
+          {
+            "stage": "lead",
+            "enteredAt": "<timestamp:public.subject.lifecycle.0.enteredat>",
+            "exitedAt": "<timestamp:public.subject.lifecycle.0.exitedat>"
+          },
+          {
+            "stage": "waitlist",
+            "enteredAt": "<timestamp:public.subject.lifecycle.0.exitedat>",
+            "exitedAt": "<timestamp:public.subject.lifecycle.1.exitedat>"
+          },
+          {
+            "stage": "tester",
+            "enteredAt": "<timestamp:public.subject.lifecycle.1.exitedat>",
+            "exitedAt": "<timestamp:public.subject.lifecycle.2.exitedat>"
+          },
+          {
+            "stage": "customer",
+            "enteredAt": "<timestamp:public.subject.lifecycle.2.exitedat>",
+            "exitedAt": null
+          }
+        ],
+        "firstSeenAt": "<timestamp:public.subject.lifecycle.0.enteredat>",
+        "lastActivityAt": "<timestamp:public.subject.lastactivityat>"
+      },
+      "orders": [
+        {
+          "orderId": "<id:public.orders.0.orderid>",
+          "orderNumber": null,
+          "status": "pending_payment",
+          "subscriptionId": "22222222-2222-4222-8222-22222222222a",
+          "totalMinor": 12999,
+          "currency": "EUR",
+          "createdAt": "<timestamp:public.orders.0.createdat>"
+        }
+      ],
+      "subscriptions": [
+        {
+          "subscriptionId": "22222222-2222-4222-8222-22222222222a",
+          "status": "active",
+          "nextCycleAt": "<timestamp:public.subscriptions.0.nextcycleat>",
+          "latestOrderId": "<id:public.orders.0.orderid>"
+        }
+      ],
+      "payment": [
+        {
+          "orderId": "<id:public.orders.0.orderid>",
+          "status": "failed",
+          "recoverable": true,
+          "amountMinor": 12999,
+          "currency": "EUR",
+          "lastAttemptAt": "<timestamp:public.payment.0.lastattemptat>"
+        }
+      ],
+      "dunningCases": [
+        {
+          "caseId": "<id:public.dunningcases.0.caseid>",
+          "subscriptionId": "22222222-2222-4222-8222-22222222222a",
+          "orderId": "<id:public.orders.0.orderid>",
+          "status": "open",
+          "retryAttempt": 1,
+          "nextRetryAt": "<timestamp:public.dunningcases.0.nextretryat>",
+          "notificationStatus": "sent",
+          "recoveryAvailable": true
+        }
+      ],
+      "recovery": [
+        {
+          "caseId": "<id:public.dunningcases.0.caseid>",
+          "status": "available",
+          "actionAvailable": true,
+          "lastIssuedAt": "<timestamp:public.recovery.0.lastissuedat>",
+          "lastDeliveryStatus": "sent"
+        }
+      ],
+      "auditTrail": [
+        {
+          "eventId": "<id:public.audittrail.0.eventid>",
+          "occurredAt": "<timestamp:public.subject.lastactivityat>",
+          "action": "issue_recovery",
+          "outcome": "refused",
+          "entity": {
+            "kind": "recovery",
+            "id": "77777777-7777-4777-8777-777777777777"
+          }
+        },
+        {
+          "eventId": "<id:public.audittrail.1.eventid>",
+          "occurredAt": "<timestamp:public.audittrail.1.occurredat>",
+          "action": "issue_recovery",
+          "outcome": "issued",
+          "entity": {
+            "kind": "recovery",
+            "id": "<id:public.dunningcases.0.caseid>"
+          }
+        },
+        {
+          "eventId": "<id:public.audittrail.2.eventid>",
+          "occurredAt": "<timestamp:public.audittrail.2.occurredat>",
+          "action": "issue_recovery",
+          "outcome": "refused",
+          "entity": {
+            "kind": "recovery",
+            "id": "<id:public.dunningcases.0.caseid>"
+          }
+        },
+        {
+          "eventId": "<id:public.audittrail.3.eventid>",
+          "occurredAt": "<timestamp:public.payment.0.lastattemptat>",
+          "action": "payment.failed",
+          "outcome": "failed",
+          "entity": {
+            "kind": "order",
+            "id": "<id:public.orders.0.orderid>"
+          }
+        },
+        {
+          "eventId": "<id:public.dunningcases.0.caseid>",
+          "occurredAt": "<timestamp:public.payment.0.lastattemptat>",
+          "action": "dunning.open",
+          "outcome": "open",
+          "entity": {
+            "kind": "dunning_case",
+            "id": "<id:public.dunningcases.0.caseid>"
+          }
+        },
+        {
+          "eventId": "<id:public.audittrail.5.eventid>",
+          "occurredAt": "<timestamp:public.payment.0.lastattemptat>",
+          "action": "payment.opened",
+          "outcome": "created",
+          "entity": {
+            "kind": "order",
+            "id": "<id:public.orders.0.orderid>"
+          }
+        },
+        {
+          "eventId": "<id:public.audittrail.6.eventid>",
+          "occurredAt": "<timestamp:public.subject.lifecycle.2.exitedat>",
+          "action": "lifecycle.customer",
+          "outcome": "recorded",
+          "entity": {
+            "kind": "subject",
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        },
+        {
+          "eventId": "<id:public.audittrail.7.eventid>",
+          "occurredAt": "<timestamp:public.subject.lifecycle.1.exitedat>",
+          "action": "lifecycle.tester",
+          "outcome": "recorded",
+          "entity": {
+            "kind": "subject",
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        },
+        {
+          "eventId": "<id:public.audittrail.8.eventid>",
+          "occurredAt": "<timestamp:public.subject.lifecycle.0.exitedat>",
+          "action": "lifecycle.waitlist",
+          "outcome": "recorded",
+          "entity": {
+            "kind": "subject",
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        },
+        {
+          "eventId": "<id:public.audittrail.9.eventid>",
+          "occurredAt": "<timestamp:public.subject.lifecycle.0.enteredat>",
+          "action": "lifecycle.lead",
+          "outcome": "recorded",
+          "entity": {
+            "kind": "subject",
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      ]
+    },
+    "managed": {
+      "contractVersion": "support.customer_360.v2",
+      "lookup": {
+        "query": "11111111-1111-4111-8111-111111111111",
+        "matchedBy": "subject_id",
+        "confidence": "exact",
+        "warnings": []
+      },
+      "subject": {
+        "subjectId": "11111111-1111-4111-8111-111111111111",
+        "displayName": "Portable",
+        "email": "portable-payer@example.invalid",
+        "phone": null,
+        "lifecycleStage": "customer",
+        "lifecycle": [
+          {
+            "stage": "customer",
+            "enteredAt": "<timestamp:managed.audittrail.0.occurredat>",
+            "exitedAt": null
+          }
+        ],
+        "firstSeenAt": "<timestamp:managed.audittrail.0.occurredat>",
+        "lastActivityAt": "<timestamp:managed.subject.lastactivityat>",
+        "authUserLinked": false,
+        "hasSignedIn": false
+      },
+      "orders": [
+        {
+          "orderId": "44444444-4444-4444-8444-444444444444",
+          "orderNumber": "ORDER-44444444",
+          "status": "pending_payment",
+          "subscriptionId": null,
+          "totalMinor": null,
+          "currency": null,
+          "createdAt": null
+        }
+      ],
+      "subscriptions": [
+        {
+          "subscriptionId": "22222222-2222-4222-8222-22222222222a",
+          "status": "paused",
+          "nextCycleAt": "<timestamp:managed.subscriptions.0.nextcycleat>",
+          "latestOrderId": "44444444-4444-4444-8444-444444444444",
+          "templateVersion": 1,
+          "shippingAddressId": null
+        }
+      ],
+      "payment": [
+        {
+          "orderId": "44444444-4444-4444-8444-444444444444",
+          "status": "failed",
+          "recoverable": true,
+          "amountMinor": null,
+          "currency": null,
+          "lastAttemptAt": "<timestamp:managed.payment.0.lastattemptat>"
+        }
+      ],
+      "dunningCases": [
+        {
+          "caseId": "77777777-7777-4777-8777-777777777778",
+          "subscriptionId": "22222222-2222-4222-8222-22222222222a",
+          "orderId": "44444444-4444-4444-8444-444444444444",
+          "status": "open",
+          "retryAttempt": 1,
+          "nextRetryAt": null,
+          "notificationStatus": "sent",
+          "recoveryAvailable": true
+        }
+      ],
+      "recovery": [
+        {
+          "caseId": "77777777-7777-4777-8777-777777777778",
+          "status": "available",
+          "actionAvailable": true,
+          "lastIssuedAt": "<timestamp:managed.recovery.0.lastissuedat>",
+          "lastDeliveryStatus": "sent"
+        }
+      ],
+      "auditTrail": [
+        {
+          "eventId": "<id:managed.audittrail.0.eventid>",
+          "occurredAt": "<timestamp:managed.audittrail.0.occurredat>",
+          "action": "clients.customer.created",
+          "outcome": "created",
+          "entity": {
+            "kind": "subject",
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        },
+        {
+          "eventId": "<id:managed.audittrail.1.eventid>",
+          "occurredAt": "<timestamp:managed.audittrail.1.occurredat>",
+          "action": "commerce_orders.checkout.order_draft",
+          "outcome": "pending_payment",
+          "entity": {
+            "kind": "order",
+            "id": "44444444-4444-4444-8444-444444444444"
+          }
+        },
+        {
+          "eventId": "<id:managed.audittrail.2.eventid>",
+          "occurredAt": "<timestamp:managed.audittrail.2.occurredat>",
+          "action": "recovery.issue",
+          "outcome": "refused:dunning_authority_unavailable",
+          "entity": {
+            "kind": "dunning_case",
+            "id": "77777777-7777-4777-8777-777777777778"
+          }
+        },
+        {
+          "eventId": "<id:managed.audittrail.3.eventid>",
+          "occurredAt": "<timestamp:managed.audittrail.3.occurredat>",
+          "action": "recovery.issue",
+          "outcome": "issued",
+          "entity": {
+            "kind": "dunning_case",
+            "id": "77777777-7777-4777-8777-777777777778"
+          }
+        },
+        {
+          "eventId": "<id:managed.audittrail.4.eventid>",
+          "occurredAt": "<timestamp:managed.subject.lastactivityat>",
+          "action": "recovery.issue",
+          "outcome": "refused:case_not_found",
+          "entity": {
+            "kind": "dunning_case",
+            "id": "77777777-7777-4777-8777-777777777777"
+          }
+        }
+      ],
+      "contactHealth": {
+        "lastTerminalStatus": null,
+        "lastTerminalAt": null,
+        "reachable": true
+      },
+      "addresses": []
+    }
+  },
+  "common": [
+    {
+      "path": "/contractVersion",
+      "public": "support.customer_360.v2",
+      "managed": "support.customer_360.v2"
+    },
+    {
+      "path": "/subject/subjectId",
+      "public": "11111111-1111-4111-8111-111111111111",
+      "managed": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "path": "/subject/lifecycleStage",
+      "public": "customer",
+      "managed": "customer"
+    },
+    {
+      "path": "/orders/0/orderId",
+      "public": "<id:public.orders.0.orderid>",
+      "managed": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "path": "/orders/0/status",
+      "public": "pending_payment",
+      "managed": "pending_payment"
+    },
+    {
+      "path": "/orders/0/subscriptionId",
+      "public": "22222222-2222-4222-8222-22222222222a",
+      "managed": null
+    },
+    {
+      "path": "/orders/0/totalMinor",
+      "public": 12999,
+      "managed": null
+    },
+    {
+      "path": "/orders/0/currency",
+      "public": "EUR",
+      "managed": null
+    },
+    {
+      "path": "/subscriptions/0/subscriptionId",
+      "public": "22222222-2222-4222-8222-22222222222a",
+      "managed": "22222222-2222-4222-8222-22222222222a"
+    },
+    {
+      "path": "/subscriptions/0/status",
+      "public": "active",
+      "managed": "paused"
+    },
+    {
+      "path": "/subscriptions/0/latestOrderId",
+      "public": "<id:public.orders.0.orderid>",
+      "managed": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "path": "/payment/0/orderId",
+      "public": "<id:public.orders.0.orderid>",
+      "managed": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "path": "/payment/0/status",
+      "public": "failed",
+      "managed": "failed"
+    },
+    {
+      "path": "/payment/0/recoverable",
+      "public": true,
+      "managed": true
+    },
+    {
+      "path": "/payment/0/amountMinor",
+      "public": 12999,
+      "managed": null
+    },
+    {
+      "path": "/payment/0/currency",
+      "public": "EUR",
+      "managed": null
+    },
+    {
+      "path": "/dunningCases/0/caseId",
+      "public": "<id:public.dunningcases.0.caseid>",
+      "managed": "77777777-7777-4777-8777-777777777778"
+    },
+    {
+      "path": "/dunningCases/0/subscriptionId",
+      "public": "22222222-2222-4222-8222-22222222222a",
+      "managed": "22222222-2222-4222-8222-22222222222a"
+    },
+    {
+      "path": "/dunningCases/0/orderId",
+      "public": "<id:public.orders.0.orderid>",
+      "managed": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "path": "/dunningCases/0/status",
+      "public": "open",
+      "managed": "open"
+    },
+    {
+      "path": "/dunningCases/0/retryAttempt",
+      "public": 1,
+      "managed": 1
+    },
+    {
+      "path": "/dunningCases/0/notificationStatus",
+      "public": "sent",
+      "managed": "sent"
+    },
+    {
+      "path": "/dunningCases/0/recoveryAvailable",
+      "public": true,
+      "managed": true
+    },
+    {
+      "path": "/recovery/0/caseId",
+      "public": "<id:public.dunningcases.0.caseid>",
+      "managed": "77777777-7777-4777-8777-777777777778"
+    },
+    {
+      "path": "/recovery/0/status",
+      "public": "available",
+      "managed": "available"
+    },
+    {
+      "path": "/recovery/0/actionAvailable",
+      "public": true,
+      "managed": true
+    },
+    {
+      "path": "/recovery/0/lastDeliveryStatus",
+      "public": "sent",
+      "managed": "sent"
+    },
+    {
+      "path": "/auditTrail/0/action",
+      "public": "issue_recovery",
+      "managed": "clients.customer.created"
+    },
+    {
+      "path": "/auditTrail/0/outcome",
+      "public": "refused",
+      "managed": "created"
+    },
+    {
+      "path": "/auditTrail/0/entity/kind",
+      "public": "recovery",
+      "managed": "subject"
+    },
+    {
+      "path": "/auditTrail/0/entity/id",
+      "public": "77777777-7777-4777-8777-777777777777",
+      "managed": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "path": "/auditTrail/1/action",
+      "public": "issue_recovery",
+      "managed": "commerce_orders.checkout.order_draft"
+    },
+    {
+      "path": "/auditTrail/1/outcome",
+      "public": "issued",
+      "managed": "pending_payment"
+    },
+    {
+      "path": "/auditTrail/1/entity/kind",
+      "public": "recovery",
+      "managed": "order"
+    },
+    {
+      "path": "/auditTrail/1/entity/id",
+      "public": "<id:public.dunningcases.0.caseid>",
+      "managed": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "path": "/auditTrail/2/action",
+      "public": "issue_recovery",
+      "managed": "recovery.issue"
+    },
+    {
+      "path": "/auditTrail/2/outcome",
+      "public": "refused",
+      "managed": "refused:dunning_authority_unavailable"
+    },
+    {
+      "path": "/auditTrail/2/entity/kind",
+      "public": "recovery",
+      "managed": "dunning_case"
+    },
+    {
+      "path": "/auditTrail/2/entity/id",
+      "public": "<id:public.dunningcases.0.caseid>",
+      "managed": "77777777-7777-4777-8777-777777777778"
+    },
+    {
+      "path": "/auditTrail/3/action",
+      "public": "payment.failed",
+      "managed": "recovery.issue"
+    },
+    {
+      "path": "/auditTrail/3/outcome",
+      "public": "failed",
+      "managed": "issued"
+    },
+    {
+      "path": "/auditTrail/3/entity/kind",
+      "public": "order",
+      "managed": "dunning_case"
+    },
+    {
+      "path": "/auditTrail/3/entity/id",
+      "public": "<id:public.orders.0.orderid>",
+      "managed": "77777777-7777-4777-8777-777777777778"
+    },
+    {
+      "path": "/auditTrail/4/action",
+      "public": "dunning.open",
+      "managed": "recovery.issue"
+    },
+    {
+      "path": "/auditTrail/4/outcome",
+      "public": "open",
+      "managed": "refused:case_not_found"
+    },
+    {
+      "path": "/auditTrail/4/entity/kind",
+      "public": "dunning_case",
+      "managed": "dunning_case"
+    },
+    {
+      "path": "/auditTrail/4/entity/id",
+      "public": "<id:public.dunningcases.0.caseid>",
+      "managed": "77777777-7777-4777-8777-777777777777"
+    }
+  ],
+  "differences": [
+    "/addresses",
+    "/auditTrail/0/action",
+    "/auditTrail/0/entity/id",
+    "/auditTrail/0/entity/kind",
+    "/auditTrail/0/eventId",
+    "/auditTrail/0/occurredAt",
+    "/auditTrail/0/outcome",
+    "/auditTrail/1/action",
+    "/auditTrail/1/entity/id",
+    "/auditTrail/1/entity/kind",
+    "/auditTrail/1/eventId",
+    "/auditTrail/1/occurredAt",
+    "/auditTrail/1/outcome",
+    "/auditTrail/2/action",
+    "/auditTrail/2/entity/id",
+    "/auditTrail/2/entity/kind",
+    "/auditTrail/2/eventId",
+    "/auditTrail/2/occurredAt",
+    "/auditTrail/2/outcome",
+    "/auditTrail/3/action",
+    "/auditTrail/3/entity/id",
+    "/auditTrail/3/entity/kind",
+    "/auditTrail/3/eventId",
+    "/auditTrail/3/occurredAt",
+    "/auditTrail/3/outcome",
+    "/auditTrail/4/action",
+    "/auditTrail/4/entity/id",
+    "/auditTrail/4/eventId",
+    "/auditTrail/4/occurredAt",
+    "/auditTrail/4/outcome",
+    "/auditTrail/5/action",
+    "/auditTrail/5/entity/id",
+    "/auditTrail/5/entity/kind",
+    "/auditTrail/5/eventId",
+    "/auditTrail/5/occurredAt",
+    "/auditTrail/5/outcome",
+    "/auditTrail/6/action",
+    "/auditTrail/6/entity/id",
+    "/auditTrail/6/entity/kind",
+    "/auditTrail/6/eventId",
+    "/auditTrail/6/occurredAt",
+    "/auditTrail/6/outcome",
+    "/auditTrail/7/action",
+    "/auditTrail/7/entity/id",
+    "/auditTrail/7/entity/kind",
+    "/auditTrail/7/eventId",
+    "/auditTrail/7/occurredAt",
+    "/auditTrail/7/outcome",
+    "/auditTrail/8/action",
+    "/auditTrail/8/entity/id",
+    "/auditTrail/8/entity/kind",
+    "/auditTrail/8/eventId",
+    "/auditTrail/8/occurredAt",
+    "/auditTrail/8/outcome",
+    "/auditTrail/9/action",
+    "/auditTrail/9/entity/id",
+    "/auditTrail/9/entity/kind",
+    "/auditTrail/9/eventId",
+    "/auditTrail/9/occurredAt",
+    "/auditTrail/9/outcome",
+    "/contactHealth/lastTerminalAt",
+    "/contactHealth/lastTerminalStatus",
+    "/contactHealth/reachable",
+    "/dunningCases/0/caseId",
+    "/dunningCases/0/nextRetryAt",
+    "/dunningCases/0/orderId",
+    "/orders/0/createdAt",
+    "/orders/0/currency",
+    "/orders/0/orderId",
+    "/orders/0/orderNumber",
+    "/orders/0/subscriptionId",
+    "/orders/0/totalMinor",
+    "/payment/0/amountMinor",
+    "/payment/0/currency",
+    "/payment/0/lastAttemptAt",
+    "/payment/0/orderId",
+    "/recovery/0/caseId",
+    "/recovery/0/lastIssuedAt",
+    "/subject/authUserLinked",
+    "/subject/firstSeenAt",
+    "/subject/hasSignedIn",
+    "/subject/lastActivityAt",
+    "/subject/lifecycle/0/enteredAt",
+    "/subject/lifecycle/0/exitedAt",
+    "/subject/lifecycle/0/stage",
+    "/subject/lifecycle/1/enteredAt",
+    "/subject/lifecycle/1/exitedAt",
+    "/subject/lifecycle/1/stage",
+    "/subject/lifecycle/2/enteredAt",
+    "/subject/lifecycle/2/exitedAt",
+    "/subject/lifecycle/2/stage",
+    "/subject/lifecycle/3/enteredAt",
+    "/subject/lifecycle/3/exitedAt",
+    "/subject/lifecycle/3/stage",
+    "/subject/phone",
+    "/subscriptions/0/latestOrderId",
+    "/subscriptions/0/nextCycleAt",
+    "/subscriptions/0/shippingAddressId",
+    "/subscriptions/0/status",
+    "/subscriptions/0/templateVersion"
+  ]
+}

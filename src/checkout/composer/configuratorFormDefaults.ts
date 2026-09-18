@@ -1,0 +1,58 @@
+import type { ConfiguratorFormData } from "./configuratorFormStore";
+
+/** Safe static fallback for fixtures, partial hydration and explicit seeds. */
+export const defaultConfiguratorFormData: ConfiguratorFormData = {
+  accountPetId: null,
+  dogName: "",
+  dogBreed: "",
+  dogWeightKg: "",
+  dogAge: "",
+  activityLevel: "normal",
+  bcs: "ideal",
+  hasAllergies: false,
+  allergens: [],
+  accountAllergyResolutions: {},
+  flavors: [],
+  flavorSelectionInitialized: false,
+  lengthDays: 21,
+  lengthSelectionMode: "automatic",
+  subscription: false,
+  offerMode: "standard",
+  starterQuoteCoverageDays: null,
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  street: "",
+  postalCode: "",
+  city: "",
+  country: "Polska",
+  deliveryMethod: "courier",
+  selectedPickupPoint: null,
+  selectedDeliveryOption: null,
+  pendingDeliveryOptionId: null,
+  gdprConsent: false,
+  termsConsent: false,
+  marketingConsent: false,
+  paymentMethod: null,
+  businessInvoice: {
+    requested: false,
+    taxIdInput: "",
+    lookupStatus: "idle",
+    lookupError: null,
+    lookupResult: null,
+    acceptedData: null,
+  },
+  recommendationSnapshot: null,
+  packageQuantityOverrides: {},
+  promoCodes: [],
+  checkoutQuoteExpectation: null,
+  pricingPolicyAssignment: null,
+  website: "",
+};
+
+/** Fresh configurator orders default to subscription. */
+export const createDefaultConfiguratorFormData = (): ConfiguratorFormData => ({
+  ...defaultConfiguratorFormData,
+  subscription: true,
+});

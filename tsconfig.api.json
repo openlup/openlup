@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // `deployment-overlay` so this checkout typechecks against the owner its own
+    // dev server, build and Vitest resolve; without it a component would be checked
+    // against the platform example while it runs on this deployment's data. Inert in
+    // the published tree: publication projects `imports` to bare default strings, so
+    // no condition survives for this to select. Owner ruling of 2026-08-13 amending
+    // section 1.4 of `docs/plan/oss-neutral-email-templates.md`.
+    "customConditions": ["core-source", "deployment-overlay"],
+    "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node"]
+  },
+  "include": ["api/**/*.ts", "server/**/*.ts", "src/types/pet-personalizer.ts"]
+}

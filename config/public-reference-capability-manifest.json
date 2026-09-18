@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "runtime": "public-reference",
+  "capabilities": [
+    {
+      "id": "reference-catalog",
+      "methods": ["GET", "HEAD"],
+      "routes": ["/", "/items/field-notes"]
+    },
+    {
+      "id": "runtime-health",
+      "methods": ["GET", "HEAD"],
+      "routes": ["/healthz"]
+    }
+  ],
+  "refuses": ["admin", "api", "bff", "checkout", "cron", "mutation", "subscription"]
+}

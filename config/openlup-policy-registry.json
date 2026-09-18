@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "activePaths": [
+    ".github/AI_CONTRIBUTION_POLICY.md",
+    ".github/GOVERNANCE.md",
+    ".github/INSTALL_SUPPORT_POLICY.md",
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/LICENSE_OF_TRADEMARK_AND_LOGO.md",
+    ".github/PUBLICATION_COMPLETENESS.md",
+    ".github/SECURITY_RESPONSE_POSTURE.md",
+    ".github/SUPPORT.md",
+    ".github/TIER_POLICY.md",
+    ".github/VERSIONING_AND_EOL.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md"
+  ],
+  "contracts": [
+    { "id": "ai-contribution", "owners": [".github/AI_CONTRIBUTION_POLICY.md"] },
+    { "id": "cessation", "owners": [".github/VERSIONING_AND_EOL.md"] },
+    { "id": "commercial-tiering", "owners": [".github/TIER_POLICY.md"] },
+    { "id": "community-conduct", "owners": ["CODE_OF_CONDUCT.md"] },
+    { "id": "contribution-admission", "owners": [".github/GOVERNANCE.md"] },
+    { "id": "contribution-process", "owners": ["CONTRIBUTING.md"] },
+    { "id": "install-support", "owners": [".github/INSTALL_SUPPORT_POLICY.md"] },
+    { "id": "publication", "owners": [".github/PUBLICATION_COMPLETENESS.md"] },
+    { "id": "security-reporting", "owners": ["SECURITY.md"] },
+    { "id": "security-response", "owners": [".github/SECURITY_RESPONSE_POSTURE.md"] },
+    { "id": "software-license", "owners": ["LICENSE"] },
+    { "id": "support-scope", "owners": [".github/SUPPORT.md"] },
+    { "id": "trademark-logo", "owners": [".github/LICENSE_OF_TRADEMARK_AND_LOGO.md"] },
+    { "id": "versioning-eol", "owners": [".github/VERSIONING_AND_EOL.md"] }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "siteOrigin": "https://reference.invalid",
+  "productionHosts": [
+    "reference.invalid"
+  ],
+  "siteLifecycle": "public-reference",
+  "routes": [
+    {
+      "path": "/",
+      "locale": "en",
+      "htmlLang": "en",
+      "ogLocale": "en_US",
+      "seoPath": [
+        "reference",
+        "index"
+      ],
+      "ogImageSlug": "reference-index",
+      "id": "en:/",
+      "delivery": "ssg",
+      "indexable": false,
+      "sitemap": false,
+      "canonicalPath": "/",
+      "seoKey": "reference.index",
+      "contentSentinel": "Reference collection",
+      "structuredData": []
+    },
+    {
+      "path": "/items/field-notes",
+      "locale": "en",
+      "htmlLang": "en",
+      "ogLocale": "en_US",
+      "seoPath": [
+        "reference",
+        "item"
+      ],
+      "ogImageSlug": "reference-item",
+      "id": "en:/items/field-notes",
+      "delivery": "ssg",
+      "indexable": false,
+      "sitemap": false,
+      "canonicalPath": "/items/field-notes",
+      "seoKey": "reference.item",
+      "contentSentinel": "Field notes",
+      "structuredData": []
+    }
+  ],
+  "legacyRedirects": [],
+  "csrFallback": {
+    "exactPaths": [],
+    "routeFamilies": []
+  },
+  "crawlPolicy": {
+    "privatePrefixes": []
+  }
+}

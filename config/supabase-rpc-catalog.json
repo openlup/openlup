@@ -1,0 +1,888 @@
+{
+  "schemaVersion": 1,
+  "description": "Machine-readable ownership catalog for Supabase RPC call-site groups. It covers literal .rpc(\"...\") runtime/script call sites by pattern; per-RPC migration introspection comes in a later wave.",
+  "groups": [
+    {
+      "name": "customer-diagnostic-history",
+      "owner": "observability",
+      "match": [
+        "^customer_diagnostic_(ingest|search|segment)_v[12]$",
+        "^customer_diagnostic_overview_v2$",
+        "^customer_diagnostic_prune_v1$"
+      ],
+      "authMode": "managed service role or direct owner transaction lane; verified customer attribution at ingest; active operator checked for reads",
+      "writerReaderPolicy": "Atomic bounded diagnostic admission and append; immutable identity segments; v1 reads preserve the retained v1-only shape while v2 reads retain stored per-event coverage. The v2 overview returns bounded identifier-free groups with separately classified example segments. Every read and retained access audit are one transaction. No browser table or RPC access.",
+      "idempotency": "Segment-scoped event replay deduplicates only identical payloads including coverage version; conflicting payloads fail without overwrite.",
+      "proof": "supabase/tests/customer_diagnostic_history_test.sql",
+      "rollback": "Disable diagnostic controls; bounded prune removes expired diagnostic rows only. Business records are unaffected.",
+      "securityDefinerExpected": false,
+      "callSiteScope": [
+        "server/adapters/customerDiagnosticHistory.ts"
+      ]
+    },
+    {
+      "name": "checkout-payment-guidance-read",
+      "owner": "commerce",
+      "match": [
+        "^commerce_checkout_payment_guidance_snapshot$"
+      ],
+      "authMode": "service-role adapter; BFF validates exact checkout continuation or existing recovery token",
+      "writerReaderPolicy": "Read-only consistent checkout state and bounded correlated refusal evidence; no browser grants, provider reads or settlement.",
+      "idempotency": "No writes. Recovery token liveness is rechecked in the same statement snapshot.",
+      "proof": "supabase/tests/checkout_payment_guidance_snapshot_test.sql",
+      "rollback": "Omit optional guidance; retain legacy status fallback and additive read function. Schema activation requires separate rollout.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/adapters/supabase/commerce/paymentRecoveryGuidance.ts"
+      ]
+    },
+    {
+      "name": "admin-communications-email-template-slugs-read",
+      "owner": "communications",
+      "match": ["^communication_admin_email_template_slugs$"],
+      "authMode": "administrator session at the BFF plus service-role managed adapter",
+      "writerReaderPolicy": "Read-only complete distinct non-empty template slugs for the admin email console; no direct browser execution.",
+      "idempotency": "Read-only stable projection; adapter preserves JavaScript sorting.",
+      "proof": "supabase/tests/communication_admin_email_template_slugs_test.sql",
+      "rollback": "Restore the previous adapter read before separately retiring this additive read-only routine; no data rollback is needed.",
+      "securityDefinerExpected": false,
+      "callSiteScope": ["server/adapters/supabase/adminEmailSendsPort.ts"]
+    },
+    {
+      "name": "admin-communications-email-statistics-read",
+      "owner": "communications",
+      "match": [
+        "^communication_admin_email_sends_stats$"
+      ],
+      "authMode": "administrator session at the BFF plus service-role managed adapter",
+      "writerReaderPolicy": "Read-only global exact counters for the admin email console; browser clients do not call the routine directly.",
+      "idempotency": "Read-only stable projection of the current send and event rows.",
+      "proof": "supabase/tests/communication_admin_email_sends_stats_test.sql",
+      "rollback": "Restore the adapter's four legacy count reads; the additive routine writes no rows and can remain until separate retirement.",
+      "securityDefinerExpected": false,
+      "callSiteScope": [
+        "server/adapters/supabase/adminEmailSendsPort.ts"
+      ]
+    },
+    {
+      "name": "admin-clients-search-read",
+      "owner": "clients",
+      "match": [
+        "^admin_clients_search_v3$"
+      ],
+      "authMode": "admin session at the BFF plus service-role managed adapter",
+      "writerReaderPolicy": "Read-only bounded physical-customer search. Ranking, count and pagination execute in one RPC; acquisition records stay outside the client registry and browser clients never call the routine directly.",
+      "idempotency": "Read-only deterministic projection of query, page, page size and lifecycle filter.",
+      "proof": "supabase/tests/admin_client_search_v3_test.sql",
+      "rollback": "Revert the adapter and drop admin_clients_search_v3 plus its bounded trigram indexes; no business row is written by the routine.",
+      "securityDefinerExpected": false,
+      "callSiteScope": [
+        "server/adapters/supabase/clients/supabaseAdminClientSearchPort.ts"
+      ]
+    },
+    {
+      "name": "personalization-declension-enqueue",
+      "owner": "commerce",
+      "match": [
+        "^personalization_"
+      ],
+      "authMode": "service-role through the personalization port (configurator persist-intent path)",
+      "writerReaderPolicy": "The personalization domain enqueues the async declension outbox job; browser clients never call this RPC directly. It only inserts into public.outbox_events (idempotent), never customer-facing state.",
+      "idempotency": "outbox unique (event_type, idempotency_key) = client id + input hash; ON CONFLICT DO NOTHING",
+      "proof": "docs/plan/homepage-v2-personalization.md",
+      "rollback": "Disable COMMERCE_PERSONALIZATION_DECLENSION_ENABLED; the RPC is service-role only and produces no customer-visible effect while off.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/personalization",
+        "server/adapters/supabase/personalization"
+      ]
+    },
+    {
+      "name": "risk-review-control-plane",
+      "owner": "risk",
+      "match": [
+        "^risk_"
+      ],
+      "authMode": "service-role through the risk domain ports (admin BFF + order-paid assessment)",
+      "writerReaderPolicy": "Risk domain owns assessment/case/blocklist writes; browser clients and other domains never call risk RPCs directly.",
+      "idempotency": "risk idempotency key, order id, payment event id, and one-open-case-per-order uniqueness",
+      "proof": "src/domains/risk/README.md",
+      "rollback": "Disable the COMMERCE_RISK_* flags; risk RPCs are service-role only and produce no customer-visible effect while off.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/risk",
+        "server/bff/admin/risk",
+        "server/domains/commerce",
+        "server/adapters/supabase/riskAdminPort.ts",
+        "server/adapters/supabase/riskOrderPaid.ts",
+        "api/cron"
+      ]
+    },
+    {
+      "name": "accounting-invoice-and-provider-ledger",
+      "owner": "accounting",
+      "match": [
+        "^accounting_"
+      ],
+      "authMode": "service-role through accounting domain ports",
+      "writerReaderPolicy": "Accounting domain writes invoice/provider ledger state; BFF and jobs do not call provider RPCs directly.",
+      "idempotency": "invoice/order/provider refs and request idempotency keys",
+      "proof": "docs/plan/master-fakturownia-accounting.md",
+      "rollback": "Disable accounting mutation/provider flags and replay or fail outbox rows from the accounting runbook.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/accounting",
+        "server/adapters/supabase/accountingInvoicePort.ts",
+        "server/adapters/supabase/accounting/accountingControl.ts",
+        "scripts"
+      ]
+    },
+    {
+      "name": "commerce-checkout-runtime",
+      "owner": "commerce",
+      "match": [
+        "^commerce_(configurator|device|promotion|reconcile|release|sweep|webhook)_",
+        "^commerce_create_order_",
+        "^commerce_finalize_order_",
+        "^commerce_checkout_recovery_token_",
+        "^commerce_prepare_expired_checkout_recovery$",
+        "^commerce_cancel_(abandoned_checkout|unstarted_promotion_order)$",
+        "^cleanup_preview_promotion_claim_events$"
+      ],
+      "authMode": "service-role through commerce BFF/domain ports or hidden-preview smoke",
+      "writerReaderPolicy": "Commerce runtime owns checkout/order draft writes; browser clients never call these RPCs directly.",
+      "idempotency": "checkout idempotency key, order id, payment event id, or preview fixture key",
+      "proof": "docs/sql/commerce_runtime_rehearsal_probe.sql",
+      "rollback": "Disable checkout/payment/reservation flags and use checkout cleanup/release probes.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce",
+        "server/domains/payment",
+        "server/domains/platform",
+        "server/adapters/supabase/configuratorIntentPersistence.ts",
+        "server/adapters/supabase/promotionClaims.ts",
+        "server/adapters/supabase/commerce/checkoutRecoveryToken.ts",
+        "server/adapters/supabase/checkoutRecoveryOperations.ts",
+        "server/adapters/supabase/commerce/checkoutCompensation.ts",
+        "server/adapters/supabase/commerce/checkoutEmailOutboxReconcile.ts",
+        "server/adapters/supabase/commerce/paymentEventSweep.ts",
+        "server/adapters/supabase/payment/paymentWebhook.ts",
+        "server/adapters/supabase/payment/tpaySubscriptionActivation.ts",
+        "server/adapters/supabase/platform/promotionObservabilityRows.ts",
+        "server/adapters/managed/commerce/reservationSweepPort.ts",
+        "server/bff/commerce",
+        "server/bff/payment",
+        "api/cron",
+        "scripts"
+      ]
+    },
+    {
+      "name": "commerce-promotion-quote-read-v2",
+      "owner": "commerce",
+      "match": [
+        "^commerce_promotion_codes_quote_candidates_v2$"
+      ],
+      "authMode": "service-role through the commerce promotion quote port",
+      "writerReaderPolicy": "Read-only, advisory candidate resolution. The v2 response adds only UI-safe rejection details; browser clients never call the RPC directly and canonical order money/claiming remain unchanged.",
+      "idempotency": "Stable read-only projection for an explicit quote input and time",
+      "proof": "supabase/tests/promotion_checkout_canonical_money_test.sql",
+      "rollback": "The port falls back to the existing v1 RPC only for PGRST202/undefined-function during staged migration rollout; all other errors fail closed.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce"
+      ]
+    },
+    {
+      "name": "commerce-offer-policy-readiness",
+      "owner": "commerce",
+      "match": [
+        "^commerce_offer_policy_v2_readiness$"
+      ],
+      "authMode": "service-role through the commerce offer-policy readiness port",
+      "writerReaderPolicy": "Read-only aggregate readiness. It exposes no customer identifiers or PII and browser clients cannot execute it.",
+      "idempotency": "Stable read-only projection with no writes",
+      "proof": "supabase/tests/offer_policy_v2_readiness_test.sql",
+      "rollback": "Set COMMERCE_OFFER_POLICY_V2_ROLLOUT_BPS=0 or disable COMMERCE_OFFER_POLICY_V2_ENABLED; existing signed assignments remain honor-only.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce",
+        "server/adapters/supabase/commerce/offerPolicyReadiness.ts",
+        "scripts"
+      ]
+    },
+    {
+      "name": "commerce-offer-policy-legacy-baseline",
+      "owner": "commerce",
+      "match": [
+        "^commerce_capture_offer_policy_v2_legacy_baseline$"
+      ],
+      "authMode": "explicit service-role operator capture after audited environment readback",
+      "writerReaderPolicy": "Insert-once aggregate baseline only; never mutates customer/subscription rows, never exposes raw IDs, and never overwrites drift.",
+      "idempotency": "First audited capture wins; subsequent calls return the existing immutable baseline",
+      "proof": "supabase/tests/offer_policy_v2_readiness_test.sql",
+      "rollback": "Keep the aggregate audit row; disable assignment rollout. Baseline replacement requires a separately reviewed migration.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "scripts"
+      ]
+    },
+    {
+      "name": "commerce-fulfillment-ledger",
+      "owner": "fulfillment",
+      "match": [
+        "^commerce_fulfillment_"
+      ],
+      "authMode": "service-role through commerce/fulfillment ports",
+      "writerReaderPolicy": "Fulfillment/order handoff and durable provider-command state are owned by domain ports; provider infra must not own local ledger, claim, fencing, or retry semantics.",
+      "idempotency": "fulfillment order id, immutable command fingerprints, idempotency key, claim token, and monotonic claim generation",
+      "proof": "docs/sql/commerce_fulfillment_integration_rehearsal_probe.sql",
+      "rollback": "Disable fulfillment dispatch flags and replay or fail paid-order outbox rows.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce",
+        "server/domains/fulfillment",
+        "server/adapters/dhl",
+        "server/adapters/omnipack",
+        "server/adapters/supabase"
+      ]
+    },
+    {
+      "name": "fulfillment-provider-stock-authority",
+      "owner": "fulfillment",
+      "match": [
+        "^fulfillment_provider_"
+      ],
+      "authMode": "service-role through fulfillment provider stock-sync ports",
+      "writerReaderPolicy": "Fulfillment writes provider-current stock projections; inventory consumes the projection only through provider-aware reservation RPCs.",
+      "idempotency": "provider kind, provider SKU, sync run id, and stock-sync idempotency key",
+      "proof": "supabase/tests/omnipack_stock_authority_test.sql",
+      "rollback": "Disable provider stock sync and force provider stock authority back to local ATP through the fulfillment provider capability flag.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/adapters/supabase",
+        "server/domains/commerce"
+      ]
+    },
+    {
+      "name": "commerce-oms-admin",
+      "owner": "commerce",
+      "match": [
+        "^commerce_oms_",
+        "^commerce_order_mark_refunded_manual$"
+      ],
+      "authMode": "admin session plus service-role BFF/domain port",
+      "writerReaderPolicy": "Admin BFF/domain writes; read model remains commerce-owned.",
+      "idempotency": "admin actor, order/hold id, and action idempotency key",
+      "proof": "docs/sql/commerce_oms_hold_rehearsal_probe.sql",
+      "rollback": "Disable OMS mutation flags and preserve existing queue reads.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce",
+        "server/adapters/supabase/commerce/oms",
+        "server/adapters/supabase/commerceOmsMutations.ts",
+        "server/adapters/supabase/commerceOmsPort.ts",
+        "server/adapters/supabase/providerExceptionHoldHeal.ts",
+        "scripts/admin-oms-preview-smoke-db.ts"
+      ]
+    },
+    {
+      "name": "payment-control-and-method-refs",
+      "owner": "payment",
+      "match": [
+        "^commerce_payment_",
+        "^commerce_payment_method_",
+        "^commerce_tpay_alias_method_ref_upsert_guarded$"
+      ],
+      "authMode": "service-role through payment/commerce domain ports and verified webhooks",
+      "writerReaderPolicy": "Payment domain ingests provider events, claims stale provider attempts for read-only reconciliation, and applies terminal results only through payment-control; the distinct interactive prepared-attempt reopen RPC is service-role-only and accepts only trusted no-dispatch facts or exact-attempt operator/watchdog absence proof. It terminalizes local attempt/intent/payment without dunning, renewal scheduling, subscription mutation, or reservation release; provider adapters return sanitized outcomes.",
+      "idempotency": "provider event id, payment intent id, attempt id, and idempotency key; interactive reopen additionally fingerprints every expected aggregate id plus the bounded evidence mode/phase/code",
+      "proof": "src/domains/payment/README.md",
+      "rollback": "Disable provider payment flags and keep payment-control replay/read-only paths available.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/payment",
+        "server/domains/commerce",
+        "server/domains/subscription",
+        "server/adapters/supabase/payment/paymentMethodLifecycle.ts",
+        "server/adapters/supabase/payment/paymentWebhook.ts",
+        "server/adapters/supabase/payment/paymentProviderReconciliation.ts",
+        "server/adapters/managed/commerce/paymentControlRuntimePort.ts",
+        "server/adapters/supabase/payment/paymentWebhookGateway.ts",
+        "server/adapters/supabase/payment/tpaySimulatorSettlement.ts",
+        "server/adapters/supabase/payment/tpaySubscriptionActivation.ts",
+        "server/bff/payment",
+        "server/shared/applyPaymentResultRpc.ts",
+        "scripts/cleanup-stale-legacy-renewal-fixture.ts",
+        "server/adapters/supabase/channelIngestRails.ts",
+        "server/adapters/supabase/subscription"
+      ]
+    },
+    {
+      "name": "communications-consent-email-ledger",
+      "owner": "communications",
+      "match": [
+        "^communication_"
+      ],
+      "authMode": "service-role through communications domain ports or signed provider webhooks",
+      "writerReaderPolicy": "Communications domain owns consent, provider event, delivery, and sync outbox writes.",
+      "idempotency": "contact id, provider event id, send decision id, delivery id, or sync outbox id",
+      "proof": "server/domains/communications/README.md",
+      "rollback": "Disable communications sync/webhook flags and replay provider/sync outbox rows.",
+      "securityDefinerExpected": true,
+      "securityDefinerExceptions": {
+        "communication_admin_email_sends_stats": "invoker",
+        "communication_admin_email_template_slugs": "invoker"
+      },
+      "callSiteScope": [
+        "server/domains/communications",
+        "server/domains/commerce",
+        "server/adapters/supabase/commerce/stockNotifySubscribe.ts",
+        "server/adapters/supabase/communications/customerCommunicationPreferences.ts",
+        "server/adapters/supabase/communications/publicPreferenceToken.ts",
+        "server/adapters/supabase/checkoutRecoveryOperations.ts",
+        "server/bff/communications",
+        "server/adapters/resend",
+        "api/cron",
+        "api/unsubscribe.ts",
+        "server/adapters/supabase/communications",
+        "server/adapters/supabase/tester-program",
+        "server/adapters/email/publicIntakeEmailDeliveryPort.ts"
+      ]
+    },
+    {
+      "name": "customer-selfservice-preferences",
+      "owner": "customers",
+      "match": [
+        "^customer_communication_preferences_(as_actor|set_as_actor)$"
+      ],
+      "authMode": "authenticated customer actor through the direct self-service binding",
+      "writerReaderPolicy": "The customer self-service runtime owns preference reads and writes; the database derives the principal from the transaction-local actor rather than caller input.",
+      "idempotency": "principal id plus the requested consent state; unchanged writes preserve the current revision",
+      "proof": "docs/plan/oss-cd14-portable-selfservice-final.md",
+      "rollback": "Select the managed bundle or disable customer self-service recovery while retaining the inert direct rail.",
+      "securityDefinerExpected": true,
+      "migrationRoot": "db/platform/migrations",
+      "callSiteScope": [
+        "server/adapters/postgres/customerRecovery.ts"
+      ]
+    },
+    {
+      "name": "communications-transactional-delivery-receipts",
+      "owner": "communications",
+      "match": [
+        "^transactional_delivery_(read_receipt|record_accepted|record_failed)$"
+      ],
+      "authMode": "service-role through the named managed adapter or a capability-local role-free transaction through the named PostgreSQL receipt adapter",
+      "writerReaderPolicy": "The paired Communications receipt adapters own neutral captured-delivery receipt reads and accepted/failed writes. Browser clients and unrelated runtimes cannot execute these invoker-rights RPCs.",
+      "idempotency": "bounded idempotency key plus immutable command fingerprint; accepted receipts are terminal and failed receipts may advance to accepted",
+      "proof": "docs/plan/oss-p3-comms-b2a-captured-delivery.md",
+      "rollback": "Keep the inert receipt relation and RPCs; revert the experimental Node binding. There is no second delivery path to fall back to - the Deno twin went with the Edge tree when it was retired in source on 2026-09-05, so reverting leaves the capability inert, not degraded.",
+      "securityDefinerExpected": false,
+      "callSiteScope": [
+        "server/adapters/supabase/transactionalDeliveryStore.ts",
+        "server/adapters/postgres/transactionalDeliveryStore.ts",
+        "server/adapters/captured/dunningTransport.ts"
+      ]
+    },
+    {
+      "name": "inventory-reservation-and-stock",
+      "owner": "inventory",
+      "match": [
+        "^inventory_"
+      ],
+      "authMode": "service-role through commerce/inventory domain ports or hidden-preview smoke",
+      "writerReaderPolicy": "Inventory reservation and stock writes are owned by inventory/commerce ports; availability counts active reservation leases, not cleanup state.",
+      "idempotency": "reservation key, order id, stock adjustment id, and TTL",
+      "proof": "docs/sql/inventory_phase1_rehearsal_probe.sql",
+      "rollback": "Disable checkout/runtime flags and release reservations by order id.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce",
+        "server/domains/inventory",
+        "server/adapters/managed/commerce/inventoryReservationPort.ts",
+        "server/adapters/managed/inventory/inventoryPort.ts",
+        "api/cron",
+        "scripts",
+        "server/adapters/supabase/channelIngestRails.ts"
+      ]
+    },
+    {
+      "name": "subscription-runtime-and-dunning",
+      "owner": "subscription",
+      "match": [
+        "^subscription_",
+        "^enqueue_subscription_renewal_reminders$"
+      ],
+      "authMode": "service-role through subscription cron/domain/payment ports",
+      "writerReaderPolicy": "Subscription domain owns lifecycle, dunning, renewal, and cycle-order writes.",
+      "idempotency": "subscription id, cycle id, payment attempt id, and dunning batch id",
+      "proof": "docs/archive/COMMERCE_HIDDEN_SUBSCRIPTION_RUNTIME_PLAN.md",
+      "rollback": "Disable subscription mutation/renewal flags and pause cron dispatchers.",
+      "securityDefinerExpected": true,
+      "securityDefinerExceptions": {
+        "subscription_delivery_alignment_get_mode": "invoker",
+        "subscription_list_due_for_renewal": "invoker",
+        "subscription_rotate_payment_recovery_token": "invoker",
+        "subscription_renewal_note_row_outcome": "invoker",
+        "subscription_dunning_mark_sent": "mixed",
+        "subscription_dunning_mark_result": "mixed"
+      },
+      "callSiteScope": [
+        "server/domains/subscription",
+        "server/domains/payment",
+        "server/adapters/supabase/payment/paidActivationGap.ts",
+        "server/adapters/supabase/payment/paymentWebhook.ts",
+        "server/adapters/supabase/subscription/subscriptionRecovery.ts",
+        "server/adapters/supabase/payment/methodUpdateRetry.ts",
+        "server/adapters/managed/subscription/subscriptionRenewalDuePort.ts",
+        "server/adapters/managed/subscription/subscriptionRuntimePort.ts",
+        "server/adapters/managed/subscription/subscriptionSweepPort.ts",
+        "server/adapters/managed/subscription/buildSubscriptionCycleSnapshots.ts",
+        "server/adapters/managed/subscription/callSubscriptionCreateCycleOrder.ts",
+        "server/adapters/managed/subscription/callSubscriptionCycleReservationPreflight.ts",
+        "server/adapters/resend",
+        "server/adapters/capturedSubscriptionDunningDeliveryPort.ts",
+        "server/adapters/subscriptionDeliveryAlignmentGateway.ts",
+        "api/cron",
+        "scripts",
+        "server/adapters/supabase/subscription",
+        "server/adapters/postgres/dunningLifecycle.ts",
+        "server/adapters/supabase/customerSubscriptionFacade.ts"
+      ]
+    },
+    {
+      "name": "outbox-runtime",
+      "owner": "commerce",
+      "match": [
+        "^outbox_"
+      ],
+      "authMode": "service-role through commerce outbox ports and preview matrix smoke",
+      "writerReaderPolicy": "Outbox store owns claim, mark, release, prune, and stats state.",
+      "idempotency": "outbox event id and handler lease",
+      "proof": "docs/ECOMMERCE_ORDER_DRAFT_OUTBOX_REHEARSAL.md",
+      "rollback": "Disable outbox dispatch/prune flags and release unprocessed leases.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce",
+        "server/adapters/postgres",
+        "server/adapters/supabase",
+        "api/cron",
+        "scripts"
+      ]
+    },
+    {
+      "name": "omnipack-evidence",
+      "owner": "fulfillment",
+      "match": [
+        "^omnipack_"
+      ],
+      "authMode": "service-role jobs plus verified provider webhooks",
+      "writerReaderPolicy": "Fulfillment owns OmniPack dispatch refs, status evidence, stock evidence, and cursors. Executable dispatch uses the service-role-only draft recorder plus omnipack_begin_direct_dispatch_submission(uuid,text) as the locked pre-POST fence; direct table writes are denied. The active acknowledgement path never mutates the retained provider-command ledger. Ambiguous calls stop in uncertain, while accepted provider proof and the existing local label acknowledgement commit atomically.",
+      "idempotency": "fulfillment advisory mutex, one logical dispatch ref, immutable request fingerprint, two-argument direct draft-to-submitting compare-and-set, separate provider-acceptance and label-ack keys, provider ref, status event id, stock cursor, and replay-safe webhook token",
+      "proof": "supabase/tests/omnipack_dispatch_convergence_test.sql",
+      "rollback": "Disable OmniPack flags and replay or ignore provider evidence from the fulfillment runbook.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/fulfillment",
+        "server/adapters/supabase",
+        "api/cron",
+        "scripts"
+      ]
+    },
+    {
+      "name": "catalog-sku-eans-packs",
+      "owner": "catalog",
+      "match": [
+        "^catalog_sku_eans_"
+      ],
+      "authMode": "service-role through the fulfillment product-sync port",
+      "writerReaderPolicy": "The OmniPack product-sync port upserts catalog pack (SKU↔EAN) rows; browser clients never call this RPC, and a openlup/local-owned pack is never overwritten by a pull.",
+      "idempotency": "(catalog_sku_id, ean) anchor; the RPC returns {conflict, replayed} and re-runs are no-ops",
+      "proof": "docs/plan/omnipack-product-sync-worker.md",
+      "rollback": "Disable COMMERCE_OMNIPACK_PRODUCT_SYNC_ENABLED; the packs table is unread by checkout/dispatch.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/adapters/supabase"
+      ]
+    },
+    {
+      "name": "catalog-change-proposal-submit",
+      "owner": "commerce",
+      "match": [
+        "^catalog_submit_change_proposal$"
+      ],
+      "authMode": "admin session at the BFF plus service-role managed adapter",
+      "writerReaderPolicy": "Append-only evidence inbox. The routine performs the sole INSERT after digest, shape, identity, scope and blocked-publication checks; it creates no revision, pointer, offer or approval, and browser roles hold no EXECUTE.",
+      "idempotency": "The envelope digest is the natural key; replaying identical bytes returns inserted=false through the three unique constraints rather than writing a second row.",
+      "proof": "supabase/tests/catalog_change_proposal_inbox_test.sql",
+      "rollback": "Revert the adapter and the route; the table is immutable by trigger and holds only blocked, non-publishable evidence.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/adapters/supabase/adminCatalogDocument.ts"
+      ]
+    },
+    {
+      "name": "feedback-public-hash",
+      "owner": "feedback",
+      "match": [
+        "^get_feedback_by_hash$",
+        "^submit_feedback",
+        "^submit_package_ratings"
+      ],
+      "authMode": "public hash/recovery token with RPC-level validation",
+      "writerReaderPolicy": "Feedback domain adapters and BFF routes submit hash-scoped survey state only; tester-program owns participation state, not feedback RPC persistence. Media mutations use the separate service-only family.",
+      "idempotency": "feedback hash, section key, media hash, and package rating id",
+      "proof": "src/domains/feedback/README.md",
+      "rollback": "Disable or route feedback upload/action surfaces while preserving read-only page access.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/bff/feedback",
+        "server/domains/feedback",
+        "server/adapters/supabase/feedback"
+      ]
+    },
+    {
+      "name": "feedback-media-service",
+      "owner": "feedback",
+      "match": ["^append_feedback_photo_url$", "^feedback_remove_photo_url_by_hash$"],
+      "authMode": "validated feedback bearer at the BFF plus service-role adapter; browser database EXECUTE denied",
+      "writerReaderPolicy": "Confirmation checks delivery, tester key ownership and object existence, then explicitly passes the fixed quota to canonical append-3. Both append overloads deny browser execution. The canonical service-only removal validates bearer/key scope and changes metadata before object deletion. Direct browser mutation is forbidden.",
+      "idempotency": "exact media key replay does not append or notify twice",
+      "proof": "supabase/tests/feedback_media_confirm_upload_test.sql",
+      "rollback": "Preserve the service path and browser denial; no automatic privilege restoration or object deletion.",
+      "securityDefinerExpected": true,
+      "callSiteScope": ["server/adapters/supabase/feedback"]
+    },
+    {
+      "name": "platform-admin-oms-preview-fixture-cleanup",
+      "owner": "platform",
+      "match": [
+        "^admin_oms_preview_cleanup_fixture_admin$"
+      ],
+      "authMode": "service-role through the run-scoped staging Admin OMS provisioner",
+      "writerReaderPolicy": "The staging provisioner may remove only its exact synthetic machine-admin fixture and fixture-owned audit rows; direct service-role UPDATE and DELETE on admin_users remain revoked.",
+      "idempotency": "exact synthetic admin id and matching admin-oms-preview example.invalid email; an already-absent fixture is a no-op",
+      "proof": "docs/plan/fix-staging-admin-fixture-acl.md",
+      "rollback": "Stop provisioning the Admin OMS staging fixture; no human membership or retained audit-history path uses this RPC.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "scripts/admin-oms-preview-provision-admin.ts"
+      ]
+    },
+    {
+      "name": "platform-admin-user-management",
+      "owner": "platform",
+      "match": [
+        "^admin_update_admin_user_role$",
+        "^admin_revoke_admin_user$"
+      ],
+      "authMode": "admin session through the platform domain adapter",
+      "writerReaderPolicy": "Platform admin BFF/domain adapter validates an active administrator before changing roles or atomically revoking current-panel membership. Revocation retains the identity and actor row for historical attribution.",
+      "idempotency": "admin actor id, target user id, requested role or active-to-revoked state transition, and one audit event",
+      "proof": "server/domains/platform/README.md",
+      "rollback": "Disable admin user role/revoke mutation; restore a previous role or reactivate a retained membership through a separately reviewed recovery operation using audit evidence.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/bff/admin/platform",
+        "server/domains/platform",
+        "server/adapters/supabase/adminUserActionPort.ts",
+        "server/adapters/supabase/platform/adminSettingsPort.ts"
+      ]
+    },
+    {
+      "name": "platform-admin-magic-link-rate-limit",
+      "owner": "platform",
+      "match": [
+        "^public_record_admin_magic_link_attempt$"
+      ],
+      "authMode": "service-role through admin magic-link BFF",
+      "writerReaderPolicy": "Platform admin login owns the hashed email/IP attempt ledger; browser clients never call the RPC directly.",
+      "idempotency": "hashed IP, hashed email, advisory locks, and fixed time window",
+      "proof": "supabase/migrations/20260710120002_admin_magic_link_rate_limit.sql",
+      "rollback": "Disable the admin magic-link UI/route; password login, invites, and recovery remain available.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/_lib/rate-limit"
+      ]
+    },
+    {
+      "name": "partners-public-b2b-inquiry-submit",
+      "owner": "partners",
+      "match": [
+        "^public_submit_b2b_inquiry$"
+      ],
+      "authMode": "service-role through the public partners BFF",
+      "writerReaderPolicy": "The partners submission handler validates the public payload and hashes the caller IP before invoking this service-role-only RPC; browser callers cannot execute it directly.",
+      "idempotency": "Per-IP transaction advisory lock plus a bounded recent-row quota serializes count-and-insert decisions; denied requests write no inquiry.",
+      "proof": "supabase/tests/b2b_inquiry_atomic_submit_test.sql",
+      "rollback": "Disable the public B2B inquiry route before removing the RPC; existing inquiry rows remain readable by admin workflows.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/adapters/supabase/partnersB2BInquirySubmitPort.ts"
+      ]
+    },
+    {
+      "name": "marketing-notification-cron",
+      "owner": "communications",
+      "match": [
+        "^enqueue_.*_reminders$",
+        "^enqueue_abandoned_cart_reminders_from_vercel$",
+        "^(mark|close)_back_in_stock_notification",
+        "^subscribe_product_stock_notification$"
+      ],
+      "authMode": "cron secret, customer request, or service-role domain port",
+      "writerReaderPolicy": "Marketing/commerce notification ports enqueue or close notification work; the versioned abandoned-cart RPC binds production work to its runtime Supabase URL before it invokes the existing producer. Provider send is separate.",
+      "idempotency": "notification id, contact id, product id, and enqueue batch",
+      "proof": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "rollback": "Disable marketing/outbox dispatch flags and stop cron invocation.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "api/cron",
+        "server/domains/commerce",
+        "server/adapters/supabase/commerce/backInStockNotification.ts",
+        "server/adapters/supabase/commerce/reorderReminderEnqueue.ts",
+        "server/adapters/supabase/commerce/stockNotifySubscribe.ts",
+        "server/adapters/supabase/checkoutRecoveryOperations.ts"
+      ]
+    },
+    {
+      "name": "admin-promotion-codes",
+      "owner": "commerce",
+      "match": [
+        "^admin_promotion_code"
+      ],
+      "authMode": "admin session plus service-role promotion-code domain port",
+      "writerReaderPolicy": "Promotion-code reads and writes stay behind typed admin handlers; mutations combine idempotency, data and audit in one transaction.",
+      "idempotency": "admin actor, UUID idempotency key and server request fingerprint",
+      "proof": "supabase/tests/promotion_codes_control_plane_test.sql",
+      "rollback": "No rollout flag remains (retired in PR 2243): pause or archive the affected codes in the Code Center, then revert and re-release if the defect is code-level.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce",
+        "server/adapters/supabase/adminPromotionCodes.ts"
+      ]
+    },
+    {
+      "name": "admin-catalog-audit",
+      "owner": "commerce",
+      "match": [
+        "^admin_set_",
+        "^record_admin_audit_event$"
+      ],
+      "authMode": "admin session plus service-role domain port",
+      "writerReaderPolicy": "Admin promotion mutations must record audit events. Legacy admin_set_catalog_price and admin_set_subscription_band_percent retain their signatures but are fenced with SQLSTATE 42501 legacy_catalog_mutation_fenced; D2 publication and EAN ingestion are separate legal writers. Wave 7a: the domain-neutral agent customer-read guard (server/_lib/admin-domain) audits machine customer reads through the same frozen primitive.",
+      "idempotency": "admin actor, target id, and audit event key; fenced catalog writers never mutate",
+      "proof": "supabase/tests/catalog_legacy_mutation_fence_test.sql",
+      "rollback": "Promotion mutations retain their existing recovery. The catalog fence is forward-only and remains until the W3f proposal authority replaces legacy callers.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/commerce",
+        "server/adapters/supabase/adminPromotions.ts",
+        "server/_lib/admin-domain"
+      ]
+    },
+    {
+      "name": "customer-self-service",
+      "owner": "customers",
+      "match": [
+        "^customer_self_service_"
+      ],
+      "authMode": "customer session plus service-role customer domain port",
+      "writerReaderPolicy": "Customer domain validates session ownership before applying subscription/account actions.",
+      "idempotency": "customer id, subscription id, action id, and recovery token where applicable",
+      "proof": "server/domains/customers/README.md",
+      "rollback": "Disable customer self-service flags and keep customer account read model available.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/domains/customers",
+        "server/adapters/supabase/customerSubscriptionAction.ts",
+        "server/adapters/supabase/subscriptionQuotePreviewLedger.ts"
+      ]
+    },
+    {
+      "name": "customer-subscription-control-actor",
+      "owner": "customers",
+      "match": [
+        "^customer_subscription_(control_snapshot|preview_bundle|apply_bundle)_as_actor$"
+      ],
+      "authMode": "authenticated customer actor through the explicit node-postgres subscription-control adapter",
+      "writerReaderPolicy": "The actor wrappers derive the customer from auth.uid(), expose only the neutral snapshot/preview/apply bundle control rail, and grant no actor table DML.",
+      "idempotency": "subscription id, quote idempotency key, quote hash, expected revision and accepted event identity",
+      "proof": "scripts/customer-subscription-control-proof.ts",
+      "rollback": "Disable node-postgres subscription-control composition; managed default composition and the fixed pause action remain available.",
+      "securityDefinerExpected": true,
+      "migrationRoot": "db/platform/migrations",
+      "callSiteScope": [
+        "server/adapters/postgres/customerSubscriptionControl.ts",
+        "scripts/customer-subscription-control-proof.ts"
+      ]
+    },
+    {
+      "name": "customer-subscription-pause-actor",
+      "owner": "customers",
+      "match": [
+        "^customer_subscription_pause_as_actor$"
+      ],
+      "authMode": "authenticated customer actor through the explicit node-postgres pause adapter or exact parity harness",
+      "writerReaderPolicy": "The wrapper derives the customer from auth.uid(), exposes only pause, and delegates to the neutral lifecycle rail without actor table DML.",
+      "idempotency": "subscription id and caller-provided idempotency key under the lifecycle row lock",
+      "proof": "scripts/platform-customer-subscription-pause-parity.ts",
+      "rollback": "Disable explicit node-postgres bundle selection; managed default composition remains unchanged.",
+      "securityDefinerExpected": true,
+      "migrationRoot": "db/platform/migrations",
+      "callSiteScope": [
+        "server/adapters/postgres/customerSubscriptionPause.ts",
+        "scripts/platform-customer-subscription-pause-parity.ts"
+      ]
+    },
+    {
+      "name": "platform-and-tester-read-models",
+      "owner": "platform",
+      "match": [
+        "^platform_",
+        "^get_active_tester_count$"
+      ],
+      "authMode": "service-role platform jobs or public read-only BFF",
+      "writerReaderPolicy": "Platform job ledger writes stay in platform; tester active count is read-only.",
+      "idempotency": "job run id or read-only aggregate",
+      "proof": "server/domains/platform/README.md",
+      "rollback": "Disable platform job runner or fall back to existing read-only aggregate.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "api/cron",
+        "server/bff/tester-program",
+        "server/adapters/supabase/tester-program/activeCount.ts",
+        "server/domains/tester-program",
+        "server/domains/platform",
+        "server/domains/fulfillment",
+        "server/adapters/supabase/platformJobRunLedger.ts"
+      ]
+    },
+    {
+      "name": "channels-order-ingest",
+      "owner": "channels",
+      "match": [
+        "^channel_ingest_",
+        "^commerce_create_channel_order$"
+      ],
+      "authMode": "service-role only, through the channels ingest store port; there is no route and no schedule in this wave, so the only caller is the saga's own composition",
+      "writerReaderPolicy": "The channels domain owns the ingest ledger and the quarantine drawer, and is the only writer of channel-sourced commerce orders. Browser clients never reach these RPCs, and no other domain calls them: the payment-control and inventory rails are reached through their own owners' RPCs, not re-implemented here.",
+      "idempotency": "channel_order_ingests UNIQUE (channel_id, external_order_ref) is the saga identity; the order boundary additionally writes commerce_idempotency_keys under scope channels.order.create and is backstopped by the partial UNIQUE (source_channel_id, source_order_ref) on commerce_orders. inbound_provider_events UNIQUE (provider, provider_event_id) makes a redelivery a no-op, and sales_channel_quarantine UNIQUE (provider_event_id, vocabulary) keeps a repeated refusal one row.",
+      "proof": "docs/plan/channel-order-ingest.md",
+      "rollback": "Nothing calls these RPCs until the entrypoint wave lands: the saga is a library with no route and no cron. Rolling back means not composing it. Existing rows are inert - the ledger and quarantine are read by nothing, and no storefront order path touches either.",
+      "securityDefinerExpected": true,
+      "callSiteScope": [
+        "server/adapters/supabase",
+        "server/adapters/postgres"
+      ]
+    },
+    {
+      "name": "dunning-lifecycle-platform-rail",
+      "owner": "subscription",
+      "match": [
+        "^dunning_lifecycle_"
+      ],
+      "authMode": "the application's own role-free dunning-lifecycle connection lane; the public platform rail creates no service role and grants nothing to a browser principal",
+      "writerReaderPolicy": "The public platform rail owns the neutral dunning case, its queued notice, the reminder ledger and the scans over them. Every routine is invoker-rights with a fixed search path, and the retry ladder is an ARGUMENT the application computes rather than a schedule embedded here.",
+      "idempotency": "case idempotency key, the (case, notice kind, attempt) uniqueness of a queued notice, and the reminder ledger's (subscription, kind, day)",
+      "proof": "scripts/dunning-lifecycle-proof.ts",
+      "rollback": "Disable COMMERCE_DUNNING_EMAILS_ENABLED; the routines are reachable only from the direct composition's own lane and produce no customer-visible effect while off.",
+      "securityDefinerExpected": false,
+      "migrationRoot": "db/platform/migrations",
+      "callSiteScope": [
+        "server/adapters/postgres/dunningLifecycle.ts",
+        "server/adapters/postgres/dunningLifecycleScans.ts",
+        "server/adapters/postgres/communicationsLifecycle.ts"
+      ]
+    },
+    {
+      "name": "communications-recipient-consent-platform-rail",
+      "owner": "communications",
+      "match": [
+        "^communications_(notification_control_enabled|recipient_consent_state|record_recipient_consent)$"
+      ],
+      "authMode": "the application's own role-free dunning-lifecycle connection lane; no browser principal receives a grant on the public platform rail",
+      "writerReaderPolicy": "The public platform rail answers the pre-send question by recipient FINGERPRINT and reads the operator-wide control off the existing delivery-control row. It stores no recipient address and writes no decision row per send.",
+      "idempotency": "(recipient fingerprint, purpose) is the primary key; a repeated capture updates the recorded state in place",
+      "proof": "scripts/dunning-lifecycle-proof.ts",
+      "rollback": "Remove the recorded consent rows or re-enable the delivery control; both reads fail OPEN, so a missing row sends.",
+      "securityDefinerExpected": false,
+      "migrationRoot": "db/platform/migrations",
+      "callSiteScope": [
+        "server/adapters/postgres/dunningLifecycle.ts"
+      ]
+    },
+    {
+      "name": "customer-support-recovery",
+      "owner": "support",
+      "match": [
+        "^(communications_operator_is_active|customer_support_issue_recovery|customer_support_apply_subscription_action_v1|customer_support_correct_subject_email_v1|customer_support_correct_subject_phone_v1|customer_support_absorb_lead_v1)$"
+      ],
+      "authMode": "service-role through the customer-support journey adapter",
+      "writerReaderPolicy": "Support verifies the operator and issues one idempotent recovery, subscription or email-correction command through the managed RPC boundary. The subscription command resolves the subscriber principal itself and delegates to the customer self-service chain; no caller supplies an authenticated user id.",
+      "idempotency": "operator-supplied idempotency key; the recovery command pairs it with an immutable caller fingerprint, the two operator command routines compute their own fingerprint from the command's fields so a caller cannot re-label a replay",
+      "proof": "scripts/customer-recovery-console-proof.ts",
+      "rollback": "Disable customer recovery, subscription and email-correction commands; existing command and audit rows remain append-only.",
+      "securityDefinerExpected": false,
+      "securityDefinerExceptions": {
+        "customer_support_apply_subscription_action_v1": "definer"
+      },
+      "callSiteScope": [
+        "server/adapters/supabase/support/customerSupportJourney.ts"
+      ]
+    },
+    {
+      "name": "order-review-capability-platform-rail",
+      "owner": "commerce",
+      "match": [
+        "^order_review_"
+      ],
+      "authMode": "the direct application's private PostgreSQL lane after customer grant or platform-operator authorization; no browser database principal receives a grant",
+      "writerReaderPolicy": "Commerce owns the canonical review, one-time upload admission, exact-key media lifecycle, moderation, revocation and reconciliation. Customer and operator traffic reaches the routines only through mounted BFF/raw bindings, and object keys never cross the server boundary.",
+      "idempotency": "one review per order; command kind/key plus immutable fingerprint receipts; capability digest; fenced writer lease/state version; reconcile and cleanup receipts",
+      "proof": "scripts/order-review-media-restart-proof.ts",
+      "rollback": "Remove the direct order-review binding or ORDER_REVIEW_MEDIA_ROOT; the hosted legacy review-token and feedback-event behavior remains on its managed adapter paths.",
+      "securityDefinerExpected": false,
+      "migrationRoot": "db/platform/migrations",
+      "callSiteScope": [
+        "server/adapters/postgres/commerce/orderReviewLifecycle.ts",
+        "server/adapters/postgres/commerce/orderReviewMedia.ts"
+      ]
+    },
+    {
+      "name": "acquisition-case-platform-rail",
+      "owner": "clients",
+      "match": [
+        "^acquisition_case_"
+      ],
+      "authMode": "the direct application enters the NOLOGIN platform_acquisition_runtime role for one transaction; operator list and lifecycle routes complete token and durable platform-operator authorization before opening this binding",
+      "writerReaderPolicy": "The Clients domain owns the tester_application acquisition case, private normalized contact correlation, opaque address reference, consent evidence, lifecycle, exact active count and minimal append-only audit. Browser principals receive no database grant; projections never expose contact values or keyed fingerprints.",
+      "idempotency": "submit and transition use scope plus caller idempotency key, a restart-stable installation-keyed command fingerprint, keyed normalized-email dedupe, advisory transaction locks, expected lifecycle version and one append-only receipt/audit",
+      "proof": "scripts/ci/vanilla-pg-compose-smoke.sh",
+      "rollback": "Remove the direct acquisition binding; the managed tester/signup/status implementations remain selected by deployment-overlay and the durable acquisition ledger remains inert.",
+      "securityDefinerExpected": true,
+      "migrationRoot": "db/platform/migrations",
+      "callSiteScope": [
+        "server/adapters/postgres/clients/acquisitionCaseRoutines.ts",
+        "server/adapters/postgres/marketing/acquisitionEvidenceRoutines.ts"
+      ]
+    },
+    {
+      "name": "partner-acquisition-platform-rail",
+      "owner": "partners",
+      "match": [
+        "^partner_acquisition_"
+      ],
+      "authMode": "the direct application enters platform_acquisition_runtime for one transaction; operator list and lifecycle authorize the durable platform operator before opening the partner binding",
+      "writerReaderPolicy": "Partners owns partner_inquiry organization/contact facts and pipeline status inside the shared acquisition case authority. Browser principals receive no database grant; the neutral V1 projection exposes no provider or CRM identifier and direct submit requests no provider email.",
+      "idempotency": "submit and transition use distinct scope plus caller idempotency key, restart-stable installation-keyed command/contact fingerprints, advisory transaction locks, expected status version and one append-only receipt/audit",
+      "proof": "scripts/ci/vanilla-pg-compose-smoke.sh",
+      "rollback": "Remove the direct partner-acquisition binding; managed B2B submit/list/status remain selected for managed bundles and the direct ledger remains inert.",
+      "securityDefinerExpected": true,
+      "migrationRoot": "db/platform/migrations",
+      "callSiteScope": [
+        "server/adapters/postgres/partners/partnerAcquisitionRoutines.ts"
+      ]
+    }
+  ]
+}

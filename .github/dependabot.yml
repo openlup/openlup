@@ -1,0 +1,60 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    # "/" is the workspace root; "/packages/core" keeps its OWN standalone
+    # package-lock.json (name @openlup/core, no `workspaces` field) for OSS
+    # split/publish rehearsals. Updating "/" alone rewrites only the workspace
+    # lock, leaving the core standalone lock behind, which trips
+    # scripts/release-check.ts (lock<->manifest parity) and
+    # scripts/oss-core-scaffold.test.ts (exact devDeps) — see PR #1806. Listing
+    # both directories lets a grouped bump update both locks in ONE PR / one
+    # merge-queue entry.
+    directories:
+      - "/"
+      - "/packages/core"
+    schedule:
+      # Routine version updates are an operator-triaged Draft inbox. One weekly
+      # refresh bounds branch churn. Dependabot security posture is a separate
+      # repository setting and is not represented by this schedule.
+      interval: weekly
+      day: tuesday
+      time: "05:10"
+      timezone: "Europe/Warsaw"
+    rebase-strategy: disabled
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: direct
+      - dependency-type: indirect
+    ignore:
+      # Local workspace dependency: Dependabot must never resolve either its
+      # canonical package name or the bad path fingerprint observed in update
+      # run 33257713892 against registry.npmjs.org (`packages%2Fcore` -> 405).
+      # Keep package.json's intentional `file:packages/core` contract intact.
+      - dependency-name: "@openlup/core"
+      - dependency-name: "packages/core"
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+    # Group routine bumps into a single PR so they share one merge-queue entry
+    # and one package-lock.json change instead of racing each other.
+    groups:
+      radix-ui:
+        patterns:
+          - "@radix-ui/*"
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+      - security
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    rebase-strategy: disabled
+    labels:
+      - dependencies
+      - github-actions

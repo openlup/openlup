@@ -1,0 +1,45 @@
+{
+  "lastReviewedAt": "2026-07-21",
+  "banks": [
+    {
+      "id": "pko_bp",
+      "displayName": "PKO Bank Polski",
+      "modelOVerified": false
+    },
+    {
+      "id": "ing",
+      "displayName": "ING Bank Śląski",
+      "modelOVerified": true
+    },
+    {
+      "id": "millennium",
+      "displayName": "Bank Millennium",
+      "modelOVerified": false
+    },
+    {
+      "id": "alior",
+      "displayName": "Alior Bank",
+      "modelOVerified": false
+    },
+    {
+      "id": "erste",
+      "displayName": "Erste Bank Polska",
+      "modelOVerified": false
+    },
+    {
+      "id": "credit_agricole",
+      "displayName": "Credit Agricole",
+      "modelOVerified": false
+    },
+    {
+      "id": "nest",
+      "displayName": "Nest Bank",
+      "modelOVerified": false
+    },
+    {
+      "id": "sgb",
+      "displayName": "SGB Banki Spółdzielcze",
+      "modelOVerified": false
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+export type RecoveryPayStatus =
+  | "redeeming"
+  | "ready"
+  | "resume_redirect"
+  | "paying"
+  | "confirming_card"
+  | "polling"
+  | "verification_delayed"
+  | "awaiting_provider"
+  | "manual_review"
+  | "paid"
+  | "already_paid"
+  | "order_changed"
+  | "cancelled"
+  | "fallback"
+  | "failed";

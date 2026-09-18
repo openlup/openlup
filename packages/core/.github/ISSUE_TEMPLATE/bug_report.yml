@@ -1,0 +1,73 @@
+name: Bug report
+description: Report reproducible incorrect behavior in the core package
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for a careful report. This private portability package is not a public adoption channel. Do not include secrets, personal data, or vulnerability details. Suspected security issues must follow SECURITY.md and use the approved private reporting route.
+  - type: input
+    id: version
+    attributes:
+      label: Private proof version or commit
+      description: Use the exact workspace, packed-proof, or commit SHA.
+      placeholder: 0.1.0-rc.1 or full commit SHA
+    validations:
+      required: true
+  - type: input
+    id: subpath
+    attributes:
+      label: Package subpath
+      description: Name the private candidate subpath involved, such as @openlup/core/pricing.
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Evaluation environment
+      options:
+        - Node 24 ESM
+        - TypeScript NodeNext
+        - TypeScript bundler resolution
+        - Vite 8
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide a small repository or self-contained code sample using only package subpaths.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include sanitized errors or logs when useful.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include relevant Node, npm, TypeScript, or Vite versions and adapter details.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I use package subpaths rather than importing src/ or dist/ directly.
+          required: true
+        - label: I removed secrets, personal data, and private service details.
+          required: true
+        - label: This is not a suspected security vulnerability.
+          required: true

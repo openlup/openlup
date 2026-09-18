@@ -1,0 +1,121 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`BFF dispatcher golden-master (deterministic contract) > snapshot: non-bff-path 1`] = `
+{
+  "body": {
+    "error": {
+      "code": "NOT_FOUND",
+      "details": {
+        "path": "/api/bff",
+      },
+      "message": "BFF route not found",
+    },
+    "ok": false,
+  },
+  "headers": {
+    "cache-control": "no-store",
+    "content-type": "application/json",
+  },
+  "status": 404,
+}
+`;
+
+exports[`BFF dispatcher golden-master (deterministic contract) > snapshot: unknown-get-nested 1`] = `
+{
+  "body": {
+    "error": {
+      "code": "NOT_FOUND",
+      "details": {
+        "path": "/api/bff/catalog/nope/deeper",
+      },
+      "message": "BFF route not found",
+    },
+    "ok": false,
+  },
+  "headers": {
+    "cache-control": "no-store",
+    "content-type": "application/json",
+  },
+  "status": 404,
+}
+`;
+
+exports[`BFF dispatcher golden-master (deterministic contract) > snapshot: unknown-get-root 1`] = `
+{
+  "body": {
+    "error": {
+      "code": "NOT_FOUND",
+      "details": {
+        "path": "/api/bff/does-not-exist",
+      },
+      "message": "BFF route not found",
+    },
+    "ok": false,
+  },
+  "headers": {
+    "cache-control": "no-store",
+    "content-type": "application/json",
+  },
+  "status": 404,
+}
+`;
+
+exports[`BFF dispatcher golden-master (deterministic contract) > snapshot: unknown-post 1`] = `
+{
+  "body": {
+    "error": {
+      "code": "NOT_FOUND",
+      "details": {
+        "path": "/api/bff/also-missing",
+      },
+      "message": "BFF route not found",
+    },
+    "ok": false,
+  },
+  "headers": {
+    "cache-control": "no-store",
+    "content-type": "application/json",
+  },
+  "status": 404,
+}
+`;
+
+exports[`BFF dispatcher golden-master (deterministic contract) > snapshot: unknown-trailing-slash 1`] = `
+{
+  "body": {
+    "error": {
+      "code": "NOT_FOUND",
+      "details": {
+        "path": "/api/bff/does-not-exist",
+      },
+      "message": "BFF route not found",
+    },
+    "ok": false,
+  },
+  "headers": {
+    "cache-control": "no-store",
+    "content-type": "application/json",
+  },
+  "status": 404,
+}
+`;
+
+exports[`BFF dispatcher golden-master (deterministic contract) > snapshot: unknown-with-query 1`] = `
+{
+  "body": {
+    "error": {
+      "code": "NOT_FOUND",
+      "details": {
+        "path": "/api/bff/does-not-exist",
+      },
+      "message": "BFF route not found",
+    },
+    "ok": false,
+  },
+  "headers": {
+    "cache-control": "no-store",
+    "content-type": "application/json",
+  },
+  "status": 404,
+}
+`;

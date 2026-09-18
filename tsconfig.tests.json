@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "strictNullChecks": true,
+    "types": [
+      "vitest/globals",
+      "node"
+    ]
+  },
+  "include": [
+    "tests",
+    "src/overlays/*/tests/starterDisclosureNavigation.test.tsx",
+    "src/test/setup.ts",
+    "src/test/vitestProvidedContext.d.ts",
+    "src/vite-env.d.ts"
+  ]
+}

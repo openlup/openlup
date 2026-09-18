@@ -1,0 +1,49 @@
+{
+  "transitions": 7,
+  "payload": {
+    "S1.a_transport_payout_records_one_item": {
+      "items": 1,
+      "status": "reconciled"
+    },
+    "S2.the_same_item_again_writes_no_second_item": {
+      "items": 1,
+      "gross": 12300
+    },
+    "S3.an_item_whose_net_misses_gross_minus_fee_is_refused": {
+      "refused": "payout_net_mismatch",
+      "items": 0
+    },
+    "S4.the_batch_totals_are_the_sum_of_its_items": {
+      "items": 2,
+      "gross": 20500,
+      "fee": 700,
+      "net": 19800
+    },
+    "S5.a_mismatched_item_makes_the_whole_batch_mismatch": {
+      "status": "mismatch"
+    },
+    "S6.an_item_awaiting_the_bank_holds_the_batch_open": {
+      "status": "bank_pending"
+    },
+    "S7.a_batch_holding_both_kinds_of_trouble_reads_mismatch": {
+      "status": "mismatch"
+    }
+  },
+  "kernelOnly": {
+    "K1.a_status_the_ledger_does_not_name": {
+      "refused": "payout_status_invalid"
+    },
+    "K2.an_amount_below_zero": {
+      "refused": "payout_amount_negative"
+    },
+    "K3.a_second_line_in_another_denomination": {
+      "refused": "payout_currency_conflict"
+    },
+    "K4.an_item_written_behind_the_rail_is_refused_at_commit": {
+      "refused": "payout_batch_total_mismatch"
+    },
+    "K5.an_item_is_bound_to_the_document_its_order_owes": {
+      "bound": 1
+    }
+  }
+}

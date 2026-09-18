@@ -1,0 +1,135 @@
+{
+  "transitions": 14,
+  "payload": {
+    "T1.a_paid_order_has_a_shipment": {
+      "status": "created"
+    },
+    "T2.creating_it_again_replays": {
+      "replayed": true,
+      "status": "created"
+    },
+    "T3.an_order_nobody_paid_for_gets_none": {
+      "refused": "order_not_fulfillable"
+    },
+    "T4.handover_before_a_label_is_refused": {
+      "refused": "handover_without_label"
+    },
+    "T5.the_label_stage_completes": {
+      "replayed": false,
+      "status": "label_created"
+    },
+    "T6.the_parcel_is_handed_over": {
+      "replayed": false,
+      "status": "handed_over"
+    },
+    "T7.handing_it_over_again_replays": {
+      "replayed": true,
+      "status": "handed_over"
+    },
+    "T8.the_parcel_moves": {
+      "replayed": false,
+      "status": "in_transit"
+    },
+    "T9.the_parcel_arrives": {
+      "replayed": false,
+      "status": "delivered"
+    },
+    "T10.an_arrived_parcel_takes_no_more_movement": {
+      "refused": "invalid_transition"
+    },
+    "T11.cancel_after_the_label_is_refused": {
+      "refused": "cancel_after_label"
+    },
+    "T12.an_exception_is_raised": {
+      "replayed": false
+    },
+    "T13.the_hold_is_the_one_a_machine_raised": {
+      "holds": 1,
+      "by_machine": 1
+    },
+    "T14.the_notification_lands_once_and_drains": {
+      "rows": 1,
+      "drained": [
+        "O4:acked"
+      ]
+    }
+  },
+  "kernelOnly": {
+    "K1.a_fulfilment_house_packs": {
+      "replayed": false,
+      "outcome": "advanced",
+      "status": "packed"
+    },
+    "K2.it_may_not_make_a_label_of_ours": {
+      "refused": "label_stage_forbidden"
+    },
+    "K3.it_hands_over_straight_from_packed": {
+      "replayed": false,
+      "outcome": "advanced",
+      "status": "handed_over"
+    },
+    "K4.evidence_arrives_on_its_own": {
+      "replayed": false,
+      "outcome": "evidence_recorded",
+      "status": "handed_over"
+    },
+    "K5.a_carrier_packs": {
+      "replayed": false,
+      "outcome": "advanced",
+      "status": "packed"
+    },
+    "K6.it_may_not_hand_over_before_its_own_label": {
+      "refused": "handover_without_label"
+    },
+    "K7.nobody_tells_a_carrier_anything": {
+      "refused": "evidence_channel_unsupported"
+    },
+    "K8.it_is_asked_instead": {
+      "replayed": false,
+      "outcome": "evidence_recorded",
+      "status": "packed"
+    },
+    "K9.a_second_reference_leaves_the_first_in_place": {
+      "replayed": false,
+      "outcome": "evidence_recorded",
+      "status": "packed"
+    },
+    "K10.the_reference_ledger_is_append_only": {
+      "refs": 2,
+      "newest": "POLL-2"
+    },
+    "K11.a_shipment_somebody_else_holds_cannot_be_cancelled": {
+      "refused": "dispatch_outstanding"
+    },
+    "K12.a_selection_with_a_route_is_routed": {
+      "replayed": false,
+      "outcome": "routed",
+      "status": "created"
+    },
+    "K13.a_fail_closed_port_does_not_degrade_to_the_other_archetype": {
+      "replayed": false,
+      "outcome": "snoozed",
+      "reason": "port_retired",
+      "status": null
+    },
+    "K14.a_fail_closed_outcome_opened_no_shipment": {
+      "shipments": 0
+    },
+    "K15.an_unknown_port_falls_back": {
+      "replayed": false,
+      "outcome": "fallback",
+      "status": "created"
+    },
+    "K16.a_selection_nobody_can_read_is_retryable_and_never_a_fallback": {
+      "refused": "selection_unreadable"
+    },
+    "K17.two_connections_resolve_to_one_advance": {
+      "calls": [
+        "applied",
+        "deflected"
+      ],
+      "operations": 1,
+      "status": "in_transit"
+    }
+  }
+}

@@ -1,0 +1,92 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+dist-public-reference-ssr
+# Deploy-parity build output. It used to be unlisted because the proof always
+# deleted it on the way out; `OPENLUP_PARITY_KEEP_DIST=1` now retains the client
+# artifact for the browser hydration job, so it must not dirty the tree.
+dist-deploy-parity
+dist-deploy-parity-ssr
+.dist.ssg-*
+.dist.previous-*
+coverage/
+coverage-shard*/
+coverage-shards/
+coverage-test/
+hidden-preview-evidence/
+playwright-report/
+test-results/
+packages/core/release/
+# Runtime smoke/e2e evidence is uploaded as CI artifacts or copied into
+# docs/evidence intentionally; keep local runs out of `git add -A`.
+staging-evidence/
+hidden-preview-evidence/
+*.local
+.env
+.env.*
+# Committed op-run templates contain ONLY op:// references (no secret values).
+!.env.tpl
+!.env.preview.tpl
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+supabase/.temp/
+supabase/.branches/
+
+# Asset zips — rozpakowywane do public/ po dostawie przez designera
+*.zip
+
+# Local backup of pre-processed can images (created by
+# scripts/strip-can-image-backgrounds.mjs). Should NEVER ship.
+public/can-images-with-bg/
+
+# Derived site metadata, generated from config/site-routes.json and
+# config/public-claims.json by `npm run guard:seo-artifacts` inside `npm run build`.
+# ⚠️ INERT IN THIS REPOSITORY, where both paths are tracked and git therefore never
+# ignores them; `--check` still fails on a stale or missing tracked artifact here.
+# The rule exists for the tree this file is PUBLISHED into, which carries neither
+# path and whose route manifest is projected: there the build writes its own pair,
+# and without this rule the published CI leaves the checkout dirty and the published
+# OCI helper refuses it ("exported repository must be clean").
+public/sitemap.xml
+public/llms.txt
+
+# Local agent/session artifacts
+# `outputs/` holds agent audit/report scratch. Verify's run identity hashes
+# untracked content (`git ls-files --others --exclude-standard`), so an
+# unignored scratch file here invalidates the whole-tree proof key of every
+# stage without an input manifest — i.e. almost all of them.
+outputs/
+.claude/
+.gstack/
+SESSION_FINDINGS.md
+.context/scratch/
+.context/pr-body-*.md
+.context/*.exit
+.context/*.log
+*.tsbuildinfo
+.tsbuildinfo-*
+.eslintcache
+# Backstop for coverage singleflight sidecars. The tooling now refuses a
+# relative marker, so nothing should land here again; this keeps a stray file
+# from an older checkout out of verify's untracked-content identity hash.
+.singleflight*
+.vercel
+.env*.local

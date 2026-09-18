@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-public-reference-ssr
+.git
+.env
+.env.*
+*.log
+coverage
+.tsbuildinfo-*
+.vercel
+.vite
+supabase/migrations
+db/bootstrap/vanilla-pg
+db/private/import-bridge

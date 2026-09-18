@@ -1,0 +1,73 @@
+{
+  "transitions": 10,
+  "payload": {
+    "D1.a_document_awaiting_the_authority_is_not_offered": {
+      "offered": 0
+    },
+    "D2.an_accepted_submission_offers_the_document": {
+      "offered": 1,
+      "documentState": "accepted"
+    },
+    "D3.a_rejected_submission_leaves_it_unoffered": {
+      "offered": 0,
+      "documentState": "issued"
+    },
+    "D4.a_submission_state_the_ledger_does_not_name_is_refused": {
+      "refused": "submission_state_invalid"
+    },
+    "D5.without_the_acceptance_requirement_the_same_document_is_offered": {
+      "offered": 1
+    },
+    "D6.a_delivered_document_records_its_receipt": {
+      "status": "succeeded",
+      "attempts": 1,
+      "receipt": true
+    },
+    "D7.the_same_delivery_again_records_no_second_receipt": {
+      "delivered": 1,
+      "status": "succeeded",
+      "attempts": 1,
+      "receipt": true
+    },
+    "D8.a_contradicting_receipt_reference_is_refused": {
+      "refused": "delivery_receipt_conflict",
+      "status": "succeeded",
+      "attempts": 1,
+      "receipt": true
+    },
+    "D9.a_failed_attempt_leaves_the_document_undelivered": {
+      "delivered": 0,
+      "status": "failed",
+      "attempts": 1,
+      "receipt": false
+    },
+    "D10.an_acceptance_the_authority_took_back_closes_the_gate_again": {
+      "offered": 0,
+      "documentState": "accepted"
+    }
+  },
+  "kernelOnly": {
+    "K1.the_sealed_transport_refuses_an_undeclared_installation": {
+      "empty": "document_delivery_channel_undeclared",
+      "unknown": "document_delivery_channel_unsupported"
+    },
+    "K2.the_declared_transport_hands_off_and_the_rail_stores_what_it_returned": {
+      "status": "succeeded",
+      "attempts": 1,
+      "receipt": true,
+      "storedTheHandoff": true
+    },
+    "K3.an_acceptance_the_authority_never_referenced_is_refused": {
+      "refused": "submission_acceptance_unreferenced"
+    },
+    "K4.a_terminal_failure_stops_the_queue_offering_it": {
+      "status": "abandoned",
+      "attempts": 1,
+      "receipt": false,
+      "offeredAgain": 0
+    },
+    "K5.a_delivery_ordered_for_a_document_nobody_issued_is_refused": {
+      "refused": "delivery_document_not_issued"
+    }
+  }
+}

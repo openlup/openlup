@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.mcp.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist/mcp",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["mcp/**/*.ts"],
+  "exclude": ["mcp/**/*.test.ts", "mcp/**/*.spec.ts"]
+}

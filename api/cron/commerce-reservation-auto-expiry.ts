@@ -1,0 +1,141 @@
+import type { VercelRequest, VercelResponse } from "../../server/_lib/types/vercel.js";
+import { createSupabaseDataGateway } from "../../server/adapters/supabase/dataGateway.js";
+import {
+  readSupabaseDataGatewayEnv,
+  type SupabaseDataGatewayEnv,
+} from "../../server/adapters/supabase/dataGatewayClientFactory.js";
+import { resolveSweepConfig } from "../../server/_lib/sweeps/sweepConfig.js";
+import {
+  createManagedReservationSweepPort,
+  type ReservationSweepCounts,
+  type RetryHoldSweepCounts,
+} from "../../server/adapters/managed/commerce/reservationSweepPort.js";
+import type { DataGatewayPort } from "../../src/domains/platform-runtime/ports.js";
+import { claimJobRun, finishJobRun } from "../_cron/platformJobRunner.js";
+
+export const config = { maxDuration: 60 };
+
+const BATCH_LIMIT = 50;
+const JOB_NAME = "commerce-reservation-auto-expiry";
+const DRIVER = "vercel_cron";
+
+type Env = Record<string, string | undefined> & {
+  CRON_SECRET?: string;
+  COMMERCE_RESERVATION_AUTO_EXPIRY_ENABLED?: string;
+  COMMERCE_CHECKOUT_RESERVATION_TTL_MINUTES?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_URL?: string;
+  VITE_SUPABASE_URL?: string;
+};
+
+type GatewayFactory = (env: SupabaseDataGatewayEnv) => DataGatewayPort;
+
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
+  const result = await runCommerceReservationAutoExpiryCron(req, process.env, createSupabaseDataGateway);
+  if (result.headers?.allow) res.setHeader("Allow", result.headers.allow);
+  res.status(result.status).json(result.body);
+}
+
+export async function runCommerceReservationAutoExpiryCron(
+  req: VercelRequest,
+  env: Env = process.env,
+  gatewayFactory: GatewayFactory = createSupabaseDataGateway,
+): Promise<{ status: number; body: Record<string, unknown>; headers?: { allow?: string } }> {
+  if (req.method !== "POST" && req.method !== "GET") {
+    return { status: 405, headers: { allow: "GET, POST" }, body: { ok: false, error: "method_not_allowed" } };
+  }
+
+  const expected = env.CRON_SECRET;
+  if (!expected) {
+    return { status: 503, body: { ok: false, error: "cron_secret_required" } };
+  }
+  if (req.headers.authorization !== `Bearer ${expected}`) {
+    return { status: 401, body: { ok: false, error: "unauthorized" } };
+  }
+
+  const sweep = resolveSweepConfig(env).reservationAutoExpiry;
+  if (!sweep.enabled) {
+    return {
+      status: 200,
+      body: { ok: true, skipped: "reservation_auto_expiry_disabled", ...zeroCheckoutCounts(), retrySweep: zeroRetryCounts() },
+    };
+  }
+
+  const gatewayEnv = readSupabaseDataGatewayEnv(env);
+  if (!gatewayEnv) {
+    return { status: 503, body: { ok: false, error: "supabase_env_missing" } };
+  }
+
+  return gatewayFactory(gatewayEnv).asService(async (client) => {
+    const lease = await claimJobRun(client as never, JOB_NAME, DRIVER, 10 * 60);
+    if (!lease.acquired || !lease.runId) {
+      return { status: 200, body: { ok: true, skipped: true, reason: lease.reason } };
+    }
+
+    const now = new Date().toISOString();
+
+    try {
+      const port = createManagedReservationSweepPort(client as never);
+      const counts = await port.sweep({ now, limit: BATCH_LIMIT });
+      const retryCounts = await port.sweepRetryHolds({ now, limit: BATCH_LIMIT });
+      await finishJobRun(client as never, JOB_NAME, lease.runId, "success", {
+        checked: counts.ordersChecked + retryCounts.holdsChecked,
+        updated: counts.ordersExpired + retryCounts.holdsReleased,
+        failures: 0,
+        skipped: false,
+      }, {
+        driver: DRIVER,
+        invocationSource: "scheduled_abandoned_checkout_expiry",
+        windowMinutes: sweep.windowMinutes,
+        reservationsReleased: counts.reservationsReleased,
+        skippedPaid: counts.skippedPaid,
+        skippedTerminal: counts.skippedTerminal,
+        skippedSubscription: counts.skippedSubscription,
+        retryHoldsReleased: retryCounts.holdsReleased,
+        retryHoldsSkippedPaid: retryCounts.skippedPaid,
+      });
+
+      return {
+        status: 200,
+        body: { ok: true, windowMinutes: sweep.windowMinutes, ...counts, retrySweep: retryCounts },
+      };
+    } catch (unexpected) {
+      const reason = safeMessage(unexpected);
+      console.error("[cron/commerce-reservation-auto-expiry] unexpected error", { reason });
+      await finishJobRun(client as never, JOB_NAME, lease.runId, "failed", {
+        checked: 0,
+        updated: 0,
+        failures: 1,
+        skipped: false,
+        reason,
+      }, {
+        driver: DRIVER,
+        invocationSource: "scheduled_abandoned_checkout_expiry",
+      });
+      return { status: 500, body: { ok: false, error: unexpected instanceof Error ? "rpc_failed" : "unexpected_error" } };
+    }
+  });
+}
+
+function zeroCheckoutCounts(): ReservationSweepCounts {
+  return {
+    ordersChecked: 0,
+    ordersExpired: 0,
+    reservationsReleased: 0,
+    skippedPaid: 0,
+    skippedTerminal: 0,
+    skippedSubscription: 0,
+  };
+}
+
+function zeroRetryCounts(): RetryHoldSweepCounts {
+  return {
+    holdsChecked: 0,
+    holdsReleased: 0,
+    skippedPaid: 0,
+  };
+}
+
+function safeMessage(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 240);
+}

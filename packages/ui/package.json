@@ -1,0 +1,51 @@
+{
+  "name": "@openlup/ui",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:neutrality": "node --experimental-strip-types smoke/neutrality.ts"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "module": "./src/index.ts",
+      "development": "./src/index.ts",
+      "production": "./src/index.ts",
+      "node": "./dist/index.js",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./tokens": {
+      "types": "./src/tokens.ts",
+      "module": "./src/tokens.ts",
+      "development": "./src/tokens.ts",
+      "production": "./src/tokens.ts",
+      "node": "./dist/tokens.js",
+      "import": "./src/tokens.ts",
+      "default": "./src/tokens.ts"
+    },
+    "./primitives": {
+      "types": "./src/primitives.ts",
+      "module": "./src/primitives.ts",
+      "development": "./src/primitives.ts",
+      "production": "./src/primitives.ts",
+      "node": "./dist/primitives.js",
+      "import": "./src/primitives.ts",
+      "default": "./src/primitives.ts"
+    },
+    "./a11y": {
+      "types": "./src/a11y.ts",
+      "module": "./src/a11y.ts",
+      "development": "./src/a11y.ts",
+      "production": "./src/a11y.ts",
+      "node": "./dist/a11y.js",
+      "import": "./src/a11y.ts",
+      "default": "./src/a11y.ts"
+    }
+  }
+}

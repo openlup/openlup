@@ -1,0 +1,728 @@
+{
+  "version": 1,
+  "surfaces": [
+    {
+      "id": "orientation",
+      "when": "first orientation, the runtime map, or which document owns what",
+      "paths": [
+        "docs/ORIENTATION.md",
+        "docs/README.md"
+      ],
+      "doc": "docs/ORIENTATION.md",
+      "anchor": "#two-minute-radar"
+    },
+    {
+      "id": "truth-precedence",
+      "when": "which source wins when two sources disagree",
+      "paths": [
+        "config/orientation-truths.json"
+      ],
+      "doc": "docs/ORIENTATION.md",
+      "anchor": "#truth-precedence"
+    },
+    {
+      "id": "business-flows",
+      "when": "how the product works as a business system before touching code",
+      "paths": [
+        "docs/BUSINESS_FLOWS.md"
+      ],
+      "doc": "docs/BUSINESS_FLOWS.md",
+      "anchor": "#subscription-initial-checkout"
+    },
+    {
+      "id": "architecture",
+      "when": "architecture or boundary work across the runtime shape",
+      "paths": [
+        "docs/ARCHITECTURE.md"
+      ],
+      "doc": "docs/ARCHITECTURE.md",
+      "anchor": "#runtime-shape"
+    },
+    {
+      "id": "domain-modules",
+      "when": "adding or changing a domain module",
+      "paths": [
+        "src/domains/**",
+        "server/domains/**"
+      ],
+      "doc": "docs/DOMAIN_ARCHITECTURE.md",
+      "anchor": "#domain-map"
+    },
+    {
+      "id": "bff-endpoint",
+      "when": "adding or changing a BFF route, its client, auth, validation, or response shape",
+      "paths": [
+        "api/bff/**",
+        "server/bff/**",
+        "config/bff-route-metadata.json"
+      ],
+      "doc": "docs/BFF_CONTRACTS.md",
+      "anchor": "#adding-or-changing-an-endpoint"
+    },
+    {
+      "id": "bff-envelope",
+      "when": "the BFF response envelope or error shape",
+      "paths": [
+        "server/bff/**"
+      ],
+      "doc": "docs/BFF_CONTRACTS.md",
+      "anchor": "#envelope"
+    },
+    {
+      "id": "oms-queue",
+      "when": "the OMS queue itself",
+      "paths": [
+        "src/domains/commerce/**"
+      ],
+      "doc": "docs/OMS.md",
+      "anchor": "#1-the-queue"
+    },
+    {
+      "id": "oms-ladder",
+      "when": "the OMS attention ladder",
+      "paths": [
+        "src/domains/commerce/**",
+        "supabase/migrations/**"
+      ],
+      "doc": "docs/OMS.md",
+      "anchor": "#2-the-attention-ladder",
+      "warn": "⛔ the ladder is implemented twice (TS constant + live queue migration) and must move together"
+    },
+    {
+      "id": "oms-counters",
+      "when": "the nine OMS summary counters and the two dashboard totals",
+      "paths": [
+        "src/domains/commerce/**"
+      ],
+      "doc": "docs/OMS.md",
+      "anchor": "#3-the-nine-summary-counters-and-the-two-dashboard-totals"
+    },
+    {
+      "id": "oms-holds",
+      "when": "the OMS hold lifecycle",
+      "paths": [
+        "server/domains/commerce/**"
+      ],
+      "doc": "docs/OMS.md",
+      "anchor": "#4-the-hold-lifecycle"
+    },
+    {
+      "id": "oms-replacements",
+      "when": "replacement shipments, a second parcel on one order",
+      "paths": [
+        "src/domains/fulfillment/**",
+        "server/domains/fulfillment/**"
+      ],
+      "doc": "docs/OMS.md",
+      "anchor": "#4b-replacement-shipments--a-second-parcel-on-one-order"
+    },
+    {
+      "id": "fulfillment-status",
+      "when": "any fulfillment, carrier, OMS or customer status or label work",
+      "paths": [
+        "src/domains/fulfillment/statusMap.ts",
+        "config/fulfillment-status-map.json"
+      ],
+      "doc": "docs/FULFILLMENT_STATUS_CANON.md",
+      "anchor": "#the-master-map-contract",
+      "warn": "⛔ statusMap.ts is the authoring source; do NOT edit the generated JSON independently or add a parallel mapper"
+    },
+    {
+      "id": "payment-status",
+      "when": "payment, attempt or intent status, failure class, or provider-status mapping",
+      "paths": [
+        "src/domains/payment/**",
+        "server/domains/payment/**"
+      ],
+      "doc": "docs/PAYMENT_STATUS_CANON.md",
+      "anchor": "#3-who-owns-each-vocabulary",
+      "warn": "⛔ never generate SQL from TS; the TS constants are pinned to the SQL by src/domains/payment/payment.test.ts"
+    },
+    {
+      "id": "payment-predicates",
+      "when": "comparing an attempt status, or reaching for a named payment predicate",
+      "paths": [
+        "packages/core/src/payment/**"
+      ],
+      "doc": "docs/PAYMENT_STATUS_CANON.md",
+      "anchor": "#4-the-named-predicates",
+      "warn": "⛔ never compare an attempt status by hand where a named predicate exists"
+    },
+    {
+      "id": "payment-idempotency",
+      "when": "idempotency key, journey key, or provider key derivation on the money path",
+      "paths": [
+        "server/adapters/**"
+      ],
+      "doc": "docs/PAYMENT_IDEMPOTENCY.md",
+      "anchor": "#the-key-table",
+      "warn": "⛔ the three execution ladders emit three different key dialects; no emitted key may change without a byte-for-byte characterization test"
+    },
+    {
+      "id": "backend-supabase",
+      "when": "Supabase schema, auth, storage, or database access",
+      "paths": [
+        "supabase/**"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#supabase"
+    },
+    {
+      "id": "backend-migrations",
+      "when": "a migration, or any database change control question",
+      "paths": [
+        "supabase/migrations/**",
+        "db/**"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#migrations-and-database-change-control"
+    },
+    {
+      "id": "backend-env",
+      "when": "environment variables and how runtime configuration is read",
+      "paths": [
+        "config/environment-variables.json"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#environment-and-secrets"
+    },
+    {
+      "id": "backend-vercel-routes",
+      "when": "a Vercel API route or utility endpoint",
+      "paths": [
+        "api/**"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#vercel-api-routes"
+    },
+    {
+      "id": "transactional-email-routes",
+      "when": "the auth hook, unsubscribe, or resend webhook application route",
+      "paths": [
+        "api/auth-send-email.ts",
+        "api/unsubscribe.ts",
+        "api/resend-webhook.ts"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#vercel-api-routes"
+    },
+    {
+      "id": "edge-function-retirement",
+      "when": "an edge function, the retired supabase functions tree, or proving Deno absence",
+      "paths": [
+        "scripts/check-edge-tree-absence.ts",
+        "scripts/check-edge-function-absence.ts",
+        "src/lib/edgeFunctions.ts",
+        "config/edge-tree-absence-allowlist.json"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#edge-functions"
+    },
+    {
+      "id": "backend-deployment",
+      "when": "deployment posture: what runs where, and on which runtime",
+      "paths": [
+        "vercel.json"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#deployment-posture"
+    },
+    {
+      "id": "scheduler-job-control",
+      "when": "scheduled job control, job gating, or a cron entrypoint",
+      "paths": [
+        "api/cron/**",
+        "config/job-controls.json"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#scheduler-job-control"
+    },
+    {
+      "id": "product-catalog-authority",
+      "when": "the product catalog: energy, kcal, composition, allergens, the published product document, the storefront SSG artifacts, breed portion figures, or catalogue copy",
+      "warn": "⛔ energy comes from the published product document, never from the SKU energy column; the static `src/data/*` catalogue modules are sealed compiler inputs, so editing one renders nothing and owes `./openlup receipts`",
+      "paths": [
+        "src/overlays/*/data/catalog/**",
+        "src/overlays/*/tooling/catalog/**",
+        "src/overlays/*/data/productFaqs.ts",
+        "src/data/catalogContent.ts",
+        "src/data/products.ts",
+        "src/data/breeds/**",
+        "src/i18n/locales/*/catalog.json",
+        "server/adapters/catalogCurrentDocumentPayload.ts",
+        "server/bff/overlay/catalog-*.ts",
+        "config/product-kcal-spec.json",
+        "config/derived-artifacts.json"
+      ],
+      "doc": "docs/BACKEND.md",
+      "anchor": "#catalog-document-energy-authority"
+    },
+    {
+      "id": "catalog-publication",
+      "when": "publishing an approved catalog document into a live environment: candidate registration, the readiness census, the human approve/publish act, and the refusal codes",
+      "warn": "⛔ registration is service-role; the decision and the publication are human acts, and no automation may perform them",
+      "paths": [
+        "scripts/catalog-publication-staging-prerequisite.ts",
+        "src/overlays/*/tooling/catalog/catalog-d5-*.ts"
+      ],
+      "doc": "docs/PRODUCTION_ROLLOUTS.md",
+      "anchor": "#catalog-document-publication-on-production"
+    },
+    {
+      "id": "catalog-pricing-policy",
+      "when": "the derived subscription price policy an environment must already carry before a catalog document candidate may be published",
+      "warn": "⛔ one-way: there is no unwind, and without it `catalog_publish_candidate` refuses `catalog_publication_d5_readiness_invalid` (SQLSTATE 55000)",
+      "paths": [
+        "src/overlays/*/tooling/catalog/catalog-pricing-policy-activation.ts"
+      ],
+      "doc": "docs/PRODUCTION_ROLLOUTS.md",
+      "anchor": "#catalog-pricing-policy-activation"
+    },
+    {
+      "id": "catalog-parity-smoke",
+      "when": "the catalog parity smoke and the money-path energy pin: the deployed artifact must agree with the environment's own published catalogue",
+      "paths": [
+        "scripts/smoke-catalog-publication-parity.ts",
+        "src/overlays/*/tooling/money-path-quantity-characterization.test.ts"
+      ],
+      "doc": "docs/TESTING.md",
+      "anchor": "#catalog-publication-parity-smoke"
+    },
+    {
+      "id": "observability-events",
+      "when": "structured operational events and route logs",
+      "paths": [
+        "server/_lib/observability/**"
+      ],
+      "doc": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "anchor": "#vendor-neutral-operational-events"
+    },
+    {
+      "id": "customer-diagnostics",
+      "when": "customer diagnostics, customer diagnostic history, retained browser observations, support MCP diagnostics, operator diagnostic search, request id, x-request-id, request correlation, checkout failed, klient zgłasza błąd, customer complaint evidence, diagnostyka klienta, or debugowanie ścieżki klienta",
+      "paths": [
+        "src/domains/observability/**",
+        "server/domains/observability/**",
+        "server/adapters/customerDiagnosticHistory.ts",
+        "server/runtime/observability/**",
+        "src/lib/diagnostics/**",
+        "server/bff/platform/customer-diagnostic-events.ts",
+        "server/bff/admin/support/customer-diagnostics.ts",
+        "mcp/support/customerDiagnostics.ts",
+        ".agents/contracts/customer-diagnostic-coverage.json",
+        "supabase/migrations/*customer_diagnostic*"
+      ],
+      "doc": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "anchor": "#retained-customer-diagnostic-paths"
+    },
+    {
+      "id": "customer-journey-snapshot",
+      "when": "customer journey snapshot and canonical customer account or order support evidence",
+      "paths": [
+        "mcp/support/tools.ts"
+      ],
+      "doc": "mcp/PLAYBOOK.md",
+      "anchor": "#customer-diagnostics"
+    },
+    {
+      "id": "catalog-content-editing",
+      "when": "changing a value or a piece of copy a product page shows: which layer holds it, how a change is proposed and published, and what regenerates afterwards",
+      "warn": "⛔ the static catalogue modules are sealed compiler inputs - editing one renders nothing, moves the receipt digest and fails the build; what the page shows is the published document",
+      "paths": [
+        "src/overlays/*/data/catalog/imports/**",
+        "src/data/catalogContent.ts",
+        "src/data/products.ts",
+        "src/overlays/*/data/product*.ts",
+        "src/i18n/locales/*/catalog.json",
+        "src/data/catalog.ts",
+        "src/lib/catalogProductDisplay.ts",
+        "src/components/product/**"
+      ],
+      "doc": "docs/CATALOG_CONTENT.md",
+      "anchor": "#where-a-value-lives"
+    },
+    {
+      "id": "catalog-extension",
+      "when": "adding a seventh product or a second pack size to the catalogue: what the number six and the single net weight are compiled into, what refuses, and the ordered checklist for each",
+      "warn": "⛔ a second net weight needs an owner intent first - a sibling row at any other weight makes the publication state raise on every read, which breaks publish, rollback and every piece of evidence tooling",
+      "paths": [
+        "src/overlays/*/tooling/catalog/validate-*-source-pack.ts",
+        "src/domains/catalog/staticProductAdapter.ts",
+        "src/domains/catalog/storefrontSsgCatalog.ts",
+        "scripts/seed-commerce-v2.sql"
+      ],
+      "doc": "docs/CATALOG_EXTENSION.md",
+      "anchor": "#what-refuses"
+    },
+    {
+      "id": "platform-watchdog",
+      "when": "the platform watchdog, alerting, and ntfy paging",
+      "paths": [
+        "server/domains/platform/platformWatchdog*"
+      ],
+      "doc": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "anchor": "#platform-watchdog"
+    },
+    {
+      "id": "outbox",
+      "when": "the outbox dispatcher, email delivery debugging, or a stuck message",
+      "paths": [
+        "server/domains/communications/**"
+      ],
+      "doc": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "anchor": "#global-outbox-operations"
+    },
+    {
+      "id": "trigger-catalog",
+      "when": "the trigger catalog, physical entrypoints, or scheduled-job projections",
+      "paths": [
+        "adopter-owned scheduler configuration"
+      ],
+      "doc": "docs/TRIGGER_CATALOG_MAINTENANCE.md",
+      "anchor": "#canonical-truth"
+    },
+    {
+      "id": "oss-end-state",
+      "when": "the binding end state of the OSS split: neutralization, packages/core, one public platform monorepo, 80/20, one final split",
+      "paths": [
+        "packages/core/**"
+      ],
+      "doc": "docs/plan/oss/end-state-vision-2026-07-26.md",
+      "anchor": "#1-end-state",
+      "warn": "⛔ read the binding end state before the execution plan; nothing is public yet"
+    },
+    {
+      "id": "oss-execution",
+      "when": "the only active OSS execution plan: phases, capability ownership, stop rules",
+      "paths": [
+        "config/oss-*.json"
+      ],
+      "doc": "docs/plan/oss/platform-80-20-execution.md",
+      "anchor": "#1-decyzja-i-jednostka-postępu"
+    },
+    {
+      "id": "oss-readiness",
+      "when": "OSS candidate and blocker state, and the neutrality ratchet",
+      "paths": [
+        "config/oss-core-readiness-blockers.json"
+      ],
+      "doc": "docs/OSS_READINESS.md",
+      "anchor": "#readiness-dashboard"
+    },
+    {
+      "id": "currency-model",
+      "when": "the money shape and where the settlement currency comes from",
+      "paths": [
+        "src/lib/currency/**"
+      ],
+      "doc": "docs/CURRENCY.md",
+      "anchor": "#1-the-model-in-sixty-seconds"
+    },
+    {
+      "id": "currency-refusals",
+      "when": "currency invariants and refusal codes",
+      "paths": [
+        "src/lib/currency/**",
+        "**/commerceSettings*.ts"
+      ],
+      "doc": "docs/CURRENCY.md",
+      "anchor": "#3-invariants-and-refusal-codes"
+    },
+    {
+      "id": "secrets",
+      "when": "adding a secret, the secrets map, or env templates",
+      "paths": [
+        "config/secrets-map.json",
+        "scripts/secrets/**"
+      ],
+      "doc": "docs/SECRETS.md",
+      "anchor": "#authoritative-files"
+    },
+    {
+      "id": "secrets-rotation",
+      "when": "rotating a secret, or recovering access",
+      "paths": [
+        "scripts/secrets/**"
+      ],
+      "doc": "docs/SECRETS.md",
+      "anchor": "#operator-runbooks"
+    },
+    {
+      "id": "testing-pr-ci",
+      "when": "test or CI behaviour: what PR CI runs and how lanes are selected",
+      "paths": [
+        "vitest.config.ts",
+        ".github/workflows/pr-ci.yml"
+      ],
+      "doc": "docs/TESTING.md",
+      "anchor": "#pr-ci"
+    },
+    {
+      "id": "testing-coverage",
+      "when": "coverage thresholds and changed-runtime coverage",
+      "paths": [
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "doc": "docs/TESTING.md",
+      "anchor": "#coverage"
+    },
+    {
+      "id": "testing-regression",
+      "when": "the regression matrix, smoke and E2E limits",
+      "paths": [
+        "tests/**"
+      ],
+      "doc": "docs/TESTING.md",
+      "anchor": "#regression-matrix"
+    },
+    {
+      "id": "test-map",
+      "when": "which kinds of tests exist, where each lives, and which local stage and CI job runs each",
+      "paths": [
+        "tests/**",
+        "config/ci-vitest-tooling-tests.json",
+        "config/ci-vitest-impact.json",
+        "config/ci-vitest-impact/**",
+        "scripts/ci-vitest-groups.ts",
+        "scripts/ci-vitest-tooling-lane.ts",
+        "scripts/ci-impacted-vitest.ts"
+      ],
+      "doc": "docs/TESTING.md",
+      "anchor": "#the-test-map-kinds-sources-of-truth-and-where-each-runs"
+    },
+    {
+      "id": "quality-tooling",
+      "when": "doctor, verify, proofs, the broker, caches, stamps, or impacted-test behaviour",
+      "paths": [
+        "scripts/openlup/**",
+        "config/verify-stage-inputs.json",
+        "config/focused-proofs.json"
+      ],
+      "doc": "docs/OPENLUP_QUALITY_TOOLING.md",
+      "anchor": "#what-each-command-proves"
+    },
+    {
+      "id": "rollouts",
+      "when": "a deploy-sensitive change, a production smoke run, or production promotion",
+      "paths": [
+        ".github/workflows/**",
+        "scripts/deploy-*",
+        "vercel.json"
+      ],
+      "doc": "docs/PRODUCTION_ROLLOUTS.md",
+      "anchor": "#promotion-path-canonical--read-this-first"
+    },
+    {
+      "id": "ui-colors",
+      "when": "colour tokens and their semantic roles",
+      "paths": [
+        "src/index.css"
+      ],
+      "doc": "DESIGN.md",
+      "anchor": "#2-kolory"
+    },
+    {
+      "id": "ui-typography",
+      "when": "typography scale and type tokens",
+      "paths": [
+        "src/components/**"
+      ],
+      "doc": "DESIGN.md",
+      "anchor": "#3-typografia"
+    },
+    {
+      "id": "ui-spacing",
+      "when": "spacing, layout, radius and elevation",
+      "paths": [
+        "src/components/**",
+        "src/pages/**"
+      ],
+      "doc": "DESIGN.md",
+      "anchor": "#4-spacing--layout"
+    },
+    {
+      "id": "ui-motion",
+      "when": "motion and transitions",
+      "paths": [
+        "src/components/**"
+      ],
+      "doc": "DESIGN.md",
+      "anchor": "#7-motion"
+    },
+    {
+      "id": "ui-a11y",
+      "when": "accessibility baseline for a component",
+      "paths": [
+        "src/components/**"
+      ],
+      "doc": "DESIGN.md",
+      "anchor": "#8-a11y-baseline"
+    },
+    {
+      "id": "forms-modes",
+      "when": "form validation and schema modes: strictSubmit, legacyPermissive, warningOnly",
+      "paths": [
+        "src/lib/schemas/**"
+      ],
+      "doc": "docs/CANONICAL_FORM_FIELDS.md",
+      "anchor": "#validation-modes",
+      "warn": "⛔ do not tighten BFF/DB contracts or legacy payload shapes unless that contract migration is explicitly in scope"
+    },
+    {
+      "id": "forms-fields",
+      "when": "which reusable canonical form fields and shared components already exist",
+      "paths": [
+        "src/components/forms/**"
+      ],
+      "doc": "docs/CANONICAL_FORM_FIELDS.md",
+      "anchor": "#available-canonical-fields"
+    },
+    {
+      "id": "forms-adding",
+      "when": "adding or changing a canonical field",
+      "paths": [
+        "src/lib/schemas/fields/**"
+      ],
+      "doc": "docs/CANONICAL_FORM_FIELDS.md",
+      "anchor": "#adding-or-changing-a-field"
+    },
+    {
+      "id": "seo-content",
+      "when": "SEO or content-programme work: landing pages, keywords, sitemap, meta",
+      "paths": [
+        "src/components/breed/**",
+        "src/components/Seo.tsx"
+      ],
+      "doc": "docs/SEO_CONTENT_PLAN.md",
+      "anchor": "#1-current-state--what-we-have-what-we-do-not",
+      "warn": "⛔ the compliance note at the top of that document is binding on copy"
+    },
+    {
+      "id": "advice-content",
+      "when": "advice articles, guides, FAQ content, the /porady or /advice content site, marketing content",
+      "paths": [
+        "config/vercel-static-sections.json.fragment"
+      ],
+      "doc": "docs/SEO_CONTENT_PLAN.md",
+      "anchor": "#46-advice-site-porady-advice-lives-in-the-marketing-repository",
+      "warn": "⛔ the content itself lives in the separate `marketing` repository; this tree carries only the two routing prefixes"
+    },
+    {
+      "id": "resource-orchestrator",
+      "when": "local machine pressure, resource lanes, the broker, or leases",
+      "paths": [
+        "scripts/ai-resource-gate.sh"
+      ],
+      "doc": "docs/LOCAL_RESOURCE_ORCHESTRATOR.md",
+      "anchor": "#resource-strategy"
+    },
+    {
+      "id": "migration-authoring",
+      "when": "authoring a migration: its header, the catalog it belongs to, and the guards it must pass",
+      "paths": [
+        "supabase/migrations/**",
+        "scripts/check-migration-header-truth.ts"
+      ],
+      "doc": "docs/MIGRATIONS.md",
+      "anchor": "#pr-and-merge-queue-guards",
+      "warn": "⛔ a full-body function replace needs a header written from scratch for THIS delta; a copied header is byte-identical and fails the guard"
+    },
+    {
+      "id": "staging-environment",
+      "when": "the staging environment: its topology, canonical names, safety rules and rollout trigger",
+      "paths": [
+        "scripts/deploy-staging.sh",
+        "config/staging-env-plan.json"
+      ],
+      "doc": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "anchor": "#environments--vercel-topology-authoritative"
+    },
+    {
+      "id": "staging-batching",
+      "when": "batching and batch counting for a staging deploy: runtime changes counted into a batch of five, the frozen target, the buffer, and who may force a dispatch",
+      "paths": [
+        ".github/workflows/staging-*",
+        ".github/workflows/auto-deploy-*",
+        ".github/workflows/hidden-preview-*"
+      ],
+      "doc": "docs/PRODUCTION_ROLLOUTS.md",
+      "anchor": "#merge-to-staging-automation",
+      "warn": "A batch of one to four runtime merges has no timeout and creates no candidate; force=true is a human act on current main and is refused for automation actors."
+    },
+    {
+      "id": "release-evidence",
+      "when": "production releases: the evidence a release carries, its staging statuses and immutable URL",
+      "paths": [
+        ".github/workflows/release-production.yml"
+      ],
+      "doc": "docs/RELEASES.md",
+      "anchor": "#required-evidence"
+    },
+    {
+      "id": "self-hosting",
+      "when": "an adopter deployment: the configuration it requires",
+      "paths": [
+        "deploy/**"
+      ],
+      "doc": "docs/SELF_HOSTING.md",
+      "anchor": "#required-configuration"
+    },
+    {
+      "id": "feature-flags",
+      "when": "a feature flag entry and where flags are registered",
+      "paths": [
+        "config/feature-flags.json"
+      ],
+      "doc": "docs/FEATURE_ENV_REGISTRY.md",
+      "anchor": "#feature-flags"
+    },
+    {
+      "id": "ci-lanes",
+      "when": "which CI lane a change selects and what each lane runs",
+      "paths": [
+        ".github/workflows/pr-ci.yml",
+        "scripts/ci-scope*"
+      ],
+      "doc": "docs/TESTING.md",
+      "anchor": "#pr-ci"
+    },
+    {
+      "id": "shard-weights",
+      "when": "re-pinning the vitest shard weight manifest",
+      "paths": [
+        "config/ci-vitest-durations.json",
+        "scripts/update-ci-vitest-durations.ts"
+      ],
+      "doc": "docs/TESTING.md",
+      "anchor": "#re-pinning-the-shard-weight-manifest"
+    },
+    {
+      "id": "parity-host-ports",
+      "when": "host port allocation for the parity jobs and their service containers",
+      "paths": [
+        ".github/workflows/node-docker-smoke.yml"
+      ],
+      "doc": "docs/TESTING.md",
+      "anchor": "#parity-job-host-port-contract"
+    },
+    {
+      "id": "axiom",
+      "when": "Axiom activation and the Sentry/Axiom split",
+      "paths": [
+        "scripts/*axiom*"
+      ],
+      "doc": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "anchor": "#axiom-activation"
+    },
+    {
+      "id": "provider-independent-mechanisms",
+      "when": "vendor lock-in, portability, provider independence, provider hook or webhook callback, exit path",
+      "paths": [
+        "docs/adr/003-provider-independent-mechanisms.md"
+      ],
+      "doc": "docs/PLATFORM_PROVIDER_PLUGIN_GUIDE.md",
+      "anchor": "#provider-independent-mechanisms"
+    }
+  ]
+}

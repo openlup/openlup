@@ -1,0 +1,308 @@
+{
+  "transitions": 18,
+  "payload": {
+    "T1.claim_respects_aggregate_barrier": [
+      "A1",
+      "B1",
+      "C1",
+      "D1",
+      "F1",
+      "G1",
+      "H1"
+    ],
+    "T2.state_after_first_claim": [
+      {
+        "label": "A1",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "processing",
+        "attempts": 1,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "A2",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "pending",
+        "attempts": 0,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": false,
+        "availableAt": "<=now",
+        "processedAt": null
+      },
+      {
+        "label": "B1",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "processing",
+        "attempts": 1,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "C1",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "processing",
+        "attempts": 8,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "D1",
+        "event_type": "platform.rail_probe.beta",
+        "status": "processing",
+        "attempts": 1,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "E0",
+        "event_type": "platform.rail_probe.foreign",
+        "status": "pending",
+        "attempts": 0,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": false,
+        "availableAt": "<=now",
+        "processedAt": null
+      },
+      {
+        "label": "E1",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "pending",
+        "attempts": 0,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": false,
+        "availableAt": "<=now",
+        "processedAt": null
+      },
+      {
+        "label": "F1",
+        "event_type": "platform.rail_probe.beta",
+        "status": "processing",
+        "attempts": 1,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "G1",
+        "event_type": "platform.rail_probe.beta",
+        "status": "processing",
+        "attempts": 1,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "H1",
+        "event_type": "platform.rail_probe.beta",
+        "status": "processing",
+        "attempts": 1,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      }
+    ],
+    "T3.ack_requires_the_claim_token": {
+      "withHeldToken": true,
+      "withWrongToken": false
+    },
+    "T4.barrier_releases_with_its_prior": [
+      "A2"
+    ],
+    "T5.retry_defers_without_spending_an_attempt": "failed",
+    "T6.discard_is_permanent": "discarded",
+    "T7.retry_at_the_ceiling_becomes_a_discard": "discarded",
+    "T8.snooze_refunds_the_attempt": "snoozed",
+    "T9.release_returns_every_claimed_row": 3,
+    "T10.ack_after_release_is_reported_not_applied": "missed",
+    "T11.unknown_prior_blocks_its_aggregate": [],
+    "T12.dormant_declaration_releases_it": [
+      "E1"
+    ],
+    "T13.empty_allowlist_is_refused": {
+      "code": "22023",
+      "message": "outbox_claim_allowlist_required"
+    },
+    "T14.final_ledger": [
+      {
+        "label": "A1",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "processed",
+        "attempts": 1,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": "<=now"
+      },
+      {
+        "label": "A2",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "failed",
+        "attempts": 1,
+        "error": "probe retry A2",
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "B1",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "discarded",
+        "attempts": 1,
+        "error": "probe discard B1",
+        "discardReason": "permanent_error",
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "C1",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "discarded",
+        "attempts": 8,
+        "error": "probe retry C1",
+        "discardReason": "max_attempts",
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "D1",
+        "event_type": "platform.rail_probe.beta",
+        "status": "failed",
+        "attempts": 0,
+        "error": "probe snooze D1",
+        "discardReason": null,
+        "snoozeCount": 1,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "E0",
+        "event_type": "platform.rail_probe.foreign",
+        "status": "pending",
+        "attempts": 0,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": false,
+        "availableAt": "<=now",
+        "processedAt": null
+      },
+      {
+        "label": "E1",
+        "event_type": "platform.rail_probe.alpha",
+        "status": "processing",
+        "attempts": 1,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": ">now",
+        "processedAt": null
+      },
+      {
+        "label": "F1",
+        "event_type": "platform.rail_probe.beta",
+        "status": "pending",
+        "attempts": 0,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": "<=now",
+        "processedAt": null
+      },
+      {
+        "label": "G1",
+        "event_type": "platform.rail_probe.beta",
+        "status": "pending",
+        "attempts": 0,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": "<=now",
+        "processedAt": null
+      },
+      {
+        "label": "H1",
+        "event_type": "platform.rail_probe.beta",
+        "status": "pending",
+        "attempts": 0,
+        "error": null,
+        "discardReason": null,
+        "snoozeCount": null,
+        "hasClaimToken": true,
+        "availableAt": "<=now",
+        "processedAt": null
+      }
+    ],
+    "T15.concurrent_claims_are_disjoint": {
+      "pool": 30,
+      "firstBatch": 10,
+      "secondBatch": 10,
+      "overlap": 0,
+      "union": 20
+    },
+    "T16.no_row_was_claimed_twice": {
+      "rows": 20,
+      "attempts": [
+        1
+      ],
+      "statuses": [
+        "processing"
+      ]
+    },
+    "T17.the_remainder_survives_the_contention": {
+      "acked": 20,
+      "remainder": 10,
+      "poolFullyAccountedFor": true
+    },
+    "T18.failure_after_claim_recovers_in_a_later_worker_run": {
+      "failed": 1,
+      "recovered": 1,
+      "status": "processed",
+      "attempts": 2,
+      "error": null,
+      "processedAt": "<=now"
+    }
+  }
+}

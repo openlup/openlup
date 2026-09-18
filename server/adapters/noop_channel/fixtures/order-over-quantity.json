@@ -1,0 +1,64 @@
+{
+  "contractVersion": "channel.order.v1",
+  "channelSlug": "sim-market",
+  "externalOrderRef": "SIM-1002",
+  "externalOrderRevision": "r1",
+  "providerEventId": "sim-evt-1002",
+  "placedAt": "2026-08-12T10:00:00Z",
+  "currency": "EUR",
+  "buyer": {
+    "externalCustomerRef": "BUYER-1",
+    "email": "Relay+ABC@marketplace.test",
+    "emailIsMasked": true,
+    "firstName": "Ada",
+    "lastName": "Lovelace",
+    "phone": "+49301234567",
+    "taxId": "DE123456789",
+    "companyName": "Analytical Engines GmbH"
+  },
+  "shipTo": {
+    "recipientName": "Ada Lovelace",
+    "line1": "Hauptstr 1",
+    "line2": null,
+    "postalCode": "10115",
+    "city": "Berlin",
+    "countryCode": "DE",
+    "phone": null,
+    "pickupPointRef": null
+  },
+  "lines": [
+    {
+      "externalLineRef": "L1",
+      "sellable": {
+        "kind": "sku",
+        "externalOfferRef": "OFFER-PROBE-B",
+        "skuCode": "PROBE-B"
+      },
+      "quantity": 5,
+      "unitGrossMinor": 400,
+      "lineGrossMinor": 2000,
+      "lineDiscountMinor": 0,
+      "vatRateBps": null
+    }
+  ],
+  "shipping": {
+    "grossMinor": 0,
+    "discountMinor": 0,
+    "methodLabel": "Standard",
+    "carrierHint": null
+  },
+  "totals": {
+    "itemsGrossMinor": 2000,
+    "itemsDiscountMinor": 0,
+    "shippingGrossMinor": 0,
+    "shippingDiscountMinor": 0,
+    "grandTotalMinor": 2000
+  },
+  "payment": {
+    "state": "paid_externally",
+    "externalPaymentRef": "PAY-SIM-1002",
+    "paidAt": "2026-08-12T10:05:00Z",
+    "methodLabel": "marketplace-wallet"
+  },
+  "payloadDigest": "digest-SIM-1002"
+}

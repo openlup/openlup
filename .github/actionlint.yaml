@@ -1,0 +1,7 @@
+paths:
+  .github/workflows/auto-enqueue-green-prs.yml:
+    ignore:
+      # actionlint 1.7.12 predates this v3 input. The pinned v3 commit's
+      # action.yml defines permission-merge-queues; the workflow contract test
+      # keeps the required exact permission set fail closed.
+      - 'input "permission-merge-queues" is not defined in action "actions/create-github-app-token@v3"'

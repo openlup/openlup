@@ -1,0 +1,15 @@
+# Issue routing for OpenLup.
+#
+# Blank issues are disabled on purpose. An unstructured issue costs more to
+# triage than it costs to file, and that asymmetry is what buries a small
+# maintainer team. Every report enters through a form that asks for the two
+# things triage cannot proceed without: a version and a reproduction.
+#
+# GitHub surfaces `.github/SUPPORT.md` in this chooser on its own. Read it
+# before filing: it states what is supported, and states plainly that there is
+# no service-level agreement of any kind.
+#
+# When a public discussion venue exists, add it here as a contact link. It is
+# deliberately absent rather than guessed: a routing link that does not resolve
+# sends people nowhere and is worse than no link.
+blank_issues_enabled: false

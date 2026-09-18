@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "description": "Adopters own rollout metadata and defaults; these names remain the framework's typed flag contract.",
+  "flags": [
+    {
+      "name": "COMMERCE_ACCOUNTING_PREVIEW_UI_ENABLED"
+    },
+    {
+      "name": "COMMERCE_ACCOUNTING_TEST_PDF_ENABLED"
+    },
+    {
+      "name": "COMMERCE_CONFIGURATOR_INTENT_PERSISTENCE_ENABLED"
+    },
+    {
+      "name": "COMMERCE_CUSTOMER_ADDRESSES_ENABLED"
+    },
+    {
+      "name": "COMMERCE_CUSTOMER_PREFERENCES_ENABLED"
+    },
+    {
+      "name": "COMMERCE_CUSTOMER_SELF_SERVICE_ENABLED"
+    },
+    {
+      "name": "COMMERCE_DHL_ONLY_DELIVERY"
+    },
+    {
+      "name": "COMMERCE_OFFER_POLICY_V1_FALLBACK_DISABLED"
+    },
+    {
+      "name": "COMMERCE_OFFER_POLICY_V2_ENABLED"
+    },
+    {
+      "name": "COMMERCE_OUTBOX_DISPATCH_ENABLED"
+    },
+    {
+      "name": "COMMERCE_PROVIDER_PAYMENTS_ENABLED"
+    },
+    {
+      "name": "COMMERCE_PROVIDER_WEBHOOKS_ENABLED"
+    },
+    {
+      "name": "COMMERCE_PSP_RECOVERY_ENABLED"
+    },
+    {
+      "name": "COMMERCE_RISK_CHECKOUT_BLOCKLIST_BLOCKING_ENABLED"
+    },
+    {
+      "name": "COMMERCE_RISK_EVALUATION_ENABLED"
+    },
+    {
+      "name": "COMMERCE_STARTER_PACK_ENABLED"
+    },
+    {
+      "name": "COMMERCE_SUBSCRIPTION_GENERIC_BUNDLE_ACTIONS_ENABLED"
+    },
+    {
+      "name": "COMMERCE_SUBSCRIPTION_MUTATIONS_ENABLED"
+    },
+    {
+      "name": "COMMERCE_V2_W11_ALLOW_HIDDEN_REHEARSAL_PAYMENT"
+    },
+    {
+      "name": "COMMERCE_V2_W11_CHECKOUT_LIVE"
+    },
+    {
+      "name": "COMMERCE_V2_W11_SUBSCRIPTION_CHECKOUT_CONTRACT_ENABLED"
+    },
+    {
+      "name": "COMMERCE_V2_W12_CUSTOMER_AUTH_UI"
+    },
+    {
+      "name": "COMMERCE_V2_W2_PRICING_RESOLVER"
+    },
+    {
+      "name": "PAYMENTS_STRIPE_SANDBOX_ENABLED"
+    },
+    {
+      "name": "PAYMENTS_TPAY_ENABLED"
+    },
+    {
+      "name": "PAYMENTS_TPAY_PRODUCTION_ENABLED"
+    },
+    {
+      "name": "PAYMENTS_TPAY_SANDBOX_ENABLED"
+    },
+    {
+      "name": "PAYMENTS_TPAY_SIMULATOR_ENABLED"
+    },
+    {
+      "name": "PAYMENTS_TPAY_VERIFIED_TEST_MODE_ENABLED"
+    }
+  ]
+}

@@ -1,0 +1,134 @@
+{
+  "transitions": 12,
+  "payload": {
+    "A1.a_paid_order_owes_a_document": {
+      "status": "issue_requested",
+      "documents": 1
+    },
+    "A2.requesting_it_again_writes_no_second_document": {
+      "documents": 1
+    },
+    "A3.an_order_nobody_paid_for_owes_none": {
+      "refused": "order_not_paid",
+      "documents": 0
+    },
+    "A4.positions_one_minor_unit_short_of_the_total_are_refused": {
+      "refused": "position_sum_mismatch",
+      "documents": 0
+    },
+    "A5.correcting_a_document_that_does_not_exist": {
+      "refused": "document_not_found"
+    },
+    "A6.correcting_a_document_nobody_issued": {
+      "refused": "correction_state_invalid"
+    },
+    "A7.correcting_an_accepted_document_moves_the_original": {
+      "status": "correction_requested",
+      "correction_status": "requested"
+    },
+    "L1.the_shipped_port_claims_a_run": {
+      "acquired": true,
+      "reason": "acquired"
+    },
+    "L2.a_second_claim_sees_a_live_lease": {
+      "acquired": false,
+      "reason": "lease_active"
+    },
+    "L3.the_holder_releases_it": {
+      "held": false
+    },
+    "L4.a_token_that_never_held_the_lease_releases_nothing": {
+      "held": true
+    },
+    "L5.an_invocation_nobody_sourced_is_an_error": {
+      "refused": "invocation_source_required"
+    }
+  },
+  "kernelOnly": {
+    "K1.the_lifecycle_walks_one_named_step_at_a_time": {
+      "status": "issued"
+    },
+    "K2.a_move_the_allowlist_forbids": {
+      "refused": "invalid_transition"
+    },
+    "K3.a_provider_reference_is_written_once": {
+      "refused": "provider_reference_immutable"
+    },
+    "K4.a_refunded_order_is_reversed_into_a_correction": {
+      "status": "draft"
+    },
+    "K5.the_correction_carries_the_negated_positions": {
+      "documents": 2,
+      "declared": 0,
+      "positions": 0
+    },
+    "K6.a_correction_of_a_correction": {
+      "refused": "correction_of_a_correction"
+    },
+    "K7.an_order_nobody_reversed": {
+      "refused": "order_not_reversed"
+    },
+    "K8.the_queue_hands_out_every_outstanding_obligation": [
+      "correction",
+      "correction",
+      "issue",
+      "issue"
+    ],
+    "K9.the_claim_token_is_the_authorization": {
+      "settled": true,
+      "stale": false,
+      "failed": "failed"
+    },
+    "K10.an_empty_allowlist_is_refused_never_widened": {
+      "refused": "queue_allowlist_required"
+    },
+    "K11.two_connections_resolve_to_one_document": {
+      "outcomes": [
+        "answered",
+        "answered"
+      ],
+      "documents": 1
+    },
+    "K12.the_handover_notification_lands_once_and_drains": {
+      "rows": 1,
+      "drained": [
+        true
+      ]
+    },
+    "K13.a_job_nobody_configured_admits_its_first_runner": {
+      "acquired": true,
+      "control": {
+        "enabled": true,
+        "active_driver": "operator"
+      }
+    },
+    "K14.the_shipped_paid_order_port_request_and_replay_have_one_durable_receipt": {
+      "replayed": [
+        false,
+        true
+      ],
+      "sameDocument": true,
+      "referenceMatches": true,
+      "durable": {
+        "documents": 1,
+        "positions": 1,
+        "requests": 1,
+        "operations": 1,
+        "declared_total": 12300,
+        "position_quantity": 1,
+        "position_unit_gross": 12300,
+        "position_total_gross": 12300,
+        "descriptions": [
+          "order position 1"
+        ],
+        "tax_rates": [
+          0
+        ],
+        "status": "issue_requested",
+        "provider_kind": "captured",
+        "stored_reference": "order:7d2c0e10-0003-4000-8000-000000000005:base",
+        "request_key_matches": true
+      }
+    }
+  }
+}

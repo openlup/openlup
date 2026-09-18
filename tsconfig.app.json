@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    // `deployment-overlay` so this checkout typechecks against the owner its own
+    // dev server, build and Vitest resolve; without it a component would be checked
+    // against the platform example while it runs on this deployment's data. Inert in
+    // the published tree: publication projects `imports` to bare default strings, so
+    // no condition survives for this to select. Owner ruling of 2026-08-13 amending
+    // section 1.4 of `docs/plan/oss-neutral-email-templates.md`.
+    "customConditions": ["core-source", "deployment-overlay"],
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": false,
+    "noImplicitAny": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "skipLibCheck": true,
+    "strict": false,
+    "target": "ES2020",
+    "types": [
+      "vitest/globals",
+      "node"
+    ],
+    "useDefineForClassFields": true
+  },
+  "include": [
+    "src"
+  ]
+}

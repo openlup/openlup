@@ -1,0 +1,19 @@
+# Squawk — Postgres migration safety linter for the auto-apply rollout (step 2).
+# Pinned to prod's Postgres major (supabase/config.toml major_version = 17).
+# assume_in_transaction: Supabase wraps each migration file in a transaction, so
+# CONCURRENTLY-in-transaction and similar are correctly flagged.
+# Only lock/rewrite/destructive/rename/constraint/index safety rules are on; pure
+# style/preference rules are excluded to avoid noise. require-timeout-settings is
+# excluded because the auto-apply runner sets lock_timeout/statement_timeout
+# centrally (rollout step 6) rather than per-migration.
+pg_version = "17.0"
+assume_in_transaction = true
+excluded_rules = [
+  "prefer-text-field",
+  "prefer-bigint-over-int",
+  "prefer-bigint-over-smallint",
+  "prefer-identity",
+  "prefer-robust-stmts",
+  "prefer-timestamptz",
+  "require-timeout-settings",
+]

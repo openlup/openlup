@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "description": "The bounded preview has no managed platform functions or cron registrations; adopters compose runtime adapters explicitly.",
+  "functions": {},
+  "crons": [],
+  "reserved": {
+    "node": {},
+    "scheduler": {},
+    "blob": {}
+  }
+}

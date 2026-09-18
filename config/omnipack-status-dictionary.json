@@ -1,0 +1,108 @@
+{
+  "$comment": "OmniPack fulfilment PRIMARY status vocabulary. Source of truth = the OmniPack API `status` enum documented at https://docs.omnipack.tech (api/v1 + api/v2), reconciled with live stage getFulfilments payloads harvested 2026-07-09 from inbound_provider_events (status/subStatus), and vendor confirmation on 2026-07-24. `observedSubStatuses` keeps its historical field name: entries may be live-observed or explicitly vendor-confirmed. The reconciliation worker maps on the primary `status` only; `subStatus` is recorded verbatim as evidence but never drives the local state. Unknown/UNKNOWN primary statuses quarantine as omnipack_unknown_provider_status. Comparison is on a canonical token (trim, lowercase, [space/_/-]+ -> _). This A->B dictionary is Layer A; every localStatus here MUST land in the cross-layer master map config/fulfillment-status-map.json (verified by src/domains/fulfillment/statusMap.test.ts). See docs/FULFILLMENT_STATUS_CANON.md and omnipackReconciliationWorker.test.ts.",
+  "source": "omnipack_api_status_enum_v1_v2 + live_stage_getfulfilments + vendor_confirmation_2026-07-24",
+  "confirmedOn": "2026-07-24",
+  "docs": "https://docs.omnipack.tech",
+  "statuses": [
+    {
+      "status": "NEW",
+      "doc": "Fulfilment is new (created or on hold). Its sub-status detail does not prove WMS acceptance, stock coverage, label generation, or literal picking.",
+      "localStatus": "provider_received",
+      "effect": "evidence_only",
+      "observedSubStatuses": [
+        "VALIDATION_PENDING",
+        "READY_FOR_EXPORT",
+        "EXPORTED"
+      ]
+    },
+    {
+      "status": "IN_FULFILLMENT",
+      "doc": "Fulfilment is in provider warehouse execution. This maps to coarse warehouse-preparation evidence and does not prove literal picking.",
+      "localStatus": "picking",
+      "effect": "evidence_only",
+      "observedSubStatuses": [
+        "EXPORTED",
+        "PICKING",
+        "PICKED"
+      ]
+    },
+    {
+      "status": "READY_FOR_PACKING",
+      "doc": "Order picking completed, order is waiting for packing.",
+      "localStatus": "packed",
+      "effect": "provider_stock_consumed (finished-picking boundary; parity with the order.picked webhook)",
+      "observedSubStatuses": [
+        "PICKED"
+      ]
+    },
+    {
+      "status": "AWAITING_COURIER",
+      "doc": "Order is packed and waiting to be taken by courier.",
+      "localStatus": "packed",
+      "effect": "provider_stock_consumed",
+      "observedSubStatuses": [
+        "PACKED",
+        "READY_FOR_PICKUP"
+      ]
+    },
+    {
+      "status": "SHIPPING",
+      "doc": "Order is being shipped by courier. Ship boundary: handover + tracking + the 'w drodze' (shipment.dispatched) customer email.",
+      "localStatus": "in_transit",
+      "effect": "stock_consumed + handover + tracking + customer_email",
+      "observedSubStatuses": []
+    },
+    {
+      "status": "DELIVERED",
+      "doc": "Order delivered to the final receiver.",
+      "localStatus": "delivered",
+      "effect": "stock_consumed + handover + tracking",
+      "observedSubStatuses": []
+    },
+    {
+      "status": "SHIPPING_FAILED",
+      "doc": "Order shipping failed - exact reasons have to be determined manually (subStatus DELIVERY_ERROR).",
+      "localStatus": "exception",
+      "effect": "fulfillment_exception_hold (ops review + pre-handoff customer reassurance)",
+      "observedSubStatuses": [
+        "DELIVERY_ERROR"
+      ]
+    },
+    {
+      "status": "RETURNED_TO_SENDER",
+      "doc": "Order not delivered to final receiver, returned to sender.",
+      "localStatus": "exception",
+      "effect": "fulfillment_exception_hold (ops review / return signal + pre-handoff customer reassurance)",
+      "observedSubStatuses": []
+    },
+    {
+      "status": "CANCELLED",
+      "doc": "Provider reports the order cancelled; requires merchant review rather than an automatic local cancellation or refund.",
+      "localStatus": "exception",
+      "effect": "fulfillment_exception_hold (ops review + pre-handoff customer reassurance; no automatic refund or stock release)",
+      "observedSubStatuses": []
+    },
+    {
+      "status": "SUSPENDED",
+      "doc": "The order has been suspended pending clarification with merchant. For OUT_OF_STOCK, OmniPack may automatically transition the provider resource to NEW or IN_FULFILLMENT after replenishment; other exit paths are unconfirmed. ERROR only says an error occurred and remains uninterpreted without a versioned nested payload contract.",
+      "localStatus": "exception",
+      "effect": "fulfillment_exception_hold (ops review + pre-handoff customer reassurance)",
+      "observedSubStatuses": [
+        "OUT_OF_STOCK",
+        "NO_SKU",
+        "ADDR_ERROR",
+        "CARRIER_MAPPING_ERROR",
+        "MERCH_BLOCKED",
+        "NO_MATERIALS",
+        "ERROR"
+      ]
+    },
+    {
+      "status": "UNKNOWN",
+      "doc": "Status is unknown. Exceptional value, in general it shouldn't happen.",
+      "localStatus": null,
+      "effect": "quarantine (omnipack_unknown_provider_status)",
+      "observedSubStatuses": []
+    }
+  ]
+}

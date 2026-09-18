@@ -1,0 +1,13 @@
+# Projected only into a public export. The OCI helper has already loaded and
+# verified PUBLIC_REFERENCE_IMAGE; Compose is a local launcher, never a builder.
+services:
+  public-reference:
+    image: ${PUBLIC_REFERENCE_IMAGE:?PUBLIC_REFERENCE_IMAGE must name the helper-loaded immutable image ID}
+    pull_policy: never
+    ports:
+      - "127.0.0.1:${PUBLIC_REFERENCE_PORT:?PUBLIC_REFERENCE_PORT must be a run-scoped loopback port}:8080"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

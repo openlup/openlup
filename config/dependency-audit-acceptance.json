@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "acceptedAdvisories": [],
+  "rscGuard": {
+    "excludedPaths": [
+      "config/dependency-audit-acceptance.json",
+      "scripts/dependency-audit-policy.test.ts"
+    ],
+    "forbiddenTokens": [
+      "@vitejs/plugin-rsc",
+      "react-server-dom",
+      "unstable_reactRouterRSC",
+      "unstable_RSCHydratedRouter",
+      "unstable_RSCStaticRouter",
+      "unstable_createCallServer",
+      "unstable_getRSCStream",
+      "unstable_matchRSCServerRequest",
+      "unstable_routeRSCServerRequest",
+      "entry.rsc",
+      "\"use server\"",
+      "'use server'"
+    ]
+  }
+}

@@ -1,0 +1,317 @@
+{
+  "version": 1,
+  "comment": "SINGLE SOURCE OF TRUTH for fulfillment status across all layers. Layer C (customerStep) is the spine. Providers (Layer A) map ONLY to local_status (Layer B) in their own dictionary; the UI consumes only Layer C. statusMap.test.ts keeps every layer consistent.",
+  "stages": [
+    {
+      "customerStep": "paid",
+      "rank": 1,
+      "phaseIndex": 0,
+      "onTrack": true,
+      "stepLabelKey": "account:dashboard.ordersV2.steps.paid",
+      "timelineLabel": "Oplacone",
+      "trackingPhaseKey": "paid",
+      "label": {
+        "pl": "Opłacone",
+        "en": "Paid"
+      },
+      "localStatus": [],
+      "omsFulfillmentStatus": [
+        "created"
+      ],
+      "orderStatus": [
+        "paid",
+        "fulfillment_pending"
+      ],
+      "aliasTokens": [],
+      "providers": {
+        "omnipack": {
+          "status": [],
+          "note": "before dispatch to the provider"
+        },
+        "dhl": {
+          "events": []
+        }
+      },
+      "effects": {
+        "stock": "reserved",
+        "handover": false,
+        "customerEmail": false
+      }
+    },
+    {
+      "customerStep": "accepted",
+      "rank": 2,
+      "phaseIndex": 1,
+      "onTrack": true,
+      "stepLabelKey": "account:dashboard.ordersV2.steps.accepted",
+      "timelineLabel": "Przyjete do realizacji",
+      "trackingPhaseKey": "accepted",
+      "label": {
+        "pl": "Przyjęte",
+        "en": "Accepted"
+      },
+      "localStatus": [
+        "provider_received"
+      ],
+      "omsFulfillmentStatus": [
+        "label_pending",
+        "label_created"
+      ],
+      "orderStatus": [],
+      "aliasTokens": [
+        "new",
+        "accepted",
+        "processing",
+        "provider_attempt_recorded"
+      ],
+      "providers": {
+        "omnipack": {
+          "status": [
+            "NEW"
+          ],
+          "subStatusExamples": [
+            "VALIDATION_PENDING",
+            "READY_FOR_EXPORT",
+            "EXPORTED"
+          ]
+        },
+        "dhl": {
+          "events": [
+            "label_created"
+          ]
+        }
+      },
+      "effects": {
+        "stock": "reserved",
+        "handover": false,
+        "customerEmail": false
+      }
+    },
+    {
+      "customerStep": "packing",
+      "rank": 3,
+      "phaseIndex": 2,
+      "onTrack": true,
+      "stepLabelKey": "account:dashboard.ordersV2.steps.packing",
+      "timelineLabel": "Przygotowane do wysylki",
+      "trackingPhaseKey": "preparing",
+      "label": {
+        "pl": "Przygotowanie",
+        "en": "Preparing"
+      },
+      "localStatus": [
+        "picking",
+        "packed"
+      ],
+      "omsFulfillmentStatus": [
+        "packed"
+      ],
+      "orderStatus": [],
+      "aliasTokens": [
+        "picked",
+        "in_fulfillment",
+        "ready_for_packing",
+        "awaiting_courier",
+        "ready_for_pickup"
+      ],
+      "providers": {
+        "omnipack": {
+          "status": [
+            "IN_FULFILLMENT",
+            "READY_FOR_PACKING",
+            "AWAITING_COURIER"
+          ],
+          "subStatusExamples": [
+            "PICKING",
+            "PICKED",
+            "PACKED",
+            "READY_FOR_PICKUP"
+          ]
+        },
+        "dhl": {
+          "events": []
+        }
+      },
+      "effects": {
+        "stock": "consumed",
+        "handover": false,
+        "customerEmail": false
+      }
+    },
+    {
+      "customerStep": "transit",
+      "rank": 4,
+      "phaseIndex": 3,
+      "onTrack": true,
+      "stepLabelKey": "account:dashboard.ordersV2.steps.transit",
+      "timelineLabel": "W drodze",
+      "trackingPhaseKey": "in_transit",
+      "label": {
+        "pl": "W drodze",
+        "en": "In transit"
+      },
+      "localStatus": [
+        "in_transit"
+      ],
+      "omsFulfillmentStatus": [
+        "handed_over",
+        "in_transit"
+      ],
+      "orderStatus": [],
+      "aliasTokens": [
+        "shipped",
+        "shipping",
+        "out_for_delivery",
+        "dispatched"
+      ],
+      "providers": {
+        "omnipack": {
+          "status": [
+            "SHIPPING"
+          ]
+        },
+        "dhl": {
+          "events": [
+            "in_transit",
+            "out_for_delivery"
+          ]
+        }
+      },
+      "effects": {
+        "stock": "consumed",
+        "handover": true,
+        "customerEmail": "shipment.dispatched"
+      }
+    },
+    {
+      "customerStep": "delivered",
+      "rank": 7,
+      "phaseIndex": 4,
+      "onTrack": true,
+      "stepLabelKey": "account:dashboard.ordersV2.steps.delivered",
+      "timelineLabel": "Dostarczono",
+      "trackingPhaseKey": "delivered",
+      "label": {
+        "pl": "Dostarczone",
+        "en": "Delivered"
+      },
+      "localStatus": [
+        "delivered"
+      ],
+      "omsFulfillmentStatus": [
+        "delivered"
+      ],
+      "orderStatus": [
+        "fulfilled"
+      ],
+      "aliasTokens": [
+        "delivery_delivered"
+      ],
+      "providers": {
+        "omnipack": {
+          "status": [
+            "DELIVERED"
+          ]
+        },
+        "dhl": {
+          "events": [
+            "delivered"
+          ]
+        }
+      },
+      "effects": {
+        "stock": "consumed",
+        "handover": true,
+        "customerEmail": false
+      }
+    },
+    {
+      "customerStep": "exception",
+      "rank": 5,
+      "phaseIndex": 1,
+      "onTrack": false,
+      "stepLabelKey": "account:dashboard.ordersV2.status.exception",
+      "timelineLabel": "Wymaga sprawdzenia",
+      "trackingPhaseKey": "exception",
+      "label": {
+        "pl": "Wymaga sprawdzenia",
+        "en": "Needs review"
+      },
+      "localStatus": [
+        "exception"
+      ],
+      "omsFulfillmentStatus": [
+        "exception"
+      ],
+      "orderStatus": [],
+      "aliasTokens": [
+        "shipping_failed",
+        "failed",
+        "suspended",
+        "returned_to_sender"
+      ],
+      "providers": {
+        "omnipack": {
+          "status": [
+            "SUSPENDED",
+            "SHIPPING_FAILED",
+            "RETURNED_TO_SENDER",
+            "CANCELLED"
+          ]
+        },
+        "dhl": {
+          "events": [
+            "exception"
+          ]
+        }
+      },
+      "effects": {
+        "stock": "held",
+        "handover": false,
+        "customerEmail": "shipment.exception (provider exception before handoff)"
+      }
+    },
+    {
+      "customerStep": "cancelled",
+      "rank": 6,
+      "phaseIndex": 0,
+      "onTrack": false,
+      "stepLabelKey": "account:dashboard.ordersV2.status.cancelled",
+      "timelineLabel": "Anulowano",
+      "trackingPhaseKey": "cancelled",
+      "label": {
+        "pl": "Anulowano",
+        "en": "Cancelled"
+      },
+      "localStatus": [
+        "cancelled"
+      ],
+      "omsFulfillmentStatus": [
+        "cancelled"
+      ],
+      "orderStatus": [
+        "cancelled",
+        "refunded"
+      ],
+      "aliasTokens": [
+        "canceled"
+      ],
+      "providers": {
+        "omnipack": {
+          "status": [],
+          "note": "reserved for audited local cancellation"
+        },
+        "dhl": {
+          "events": [
+            "cancelled"
+          ]
+        }
+      },
+      "effects": {
+        "stock": "released",
+        "handover": false,
+        "customerEmail": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,504 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    {
+      "name": "customer-diagnostic-ingest",
+      "owner": "observability",
+      "match": "^/api/bff/platform/customer-diagnostic-events$",
+      "authMode": "public",
+      "risk": "mutation",
+      "proof": "src/domains/observability/README.md",
+      "featureFlags": [
+        "COMMERCE_CUSTOMER_DIAGNOSTIC_HISTORY_ENABLED"
+      ]
+    },
+    {
+      "name": "customer-diagnostic-read",
+      "owner": "observability",
+      "match": "^/api/bff/admin/support/customer-diagnostics$",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "src/domains/observability/README.md",
+      "featureFlags": [
+        "COMMERCE_CUSTOMER_DIAGNOSTIC_HISTORY_ENABLED",
+        "COMMERCE_AGENT_CUSTOMER_READ_ENABLED"
+      ]
+    },
+    {
+      "name": "accounting-hidden-lookup",
+      "owner": "accounting",
+      "match": "^/api/bff/accounting/",
+      "authMode": "hidden-preview-operator",
+      "risk": "provider-read",
+      "proof": "server/domains/accounting/README.md",
+      "featureFlags": [
+        "COMMERCE_ACCOUNTING_OBSERVABILITY_ENABLED"
+      ]
+    },
+    {
+      "name": "address-canon",
+      "owner": "address-canon",
+      "match": "^/api/bff/address-canon/",
+      "authMode": "public",
+      "risk": "read",
+      "proof": "src/domains/address-canon/README.md"
+    },
+    {
+      "name": "personalization",
+      "owner": "personalization",
+      "match": "^/api/bff/personalization",
+      "authMode": "public",
+      "risk": "read",
+      "proof": "src/domains/personalization/README.md",
+      "featureFlags": [
+        "COMMERCE_PERSONALIZATION_DECLENSION_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-accounting",
+      "owner": "accounting",
+      "match": "^/api/bff/admin/accounting/",
+      "authMode": "admin-session",
+      "risk": "provider-mutation",
+      "proof": "server/domains/accounting/README.md",
+      "featureFlags": [
+        "COMMERCE_ACCOUNTING_MUTATIONS_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-clients",
+      "owner": "clients",
+      "match": "^/api/bff/admin/clients/",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "src/domains/clients/README.md"
+    },
+    {
+      "name": "admin-commerce-promotion-codes-read",
+      "owner": "commerce",
+      "match": "^/api/bff/admin/commerce/promotion-codes/(list|preview)$",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "server/domains/commerce/README.md"
+    },
+    {
+      "name": "admin-commerce-promotion-codes-mutation",
+      "owner": "commerce",
+      "match": "^/api/bff/admin/commerce/promotion-codes/(create|update)$",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "server/domains/commerce/README.md"
+    },
+    {
+      "name": "admin-commerce-bundles-mutation",
+      "owner": "bundle",
+      "match": "^/api/bff/admin/commerce/bundles/(create|update|set-composition|set-target-price|archive|restore|clone-draft)$",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "server/domains/bundle/README.md",
+      "featureFlags": [
+        "COMMERCE_BUNDLE_MUTATIONS_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-commerce-bundles-read",
+      "owner": "bundle",
+      "match": "^/api/bff/admin/commerce/bundles/(list|get|history|preview-price)$",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "server/domains/bundle/README.md",
+      "featureFlags": [
+        "COMMERCE_BUNDLE_READ_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-commerce-bundles-activation",
+      "owner": "bundle",
+      "match": "^/api/bff/admin/commerce/bundles/(activate|deactivate)$",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "server/domains/bundle/README.md",
+      "featureFlags": [
+        "COMMERCE_BUNDLE_ACTIVATION_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-commerce",
+      "owner": "commerce",
+      "match": "^/api/bff/admin/commerce/(?!paid-fulfillment-recovery$|renewal-exceptions$|promotion-codes/|bundles/)",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "server/domains/commerce/README.md"
+    },
+    {
+      "name": "admin-commerce-paid-fulfillment-recovery",
+      "owner": "commerce",
+      "match": "^/api/bff/admin/commerce/paid-fulfillment-recovery$",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "server/domains/commerce/README.md",
+      "featureFlags": [
+        "COMMERCE_PAID_FULFILLMENT_RECOVERY_MUTATIONS_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-order-review",
+      "owner": "commerce",
+      "match": "^/api/bff/admin/order-review(?:/|$)",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "server/domains/commerce/README.md"
+    },
+    {
+      "name": "admin-commerce-renewal-exceptions",
+      "owner": "commerce",
+      "match": "^/api/bff/admin/commerce/renewal-exceptions$",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "server/domains/commerce/README.md",
+      "featureFlags": [
+        "COMMERCE_PSP_OBSERVABILITY_ENABLED",
+        "COMMERCE_SUBSCRIPTION_RENEWAL_RUNTIME_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-communications",
+      "owner": "communications",
+      "match": "^/api/bff/admin/communications/",
+      "authMode": "admin-session",
+      "risk": "provider-mutation",
+      "proof": "server/domains/communications/README.md"
+    },
+    {
+      "name": "admin-feedback",
+      "owner": "feedback",
+      "match": "^/api/bff/admin/feedback/",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "src/domains/feedback/README.md"
+    },
+    {
+      "name": "admin-fulfillment",
+      "owner": "fulfillment",
+      "match": "^/api/bff/admin/fulfillment/",
+      "authMode": "admin-session",
+      "risk": "provider-mutation",
+      "proof": "server/domains/fulfillment/README.md",
+      "featureFlags": [
+        "COMMERCE_FULFILLMENT_AUTO_DISPATCH_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-inventory",
+      "owner": "inventory",
+      "match": "^/api/bff/admin/inventory/",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "src/domains/inventory/README.md"
+    },
+    {
+      "name": "admin-support",
+      "owner": "support",
+      "match": "^/api/bff/admin/support/(?!customer-diagnostics$)",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "src/domains/support/README.md",
+      "featureFlags": [
+        "COMMERCE_AGENT_CUSTOMER_READ_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-marketing-research-compat",
+      "owner": "marketing",
+      "match": "^/api/bff/admin/marketing-tools/",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "src/domains/marketing/research/README.md"
+    },
+    {
+      "name": "admin-marketing-research",
+      "owner": "marketing",
+      "match": "^/api/bff/admin/marketing/research/",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "src/domains/marketing/research/README.md"
+    },
+    {
+      "name": "admin-marketing-prelaunch",
+      "owner": "marketing",
+      "match": "^/api/bff/admin/marketing/prelaunch/",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "src/domains/marketing/prelaunch/README.md"
+    },
+    {
+      "name": "admin-partners",
+      "owner": "partners",
+      "match": "^/api/bff/admin/partners/",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "src/domains/partners/README.md"
+    },
+    {
+      "name": "admin-platform-login",
+      "owner": "platform",
+      "match": "^/api/bff/admin/platform/magic-link$",
+      "authMode": "public",
+      "risk": "platform-mutation",
+      "proof": "server/domains/platform/README.md"
+    },
+    {
+      "name": "admin-platform",
+      "owner": "platform",
+      "match": "^/api/bff/admin/platform/(?!magic-link$)",
+      "authMode": "admin-session",
+      "risk": "platform-mutation",
+      "proof": "server/domains/platform/README.md"
+    },
+    {
+      "name": "admin-returns",
+      "owner": "commerce",
+      "match": "^/api/bff/admin/returns/",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "server/domains/commerce/README.md",
+      "featureFlags": [
+        "COMMERCE_RETURNS_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-risk",
+      "owner": "risk",
+      "match": "^/api/bff/admin/risk/",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "src/domains/risk/README.md",
+      "featureFlags": [
+        "COMMERCE_RISK_EVALUATION_ENABLED",
+        "COMMERCE_RISK_REVIEW_MUTATIONS_ENABLED"
+      ]
+    },
+    {
+      "name": "admin-tester-program",
+      "owner": "tester-program",
+      "match": "^/api/bff/admin/tester-program/",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "src/domains/tester-program/README.md"
+    },
+    {
+      "name": "catalog-public-bundles",
+      "owner": "bundle",
+      "match": "^/api/bff/catalog/bundles$",
+      "authMode": "public",
+      "risk": "read",
+      "proof": "server/domains/bundle/README.md",
+      "featureFlags": [
+        "COMMERCE_BUNDLE_READ_ENABLED"
+      ]
+    },
+    {
+      "name": "catalog-public",
+      "owner": "catalog",
+      "match": "^/api/bff/catalog/(?!bundles$)",
+      "authMode": "public",
+      "risk": "read",
+      "proof": "src/domains/catalog/README.md"
+    },
+    {
+      "name": "clients-public",
+      "owner": "clients",
+      "match": "^/api/bff/clients/",
+      "authMode": "public",
+      "risk": "public-form",
+      "proof": "src/domains/clients/README.md"
+    },
+    {
+      "name": "commerce-returns-customer",
+      "owner": "commerce",
+      "match": "^/api/bff/commerce/returns/request$",
+      "authMode": "customer-session",
+      "risk": "customer-mutation",
+      "proof": "server/domains/commerce/README.md",
+      "featureFlags": [
+        "COMMERCE_RETURNS_ENABLED"
+      ]
+    },
+    {
+      "name": "commerce-public",
+      "owner": "commerce",
+      "match": "^/api/bff/commerce/(?!returns/request$)",
+      "authMode": "public",
+      "risk": "mutation",
+      "proof": "server/domains/commerce/README.md",
+      "featureFlags": [
+        "COMMERCE_PROVIDER_PAYMENTS_ENABLED",
+        "COMMERCE_OUTBOX_DISPATCH_ENABLED"
+      ]
+    },
+    {
+      "name": "order-review",
+      "owner": "commerce",
+      "match": "^/api/bff/order-review(?:/|$)",
+      "authMode": "public",
+      "risk": "mutation",
+      "proof": "server/domains/commerce/README.md"
+    },
+    {
+      "name": "marketing-research-public",
+      "owner": "marketing",
+      "match": "^/api/bff/marketing/research/",
+      "authMode": "public",
+      "risk": "public-form",
+      "proof": "src/domains/marketing/research/README.md"
+    },
+    {
+      "name": "partners-public",
+      "owner": "partners",
+      "match": "^/api/bff/partners/",
+      "authMode": "public",
+      "risk": "public-form",
+      "proof": "src/domains/partners/README.md"
+    },
+    {
+      "name": "communications-public",
+      "owner": "communications",
+      "match": "^/api/bff/communications/",
+      "authMode": "public",
+      "risk": "provider-webhook",
+      "proof": "server/domains/communications/README.md"
+    },
+    {
+      "name": "company-identity",
+      "owner": "company-identity",
+      "match": "^/api/bff/company-identity/",
+      "authMode": "public",
+      "risk": "read",
+      "proof": "src/domains/company-identity/README.md"
+    },
+    {
+      "name": "reference-journey-customer-readback",
+      "owner": "commerce",
+      "match": "^/api/bff/reference-journey/customer/order-readback$",
+      "authMode": "customer-session",
+      "risk": "read",
+      "proof": "server/domains/commerce/README.md",
+      "featureFlags": [
+        "COMMERCE_CUSTOMER_SELF_SERVICE_ENABLED",
+        "COMMERCE_V2_W12_CUSTOMER_AUTH_UI"
+      ]
+    },
+    {
+      "name": "reference-journey-operator-readback",
+      "owner": "commerce",
+      "match": "^/api/bff/reference-journey/operator/order-readback$",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "server/domains/commerce/README.md",
+      "featureFlags": [
+        "COMMERCE_AGENT_CUSTOMER_READ_ENABLED"
+      ]
+    },
+    {
+      "name": "customers-passwordless-auth",
+      "owner": "customers",
+      "match": "^/api/bff/customers/(magic-link|verify-otp)$",
+      "authMode": "public",
+      "risk": "public-form",
+      "proof": "server/domains/customers/README.md"
+    },
+    {
+      "name": "customers",
+      "owner": "customers",
+      "match": "^/api/bff/customers/(?!(magic-link|verify-otp)$)",
+      "authMode": "customer-session",
+      "risk": "customer-mutation",
+      "proof": "server/domains/customers/README.md"
+    },
+    {
+      "name": "feedback",
+      "owner": "feedback",
+      "match": "^/api/bff/feedback/",
+      "authMode": "public",
+      "risk": "public-form",
+      "proof": "src/domains/feedback/README.md"
+    },
+    {
+      "name": "channels-webhook",
+      "owner": "channels",
+      "match": "^/api/bff/channels/webhooks/",
+      "authMode": "webhook-signature",
+      "risk": "provider-webhook",
+      "proof": "src/domains/channels/README.md",
+      "featureFlags": [
+        "CHANNEL_INGEST_WEBHOOK_ENABLED"
+      ]
+    },
+    {
+      "name": "channels-admin",
+      "owner": "channels",
+      "match": "^/api/bff/admin/channels/",
+      "authMode": "admin-session",
+      "risk": "read",
+      "proof": "src/domains/channels/README.md",
+      "featureFlags": [
+        "CHANNEL_INGEST_WEBHOOK_ENABLED"
+      ]
+    },
+    {
+      "name": "fulfillment-webhooks",
+      "owner": "fulfillment",
+      "match": "^/api/bff/fulfillment/webhooks/",
+      "authMode": "webhook-signature",
+      "risk": "provider-webhook",
+      "proof": "server/domains/fulfillment/README.md",
+      "featureFlags": [
+        "COMMERCE_OMNIPACK_WEBHOOKS_ENABLED",
+        "OMNIPACK_PROVIDER_ENABLED"
+      ]
+    },
+    {
+      "name": "health",
+      "owner": "platform",
+      "match": "^/api/bff/health$",
+      "authMode": "public",
+      "risk": "health",
+      "proof": "docs/platform/RUNTIME_AND_SELF_HOSTING.md"
+    },
+    {
+      "name": "payment-webhooks",
+      "owner": "payment",
+      "match": "^/api/bff/payment/webhooks/",
+      "authMode": "webhook-signature",
+      "risk": "provider-webhook",
+      "proof": "src/domains/payment/README.md",
+      "featureFlags": [
+        "COMMERCE_PROVIDER_PAYMENTS_ENABLED"
+      ]
+    },
+    {
+      "name": "shipping-public",
+      "owner": "shipping",
+      "match": "^/api/bff/shipping/",
+      "authMode": "public",
+      "risk": "read",
+      "proof": "src/domains/shipping/README.md"
+    },
+    {
+      "name": "subscription-reference-local",
+      "owner": "subscription",
+      "match": "^/api/bff/subscriptions/renewal-ticks$",
+      "authMode": "admin-session",
+      "risk": "mutation",
+      "proof": "server/domains/subscription/README.md"
+    },
+    {
+      "name": "tester-program-public",
+      "owner": "tester-program",
+      "match": "^/api/bff/tester-program/",
+      "authMode": "public",
+      "risk": "read",
+      "proof": "src/domains/tester-program/README.md"
+    }
+  ]
+}

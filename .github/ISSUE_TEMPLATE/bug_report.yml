@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in the platform behaves differently than documented.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, read `.github/SUPPORT.md` and
+        `.github/INSTALL_SUPPORT_POLICY.md`. During development preview there is
+        no full-platform candidate or supported install. State whether the report
+        concerns a bounded public check/reference or an incomplete capability.
+        After stable, only the exact released BOM/artifact install path carries
+        support.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit SHA. "latest" is not a version.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproduction-scope
+    attributes:
+      label: Reproduction scope
+      options:
+        - Bounded public check or read-only reference
+        - Incomplete platform capability (no full candidate path exists yet)
+        - Supported stable artifact (only after a stable release exists)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: >-
+        Exact steps from a clean install to the wrong behaviour. A report
+        without steps someone else can run is a description of a feeling.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected, and where the project documents that expectation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead, including exact error text. Redact secrets.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: ai-disclosure
+    attributes:
+      label: AI assistance
+      description: >-
+        Disclosure, never a ban. See `.github/AI_CONTRIBUTION_POLICY.md`.
+      options:
+        - label: An AI tool helped produce this report, and I have verified every claim in it myself.
+          required: false

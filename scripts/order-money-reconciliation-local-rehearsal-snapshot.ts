@@ -1,0 +1,71 @@
+import type { ObservabilitySnapshot } from "../src/domains/platform/observabilityContracts.ts";
+import type { OrderMoneyReconciliationSnapshot } from "../src/domains/platform/orderMoneyReconciliationContracts.ts";
+
+export function emptyObservabilitySnapshot(
+  now: Date,
+  orderMoneyReconciliation: OrderMoneyReconciliationSnapshot,
+): ObservabilitySnapshot {
+  return {
+    checkedAt: now.toISOString(),
+    runtimeFlags: {},
+    jobControls: [],
+    recentJobRuns: [],
+    queues: [],
+    recipients: [],
+    dunning: {
+      overdueRetryCount: 0,
+      expiredWithoutCustomerNoticeCount: 0,
+      failureWithoutAdminAlertCount: 0,
+      failedAdminNotificationCount: 0,
+      skippedAdminNotificationCount: 0,
+      expiredCount24h: 0,
+      recoveredCount24h: 0,
+    },
+    subscriptions: { dueCycleWithoutOrderCount: 0, upcomingDeliveryReminderMissingCount: 0 },
+    emails: {
+      criticalFailedCount: 0,
+      failedBySource: {},
+      customerTimelineFailedCount: 0,
+      customerTimelineMissedCount: 0,
+      customerTimelineOverdueCount: 0,
+      failedByPurpose: {},
+      auditIncompleteCount: 0,
+      previewProductionDomainLinkCount: 0,
+      webhookGapCount: 0,
+      communicationOutboxFailedCount: 0,
+    },
+    payments: {
+      providerPaidLocalUnpaidCount: 0,
+      localPaidProviderUnpaidCount: 0,
+      webhookMissingCount: 0,
+      stuckProcessingCount: 0,
+      amountCurrencyMismatchCount: 0,
+      signatureFailureCount: 0,
+      recoveryRequiredWithoutLinkCount: 0,
+      evidence: [],
+    },
+    accounting: {
+      shippedWithoutInvoiceCount: 0,
+      missingInvoiceHandoffs: [],
+      pendingOutboxCount: 0,
+      failedOutboxCount: 0,
+      failedCorrectionOutboxCount: 0,
+      ksefPendingTooLongCount: 0,
+      ksefRejectedCount: 0,
+      correctionKsefPendingTooLongCount: 0,
+      correctionKsefRejectedCount: 0,
+      b2cEmailFailedCount: 0,
+    },
+    omnipack: {
+      dispatchFailureCount: 0,
+      staleStockSyncCount: 0,
+      actionableShortageEvidenceCount: 0,
+      providerLowerMismatchCount: 0,
+      providerHigherMismatchCount: 0,
+      recentQuarantinedInboundCount: 0,
+      latestStatusEvidenceAt: null,
+      latestStockSyncAt: null,
+    },
+    orderMoneyReconciliation,
+  };
+}

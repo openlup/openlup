@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "table": "commerce_order_items",
+  "canonicalModuleSuffixes": [
+    "/domains/commerce/orderMoney.js",
+    "/domains/commerce/types.js"
+  ],
+  "canonicalSelectSymbols": ["ORDER_ITEM_MONEY_COLUMNS"],
+  "canonicalReaderSymbols": ["deriveOrderMoney"],
+  "restrictedColumns": [
+    "unit_price_cents",
+    "total_cents",
+    "discount_allocated_cents",
+    "effective_total_cents",
+    "effective_net_cents",
+    "vat_rate_bps"
+  ]
+}

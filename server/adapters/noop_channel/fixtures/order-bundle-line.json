@@ -1,0 +1,64 @@
+{
+  "contractVersion": "channel.order.v1",
+  "channelSlug": "sim-market",
+  "externalOrderRef": "SIM-1003",
+  "externalOrderRevision": "r1",
+  "providerEventId": "sim-evt-1003",
+  "placedAt": "2026-08-14T09:00:00Z",
+  "currency": "EUR",
+  "buyer": {
+    "externalCustomerRef": "BUYER-3",
+    "email": "Relay+XYZ@marketplace.test",
+    "emailIsMasked": true,
+    "firstName": "Grace",
+    "lastName": "Hopper",
+    "phone": null,
+    "taxId": null,
+    "companyName": null
+  },
+  "shipTo": {
+    "recipientName": "Grace Hopper",
+    "line1": "Hauptstr 7",
+    "line2": null,
+    "postalCode": "10115",
+    "city": "Berlin",
+    "countryCode": "DE",
+    "phone": null,
+    "pickupPointRef": null
+  },
+  "lines": [
+    {
+      "externalLineRef": "L1",
+      "sellable": {
+        "kind": "bundle",
+        "externalOfferRef": "OFFER-PROOF-BUNDLE",
+        "bundleCode": "proof-bundle"
+      },
+      "quantity": 3,
+      "unitGrossMinor": 1667,
+      "lineGrossMinor": 5001,
+      "lineDiscountMinor": 101,
+      "vatRateBps": null
+    }
+  ],
+  "shipping": {
+    "grossMinor": 500,
+    "discountMinor": 0,
+    "methodLabel": "Standard",
+    "carrierHint": null
+  },
+  "totals": {
+    "itemsGrossMinor": 5001,
+    "itemsDiscountMinor": 101,
+    "shippingGrossMinor": 500,
+    "shippingDiscountMinor": 0,
+    "grandTotalMinor": 5400
+  },
+  "payment": {
+    "state": "paid_externally",
+    "externalPaymentRef": "PAY-SIM-1003",
+    "paidAt": "2026-08-14T09:05:00Z",
+    "methodLabel": "marketplace-wallet"
+  },
+  "payloadDigest": "digest-SIM-1003"
+}

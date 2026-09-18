@@ -1,0 +1,63 @@
+name: Feature request
+description: Propose a provider-neutral package kernel or contract change
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Core accepts deterministic commerce rules and provider-neutral contracts. UI, storage, HTTP, job, credential, and provider-specific behavior belongs in product or adapter code. This private portability package does not make an external-adoption promise.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Capability problem
+      description: Describe the package-boundary problem without prescribing an API first.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Boundary evidence
+      description: Explain the internal package value, existing seam, or independently useful kernel constraint.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Likely package surface
+      options:
+        - subscription (candidate)
+        - bundle (candidate)
+        - pricing (candidate)
+        - experimental or testing surface
+        - new internal candidate export
+        - adapter outside core
+        - unsure
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed contract or behavior
+      description: Include inputs, outputs, failure behavior, and internal candidate drift impact.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain whether the need can be met by product or adapter code, or an existing port.
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Boundary checks
+      options:
+        - label: The proposal does not require a provider credential or provider SDK in core.
+          required: true
+        - label: The proposal does not require UI, HTTP, database, scheduler, or deployment behavior in core.
+          required: true
+        - label: I identified package-surface drift and evidence impact.
+          required: true

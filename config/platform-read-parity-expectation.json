@@ -1,0 +1,177 @@
+{
+  "reads": 17,
+  "payload": {
+    "accounts.readback": {
+      "count": null,
+      "data": {
+        "email": "read-parity-probe@example.test",
+        "id": "5f2b7c10-0000-4000-8000-000000000008",
+        "lifecycle_stage": "lead"
+      }
+    },
+    "entries.any_fallback": {
+      "count": null,
+      "data": [
+        {
+          "amount_kind": "net",
+          "id": "5f2b7c10-0000-4000-8000-000000000007",
+          "min_qty": 1,
+          "mode": "any",
+          "price_list_id": "5f2b7c10-0000-4000-8000-000000000004",
+          "unit_price_minor": 890,
+          "valid_from": "2026-01-01T00:00:00.000Z",
+          "valid_to": "2027-01-01T00:00:00.000Z",
+          "variant_id": "5f2b7c10-0000-4000-8000-000000000003"
+        }
+      ]
+    },
+    "entries.empty_in_matches_nothing": {
+      "count": null,
+      "data": []
+    },
+    "entries.tier_for_mode": {
+      "count": null,
+      "data": [
+        {
+          "amount_kind": "gross",
+          "id": "5f2b7c10-0000-4000-8000-000000000006",
+          "min_qty": 3,
+          "mode": "one_time",
+          "price_list_id": "5f2b7c10-0000-4000-8000-000000000004",
+          "unit_price_minor": 1790,
+          "valid_from": "2026-01-01T00:00:00.000Z",
+          "valid_to": "2027-01-01T00:00:00.000Z",
+          "variant_id": "5f2b7c10-0000-4000-8000-000000000002"
+        },
+        {
+          "amount_kind": "gross",
+          "id": "5f2b7c10-0000-4000-8000-000000000005",
+          "min_qty": 1,
+          "mode": "one_time",
+          "price_list_id": "5f2b7c10-0000-4000-8000-000000000004",
+          "unit_price_minor": 1990,
+          "valid_from": "2026-01-01T00:00:00.000Z",
+          "valid_to": "2027-01-01T00:00:00.000Z",
+          "variant_id": "5f2b7c10-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    "lists.active_for_region": {
+      "count": null,
+      "data": [
+        {
+          "currency": "XTS",
+          "id": "5f2b7c10-0000-4000-8000-000000000004",
+          "name": "Read parity list",
+          "region_code": "XX",
+          "status": "active",
+          "valid_from": "2026-01-01T00:00:00.000Z",
+          "valid_to": "2027-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    "products.active_by_slug": {
+      "count": null,
+      "data": [
+        {
+          "description": "Neutral fixture row",
+          "id": "5f2b7c10-0000-4000-8000-000000000001",
+          "name": "Read parity probe",
+          "slug": "read-parity-probe",
+          "status": "active"
+        }
+      ]
+    },
+    "products.missing_slug": {
+      "count": null,
+      "data": null
+    },
+    "settings.value_minor": {
+      "count": null,
+      "data": [
+        {
+          "value_minor": 1234
+        }
+      ]
+    },
+    "settings.value_text": {
+      "count": null,
+      "data": [
+        {
+          "value_text": "compact"
+        }
+      ]
+    },
+    "units.active_for_product": {
+      "count": null,
+      "data": [
+        {
+          "id": "5f2b7c10-0000-4000-8000-000000000002",
+          "is_addon": false,
+          "min_order_qty": 1,
+          "product_id": "5f2b7c10-0000-4000-8000-000000000001",
+          "sellable_in_subscription": true,
+          "sellable_standalone": true,
+          "sku": "READ-PARITY-A",
+          "status": "active",
+          "title": "Read parity unit A"
+        },
+        {
+          "id": "5f2b7c10-0000-4000-8000-000000000003",
+          "is_addon": true,
+          "min_order_qty": 2,
+          "product_id": "5f2b7c10-0000-4000-8000-000000000001",
+          "sellable_in_subscription": false,
+          "sellable_standalone": false,
+          "sku": "READ-PARITY-B",
+          "status": "active",
+          "title": "Read parity unit B"
+        }
+      ]
+    },
+    "units.addon_flag_is_false": {
+      "count": null,
+      "data": [
+        {
+          "id": "5f2b7c10-0000-4000-8000-000000000002",
+          "sku": "READ-PARITY-A"
+        }
+      ]
+    },
+    "units.count_head": {
+      "count": 2,
+      "data": null
+    },
+    "units.count_ignores_limit": {
+      "count": 2,
+      "data": [
+        {
+          "id": "5f2b7c10-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    "units.count_ignores_offset": {
+      "count": 2,
+      "data": [
+        {
+          "id": "5f2b7c10-0000-4000-8000-000000000003"
+        }
+      ]
+    },
+    "units.count_of_empty_match": {
+      "count": 0,
+      "data": null
+    },
+    "units.range_at_the_end_is_an_empty_page": {
+      "count": 2,
+      "data": []
+    },
+    "units.range_past_the_end_is_refused": {
+      "error": {
+        "code": "PGRST103",
+        "details": "An offset of 3 was requested, but there are only 2 rows.",
+        "message": "Requested range not satisfiable"
+      }
+    }
+  }
+}

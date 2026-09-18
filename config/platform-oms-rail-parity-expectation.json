@@ -1,0 +1,274 @@
+{
+  "transitions": 26,
+  "payload": {
+    "T1.hold_created_by_an_operator": {
+      "replayed": false,
+      "status": null,
+      "released": false
+    },
+    "T2.same_key_replays_instead_of_holding_twice": {
+      "replayed": true,
+      "status": null,
+      "released": null
+    },
+    "T3.a_second_live_hold_for_one_reason_is_refused": {
+      "refused": "conflict"
+    },
+    "T4.a_second_reason_is_its_own_hold": {
+      "replayed": false,
+      "status": null,
+      "released": false
+    },
+    "T5.an_actor_nobody_knows_is_refused": {
+      "refused": "actor_unknown"
+    },
+    "T6.a_hold_with_no_actor_is_refused": {
+      "refused": "invalid_input"
+    },
+    "T7.an_operator_releases_the_hold": {
+      "replayed": false,
+      "status": null,
+      "released": true
+    },
+    "T8.releasing_it_again_is_refused": {
+      "refused": "already_released"
+    },
+    "T9.releasing_a_hold_that_does_not_exist": {
+      "refused": "hold_not_found"
+    },
+    "T10.an_unlisted_proof_grade_cannot_auto_release": {
+      "refused": "proof_forbidden"
+    },
+    "T11.no_proof_grade_releases_a_hold_a_human_placed": {
+      "refused": "scope_forbidden"
+    },
+    "T12.a_machine_hold_auto_releases_on_proof": {
+      "replayed": false,
+      "status": null,
+      "released": true
+    },
+    "T13.auto_release_replays": {
+      "replayed": true,
+      "status": null,
+      "released": null
+    },
+    "T14.an_unpaid_order_is_cancelled": {
+      "replayed": false,
+      "status": "cancelled",
+      "released": null
+    },
+    "T15.cancel_replays": {
+      "replayed": true,
+      "status": "cancelled",
+      "released": null
+    },
+    "T16.a_paid_order_cannot_be_cancelled_as_unpaid": {
+      "refused": "invalid_status"
+    },
+    "T17.a_paid_order_is_marked_refunded": {
+      "replayed": false,
+      "status": "refunded",
+      "released": null
+    },
+    "T18.refund_replays": {
+      "replayed": true,
+      "status": "refunded",
+      "released": null
+    },
+    "T19.an_order_that_was_never_paid_cannot_be_refunded": {
+      "refused": "invalid_status"
+    },
+    "T20.a_short_idempotency_key_is_refused": {
+      "refused": "invalid_input"
+    },
+    "T21.same_key_race_resolves_to_one_cancellation": [
+      "applied",
+      "replayed"
+    ],
+    "T22.distinct_key_race_resolves_to_one_winner": [
+      "applied",
+      "replayed"
+    ],
+    "T23.closing_an_order_closes_the_hold_no_operator_can": {
+      "status": "released",
+      "releasedBy": "machine",
+      "stamped": true,
+      "proof": "order_closed"
+    },
+    "T24.a_hold_an_operator_placed_outlives_the_close": {
+      "status": "active",
+      "releasedBy": null,
+      "stamped": false,
+      "proof": null
+    },
+    "T25.final_ledger": {
+      "orders": [
+        {
+          "label": "O1",
+          "status": "pending_payment"
+        },
+        {
+          "label": "O2",
+          "status": "cancelled"
+        },
+        {
+          "label": "O3",
+          "status": "refunded"
+        },
+        {
+          "label": "O4",
+          "status": "cancelled"
+        },
+        {
+          "label": "O5",
+          "status": "pending_payment"
+        },
+        {
+          "label": "O6",
+          "status": "cancelled"
+        },
+        {
+          "label": "O7",
+          "status": "cancelled"
+        },
+        {
+          "label": "O8",
+          "status": "cancelled"
+        },
+        {
+          "label": "O9",
+          "status": "cancelled"
+        }
+      ],
+      "holds": [
+        {
+          "label": "O1",
+          "reason": "manual_support",
+          "status": "released",
+          "createdBy": "operator",
+          "releasedBy": "operator",
+          "key": "oms-rail-probe-hold-1"
+        },
+        {
+          "label": "O1",
+          "reason": "risk_review",
+          "status": "active",
+          "createdBy": "operator",
+          "releasedBy": null,
+          "key": "oms-rail-probe-hold-3"
+        },
+        {
+          "label": "O4",
+          "reason": "fulfillment_exception",
+          "status": "released",
+          "createdBy": "machine",
+          "releasedBy": "machine",
+          "key": null
+        },
+        {
+          "label": "O8",
+          "reason": "fulfillment_exception",
+          "status": "released",
+          "createdBy": "machine",
+          "releasedBy": "machine",
+          "key": null
+        },
+        {
+          "label": "O9",
+          "reason": "manual_support",
+          "status": "active",
+          "createdBy": "operator",
+          "releasedBy": null,
+          "key": "oms-rail-probe-hold-6"
+        }
+      ],
+      "operations": [
+        {
+          "label": "O1",
+          "actor": "operator",
+          "type": "hold_created",
+          "key": "oms-rail-probe-hold-1:operation"
+        },
+        {
+          "label": "O1",
+          "actor": "operator",
+          "type": "hold_created",
+          "key": "oms-rail-probe-hold-3:operation"
+        },
+        {
+          "label": "O1",
+          "actor": "operator",
+          "type": "hold_released",
+          "key": "oms-rail-probe-rel-1:operation"
+        },
+        {
+          "label": "O2",
+          "actor": "operator",
+          "type": "cancel",
+          "key": "oms-rail-probe-cancel-1"
+        },
+        {
+          "label": "O3",
+          "actor": "operator",
+          "type": "refund",
+          "key": "oms-rail-probe-refund-1"
+        },
+        {
+          "label": "O4",
+          "actor": "machine",
+          "type": "hold_released",
+          "key": "oms-rail-probe-auto-3:operation"
+        },
+        {
+          "label": "O4",
+          "actor": "operator",
+          "type": "cancel",
+          "key": "oms-rail-probe-race-winner"
+        },
+        {
+          "label": "O7",
+          "actor": "operator",
+          "type": "cancel",
+          "key": "oms-rail-probe-race-1"
+        },
+        {
+          "label": "O8",
+          "actor": "machine",
+          "type": "hold_released",
+          "key": "order-closed:7a1c0e10-0004-4000-8000-000000000002:operation"
+        },
+        {
+          "label": "O8",
+          "actor": "operator",
+          "type": "cancel",
+          "key": "oms-rail-probe-cancel-3"
+        },
+        {
+          "label": "O9",
+          "actor": "operator",
+          "type": "hold_created",
+          "key": "oms-rail-probe-hold-6:operation"
+        },
+        {
+          "label": "O9",
+          "actor": "operator",
+          "type": "cancel",
+          "key": "oms-rail-probe-cancel-4"
+        }
+      ]
+    },
+    "T26.notifications": {
+      "counts": {
+        "paid": 2,
+        "cancelled": 1
+      },
+      "foreignEmitterSources": [],
+      "orderingBarrierHolds": true,
+      "drainedInOrder": [
+        "paid:acked",
+        "paid:acked",
+        "cancelled:acked"
+      ]
+    }
+  }
+}

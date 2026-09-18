@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "$note": "Which of the four capture paths persists a failure class, for which rail. The artefact the dunning programme's PR-4e owes as its green half. NOT the live `smoke:payment-rail-parity` gate, which compares kernel and upstream bundles and means something else entirely.",
+  "$rails": "Rails are NOT listed in this file. The companion reads them from the payment register, so a rail joining the system joins this table on the same day instead of inheriting a silent hole.",
+  "railRegister": "src/domains/payment/pspIntegrationPlan.ts",
+  "railCount": 2,
+  "verdicts": ["class_persisted", "by_design_null"],
+  "capturePaths": {
+    "execute": {
+      "verdict": "class_persisted",
+      "uniformAcrossRails": true,
+      "what": "A charge the provider refuses inside the call. The one shared synchronous-decline seam classifies it and carries the verdict into the terminal write beside the reason.",
+      "provenBy": [
+        {
+          "directory": "server/shared",
+          "title": "carries the classification to the control plane alongside the reason"
+        }
+      ]
+    },
+    "webhook": {
+      "verdict": "by_design_null",
+      "uniformAcrossRails": true,
+      "what": "A refusal restated by a provider callback. Neither rail delivers a class through this path, and for two different reasons, so the null is a design fact rather than an unmeasured gap.",
+      "whyNull": [
+        "one rail sends no callback at all for a charge it already refused inside the call, so there is nothing to carry a class",
+        "the other rail's callback port composes its dunning call without any classification parameter, so the class it never had stays absent"
+      ],
+      "flipNote": "A future wave that teaches any callback to carry a classification MUST move this cell. Leaving it at by_design_null while a callback started classifying would make this table the lie it exists to prevent.",
+      "provenBy": [
+        {
+          "directory": "server/adapters",
+          "title": "opens subscription dunning for failed webhook results inside DataGatewayPort.asService"
+        },
+        {
+          "directory": "server/adapters",
+          "title": "promises no webhook for a charge already refused inside the call"
+        }
+      ]
+    },
+    "reconciliation": {
+      "verdict": "class_persisted",
+      "uniformAcrossRails": true,
+      "what": "A refusal nobody was told about, found later by polling. The adapter's reading reaches the attempt and the dunning case through the terminal write's two classification parameters, instead of dying in an evidence blob no customer surface reads.",
+      "since": "wave 3i-b, PR 2724",
+      "provenBy": [
+        {
+          "directory": "server/domains/payment",
+          "title": "%s: composes a terminal failure carrying the adapter's class"
+        },
+        {
+          "directory": "server/adapters",
+          "title": "forwards a supplied classification into both SQL parameters"
+        }
+      ]
+    },
+    "preflight": {
+      "verdict": "class_persisted",
+      "uniformAcrossRails": true,
+      "what": "A renewal refused before any provider call, because the stored consent cannot back an unattended charge. The reason's owner publishes the neutral hints it asserts, and the runtime hands those to the classifier, so no customer-facing reason classifies as the cause that means add no sentence at all.",
+      "since": "wave 3g, PR 2719",
+      "provenBy": [
+        {
+          "directory": "server/domains/subscription",
+          "title": "leaves no customer-facing reason without a cause the payer may be told"
+        },
+        {
+          "directory": "server/domains/subscription",
+          "title": "records `mandate_dead` decided by the hint, on the attempt and on the case alike"
+        }
+      ]
+    }
+  }
+}
