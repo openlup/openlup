@@ -135,7 +135,7 @@
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^6.0.4",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.1",
     "beasties": "^0.4.3",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^6.1.1",
