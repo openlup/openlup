@@ -36,7 +36,8 @@ jobs:
   # scripts/dco-signoff-check.ts, a small local Git reader with no dependency installation.
   #
   # The first push uses GitHub's all-zero before value to select the one-parentless-root mode.
-  # Pull requests retain the complete base..head measurement; neither mode can certify zero commits.
+  # Later main pushes and pull requests check their complete before/base..head range.
+  # The checker refuses malformed or empty ranges and missing sign-offs in every mode.
   dco:
     name: dco
     if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
@@ -61,13 +62,12 @@ jobs:
           RANGE_BASE: ${{ github.event.pull_request.base.sha }}
           RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
         run: npm run check:dco-signoff -- "$RANGE_BASE" "$RANGE_HEAD"
-      - name: Sign-off on the non-empty first root
+      - name: Sign-off on every main push
         if: github.event_name == 'push'
         env:
           RANGE_BASE: ${{ github.event.before }}
           RANGE_HEAD: ${{ github.sha }}
         run: |
-          test "$RANGE_BASE" = "0000000000000000000000000000000000000000"
           npm run check:dco-signoff -- "$RANGE_BASE" "$RANGE_HEAD"
 
   typecheck:

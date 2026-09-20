@@ -1,28 +1,31 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { authenticateGithubSourceRelease, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
+import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
+import { writeDescendantSourceReleaseReceipt } from "./oss-source-release-contract.ts";
 
 const digest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const blob = (value: Buffer) => createHash("sha1").update(`blob ${value.length}\0`).update(value).digest("hex");
 const target = "a".repeat(40), targetTree = "b".repeat(40), oldTarget = "d".repeat(40), oldTree = "e".repeat(40), intermediate = "9".repeat(40), olderParent = "8".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
-type Scenario = { targetTag?: string; previousTag?: string; targetCommit?: string; targetTree?: string; previousTarget?: string; previousTree?: string; intermediateCommit?: string; descendant?: boolean; previousDescendant?: boolean; repositoryRecord?: Record<string, unknown>; inputRepository?: string; inputExpectedPublicCi?: GithubSourceTransportInput["expectedPublicCi"]; protected?: boolean; branchCommit?: unknown; protectedHeadRecord?: unknown; protectedCompare?: unknown; rules?: unknown; release?: Record<string, unknown>; refType?: string; parents?: unknown[]; receiptParents?: string[]; receiptCommit?: string; receiptTree?: string; receiptContractDigest?: string; receiptPathDigest?: string; receiptPaths?: SourceReceiptEnvelope["disclosure"]["paths"]; targetEntries?: unknown[]; targetContractMode?: string; targetTreeSha?: string; targetTruncated?: boolean; targetBlobBytes?: Buffer; runs?: unknown[]; statuses?: unknown[]; statusSha?: string; nextRuns?: unknown[]; nextStatuses?: unknown[]; previousAssetBytes?: Buffer; previousRefType?: string; previousTagTarget?: string; previousReceiptCommit?: string; previousReceiptTree?: string; previousParents?: unknown[]; previousReceiptParents?: string[]; previousTreeEntries?: unknown[]; previousReceiptPaths?: SourceReceiptEnvelope["disclosure"]["paths"]; previousContractMode?: string; previousTreeSha?: string; compare?: Record<string, unknown>; olderCompare?: Record<string, unknown> };
+type Scenario = { targetTag?: string; previousTag?: string; targetCommit?: string; targetTree?: string; previousTarget?: string; previousTree?: string; intermediateCommit?: string; descendant?: boolean; previousDescendant?: boolean; contractBytes?: Buffer; readmeBytes?: Buffer; receiptDrift?: SourceReceiptEnvelope["drift"]; repositoryRecord?: Record<string, unknown>; inputRepository?: string; inputExpectedPublicCi?: GithubSourceTransportInput["expectedPublicCi"]; protected?: boolean; branchCommit?: unknown; protectedHeadRecord?: unknown; protectedCompare?: unknown; rules?: unknown; release?: Record<string, unknown>; releaseBody?: unknown; tagRecord?: Record<string, unknown>; previousReleaseBody?: unknown; previousTagRecord?: Record<string, unknown>; receiptRaw?: Buffer; refType?: string; parents?: unknown[]; receiptParents?: string[]; receiptCommit?: string; receiptTree?: string; receiptContractDigest?: string; receiptPathDigest?: string; receiptPaths?: SourceReceiptEnvelope["disclosure"]["paths"]; targetEntries?: unknown[]; targetContractMode?: string; targetTreeSha?: string; targetTruncated?: boolean; targetBlobBytes?: Buffer; runs?: unknown[]; statuses?: unknown[]; statusSha?: string; nextRuns?: unknown[]; nextStatuses?: unknown[]; previousAssetBytes?: Buffer; previousRefType?: string; previousTagTarget?: string; previousReceiptCommit?: string; previousReceiptTree?: string; previousParents?: unknown[]; previousReceiptParents?: string[]; previousTreeEntries?: unknown[]; previousReceiptPaths?: SourceReceiptEnvelope["disclosure"]["paths"]; previousContractMode?: string; previousTreeSha?: string; compare?: Record<string, unknown>; olderCompare?: Record<string, unknown> };
 
 function fixture(scenario: Scenario = {}) {
-  const targetTag = scenario.targetTag ?? tag, previousTag = scenario.previousTag ?? oldTag, targetSha = scenario.targetCommit ?? target, targetTreeSha = scenario.targetTree ?? targetTree, previousSha = scenario.previousTarget ?? oldTarget, previousTreeSha = scenario.previousTree ?? oldTree, middleSha = scenario.intermediateCommit ?? intermediate;
-  const contract = Buffer.from('{"source":"contract"}\n'), readme = Buffer.from("public\n"), oldFile = Buffer.from("old public\n"), contractBlob = blob(contract), readmeBlob = blob(readme), oldBlob = blob(oldFile);
+  const targetTag = scenario.targetTag ?? (scenario.previousDescendant ? "openlup-source-preview/3" : scenario.descendant ? tag : oldTag), previousTag = scenario.previousTag ?? (scenario.previousDescendant ? tag : oldTag), targetSha = scenario.targetCommit ?? target, targetTreeSha = scenario.targetTree ?? targetTree, previousSha = scenario.previousTarget ?? oldTarget, previousTreeSha = scenario.previousTree ?? oldTree, middleSha = scenario.intermediateCommit ?? intermediate;
+  const contract = scenario.contractBytes ?? Buffer.from('{"source":"contract"}\n'), readme = scenario.readmeBytes ?? Buffer.from("public\n"), oldFile = Buffer.from("old public\n"), contractBlob = blob(contract), readmeBlob = blob(readme), oldBlob = blob(oldFile);
   const targetEntries = scenario.targetEntries ?? [{ path: "README.md", mode: "100644", type: "blob", sha: readmeBlob }, { path: "config/openlup-source-release-contract.json", mode: scenario.targetContractMode ?? "100644", type: "blob", sha: contractBlob }];
   const oldEntries = scenario.previousTreeEntries ?? (scenario.previousContractMode ? [{ path: "config/openlup-source-release-contract.json", mode: scenario.previousContractMode, type: "blob", sha: contractBlob }] : [{ path: "old.txt", mode: "100644", type: "blob", sha: oldBlob }]);
   const paths = scenario.receiptPaths ?? [{ path: "README.md", mode: "100644" as const, digest: digest(readme) }, { path: "config/openlup-source-release-contract.json", mode: (scenario.targetContractMode ?? "100644") as "100644" | "100755", digest: scenario.receiptPathDigest ?? digest(contract) }];
   const targetParents = scenario.receiptParents ?? (scenario.descendant ? [middleSha] : []);
-  const receipt = { schemaVersion: scenario.descendant ? 5 : 4, evidenceClass: "activation-candidate", identity: { repository: "https://github.com/openlup/openlup", securityRoute: "dev@openlup.com", evidenceClass: "activation-candidate", owner: { name: "Owner", email: "owner@openlup.com" } }, contract: { path: "config/openlup-source-release-contract.json", digest: scenario.receiptContractDigest ?? digest(contract) }, export: { commit: scenario.receiptCommit ?? targetSha, tree: scenario.receiptTree ?? targetTreeSha, parents: targetParents }, disclosure: { allowlist: { schemaVersion: 1, digest: digest("allowlist") }, paths, releaseNote: { digest: digest("release note") }, tag: { name: targetTag, message: `OpenLup source preview ${targetTag.split("/")[1]}.` } }, drift: [] } as SourceReceiptEnvelope;
+  const receipt = { schemaVersion: scenario.descendant ? 5 : 4, evidenceClass: "activation-candidate", identity: { repository: "https://github.com/openlup/openlup", securityRoute: "dev@openlup.com", evidenceClass: "activation-candidate", owner: { name: "Owner", email: "owner@openlup.com" } }, contract: { path: "config/openlup-source-release-contract.json", digest: scenario.receiptContractDigest ?? digest(contract) }, export: { commit: scenario.receiptCommit ?? targetSha, tree: scenario.receiptTree ?? targetTreeSha, parents: targetParents }, disclosure: { allowlist: { schemaVersion: 1, digest: digest("allowlist") }, paths, releaseNote: { digest: digest("release note") }, tag: { name: targetTag, message: `OpenLup source preview ${targetTag.split("/")[1]}.` } }, drift: scenario.receiptDrift ?? [] } as SourceReceiptEnvelope;
+  if (receipt.schemaVersion === 5) receipt.disclosure.allowlist.digest = digest(renderSourceReleaseAllowlist(receipt));
   const oldPaths = scenario.previousReceiptPaths ?? (scenario.previousContractMode ? [{ path: "config/openlup-source-release-contract.json", mode: scenario.previousContractMode as "100644" | "100755", digest: digest(contract) }] : [{ path: "old.txt", mode: "100644" as const, digest: digest(oldFile) }]);
-  const oldReceipt = { ...receipt, schemaVersion: scenario.previousDescendant ? 5 : 4, contract: { ...receipt.contract }, export: { commit: scenario.previousReceiptCommit ?? previousSha, tree: scenario.previousReceiptTree ?? previousTreeSha, parents: scenario.previousReceiptParents ?? (scenario.previousDescendant ? [olderParent] : []) }, disclosure: { ...receipt.disclosure, paths: oldPaths, tag: { name: previousTag, message: `OpenLup source preview ${previousTag.split("/")[1]}.` } } } as SourceReceiptEnvelope;
-  const receiptBytes = Buffer.from(JSON.stringify(receipt)), oldReceiptBytes = Buffer.from(JSON.stringify(oldReceipt));
+  const oldReceipt = { ...receipt, schemaVersion: scenario.previousDescendant ? 5 : 4, contract: { ...receipt.contract }, export: { commit: scenario.previousReceiptCommit ?? previousSha, tree: scenario.previousReceiptTree ?? previousTreeSha, parents: scenario.previousReceiptParents ?? (scenario.previousDescendant ? [olderParent] : []) }, disclosure: { ...receipt.disclosure, allowlist: { ...receipt.disclosure.allowlist }, releaseNote: { ...receipt.disclosure.releaseNote }, paths: oldPaths, tag: { name: previousTag, message: `OpenLup source preview ${previousTag.split("/")[1]}.` } } } as SourceReceiptEnvelope;
+  if (oldReceipt.schemaVersion === 5) oldReceipt.disclosure.allowlist.digest = digest(renderSourceReleaseAllowlist(oldReceipt));
+  const receiptBytes = scenario.receiptRaw ?? Buffer.from(JSON.stringify(receipt)), oldReceiptBytes = Buffer.from(JSON.stringify(oldReceipt));
   const rules = scenario.rules ?? [{ type: "required_status_checks", ruleset_id: 7, parameters: { required_status_checks: [{ context: "test" }] } }, { type: "required_status_checks", ruleset_id: 2, parameters: { required_status_checks: [{ context: "build", integration_id: 1 }] } }];
   const calls: Array<{ url: string; headers: Headers }> = [], previous: PreviousReleaseIdentity = { releaseTag: previousTag, assetName: "openlup-source-receipt.json", assetId: 40, assetDigest: digest(oldReceiptBytes), sourceReceiptDigest: digest(oldReceiptBytes), targetPublicSha: previousSha };
   const response = (body: unknown, headers: Record<string, string> = {}) => new Response(Buffer.isBuffer(body) ? body : JSON.stringify(body), { status: 200, headers });
@@ -31,12 +34,12 @@ function fixture(scenario: Scenario = {}) {
     if (url === root) return response({ full_name: "openlup/openlup", html_url: "https://github.com/openlup/openlup", default_branch: "main", ...scenario.repositoryRecord });
     if (url === `${root}/branches/main`) return response({ protected: scenario.protected ?? true, commit: scenario.branchCommit === undefined ? { sha: targetSha } : scenario.branchCommit });
     if (url === `${root}/rules/branches/main`) return response(rules);
-    if (url === `${root}/releases/tags/${encodeURIComponent(targetTag)}`) return response({ tag_name: targetTag, immutable: true, prerelease: true, draft: false, assets: [{ id: 41, name: "openlup-source-receipt.json", digest: digest(receiptBytes) }], ...scenario.release });
-    if (url === `${root}/releases/tags/${encodeURIComponent(previousTag)}`) return response({ tag_name: previousTag, immutable: true, prerelease: true, draft: false, assets: [{ id: 40, name: "openlup-source-receipt.json", digest: previous.assetDigest }] });
+    if (url === `${root}/releases/tags/${encodeURIComponent(targetTag)}`) return response({ tag_name: targetTag, immutable: true, prerelease: true, draft: false, body: scenario.releaseBody ?? "release note", assets: [{ id: 41, name: "openlup-source-receipt.json", digest: digest(receiptBytes) }], ...scenario.release });
+    if (url === `${root}/releases/tags/${encodeURIComponent(previousTag)}`) return response({ tag_name: previousTag, immutable: true, prerelease: true, draft: false, body: scenario.previousReleaseBody ?? "release note", assets: [{ id: 40, name: "openlup-source-receipt.json", digest: previous.assetDigest }] });
     if (url === `${root}/git/ref/tags/${encodeURIComponent(targetTag)}`) return response({ object: { type: scenario.refType ?? "tag", sha: "c".repeat(40) } });
-    if (url === `${root}/git/tags/${"c".repeat(40)}`) return response({ object: { type: "commit", sha: targetSha } });
+    if (url === `${root}/git/tags/${"c".repeat(40)}`) return response({ tag: targetTag, message: `OpenLup source preview ${targetTag.split("/")[1]}.\n`, object: { type: "commit", sha: targetSha }, ...scenario.tagRecord });
     if (url === `${root}/git/ref/tags/${encodeURIComponent(previousTag)}`) return response({ object: { type: scenario.previousRefType ?? "tag", sha: "6".repeat(40) } });
-    if (url === `${root}/git/tags/${"6".repeat(40)}`) return response({ object: { type: "commit", sha: scenario.previousTagTarget ?? previousSha } });
+    if (url === `${root}/git/tags/${"6".repeat(40)}`) return response({ tag: previousTag, message: `OpenLup source preview ${previousTag.split("/")[1]}.\n`, object: { type: "commit", sha: scenario.previousTagTarget ?? previousSha }, ...scenario.previousTagRecord });
     if (url === `${root}/git/commits/${targetSha}`) return response({ sha: targetSha, tree: { sha: targetTreeSha }, parents: scenario.parents ?? (scenario.descendant ? [{ sha: middleSha }] : []) });
     if (scenario.branchCommit && typeof scenario.branchCommit === "object" && "sha" in scenario.branchCommit && url === `${root}/git/commits/${String(scenario.branchCommit.sha)}` && scenario.protectedHeadRecord !== undefined) return response(scenario.protectedHeadRecord);
     if (url === `${root}/git/commits/${previousSha}`) return response({ sha: previousSha, tree: { sha: previousTreeSha }, parents: scenario.previousParents ?? (scenario.previousDescendant ? [{ sha: olderParent }] : []) });
@@ -56,7 +59,7 @@ function fixture(scenario: Scenario = {}) {
     if (url === `${root}/git/blobs/${oldBlob}`) return response({ sha: oldBlob, encoding: "base64", content: oldFile.toString("base64") });
     throw new Error(`unexpected route ${url}`);
   };
-  const input: GithubSourceTransportInput = { repository: "https://github.com/openlup/openlup", releaseTag: targetTag, assetName: "openlup-source-receipt.json", receiptCodec: (raw) => JSON.parse(raw.toString()) as SourceReceiptEnvelope };
+  const input: GithubSourceTransportInput = { repository: "https://github.com/openlup/openlup", releaseTag: targetTag, assetName: "openlup-source-receipt.json", receiptCodec: parseSourceReleaseReceiptEnvelope };
   return { calls, fetcher, input, receiptBytes, oldReceiptBytes, previous, contractBlob };
 }
 
@@ -291,5 +294,67 @@ describe("GitHub source consume transport", () => {
   it("refuses a caller-supplied previous asset name that differs from the canonical receipt asset", async () => {
     const sample = fixture({ descendant: true });
     await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: { ...sample.previous, assetName: "other.json" } }, sample.fetcher)).rejects.toThrow(/previous release identity/u);
+  });
+
+  it("refuses a non-adjacent previous preview", async () => {
+    const sample = fixture({ descendant: true, targetTag: "openlup-source-preview/3", previousTag: oldTag });
+    await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher)).rejects.toThrow(/previous release identity/u);
+  });
+
+  it.each([
+    ["unknown root field", (value: any) => { value.extra = true; }, /unknown fields/u],
+    ["schema-4 non-root tag", (value: any) => { value.disclosure.tag = { name: "openlup-source-preview/2", message: "OpenLup source preview 2." }; }, /tag is invalid/u],
+    ["unsafe preview ordinal", (value: any) => { value.schemaVersion = 5; value.export.parents = ["f".repeat(40)]; value.disclosure.tag = { name: "openlup-source-preview/9007199254740993", message: "OpenLup source preview 9007199254740993." }; }, /exact preview tag/u],
+    ["unsorted paths", (value: any) => { value.disclosure.paths.reverse(); }, /sorted and unique/u],
+    ["invalid optional owner type", (value: any) => { value.identity.owner.email = 42; }, /owner email/u],
+    ["false current drift outcome", (value: any) => { value.drift = [{ class: "local-measurement", selector: "local.json", sourceSelector: null, source: { disposition: "present", digest: digest("source") }, public: { disposition: "projected", digest: digest("public") } }]; }, /drift public/u],
+  ])("strict codec refuses %s", (_label, mutate, expected) => {
+    const sample = fixture(), value = JSON.parse(sample.receiptBytes.toString()); mutate(value); expect(() => parseSourceReleaseReceiptEnvelope(JSON.stringify(value))).toThrow(expected);
+  });
+
+  it.each([
+    ["release body", { releaseBody: "other" }, /release body digest/u],
+    ["annotated tag message without its canonical newline", { tagRecord: { message: "OpenLup source preview 2." } }, /annotated tag name or message/u],
+    ["annotated tag message with extra bytes", { tagRecord: { message: "OpenLup source preview 2.\nExtra" } }, /annotated tag name or message/u],
+  ] as const)("authenticates schema-5 %s metadata", async (_label, change, expected) => {
+    const sample = fixture({ descendant: true, ...change }); await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher)).rejects.toThrow(expected);
+  });
+
+  it.each([
+    ["release body", { previousReleaseBody: "other" }, /previous receipt release body digest/u],
+    ["tag message without its canonical newline", { previousTagRecord: { message: "OpenLup source preview 2." } }, /previous receipt annotated tag name or message/u],
+    ["tag message with extra bytes", { previousTagRecord: { message: "OpenLup source preview 2.\nExtra" } }, /previous receipt annotated tag name or message/u],
+  ] as const)("authenticates preceding schema-5 %s", async (_label, change, expected) => {
+    const sample = fixture({ descendant: true, previousDescendant: true, ...change });
+    await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher)).rejects.toThrow(expected);
+  });
+
+  it("refuses a schema-5 receipt whose canonical allowlist digest was replaced", async () => {
+    const initial = fixture({ descendant: true }), receipt = JSON.parse(initial.receiptBytes.toString()); receipt.disclosure.allowlist.digest = digest("other");
+    const sample = fixture({ descendant: true, receiptRaw: Buffer.from(JSON.stringify(receipt)) });
+    await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher)).rejects.toThrow(/reconstructed allowlist digest/u);
+  });
+
+  it("authenticates preview/1 then writes and reads a deterministic schema-5 receipt from real Git objects", async () => {
+    const physicalTemp = realpathSync(tmpdir()), repo = mkdtempSync(join(physicalTemp, "openlup-descendant-producer-")), artifactRoot = mkdtempSync(join(physicalTemp, "openlup-descendant-artifact-")), output = join(artifactRoot, "openlup-source-receipt.json");
+    const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+    try {
+      run(["init", "--quiet"]); run(["config", "user.name", "Owner"]); run(["config", "user.email", "owner@openlup.com"]);
+      const contractValue = JSON.parse(readFileSync(join(process.cwd(), "config/openlup-source-release-contract.json"), "utf8")); contractValue.repository.owner = { name: "Owner", email: "owner@openlup.com" };
+      const contract = Buffer.from(`${JSON.stringify(contractValue, null, 2)}\n`), readme = Buffer.from("public root\n"), largeBlob = Buffer.alloc(3_000_000, 0x61); mkdirSync(join(repo, "config")); writeFileSync(join(repo, "README.md"), readme); writeFileSync(join(repo, "large-public-blob.bin"), largeBlob); writeFileSync(join(repo, "config/openlup-source-release-contract.json"), contract); run(["add", "--all"]); run(["commit", "--quiet", "-m", "Initial public source release.\n\nSigned-off-by: Owner <owner@openlup.com>"]);
+      const rootCommit = run(["rev-parse", "HEAD"]), rootTree = run(["rev-parse", "HEAD^{tree}"]), entries = run(["ls-tree", "-r", "-t", "HEAD"]).split("\n").map((line) => { const match = /^(\d+) (\w+) ([0-9a-f]{40})\t(.+)$/u.exec(line)!; return { mode: match[1], type: match[2], sha: match[3], path: match[4] }; }), paths = entries.filter(({ type }) => type === "blob").map(({ path, mode, sha }) => ({ path, mode: mode as "100644" | "100755", digest: digest(execFileSync("git", ["cat-file", "blob", sha], { cwd: repo, maxBuffer: 4 * 1024 * 1024 })) }));
+      const previousScenario = { targetTag: oldTag, targetCommit: rootCommit, targetTree: rootTree, contractBytes: contract, readmeBytes: readme, targetEntries: entries, receiptPaths: paths };
+      const previous = fixture(previousScenario);
+      writeFileSync(join(repo, "README.md"), "public descendant\n"); run(["add", "README.md"]); run(["commit", "--quiet", "-m", "Public descendant\n\nSigned-off-by: Owner <owner@openlup.com>"]); run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2.\n\nExtra text"]);
+      const input = { root: repo, previous: previous.input, fetcher: previous.fetcher, releaseTag: tag, tagMessage: "OpenLup source preview 2.", releaseNote: "release note", outputPath: output };
+      const tagOutput = join(artifactRoot, "tag-receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: tagOutput })).rejects.toThrow(/exact annotated tag/u); expect(() => readFileSync(tagOutput)).toThrow(); run(["tag", "--delete", tag]); run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2."]);
+      const projectedOutput = join(artifactRoot, "projected-receipt.json"), projected = fixture({ ...previousScenario, receiptDrift: [{ class: "projection", selector: "README.md", sourceSelector: "README.md", source: { disposition: "present", digest: digest(readme) }, public: { disposition: "projected", digest: digest(readme) } }] });
+      await expect(writeDescendantSourceReleaseReceipt({ ...input, previous: projected.input, fetcher: projected.fetcher, outputPath: projectedOutput })).rejects.toThrow(/projected byte changes/u); expect(() => readFileSync(projectedOutput)).toThrow();
+      const result = await writeDescendantSourceReleaseReceipt(input); expect(parseSourceReleaseReceiptEnvelope(readFileSync(output))).toEqual(result.receipt); expect(result.receipt).toMatchObject({ schemaVersion: 5, export: { commit: run(["rev-parse", "HEAD"]), parents: [rootCommit] }, disclosure: { releaseNote: { digest: digest("release note") } } }); expect(result.allowlistDigest).toBe(digest(result.allowlist));
+      const original = readFileSync(output); await expect(writeDescendantSourceReleaseReceipt(input)).rejects.toThrow(/already exists/u); expect(readFileSync(output)).toEqual(original);
+      const checkoutOutput = join(realpathSync(repo), "receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: checkoutOutput })).rejects.toThrow(/outside the checkout/u); expect(() => readFileSync(checkoutOutput)).toThrow();
+      run(["tag", "--delete", tag]); writeFileSync(join(repo, "new-public-file.txt"), "new\n"); run(["add", "new-public-file.txt"]); run(["commit", "--quiet", "-m", "Expand inventory\n\nSigned-off-by: Owner <owner@openlup.com>"]); run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2."]);
+      const inventoryOutput = join(artifactRoot, "inventory-receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: inventoryOutput })).rejects.toThrow(/inventory or mode changes/u); expect(() => readFileSync(inventoryOutput)).toThrow();
+    } finally { rmSync(repo, { recursive: true, force: true }); rmSync(artifactRoot, { recursive: true, force: true }); }
   });
 });

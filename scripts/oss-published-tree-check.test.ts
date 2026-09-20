@@ -2,7 +2,7 @@
 // and withholding live in the private split harness; importing either here would make the public
 // checker depend on the control plane it is meant to prove absent.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -85,9 +85,35 @@ describe("the workflow stays in step with what it claims to run", () => {
     const contributing = readFileSync(join(ROOT, "CONTRIBUTING.md"), "utf8");
     expect(/^Signed-off-by: .+ <.+@.+>$/m.test(contributing)).toBe(true);
     expect(workflow).toContain('npm run check:dco-signoff -- "$RANGE_BASE" "$RANGE_HEAD"');
-    expect(workflow).toContain('test "$RANGE_BASE" = "0000000000000000000000000000000000000000"');
     expect(workflow).toContain("RANGE_BASE: ${{ github.event.before }}");
     expect(workflow).toContain("fetch-depth: 0");
+  });
+
+  it("checks the actual main-push DCO step for root, descendant and refusal ranges", () => {
+    const root = mkdtempSync(join(tmpdir(), "public-main-dco-"));
+    const environment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: root, env: environment, encoding: "utf8" }).trim();
+    const step = workflow.split("      - name: Sign-off on every main push\n")[1]?.split("\n  typecheck:")[0];
+    const command = step?.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
+    expect(command).toBeTruthy();
+    try {
+      writeFileSync(join(root, "dco-signoff-check.ts"), readFileSync(join(ROOT, "scripts/dco-signoff-check.ts")));
+      writeFileSync(join(root, "package.json"), JSON.stringify({ type: "module", scripts: { "check:dco-signoff": "node --experimental-strip-types dco-signoff-check.ts" } }));
+      git("init", "--quiet", "--initial-branch=main");
+      const commit = (signed: boolean) => { git("commit", "--quiet", "--allow-empty", "--no-gpg-sign", ...(signed ? ["-s"] : []), "-m", "public DCO fixture"); return git("rev-parse", "HEAD"); };
+      const initial = commit(true), descendant = commit(true);
+      commit(false);
+      const afterUnsigned = commit(true);
+      const run = (base: string, head: string) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { cwd: root, env: { ...environment, RANGE_BASE: base, RANGE_HEAD: head }, encoding: "utf8", timeout: 20_000 });
+      expect(run("0".repeat(40), initial).status).toBe(0);
+      expect(run(initial, descendant).status).toBe(0);
+      const missing = run(descendant, afterUnsigned);
+      expect(missing.status).toBe(1);
+      expect(missing.stdout).toContain("without a sign-off: 1");
+      expect(run(descendant, descendant).status).toBe(1);
+      expect(run("0".repeat(40), descendant).status).toBe(2);
+      expect(run("invalid", descendant).status).toBe(2);
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   it("pins every action and verifies the runtime and scanner before use", () => {
