@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { closeSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { publicPublicationCatalogDigests } from "./oss-publication-policy.ts";
 import { readPublicTypecheckCompatibility, type PublicTypecheckCompatibility } from "./oss-public-typecheck.ts";
+import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type AuthenticatedSourceCandidate, type GithubFetch, type GithubSourceTransportInput, type PublicObjectInventoryEntry, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
 
 export const SOURCE_RELEASE_CONTRACT_PATH = "config/openlup-source-release-contract.json";
 export const SOURCE_RELEASE_EVIDENCE_CLASS = "local-fixture";
@@ -119,4 +123,90 @@ export function sourceReleaseContractChangedFields(before: unknown, after: unkno
   if (JSON.stringify(before) === JSON.stringify(after)) return [];
   if (!object(before) || !object(after)) return [prefix || "$ref"];
   return [...new Set([...Object.keys(before), ...Object.keys(after)])].sort().flatMap((key) => sourceReleaseContractChangedFields(before[key], after[key], prefix === "" ? key : `${prefix}.${key}`));
+}
+
+export type DescendantSourceReleaseInput = {
+  root: string;
+  previous: GithubSourceTransportInput;
+  fetcher?: GithubFetch;
+  releaseTag: string;
+  tagMessage: string;
+  releaseNote: string | Buffer;
+  outputPath: string;
+};
+export type DescendantSourceReleaseResult = { receipt: Extract<SourceReceiptEnvelope, { schemaVersion: 5 }>; contents: string; digest: string; allowlist: string; allowlistDigest: string };
+
+const receiptDigest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
+const commitSha = (value: string) => /^[0-9a-f]{40}$/u.test(value);
+const gitRead = (root: string, args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const GIT_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
+const gitBytes = (root: string, args: string[]) => execFileSync("git", args, { cwd: root, maxBuffer: GIT_OUTPUT_MAX_BYTES, stdio: ["ignore", "pipe", "pipe"] });
+function gitInventory(root: string, revision: string): PublicObjectInventoryEntry[] {
+  const rows = gitBytes(root, ["ls-tree", "-r", "-z", "--full-tree", revision]).toString().split("\0").filter(Boolean).map((line) => {
+    const match = /^(100644|100755) blob ([0-9a-f]{40})\t(.+)$/u.exec(line);
+    if (!match || match[3]!.startsWith("/") || match[3]!.includes("\\") || match[3]!.split("/").some((part) => part === "" || part === "." || part === "..")) throw new Error("descendant receipt requires regular canonical Git paths");
+    return { path: match[3]!, mode: match[1] as "100644" | "100755", gitBlobSha: match[2]! };
+  });
+  return rows.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+}
+function inventoryPaths(root: string, entries: PublicObjectInventoryEntry[]) { return entries.map((entry) => ({ path: entry.path, mode: entry.mode, digest: receiptDigest(gitBytes(root, ["cat-file", "blob", entry.gitBlobSha])) })); }
+function safeReceiptOutput(root: string, path: string): string {
+  if (!isAbsolute(path)) throw new Error("descendant receipt output must be an absolute external path");
+  const source = realpathSync(root), target = resolve(path), prefixes = target.split(sep).slice(1).map((_, index, parts) => `${sep}${parts.slice(0, index + 1).join(sep)}`);
+  for (const prefix of prefixes) { const state = lstatSync(prefix, { throwIfNoEntry: false }); if (!state) break; if (state.isSymbolicLink()) throw new Error("descendant receipt output refuses symlink traversal"); }
+  const parent = realpathSync(dirname(target)); if (target === source || target.startsWith(`${source}${sep}`) || parent === source || parent.startsWith(`${source}${sep}`)) throw new Error("descendant receipt output must stay outside the checkout");
+  if (lstatSync(target, { throwIfNoEntry: false })) throw new Error("descendant receipt output already exists"); return target;
+}
+function assertPreviousPublicState(root: string, previous: AuthenticatedSourceCandidate, target: PublicObjectInventoryEntry[]): void {
+  const receipt = parseSourceReleaseReceiptEnvelope(previous.sourceReceiptRaw);
+  if (receipt.evidenceClass !== "activation-candidate" || previous.sourceReceiptDigest !== receiptDigest(previous.sourceReceiptRaw) || receipt.export.commit !== previous.targetCommit || receipt.export.tree !== previous.targetTree || JSON.stringify(receipt) !== JSON.stringify(previous.receipt)) throw new Error("authenticated previous receipt identity differs");
+  const old = gitInventory(root, previous.targetCommit), oldPaths = inventoryPaths(root, old);
+  const inventoryIdentity = (rows: PublicObjectInventoryEntry[]) => rows.map(({ path, mode, gitBlobSha }) => [path, mode, gitBlobSha]);
+  if (JSON.stringify(inventoryIdentity(old)) !== JSON.stringify(inventoryIdentity(previous.targetInventory))) throw new Error("authenticated previous inventory differs from local Git objects");
+  if (JSON.stringify(oldPaths) !== JSON.stringify(receipt.disclosure.paths)) throw new Error("authenticated previous path digests differ from local Git objects");
+  if (JSON.stringify(old.map(({ path, mode }) => ({ path, mode }))) !== JSON.stringify(target.map(({ path, mode }) => ({ path, mode })))) throw new Error("descendant receipt refuses public inventory or mode changes");
+  const oldByPath = new Map(oldPaths.map((entry) => [entry.path, entry.digest])), targetByPath = new Map(inventoryPaths(root, target).map((entry) => [entry.path, entry.digest]));
+  const protectedPaths = oldPaths.map(({ path }) => path).filter((path) => path === SOURCE_RELEASE_CONTRACT_PATH || /(?:^|\/)package(?:-lock)?\.json$/u.test(path));
+  for (const path of protectedPaths) if (oldByPath.get(path) !== targetByPath.get(path)) throw new Error(`descendant receipt refuses protected contract or package bytes: ${path}`);
+  for (const entry of receipt.drift) {
+    const before = oldByPath.get(entry.selector), after = targetByPath.get(entry.selector);
+    if (entry.public.disposition === "absent") { if (before !== undefined || after !== undefined) throw new Error(`descendant receipt drift absence differs: ${entry.selector}`); }
+    else if (before !== entry.public.digest || after !== entry.public.digest) throw new Error(`descendant receipt refuses projected byte changes: ${entry.selector}`);
+  }
+}
+
+/** Writes one schema-5 receipt from an authenticated prior release and actual clean Git objects. */
+export async function writeDescendantSourceReleaseReceipt(input: DescendantSourceReleaseInput): Promise<DescendantSourceReleaseResult> {
+  const root = realpathSync(input.root), beforeHead = gitRead(root, ["rev-parse", "--verify", "HEAD^{commit}"]), beforeStatus = gitRead(root, ["status", "--porcelain=v1", "--untracked-files=all"]);
+  if (!commitSha(beforeHead) || beforeStatus !== "") throw new Error("descendant receipt requires an exact clean public HEAD");
+  const previous = await authenticateGithubSourceRelease(input.previous, input.fetcher); if (gitRead(root, ["rev-parse", "--verify", "HEAD^{commit}"]) !== beforeHead || gitRead(root, ["status", "--porcelain=v1", "--untracked-files=all"]) !== beforeStatus) throw new Error("descendant receipt refused a moving public HEAD during authentication");
+  const previousNumber = /^openlup-source-preview\/([1-9][0-9]*)$/u.exec(previous.release.tag), next = /^openlup-source-preview\/([1-9][0-9]*)$/u.exec(input.releaseTag), previousOrdinal = Number(previousNumber?.[1]), nextOrdinal = Number(next?.[1]);
+  if (!previousNumber || !next || !Number.isSafeInteger(previousOrdinal) || !Number.isSafeInteger(nextOrdinal) || nextOrdinal !== previousOrdinal + 1 || input.tagMessage !== `OpenLup source preview ${next[1]}.`) throw new Error("descendant receipt requires the exactly next preview tag and message");
+  try { execFileSync("git", ["merge-base", "--is-ancestor", previous.targetCommit, beforeHead], { cwd: root, stdio: "ignore" }); } catch { throw new Error("descendant receipt target does not descend from the authenticated previous release"); }
+  if (beforeHead === previous.targetCommit) throw new Error("descendant receipt target must advance the previous release");
+  const tagRaw = gitBytes(root, ["for-each-ref", `--format=%(objecttype)%00%(*objectname)%00%(refname:strip=2)%00%(contents)%00`, `refs/tags/${input.releaseTag}`]).toString();
+  const tag = tagRaw.endsWith("\0\n") ? tagRaw.slice(0, -2).split("\0") : [];
+  if (tag.length !== 4 || tag[0] !== "tag" || tag[1] !== beforeHead || tag[2] !== input.releaseTag || tag[3] !== `${input.tagMessage}\n`) throw new Error("descendant receipt requires the exact annotated tag at HEAD");
+  const targetTree = gitRead(root, ["rev-parse", "HEAD^{tree}"]), parents = gitRead(root, ["show", "-s", "--format=%P", "HEAD"]).split(" ").filter(Boolean);
+  if (!commitSha(targetTree) || parents.length === 0 || parents.some((parent) => !commitSha(parent)) || new Set(parents).size !== parents.length) throw new Error("descendant receipt Git commit identity is invalid");
+  const target = gitInventory(root, beforeHead); assertPreviousPublicState(root, previous, target); const paths = inventoryPaths(root, target);
+  const contract = paths.find(({ path }) => path === SOURCE_RELEASE_CONTRACT_PATH); if (!contract) throw new Error("descendant receipt source contract is absent");
+  const contractRaw = gitBytes(root, ["show", `${beforeHead}:${SOURCE_RELEASE_CONTRACT_PATH}`]).toString(); validateSourceReleaseContract(contractRaw); if (receiptDigest(contractRaw) !== contract.digest || contract.digest !== previous.receipt.contract.digest) throw new Error("descendant receipt source contract differs");
+  const contractValue = parse(contractRaw), repository = contractValue.repository as JsonObject, release = contractValue.release as JsonObject; if (release.evidenceClass !== "activation-candidate" || JSON.stringify({ repository: repository.coordinate, securityRoute: repository.securityRoute, evidenceClass: release.evidenceClass, owner: repository.owner }) !== JSON.stringify(previous.receipt.identity)) throw new Error("descendant receipt source contract identity differs");
+  const note = Buffer.isBuffer(input.releaseNote) ? input.releaseNote : Buffer.from(input.releaseNote); const noteText = new TextDecoder("utf-8", { fatal: true }).decode(note); if (note.length === 0 || noteText.trim() === "" || Buffer.from(noteText).compare(note) !== 0) throw new Error("descendant receipt release note must be non-empty canonical UTF-8 bytes");
+  const base = { schemaVersion: 5 as const, evidenceClass: "activation-candidate" as const, identity: previous.receipt.identity as Extract<SourceReceiptEnvelope, { schemaVersion: 5 }>["identity"], contract: { path: SOURCE_RELEASE_CONTRACT_PATH as typeof SOURCE_RELEASE_CONTRACT_PATH, digest: contract.digest }, export: { commit: beforeHead, tree: targetTree, parents }, disclosure: { paths, releaseNote: { digest: receiptDigest(note) }, tag: { name: input.releaseTag, message: input.tagMessage } }, drift: previous.receipt.drift };
+  const provisional = { ...base, disclosure: { allowlist: { schemaVersion: 1 as const, digest: receiptDigest("") }, ...base.disclosure } } as Extract<SourceReceiptEnvelope, { schemaVersion: 5 }>;
+  const allowlist = renderSourceReleaseAllowlist(provisional), allowlistDigest = receiptDigest(allowlist), receipt = { ...base, disclosure: { allowlist: { schemaVersion: 1 as const, digest: allowlistDigest }, ...base.disclosure } }, contents = `${JSON.stringify(receipt, null, 2)}\n`;
+  const parsedReceipt = parseSourceReleaseReceiptEnvelope(contents); if (gitRead(root, ["rev-parse", "--verify", "HEAD^{commit}"]) !== beforeHead || gitRead(root, ["status", "--porcelain=v1", "--untracked-files=all"]) !== beforeStatus) throw new Error("descendant receipt refused a moving public HEAD");
+  const destination = safeReceiptOutput(root, input.outputPath); let descriptor: number | undefined;
+  try {
+    descriptor = openSync(destination, "wx+"); writeFileSync(descriptor, contents); fsyncSync(descriptor);
+    const state = fstatSync(descriptor), bytes = Buffer.alloc(state.size); if (readSync(descriptor, bytes, 0, bytes.length, 0) !== bytes.length || bytes.toString() !== contents || JSON.stringify(parseSourceReleaseReceiptEnvelope(bytes)) !== JSON.stringify(parsedReceipt)) throw new Error("descendant receipt readback differs");
+    if (gitRead(root, ["rev-parse", "--verify", "HEAD^{commit}"]) !== beforeHead || gitRead(root, ["status", "--porcelain=v1", "--untracked-files=all"]) !== beforeStatus) throw new Error("descendant receipt refused a moving public HEAD");
+    closeSync(descriptor); descriptor = undefined;
+  } catch (error) {
+    if (descriptor !== undefined) { const owned = fstatSync(descriptor); closeSync(descriptor); descriptor = undefined; const current = lstatSync(destination, { throwIfNoEntry: false }); if (current && current.dev === owned.dev && current.ino === owned.ino) unlinkSync(destination); }
+    throw error;
+  }
+  return { receipt, contents, digest: receiptDigest(contents), allowlist, allowlistDigest };
 }

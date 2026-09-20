@@ -23,6 +23,11 @@ export type PlatformBundleIdGuard<TId extends string = PlatformBundleId> = (valu
 export function createPlatformBundleIdGuard<const TIds extends readonly string[]>(
   ids: TIds,
 ): PlatformBundleIdGuard<TIds[number]> {
+  for (const id of ids) {
+    if (!id || id.trim() !== id) {
+      throw new Error("Platform bundle ids must be non-empty and trimmed");
+    }
+  }
   const allowed = new Set<string>(ids);
   return (value: unknown): value is TIds[number] => typeof value === "string" && allowed.has(value);
 }

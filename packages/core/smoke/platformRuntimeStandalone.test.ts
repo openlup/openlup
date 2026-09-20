@@ -11,10 +11,25 @@ import {
 
 describe("platform-runtime standalone", () => {
   it("exports generic bundle id guards without concrete host presets", () => {
-    const isBundleId = createPlatformBundleIdGuard(["example-managed", "example-self-host"] as const);
+    const isBundleId = createPlatformBundleIdGuard([
+      "example-managed",
+      "Adopter.Custom_Bundle/1",
+    ] as const);
 
     expect(isBundleId("example-managed")).toBe(true);
+    expect(isBundleId("Adopter.Custom_Bundle/1")).toBe(true);
+    expect(isBundleId("adopter.custom_bundle/1")).toBe(false);
     expect(isBundleId("vercel-supabase")).toBe(false);
+  });
+
+  it("rejects blank or non-trimmed configured bundle ids", () => {
+    const invalidIds = ["", "   ", " example-managed", "example-managed "] as const;
+
+    for (const id of invalidIds) {
+      expect(() => createPlatformBundleIdGuard([id])).toThrow(
+        "Platform bundle ids must be non-empty and trimmed",
+      );
+    }
   });
 
   it("lets downstream apps register their own descriptor matrix", () => {

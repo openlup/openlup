@@ -108,3 +108,100 @@ the exact adjacent preview transition they name and do not create a general
 support promise. Database schema changes are forward-only; there is no supported
 downgrade path, so take a backup you have actually restored from at least once
 before upgrading.
+
+## Maintaining source previews
+
+Contributors propose generic changes through public PRs and the DCO/checks in
+`CONTRIBUTING.md`. Maintainers release independently of adopter deployments.
+Adopters deliberately select updates and retain their private policies, branding
+and supported extensions; contributing does not require publishing private history.
+DCO checks every main-push commit; the all-zero first push is restricted to one
+root. Empty, malformed and unsigned ranges refuse.
+
+The next core pilot rejects blank or whitespace-padded configured bundle IDs.
+Upgrade action: use the same nonempty, trimmed ID in configuration and the allowed
+set. Valid adopter-defined IDs remain exact and case-sensitive. Include this action
+in the first release that ships it.
+
+### Prepare from public inputs
+
+Use Node 24, dependencies from `CONTRIBUTING.md`, a clean reviewed public commit
+and the next annotated preview tag at that exact HEAD.
+The preceding release must be immutable with green required checks. The operation
+reads public GitHub metadata, branch rules, checks and release assets. Set
+`GITHUB_TOKEN` if anonymous access/rate limits are insufficient; no private repo
+permission is needed. Keep credentials out of JSON, receipts and logs. Unavailable
+API evidence refuses the operation.
+
+Create an external operation JSON with actual paths. Confirm the current release
+number first; preview/1 → preview/2 below is an example. The output parent must exist
+outside the checkout, with no symlink component. Use `realpath` to obtain its physical
+path; `/tmp` below assumes a physical directory, which is not true on every system.
+
+```json
+{
+  "previousTag": "openlup-source-preview/1",
+  "releaseTag": "openlup-source-preview/2",
+  "tagMessage": "OpenLup source preview 2.",
+  "releaseNotePath": "/tmp/source-preview-2-notes.md",
+  "outputPath": "/tmp/source-preview-2-receipt.json"
+}
+```
+
+Run from the public checkout, passing the operation JSON path:
+
+```sh
+node --experimental-strip-types --input-type=module - /tmp/source-preview-operation.json <<'NODE'
+import { readFileSync } from 'node:fs';
+import { writeDescendantSourceReleaseReceipt } from './scripts/oss-source-release-contract.ts';
+import { parseSourceReleaseReceiptEnvelope } from './scripts/oss-consume-github-transport.ts';
+const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const result = await writeDescendantSourceReleaseReceipt({
+  root: process.cwd(),
+  previous: {
+    repository: 'https://github.com/openlup/openlup',
+    releaseTag: input.previousTag,
+    assetName: 'openlup-source-receipt.json',
+    receiptCodec: parseSourceReleaseReceiptEnvelope,
+    token: process.env.GITHUB_TOKEN,
+    ...(input.previousRelease ? { previousRelease: input.previousRelease } : {}),
+  },
+  releaseTag: input.releaseTag,
+  tagMessage: input.tagMessage,
+  releaseNote: readFileSync(input.releaseNotePath),
+  outputPath: input.outputPath,
+});
+console.log(JSON.stringify({ outputPath: input.outputPath, digest: result.digest, allowlistDigest: result.allowlistDigest }));
+NODE
+```
+
+The producer authenticates the preceding release and derives identities from actual
+Git objects. It returns `receipt`, `contents`, `digest`, reconstructed `allowlist`
+and `allowlistDigest`; only the receipt is written externally. Identical Git objects
+and inputs produce identical bytes, without timestamps or local paths.
+
+For a preceding descendant, also supply `previousRelease` in the operation JSON.
+Derive this tuple from the authenticator result for that descendant's predecessor:
+`releaseTag = result.release.tag`, `assetName = result.release.assetName`,
+`assetId = result.release.assetId`, `assetDigest = result.release.assetDigest`,
+`sourceReceiptDigest = result.sourceReceiptDigest`, `targetPublicSha = result.targetCommit`.
+Persist this public tuple externally; never invent hashes. The producer reauthenticates
+it. A preceding root omits the tuple. Existing schema-4 root receipts remain readable;
+schema-5 descendants bind release-body, annotated-tag and reconstructed-allowlist bytes.
+
+### Publish, refuse and recover
+
+Inventory/modes, package manifests/locks, the source contract and projected bytes
+must remain unchanged for this bounded operation. Changes to those boundaries need
+a separately reviewed compatibility change; do not hand-edit receipts to fit.
+
+Review the exact note, tag and receipt before obtaining publication authorization.
+Local preparation does not publish or update an adopter. Publish the same tag and
+receipt asset as an immutable prerelease with the exact note body, then authenticate
+the completed release before offering it for adoption.
+
+On refusal, keep the selected version and fix the named mismatch. Recompute after
+changed inputs or a dirty/moving HEAD; select a new physical path if output exists
+or traverses a symlink. Discard invalid unpublished candidates. Correct published
+releases forward: never replace assets, retag or edit the body. Adopters retain
+their reviewed update/recovery procedure; no stable or package channel is implied.
