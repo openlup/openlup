@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   catalogProductIdSchema,
+  catalogSlugFormat,
   skuSchema,
   slugSchema,
   variantIdSchema,
@@ -19,5 +20,32 @@ describe("catalog identifier standalone smoke", () => {
     expect(skuSchema.safeParse("bad sku").success).toBe(false);
     expect(catalogProductIdSchema.safeParse("-bad").success).toBe(false);
     expect(variantIdSchema.safeParse("bad id").success).toBe(false);
+  });
+
+  it("rejects a slug carrying whitespace rather than normalising it", () => {
+    for (const candidate of [" example", "example ", "\texample", "ex ample"]) {
+      expect(slugSchema.safeParse(candidate).success).toBe(false);
+    }
+  });
+
+  // Both exports are published, so a caller may pre-check with the format and
+  // parse with the schema. No sample exceeds the maximum length, which the format
+  // deliberately does not encode; the empty string is rejected by both.
+  it("agrees with the published slug format on every sample", () => {
+    for (const candidate of [
+      "example-product",
+      "example",
+      "example_variant",
+      "example-7",
+      " example",
+      "example ",
+      "\texample",
+      "ex ample",
+      "Example Product",
+      "-leading",
+      "",
+    ]) {
+      expect(slugSchema.safeParse(candidate).success).toBe(catalogSlugFormat.test(candidate));
+    }
   });
 });

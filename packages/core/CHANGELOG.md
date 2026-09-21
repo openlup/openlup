@@ -14,6 +14,11 @@ Semantic Versioning promise before the phase-5 platform activation.
 
 ### Changed
 
+- **BREAKING for `slugSchema`'s accepted language.** The `./catalog` schema no
+  longer trims its input, so a slug with leading or trailing whitespace is now
+  rejected rather than normalised and accepted, which is what the published
+  `catalogSlugFormat` it tests against always described. A caller that relied on
+  that normalisation must trim before validating.
 - **BREAKING for the retry ladder's semantics.** `nextRetryAttemptAt` now
   TERMINATES past the end of the ladder instead of capping at its last slot: an
   attempt beyond the configured backoff length answers `null`, which is the pause
