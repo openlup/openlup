@@ -23,24 +23,24 @@ describe("catalog identifier standalone smoke", () => {
   });
 
   it("rejects a slug carrying whitespace rather than normalising it", () => {
-    for (const candidate of [" lamb", "lamb ", "\tlamb", "la mb"]) {
+    for (const candidate of [" example", "example ", "\texample", "ex ample"]) {
       expect(slugSchema.safeParse(candidate).success).toBe(false);
     }
   });
 
   // Both exports are published, so a caller may pre-check with the format and
-  // parse with the schema. Every sample stays inside the schema's length bounds,
-  // which the format deliberately does not encode.
+  // parse with the schema. No sample exceeds the maximum length, which the format
+  // deliberately does not encode; the empty string is rejected by both.
   it("agrees with the published slug format on every sample", () => {
     for (const candidate of [
       "example-product",
-      "lamb",
-      "salmon_oil",
-      "insect-protein-7",
-      " lamb",
-      "lamb ",
-      "\tlamb",
-      "la mb",
+      "example",
+      "example_variant",
+      "example-7",
+      " example",
+      "example ",
+      "\texample",
+      "ex ample",
       "Example Product",
       "-leading",
       "",
