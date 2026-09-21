@@ -296,20 +296,37 @@ describe("GitHub source consume transport", () => {
     await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: { ...sample.previous, assetName: "other.json" } }, sample.fetcher)).rejects.toThrow(/previous release identity/u);
   });
 
-  it("refuses a non-adjacent previous preview", async () => {
+  it("authenticates a selected preview/3 directly from an immutable preview/1", async () => {
     const sample = fixture({ descendant: true, targetTag: "openlup-source-preview/3", previousTag: oldTag });
-    await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher)).rejects.toThrow(/previous release identity/u);
+    const result = await authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher);
+    expect(result.release.tag).toBe("openlup-source-preview/3");
+    expect(result.previousRelease?.releaseTag).toBe(oldTag);
+    expect(sample.calls.some(({ url }) => url === `${root}/compare/${oldTarget}...${target}`)).toBe(true);
   });
 
   it.each([
-    ["unknown root field", (value: any) => { value.extra = true; }, /unknown fields/u],
-    ["schema-4 non-root tag", (value: any) => { value.disclosure.tag = { name: "openlup-source-preview/2", message: "OpenLup source preview 2." }; }, /tag is invalid/u],
-    ["unsafe preview ordinal", (value: any) => { value.schemaVersion = 5; value.export.parents = ["f".repeat(40)]; value.disclosure.tag = { name: "openlup-source-preview/9007199254740993", message: "OpenLup source preview 9007199254740993." }; }, /exact preview tag/u],
-    ["unsorted paths", (value: any) => { value.disclosure.paths.reverse(); }, /sorted and unique/u],
-    ["invalid optional owner type", (value: any) => { value.identity.owner.email = 42; }, /owner email/u],
-    ["false current drift outcome", (value: any) => { value.drift = [{ class: "local-measurement", selector: "local.json", sourceSelector: null, source: { disposition: "present", digest: digest("source") }, public: { disposition: "projected", digest: digest("public") } }]; }, /drift public/u],
+    ["equal", "openlup-source-preview/2", "openlup-source-preview/2"],
+    ["older target", "openlup-source-preview/2", "openlup-source-preview/3"],
+  ])("refuses an %s preview selection", async (_label, targetTag, previousTag) => {
+    const sample = fixture({ descendant: true, targetTag, previousTag });
+    await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher)).rejects.toThrow(/previous release identity/u);
+  });
+
+  it("refuses a newer preview when its protected Git ancestry diverges", async () => {
+    const sample = fixture({ descendant: true, targetTag: "openlup-source-preview/3", previousTag: oldTag, compare: { status: "diverged", ahead_by: 2, behind_by: 1, total_commits: 2, base_commit: { sha: oldTarget }, merge_base_commit: { sha: intermediate }, commits: [] } });
+    await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher)).rejects.toThrow(/previous release ancestry/u);
+  });
+
+  const mutableObject = (value: unknown): Record<string, unknown> => value as Record<string, unknown>;
+  it.each([
+    ["unknown root field", (value: Record<string, unknown>) => { value.extra = true; }, /unknown fields/u],
+    ["schema-4 non-root tag", (value: Record<string, unknown>) => { mutableObject(value.disclosure).tag = { name: "openlup-source-preview/2", message: "OpenLup source preview 2." }; }, /tag is invalid/u],
+    ["unsafe preview ordinal", (value: Record<string, unknown>) => { value.schemaVersion = 5; mutableObject(value.export).parents = ["f".repeat(40)]; mutableObject(value.disclosure).tag = { name: "openlup-source-preview/9007199254740993", message: "OpenLup source preview 9007199254740993." }; }, /exact preview tag/u],
+    ["unsorted paths", (value: Record<string, unknown>) => { (mutableObject(value.disclosure).paths as unknown[]).reverse(); }, /sorted and unique/u],
+    ["invalid optional owner type", (value: Record<string, unknown>) => { mutableObject(mutableObject(value.identity).owner).email = 42; }, /owner email/u],
+    ["false current drift outcome", (value: Record<string, unknown>) => { value.drift = [{ class: "local-measurement", selector: "local.json", sourceSelector: null, source: { disposition: "present", digest: digest("source") }, public: { disposition: "projected", digest: digest("public") } }]; }, /drift public/u],
   ])("strict codec refuses %s", (_label, mutate, expected) => {
-    const sample = fixture(), value = JSON.parse(sample.receiptBytes.toString()); mutate(value); expect(() => parseSourceReleaseReceiptEnvelope(JSON.stringify(value))).toThrow(expected);
+    const sample = fixture(), value = JSON.parse(sample.receiptBytes.toString()) as Record<string, unknown>; mutate(value); expect(() => parseSourceReleaseReceiptEnvelope(JSON.stringify(value))).toThrow(expected);
   });
 
   it.each([

@@ -115,6 +115,12 @@ Contributors propose generic changes through public PRs and the DCO/checks in
 `CONTRIBUTING.md`. Maintainers release independently of adopter deployments.
 Adopters deliberately select updates and retain their private policies, branding
 and supported extensions; contributing does not require publishing private history.
+The receipt producer publishes the immediately next preview number. A consumer
+may instead select a strictly newer immutable preview from an earlier pinned
+release. The reader authenticates both release assets, exact receipts, required
+checks and the complete Git ancestry between them. This selection rule does not
+turn skipped preview notes into a general upgrade guarantee: review intervening
+changes and validate the selected update's compatibility before adoption.
 DCO checks every main-push commit; the all-zero first push is restricted to one
 root. Empty, malformed and unsigned ranges refuse.
 
@@ -205,3 +211,8 @@ changed inputs or a dirty/moving HEAD; select a new physical path if output exis
 or traverses a symlink. Discard invalid unpublished candidates. Correct published
 releases forward: never replace assets, retag or edit the body. Adopters retain
 their reviewed update/recovery procedure; no stable or package channel is implied.
+The already-published preview/2 cannot be repaired in place. Its reader defect
+must be corrected in a later immutable preview. A consumer still pinned to
+preview/1 can then select that corrected release through the authenticated
+strictly-newer reader path, subject to its own compatibility review; publishing
+the correction alone does not update any adopter.
