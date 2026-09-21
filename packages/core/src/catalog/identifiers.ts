@@ -11,7 +11,7 @@ import { z } from "zod";
 /** @beta */
 export const catalogSlugFormat = /^[a-z0-9][a-z0-9_-]*$/;
 /** @beta */
-export const slugSchema = z.string().trim().min(1).max(64).regex(catalogSlugFormat);
+export const slugSchema = z.string().min(1).max(64).regex(catalogSlugFormat);
 
 /**
  * A purchasable SKU. Charset and length are bounded, but the schema does not
