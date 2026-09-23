@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
-import { assertFiniteW1aBlobPins, finiteW1aPinnedPaths, writeDescendantSourceReleaseReceipt } from "./oss-source-release-contract.ts";
+import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
+import { createSourceReleaseContract, deriveSourceReleaseContract, writeDescendantSourceReleaseReceipt, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
 
 const digest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const blob = (value: Buffer) => createHash("sha1").update(`blob ${value.length}\0`).update(value).digest("hex");
@@ -351,64 +352,173 @@ describe("GitHub source consume transport", () => {
     const sample = fixture({ descendant: true, receiptRaw: Buffer.from(JSON.stringify(receipt)) });
     await expect(authenticateGithubSourceRelease({ ...sample.input, previousRelease: sample.previous }, sample.fetcher)).rejects.toThrow(/reconstructed allowlist digest/u);
   });
+});
 
-  it("authenticates preview/1 then writes and reads a deterministic schema-5 receipt from real Git objects", async () => {
-    const physicalTemp = realpathSync(tmpdir()), repo = mkdtempSync(join(physicalTemp, "openlup-descendant-producer-")), artifactRoot = mkdtempSync(join(physicalTemp, "openlup-descendant-artifact-")), output = join(artifactRoot, "openlup-source-receipt.json");
-    const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
-    try {
-      run(["init", "--quiet"]); run(["config", "user.name", "Owner"]); run(["config", "user.email", "owner@openlup.com"]);
-      const contractValue = JSON.parse(readFileSync(join(process.cwd(), "config/openlup-source-release-contract.json"), "utf8")); contractValue.repository.owner = { name: "Owner", email: "owner@openlup.com" };
-      const contract = Buffer.from(`${JSON.stringify(contractValue, null, 2)}\n`), readme = Buffer.from("public root\n"), largeBlob = Buffer.alloc(3_000_000, 0x61); mkdirSync(join(repo, "config")); writeFileSync(join(repo, "README.md"), readme); writeFileSync(join(repo, "large-public-blob.bin"), largeBlob); writeFileSync(join(repo, "config/openlup-source-release-contract.json"), contract); run(["add", "--all"]); run(["commit", "--quiet", "-m", "Initial public source release.\n\nSigned-off-by: Owner <owner@openlup.com>"]);
-      const rootCommit = run(["rev-parse", "HEAD"]), rootTree = run(["rev-parse", "HEAD^{tree}"]), entries = run(["ls-tree", "-r", "-t", "HEAD"]).split("\n").map((line) => { const match = /^(\d+) (\w+) ([0-9a-f]{40})\t(.+)$/u.exec(line)!; return { mode: match[1], type: match[2], sha: match[3], path: match[4] }; }), paths = entries.filter(({ type }) => type === "blob").map(({ path, mode, sha }) => ({ path, mode: mode as "100644" | "100755", digest: digest(execFileSync("git", ["cat-file", "blob", sha], { cwd: repo, maxBuffer: 4 * 1024 * 1024 })) }));
-      const previousScenario = { targetTag: oldTag, targetCommit: rootCommit, targetTree: rootTree, contractBytes: contract, readmeBytes: readme, targetEntries: entries, receiptPaths: paths };
-      const previous = fixture(previousScenario);
-      writeFileSync(join(repo, "README.md"), "public descendant\n"); run(["add", "README.md"]); run(["commit", "--quiet", "-m", "Public descendant\n\nSigned-off-by: Owner <owner@openlup.com>"]); run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2.\n\nExtra text"]);
-      const input = { root: repo, previous: previous.input, fetcher: previous.fetcher, releaseTag: tag, tagMessage: "OpenLup source preview 2.", releaseNote: "release note", outputPath: output };
-      const tagOutput = join(artifactRoot, "tag-receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: tagOutput })).rejects.toThrow(/exact annotated tag/u); expect(() => readFileSync(tagOutput)).toThrow(); run(["tag", "--delete", tag]); run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2."]);
-      const projectedOutput = join(artifactRoot, "projected-receipt.json"), projected = fixture({ ...previousScenario, receiptDrift: [{ class: "projection", selector: "README.md", sourceSelector: "README.md", source: { disposition: "present", digest: digest(readme) }, public: { disposition: "projected", digest: digest(readme) } }] });
-      await expect(writeDescendantSourceReleaseReceipt({ ...input, previous: projected.input, fetcher: projected.fetcher, outputPath: projectedOutput })).rejects.toThrow(/projected byte changes/u); expect(() => readFileSync(projectedOutput)).toThrow();
-      const result = await writeDescendantSourceReleaseReceipt(input); expect(parseSourceReleaseReceiptEnvelope(readFileSync(output))).toEqual(result.receipt); expect(result.receipt).toMatchObject({ schemaVersion: 5, export: { commit: run(["rev-parse", "HEAD"]), parents: [rootCommit] }, disclosure: { releaseNote: { digest: digest("release note") } } }); expect(result.allowlistDigest).toBe(digest(result.allowlist));
-      const original = readFileSync(output); await expect(writeDescendantSourceReleaseReceipt(input)).rejects.toThrow(/already exists/u); expect(readFileSync(output)).toEqual(original);
-      const checkoutOutput = join(realpathSync(repo), "receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: checkoutOutput })).rejects.toThrow(/outside the checkout/u); expect(() => readFileSync(checkoutOutput)).toThrow();
-      run(["tag", "--delete", tag]); writeFileSync(join(repo, "new-public-file.txt"), "new\n"); run(["add", "new-public-file.txt"]); run(["commit", "--quiet", "-m", "Expand inventory\n\nSigned-off-by: Owner <owner@openlup.com>"]); run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2."]);
-      const inventoryOutput = join(artifactRoot, "inventory-receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: inventoryOutput })).rejects.toThrow(/inventory or mode changes/u); expect(() => readFileSync(inventoryOutput)).toThrow();
-    } finally { rmSync(repo, { recursive: true, force: true }); rmSync(artifactRoot, { recursive: true, force: true }); }
+// The descendant producer's fixtures are a synthetic public tree built in a temporary Git repository;
+// they never read this checkout, so an adopting repository runs them unchanged.
+const CATALOG = "config/openlup-publication-catalog.json", CONTRACT = "config/openlup-source-release-contract.json", OWNER = { name: "Owner", email: "owner@openlup.com" };
+const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+// `PUBLIC_PACKAGE_EXECUTION_SURFACES` pins these workspace scripts by digest; the first test names a drift.
+const CORE_SCRIPTS = {
+  build: "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+  "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
+  "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
+  ci: "npm run test:coverage && npm run typecheck:smoke && npm run api:check && npm run docs:check && npm run release:check && npm run test:consumer",
+  "docs:check": "node --experimental-strip-types ./scripts/documentation-contract.ts",
+  prepack: "npm run build",
+  prepublishOnly: "node --experimental-strip-types ./scripts/refuse-publish.ts",
+  "release:audit": "node --experimental-strip-types ./scripts/release-check.ts audit",
+  "release:bundle": "node --experimental-strip-types ./scripts/release-bundle.ts",
+  "release:check": "npm run build && node --experimental-strip-types ./scripts/release-check.ts all",
+  "release:licenses": "node --experimental-strip-types ./scripts/release-check.ts licenses",
+  "release:lock": "node --experimental-strip-types ./scripts/release-check.ts lock",
+  "release:pack": "node --experimental-strip-types ./scripts/release-check.ts pack",
+  "release:publish-block": "node --experimental-strip-types ./scripts/release-check.ts publish",
+  "release:sbom": "node --experimental-strip-types ./scripts/release-check.ts sbom",
+  "test:consumer": "node --experimental-strip-types ./scripts/core-package-consumer-smoke.ts",
+  "test:coverage": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts --coverage && node --experimental-strip-types ./test/assertNoZeroCoverage.ts",
+  "test:runtime-import": "node -e \"const p=require('./package.json'); Promise.all(Object.keys(p.exports).map((s)=>import(s==='.'?p.name:p.name+'/'+s.slice(2)))).then((m)=>console.log('core runtime import ok', m.length))\"",
+  "test:smoke": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts",
+  "typecheck:smoke": "tsc -p tsconfig.smoke.json --noEmit",
+};
+const UI_SCRIPTS = { build: CORE_SCRIPTS.build, typecheck: "tsc -p tsconfig.json --noEmit", "test:neutrality": "node --experimental-strip-types smoke/neutrality.ts" };
+const compatibility = (diagnostics: number) => ({ typecheck: { projects: ["tsconfig.synthetic.json"], signedPreviewDebt: { unresolvedEdges: { mode: "exact-ratchet", pairs: 0, importers: 0, targets: 0, digest: "sha256-e3b0c44298fc1c149afbf4c8996fb924", pairHashes: [] }, inferenceCascades: { mode: "ceiling-ratchet", diagnostics } } } });
+const SYNTHETIC_TREE: Record<string, string> = {
+  "README.md": "public root\n",
+  "docs/guide.md": "synthetic guide\n",
+  "config/openlup-policy-registry.json": json({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "synthetic-readme", owners: ["README.md"] }] }),
+  "config/platform-migration-manifest.json": json({ synthetic: "manifest" }),
+  "db/platform/migrations/0001_synthetic.sql": "select 1;\n",
+  "src/integrations/supabase/types.ts": "export type SyntheticDatabase = never;\n",
+  "package.json": json({ name: "synthetic-root", private: true, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }),
+  "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3 }),
+  "packages/core/package.json": json({ name: "synthetic-core", scripts: CORE_SCRIPTS }),
+  "packages/core/package-lock.json": json({ name: "synthetic-core", lockfileVersion: 3 }),
+  "packages/ui/package.json": json({ name: "synthetic-ui", scripts: UI_SCRIPTS }),
+  [CONTRACT]: createSourceReleaseContract({ ...Object.fromEntries(["inventoryDigest", "classDigest", "packageDigest", "rootLockDigest", "coreLockDigest", "migrationManifestDigest", "databaseTypesDigest", "policyRegistryDigest", "publicationCatalogDigest"].map((name) => [name, `sha256-${"0".repeat(64)}`])) as unknown as SourceReleaseContractInput, compatibility: compatibility(0) as SourceReleaseContractInput["compatibility"] }, { evidenceClass: "activation-candidate", coordinate: "https://github.com/openlup/openlup", securityRoute: "dev@openlup.com", owner: OWNER }).contents,
+};
+type TreeChange = Record<string, string | null> | ((repo: string) => void);
+type Seal = { regenerate?: boolean; classes?: Record<string, string> };
+
+/** A synthetic preview/1 root, authenticated through the fixture transport, plus helpers that cut its descendant. */
+function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer>; drift?: (rows: SourceReceiptEnvelope["drift"]) => SourceReceiptEnvelope["drift"] } = {}) {
+  const physical = realpathSync(tmpdir()), repo = mkdtempSync(join(physical, "openlup-descendant-producer-")), artifacts = mkdtempSync(join(physical, "openlup-descendant-artifact-"));
+  const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+  const read = (path: string) => existsSync(join(repo, path)) ? readFileSync(join(repo, path)) : undefined;
+  const apply = (change: TreeChange) => {
+    if (typeof change === "function") return change(repo);
+    for (const [path, contents] of Object.entries(change)) { if (contents === null) { rmSync(join(repo, path)); continue; } mkdirSync(dirname(join(repo, path)), { recursive: true }); writeFileSync(join(repo, path), contents); }
+  };
+  const commit = (message: string, { regenerate = true, classes = {} }: Seal = {}) => {
+    run(["add", "--all"]);
+    const paths = [...new Set([...run(["ls-files"]).split("\n").filter(Boolean), CATALOG])].sort();
+    writeFileSync(join(repo, CATALOG), createPublicPublicationCatalog(paths.map((path) => ({ path, class: classes[path] ?? "public-output" })), []).contents);
+    if (regenerate) writeFileSync(join(repo, CONTRACT), deriveSourceReleaseContract(read).contents);
+    run(["add", "--all"]); run(["commit", "--quiet", "-m", `${message}\n\nSigned-off-by: Owner <owner@openlup.com>`]);
+  };
+  run(["init", "--quiet"]); run(["config", "user.name", OWNER.name]); run(["config", "user.email", OWNER.email]);
+  apply({ ...SYNTHETIC_TREE, ...options.extraFiles }); commit("Initial public source release.");
+  const rootCommit = run(["rev-parse", "HEAD"]), rootTree = run(["rev-parse", "HEAD^{tree}"]);
+  const entries = run(["ls-tree", "-r", "-t", "HEAD"]).split("\n").map((line) => { const match = /^(\d+) (\w+) ([0-9a-f]{40})\t(.+)$/u.exec(line)!; return { mode: match[1], type: match[2], sha: match[3], path: match[4] }; });
+  const paths = entries.filter(({ type }) => type === "blob").map(({ path, mode, sha }) => ({ path, mode: mode as "100644" | "100755", digest: digest(execFileSync("git", ["cat-file", "blob", sha], { cwd: repo, maxBuffer: 8 * 1024 * 1024 })) }));
+  const rows: SourceReceiptEnvelope["drift"] = [
+    { class: "local-measurement", selector: "local/measurement.json", sourceSelector: null, source: { disposition: "present", digest: digest("local measurement") }, public: { disposition: "absent", digest: null } },
+    { class: "projection", selector: "README.md", sourceSelector: "source/README.md", source: { disposition: "present", digest: digest("source readme") }, public: { disposition: "projected", digest: digest(read("README.md")!) } },
+    { class: "projection", selector: "docs/guide.md", sourceSelector: null, source: { disposition: "absent", digest: null }, public: { disposition: "projected", digest: digest(read("docs/guide.md")!) } },
+  ];
+  const previous = fixture({ targetTag: oldTag, targetCommit: rootCommit, targetTree: rootTree, contractBytes: read(CONTRACT), readmeBytes: read("README.md"), targetEntries: entries, receiptPaths: paths, receiptDrift: options.drift ? options.drift(rows) : rows });
+  let outputs = 0;
+  const input = (overrides: Partial<Parameters<typeof writeDescendantSourceReleaseReceipt>[0]> = {}) => ({ root: repo, previous: previous.input, fetcher: previous.fetcher, releaseTag: tag, tagMessage: "OpenLup source preview 2.", releaseNote: "release note", outputPath: join(artifacts, `receipt-${outputs += 1}.json`), ...overrides });
+  /** Commits one change, tags it as the next preview and runs the producer. */
+  const release = (change: TreeChange, seal: Seal = {}, overrides: Partial<Parameters<typeof writeDescendantSourceReleaseReceipt>[0]> = {}) => {
+    apply(change); commit("Public descendant", seal);
+    const releaseTag = overrides.releaseTag ?? tag; run(["tag", "--annotate", releaseTag, "--message", overrides.tagMessage ?? `OpenLup source preview ${releaseTag.split("/")[1]}.`]);
+    return writeDescendantSourceReleaseReceipt(input(overrides));
+  };
+  return { repo, artifacts, run, read, rows, rootCommit, input, release, cleanup: () => { rmSync(repo, { recursive: true, force: true }); rmSync(artifacts, { recursive: true, force: true }); } };
+}
+const selectors = (rows: SourceReceiptEnvelope["drift"]) => rows.map(({ selector }) => selector);
+const editContract = (edit: (contract: { compatibility?: unknown; repository: { owner: { name: string } } }) => void) => (repo: string) => { const contract = JSON.parse(readFileSync(join(repo, CONTRACT), "utf8")); edit(contract); writeFileSync(join(repo, CONTRACT), json(contract)); };
+
+describe("descendant source release producer", () => {
+  it("builds its synthetic workspace manifests with the pinned public execution surfaces", () => {
+    expect(PUBLIC_PACKAGE_EXECUTION_SURFACES.map(({ path, digest: pinned }) => [path, packageExecutionDigest(JSON.parse(SYNTHETIC_TREE[path]!)) === pinned])).toEqual(PUBLIC_PACKAGE_EXECUTION_SURFACES.map(({ path }) => [path, true]));
   });
 
-  it("binds the finite preview/5 exception to checked-in Git bytes, modes, classes, and nine projected selectors", () => {
-    const source = process.cwd(), repo = mkdtempSync(join(realpathSync(tmpdir()), "openlup-w1a-pins-"));
-    const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
-    const selected = [...new Set([...finiteW1aPinnedPaths.added, ...finiteW1aPinnedPaths.projected])];
+  it("authenticates preview/1 then writes and reads a deterministic schema-5 receipt from real Git objects", async () => {
+    const sample = syntheticRelease({ extraFiles: { "large-public-blob.bin": Buffer.alloc(3_000_000, 0x61) } });
     try {
-      run(["init", "--quiet"]); run(["config", "user.name", "W1a test"]); run(["config", "user.email", "test@openlup.invalid"]);
-      for (const path of selected) {
-        const destination = join(repo, path), original = join(source, path);
-        mkdirSync(dirname(destination), { recursive: true }); copyFileSync(original, destination); chmodSync(destination, statSync(original).mode);
-      }
-      run(["add", "--all"]); run(["commit", "--quiet", "-m", "Copy pinned public objects"]);
-      const catalog = JSON.parse(readFileSync(join(repo, "config/openlup-publication-catalog.json"), "utf8")) as { publicPaths: Array<{ path: string; class: string }> };
-      const classes = new Map(catalog.publicPaths.map(({ path, class: classification }) => [path, classification]));
-      const object = (path: string) => {
-        const match = /^(100644|100755) blob ([0-9a-f]{40})\t/u.exec(run(["ls-tree", "HEAD", "--", path]));
-        if (!match) throw new Error(`missing pinned Git object: ${path}`);
-        return { mode: match[1]!, digest: digest(execFileSync("git", ["cat-file", "blob", match[2]!], { cwd: repo })) };
-      };
-      const actual = () => ({
-        added: finiteW1aPinnedPaths.added.map((path) => [path, object(path).mode, classes.get(path)!, object(path).digest] as const),
-        projected: finiteW1aPinnedPaths.projected.map((path) => [path, object(path).digest] as const),
-        contract: object("config/openlup-source-release-contract.json").digest,
-      });
-      const baseline = actual();
-      expect(() => assertFiniteW1aBlobPins(baseline.added, baseline.projected, baseline.contract)).not.toThrow();
-      expect(() => assertFiniteW1aBlobPins(baseline.added.slice(1), baseline.projected, baseline.contract)).toThrow(/added path/u);
-      expect(() => assertFiniteW1aBlobPins([[baseline.added[0]![0], "100755", baseline.added[0]![2], baseline.added[0]![3]], ...baseline.added.slice(1)], baseline.projected, baseline.contract)).toThrow(/mode/u);
-      expect(() => assertFiniteW1aBlobPins([[baseline.added[0]![0], baseline.added[0]![1], "wrong-class", baseline.added[0]![3]], ...baseline.added.slice(1)], baseline.projected, baseline.contract)).toThrow(/class/u);
-      expect(() => assertFiniteW1aBlobPins(baseline.added, baseline.projected.slice(1), baseline.contract)).toThrow(/projected selector/u);
-      expect(() => assertFiniteW1aBlobPins(baseline.added, baseline.projected, digest("wrong contract"))).toThrow(/source contract/u);
-      const changedPath = finiteW1aPinnedPaths.added[0]!; writeFileSync(join(repo, changedPath), "unreviewed added bytes\n"); run(["add", changedPath]); run(["commit", "--quiet", "-m", "Tamper added object"]);
-      expect(() => { const changed = actual(); assertFiniteW1aBlobPins(changed.added, changed.projected, changed.contract); }).toThrow(/bytes/u);
-      const projectedPath = finiteW1aPinnedPaths.projected[0]!; writeFileSync(join(repo, projectedPath), "unreviewed projected bytes\n"); run(["add", projectedPath]); run(["commit", "--quiet", "-m", "Tamper projected object"]);
-      expect(() => { const changed = actual(); assertFiniteW1aBlobPins(baseline.added, changed.projected, changed.contract); }).toThrow(/projected selector/u);
-    } finally { rmSync(repo, { recursive: true, force: true }); }
+      writeFileSync(join(sample.repo, "README.md"), "public descendant\n"); sample.run(["add", "README.md"]); sample.run(["commit", "--quiet", "-m", "Public descendant\n\nSigned-off-by: Owner <owner@openlup.com>"]); sample.run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2.\n\nExtra text"]);
+      const tagInput = sample.input(); await expect(writeDescendantSourceReleaseReceipt(tagInput)).rejects.toThrow(/exact annotated tag/u); expect(() => readFileSync(tagInput.outputPath)).toThrow(); sample.run(["tag", "--delete", tag]); sample.run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2."]);
+      const input = sample.input(), result = await writeDescendantSourceReleaseReceipt(input);
+      expect(parseSourceReleaseReceiptEnvelope(readFileSync(input.outputPath))).toEqual(result.receipt); expect(result.receipt).toMatchObject({ schemaVersion: 5, export: { commit: sample.run(["rev-parse", "HEAD"]), parents: [sample.rootCommit] }, disclosure: { releaseNote: { digest: digest("release note") } } }); expect(result.allowlistDigest).toBe(digest(result.allowlist));
+      expect(result.receipt.drift).toEqual([sample.rows[0], { ...sample.rows[1], public: { disposition: "projected", digest: digest("public descendant\n") } }, sample.rows[2]]);
+      const original = readFileSync(input.outputPath); await expect(writeDescendantSourceReleaseReceipt(input)).rejects.toThrow(/already exists/u); expect(readFileSync(input.outputPath)).toEqual(original);
+      const checkoutOutput = join(realpathSync(sample.repo), "receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: checkoutOutput })).rejects.toThrow(/outside the checkout/u); expect(() => readFileSync(checkoutOutput)).toThrow();
+    } finally { sample.cleanup(); }
+  });
+
+  it.each([
+    ["an added path", { "src/synthetic/added.ts": "export const added = 1;\n" }, (receipt: SourceReceiptEnvelope) => expect(receipt.disclosure.paths.map(({ path }) => path)).toContain("src/synthetic/added.ts")],
+    ["a deleted projected path", { "docs/guide.md": null }, (receipt: SourceReceiptEnvelope) => expect(receipt.drift[2]!.public).toEqual({ disposition: "absent", digest: null })],
+    ["a package change with a regenerated contract", { "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3, packages: { "": { name: "synthetic-root" } } }) }, (receipt: SourceReceiptEnvelope, previous: string) => expect(receipt.contract.digest).not.toBe(previous)],
+    ["a projected change", { "README.md": "changed public readme\n" }, (receipt: SourceReceiptEnvelope, _previous: string, rows: SourceReceiptEnvelope["drift"]) => expect(receipt.drift[1]).toEqual({ ...rows[1], public: { disposition: "projected", digest: digest("changed public readme\n") } })],
+    ["a valid compatibility change", editContract((contract) => { contract.compatibility = compatibility(2); }), (receipt: SourceReceiptEnvelope, previous: string) => expect(receipt.contract.digest).not.toBe(previous)],
+  ] as const)("accepts %s when the tree describes itself", async (_label, change, check) => {
+    const sample = syntheticRelease(), previous = digest(sample.read(CONTRACT)!);
+    try {
+      const { receipt } = await sample.release(change);
+      expect(selectors(receipt.drift)).toEqual(selectors(sample.rows)); expect(receipt.drift.map(({ source }) => source)).toEqual(sample.rows.map(({ source }) => source));
+      check(receipt, previous, sample.rows);
+    } finally { sample.cleanup(); }
+  });
+
+  it.each([
+    ["a package change with a stale contract", { "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3, packages: {} }) }, { regenerate: false }, /does not describe its tree.*packages\.rootLockDigest/u],
+    ["a stale class digest", {}, { regenerate: false, classes: { "docs/guide.md": "platform-documentation" } }, /does not describe its tree.*inventory\.classDigest/u],
+    ["a changed fixed contract field", editContract((contract) => { contract.repository.owner.name = "Second Owner"; }), {}, /previous release's repository\.owner\.name/u],
+    ["a public path at a local-measurement selector", { "local/measurement.json": "{}\n" }, {}, /local-measurement selector: local\/measurement\.json/u],
+    ["a migration manifest change", { "config/platform-migration-manifest.json": json({ synthetic: "changed" }) }, {}, /schema-bearing.*platform-migration-manifest/u],
+    ["a database types change", { "src/integrations/supabase/types.ts": "export type SyntheticDatabase = unknown;\n" }, {}, /schema-bearing.*supabase\/types\.ts/u],
+    ["a policy registry change", { "config/openlup-policy-registry.json": json({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "synthetic-readme-renamed", owners: ["README.md"] }] }) }, {}, /schema-bearing.*openlup-policy-registry/u],
+    ["an added platform migration", { "db/platform/migrations/0002_synthetic.sql": "select 2;\n" }, {}, /schema-bearing.*0002_synthetic/u],
+    ["an added schema migration", { "supabase/migrations/0001_synthetic.sql": "select 1;\n" }, {}, /schema-bearing.*supabase\/migrations/u],
+    ["an added bootstrap script", { "db/bootstrap/synthetic/00_synthetic.sql": "select 1;\n" }, {}, /schema-bearing.*db\/bootstrap/u],
+    ["a migration mode change", (repo: string) => chmodSync(join(repo, "db/platform/migrations/0001_synthetic.sql"), 0o755), {}, /schema-bearing.*0001_synthetic/u],
+    ["an unregistered direct execution entrypoint", { "scripts/synthetic-tool.mjs": "#!/usr/bin/env node\n" }, {}, /unregistered direct execution entrypoint/u],
+  ] as const)("refuses %s", async (_label, change, seal, expected) => {
+    const sample = syntheticRelease();
+    try { await expect(sample.release(change, seal)).rejects.toThrow(expected); } finally { sample.cleanup(); }
+  });
+
+  it("refuses a next preview number that is not exactly the previous one plus one", async () => {
+    const sample = syntheticRelease();
+    try { await expect(sample.release({ "README.md": "changed\n" }, {}, { releaseTag: "openlup-source-preview/3", tagMessage: "OpenLup source preview 3." })).rejects.toThrow(/exactly next preview tag/u); } finally { sample.cleanup(); }
+  });
+
+  it("refuses a previous receipt whose drift does not match its own Git objects", async () => {
+    const sample = syntheticRelease({ drift: (rows) => rows.map((row) => row.selector === "README.md" ? { ...row, public: { disposition: "projected", digest: digest("tampered") } } : row) });
+    try { await expect(sample.release({ "README.md": "changed\n" })).rejects.toThrow(/previous drift differs.*README\.md/u); } finally { sample.cleanup(); }
+  });
+
+  it("drops exactly the named retired projection rows and keeps every unnamed row", async () => {
+    const sample = syntheticRelease();
+    try {
+      const { receipt } = await sample.release({ "README.md": "changed\n" }, {}, { retireProjectedSelectors: ["docs/guide.md"] });
+      expect(selectors(receipt.drift)).toEqual(["local/measurement.json", "README.md"]);
+      expect(JSON.parse(renderSourceReleaseAllowlist(receipt)).driftSelectors).toEqual([{ class: "local-measurement", selector: "local/measurement.json" }, { class: "projection", selector: "README.md" }]);
+      await expect(writeDescendantSourceReleaseReceipt(sample.input({ retireProjectedSelectors: [] }))).resolves.toMatchObject({ receipt: { drift: expect.arrayContaining([expect.objectContaining({ selector: "docs/guide.md" })]) } });
+    } finally { sample.cleanup(); }
+  });
+
+  it.each([
+    ["an unknown selector", ["missing.md"], /names no previous projection row: missing\.md/u],
+    ["a local-measurement selector", ["local/measurement.json"], /names no previous projection row: local\/measurement\.json/u],
+    ["unsorted selectors", ["docs/guide.md", "README.md"], /sorted and unique/u],
+    ["duplicate selectors", ["README.md", "README.md"], /sorted and unique/u],
+    ["a noncanonical selector", ["./README.md"], /canonical/u],
+  ] as const)("refuses retiring %s", async (_label, retireProjectedSelectors, expected) => {
+    const sample = syntheticRelease();
+    try { await expect(sample.release({ "README.md": "changed\n" }, {}, { retireProjectedSelectors })).rejects.toThrow(expected); } finally { sample.cleanup(); }
   });
 });
