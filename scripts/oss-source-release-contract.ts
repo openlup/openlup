@@ -145,7 +145,7 @@ const W1A_ADDED = [
   ["config/public-reference-subscription-imports.json", "100644", "public-output", "sha256:c25feac67732240e6d0ace774c7c2a3095e77414a74e87360d91fb193b530c3a"],
   ["config/public-reference-subscription-supabase.toml", "100644", "public-output", "sha256:1cf875e7bed1515cd25cc5bef39eb6674d068dbdd650679dc3b5ffefd1671dc1"],
   ["docs/platform/SUBSCRIPTION_REFERENCE.md", "100644", "platform-documentation", "sha256:d2ac745af716f6096042cf6f0c9b21d2281929c2f6d987ec57a21012ec404613"],
-  ["docs/platform/plans/subscription-reference-w1.md", "100644", "platform-documentation", "sha256:96a15d8688474aea274f818aa599346d74fdde4fee72f5afa64950339a4ccbfb"],
+  ["docs/platform/plans/subscription-reference-w1.md", "100644", "platform-documentation", "sha256:8c9f1a2b647d6c48373d7943176af1283bfb5566a0799119d77ba5b8d35bafcf"],
   ["scripts/public-reference/grant-operator.mjs", "100644", "public-output", "sha256:bbeef7a11a5d1bc82cd139b76d8f7fc399d45aa19a9bf999fdfc8ef96e36176f"],
   ["scripts/public-reference/setup-subscription.mjs", "100755", "public-output", "sha256:5222d4233e41efb22e17656fdddd5c20c9091c5d38db8cb5ed23feeb271f1f56"],
   ["scripts/public-reference/subscription-prereqs.sql", "100644", "public-output", "sha256:4323c42c4d16c25ed2fe86a2273ac39af95dbeac6550a79f0e489878831b06b6"],

@@ -126,8 +126,8 @@ published, merged or a supported installation; record actual evidence here as it
 
 ## 8. Current evidence and completion
 
-Base is `cda8d207aa4d949d5d2223d1a824b87713337c5b`. Locked installation passed.
-Root tests pass (359 files, 2911 tests); the separately owned
+Base is `cda8d207aa4d949d5d2223d1a824b87713337c5b`. At functional checkpoint
+`9402d744`, locked installation and root tests passed (359 files, 2911 tests); the separately owned
 core CI passes (37 files, 309 tests), including its packed consumer check. The
 date-modal public localization fixture is repaired without changing its behavior.
 All five public TypeScript projects pass with zero missing edges and zero cascades.
@@ -143,16 +143,27 @@ selection, existing modal summary and confirmed renewal-date change. After anoth
 Node restart and browser reload, the same paid order and active subscription still
 showed October 28, 2026; browser warning/error logs were empty.
 
-Publication is pending implementation and verification of the compatibility
-amendment. Automatic approval review initially refused the producer extension and
+The finite compatibility amendment is implemented at `913b36d0` and refined at
+`f0992cb1`. A clean clone of the former installed and passed 359 root files / 2912
+tests, the static and selected builds, all five compiler projects and all 309 core
+tests. Review repairs in the latter passed 186 focused tests and all five compiler
+projects. Its revised seed also passed a fresh owned installation, the HTTP
+verifier and persisted readbacks after a Node restart.
+
+Automatic approval review initially refused the producer extension and
 three explicit entrypoint declarations; the owner subsequently approved the exact
 bounded package. Review then refused a general caller-supplied delta API, so the
-implementation uses only the finite transition described above. These decisions do
-not establish that the new contract has passed. Policy and inventory checks pass
+implementation uses only the finite transition described above. Policy and inventory checks pass
 with 4,621 exact paths and the three new entrypoints. The preceding preview/4 has
 also authenticated through the native GitHub reader, including preview/3, ancestry
-and its six required successful public checks. Producer growth/refusal tests and
-independent review of its exact final head remain separate evidence.
+and its six required successful public checks. The actual producer authenticated
+that history and wrote local rehearsal receipts at both compatibility checkpoints:
+4,621 paths, 452 drift rows, exactly nine changed target digests with preserved
+historical metadata. Four real Git rehearsals at `913b36d0` refused dirty HEAD,
+an undeclared addition, an unlisted entrypoint and changed protected package bytes
+before creating an output. Independent review of that checkpoint found duplicated
+test execution, repaired at `f0992cb1`; final exact-head review remains required.
+These are local execution results, not protected candidate CI or publication.
 Old-release authentication, the schema-5 reader and refusal before writing remain
 unchanged. No immutable release, merged change, adopter installation, supported
 installation or production-provider certification is claimed.
