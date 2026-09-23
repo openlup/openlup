@@ -398,7 +398,7 @@ const SYNTHETIC_TREE: Record<string, string> = {
   [CONTRACT]: createSourceReleaseContract({ ...Object.fromEntries(["inventoryDigest", "classDigest", "packageDigest", "rootLockDigest", "coreLockDigest", "migrationManifestDigest", "databaseTypesDigest", "policyRegistryDigest", "publicationCatalogDigest"].map((name) => [name, `sha256-${"0".repeat(64)}`])) as unknown as SourceReleaseContractInput, compatibility: compatibility(0) as SourceReleaseContractInput["compatibility"] }, { evidenceClass: "activation-candidate", coordinate: "https://github.com/openlup/openlup", securityRoute: "dev@openlup.com", owner: OWNER }).contents,
 };
 type TreeChange = Record<string, string | null> | ((repo: string) => void);
-type Seal = { regenerate?: boolean; classes?: Record<string, string> };
+type Seal = { regenerate?: boolean; classes?: Record<string, string>; omitFromCatalog?: string[] };
 
 /** A synthetic preview/1 root, authenticated through the fixture transport, plus helpers that cut its descendant. */
 function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer>; drift?: (rows: SourceReceiptEnvelope["drift"]) => SourceReceiptEnvelope["drift"] } = {}) {
@@ -409,9 +409,9 @@ function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer
     if (typeof change === "function") return change(repo);
     for (const [path, contents] of Object.entries(change)) { if (contents === null) { rmSync(join(repo, path)); continue; } mkdirSync(dirname(join(repo, path)), { recursive: true }); writeFileSync(join(repo, path), contents); }
   };
-  const commit = (message: string, { regenerate = true, classes = {} }: Seal = {}) => {
+  const commit = (message: string, { regenerate = true, classes = {}, omitFromCatalog = [] }: Seal = {}) => {
     run(["add", "--all"]);
-    const paths = [...new Set([...run(["ls-files"]).split("\n").filter(Boolean), CATALOG])].sort();
+    const paths = [...new Set([...run(["ls-files"]).split("\n").filter(Boolean), CATALOG])].filter((path) => !omitFromCatalog.includes(path)).sort();
     writeFileSync(join(repo, CATALOG), createPublicPublicationCatalog(paths.map((path) => ({ path, class: classes[path] ?? "public-output" })), []).contents);
     if (regenerate) writeFileSync(join(repo, CONTRACT), deriveSourceReleaseContract(read).contents);
     run(["add", "--all"]); run(["commit", "--quiet", "-m", `${message}\n\nSigned-off-by: Owner <owner@openlup.com>`]);
@@ -474,16 +474,22 @@ describe("descendant source release producer", () => {
   });
 
   it.each([
-    ["a package change with a stale contract", { "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3, packages: {} }) }, { regenerate: false }, /does not describe its tree.*packages\.rootLockDigest/u],
+    ["a package change with a stale contract", { "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3, packages: {} }) }, { regenerate: false }, /does not describe its tree; regenerate it with the snippet in CONTRIBUTING\.md.*packages\.rootLockDigest/u],
     ["a stale class digest", {}, { regenerate: false, classes: { "docs/guide.md": "platform-documentation" } }, /does not describe its tree.*inventory\.classDigest/u],
     ["a changed fixed contract field", editContract((contract) => { contract.repository.owner.name = "Second Owner"; }), {}, /previous release's repository\.owner\.name/u],
     ["a public path at a local-measurement selector", { "local/measurement.json": "{}\n" }, {}, /local-measurement selector: local\/measurement\.json/u],
-    ["a migration manifest change", { "config/platform-migration-manifest.json": json({ synthetic: "changed" }) }, {}, /schema-bearing.*platform-migration-manifest/u],
+    ["a migration manifest change", { "config/platform-migration-manifest.json": json({ synthetic: "changed" }) }, {}, /schema-bearing add, delete, mode or byte change, which needs a separately approved schema contract: config\/platform-migration-manifest\.json/u],
     ["a database types change", { "src/integrations/supabase/types.ts": "export type SyntheticDatabase = unknown;\n" }, {}, /schema-bearing.*supabase\/types\.ts/u],
     ["a policy registry change", { "config/openlup-policy-registry.json": json({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "synthetic-readme-renamed", owners: ["README.md"] }] }) }, {}, /schema-bearing.*openlup-policy-registry/u],
     ["an added platform migration", { "db/platform/migrations/0002_synthetic.sql": "select 2;\n" }, {}, /schema-bearing.*0002_synthetic/u],
     ["an added schema migration", { "supabase/migrations/0001_synthetic.sql": "select 1;\n" }, {}, /schema-bearing.*supabase\/migrations/u],
     ["an added bootstrap script", { "db/bootstrap/synthetic/00_synthetic.sql": "select 1;\n" }, {}, /schema-bearing.*db\/bootstrap/u],
+    ["an added upper-case bootstrap script", { "db/bootstrap/synthetic/01_SYNTHETIC.SQL": "select 1;\n" }, {}, /schema-bearing.*01_SYNTHETIC\.SQL/u],
+    ["a case variant of a local-measurement selector", { "local/Measurement.json": "{}\n" }, {}, /local-measurement selector: local\/measurement\.json/u],
+    ["a catalogue that omits a tracked path", {}, { omitFromCatalog: ["docs/guide.md"] }, /catalogue differs from the Git inventory/u],
+    ["a deleted policy active path", { "README.md": null }, {}, /policy path is absent from the Git inventory: README\.md/u],
+    ["a changed package execution surface", { "packages/ui/package.json": json({ name: "synthetic-ui", scripts: { ...UI_SCRIPTS, postinstall: "node install.js" } }) }, {}, /package execution surface differs from the catalogue: packages\/ui\/package\.json/u],
+    ["an uncatalogued package manifest", { "packages/extra/package.json": json({ name: "synthetic-extra", scripts: { postinstall: "node install.js" } }) }, {}, /package manifests differ from the catalogued package execution surfaces/u],
     ["a migration mode change", (repo: string) => chmodSync(join(repo, "db/platform/migrations/0001_synthetic.sql"), 0o755), {}, /schema-bearing.*0001_synthetic/u],
     ["an unregistered direct execution entrypoint", { "scripts/synthetic-tool.mjs": "#!/usr/bin/env node\n" }, {}, /unregistered direct execution entrypoint/u],
   ] as const)("refuses %s", async (_label, change, seal, expected) => {
@@ -498,7 +504,8 @@ describe("descendant source release producer", () => {
 
   it("refuses a previous receipt whose drift does not match its own Git objects", async () => {
     const sample = syntheticRelease({ drift: (rows) => rows.map((row) => row.selector === "README.md" ? { ...row, public: { disposition: "projected", digest: digest("tampered") } } : row) });
-    try { await expect(sample.release({ "README.md": "changed\n" })).rejects.toThrow(/previous drift differs.*README\.md/u); } finally { sample.cleanup(); }
+    // The tree also carries a schema-bearing change: the tampered previous receipt must be reported first.
+    try { await expect(sample.release({ "config/platform-migration-manifest.json": json({ synthetic: "changed" }) })).rejects.toThrow(/previous drift differs.*README\.md/u); } finally { sample.cleanup(); }
   });
 
   it("drops exactly the named retired projection rows and keeps every unnamed row", async () => {

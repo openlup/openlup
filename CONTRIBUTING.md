@@ -148,8 +148,11 @@ NODE
 ```
 
 The snippet keeps the contract's identity and `compatibility` and rewrites its
-digest fields; on an unchanged tree it rewrites the same bytes.
-`npm run oss:published-tree -- --inventory` then checks the bindings.
+digest fields; on an unchanged tree it rewrites the same bytes. The release
+producer enforces the complete self-consistency, byte for byte, when a preview is
+cut. CI checks only part of it: `npm run oss:published-tree -- --inventory`
+compares several digest values with the tree, but not `inventory.classDigest`
+and not the contract's bytes.
 
 The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe

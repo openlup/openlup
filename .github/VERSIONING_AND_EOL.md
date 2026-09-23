@@ -218,8 +218,8 @@ A descendant preview may add, delete or change paths, modes, package manifests,
 lockfiles and projected content when its release commit describes itself. The
 producer checks that the publication catalogue lists exactly the commit's Git
 inventory, that every changed direct execution entrypoint is registered, that the
-policy registry's active paths exist and that package execution surfaces match the
-catalogue. `config/openlup-source-release-contract.json` must equal
+policy registry's active paths exist and that the tree's `package.json` files and
+their execution surfaces match the catalogue. `config/openlup-source-release-contract.json` must equal
 `deriveSourceReleaseContract` (`scripts/oss-source-release-contract.ts`) of the
 commit's own bytes, so every digest field describes the tree. The contract keeps
 the previous release's `schemaVersion`, `platformMigrationManifest`,
@@ -239,8 +239,11 @@ Every previous drift row carries forward. A `projection` row keeps its source si
 and takes its public side from the release commit, `absent` when the path was
 deleted; a `local-measurement` row is copied unchanged. No row is added. A row is
 dropped only when `retireProjectedSelectors` names it: a canonical, sorted and
-unique list of previous `projection` selectors, where any other entry refuses. The
-receipt stays schema 5 and records a retirement by the row's absence from `drift`
+unique list of previous `projection` selectors, where any other entry refuses.
+Naming a selector asserts that its projection no longer applies: the adopting
+repository's bytes at that path now equal the public ones. The producer cannot
+check that assertion, so the owner names a selector only on the adopting
+repository's evidence. The receipt stays schema 5 and records a retirement by the row's absence from `drift`
 and from the allowlist's drift selectors. Earlier previews keep the rules they were
 produced under. Do not hand-edit receipts to fit; correct the tree, or regenerate
 the contract as `CONTRIBUTING.md` describes.

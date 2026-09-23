@@ -198,7 +198,7 @@ function safeReceiptOutput(root: string, path: string): string {
 }
 const SCHEMA_BEARING_PATHS = new Set<string>([MIGRATION_MANIFEST_PATH, DATABASE_TYPES_PATH, PUBLIC_POLICY_REGISTRY_PATH]);
 /** A path whose add, delete, mode or byte change a descendant preview refuses: it carries the platform database or policy schema. */
-export const isSchemaBearingSourceReleasePath = (path: string): boolean => SCHEMA_BEARING_PATHS.has(path) || path.startsWith("db/platform/migrations/") || path.startsWith("supabase/migrations/") || (path.startsWith("db/bootstrap/") && path.endsWith(".sql"));
+const isSchemaBearingSourceReleasePath = (path: string): boolean => SCHEMA_BEARING_PATHS.has(path) || path.startsWith("db/platform/migrations/") || path.startsWith("supabase/migrations/") || (path.startsWith("db/bootstrap/") && path.toLowerCase().endsWith(".sql"));
 /** Contract fields a descendant keeps from the previous release; the validator separately fixes `runtime`. */
 const PREVIOUS_RELEASE_CONTRACT_FIELDS = ["schemaVersion", "platformMigrationManifest", "databaseSchema", "policy.registryDigest", "repository", "release"] as const;
 const canonicalSelector = (value: unknown): value is string => typeof value === "string" && value !== "" && !value.includes("\\") && posix.normalize(value) === value && value.split("/").every((part) => part !== "" && part !== "." && part !== "..");
@@ -218,21 +218,23 @@ function retiredProjectedSelectors(value: unknown, drift: SourceReceiptEnvelope[
  * and its drift rows: every previous row except named retirements, projection rows refreshed from
  * the target tree and local-measurement rows unchanged.
  */
-export function describeDescendantSourceRelease(root: string, previous: AuthenticatedSourceCandidate, targetCommit: string, retireProjectedSelectors?: readonly string[]): { paths: SourceReceiptEnvelope["disclosure"]["paths"]; drift: SourceReceiptEnvelope["drift"] } {
+function describeDescendantSourceRelease(root: string, previous: AuthenticatedSourceCandidate, targetCommit: string, retireProjectedSelectors?: readonly string[]): { paths: SourceReceiptEnvelope["disclosure"]["paths"]; drift: SourceReceiptEnvelope["drift"] } {
   const receipt = parseSourceReleaseReceiptEnvelope(previous.sourceReceiptRaw);
   if (receipt.evidenceClass !== "activation-candidate" || previous.sourceReceiptDigest !== receiptDigest(previous.sourceReceiptRaw) || receipt.export.commit !== previous.targetCommit || receipt.export.tree !== previous.targetTree || JSON.stringify(receipt) !== JSON.stringify(previous.receipt) || receiptDigest(previous.sourceContract.contents) !== receipt.contract.digest) throw new Error("authenticated previous receipt identity differs");
   const old = gitInventory(root, previous.targetCommit), oldPaths = inventoryPaths(root, old);
   const inventoryIdentity = (rows: PublicObjectInventoryEntry[]) => rows.map(({ path, mode, gitBlobSha }) => [path, mode, gitBlobSha]);
   if (JSON.stringify(inventoryIdentity(old)) !== JSON.stringify(inventoryIdentity(previous.targetInventory))) throw new Error("authenticated previous inventory differs from local Git objects");
   if (JSON.stringify(oldPaths) !== JSON.stringify(receipt.disclosure.paths)) throw new Error("authenticated previous path digests differ from local Git objects");
+  const oldDigests = new Map(oldPaths.map((entry) => [entry.path, entry.digest]));
+  for (const entry of receipt.drift) if (entry.public.disposition === "absent" ? oldDigests.has(entry.selector) : oldDigests.get(entry.selector) !== entry.public.digest) throw new Error(`authenticated previous drift differs from local Git objects: ${entry.selector}`);
   const target = gitInventory(root, targetCommit), paths = inventoryPaths(root, target);
   const oldByPath = new Map(old.map((entry) => [entry.path, entry])), targetByPath = new Map(target.map((entry) => [entry.path, entry]));
-  const oldDigests = new Map(oldPaths.map((entry) => [entry.path, entry.digest])), targetDigests = new Map(paths.map((entry) => [entry.path, entry.digest]));
+  const targetDigests = new Map(paths.map((entry) => [entry.path, entry.digest]));
   const readTarget = (path: string) => { const entry = targetByPath.get(path); return entry ? gitBytes(root, ["cat-file", "blob", entry.gitBlobSha]) : undefined; };
   const requireTarget = (path: string) => { const bytes = readTarget(path); if (bytes === undefined) throw new Error(`descendant tree is missing ${path}`); return bytes; };
   for (const path of [...new Set([...oldByPath.keys(), ...targetByPath.keys()])].filter(isSchemaBearingSourceReleasePath).sort()) {
     const before = oldByPath.get(path), after = targetByPath.get(path);
-    if (before?.mode !== after?.mode || before?.gitBlobSha !== after?.gitBlobSha) throw new Error(`descendant receipt refuses a schema-bearing add, delete, mode or byte change: ${path}`);
+    if (before?.mode !== after?.mode || before?.gitBlobSha !== after?.gitBlobSha) throw new Error(`descendant receipt refuses a schema-bearing add, delete, mode or byte change, which needs a separately approved schema contract: ${path}`);
   }
   const catalog = parsePublicPublicationCatalog(requireTarget(PUBLICATION_CATALOG_PATH).toString());
   if (JSON.stringify(catalog.publicPaths.map(({ path }) => path)) !== JSON.stringify(target.map(({ path }) => path))) throw new Error("descendant publication catalogue differs from the Git inventory");
@@ -240,6 +242,8 @@ export function describeDescendantSourceRelease(root: string, previous: Authenti
   for (const entry of target) if (oldByPath.get(entry.path)?.gitBlobSha !== entry.gitBlobSha && !allowedEntrypoints.has(entry.path) && isDirectExecutionEntrypoint(entry.path, requireTarget(entry.path).toString())) throw new Error(`descendant receipt found an unregistered direct execution entrypoint: ${entry.path}`);
   const policy = parsePublicPolicyRegistry(requireTarget(PUBLIC_POLICY_REGISTRY_PATH).toString());
   for (const path of policy.activePaths) if (!targetByPath.has(path)) throw new Error(`descendant policy path is absent from the Git inventory: ${path}`);
+  const manifests = target.map(({ path }) => path).filter((path) => path === "package.json" || path.endsWith("/package.json")).sort();
+  if (JSON.stringify(manifests) !== JSON.stringify(catalog.packageExecutionSurfaces.map(({ path }) => path))) throw new Error(`descendant package manifests differ from the catalogued package execution surfaces: ${manifests.join(", ")}`);
   for (const surface of catalog.packageExecutionSurfaces) {
     const manifest = JSON.parse(requireTarget(surface.path).toString()) as { scripts?: Record<string, string>; bin?: string | Record<string, string> };
     if (surface.digest !== packageExecutionDigest(manifest)) throw new Error(`descendant package execution surface differs from the catalogue: ${surface.path}`);
@@ -247,14 +251,15 @@ export function describeDescendantSourceRelease(root: string, previous: Authenti
   const contractRaw = requireTarget(SOURCE_RELEASE_CONTRACT_PATH).toString();
   validateSourceReleaseContract(contractRaw);
   const derived = deriveSourceReleaseContract(readTarget);
-  if (derived.contents !== contractRaw) throw new Error(`descendant source contract does not describe its tree; regenerate it. Fields that differ: ${sourceReleaseContractChangedFields(parse(contractRaw), parse(derived.contents)).join(", ") || "formatting"}`);
+  if (derived.contents !== contractRaw) throw new Error(`descendant source contract does not describe its tree; regenerate it with the snippet in CONTRIBUTING.md. Fields that differ: ${sourceReleaseContractChangedFields(parse(contractRaw), parse(derived.contents)).join(", ") || "formatting"}`);
   const fixed = sourceReleaseContractChangedFields(parse(previous.sourceContract.contents), parse(contractRaw)).filter((field) => PREVIOUS_RELEASE_CONTRACT_FIELDS.some((name) => field === name || field.startsWith(`${name}.`)));
   if (fixed.length > 0) throw new Error(`descendant source contract must keep the previous release's ${fixed.join(", ")}`);
-  for (const entry of receipt.drift) if (entry.public.disposition === "absent" ? oldDigests.has(entry.selector) : oldDigests.get(entry.selector) !== entry.public.digest) throw new Error(`authenticated previous drift differs from local Git objects: ${entry.selector}`);
   const retired = retiredProjectedSelectors(retireProjectedSelectors, receipt.drift);
+  const foldedTargetPaths = new Set(target.map(({ path }) => path.toLowerCase()));
   const drift = receipt.drift.filter(({ selector }) => !retired.has(selector)).map((entry): SourceReceiptEnvelope["drift"][number] => {
     const after = targetDigests.get(entry.selector);
-    if (entry.class === "local-measurement") { if (after !== undefined) throw new Error(`descendant receipt refuses a public path at a local-measurement selector: ${entry.selector}`); return entry; }
+    // A case-insensitive checkout would place a case variant at the same local-measurement file.
+    if (entry.class === "local-measurement") { if (foldedTargetPaths.has(entry.selector.toLowerCase())) throw new Error(`descendant receipt refuses a public path at a local-measurement selector: ${entry.selector}`); return entry; }
     return { ...entry, public: after === undefined ? { disposition: "absent", digest: null } : { disposition: "projected", digest: after } };
   });
   return { paths, drift };
