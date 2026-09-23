@@ -212,8 +212,16 @@ schema-5 descendants bind release-body, annotated-tag and reconstructed-allowlis
 ### Publish, refuse and recover
 
 Inventory/modes, package manifests/locks, the source contract and projected bytes
-must remain unchanged for this bounded operation. Changes to those boundaries need
-a separately reviewed compatibility change; do not hand-edit receipts to fit.
+must normally remain unchanged for this bounded operation. The first subscription
+reference has one finite compatibility transition from the authentic preview/4
+receipt to preview/5. The producer pins its 28 added Git objects and catalogue
+classes, current source-contract digest and nine changed public projection digests.
+There is no caller-supplied exception list. Existing path modes/classes, package
+manifests/locks, migration manifest, database types, policy registry and identity
+remain unchanged. The target catalogue and contract must exactly describe Git bytes;
+prior source evidence is retained in every projection row. All other transitions
+retain the existing rules. Further boundary changes need their own reviewed
+compatibility change; do not hand-edit receipts to fit.
 
 Review the exact note, tag and receipt before obtaining publication authorization.
 Local preparation does not publish or update an adopter. Publish the same tag and

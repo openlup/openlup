@@ -27,6 +27,8 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
   "scripts/oss-consume-engine.test.ts", "scripts/oss-consume-github-transport.test.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",
+  "scripts/public-reference/grant-operator.mjs", "scripts/public-reference/setup-subscription.mjs",
+  "scripts/public-reference/verify-subscription.mjs",
   "scripts/run-vitest.mjs", "scripts/site-routes.mjs", "server/runtime/public-reference/serve.ts",
   "src/lib/orderRef.test.ts",
   "vitest.config.ts",

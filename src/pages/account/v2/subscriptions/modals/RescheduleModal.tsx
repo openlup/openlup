@@ -40,7 +40,7 @@ export function RescheduleModal({
   onOpenChange,
   onAction,
 }: {
-  subscription: Subscription;
+  subscription: Pick<Subscription, "subscriptionId" | "nextCycleAt" | "editCutoffAt" | "cadenceDays" | "deliveryAlignment">;
   lang: AccountLang;
   open: boolean;
   onOpenChange: (open: boolean) => void;

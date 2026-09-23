@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
-import { writeDescendantSourceReleaseReceipt } from "./oss-source-release-contract.ts";
+import { assertFiniteW1aBlobPins, finiteW1aPinnedPaths, writeDescendantSourceReleaseReceipt } from "./oss-source-release-contract.ts";
 
 const digest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const blob = (value: Buffer) => createHash("sha1").update(`blob ${value.length}\0`).update(value).digest("hex");
@@ -373,5 +373,42 @@ describe("GitHub source consume transport", () => {
       run(["tag", "--delete", tag]); writeFileSync(join(repo, "new-public-file.txt"), "new\n"); run(["add", "new-public-file.txt"]); run(["commit", "--quiet", "-m", "Expand inventory\n\nSigned-off-by: Owner <owner@openlup.com>"]); run(["tag", "--annotate", tag, "--message", "OpenLup source preview 2."]);
       const inventoryOutput = join(artifactRoot, "inventory-receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: inventoryOutput })).rejects.toThrow(/inventory or mode changes/u); expect(() => readFileSync(inventoryOutput)).toThrow();
     } finally { rmSync(repo, { recursive: true, force: true }); rmSync(artifactRoot, { recursive: true, force: true }); }
+  });
+
+  it("binds the finite preview/5 exception to checked-in Git bytes, modes, classes, and nine projected selectors", () => {
+    const source = process.cwd(), repo = mkdtempSync(join(realpathSync(tmpdir()), "openlup-w1a-pins-"));
+    const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+    const selected = [...new Set([...finiteW1aPinnedPaths.added, ...finiteW1aPinnedPaths.projected])];
+    try {
+      run(["init", "--quiet"]); run(["config", "user.name", "W1a test"]); run(["config", "user.email", "test@openlup.invalid"]);
+      for (const path of selected) {
+        const destination = join(repo, path), original = join(source, path);
+        mkdirSync(dirname(destination), { recursive: true }); copyFileSync(original, destination); chmodSync(destination, statSync(original).mode);
+      }
+      run(["add", "--all"]); run(["commit", "--quiet", "-m", "Copy pinned public objects"]);
+      const catalog = JSON.parse(readFileSync(join(repo, "config/openlup-publication-catalog.json"), "utf8")) as { publicPaths: Array<{ path: string; class: string }> };
+      const classes = new Map(catalog.publicPaths.map(({ path, class: classification }) => [path, classification]));
+      const object = (path: string) => {
+        const match = /^(100644|100755) blob ([0-9a-f]{40})\t/u.exec(run(["ls-tree", "HEAD", "--", path]));
+        if (!match) throw new Error(`missing pinned Git object: ${path}`);
+        return { mode: match[1]!, digest: digest(execFileSync("git", ["cat-file", "blob", match[2]!], { cwd: repo })) };
+      };
+      const actual = () => ({
+        added: finiteW1aPinnedPaths.added.map((path) => [path, object(path).mode, classes.get(path)!, object(path).digest] as const),
+        projected: finiteW1aPinnedPaths.projected.map((path) => [path, object(path).digest] as const),
+        contract: object("config/openlup-source-release-contract.json").digest,
+      });
+      const baseline = actual();
+      expect(() => assertFiniteW1aBlobPins(baseline.added, baseline.projected, baseline.contract)).not.toThrow();
+      expect(() => assertFiniteW1aBlobPins(baseline.added.slice(1), baseline.projected, baseline.contract)).toThrow(/added path/u);
+      expect(() => assertFiniteW1aBlobPins([[baseline.added[0]![0], "100755", baseline.added[0]![2], baseline.added[0]![3]], ...baseline.added.slice(1)], baseline.projected, baseline.contract)).toThrow(/mode/u);
+      expect(() => assertFiniteW1aBlobPins([[baseline.added[0]![0], baseline.added[0]![1], "wrong-class", baseline.added[0]![3]], ...baseline.added.slice(1)], baseline.projected, baseline.contract)).toThrow(/class/u);
+      expect(() => assertFiniteW1aBlobPins(baseline.added, baseline.projected.slice(1), baseline.contract)).toThrow(/projected selector/u);
+      expect(() => assertFiniteW1aBlobPins(baseline.added, baseline.projected, digest("wrong contract"))).toThrow(/source contract/u);
+      const changedPath = finiteW1aPinnedPaths.added[0]!; writeFileSync(join(repo, changedPath), "unreviewed added bytes\n"); run(["add", changedPath]); run(["commit", "--quiet", "-m", "Tamper added object"]);
+      expect(() => { const changed = actual(); assertFiniteW1aBlobPins(changed.added, changed.projected, changed.contract); }).toThrow(/bytes/u);
+      const projectedPath = finiteW1aPinnedPaths.projected[0]!; writeFileSync(join(repo, projectedPath), "unreviewed projected bytes\n"); run(["add", projectedPath]); run(["commit", "--quiet", "-m", "Tamper projected object"]);
+      expect(() => { const changed = actual(); assertFiniteW1aBlobPins(baseline.added, changed.projected, changed.contract); }).toThrow(/projected selector/u);
+    } finally { rmSync(repo, { recursive: true, force: true }); }
   });
 });

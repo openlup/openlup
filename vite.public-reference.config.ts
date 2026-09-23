@@ -1,11 +1,13 @@
 import { defaultClientConditions, defaultServerConditions, defineConfig, type Plugin, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { readFileSync } from "node:fs";
 
 const configDir = typeof __dirname === "string" ? __dirname : import.meta.dirname;
 const publicReferenceSsrBuild = process.env.OPENLUP_BUILD_TARGET === "public-reference-ssr";
+const subscriptionBuild = process.env.OPENLUP_REFERENCE_PROFILE === "subscription";
 const publicReferenceDocument = `<!doctype html>
-<html lang="en">
+<html lang="en"${subscriptionBuild ? ' data-openlup-profile="subscription"' : ""}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,7 +16,7 @@ const publicReferenceDocument = `<!doctype html>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/public-reference/main.tsx"></script>
+    <script type="module" src="/src/public-reference/${subscriptionBuild ? "subscription-main" : "main"}.tsx"></script>
   </body>
 </html>`;
 
@@ -23,18 +25,22 @@ function publicReferenceDocumentPlugin(): Plugin {
 }
 
 /** Refuse every first-party module Vite parses outside the deliberately small public root. */
-export function assertPublicReferenceModuleId(id: string, root = configDir): void {
+export function assertPublicReferenceModuleId(id: string, root = configDir, sharedFiles: readonly string[] = []): void {
   const source = id.replace(/\?.*$/, "");
   if (!path.isAbsolute(source) || source.split(path.sep).includes("node_modules")) return;
   const publicRoot = `${path.resolve(root, "src/public-reference")}${path.sep}`;
-  if (source !== path.resolve(root, "index.html") && !source.startsWith(publicRoot)) throw new Error(`Public reference import graph refused first-party module outside src/public-reference: ${source}`);
+  const shared = sharedFiles.some((file) => !path.isAbsolute(file) && !file.split("/").includes("..") && path.resolve(root, file) === source);
+  if (source !== path.resolve(root, "index.html") && !source.startsWith(publicRoot) && !shared) throw new Error(`Public reference import graph refused first-party module outside declared profile: ${source}`);
 }
 
 function publicReferenceGraphGuard(): Plugin {
+  const sharedFiles: string[] = subscriptionBuild && !publicReferenceSsrBuild
+    ? JSON.parse(readFileSync(path.resolve(configDir, "config/public-reference-subscription-imports.json"), "utf8")).files
+    : [];
   return {
     name: "public-reference-import-closure",
-    load(id) { assertPublicReferenceModuleId(id); return null; },
-    moduleParsed(moduleInfo) { assertPublicReferenceModuleId(moduleInfo.id); },
+    load(id) { assertPublicReferenceModuleId(id, configDir, sharedFiles); return null; },
+    moduleParsed(moduleInfo) { assertPublicReferenceModuleId(moduleInfo.id, configDir, sharedFiles); },
   };
 }
 

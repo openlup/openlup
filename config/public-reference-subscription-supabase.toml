@@ -1,0 +1,42 @@
+# Rendered by scripts/public-reference/setup-subscription.mjs into an owned local directory.
+project_id = "{{PROJECT_ID}}"
+
+[api]
+enabled = true
+port = {{API_PORT}}
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = {{DB_PORT}}
+shadow_port = {{SHADOW_PORT}}
+major_version = 17
+
+[db.seed]
+enabled = false
+
+[db.pooler]
+enabled = false
+port = {{POOLER_PORT}}
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:{{APP_PORT}}"
+additional_redirect_urls = ["http://127.0.0.1:{{APP_PORT}}/account/auth/callback"]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+[auth.email.smtp]
+enabled = false
+
+[inbucket]
+enabled = true
+port = {{MAIL_PORT}}
+
+[studio]
+enabled = false
+port = {{STUDIO_PORT}}

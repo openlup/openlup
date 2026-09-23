@@ -21,7 +21,7 @@
     },
     "dogfoodEvidence": {
       "state": "private-current-seams",
-      "meaning": "openlup currently imports private package seams; this is not evidence that the phase-5 public platform seam is established."
+      "meaning": "A private product currently imports candidate package seams; this does not establish a public platform adopter seam."
     },
     "externalConsumerEvidence": {
       "state": "not-evaluated",
