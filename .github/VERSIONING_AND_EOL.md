@@ -273,3 +273,28 @@ consumer before adoption. The later
 [preview/4](https://github.com/openlup/openlup/releases/tag/openlup-source-preview/4)
 has a separate catalog-slug compatibility action. Publication alone updates no
 adopter; no preview is a supported upgrade channel.
+
+## Package preview channel (inactive)
+
+`@openlup/*` packages are not published yet: every released package in
+[`config/openlup-packages.json`](../config/openlup-packages.json) is still
+`publish: false`. The channel below is inert until a package becomes publishable
+and the repository variable `OPENLUP_NPM_STAGE` is set to `enabled`.
+
+When a source preview `openlup-source-preview/<n>` is published,
+[`.github/workflows/publish-packages.yml`](workflows/publish-packages.yml) works
+in two jobs:
+
+1. **pack** checks that the six required contexts passed at the release commit
+   and that the lockstep version is `0.<n>.0`. It then runs
+   `npm run packages:check -- --out packs --release-tag <tag>`, scans the unpacked
+   tarballs with gitleaks, and records each tarball's sha256 and integrity.
+2. **stage** runs in the `npm-stage` environment. It verifies those digests and
+   stages each tarball with `npm stage publish --tag preview --provenance
+   --access public`, authenticated by GitHub's OIDC token as a trusted publisher.
+   It uses no stored npm token.
+
+A staged version is not public. A maintainer inspects it (`npm stage download`)
+and publishes it with 2FA (`npm stage approve`), or rejects it. Packages carry
+the `preview` dist-tag only; `latest` is not used before the stable channel
+exists. A compromised version is deprecated and fixed forward, never unpublished.
