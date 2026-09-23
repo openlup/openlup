@@ -116,16 +116,43 @@ at `f09d865`, 2026-09-23):
 
 Admitting any of them to a hosted job is separate quality work.
 
-A pull request that adds, removes or renames a file or changes its mode, changes
-a `package.json`, a `package-lock.json` or
-`config/openlup-source-release-contract.json`, or edits a file pinned as
-projected in the latest preview's `openlup-source-receipt.json` release asset
-can be merged, but the release producer
-(`scripts/oss-source-release-contract.ts`) refuses a source preview that
-includes it until the producer supports such changes; say so in the pull
-request. To list the pinned files, run
-`jq -r '.drift[] | select(.public.disposition == "projected") | .selector' openlup-source-receipt.json`
-on that asset.
+A change can be released as the next source preview when the required checks of
+Published Tree CI pass and its tree describes itself: the publication catalogue
+lists every tracked path, and `config/openlup-source-release-contract.json`
+matches the tree's bytes. Adding, removing or renaming a file, changing a mode, a
+dependency or a file pinned as projected is releasable on those terms. The release
+producer (`scripts/oss-source-release-contract.ts`) still refuses a preview that
+changes a platform migration (`db/platform/migrations/**`, `supabase/migrations/**`
+or a `.sql` file under `db/bootstrap/`), `config/platform-migration-manifest.json`,
+the database schema types (`src/integrations/supabase/types.ts`) or the policy
+registry (`config/openlup-policy-registry.json`), or that adds a public path at a
+local-measurement selector of the latest preview's `openlup-source-receipt.json`
+release asset. Such a change can be merged, but say so in the pull request. To list
+those selectors, run
+`jq -r '.drift[] | select(.class == "local-measurement") | .selector' openlup-source-receipt.json`
+on that asset. [Versioning and EOL](.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
+states the complete rule.
+
+A new or renamed path also needs its row in
+`config/openlup-publication-catalog.json`. After changing that catalogue, a
+`package.json` or a `package-lock.json`, regenerate the contract from the
+repository root and commit the result:
+
+```bash
+node --experimental-strip-types --input-type=module - <<'NODE'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { SOURCE_RELEASE_CONTRACT_PATH, deriveSourceReleaseContract } from './scripts/oss-source-release-contract.ts';
+const { contents } = deriveSourceReleaseContract((path) => existsSync(path) ? readFileSync(path) : undefined);
+writeFileSync(SOURCE_RELEASE_CONTRACT_PATH, contents);
+NODE
+```
+
+The snippet keeps the contract's identity and `compatibility` and rewrites its
+digest fields; on an unchanged tree it rewrites the same bytes. The release
+producer enforces the complete self-consistency, byte for byte, when a preview is
+cut. CI checks only part of it: `npm run oss:published-tree -- --inventory`
+compares several digest values with the tree, but not `inventory.classDigest`
+and not the contract's bytes.
 
 The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe

@@ -153,6 +153,7 @@ path; `/tmp` below assumes a physical directory, which is not true on every syst
   "tagMessage": "OpenLup source preview 5.",
   "releaseNotePath": "/tmp/source-preview-5-notes.md",
   "outputPath": "/tmp/source-preview-5-receipt.json",
+  "retireProjectedSelectors": [],
   "previousRelease": {
     "releaseTag": "openlup-source-preview/3",
     "assetName": "openlup-source-receipt.json",
@@ -165,7 +166,8 @@ path; `/tmp` below assumes a physical directory, which is not true on every syst
 ```
 
 The `previousRelease` values above are placeholders; derive the real tuple as
-described below.
+described below. `retireProjectedSelectors` is optional and empty by default; see
+[Publish, refuse and recover](#publish-refuse-and-recover) before naming a selector.
 
 Run from the public checkout, passing the operation JSON path:
 
@@ -189,6 +191,7 @@ const result = await writeDescendantSourceReleaseReceipt({
   tagMessage: input.tagMessage,
   releaseNote: readFileSync(input.releaseNotePath),
   outputPath: input.outputPath,
+  ...(input.retireProjectedSelectors ? { retireProjectedSelectors: input.retireProjectedSelectors } : {}),
 });
 console.log(JSON.stringify({ outputPath: input.outputPath, digest: result.digest, allowlistDigest: result.allowlistDigest }));
 NODE
@@ -211,17 +214,39 @@ schema-5 descendants bind release-body, annotated-tag and reconstructed-allowlis
 
 ### Publish, refuse and recover
 
-Inventory/modes, package manifests/locks, the source contract and projected bytes
-must normally remain unchanged for this bounded operation. The first subscription
-reference has one finite compatibility transition from the authentic preview/4
-receipt to preview/5. The producer pins its 28 added Git objects and catalogue
-classes, current source-contract digest and nine changed public projection digests.
-There is no caller-supplied exception list. Existing path modes/classes, package
-manifests/locks, migration manifest, database types, policy registry and identity
-remain unchanged. The target catalogue and contract must exactly describe Git bytes;
-prior source evidence is retained in every projection row. All other transitions
-retain the existing rules. Further boundary changes need their own reviewed
-compatibility change; do not hand-edit receipts to fit.
+A descendant preview may add, delete or change paths, modes, package manifests,
+lockfiles and projected content when its release commit describes itself. The
+producer checks that the publication catalogue lists exactly the commit's Git
+inventory, that every changed direct execution entrypoint is registered, that the
+policy registry's active paths exist and that the tree's `package.json` files and
+their execution surfaces match the catalogue. `config/openlup-source-release-contract.json` must equal
+`deriveSourceReleaseContract` (`scripts/oss-source-release-contract.ts`) of the
+commit's own bytes, so every digest field describes the tree. The contract keeps
+the previous release's `schemaVersion`, `platformMigrationManifest`,
+`databaseSchema`, `policy.registryDigest`, `repository` and `release`; the
+validator fixes `runtime`, and `compatibility` may change when it validates.
+
+The producer refuses:
+
+- any add, delete, mode or byte change of a schema-bearing path:
+  `config/platform-migration-manifest.json`, `src/integrations/supabase/types.ts`,
+  `config/openlup-policy-registry.json`, `db/platform/migrations/**`,
+  `supabase/migrations/**` and any `.sql` file under `db/bootstrap/`;
+- a public path at a `local-measurement` drift selector;
+- a previous receipt whose paths or drift rows differ from its own Git objects.
+
+Every previous drift row carries forward. A `projection` row keeps its source side
+and takes its public side from the release commit, `absent` when the path was
+deleted; a `local-measurement` row is copied unchanged. No row is added. A row is
+dropped only when `retireProjectedSelectors` names it: a canonical, sorted and
+unique list of previous `projection` selectors, where any other entry refuses.
+Naming a selector asserts that its projection no longer applies: the adopting
+repository's bytes at that path now equal the public ones. The producer cannot
+check that assertion, so the owner names a selector only on the adopting
+repository's evidence. The receipt stays schema 5 and records a retirement by the row's absence from `drift`
+and from the allowlist's drift selectors. Earlier previews keep the rules they were
+produced under. Do not hand-edit receipts to fit; correct the tree, or regenerate
+the contract as `CONTRIBUTING.md` describes.
 
 Review the exact note, tag and receipt before obtaining publication authorization.
 Local preparation does not publish or update an adopter. Publish the same tag and
