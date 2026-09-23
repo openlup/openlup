@@ -19,7 +19,12 @@ The policy is therefore **disclosure and accountability**, not permission.
 2. **A human is accountable.** Every contribution has exactly one human author
    who is answerable for it. Sign-off under the Developer Certificate of Origin
    is that human's, and the DCO requirement in `CONTRIBUTING.md` applies
-   unchanged to AI-assisted work. A tool cannot sign off.
+   unchanged to AI-assisted work. A tool cannot sign off, and the maintainer's
+   own agents are no exception: when an agent writes the sign-off line on a
+   human's instruction, the sign-off is that human's, certified through the
+   read that precedes authorising the pull request under rule 4 and, for
+   commits added after the pull request is opened, through that human's review
+   of them before it is merged.
 
 3. **You must be able to explain every line.** If a reviewer asks why a line
    exists and the honest answer is "the model wrote it", the contribution is not
@@ -27,9 +32,11 @@ The policy is therefore **disclosure and accountability**, not permission.
    separates an assisted contribution from an unreviewed one.
 
 4. **No autonomous, unattended pull requests.** An agent may write the code. A
-   human opens the pull request, having read it. Bulk or automated submissions
-   opened without a human in the loop are closed on sight, regardless of
-   quality, and repeated submission is treated as abuse.
+   human reads the pull request and authorises opening it; an agent may then
+   open it on that human's explicit instruction for that pull request, and the
+   pull request says so. Bulk or automated submissions without a human in the
+   loop are closed on sight, regardless of quality, and repeated submission is
+   treated as abuse.
 
 ## Why the bar is where it is
 
@@ -59,3 +66,18 @@ someone else's position, and a documentation layer for agents is by now an
 ordinary feature rather than a differentiator. What is claimed is narrower and
 checkable: *you can extend this safely, including by delegating to an agent,
 because the readiness condition is machine-checked.*
+
+## Changes to this policy
+
+**Rules 2 and 4, decided 2026-09-23.** Rule 4 read: "A human opens the pull
+request, having read it." It now lets an agent open a pull request on an
+explicit instruction for that pull request from the human who read it, with the
+pull request saying so, and rule 2 says that a sign-off such an agent writes is
+that human's, certified by that read and, for commits added after opening, by
+that human's review before merge. The reason: the rule exists so that no pull
+request arrives without a human who has read it and answers for it, and that
+depends on the read and the instruction, not on whose hand opens the pull
+request. The decision is wrong if an agent-opened pull request turns out to have
+contained a commit that no human read before it was opened, or was opened
+without an instruction for that pull request; either would return rules 2 and 4
+to their earlier text.
