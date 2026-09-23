@@ -4,7 +4,7 @@ import { posix } from "node:path";
 export const PUBLIC_POLICY_REGISTRY_PATH = "config/openlup-policy-registry.json";
 export const PUBLICATION_CATALOG_PATH = "config/openlup-publication-catalog.json";
 export const PUBLIC_REFERENCE_BUILD_COMMAND = "npm --workspace @openlup/core run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender";
-export const PUBLIC_TEST_SCOPE = ["scripts/oss-consume-engine.test.ts", "scripts/oss-consume-github-transport.test.ts", "packages/core", "server/_lib", "server/adapters/managed", "server/adapters/postgres", "server/domains/accounting", "server/domains/channels", "server/domains/communications", "server/domains/fulfillment", "server/domains/payment", "server/domains/platform", "server/domains/support", "server/shared", "src/checkout/machine", "src/components/admin", "src/domains/customers", "src/domains/payment", "src/domains/platform", "src/domains/shipping", "src/domains/subscription", "src/lib/orderRef.test.ts", "src/public-reference"] as const;
+export const PUBLIC_TEST_SCOPE = ["scripts/oss-consume-engine.test.ts", "scripts/oss-consume-github-transport.test.ts", "scripts/packages", "packages/core", "server/_lib", "server/adapters/managed", "server/adapters/postgres", "server/domains/accounting", "server/domains/channels", "server/domains/communications", "server/domains/fulfillment", "server/domains/payment", "server/domains/platform", "server/domains/support", "server/shared", "src/checkout/machine", "src/components/admin", "src/domains/customers", "src/domains/payment", "src/domains/platform", "src/domains/shipping", "src/domains/subscription", "src/lib/orderRef.test.ts", "src/public-reference"] as const;
 export const PUBLIC_TEST_COMMAND = `node scripts/run-vitest.mjs run ${PUBLIC_TEST_SCOPE.join(" ")}`;
 export type ContractOwner = { id: string; owners: [string] };
 export type PublicPolicyRegistry = { schemaVersion: 1; activePaths: string[]; contracts: ContractOwner[] };
@@ -49,6 +49,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("guard:client-secret-boundary", "node --experimental-strip-types scripts/check-client-secret-boundary.ts"),
   publicCommand("guard:public-reference-site-routes", "node scripts/site-routes.mjs --public-reference"),
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
+  publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),
   publicCommand("test", PUBLIC_TEST_COMMAND),
 ];
 export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] = [

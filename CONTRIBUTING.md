@@ -76,7 +76,8 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `oss:published-tree`, and `test`.
+`guard:public-reference-site-routes`, `oss:published-tree`, `packages:check`,
+and `test`.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
 build, scoped tests, DCO check, and publication checks from this inventory.
@@ -97,8 +98,19 @@ CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
 The root test command also includes the source release transport/producer
-falsifiers. The public test job separately runs the materialized command-contract
+falsifiers and the package release-shape checks under `scripts/packages`. The public test job separately runs the materialized command-contract
 falsifiers, which are outside that root command's scope.
+
+`npm run packages:check` checks every `packages/*/package.json` against
+[`config/openlup-packages.json`](config/openlup-packages.json): one lockstep
+version, exact pins between `@openlup/*` packages, curated `exports` with no
+wildcard or directory entries and no target outside built output, and either
+`private: true` or exactly the public, provenance-backed `preview` publication
+settings. `npm run packages:check -- --pack` also builds and packs each listed
+package into a temporary directory. It refuses any packed file that is not a
+tracked file of that package, not built output of a tracked source, or not its
+manifest. It also refuses source maps and build-machine home paths. Nothing is
+published.
 
 No hosted job and no command above runs these test classes (measured on `main`
 at `f09d865`, 2026-09-23):
