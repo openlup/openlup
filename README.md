@@ -86,8 +86,9 @@ The projected root manifest exposes a closed command inventory: `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `oss:published-tree`, `packages:check`,
-and `test`. The public workflow is the execution owner for that inventory; source-only deploy,
-secret-management, smoke, and environment-specific operator commands are not exported.
+and `test`. The public workflow is the execution owner for that inventory;
+source-only deploy, secret-management, smoke, and environment-specific operator
+commands are not exported.
 The root `npm test` command runs the same selected public suite as Published
 Tree CI. The standalone `packages/core` package tests are not collected by
 that root Vitest configuration; see [CONTRIBUTING.md](CONTRIBUTING.md#development-preview-checks)

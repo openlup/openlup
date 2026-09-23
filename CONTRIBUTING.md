@@ -98,19 +98,27 @@ CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
 The root test command also includes the source release transport/producer
-falsifiers and the package release-shape checks under `scripts/packages`. The public test job separately runs the materialized command-contract
-falsifiers, which are outside that root command's scope.
+falsifiers and the package release-shape checks under `scripts/packages`. The
+public test job separately runs the materialized command-contract falsifiers,
+which are outside that root command's scope.
 
 `npm run packages:check` checks every `packages/*/package.json` against
-[`config/openlup-packages.json`](config/openlup-packages.json): one lockstep
-version, exact pins between `@openlup/*` packages, curated `exports` with no
-wildcard or directory entries and no target outside built output, and either
-`private: true` or exactly the public, provenance-backed `preview` publication
-settings. `npm run packages:check -- --pack` also builds and packs each listed
-package into a temporary directory. It refuses any packed file that is not a
-tracked file of that package, not built output of a tracked source, or not its
-manifest. It also refuses source maps and build-machine home paths. Nothing is
-published.
+[`config/openlup-packages.json`](config/openlup-packages.json), which lists each
+package as released or as unreleased. A released package has the one lockstep
+version, exact pins to other released `@openlup/*` packages, registry semver
+ranges for every other dependency, and curated `exports`: no wildcard or
+directory entries, and every target under `./dist/` except a `core-source`
+target, which stays under `./src/`. It is either `private: true` or carries
+exactly the public, provenance-backed `preview` publication settings and a
+`repository` entry. An unreleased package is always `private: true`.
+
+`npm run packages:check -- --pack` also builds and packs each released package
+into a temporary directory, from a package directory with no uncommitted
+changes. Every packed file must be either a tracked file of that package, byte
+for byte (the manifest included), or built output of a tracked non-test source.
+It refuses source maps and source-map references, build-machine home paths, and
+the operational coordinates the public detector knows. It prints each tarball's
+integrity. Nothing is published.
 
 No hosted job and no command above runs these test classes (measured on `main`
 at `f09d865`, 2026-09-23):
