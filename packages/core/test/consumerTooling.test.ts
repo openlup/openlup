@@ -20,9 +20,9 @@ const requiredPackFiles = [
   "dist/index.js",
 ];
 
-const approvedDogfoodEvidence = "Velipet currently imports private package seams; this is not evidence that the phase-5 public platform seam is established.";
+const approvedDogfoodEvidence = "A private product currently imports candidate package seams; this does not establish a public platform adopter seam.";
 
-function assertArtifactLeak(path: string, source: string): void {
+function assertArtifactRefused(path: string, source: string, reason: RegExp): void {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "core-package-audit-"));
   const sourceRoot = join(temporaryRoot, "source", "package");
   const extractedRoot = join(temporaryRoot, "extracted");
@@ -64,7 +64,7 @@ function assertArtifactLeak(path: string, source: string): void {
       ].join("\n"),
       packFiles: requiredPackFiles,
       approvedProofVersion: "0.1.0-rc.1",
-    })).toThrow(/packed core tarball contains downstream leakage/);
+    })).toThrow(reason);
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }
@@ -110,6 +110,13 @@ describe("packed consumer dependency roots", () => {
       }),
     ],
   ])("rejects packed artifact %s leakage", (_kind, path, source) => {
-    assertArtifactLeak(path, source);
+    assertArtifactRefused(path, source, /packed core tarball contains downstream leakage/);
+  });
+
+  it.each([
+    ["missing", JSON.stringify({ evidence: { dogfoodEvidence: {} } })],
+    ["rewritten", JSON.stringify({ evidence: { dogfoodEvidence: { meaning: "A public adopter has proved the platform seam." } } })],
+  ])("refuses packed %s dogfood evidence", (_kind, source) => {
+    assertArtifactRefused("release-gates.json", source, /dogfood evidence must retain its exact approved wording/);
   });
 });

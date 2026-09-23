@@ -65,10 +65,12 @@ suite and narrower paths from that scope while iterating. The root Vitest
 configuration does not collect the standalone `packages/core` test suite just
 because the root command names that directory. From the repository root, run
 `npm --workspace @openlup/core run ci` for that package's separate checks
-(equivalently, use its local command from the package directory). Published Tree CI does not
-currently invoke that package command, so a green root suite is not proof that
-the standalone package suite ran there. Changing test admission is separate
-quality work; this documentation change does not do it.
+(equivalently, use its local command from the package directory). Published Tree CI
+invokes this package command separately, including its coverage, release gates and
+packed-consumer checks. A green root suite alone still does not prove those checks.
+CI also builds the opt-in subscription profile and runs its runtime composition
+tests plus the existing renewal modal tests. The disposable database and browser
+journey has its own evidence; a build or mocked test does not stand in for it.
 
 The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe

@@ -18,6 +18,31 @@ The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
+## Disposable managed reference baseline
+
+The opt-in [subscription reference](SUBSCRIPTION_REFERENCE.md) selects the
+managed Supabase baseline at
+`supabase/migrations/00000000000000_platform_schema_baseline.sql`. It does not
+apply the separate `db/platform/migrations` portable PostgreSQL chain or claim
+that the two installation paths are interchangeable. The public setup creates
+one owned local Supabase project, adds `pg_trgm` in `public` and the non-login,
+non-RLS-bypass `openlup_mcp_reader` role required by that baseline, and replays
+the baseline transactionally. Its synthetic seed supplies only the recurring
+catalog item, prices, stock and settlement settings; it does not insert a paid
+order or active subscription.
+
+For accidental-attachment protection, setup records a per-installation opaque
+id in the existing `commerce_settings` table and in its generated local marker.
+Before that row exists, an interrupted setup can resume only on its recorded
+container. A sealed setup checks the live database id before reapplying
+prerequisite or seed SQL, and the selected runtime checks the same id before an
+API operation. This row records development-reference ownership; it is not a
+platform migration or an adopter data contract. Reusing the same database
+volume preserves the identity and business state; a different database at the
+same port refuses. The managed
+baseline replay and one local fixture do not establish a forward upgrade path,
+N-1 compatibility or general self-hosted database support.
+
 ## Compatibility lifecycle
 
 Every production-shaped schema change follows this order:

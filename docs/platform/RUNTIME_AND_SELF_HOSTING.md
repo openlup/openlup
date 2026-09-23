@@ -27,6 +27,33 @@ background-work policy, storage boundary, and provider capabilities explicit.
 It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
+## Opt-in disposable subscription reference
+
+The default public reference remains a static, read-only site. An evaluator may
+explicitly select a separate local Node + managed Supabase subscription profile
+to exercise one synthetic recurring purchase, captured payment settlement,
+confirmed local sign-in, own account readback and a renewal-date action. The
+profile uses a closed route set and loopback origin; it does not start a worker,
+external payment provider, external mail service or full self-hosted platform.
+See [Evaluate a subscription account](SUBSCRIPTION_REFERENCE.md) for the exact
+setup, server command, operator setup and verification boundary.
+
+The setup requires a new owned directory, unique project id and free ports. It
+replays the managed baseline with its two explicit local prerequisites and
+seeds only synthetic catalog, price, inventory and settlement settings. A
+versioned local marker binds the generated configuration and baseline hash to
+one opaque installation id stored in the live database. An interrupted setup
+cannot resume on a replacement container before sealing; a sealed setup may
+survive container recreation only when the durable database id matches. Before
+selected-profile API operations, the server rechecks that live id and Auth's
+email-confirmation setting. Keep the generated environment server-only and
+preserve the database volume when restarting the Node process.
+
+This is bounded development-preview evidence, not a production composition,
+supported install, managed-host certification, or substitute for a complete
+HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
+has not been installed or certified by this profile.
+
 ## Customer diagnostic history preview
 
 Customer diagnostic history is a development-preview, default-off platform

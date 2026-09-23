@@ -7,6 +7,7 @@ import {
   normalizeRuntimeReleaseSha,
 } from "../../_lib/observability/runtimeProvenance.ts";
 import { loadSiteRouteManifest } from "../../../scripts/site-routes.mjs";
+import { createSubscriptionProfile, SUBSCRIPTION_CSP, SUBSCRIPTION_PAGES } from "./subscriptionProfile.js";
 
 const SECURITY_HEADERS = {
   "content-security-policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'",
@@ -100,15 +101,33 @@ function health(env: NodeJS.ProcessEnv): string {
 
 export function createPublicReferenceServer(options: PublicReferenceServerOptions = {}) {
   const current = runtime(options);
+  const profileName = current.env.OPENLUP_REFERENCE_PROFILE;
+  if (profileName && profileName !== "subscription") throw new Error("Unknown public reference profile");
+  const subscription = profileName === "subscription" ? createSubscriptionProfile(current.env) : null;
   return createServer((request, res) => {
     const pathname = requestPath(request);
     if (!pathname) return response(res, 404, "Not found\n", { "content-type": "text/plain; charset=utf-8" });
+    if (subscription?.hasRoute(pathname)) {
+      for (const [key, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(key, value);
+      void subscription.handle(request, res, pathname);
+      return;
+    }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return response(res, 405, "Method not allowed\n", { allow: "GET, HEAD", "content-type": "text/plain; charset=utf-8" });
     }
     if (pathname === "/healthz") {
       const body = health(current.env);
       return response(res, 200, body, { "content-type": "application/json; charset=utf-8" }, request.method === "HEAD");
+    }
+
+    if (subscription && SUBSCRIPTION_PAGES.has(pathname)) {
+      if (request.headers.host !== new URL(subscription.origin).host) return response(res, 403, "Reference host mismatch\n");
+      const index = current.pages.get("/");
+      if (!index || !existsSync(index)) return response(res, 503, "Build the subscription reference first\n");
+      const document = readFileSync(index, "utf8");
+      if (!document.includes('data-openlup-profile="subscription"')) return response(res, 503, "Build the subscription reference first\n");
+      const shell = document.replace(/<div id="root">[\s\S]*<\/div>/, '<div id="root"></div>');
+      return response(res, 200, shell, { "content-type": "text/html; charset=utf-8", "content-security-policy": SUBSCRIPTION_CSP }, request.method === "HEAD");
     }
 
     const page = current.pages.get(pathname);
@@ -125,5 +144,5 @@ export function createPublicReferenceServer(options: PublicReferenceServerOption
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
   const port = Number(process.env.PORT ?? "8080");
-  createPublicReferenceServer().listen(Number.isSafeInteger(port) && port > 0 ? port : 8080, "0.0.0.0");
+  createPublicReferenceServer().listen(Number.isSafeInteger(port) && port > 0 ? port : 8080, process.env.OPENLUP_REFERENCE_PROFILE === "subscription" ? "127.0.0.1" : "0.0.0.0");
 }

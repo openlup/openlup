@@ -118,6 +118,12 @@ jobs:
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci --prefer-offline --no-audit --fund=false
       - run: npm run build
+      - name: Build the disposable subscription profile
+        env:
+          OPENLUP_REFERENCE_PROFILE: subscription
+          OPENLUP_BUILD_OUT_DIR: dist-subscription
+          OPENLUP_SSR_OUT_DIR: dist-subscription-ssr
+        run: npm run build:public-reference
 
   test:
     name: test
@@ -149,6 +155,10 @@ jobs:
       # directory turns this job red instead of being quietly skipped.
       - name: Scoped test run
         run: npm test
+      - name: Subscription profile composition and existing renewal modal
+        run: npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
+      - name: Core package complete CI contract
+        run: npm --workspace @openlup/core run ci
       - name: Materialized command-contract falsifier
         run: npx vitest run scripts/oss-published-tree-check.test.ts
 

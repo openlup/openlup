@@ -1,11 +1,56 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import i18next from "i18next";
+import { I18nextProvider } from "react-i18next";
+import type { ReactElement } from "react";
 
 import type { Subscription } from "../../lib/subscriptionEditModel";
 import { RescheduleModal } from "./RescheduleModal";
 
 // Frozen "now" so the candidate-date window is deterministic.
 const NOW = new Date("2026-06-01T09:00:00.000Z");
+
+// The public package has no application-wide account i18n bootstrap. Keep
+// these legacy Polish assertions backed by a test-local translation instance.
+const testI18n = i18next.createInstance();
+void testI18n.init({
+  lng: "pl",
+  fallbackLng: "pl",
+  initAsync: false,
+  interpolation: { escapeValue: false },
+  resources: {
+    pl: {
+      account: {
+        dashboard: {
+          subscriptionV2: {
+            holidayNote: "Święto może przesunąć szacowany termin dostawy.",
+            modals: {
+              reschedule: {
+                title: "Zmień termin odnowienia",
+                description: "Dostępne terminy: {{from}}–{{to}}",
+                summaryTitle: "Po zmianie",
+                renewalAndCharge: "Planowane odnowienie i opłata: {{date}}",
+                estimatedDelivery: "Szacowana dostawa: {{window}}",
+                futureCadence: "Planowane kolejne odnowienia: co {{days}} dni od {{date}}",
+                protectedAlignment: "Przy opóźnionej dostawie ten termin może automatycznie przesunąć się tylko na później.",
+                confirm: "Zapisz nowy termin",
+                noDates: "Brak dostępnych terminów.",
+                impact: "Zmiana planowanego terminu odnowienia i opłaty.",
+                gridLabel: "Dzień odnowienia i planowanej opłaty",
+                current: "obecne odnowienie",
+                inDays: "Za {{days}} dni",
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+});
+
+function renderModal(element: ReactElement) {
+  return render(<I18nextProvider i18n={testI18n}>{element}</I18nextProvider>);
+}
 
 /**
  * Regression guard for the single-chip bug: a 21-day cadence put the next
@@ -32,7 +77,7 @@ describe("RescheduleModal", () => {
   });
 
   it("offers the whole edit window, not just the current date", () => {
-    render(
+    renderModal(
       <RescheduleModal
         subscription={makeSubscription()}
         lang="pl"
@@ -59,7 +104,7 @@ describe("RescheduleModal", () => {
 
   it("keeps the confirm button disabled when the current term is (re)selected", () => {
     const onAction = vi.fn();
-    render(
+    renderModal(
       <RescheduleModal
         subscription={makeSubscription()}
         lang="pl"
@@ -91,7 +136,7 @@ describe("RescheduleModal", () => {
   });
 
   it("explains that delivery protection may move a selected renewal later", () => {
-    render(
+    renderModal(
       <RescheduleModal
         subscription={{
           ...makeSubscription(),
@@ -118,7 +163,7 @@ describe("RescheduleModal", () => {
     // onAction stays pending (mimics an in-flight request), so the submitting
     // guard remains engaged across both clicks.
     const onAction = vi.fn(() => new Promise<void>(() => {}));
-    render(
+    renderModal(
       <RescheduleModal
         subscription={makeSubscription()}
         lang="pl"
@@ -141,7 +186,7 @@ describe("RescheduleModal", () => {
   });
 
   it("moves focus across the 3-column grid with the arrow keys", () => {
-    render(
+    renderModal(
       <RescheduleModal
         subscription={makeSubscription()}
         lang="pl"

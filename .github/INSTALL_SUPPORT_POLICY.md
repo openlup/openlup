@@ -11,6 +11,14 @@ inputs. The bounded checks and build do not start or prove a database,
 migrations, scheduler, API, checkout, mutations or subscriptions, and must not
 be presented as evidence for those capabilities.
 
+There is also an **opt-in disposable local subscription reference** with a
+separate owned Supabase setup, captured payment and mailbox, and a selected
+Node server profile. Its [evaluation recipe](../docs/platform/SUBSCRIPTION_REFERENCE.md)
+can demonstrate one recurring buyer/account/renewal path when the real HTTP
+journey is run and recorded. It does not turn the static default, bounded
+checks, or source checkout into a full-platform candidate, supported install,
+provider certification or stable self-host promise.
+
 After the `P1-SF` stable-framework gate closes, there will be exactly one
 supported path: install the exact platform release/BOM and artifact set named by
 a supported stable release, and bring up its shipped composition without
@@ -50,7 +58,8 @@ without investigation; that closure is not a judgement about the setup itself:
   shipped one;
 - container orchestration, charts, or operators the project does not ship;
 - bare-metal or virtual-machine installs assembled by hand;
-- managed or serverless hosting variants;
+- managed or serverless hosting variants (the disposable local Supabase
+  evaluator above is preview evidence, not a supported hosting variant);
 - running only part of the platform, or replacing a shipped component with your
   own;
 - an install modified before the problem was observed;

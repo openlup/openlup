@@ -46,7 +46,7 @@ npm test
 npm run build
 ```
 
-The [capability manifest](config/public-reference-capability-manifest.json)
+By default, the [capability manifest](config/public-reference-capability-manifest.json)
 declares only catalogue/item pages (`/`, `/items/field-notes`) and `/healthz`,
 with GET/HEAD methods. The reference refuses checkout, subscription, admin,
 API/BFF, cron and mutations. The build and checks do not start a database,
@@ -54,6 +54,13 @@ payment provider or full subscription application. For the actual support
 boundary, see the [install support policy](.github/INSTALL_SUPPORT_POLICY.md).
 Contributions use [CONTRIBUTING.md](CONTRIBUTING.md); a released source preview
 does not itself update any adopter.
+
+Source revisions containing the [disposable subscription profile](docs/platform/SUBSCRIPTION_REFERENCE.md)
+also provide an explicit Node + local Supabase evaluation: one recurring product,
+captured payment, confirmed email sign-in, own account and renewal-date change.
+This profile is opt-in, creates its own disposable database, and requires no
+adopter repository. Consult the selected immutable release notes for availability;
+the older static-only previews do not gain it automatically.
 
 ## Source preview integrity
 
@@ -84,7 +91,7 @@ secret-management, smoke, and environment-specific operator commands are not exp
 The root `npm test` command runs the same selected public suite as Published
 Tree CI. The standalone `packages/core` package tests are not collected by
 that root Vitest configuration; see [CONTRIBUTING.md](CONTRIBUTING.md#development-preview-checks)
-for the separate package command and the resulting proof limit.
+for the separate package command and its explicit public CI execution.
 
 ## Project references
 

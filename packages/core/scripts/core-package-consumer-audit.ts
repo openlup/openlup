@@ -49,7 +49,7 @@ const packagedNeutralityPolicy: SourceNeutralityPolicy = {
     { id: "packed-env", category: "legacy-env", mode: "environment-prefix", terms: ["VELIPET_"] },
   ],
 };
-const approvedDogfoodEvidence = "Velipet currently imports private package seams; this is not evidence that the phase-5 public platform seam is established.";
+const approvedDogfoodEvidence = "A private product currently imports candidate package seams; this does not establish a public platform adopter seam.";
 const extensionlessTextPackFiles = new Set(["LICENSE"]);
 const approvedPublicSecurityContact = "dev@openlup.com";
 const simpleStringLiteralSource = String.raw`["'][A-Za-z0-9._@:/+ -]{1,64}["']`;
