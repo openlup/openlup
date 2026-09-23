@@ -1,8 +1,9 @@
 # OpenLup Public Agent Guide
 
-Status: development-preview guidance. The authoritative text is authored at
-`docs/platform/AGENT_GUIDE.md`; the publication projector places the same guide
-at the public root as `AGENTS.md`, with only placement-specific link rewrites.
+Status: development-preview guidance. This is the authoritative public guide;
+the root `AGENTS.md` keeps its rules available to repository agents. Edit both
+files together in OpenLup, adjusting relative links for their locations. The
+one-time public-root projection is no longer an authoring route.
 
 OpenLup is a subscription-commerce platform. The platform's public tree is a platform monorepo; an adopter owns its own application, brand, content, local policy, and integrations.
 This guide governs work in that public tree only. It does not authorize releases, external mutations, or stable-framework claims.
@@ -12,6 +13,7 @@ This guide governs work in that public tree only. It does not authorize releases
 Read these documents before changing a related boundary:
 
 - [Platform documentation index](README.md)
+- [Public documentation writing profile](README.md#write-or-update-a-page)
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md)
 - [Data and migrations](DATA_AND_MIGRATIONS.md)
 - [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md)

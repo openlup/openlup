@@ -10,6 +10,13 @@ boundary. The [governance policy](.github/GOVERNANCE.md) owns contribution
 admission, compatibility ownership, and maintainer capacity; accepting a pull
 request does not automatically promote its subject to an official module.
 
+For documentation changes, use the short [public writing profile and page
+template](docs/platform/README.md#write-or-update-a-page). State which reader
+and current preview it serves, verify commands from the stated working directory,
+and separate current behavior from proposals or dated history. Correct the
+owning page in the same contribution as a changed public contract; a link check
+alone does not establish that an install or feature works.
+
 ## Contribution shape
 
 Keep a change focused and explain its public contract, compatibility boundary,
@@ -54,9 +61,14 @@ source command-name inventory before a new preview can be materialized.
 The projected `npm test` command owns the canonical whole-directory public test
 scope, and [Published Tree CI](.github/workflows/published-tree-ci.yml) invokes
 that command without restating the directories. Run `npm test` for the public
-suite and narrower paths from that scope while iterating. Tests outside the
-declared scope are not currently a development-preview promise; expanding the
-scope requires changing the projected command, catalogue and falsifier together.
+suite and narrower paths from that scope while iterating. The root Vitest
+configuration does not collect the standalone `packages/core` test suite just
+because the root command names that directory. From the repository root, run
+`npm --workspace @openlup/core run ci` for that package's separate checks
+(equivalently, use its local command from the package directory). Published Tree CI does not
+currently invoke that package command, so a green root suite is not proof that
+the standalone package suite ran there. Changing test admission is separate
+quality work; this documentation change does not do it.
 
 The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe

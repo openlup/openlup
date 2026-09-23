@@ -1,7 +1,7 @@
-<!-- Authoring source for the public tree's `.github/pull_request_template.md`.
-The public-tree projection copies these bytes verbatim to that path. Change this
-file to change the public template; do not edit the generated target in a
-materialized tree. -->
+<!-- Historical source of the one-time public-root template projection. This
+copy is inactive in the public repository. GitHub reads `.github/pull_request_template.md`;
+edit that active file for future OpenLup pull requests. Retain this path until
+its public inventory and any readers can be reviewed for removal. -->
 
 ## What changed
 

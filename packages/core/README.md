@@ -1,15 +1,15 @@
 # Commerce Core
 
-`@openlup/core` is a framework-independent TypeScript package used as a
-private portability boundary for subscription and bundle commerce kernels. It
-is not a separately activated library product.
+`@openlup/core` is a framework-independent TypeScript workspace package in
+the public OpenLup source tree. It contains subscription and bundle commerce
+kernels, but is not a separately published library product.
 
 > [!IMPORTANT]
-> The package remains private and unpublished. `private: true`, the blocked
-> registry, and the publish-lifecycle refusal are mandatory. Build, pack, and
-> isolated-import checks are package smoke evidence only. They do not establish
-> a public repository, stable API, release workflow, external consumer, or
-> phase-5 platform activation.
+> The npm package remains unpublished: `private: true`, the blocked registry,
+> and the publish-lifecycle refusal are mandatory. The public source repository
+> and its immutable development previews do not imply a stable package API,
+> registry install, independent package release, or supported consumer path.
+> Build, pack and isolated-import checks prove only their stated package scope.
 
 ## Package Surface Maturity
 
@@ -42,11 +42,13 @@ promise.
   proof for this package;
 - `conformanceEvidence`: required only when a declared port/adapter seam needs
   a framework-free suite;
-- `dogfoodEvidence`: current private product seams, not a phase-5 public seam;
+- `dogfoodEvidence`: first-party integration seams, not independent adoption;
 - `externalConsumerEvidence`: not yet evaluated; a first-party packed consumer
   remains package smoke, not external adoption.
 
 ## Local verification
+
+From the directory containing this package's `package.json` in a public checkout:
 
 ```sh
 npm ci
@@ -54,7 +56,9 @@ npm run ci
 ```
 
 Focused proofs are `npm run api:check`, `npm run release:check`, and
-`npm run test:consumer`. No registry install command is available or implied.
+`npm run test:consumer` in that same directory. The repository-root test script
+does not collect this standalone package suite. No registry install command is
+available or implied.
 
 ## Kernel Documentation
 

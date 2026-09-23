@@ -1,8 +1,11 @@
 # Changelog
 
-Notable changes to this private portability proof are recorded here. Declaration
-snapshots track internal candidate drift; they do not define a public release or
-Semantic Versioning promise before the phase-5 platform activation.
+Notable changes to this public-source, unpublished workspace package are
+recorded here. “Unreleased” refers to a separate npm package release, which
+does not exist; some source changes already appear in immutable OpenLup source
+previews. Use the public preview release notes to determine exactly which
+source changes shipped. Declaration snapshots track candidate drift; they do
+not define a stable API or Semantic Versioning promise.
 
 ## Unreleased — checkout recovery contracts
 
@@ -174,8 +177,9 @@ Semantic Versioning promise before the phase-5 platform activation.
 
 ## Release Status
 
-No public version has been released. `0.1.0-rc.1` is the current private proof
-version, not a planned public candidate. The package remains private; any public
-governance and distribution decision belongs to the complete platform monorepo
-at phase 5. Do not add a dated release section until an authorized platform
-release has actually occurred.
+No npm package version has been released. `0.1.0-rc.1` is the current internal
+package-proof version; `private: true` and publish refusal remain in force.
+The public platform repository and immutable source previews already exist.
+Their release notes identify shipped source changes; they do not establish a
+stable package API, npm distribution or supported adopter upgrade channel.
+A dated package-release section requires an actual authorized package release.

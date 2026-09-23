@@ -124,10 +124,11 @@ changes and validate the selected update's compatibility before adoption.
 DCO checks every main-push commit; the all-zero first push is restricted to one
 root. Empty, malformed and unsigned ranges refuse.
 
-The next core pilot rejects blank or whitespace-padded configured bundle IDs.
-Upgrade action: use the same nonempty, trimmed ID in configuration and the allowed
-set. Valid adopter-defined IDs remain exact and case-sensitive. Include this action
-in the first release that ships it.
+The public source already rejects blank or whitespace-padded configured bundle
+IDs (`packages/core/src/platform-runtime/contracts.ts`). Use the same nonempty,
+trimmed ID in configuration and the allowed set; valid adopter-defined IDs
+remain exact and case-sensitive. Check the selected preview's immutable release
+note for its actual changes. A source rule does not make this a stable API.
 
 ### Prepare from public inputs
 
@@ -211,8 +212,13 @@ changed inputs or a dirty/moving HEAD; select a new physical path if output exis
 or traverses a symlink. Discard invalid unpublished candidates. Correct published
 releases forward: never replace assets, retag or edit the body. Adopters retain
 their reviewed update/recovery procedure; no stable or package channel is implied.
-The already-published preview/2 cannot be repaired in place. Its reader defect
-must be corrected in a later immutable preview. A consumer still pinned to
-preview/1 can then select that corrected release through the authenticated
-strictly-newer reader path, subject to its own compatibility review; publishing
-the correction alone does not update any adopter.
+The already-published preview/2 cannot be repaired in place. Its source-preview
+reader defect was corrected in immutable
+[preview/3](https://github.com/openlup/openlup/releases/tag/openlup-source-preview/3),
+which permits a consumer pinned to preview/1 to authenticate and deliberately
+select that strictly newer preview without first adopting preview/2. Review
+both intervening release notes and validate the selected update against the
+consumer before adoption. The later
+[preview/4](https://github.com/openlup/openlup/releases/tag/openlup-source-preview/4)
+has a separate catalog-slug compatibility action. Publication alone updates no
+adopter; no preview is a supported upgrade channel.
