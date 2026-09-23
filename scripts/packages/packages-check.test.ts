@@ -51,11 +51,27 @@ describe("packages:check", () => {
     expect(runPackagesCheck(root, ["--out", "out", "--release-tag", "openlup-source-preview/1"])).toBe(0);
     const manifest = JSON.parse(readFileSync(join(root, "out", PACKAGES_MANIFEST_FILE), "utf8"));
     expect(manifest).toMatchObject({ schemaVersion: 1, version: "0.1.0", packages: [{ name: "@openlup/pub", filename: "openlup-pub-0.1.0.tgz" }] });
-    expect(manifest.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(manifest.commit).toBe(execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim());
     const tarball = readFileSync(join(root, "out", "openlup-pub-0.1.0.tgz"));
     expect(manifest.packages[0].sha256).toBe(createHash("sha256").update(tarball).digest("hex"));
     expect(existsSync(join(root, "out", "openlup-demo-0.1.0.tgz"))).toBe(false);
     expect(runPackagesCheck(root, ["--out", "out"])).toBe(2);
+    writeFileSync(join(root, "a-file"), "x");
+    expect(runPackagesCheck(root, ["--out", "a-file"])).toBe(2);
+  }, 60_000);
+  it("keeps nothing when a check finds anything", () => {
+    quiet();
+    const root = fixture();
+    expect(runPackagesCheck(root, ["--out", "out", "--release-tag", "openlup-source-preview/2"])).toBe(1);
+    expect(existsSync(join(root, "out"))).toBe(false);
+  }, 60_000);
+  it("resolves an absolute out directory as given", () => {
+    quiet();
+    const root = fixture();
+    const outside = mkdtempSync(join(tmpdir(), "packages-out-"));
+    roots.push(outside);
+    expect(runPackagesCheck(root, ["--out", outside])).toBe(0);
+    expect(existsSync(join(outside, PACKAGES_MANIFEST_FILE))).toBe(true);
   }, 60_000);
   it("requires the lockstep version to match the release tag", () => {
     const errors = quiet();
@@ -63,6 +79,8 @@ describe("packages:check", () => {
     expect(runPackagesCheck(root, ["--release-tag", "openlup-source-preview/1"])).toBe(0);
     expect(runPackagesCheck(root, ["--release-tag", "openlup-source-preview/2"])).toBe(1);
     expect(runPackagesCheck(root, ["--release-tag", "v0.1.0"])).toBe(1);
+    expect(runPackagesCheck(root, ["--release-tag", "x-openlup-source-preview/1"])).toBe(1);
+    expect(runPackagesCheck(root, ["--release-tag", "openlup-source-preview/1-rc"])).toBe(1);
     expect(errors.mock.calls.flat().join("\n")).toMatch(/release-version/);
   });
 });

@@ -285,16 +285,36 @@ When a source preview `openlup-source-preview/<n>` is published,
 [`.github/workflows/publish-packages.yml`](workflows/publish-packages.yml) works
 in two jobs:
 
-1. **pack** checks that the six required contexts passed at the release commit
-   and that the lockstep version is `0.<n>.0`. It then runs
+1. **pack** checks two things: that the release commit is on `main`, and that the
+   six required GitHub Actions contexts passed there. It also requires the
+   lockstep version to be `0.<n>.0`. It then runs
    `npm run packages:check -- --out packs --release-tag <tag>`, scans the unpacked
    tarballs with gitleaks, and records each tarball's sha256 and integrity.
-2. **stage** runs in the `npm-stage` environment. It verifies those digests and
-   stages each tarball with `npm stage publish --tag preview --provenance
-   --access public`, authenticated by GitHub's OIDC token as a trusted publisher.
-   It uses no stored npm token.
+2. **stage** runs in the `npm-stage` environment with no checkout. It verifies the
+   commit, the version and those digests, then stages each tarball with
+   `npm stage publish ./packs/<file> --tag preview --provenance --access public`.
+   It authenticates with GitHub's OIDC token as a trusted publisher and uses no
+   stored npm token.
 
 A staged version is not public. A maintainer inspects it (`npm stage download`)
 and publishes it with 2FA (`npm stage approve`), or rejects it. Packages carry
 the `preview` dist-tag only; `latest` is not used before the stable channel
 exists. A compromised version is deprecated and fixed forward, never unpublished.
+
+The approval gate holds only with this maintainer setup, made before the variable
+is enabled:
+
+- The `npm-stage` environment has the maintainer as required reviewer, and its
+  deployments are limited to `openlup-source-preview/*` tags. A release runs the
+  workflow file of its tagged commit, so this restriction is what keeps an
+  arbitrary tag from staging.
+- Each package's trusted publisher names this repository, `publish-packages.yml`
+  and the `npm-stage` environment. It allows staged publication only (`npm trust
+  github <package> --allow-stage-publish`, without direct publish). Package access
+  requires 2FA and disallows tokens.
+- A package name must exist on the registry before a trusted publisher can be
+  bound to it. The maintainer publishes the first, inert version of each new name
+  with 2FA, outside this workflow.
+
+If staging stops partway, reject the versions already staged before re-running
+the stage job.

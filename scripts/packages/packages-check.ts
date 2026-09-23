@@ -19,7 +19,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join, relative, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PACKAGES_CONFIG_PATH, checkPackageDirectories, checkPackageManifest, checkUnreleasedManifest, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.ts";
@@ -37,7 +37,7 @@ function walk(directory: string, onSymlink: (path: string) => void): string[] {
   });
 }
 
-function packAndCheck(root: string, entry: PackageEntry, readTracked: (path: string) => Uint8Array | undefined, findings: Finding[], outDir?: string): PackResult | undefined {
+function packAndCheck(root: string, entry: PackageEntry, readTracked: (path: string) => Uint8Array | undefined, findings: Finding[], keepDir?: string): PackResult | undefined {
   const finding = (rule: string, detail: string): void => { findings.push({ subject: entry.name, rule, detail }); };
   const dirty = (): string => capture(root, "git", ["status", "--porcelain", "--untracked-files=no", "--", entry.directory]).trim();
   if (dirty()) { finding("dirty-tree", `commit or discard the changes under ${entry.directory} first; a pack is checked against the commit`); return undefined; }
@@ -59,7 +59,7 @@ function packAndCheck(root: string, entry: PackageEntry, readTracked: (path: str
     const entries: TarballEntry[] = files.map((path) => ({ path: relative(packageRoot, path).split(sep).join("/"), bytes: readFileSync(path) }));
     findings.push(...checkTarballEntries(entry, entries, readTracked));
     const tarball = join(scratch, packed.filename);
-    if (outDir && entry.publish) copyFileSync(tarball, join(outDir, packed.filename));
+    if (keepDir && entry.publish) copyFileSync(tarball, join(keepDir, packed.filename));
     return { filename: packed.filename, integrity: packed.integrity, sha256: createHash("sha256").update(readFileSync(tarball)).digest("hex"), entryCount: entries.length };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -97,24 +97,31 @@ export function runPackagesCheck(root: string, args: readonly string[]): number 
     if (number === undefined) findings.push({ subject: options.releaseTag, rule: "release-version", detail: "a package release rides on an openlup-source-preview/<n> tag" });
     else if (config.version !== `0.${number}.0`) findings.push({ subject: options.releaseTag, rule: "release-version", detail: `the lockstep version is ${config.version}; this release needs 0.${number}.0` });
   }
-  const outDir = options.outDir === undefined ? undefined : join(root, options.outDir);
-  if (outDir && existsSync(outDir) && readdirSync(outDir).length > 0) { console.error(`packages:check: ${options.outDir} is not empty`); return 2; }
-  if (outDir) mkdirSync(outDir, { recursive: true });
-  const packed: Array<{ name: string } & PackResult> = [];
-  if (options.pack) {
-    for (const entry of config.packages) {
-      const result = packAndCheck(root, entry, readTracked, findings, outDir);
-      if (!result) continue;
-      console.log(`packed ${entry.name}@${config.version}: ${result.filename}, ${result.entryCount} files, ${result.integrity}`);
-      if (entry.publish) packed.push({ name: entry.name, ...result });
+  const outDir = options.outDir === undefined ? undefined : resolve(root, options.outDir);
+  if (outDir && existsSync(outDir) && (!lstatSync(outDir).isDirectory() || readdirSync(outDir).length > 0)) { console.error(`packages:check: ${options.outDir} is not an empty directory`); return 2; }
+  // Publishable tarballs wait here, and reach the out directory only when nothing was found.
+  const keepDir = outDir ? mkdtempSync(join(tmpdir(), "openlup-packages-kept-")) : undefined;
+  try {
+    const packed: Array<{ name: string } & PackResult> = [];
+    if (options.pack) {
+      for (const entry of config.packages) {
+        const result = packAndCheck(root, entry, readTracked, findings, keepDir);
+        if (!result) continue;
+        console.log(`packed ${entry.name}@${config.version}: ${result.filename}, ${result.entryCount} files, ${result.integrity}`);
+        if (entry.publish) packed.push({ name: entry.name, ...result });
+      }
     }
-  }
-  for (const { subject, rule, detail } of findings) console.error(`${rule} ${subject}: ${detail}`);
-  if (outDir && findings.length === 0) {
-    const commit = capture(root, "git", ["rev-parse", "HEAD"]).trim();
-    const packages = packed.map(({ name, filename, sha256, integrity }) => ({ name, filename, sha256, integrity }));
-    writeFileSync(join(outDir, PACKAGES_MANIFEST_FILE), `${JSON.stringify({ schemaVersion: 1, commit, version: config.version, packages }, null, 2)}\n`);
-    console.log(`packages:check: ${packages.length} publishable tarball(s) kept in ${options.outDir}`);
+    for (const { subject, rule, detail } of findings) console.error(`${rule} ${subject}: ${detail}`);
+    if (outDir && keepDir && findings.length === 0) {
+      mkdirSync(outDir, { recursive: true });
+      for (const { filename } of packed) copyFileSync(join(keepDir, filename), join(outDir, filename));
+      const commit = capture(root, "git", ["rev-parse", "HEAD"]).trim();
+      const packages = packed.map(({ name, filename, sha256, integrity }) => ({ name, filename, sha256, integrity }));
+      writeFileSync(join(outDir, PACKAGES_MANIFEST_FILE), `${JSON.stringify({ schemaVersion: 1, commit, version: config.version, packages }, null, 2)}\n`);
+      console.log(`packages:check: ${packages.length} publishable tarball(s) kept in ${options.outDir}`);
+    }
+  } finally {
+    if (keepDir) rmSync(keepDir, { recursive: true, force: true });
   }
   console.log(findings.length === 0 ? `packages:check: ${config.packages.length} package(s) at ${config.version}, no findings` : `packages:check: ${findings.length} finding(s)`);
   return findings.length === 0 ? 0 : 1;
