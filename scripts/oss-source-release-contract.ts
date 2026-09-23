@@ -140,18 +140,18 @@ export type DescendantSourceReleaseResult = { receipt: Extract<SourceReceiptEnve
 const receiptDigest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 // A single approved preview/4 -> preview/5 bridge. These are target Git bytes, not caller input.
 const W1A_PREVIOUS = { receipt: "sha256:d072483b9e09ccbf4bfedca0a985b7b97dcb0ac00e2ed0953e9fda6e5a0d0461", commit: "f5d05bf0a0e0674b47d677c2392fac5deb6031be", tree: "3d6cb4ae320497b587016720e164faf884ede3cc" } as const;
-const W1A_CONTRACT = "sha256:d5748b56811d00bcfac806d1372ab26940e6614dbf4d246d64c4587b1463d2f6";
+const W1A_CONTRACT = "sha256:6bb9f686d5552cc4a316e6fcdde44a248a8355b02d9c10d1fa62a6544366d6cc";
 const W1A_ADDED = [
   ["config/public-reference-subscription-imports.json", "100644", "public-output", "sha256:c25feac67732240e6d0ace774c7c2a3095e77414a74e87360d91fb193b530c3a"],
   ["config/public-reference-subscription-supabase.toml", "100644", "public-output", "sha256:1cf875e7bed1515cd25cc5bef39eb6674d068dbdd650679dc3b5ffefd1671dc1"],
-  ["docs/plan/p5-w1-functional-reference-20260923.md", "100644", "public-output", "sha256:c250c1fdbe7918df4723f6d91f4ba23e8ecb786ba964c6ff23e6446356ab2e4d"],
   ["docs/platform/SUBSCRIPTION_REFERENCE.md", "100644", "platform-documentation", "sha256:d2ac745af716f6096042cf6f0c9b21d2281929c2f6d987ec57a21012ec404613"],
+  ["docs/platform/plans/subscription-reference-w1.md", "100644", "platform-documentation", "sha256:96a15d8688474aea274f818aa599346d74fdde4fee72f5afa64950339a4ccbfb"],
   ["scripts/public-reference/grant-operator.mjs", "100644", "public-output", "sha256:bbeef7a11a5d1bc82cd139b76d8f7fc399d45aa19a9bf999fdfc8ef96e36176f"],
   ["scripts/public-reference/setup-subscription.mjs", "100755", "public-output", "sha256:5222d4233e41efb22e17656fdddd5c20c9091c5d38db8cb5ed23feeb271f1f56"],
   ["scripts/public-reference/subscription-prereqs.sql", "100644", "public-output", "sha256:4323c42c4d16c25ed2fe86a2273ac39af95dbeac6550a79f0e489878831b06b6"],
-  ["scripts/public-reference/subscription-seed.sql", "100644", "public-output", "sha256:8b5b9a5144dffaf143792b142ab8a9482ea05adffc71eeb3a77c8accfec63e7c"],
+  ["scripts/public-reference/subscription-seed.sql", "100644", "public-output", "sha256:a8d353582ef6279bf4ac403405a18580f3fbb323b07aee8a1873a2f767f6487d"],
   ["scripts/public-reference/verify-subscription.mjs", "100644", "public-output", "sha256:1062586e74c7db0804d0f7c6d97bab1dcdd552b3239e97886a40dd16420b88e3"],
-  ["server/runtime/public-reference/capturedCheckout.test.ts", "100644", "public-output", "sha256:1ec29990a2446652c61b91fafa22ffa761167ff25a2d6223bffc49dfa0dcdb24"],
+  ["server/runtime/public-reference/capturedCheckout.test.ts", "100644", "public-output", "sha256:a85501e9eacbc7e5c1563c031f4241e61ce8e5ecd5f2c1c302da8f9394cd55f7"],
   ["server/runtime/public-reference/capturedCheckout.ts", "100644", "public-output", "sha256:6f44ac8901f07e42241ed937cf36dfe28c0db74c44510aebdcd18d5c16dd2a91"],
   ["server/runtime/public-reference/subscriptionAccount.test.ts", "100644", "public-output", "sha256:375c95c6f6312cef9eff131ca4d37b1e27368a92a6e8b79c67a56316c1e06138"],
   ["server/runtime/public-reference/subscriptionAccount.ts", "100644", "public-output", "sha256:6451b50c09b030bc6e3ecb7e5b497ec8c2f66eb26567de2d791f6d6b61394a85"],
@@ -161,12 +161,12 @@ const W1A_ADDED = [
   ["server/runtime/public-reference/subscriptionProfile.ts", "100644", "public-output", "sha256:238e80d45fa94d799015af9c2b5bbdd2361e53bdcd5aa8f09aa48c825fd70c7b"],
   ["src/domains/customers/useAuthenticatedAccountLifecycle.test.tsx", "100644", "public-output", "sha256:f7c2dd3f6743c01210398a90ed4682e3269f23623d2f5c50c8ae9439d9177c26"],
   ["src/domains/customers/useAuthenticatedAccountLifecycle.ts", "100644", "public-output", "sha256:f58bcbbc2bd17ae03fdaf383c1a2fc840cecc098131d40b5773a218e97751dae"],
-  ["src/public-reference/SubscriptionAccount.test.tsx", "100644", "public-output", "sha256:8e4534581ded91bd7f9537bfaa9e198f8e187defa4e26ad542567ec9726bade3"],
+  ["src/public-reference/SubscriptionAccount.test.tsx", "100644", "public-output", "sha256:e3502313cb179f9bcf1d599469d02e59f3dd2a0a319c9cfabf45bd42977b7efe"],
   ["src/public-reference/SubscriptionAccount.tsx", "100644", "public-output", "sha256:d9fb82d1b0a6e8f5a76f305594d4eb8548e1fd1650022d88c9a134e8eb4997fa"],
   ["src/public-reference/subscription-main.test.tsx", "100644", "public-output", "sha256:50e6dd8e8235449a69339305cc27fdd494eb159f1e9a23d7d08f14b2d94257e7"],
   ["src/public-reference/subscription-main.tsx", "100644", "public-output", "sha256:3cdb1b2335b8838162ea1cf9af67f06ac8dc902cbbf3458a48b720c6e09deb06"],
   ["src/public-reference/subscription.css", "100644", "public-output", "sha256:da226793138435dffb6a7cec6e23a0c6c81353fc46a81f0d706455f200e8acfb"],
-  ["src/public-reference/subscriptionApi.test.ts", "100644", "public-output", "sha256:38fac500b8bb5bf152a4768cadfe52e17b5950626a79da46c1ae9956b01f279e"],
+  ["src/public-reference/subscriptionApi.test.ts", "100644", "public-output", "sha256:d9a89de9dd0816ea04531e1d7094ac75aaef3c5759c618e6d079bef977750a5c"],
   ["src/public-reference/subscriptionApi.ts", "100644", "public-output", "sha256:a555bb8d7077a5404f0a7d7944e653fd61ff20d647ba2ff156e26afedee741b2"],
   ["src/public-reference/subscriptionMessages.test.tsx", "100644", "public-output", "sha256:f001e37f44f4290b82f0e8d45f67e4a31c49a365c6085aabd1cb54a43bf2a1d9"],
   ["src/public-reference/subscriptionMessages.ts", "100644", "public-output", "sha256:37f86c9ce8afe0789c1e5cdefd19bee4709e73084c335c371975658912a81278"],
@@ -174,7 +174,7 @@ const W1A_ADDED = [
 const W1A_PROJECTED = [
   [".github/pull_request_template.md", "sha256:b466b40c7ee2fabf4a9420e508254d443485824b67af9c103f6f2cba8f0195a9"],
   ["AGENTS.md", "sha256:9fac677959db8dfa55552e1685a8860557b9cbe6d15c29c7c0f13031122fae5f"],
-  ["config/openlup-publication-catalog.json", "sha256:183eece2156b6ad905e865b7d092587e67e4f13c24905e75f53127475ec59cf0"],
+  ["config/openlup-publication-catalog.json", "sha256:e1d4294a9971c9fe0d1496fee4f72d95c5582803b89700696bb77a4d6bba651b"],
   ["config/openlup-source-release-contract.json", W1A_CONTRACT],
   ["packages/core/release-gates.json", "sha256:ac1fdf6f472e406d74abd75b551ac3a3bc9096dc6aad69b6ab8e1f6fddf06845"],
   ["packages/core/scripts/core-package-consumer-audit.ts", "sha256:dfdc5ac50102ea14bc73771be785d6723f6c8269e83a93678076a8db26cd7a47"],

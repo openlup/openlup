@@ -18,10 +18,10 @@ describe("subscription reference API", () => {
   it("reads the declared sellable item and posts only the strict neutral subscription command", async () => {
     const catalog = {
       contractVersion: "catalog.sellable.v1",
-      profile: { id: "local", brand: "Reference", country: "PL", currency: "PLN", locale: "en", timezone: "UTC" },
-      items: [{ sku: "NORTHSTAR-REFILL-001", title: "Refill", unitPrice: { amountMinor: 1490, currency: "PLN" }, permittedPurchaseModes: ["subscription"] }],
+      profile: { id: "local", brand: "Reference", country: "PL", currency: "USD", locale: "en", timezone: "UTC" },
+      items: [{ sku: "NORTHSTAR-REFILL-001", title: "Refill", unitPrice: { amountMinor: 1490, currency: "USD" }, permittedPurchaseModes: ["subscription"] }],
     };
-    const checkout = { version: "commerce.reference_checkout.v1", orderId: crypto.randomUUID(), clientId: crypto.randomUUID(), paymentIntentId: crypto.randomUUID(), paymentAttemptId: crypto.randomUUID(), paymentStatus: "succeeded", paymentAttemptStatus: "succeeded", replayed: false, total: { amountMinor: 1490, currency: "PLN" } };
+    const checkout = { version: "commerce.reference_checkout.v1", orderId: crypto.randomUUID(), clientId: crypto.randomUUID(), paymentIntentId: crypto.randomUUID(), paymentAttemptId: crypto.randomUUID(), paymentStatus: "succeeded", paymentAttemptStatus: "succeeded", replayed: false, total: { amountMinor: 1490, currency: "USD" } };
     const fetcher = vi.fn().mockResolvedValueOnce(response(catalog)).mockResolvedValueOnce(response(checkout));
     vi.stubGlobal("fetch", fetcher);
     expect((await loadReferenceItems()).items[0]?.sku).toBe("NORTHSTAR-REFILL-001");
@@ -32,7 +32,7 @@ describe("subscription reference API", () => {
       lines: [{ sku: "NORTHSTAR-REFILL-001", quantity: 1 }],
       customer: { firstName: "A", lastName: "Buyer", email: "a@example.com", phone: "123456789" },
       shippingAddress: { street: "Example 1", postalCode: "00-001", city: "Warsaw", country: "PL" },
-      currency: "PLN", cadenceDays: 28,
+      currency: "USD", cadenceDays: 28,
     } };
     expect((await createReferenceSubscription(request)).paymentStatus).toBe("succeeded");
     expect(fetcher.mock.calls.map(([path]) => path)).toEqual(["/api/bff/catalog/items", "/api/bff/commerce/checkouts"]);

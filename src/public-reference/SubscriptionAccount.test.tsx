@@ -29,8 +29,8 @@ import { ReferenceAccount, ReferenceSubscribe } from "./SubscriptionAccount";
 
 const catalog = {
   contractVersion: "catalog.sellable.v1",
-  profile: { id: "local", brand: "Reference", country: "PL", currency: "PLN", locale: "en", timezone: "UTC" },
-  items: [{ sku: "NORTHSTAR-REFILL-001", title: "Refill", unitPrice: { amountMinor: 1490, currency: "PLN" }, permittedPurchaseModes: ["subscription"] }],
+  profile: { id: "local", brand: "Reference", country: "PL", currency: "USD", locale: "en", timezone: "UTC" },
+  items: [{ sku: "NORTHSTAR-REFILL-001", title: "Refill", unitPrice: { amountMinor: 1490, currency: "USD" }, permittedPurchaseModes: ["subscription"] }],
 };
 const oldAccount = {
   recentOrders: [{ orderId: "order-1", orderNumber: "REF-1", status: "paid", paymentStatus: "succeeded" }],
@@ -58,6 +58,7 @@ describe("subscription reference account", () => {
   it("buys the server-listed recurring SKU and presents captured status without claiming delivery", async () => {
     withQuery(<ReferenceSubscribe />);
     expect(await screen.findByText("Refill")).toBeInTheDocument();
+    expect(screen.getByText("14.90 USD every 28 days, one item per order.")).toBeInTheDocument();
     for (const [label, value] of [
       ["First name", "Ada"], ["Last name", "Buyer"], ["Email", "ada@example.com"],
       ["Phone", "123456789"], ["Street address", "Example 1"], ["Postal code", "00-001"], ["City", "Warsaw"],
@@ -65,7 +66,7 @@ describe("subscription reference account", () => {
     fireEvent.click(screen.getByRole("button", { name: "Place recurring order" }));
     await waitFor(() => expect(mocks.checkout).toHaveBeenCalledOnce());
     expect(mocks.checkout.mock.calls[0]?.[0]).toMatchObject({ command: {
-      mode: "subscription", cadenceDays: 28, lines: [{ sku: "NORTHSTAR-REFILL-001", quantity: 1 }],
+      mode: "subscription", cadenceDays: 28, currency: "USD", lines: [{ sku: "NORTHSTAR-REFILL-001", quantity: 1 }],
       customer: { email: "ada@example.com" },
     } });
     expect(await screen.findByText(/Captured in the local reference/)).toBeInTheDocument();

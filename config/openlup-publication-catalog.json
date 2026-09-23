@@ -1098,10 +1098,6 @@
       "class": "public-output"
     },
     {
-      "path": "docs/plan/p5-w1-functional-reference-20260923.md",
-      "class": "public-output"
-    },
-    {
       "path": "docs/platform/AGENT_GUIDE.md",
       "class": "platform-documentation"
     },
@@ -1127,6 +1123,10 @@
     },
     {
       "path": "docs/platform/SUBSCRIPTION_REFERENCE.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/subscription-reference-w1.md",
       "class": "platform-documentation"
     },
     {

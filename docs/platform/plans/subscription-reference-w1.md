@@ -28,7 +28,7 @@ The first implementation batch owns:
 - `server/runtime/public-reference/serve.ts` and explicit subscription-profile routing;
 - existing checkout/payment-control/identity reconciliation/action ports, composed
   only for the selected profile, with focused runtime tests;
-- a minimal public disposable Supabase setup/seed and an install/use recipe after
+- a minimal public disposable Supabase setup/seed and installation instructions after
   baseline replay proves the exact prerequisites;
 - public source-release producer and catalog/contract policy updates necessary
   for the actual new closed inventory, old-release authentication and refusal;

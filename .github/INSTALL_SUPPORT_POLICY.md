@@ -13,7 +13,7 @@ be presented as evidence for those capabilities.
 
 There is also an **opt-in disposable local subscription reference** with a
 separate owned Supabase setup, captured payment and mailbox, and a selected
-Node server profile. Its [evaluation recipe](../docs/platform/SUBSCRIPTION_REFERENCE.md)
+Node server profile. Its [evaluation instructions](../docs/platform/SUBSCRIPTION_REFERENCE.md)
 can demonstrate one recurring buyer/account/renewal path when the real HTTP
 journey is run and recorded. It does not turn the static default, bounded
 checks, or source checkout into a full-platform candidate, supported install,

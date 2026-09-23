@@ -40,7 +40,7 @@ function checkout(status: "processing" | "failed" = "processing"): CheckoutComma
   return {
     persistence: { idempotencyKey: command.idempotencyKey, clientId: ids.client, subjectId: null, shippingAddressId: ids.client, replayed: false },
     runtime: { runtime: {
-      orderId: ids.order, clientId: ids.client, total: { amountMinor: 1490, currency: "PLN" },
+      orderId: ids.order, clientId: ids.client, total: { amountMinor: 1490, currency: command.currency },
       payment: { paymentIntentId: ids.intent, paymentAttemptId: ids.attempt, status, attemptStatus: status },
     } } as CheckoutCommandRuntimeResult["runtime"],
     settlement: null,
@@ -60,14 +60,14 @@ function gateway(outcome: "captured" | "refused", override: Record<string, unkno
     commerce_payment_attempts: {
       id: ids.attempt, payment_intent_id: ids.intent, payment_id: ids.payment, provider: "stripe",
       idempotency_key: `${command.idempotencyKey}:payment-execution:prepare-attempt`, status: "processing", amount_cents: 1490,
-      currency: "PLN", created_at: "2026-09-23T12:00:00.000Z",
+      currency: command.currency, created_at: "2026-09-23T12:00:00.000Z",
       request_payload: { source: "reference_store.local.payment_simulator.v1", runtimeIdempotencyKey: command.idempotencyKey },
       response_payload: { providerCall: true, providerCallPlanned: true, outcome }, ...override,
     },
     commerce_payment_intents: {
       id: ids.intent, order_id: ids.order, subscription_id: ids.subscription,
       target_kind: "subscription_cycle", payment_id: ids.payment, active_attempt_id: ids.attempt,
-      amount_cents: 1490, currency: "PLN",
+      amount_cents: 1490, currency: command.currency,
     },
   };
   const client = { from: (table: keyof typeof rows) => ({ select: () => ({ eq: () => ({
@@ -100,10 +100,12 @@ describe("captured reference checkout", () => {
     expect(startCheckout).not.toHaveBeenCalled();
   });
 
-  it("requires the exact persisted issued attempt and intent, including amount", async () => {
+  it("requires the exact persisted issued attempt and intent, including amount and currency", async () => {
     await expect(readCapturedCheckoutEvidence(gateway("captured", { payment_intent_id: ids.order }), command, checkout()))
       .rejects.toThrow("reference_payment_evidence_mismatch");
     await expect(readCapturedCheckoutEvidence(gateway("captured", { amount_cents: 1491 }), command, checkout()))
+      .rejects.toThrow("reference_payment_evidence_mismatch");
+    await expect(readCapturedCheckoutEvidence(gateway("captured", { currency: "USD" }), command, checkout()))
       .rejects.toThrow("reference_payment_evidence_mismatch");
     expect(ingestPaymentEvent).not.toHaveBeenCalled();
   });
@@ -116,8 +118,8 @@ describe("captured reference checkout", () => {
   });
 
   it("revalidates the original command before resuming a prepared attempt", async () => {
-    const receipt = { finalizedOrder: { orderId: ids.order, clientId: ids.client, mode: "subscription_cycle", total: { amountMinor: 1490, currency: "PLN" } } };
-    const draft = { orderDraft: { quoteSnapshot: { quote: { currency: "PLN" } } } };
+    const receipt = { finalizedOrder: { orderId: ids.order, clientId: ids.client, mode: "subscription_cycle", total: { amountMinor: 1490, currency: command.currency } } };
+    const draft = { orderDraft: { quoteSnapshot: { quote: { currency: command.currency } } } };
     const reads: string[] = [];
     const client = { from: (table: string) => {
       const filters: Record<string, string> = {};

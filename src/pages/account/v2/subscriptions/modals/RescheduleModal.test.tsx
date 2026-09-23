@@ -9,17 +9,18 @@ import { RescheduleModal } from "./RescheduleModal";
 
 // Frozen "now" so the candidate-date window is deterministic.
 const NOW = new Date("2026-06-01T09:00:00.000Z");
+const TEST_LOCALE = "pl";
 
-// The public package has no application-wide account i18n bootstrap. Keep
-// these legacy Polish assertions backed by a test-local translation instance.
+// The public package has no application-wide account i18n bootstrap.
+// Supply translations explicitly for the existing assertions.
 const testI18n = i18next.createInstance();
 void testI18n.init({
-  lng: "pl",
-  fallbackLng: "pl",
+  lng: TEST_LOCALE,
+  fallbackLng: TEST_LOCALE,
   initAsync: false,
   interpolation: { escapeValue: false },
   resources: {
-    pl: {
+    [TEST_LOCALE]: {
       account: {
         dashboard: {
           subscriptionV2: {
@@ -80,7 +81,7 @@ describe("RescheduleModal", () => {
     renderModal(
       <RescheduleModal
         subscription={makeSubscription()}
-        lang="pl"
+        lang={TEST_LOCALE}
         open
         onOpenChange={vi.fn()}
         onAction={vi.fn()}
@@ -107,7 +108,7 @@ describe("RescheduleModal", () => {
     renderModal(
       <RescheduleModal
         subscription={makeSubscription()}
-        lang="pl"
+        lang={TEST_LOCALE}
         open
         onOpenChange={vi.fn()}
         onAction={onAction}
@@ -142,7 +143,7 @@ describe("RescheduleModal", () => {
           ...makeSubscription(),
           deliveryAlignment: { state: "protected" },
         } as Subscription}
-        lang="pl"
+        lang={TEST_LOCALE}
         open
         onOpenChange={vi.fn()}
         onAction={vi.fn()}
@@ -166,7 +167,7 @@ describe("RescheduleModal", () => {
     renderModal(
       <RescheduleModal
         subscription={makeSubscription()}
-        lang="pl"
+        lang={TEST_LOCALE}
         open
         onOpenChange={vi.fn()}
         onAction={onAction}
@@ -189,7 +190,7 @@ describe("RescheduleModal", () => {
     renderModal(
       <RescheduleModal
         subscription={makeSubscription()}
-        lang="pl"
+        lang={TEST_LOCALE}
         open
         onOpenChange={vi.fn()}
         onAction={vi.fn()}

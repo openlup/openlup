@@ -9,6 +9,7 @@ DECLARE
   sku_id uuid;
   price_list_id uuid;
   location_id uuid;
+  reference_currency constant text := 'PLN';
 BEGIN
   INSERT INTO public.catalog_products (slug, status, name, ingredients)
   VALUES ('p5-neutral-refill', 'active', 'P5 Neutral Refill', ARRAY['Neutral ingredient'])
@@ -25,7 +26,7 @@ BEGIN
   UPDATE public.catalog_products SET primary_sku_id = sku_id WHERE id = product_id;
 
   INSERT INTO public.price_lists (name, region_code, currency, status)
-  VALUES ('P5 disposable reference', 'PL', 'PLN', 'active')
+  VALUES ('P5 disposable reference', 'PL', reference_currency, 'active')
   RETURNING id INTO price_list_id;
 
   INSERT INTO public.price_entries (price_list_id, variant_id, mode, min_qty, unit_price_minor)
@@ -42,7 +43,7 @@ BEGIN
 
   INSERT INTO public.commerce_settings (key, value_text, value_minor)
   VALUES
-    ('settlement_currency', 'PLN', NULL),
+    ('settlement_currency', reference_currency, NULL),
     ('settlement_region', 'PL', NULL),
     ('min_product_payable_minor', NULL, 100),
     ('shipping_flat_minor', NULL, 0);
