@@ -1,11 +1,10 @@
 # Changelog
 
 Notable changes to this public-source, unpublished workspace package are
-recorded here. “Unreleased” refers to a separate npm package release, which
-does not exist; some source changes already appear in immutable OpenLup source
-previews. Use the public preview release notes to determine exactly which
-source changes shipped. Declaration snapshots track candidate drift; they do
-not define a stable API or Semantic Versioning promise.
+recorded here. “Unreleased” means no npm package release exists; immutable
+OpenLup source previews may already ship some changes, and their release notes
+say which. Declaration snapshots track candidate drift, not a stable API or
+SemVer promise.
 
 ## Unreleased — checkout recovery contracts
 
@@ -177,9 +176,7 @@ not define a stable API or Semantic Versioning promise.
 
 ## Release Status
 
-No npm package version has been released. `0.1.0-rc.1` is the current internal
+No npm package version has been released. `0.1.0-rc.1` is the internal
 package-proof version; `private: true` and publish refusal remain in force.
-The public platform repository and immutable source previews already exist.
-Their release notes identify shipped source changes; they do not establish a
-stable package API, npm distribution or supported adopter upgrade channel.
-A dated package-release section requires an actual authorized package release.
+Source previews establish no stable package API, npm distribution or supported
+upgrade channel. Add a dated section only after an authorized package release.

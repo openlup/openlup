@@ -33,7 +33,7 @@ For a new task-oriented page, copy only the fields that serve its readers:
 ```text
 # <Task or contract>
 
-Status: current development-preview guide | proposal | historical evidence (date)
+Status: development-preview guidance | development-preview contract | proposal | historical evidence (<date>)
 Audience and purpose: <who needs this, and for what>
 Available release/profile and support: <canonical release or policy link; limits>
 Prerequisites: <exact tools and safe example inputs>

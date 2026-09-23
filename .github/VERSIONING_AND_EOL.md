@@ -124,11 +124,12 @@ changes and validate the selected update's compatibility before adoption.
 DCO checks every main-push commit; the all-zero first push is restricted to one
 root. Empty, malformed and unsigned ranges refuse.
 
-The public source already rejects blank or whitespace-padded configured bundle
-IDs (`packages/core/src/platform-runtime/contracts.ts`). Use the same nonempty,
-trimmed ID in configuration and the allowed set; valid adopter-defined IDs
-remain exact and case-sensitive. Check the selected preview's immutable release
-note for its actual changes. A source rule does not make this a stable API.
+Since `openlup-source-preview/2`, `createPlatformBundleIdGuard`
+(`packages/core/src/platform-runtime/contracts.ts`) rejects blank or
+whitespace-padded configured bundle IDs; that release note carries the upgrade
+action. Use the same nonempty, trimmed ID in configuration and the allowed set;
+valid adopter-defined IDs remain exact and case-sensitive. A source rule does
+not make this a stable API.
 
 ### Prepare from public inputs
 
@@ -141,19 +142,30 @@ permission is needed. Keep credentials out of JSON, receipts and logs. Unavailab
 API evidence refuses the operation.
 
 Create an external operation JSON with actual paths. Confirm the current release
-number first; preview/1 → preview/2 below is an example. The output parent must exist
+number first; preview/4 → preview/5 below is an example. The output parent must exist
 outside the checkout, with no symlink component. Use `realpath` to obtain its physical
 path; `/tmp` below assumes a physical directory, which is not true on every system.
 
 ```json
 {
-  "previousTag": "openlup-source-preview/1",
-  "releaseTag": "openlup-source-preview/2",
-  "tagMessage": "OpenLup source preview 2.",
-  "releaseNotePath": "/tmp/source-preview-2-notes.md",
-  "outputPath": "/tmp/source-preview-2-receipt.json"
+  "previousTag": "openlup-source-preview/4",
+  "releaseTag": "openlup-source-preview/5",
+  "tagMessage": "OpenLup source preview 5.",
+  "releaseNotePath": "/tmp/source-preview-5-notes.md",
+  "outputPath": "/tmp/source-preview-5-receipt.json",
+  "previousRelease": {
+    "releaseTag": "openlup-source-preview/3",
+    "assetName": "openlup-source-receipt.json",
+    "assetId": 0,
+    "assetDigest": "sha256:<preview/3 receipt asset digest>",
+    "sourceReceiptDigest": "sha256:<preview/3 source receipt digest>",
+    "targetPublicSha": "<preview/3 target commit>"
+  }
 }
 ```
+
+The `previousRelease` values above are placeholders; derive the real tuple as
+described below.
 
 Run from the public checkout, passing the operation JSON path:
 
@@ -188,6 +200,7 @@ and `allowlistDigest`; only the receipt is written externally. Identical Git obj
 and inputs produce identical bytes, without timestamps or local paths.
 
 For a preceding descendant, also supply `previousRelease` in the operation JSON.
+Every preview after preview/1 is a descendant, so `previousRelease` is required.
 Derive this tuple from the authenticator result for that descendant's predecessor:
 `releaseTag = result.release.tag`, `assetName = result.release.assetName`,
 `assetId = result.release.assetId`, `assetDigest = result.release.assetDigest`,
@@ -205,7 +218,12 @@ a separately reviewed compatibility change; do not hand-edit receipts to fit.
 Review the exact note, tag and receipt before obtaining publication authorization.
 Local preparation does not publish or update an adopter. Publish the same tag and
 receipt asset as an immutable prerelease with the exact note body, then authenticate
-the completed release before offering it for adoption.
+the completed release before offering it for adoption. Publish the body from the
+same note file the receipt hashed (for example `--notes-file`), never through the
+web editor. To check the published bytes, compare
+`gh api repos/openlup/openlup/releases/tags/<tag> | jq -j .body | shasum -a 256`
+with the hex digest in `disclosure.releaseNote.digest`;
+`gh release view --json body --jq .body` appends a newline and will not match.
 
 On refusal, keep the selected version and fix the named mismatch. Recompute after
 changed inputs or a dirty/moving HEAD; select a new physical path if output exists
