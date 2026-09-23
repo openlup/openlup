@@ -674,6 +674,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/openlup-packages.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/openlup-policy-registry.json",
       "class": "policy-registry"
     },
@@ -2415,6 +2419,30 @@
     },
     {
       "path": "scripts/oss-split-rehearsal-sql-provenance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/package-manifest-policy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/package-manifest-policy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/package-tarball-gate.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/package-tarball-gate.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/packages-check.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/packages-check.ts",
       "class": "public-output"
     },
     {
@@ -18578,8 +18606,18 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "packages:check",
+      "command": "node --experimental-strip-types scripts/packages/packages-check.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "test",
-      "command": "node scripts/run-vitest.mjs run scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts packages/core server/_lib server/adapters/managed server/adapters/postgres server/domains/accounting server/domains/channels server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/shared src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/orderRef.test.ts src/public-reference",
+      "command": "node scripts/run-vitest.mjs run scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/domains/accounting server/domains/channels server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/shared src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/orderRef.test.ts src/public-reference",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18591,7 +18629,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-1c8cee19f43d44f3ff853cf72f64e075db60b144c02406ae18c09c585a067a5f"
+      "digest": "sha256-7319a83716392a2035163e503e05b88b9baff89e5e9146664064aaa5bdaac264"
     },
     {
       "path": "packages/core/package.json",
