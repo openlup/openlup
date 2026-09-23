@@ -7,9 +7,10 @@ business.
 
 ## Status: development preview
 
-This development preview does not constitute a framework release, adopter
-distribution, package/image channel, or upgrade contract. A source preview may
-be useful for evaluation, but it is not a substitute for a versioned release.
+This development preview does not constitute a stable framework release,
+supported adopter distribution, package/image channel, or upgrade contract.
+An immutable [source preview release](https://github.com/openlup/openlup/releases)
+can be used for bounded evaluation; it is not a supported full-platform install.
 Claims of framework stability wait for the separate `P1-SF` gate: a release/BOM, thin
 adopter application, public extension and conformance contracts, upgrade tools,
 and passing public installation, build, test, compatibility, provenance, and
@@ -28,6 +29,32 @@ and integrations; platform code remains generic and evolves upstream.
 - [Runtime and self-hosting boundary](docs/platform/RUNTIME_AND_SELF_HOSTING.md)
 - [Canonical status, idempotency, and provider contracts](docs/platform/CANONICAL_CONTRACTS.md)
 
+## Evaluate the public reference
+
+Choose an immutable tag from the [OpenLup releases](https://github.com/openlup/openlup/releases)
+and review its release-specific upgrade notes before changing a pinned checkout.
+For example, `openlup-source-preview/4` was the latest release at the
+2026-09-23 documentation review. From a fresh public checkout at that tag, use
+Node and npm versions recorded in [.nvmrc](.nvmrc) and `package.json`:
+
+```sh
+npm ci
+npm run oss:published-tree -- --policy
+npm run oss:published-tree -- --inventory
+npm run oss:published-tree -- --typecheck
+npm test
+npm run build
+```
+
+The [capability manifest](config/public-reference-capability-manifest.json)
+declares only catalogue/item pages (`/`, `/items/field-notes`) and `/healthz`,
+with GET/HEAD methods. The reference refuses checkout, subscription, admin,
+API/BFF, cron and mutations. The build and checks do not start a database,
+payment provider or full subscription application. For the actual support
+boundary, see the [install support policy](.github/INSTALL_SUPPORT_POLICY.md).
+Contributions use [CONTRIBUTING.md](CONTRIBUTING.md); a released source preview
+does not itself update any adopter.
+
 ## Source preview integrity
 
 The preview tree carries machine-readable inputs that let a checkout validate
@@ -37,15 +64,15 @@ its public policy from the materialized tree alone:
 - [Public publication catalogue](config/openlup-publication-catalog.json)
 - The source-release contract, `config/openlup-source-release-contract.json`
 
-The contract is computed from the tree rather than carried by it: the source
-repository derives every field of it and the export writes it into the
-materialized tree, so the file above is present in a materialized preview and
-absent from the repository the preview was produced from.
+The source-release contract was computed during the one-time public-root
+materialization and is now present in this public tree. It binds the declared
+inventory and policy inputs; it is not itself a release receipt or support
+promise. The [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md)
+explains the historical derivation and the public-only checks used after activation.
 
-Run `npm run oss:published-tree -- --policy` inside a materialized source
-preview. Before public activation the contract is deliberately marked
-`local-fixture` and uses reserved `.invalid` coordinates; it is not a public
-release receipt or a support promise.
+Run `npm run oss:published-tree -- --policy` from the public repository root.
+The contract is an activation-candidate source contract, not an immutable
+preview receipt or a support promise.
 
 The projected root manifest exposes a closed command inventory: `build`,
 `build:public-reference`, `build:public-reference:client`,
@@ -54,8 +81,10 @@ The projected root manifest exposes a closed command inventory: `build`,
 `guard:public-reference-site-routes`, `oss:published-tree`, and `test`. The
 public workflow is the execution owner for that inventory; source-only deploy,
 secret-management, smoke, and environment-specific operator commands are not exported.
-The projected `npm test` command runs the same whole-directory public suite as
-Published Tree CI, so a fresh consumer does not need a private test selector.
+The root `npm test` command runs the same selected public suite as Published
+Tree CI. The standalone `packages/core` package tests are not collected by
+that root Vitest configuration; see [CONTRIBUTING.md](CONTRIBUTING.md#development-preview-checks)
+for the separate package command and the resulting proof limit.
 
 ## Project references
 

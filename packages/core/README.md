@@ -1,15 +1,15 @@
 # Commerce Core
 
-`@openlup/core` is a framework-independent TypeScript package used as a
-private portability boundary for subscription and bundle commerce kernels. It
-is not a separately activated library product.
+`@openlup/core` is a framework-independent TypeScript workspace package of
+subscription and bundle commerce kernels. It is not a separately published
+library product.
 
 > [!IMPORTANT]
-> The package remains private and unpublished. `private: true`, the blocked
-> registry, and the publish-lifecycle refusal are mandatory. Build, pack, and
-> isolated-import checks are package smoke evidence only. They do not establish
-> a public repository, stable API, release workflow, external consumer, or
-> phase-5 platform activation.
+> The npm package is unpublished: `private: true`, the blocked registry, and
+> the publish-lifecycle refusal are mandatory. Its public source and immutable
+> development previews imply no stable package API, registry install,
+> independent release or supported consumer path. Build, pack, and
+> isolated-import checks are package smoke evidence only.
 
 ## Package Surface Maturity
 
@@ -42,11 +42,13 @@ promise.
   proof for this package;
 - `conformanceEvidence`: required only when a declared port/adapter seam needs
   a framework-free suite;
-- `dogfoodEvidence`: current private product seams, not a phase-5 public seam;
+- `dogfoodEvidence`: first-party integration seams, not independent adoption;
 - `externalConsumerEvidence`: not yet evaluated; a first-party packed consumer
   remains package smoke, not external adoption.
 
 ## Local verification
+
+From this package directory:
 
 ```sh
 npm ci
@@ -54,7 +56,8 @@ npm run ci
 ```
 
 Focused proofs are `npm run api:check`, `npm run release:check`, and
-`npm run test:consumer`. No registry install command is available or implied.
+`npm run test:consumer`. The root test script skips this suite. No registry
+install command is available or implied.
 
 ## Kernel Documentation
 
