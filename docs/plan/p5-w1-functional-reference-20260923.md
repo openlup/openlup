@@ -85,6 +85,16 @@ credentials or another actor. Reuse schema-5 receipts where sufficient; new inve
 is declared and exactly bound to real Git objects, never ignored. Old previews
 remain authenticatable. Rehearse complete delta before immutable publication.
 
+The owner explicitly approved the bounded compatibility amendment: three new
+setup/operator/verifier entrypoints, the 28 added Git objects with their catalogue
+classes, the current source-contract digest and nine changed target projection
+digests. Implement this as a finite preview/4 to preview/5 transition in the existing
+producer, pinned to the authentic prior receipt and exact target object digests.
+There is no caller-supplied delta API. Preserve old source evidence, authentication
+and the schema-5 reader. Package and lock bytes, migrations, database types, policy
+registry and previous path classes remain protected. Other releases retain the
+existing refusal rules; this does not admit future undisclosed growth.
+
 The lifecycle API is generic over the account data shape; cache identity is a
 client concern and is never authorization. Tokens go only to the supplied reads
 and writes, never events or cache keys. A committed write and failed refresh remain
@@ -133,13 +143,16 @@ selection, existing modal summary and confirmed renewal-date change. After anoth
 Node restart and browser reload, the same paid order and active subscription still
 showed October 28, 2026; browser warning/error logs were empty.
 
-Publication remains blocked. The current closed catalog does not contain the new
-candidate files; policy/inventory checks therefore refuse their documentation links.
-Automatic approval review separately refused the proposed producer inventory/contract
-extension and the three explicit new CLI entrypoint declarations as unapproved
-release-control amendments. Neither was applied, and the catalog/source-contract
-digests remain unchanged. This checkpoint is a functional implementation for review,
-not a publishable tree; the exact control amendments require one documented decision.
+Publication is pending implementation and verification of the compatibility
+amendment. Automatic approval review initially refused the producer extension and
+three explicit entrypoint declarations; the owner subsequently approved the exact
+bounded package. Review then refused a general caller-supplied delta API, so the
+implementation uses only the finite transition described above. These decisions do
+not establish that the new contract has passed. Policy and inventory checks pass
+with 4,621 exact paths and the three new entrypoints. The preceding preview/4 has
+also authenticated through the native GitHub reader, including preview/3, ancestry
+and its six required successful public checks. Producer growth/refusal tests and
+independent review of its exact final head remain separate evidence.
 Old-release authentication, the schema-5 reader and refusal before writing remain
 unchanged. No immutable release, merged change, adopter installation, supported
 installation or production-provider certification is claimed.

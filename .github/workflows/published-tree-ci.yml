@@ -158,9 +158,9 @@ jobs:
       - name: Subscription profile composition and existing renewal modal
         run: npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
       - name: Core package complete CI contract
-        run: npm --workspace @openlup/core run ci
-      - name: Materialized command-contract falsifier
-        run: npx vitest run scripts/oss-published-tree-check.test.ts
+        run: npm --workspace ./packages/core run ci
+      - name: Materialized command and source-release contract falsifiers
+        run: npx vitest run scripts/oss-published-tree-check.test.ts scripts/oss-consume-github-transport.test.ts
 
   self-check:
     name: self-check

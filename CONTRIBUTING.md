@@ -71,6 +71,9 @@ packed-consumer checks. A green root suite alone still does not prove those chec
 CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
+The public test job separately runs the materialized command-contract and source
+release transport/producer falsifiers from `scripts/`; they are outside the root
+test command's whole-directory scope.
 
 The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe

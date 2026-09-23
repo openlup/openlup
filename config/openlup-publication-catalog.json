@@ -770,6 +770,14 @@
       "class": "public-output"
     },
     {
+      "path": "config/public-reference-subscription-imports.json",
+      "class": "public-output"
+    },
+    {
+      "path": "config/public-reference-subscription-supabase.toml",
+      "class": "public-output"
+    },
+    {
       "path": "config/site-routes.json",
       "class": "public-output"
     },
@@ -1090,6 +1098,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/plan/p5-w1-functional-reference-20260923.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/AGENT_GUIDE.md",
       "class": "platform-documentation"
     },
@@ -1111,6 +1123,10 @@
     },
     {
       "path": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/SUBSCRIPTION_REFERENCE.md",
       "class": "platform-documentation"
     },
     {
@@ -2447,6 +2463,26 @@
     },
     {
       "path": "scripts/public-reference-railway-lifecycle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-reference/grant-operator.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-reference/setup-subscription.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-reference/subscription-prereqs.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-reference/subscription-seed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-reference/verify-subscription.mjs",
       "class": "public-output"
     },
     {
@@ -11050,11 +11086,43 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/capturedCheckout.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/capturedCheckout.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/runtime/public-reference/serve.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionAccount.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionAccount.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionOperator.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionOperator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionProfile.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionProfile.ts",
       "class": "public-output"
     },
     {
@@ -14274,6 +14342,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/customers/useAuthenticatedAccountLifecycle.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/customers/useAuthenticatedAccountLifecycle.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/fulfillment/README.md",
       "class": "public-output"
     },
@@ -17346,6 +17422,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/SubscriptionAccount.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/SubscriptionAccount.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/entry-server.test.tsx",
       "class": "public-output"
     },
@@ -17359,6 +17443,34 @@
     },
     {
       "path": "src/public-reference/main.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/subscription-main.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/subscription-main.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/subscription.css",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/subscriptionApi.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/subscriptionApi.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/subscriptionMessages.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/subscriptionMessages.ts",
       "class": "public-output"
     },
     {
