@@ -167,3 +167,26 @@ These are local execution results, not protected candidate CI or publication.
 Old-release authentication, the schema-5 reader and refusal before writing remain
 unchanged. No immutable release, merged change, adopter installation, supported
 installation or production-provider certification is claimed.
+
+
+## 9. Core fixture portability follow-up
+
+Status: implementation in progress, 2026-09-24.
+
+The packed-consumer leakage test fixture must use the approved meaning from its
+package's shipped `release-gates.json`. A separately hard-coded sentence can
+become inconsistent with a retained audit/metadata pair and make a leakage case
+fail at the wording check before reaching its intended scanner assertion.
+
+Scope: `packages/core/test/consumerTooling.test.ts` and this existing plan.
+Read the fixture meaning from the adjacent metadata file. Keep the audit's
+independent exact-wording assertion, all 20 leakage cases and both invalid-wording
+refusals. No runtime behavior, audit allowance, package metadata, dependency,
+workflow or release identity changes are needed for this correction.
+
+Acceptance: run the focused core test and full public required checks; verify
+the same test against an earlier internally consistent audit/metadata pair.
+A malformed or rewritten meaning must still refuse. Review the full delta of
+any later source release separately; this correction does not authorize a release
+or make an earlier immutable preview mutable. Exact-head review and final check
+results will accompany the contribution.
