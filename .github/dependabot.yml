@@ -1,44 +1,62 @@
 version: 2
+# Dependabot pull requests here are a signal, not a merge route. Their commits
+# carry no Signed-off-by line, and a lockfile change also needs the regenerated
+# config/openlup-source-release-contract.json. A maintainer applies an update on
+# a signed branch that regenerates the contract (CONTRIBUTING.md) and closes the
+# Dependabot pull requests it supersedes. Published Tree CI runs the jobs of a
+# Dependabot pull request only when a person marks it ready for review.
 updates:
   - package-ecosystem: npm
-    # "/" is the workspace root; "/packages/core" keeps its OWN standalone
-    # package-lock.json (name @openlup/core, no `workspaces` field) for OSS
-    # split/publish rehearsals. Updating "/" alone rewrites only the workspace
-    # lock, leaving the core standalone lock behind, which trips
-    # scripts/release-check.ts (lock<->manifest parity) and
-    # scripts/oss-core-scaffold.test.ts (exact devDeps) — see PR #1806. Listing
-    # both directories lets a grouped bump update both locks in ONE PR / one
-    # merge-queue entry.
+    # "/" is the workspace root; "/packages/core" keeps its own standalone
+    # package-lock.json (name @openlup/core, no `workspaces` field). Listing
+    # both directories lets one grouped update change both lockfiles, so
+    # neither is left behind its manifest.
     directories:
       - "/"
       - "/packages/core"
     schedule:
-      # Routine version updates are an operator-triaged Draft inbox. One weekly
-      # refresh bounds branch churn. Dependabot security posture is a separate
-      # repository setting and is not represented by this schedule.
-      interval: weekly
-      day: tuesday
+      # One monthly refresh bounds branch churn. Security updates are a
+      # separate repository setting and are not held to this schedule.
+      interval: monthly
       time: "05:10"
       timezone: "Europe/Warsaw"
     rebase-strategy: disabled
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     allow:
       - dependency-type: direct
       - dependency-type: indirect
     ignore:
-      # Local workspace dependency: Dependabot must never resolve either its
-      # canonical package name or the bad path fingerprint observed in update
-      # run 33257713892 against registry.npmjs.org (`packages%2Fcore` -> 405).
-      # Keep package.json's intentional `file:packages/core` contract intact.
+      # Local workspace dependency: Dependabot must never resolve its package
+      # name, or its path (`packages%2Fcore`), against the npm registry. Keep
+      # package.json's intentional `file:packages/core` contract intact.
       - dependency-name: "@openlup/core"
       - dependency-name: "packages/core"
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
-    # Group routine bumps into a single PR so they share one merge-queue entry
-    # and one package-lock.json change instead of racing each other.
+      # A major animation upgrade is a separate migration with its own reason.
+      - dependency-name: "framer-motion"
+        update-types: ["version-update:semver-major"]
+    # A package takes the first group that matches it. The family groups keep
+    # packages that must move together in one pull request at every update
+    # type, a major included: @vitest/* pins its exact vitest peer, and
+    # react-dom pins its react peer.
     groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
       radix-ui:
         patterns:
           - "@radix-ui/*"
@@ -46,15 +64,15 @@ updates:
         update-types:
           - minor
           - patch
-    labels:
-      - dependencies
-      - security
 
   - package-ecosystem: github-actions
+    # A workflow change also moves the mirror that local verification pins, so
+    # actions arrive together in one pull request.
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
     rebase-strategy: disabled
-    labels:
-      - dependencies
-      - github-actions
+    groups:
+      github-actions:
+        patterns:
+          - "*"
