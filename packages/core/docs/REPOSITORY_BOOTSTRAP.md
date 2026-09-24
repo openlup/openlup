@@ -2,8 +2,8 @@
 
 Status: inactive historical evidence from before public-root activation.
 
-This package is public source inside the OpenLup platform monorepo, while its
-npm package remains unpublished. Historical notes about a separately
+This package is public source inside the OpenLup platform monorepo, and its
+npm versions ride on the source previews. Historical notes about a separately
 bootstrapped repository, fresh history, remote configuration, tags, artifacts,
 releases, credentials, or publication are not an executable plan and confer no
 authority.

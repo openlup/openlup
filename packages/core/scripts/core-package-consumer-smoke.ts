@@ -251,18 +251,12 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     const packageJson = JSON.parse(readFileSync(join(packedPackageRoot, "package.json"), "utf8")) as CorePackageJson;
     const packageName = packageJson.name;
     const packageReadme = readFileSync(join(packedPackageRoot, "README.md"), "utf8");
-    const releaseGates = JSON.parse(
-      readFileSync(join(packedPackageRoot, "release-gates.json"), "utf8"),
-    ) as { privatePackage?: { proofVersion?: string } };
-    const approvedProofVersion = releaseGates.privatePackage?.proofVersion;
-    assert(approvedProofVersion, "packed release gates are missing the approved private proof version");
     assertCorePackagePortabilityProof({
       packageRoot: packedPackageRoot,
       packageName,
       packageJson,
       packageReadme,
       packFiles: packResult[0].files.map((file) => file.path).sort(),
-      approvedProofVersion,
     });
 
     writeConsumerPackageJson(consumerDir, tarballPath, packageJson, dependencyRoots);

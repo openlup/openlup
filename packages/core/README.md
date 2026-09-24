@@ -1,15 +1,14 @@
 # Commerce Core
 
 `@openlup/core` is a framework-independent TypeScript workspace package of
-subscription and bundle commerce kernels. It is not a separately published
-library product.
+subscription and bundle commerce kernels, not a separate library product.
 
 > [!IMPORTANT]
-> The npm package is unpublished: `private: true`, the blocked registry, and
-> the publish-lifecycle refusal are mandatory. Its public source and immutable
-> development previews imply no stable package API, registry install,
-> independent release or supported consumer path. Build, pack, and
-> isolated-import checks are package smoke evidence only.
+> Version `0.<n>.0` is packed from source preview `openlup-source-preview/<n>`,
+> staged with provenance and approved with 2FA, on the `preview` dist-tag only.
+> `npm publish` from this directory is refused. No version implies a stable
+> API or supported consumer path. Build, pack, and isolated-import checks are
+> package smoke evidence only.
 
 ## Package Surface Maturity
 
@@ -56,8 +55,8 @@ npm run ci
 ```
 
 Focused proofs are `npm run api:check`, `npm run release:check`, and
-`npm run test:consumer`. The root test script skips this suite. No registry
-install command is available or implied.
+`npm run test:consumer`. The root test script skips this suite. A `preview`
+install is evaluation, not a supported install.
 
 ## Kernel Documentation
 

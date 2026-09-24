@@ -1,19 +1,19 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "compatibilityPolicies": {
     "internal-candidate": "Candidate package surfaces may change until the platform phase-5 activation explicitly freezes a public API.",
     "testing-internal": "Test-support surfaces may change and are not runtime compatibility promises."
   },
-  "privatePackage": {
-    "proofVersion": "0.1.0-rc.1",
-    "activationTarget": "platform-monorepo-phase-5",
+  "packageRelease": {
+    "phase": "platform-monorepo-phase-5",
     "publicStability": "not-claimed",
-    "artifactChannel": "local-pack-only"
+    "artifactChannel": "npm-staged-preview",
+    "versionRule": "0.<n>.0"
   },
   "evidence": {
     "packageSmokeEvidence": {
       "state": "required",
-      "meaning": "Hermetic build, import, pack and private publish-refusal proof for this package."
+      "meaning": "Hermetic build, import, pack and directory publish-refusal proof for this package."
     },
     "conformanceEvidence": {
       "state": "required-for-declared-ports",
@@ -226,9 +226,7 @@
     ]
   },
   "publish": {
-    "private": true,
     "prepublishOnly": "node --experimental-strip-types ./scripts/refuse-publish.ts",
-    "refusalMarker": "CORE_PUBLICATION_BLOCKED",
-    "blockedRegistry": "http://127.0.0.1:9"
+    "refusalMarker": "CORE_DIRECTORY_PUBLISH_REFUSED"
   }
 }

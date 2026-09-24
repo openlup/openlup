@@ -1,12 +1,12 @@
 # Maintainers
 
-`@openlup/core` is maintained as a private portability proof. It is not an
-independent product or release channel before the phase-5 platform activation.
+`@openlup/core` is maintained in the phase-5 platform monorepo. It is not an
+independent product; its versions ride on the source previews.
 
 ## Responsibilities
 
-- preserve `private: true`, blocked-registry configuration, and the
-  fail-closed publish lifecycle;
+- preserve the `preview` publication settings and the directory-publish
+  refusal;
 - keep package smoke, license, SBOM, audit, pack, import, and gitleaks proofs
   green;
 - keep provider and product-specific behavior outside this package;
@@ -23,7 +23,7 @@ npm run ci
 ```
 
 `npm run ci` builds every export, runs tests and coverage, validates declaration
-snapshots and documentation, checks licenses/SBOM/audit/pack/publish refusal,
+snapshots and documentation, checks licenses/SBOM/audit/pack/publish settings,
 and exercises a packed first-party consumer. That consumer is package smoke,
 not external-consumer evidence.
 

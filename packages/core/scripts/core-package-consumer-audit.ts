@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { FIXED_BOX_CONSUMER_MARKER } from "./core-package-consumer-fixed-box-fixture.ts";
 import {
   scanNeutralitySource,
@@ -11,8 +12,10 @@ type ExportEntry = Record<string, string>;
 export type CorePackageJson = {
   name: string;
   version: string;
-  private: boolean;
+  private?: boolean;
   license?: string;
+  publishConfig?: unknown;
+  repository?: unknown;
   files?: string[];
   scripts?: Record<string, string>;
   exports: Record<string, ExportEntry>;
@@ -26,7 +29,6 @@ type AuditInput = {
   packageJson: CorePackageJson;
   packageReadme: string;
   packFiles: string[];
-  approvedProofVersion: string;
 };
 
 // This policy is intentionally readable: it inspects packed production artifacts,
@@ -52,6 +54,9 @@ const packagedNeutralityPolicy: SourceNeutralityPolicy = {
 const approvedDogfoodEvidence = "A private product currently imports candidate package seams; this does not establish a public platform adopter seam.";
 const extensionlessTextPackFiles = new Set(["LICENSE"]);
 const approvedPublicSecurityContact = "dev@openlup.com";
+const previewChannelVersion = /^0\.[1-9]\d*\.0$/;
+const approvedPublishConfig = { access: "public", provenance: true, tag: "preview" };
+const approvedRepository = { type: "git", url: "git+https://github.com/openlup/openlup.git", directory: "packages/core" };
 const simpleStringLiteralSource = String.raw`["'][A-Za-z0-9._@:/+ -]{1,64}["']`;
 const simpleLiteralConcatPattern = new RegExp(
   `${simpleStringLiteralSource}(?:\\s*\\+\\s*${simpleStringLiteralSource}){1,7}`,
@@ -74,7 +79,7 @@ function packageTargetPath(target: string): string {
 
 export function assertCorePackagePortabilityProof(input: AuditInput): void {
   assertPacklist(input.packageJson, input.packFiles);
-  assertPrivatePackageAudit(input);
+  assertPublishablePackageAudit(input);
   assertPackagedContent(input);
 }
 
@@ -116,16 +121,23 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
   assert(forbiddenFiles.length === 0, `packed core tarball contains non-runtime files: ${forbiddenFiles.join(", ")}`);
 }
 
-function assertPrivatePackageAudit({
+function assertPublishablePackageAudit({
   packageJson,
   packageReadme,
   packFiles,
-  approvedProofVersion,
 }: AuditInput): void {
-  assert(packageJson.private === true, "core package must remain private before public launch");
+  assert((packageJson.private ?? false) === false, "core package must be publishable, not private");
   assert(
-    packageJson.version === approvedProofVersion,
-    `core package version must match approved private proof ${approvedProofVersion}`,
+    previewChannelVersion.test(packageJson.version),
+    `core package version must be a preview-channel version 0.<n>.0, not ${packageJson.version}`,
+  );
+  assert(
+    isDeepStrictEqual(packageJson.publishConfig, approvedPublishConfig),
+    `core package publishConfig must be exactly ${JSON.stringify(approvedPublishConfig)}`,
+  );
+  assert(
+    isDeepStrictEqual(packageJson.repository, approvedRepository),
+    `core package repository must be exactly ${JSON.stringify(approvedRepository)}`,
   );
   assert(packageJson.license === "Apache-2.0", "core package must carry Apache-2.0 license metadata");
   assert(packageJson.files?.includes("LICENSE") === true, "core package files must include LICENSE");

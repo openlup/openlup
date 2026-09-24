@@ -2,9 +2,8 @@
 
 ## Release Support
 
-There are no public releases and therefore no supported public versions today.
-The package is a private portability proof with publication blocked.
-`0.1.0-rc.1` is a private proof version, not a supported public release. A
+No package version is supported. A `0.<n>.0` version on the `preview`
+dist-tag is development-preview evaluation, not a supported public release. A
 future support policy belongs to phase-5 public platform governance, not to a
 separate package release channel.
 

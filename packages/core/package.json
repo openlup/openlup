@@ -1,16 +1,22 @@
 {
   "name": "@openlup/core",
-  "version": "0.1.0-rc.1",
-  "private": true,
-  "description": "Private portability proof for neutral D2C subscription and bundle commerce kernels.",
+  "version": "0.6.0",
+  "description": "Neutral D2C subscription and bundle commerce kernels; a development preview with no stable API.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openlup/openlup.git",
+    "directory": "packages/core"
+  },
   "type": "module",
   "engines": {
     "node": "24.x"
   },
   "packageManager": "npm@11.19.0",
   "publishConfig": {
-    "registry": "http://127.0.0.1:9"
+    "access": "public",
+    "provenance": true,
+    "tag": "preview"
   },
   "sideEffects": false,
   "files": [

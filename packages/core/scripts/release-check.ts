@@ -12,6 +12,13 @@ const manifest = readJson("package.json");
 const gates = readJson("release-gates.json");
 const lock = readJson("package-lock.json");
 const mode = process.argv[2] ?? "all";
+// The staged npm preview channel's publication settings.
+const publishConfig = { access: "public", provenance: true, tag: "preview" };
+const repository = {
+  type: "git",
+  url: "git+https://github.com/openlup/openlup.git",
+  directory: "packages/core",
+};
 const npmChecks = createNpmReleaseChecks({
   packageRoot,
   manifest,
@@ -40,17 +47,20 @@ if (mode === "all") {
 }
 
 function checkReleaseIdentity() {
+  // The lockstep value itself is config/openlup-packages.json at the repository root,
+  // which packages:check enforces; this package only admits the channel's version shape.
   assert(
-    manifest.version === gates.privatePackage?.proofVersion,
-    `package version must match approved private proof ${gates.privatePackage?.proofVersion ?? "<missing>"}`,
+    gates.packageRelease?.versionRule === "0.<n>.0" &&
+      /^0\.[1-9]\d*\.0$/.test(manifest.version),
+    `package version must be a preview-channel version 0.<n>.0, not ${manifest.version}`,
   );
   assert(
-    gates.privatePackage?.activationTarget === "platform-monorepo-phase-5" &&
-      gates.privatePackage?.publicStability === "not-claimed" &&
-      gates.privatePackage?.artifactChannel === "local-pack-only",
-    "private package proof must not claim a separate release or public API before phase 5",
+    gates.packageRelease?.phase === "platform-monorepo-phase-5" &&
+      gates.packageRelease?.publicStability === "not-claimed" &&
+      gates.packageRelease?.artifactChannel === "npm-staged-preview",
+    "package release must stay on the staged npm preview channel without a public API stability claim",
   );
-  console.log(`private package identity ok (${manifest.version}, local-pack-only)`);
+  console.log(`package release identity ok (${manifest.version}, npm-staged-preview)`);
 }
 
 function checkLock() {
@@ -141,16 +151,20 @@ function checkLicenses() {
 
 function checkPublishBlock() {
   assert(
-    manifest.private === gates.publish.private && manifest.private === true,
-    "package must remain private=true",
+    (manifest.private ?? false) === false,
+    "package must be publishable: private is absent or false",
   );
   assert(
-    manifest.publishConfig?.registry === gates.publish.blockedRegistry,
-    "publishConfig.registry must remain on the blocked local registry",
+    isDeepStrictEqual(manifest.publishConfig, publishConfig),
+    `publishConfig must be exactly ${JSON.stringify(publishConfig)}: public, provenance-backed, never latest`,
+  );
+  assert(
+    isDeepStrictEqual(manifest.repository, repository),
+    `repository must be exactly ${JSON.stringify(repository)}; provenance needs it`,
   );
   assert(
     manifest.scripts?.prepublishOnly === gates.publish.prepublishOnly,
-    "prepublishOnly must remain the configured lifecycle refusal",
+    "prepublishOnly must remain the configured directory-publish refusal",
   );
 
   const result = spawnSync(
@@ -165,13 +179,13 @@ function checkPublishBlock() {
     },
   );
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  assert(result.status !== 0, "publish refusal script unexpectedly succeeded");
+  assert(result.status !== 0, "directory-publish refusal script unexpectedly succeeded");
   assert(
     output.includes(gates.publish.refusalMarker),
-    "publish refusal marker was not emitted",
+    "directory-publish refusal marker was not emitted",
   );
   console.log(
-    "private manifest, blocked registry, and publish lifecycle refusal ok",
+    "publishable manifest, preview publishConfig, repository, and directory-publish refusal ok",
   );
 }
 

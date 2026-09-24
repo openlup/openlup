@@ -2,8 +2,8 @@
 
 Status: inactive historical evidence from before public-root activation.
 
-`@openlup/core` is public source in the platform monorepo, but remains an
-unpublished npm package. Historical split, versioning, upgrade, consumer
+`@openlup/core` is public source in the platform monorepo; its npm versions
+ride on the source previews. Historical split, versioning, upgrade, consumer
 migration, release, tag, artifact, and reverse-cutover
 instructions are retired and must not be executed.
 

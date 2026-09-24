@@ -26,7 +26,7 @@ const approvedDogfoodEvidence = JSON.parse(
   readFileSync(new URL("../release-gates.json", import.meta.url), "utf8"),
 ).evidence.dogfoodEvidence.meaning;
 
-function assertArtifactRefused(path: string, source: string, reason: RegExp): void {
+function assertArtifactRefused(path: string, source: string, reason: RegExp, manifest: Record<string, unknown> = {}): void {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "core-package-audit-"));
   const sourceRoot = join(temporaryRoot, "source", "package");
   const extractedRoot = join(temporaryRoot, "extracted");
@@ -53,12 +53,14 @@ function assertArtifactRefused(path: string, source: string, reason: RegExp): vo
       packageName: "@openlup/core",
       packageJson: {
         name: "@openlup/core",
-        version: "0.1.0-rc.1",
-        private: true,
+        version: "0.6.0",
         license: "Apache-2.0",
+        publishConfig: { access: "public", provenance: true, tag: "preview" },
+        repository: { type: "git", url: "git+https://github.com/openlup/openlup.git", directory: "packages/core" },
         files: ["LICENSE"],
         scripts: { prepack: "npm run build" },
         exports: {},
+        ...manifest,
       },
       packageReadme: [
         "| Export | Role | Maturity | Package smoke |",
@@ -67,7 +69,6 @@ function assertArtifactRefused(path: string, source: string, reason: RegExp): vo
         "| `./pricing` | kernel | candidate |",
       ].join("\n"),
       packFiles: requiredPackFiles,
-      approvedProofVersion: "0.1.0-rc.1",
     })).toThrow(reason);
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
@@ -122,5 +123,16 @@ describe("packed consumer dependency roots", () => {
     ["rewritten", JSON.stringify({ evidence: { dogfoodEvidence: { meaning: "A public adopter has proved the platform seam." } } })],
   ])("refuses packed %s dogfood evidence", (_kind, source) => {
     assertArtifactRefused("release-gates.json", source, /dogfood evidence must retain its exact approved wording/);
+  });
+
+  it.each([
+    ["private", { private: true }, /must be publishable, not private/],
+    ["prerelease version", { version: "0.1.0-rc.1" }, /preview-channel version 0\.<n>\.0/],
+    ["stable version", { version: "1.0.0" }, /preview-channel version 0\.<n>\.0/],
+    ["blocked registry", { publishConfig: { access: "public", provenance: true, tag: "preview", registry: "http://127.0.0.1:9" } }, /publishConfig must be exactly/],
+    ["latest tag", { publishConfig: { access: "public", provenance: true, tag: "latest" } }, /publishConfig must be exactly/],
+    ["missing repository", { repository: undefined }, /repository must be exactly/],
+  ])("refuses a packed manifest that is not publishable as declared: %s", (_kind, manifest, reason) => {
+    assertArtifactRefused("none", "", reason, manifest);
   });
 });

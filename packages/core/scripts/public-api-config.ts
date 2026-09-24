@@ -35,7 +35,7 @@ type PackageSurfaceConfigInput = {
     schemaVersion: number;
     compatibilityPolicies: Record<string, string>;
     packageSurface: Record<string, PackageSurfaceContract>;
-    privatePackage: { activationTarget: string; publicStability: string; artifactChannel: string };
+    packageRelease: { phase: string; publicStability: string; artifactChannel: string };
     evidence: Record<string, { state: string; meaning: string }>;
   };
   packageRoot: string;
@@ -48,12 +48,12 @@ export function assertPackageSurfaceConfig({
   packageRoot,
   requireSnapshots = true,
 }: PackageSurfaceConfigInput): void {
-  assert(gates.schemaVersion === 3, "unsupported release-gates.json schema");
+  assert(gates.schemaVersion === 4, "unsupported release-gates.json schema");
   assert(
-    gates.privatePackage.activationTarget === "platform-monorepo-phase-5" &&
-      gates.privatePackage.publicStability === "not-claimed" &&
-      gates.privatePackage.artifactChannel === "local-pack-only",
-    "package surface must not claim a separate release or public API before phase 5",
+    gates.packageRelease.phase === "platform-monorepo-phase-5" &&
+      gates.packageRelease.publicStability === "not-claimed" &&
+      gates.packageRelease.artifactChannel === "npm-staged-preview",
+    "package surface must not claim a public API; its only release channel is the staged npm preview",
   );
   assertEvidenceTaxonomy(gates.evidence);
 
