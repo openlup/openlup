@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -20,7 +20,11 @@ const requiredPackFiles = [
   "dist/index.js",
 ];
 
-const approvedDogfoodEvidence = "A private product currently imports candidate package seams; this does not establish a public platform adopter seam.";
+// Pair the fixture with this package's metadata; the audit independently pins
+// its exact approved wording before checking the deliberately injected leak.
+const approvedDogfoodEvidence = JSON.parse(
+  readFileSync(new URL("../release-gates.json", import.meta.url), "utf8"),
+).evidence.dogfoodEvidence.meaning;
 
 function assertArtifactRefused(path: string, source: string, reason: RegExp): void {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "core-package-audit-"));
