@@ -9,7 +9,7 @@
     "classDigest": "sha256-d1d3a0b6caa08261905f978088dbe149884abc9a7ca4e5a0db2ed3dda84c8002"
   },
   "packages": {
-    "manifestDigest": "sha256-36df6f849cad3ca14dac31ffd0f2d19b2ff604e62bc57ef50382fdda50290480",
+    "manifestDigest": "sha256-450170c5812d126bbb8c212207526c72752c454124ba4b2f7e104fddb9301b61",
     "rootLockDigest": "sha256-885938158538bb91d1c18df708e10c053c4ed0762358dc249a2b32f39b47b8b3",
     "coreLockDigest": "sha256-22544155fe9f2eb12c19d1f3a0ae9c7178979b7ade878df588dc5c8d87625b19"
   },
