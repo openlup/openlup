@@ -1,0 +1,160 @@
+# Stages provenance-backed @openlup/* tarballs for a published source preview.
+#
+# Inert by default: nothing runs unless the repository variable OPENLUP_NPM_STAGE is
+# "enabled". Even then nothing reaches the registry by itself. The stage job hands each
+# tarball to npm as a staged version, and a maintainer approves it with 2FA
+# (`npm stage approve`) after checking the tarball locally. Publishing is trusted
+# publishing: GitHub's OIDC token for the `npm-stage` environment, never a stored npm token.
+# The maintainer setup this relies on is in .github/VERSIONING_AND_EOL.md.
+#
+# The pack job is unprivileged. It checks that:
+# - the release commit is on main;
+# - the six required GitHub Actions contexts passed there;
+# - the lockstep version is 0.<n>.0 for tag openlup-source-preview/<n>;
+# - every packed file passes `npm run packages:check -- --out`.
+# It then runs a gitleaks scan over the unpacked tarballs. The stage job gets only the
+# tarballs and their digests: no checkout and no install.
+
+name: Publish Packages
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+concurrency:
+  group: publish-packages-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    name: pack
+    if: ${{ github.repository == 'openlup/openlup' && vars.OPENLUP_NPM_STAGE == 'enabled' && github.event.release.prerelease && startsWith(github.event.release.tag_name, 'openlup-source-preview/') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      node-version: ${{ steps.node.outputs.version }}
+    steps:
+      # A release event checks out refs/tags/<tag> at GITHUB_SHA; no ref is passed, so a
+      # branch with the tag's name cannot stand in for it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Assert Node and npm contract
+        id: node
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+          echo "version=$(node -p 'process.versions.node')" >> "$GITHUB_OUTPUT"
+      - name: The release commit is on main and passed the required contexts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch --no-tags --quiet origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD || { echo "::error::$GITHUB_SHA is not on main"; exit 1; }
+          for context in dco typecheck install-proof test self-check gitleaks; do
+            verdict="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=$context&filter=latest&per_page=100" \
+              --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
+            if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $GITHUB_SHA"; exit 1; fi
+          done
+      - run: npm ci --ignore-scripts --no-audit --fund=false
+      - name: Pack and check every publishable package
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          npm run packages:check -- --out packs --release-tag "$RELEASE_TAG"
+          node -e 'if (require("./packs/packages-manifest.json").packages.length === 0) { console.error("no publishable package in this release"); process.exit(1); }'
+      - name: Install checksum-verified gitleaks 8.30.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz"
+          install_dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$install_dir"
+          gh api -H "Accept: application/octet-stream" \
+            repos/gitleaks/gitleaks/releases/assets/378332058 > "$archive"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$install_dir" gitleaks
+          echo "$install_dir" >> "$GITHUB_PATH"
+          "$install_dir/gitleaks" version
+      - name: Scan the unpacked tarballs
+        run: |
+          for tarball in packs/*.tgz; do
+            target="$RUNNER_TEMP/scan/$(basename "$tarball" .tgz)"
+            mkdir -p "$target"
+            tar -xzf "$tarball" -C "$target"
+          done
+          gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner
+      - name: Summary
+        run: |
+          {
+            echo '### Packed for staging'
+            echo '```json'
+            cat packs/packages-manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packs
+          path: packs
+          if-no-files-found: error
+          retention-days: 7
+
+  stage:
+    name: stage
+    needs: pack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: npm-stage
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packs
+          path: packs
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ needs.pack.outputs.node-version }}
+          package-manager-cache: false
+      - name: Verify the tarballs the pack job checked
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          test "$(npm --version)" = "11.19.0"
+          # shellcheck disable=SC2016 # the single-quoted script is JavaScript, not shell
+          node -e '
+            const { createHash } = require("node:crypto");
+            const { readFileSync, readdirSync } = require("node:fs");
+            const manifest = JSON.parse(readFileSync("packs/packages-manifest.json", "utf8"));
+            if (manifest.commit !== process.env.GITHUB_SHA) throw new Error("the tarballs were packed from another commit");
+            const number = /^openlup-source-preview\/([1-9]\d*)$/.exec(process.env.RELEASE_TAG)?.[1];
+            if (number === undefined || manifest.version !== `0.${number}.0`) throw new Error("the version does not match the release tag");
+            if (manifest.packages.length === 0) throw new Error("no publishable package in this release");
+            const listed = new Set(manifest.packages.map(({ filename }) => filename));
+            for (const name of readdirSync("packs")) if (name !== "packages-manifest.json" && !listed.has(name)) throw new Error(`unlisted file ${name}`);
+            for (const { filename, sha256 } of manifest.packages) {
+              if (!/^[a-z0-9-]+-\d+\.\d+\.\d+\.tgz$/.test(filename)) throw new Error(`unexpected tarball name ${filename}`);
+              const actual = createHash("sha256").update(readFileSync(`packs/${filename}`)).digest("hex");
+              if (actual !== sha256) throw new Error(`${filename} changed after packing`);
+            }
+          '
+      # "./" makes npm read a local file; a bare "packs/<file>" is GitHub shorthand for a remote repository.
+      # If staging stops partway, reject the versions already staged before re-running this job.
+      - name: Stage each tarball for maintainer approval
+        run: |
+          node -e 'for (const { filename } of require("./packs/packages-manifest.json").packages) console.log(filename)' |
+            while read -r filename; do
+              npm stage publish "./packs/$filename" --tag preview --provenance --access public --ignore-scripts
+            done

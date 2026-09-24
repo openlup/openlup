@@ -74,6 +74,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/publish-packages.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/published-tree-ci.yml",
       "class": "public-output"
     },
