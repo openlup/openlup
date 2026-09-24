@@ -16,6 +16,11 @@ export const SUBSCRIPTION_PAGES = new Set(["/subscribe", "/account", "/account/a
 export const SUBSCRIPTION_CSP = "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'";
 const INSTANCE_KEY = "public_reference_subscription_instance";
 const BASELINE = new URL("../../../supabase/migrations/00000000000000_platform_schema_baseline.sql", import.meta.url);
+/**
+ * The Supabase CLI configuration inside the operator-owned directory, joined at use so the
+ * path derives from that directory at runtime and never names this checkout's own copy.
+ */
+export const OWNED_SUPABASE_CONFIG = ["supabase", "config.toml"] as const;
 const sha256 = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
 
 function localOrigin(value: string | undefined): URL {
@@ -54,7 +59,7 @@ export function validateSubscriptionProfile(env: NodeJS.ProcessEnv) {
   const directory = env.OPENLUP_REFERENCE_SUPABASE_DIR;
   const project = env.OPENLUP_REFERENCE_PROJECT_ID;
   if (!directory || !project || !/^[a-z0-9][a-z0-9-]{2,70}$/.test(project)) throw new Error("Reference project ownership is required");
-  const configPath = resolve(directory, "supabase/config.toml");
+  const configPath = resolve(directory, ...OWNED_SUPABASE_CONFIG);
   const markerPath = resolve(directory, "subscription-owner.json");
   const validateConfig = () => {
     const config = readFileSync(configPath, "utf8");
