@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { validateSubscriptionProfile } from "./subscriptionProfile.js";
+import { OWNED_SUPABASE_CONFIG, validateSubscriptionProfile } from "./subscriptionProfile.js";
 
 const scratch: string[] = [];
 const instanceId = "a9931d52-153f-49d4-a4ef-8d80f6dc56b8";
@@ -22,7 +22,7 @@ function setup(text = config): NodeJS.ProcessEnv {
   const directory = mkdtempSync(join(tmpdir(), "reference-profile-test-"));
   scratch.push(directory);
   mkdirSync(join(directory, "supabase"));
-  writeFileSync(join(directory, "supabase/config.toml"), text);
+  writeFileSync(join(directory, ...OWNED_SUPABASE_CONFIG), text);
   writeFileSync(join(directory, "subscription-owner.json"), JSON.stringify({
     version: 2, projectId: "openlup-reference-test", portBase: 56420, phase: "sealed",
     boundContainerId: "a".repeat(64), instanceId, configSha256: sha256(text),
@@ -79,6 +79,13 @@ describe("disposable subscription admission", () => {
     const marker = JSON.parse(readFileSync(path, "utf8"));
     writeFileSync(path, JSON.stringify({ ...marker, instanceId: "31f357fc-909c-4512-a34f-a263514cd91e" }));
     await expect(checked.assertDisposable(async () => instanceId)).rejects.toThrow("Live database does not match");
+  });
+  it("reads the captured configuration from the owned directory", () => {
+    expect(OWNED_SUPABASE_CONFIG).toEqual(["supabase", "config.toml"]);
+    const env = setup();
+    const path = join(env.OPENLUP_REFERENCE_SUPABASE_DIR!, ...OWNED_SUPABASE_CONFIG);
+    rmSync(path);
+    expect(() => validateSubscriptionProfile(env)).toThrow(path);
   });
   it("refuses an unsealed or wrong-port setup marker before a network call", () => {
     for (const change of [{ phase: "bound" }, { portBase: 56440 }, { configSha256: "0".repeat(64) }]) {

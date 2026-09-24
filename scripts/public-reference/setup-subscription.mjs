@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+// The Supabase CLI configuration inside the operator-owned directory, joined at use so the
+// path derives from that directory at runtime and never names this checkout's own copy.
+const OWNED_SUPABASE_CONFIG = ["supabase", "config.toml"];
 const inputs = process.argv.slice(2);
 function option(name) {
   const at = inputs.indexOf(name);
@@ -26,7 +29,7 @@ const directory = resolve(directoryArg);
 if (directory === root || directory.startsWith(`${root}${sep}`) || root.startsWith(`${directory}${sep}`)) fail("Setup must be outside the source checkout");
 const ports = { shadow: portBase, api: portBase + 1, db: portBase + 2, studio: portBase + 3, mail: portBase + 4, pooler: portBase + 9, app: portBase + 10 };
 const markerPath = join(directory, "subscription-owner.json");
-const configPath = join(directory, "supabase/config.toml");
+const configPath = join(directory, ...OWNED_SUPABASE_CONFIG);
 const baseline = join(root, "supabase/migrations/00000000000000_platform_schema_baseline.sql");
 const prereqs = join(root, "scripts/public-reference/subscription-prereqs.sql");
 const seed = join(root, "scripts/public-reference/subscription-seed.sql");

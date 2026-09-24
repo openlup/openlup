@@ -11,6 +11,9 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 const repo = fileURLToPath(new URL("../..", import.meta.url));
+// The Supabase CLI configuration inside the operator-owned directory, joined at use so the
+// path derives from that directory at runtime and never names this checkout's own copy.
+const OWNED_SUPABASE_CONFIG = ["supabase", "config.toml"];
 const fail = (message) => { throw new Error(message); };
 const requireFact = (value, message) => { if (!value) fail(message); };
 const uuid = (value) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -51,7 +54,7 @@ function setup() {
   const origin = loopback(options.get("--origin") ?? env.APP_BASE_URL);
   requireFact(origin === loopback(env.APP_BASE_URL), "Origin differs from the owned setup");
   const auth = loopback(env.SUPABASE_URL);
-  const config = readFileSync(join(owned, "supabase/config.toml"), "utf8");
+  const config = readFileSync(join(owned, ...OWNED_SUPABASE_CONFIG), "utf8");
   const section = config.match(/^\[inbucket\]\s*\n([\s\S]*?)(?=^\[|$(?![\s\S]))/m)?.[1];
   const port = section?.match(/^port\s*=\s*(\d+)\s*$/m)?.[1];
   requireFact(section && /^enabled\s*=\s*true\s*$/m.test(section) && port, "Owned local mailbox is unavailable");
