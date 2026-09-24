@@ -10,14 +10,14 @@ const workflow = readFileSync(resolve(packageRoot, ".github/workflows/ci.yml"), 
 const dependabot = readFileSync(resolve(packageRoot, ".github/dependabot.yml"), "utf8");
 const codeowners = readFileSync(resolve(packageRoot, ".github/CODEOWNERS"), "utf8").trim();
 
-describe("private package policy", () => {
-  it("keeps core a private portability proof rather than an activatable separate repository", () => {
+describe("package policy", () => {
+  it("keeps core a publishable preview-channel package of the platform monorepo rather than a separate repository", () => {
     expect(policy).toMatchObject({
       schemaVersion: 5,
       repository: {
         packageName: "@openlup/core",
-        currentPhase: "private-portability-proof",
-        packageVisibility: "private",
+        currentPhase: "platform-monorepo-phase-5",
+        packageVisibility: "public-preview",
         activation: {
           target: "platform-monorepo-phase-5",
           separateRepositoryActivation: "forbidden",
@@ -65,7 +65,7 @@ describe("private package policy", () => {
     }
   });
 
-  it("runs the private package policy check", () => {
+  it("runs the package policy check", () => {
     const result = spawnSync(
       process.execPath,
       ["--experimental-strip-types", "./scripts/release-check.ts", "repository-policy"],
@@ -73,6 +73,6 @@ describe("private package policy", () => {
     );
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(result.stdout).toContain("private package policy and local security automation ok");
+    expect(result.stdout).toContain("package policy and local security automation ok");
   });
 });

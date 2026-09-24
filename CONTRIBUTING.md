@@ -121,9 +121,9 @@ the operational coordinates the public detector knows. It prints each tarball's
 integrity. `-- --out <dir>` implies `--pack`. It keeps each publishable
 package's tarball in an empty directory, with a `packages-manifest.json` of
 their digests. `-- --release-tag openlup-source-preview/<n>` requires the lockstep
-version to be `0.<n>.0`. Nothing is published; the package preview channel in
-[`.github/VERSIONING_AND_EOL.md`](.github/VERSIONING_AND_EOL.md) describes how a
-publication would be staged.
+version to be `0.<n>.0`. The command publishes nothing; the package preview
+channel in [`.github/VERSIONING_AND_EOL.md`](.github/VERSIONING_AND_EOL.md)
+describes how a publication is staged.
 
 No hosted job and no command above runs these test classes (measured on `main`
 at `f09d865`, 2026-09-23):

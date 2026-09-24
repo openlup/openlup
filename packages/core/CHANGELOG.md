@@ -1,9 +1,9 @@
 # Changelog
 
-Notable changes to this public-source, unpublished workspace package are
-recorded here. “Unreleased” means no npm package release exists; immutable
-OpenLup source previews may already ship some changes, and their release notes
-say which. Declaration snapshots track candidate drift, not a stable API or
+Notable changes to this public-source workspace package are recorded here.
+“Unreleased” means no npm version carries the change yet; immutable OpenLup
+source previews may already ship some changes, and their release notes say
+which. Declaration snapshots track candidate drift, not a stable API or
 SemVer promise.
 
 ## Unreleased — checkout recovery contracts
@@ -15,6 +15,9 @@ SemVer promise.
 ## [Unreleased]
 
 ### Changed
+
+- Publishable on the npm `preview` dist-tag as `0.6.0`, for source preview
+  `openlup-source-preview/6`. Directory `npm publish` stays refused.
 
 - **BREAKING for `slugSchema`'s accepted language.** The `./catalog` schema no
   longer trims its input, so a slug with leading or trailing whitespace is now
@@ -176,7 +179,6 @@ SemVer promise.
 
 ## Release Status
 
-No npm package version has been released. `0.1.0-rc.1` is the internal
-package-proof version; `private: true` and publish refusal remain in force.
-Source previews establish no stable package API, npm distribution or supported
-upgrade channel. Add a dated section only after an authorized package release.
+No npm version has been released yet. A `preview` version establishes no
+stable package API or supported upgrade channel. Add a dated section only
+after a version is published.

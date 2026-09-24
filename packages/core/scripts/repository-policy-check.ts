@@ -17,16 +17,16 @@ export function verifyRepositoryPolicy(input: {
   assert(policy.schemaVersion === 5, "unsupported repository-policy.json schema");
   assert(
     policy.repository?.packageName === "@openlup/core" &&
-      policy.repository.currentPhase === "private-portability-proof" &&
-      policy.repository.packageVisibility === "private" &&
-      manifest.private === true,
-    "core must remain a private portability proof",
+      policy.repository.currentPhase === "platform-monorepo-phase-5" &&
+      policy.repository.packageVisibility === "public-preview" &&
+      (manifest.private ?? false) === false,
+    "core must be a publishable preview-channel package of the phase-5 platform monorepo",
   );
   assert(
     policy.repository.activation?.target === "platform-monorepo-phase-5" &&
       policy.repository.activation.separateRepositoryActivation === "forbidden" &&
       policy.repository.activation.publicSourceOpening === "phase-5-only",
-    "core activation must remain deferred to the phase-5 platform monorepo",
+    "core activation belongs to the phase-5 platform monorepo, never to a separate repository",
   );
   assert(
     policy.localGovernance?.pullRequestsRequired === true &&
@@ -86,7 +86,7 @@ export function verifyRepositoryPolicy(input: {
       policy.localProofToolchain.npm === "11.19.0",
     "local package proof toolchain drifted",
   );
-  console.log("private package policy and local security automation ok");
+  console.log("package policy and local security automation ok");
 }
 
 function readJson<Parsed>(packageRoot: string, path: string): Parsed {

@@ -2,8 +2,8 @@
   "schemaVersion": 5,
   "repository": {
     "packageName": "@openlup/core",
-    "currentPhase": "private-portability-proof",
-    "packageVisibility": "private",
+    "currentPhase": "platform-monorepo-phase-5",
+    "packageVisibility": "public-preview",
     "activation": {
       "target": "platform-monorepo-phase-5",
       "separateRepositoryActivation": "forbidden",

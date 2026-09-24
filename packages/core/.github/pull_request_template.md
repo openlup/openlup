@@ -51,6 +51,6 @@ Do not disclose a suspected vulnerability in this pull request. Follow
 - [ ] Behavior changes have focused tests.
 - [ ] Declaration snapshot drift is intentionally reviewed as an internal candidate change.
 - [ ] I ran `npm run ci`, or explained exactly which checks could not run.
-- [ ] I did not weaken `private: true`, the publish refusal, or package controls.
+- [ ] I did not weaken the `preview` publication settings, the directory-publish refusal, or package controls.
 - [ ] I did not include secrets, personal data, or private service evidence.
 - [ ] Documentation and changelog impact is addressed.

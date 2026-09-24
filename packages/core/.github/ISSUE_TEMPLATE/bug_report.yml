@@ -7,20 +7,20 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for a careful report. This private portability package is not a public adoption channel. Do not include secrets, personal data, or vulnerability details. Suspected security issues must follow SECURITY.md and use the approved private reporting route.
+        Thanks for a careful report. This development-preview package is not a supported adoption channel. Do not include secrets, personal data, or vulnerability details. Suspected security issues must follow SECURITY.md and use the approved private reporting route.
   - type: input
     id: version
     attributes:
-      label: Private proof version or commit
-      description: Use the exact workspace, packed-proof, or commit SHA.
-      placeholder: 0.1.0-rc.1 or full commit SHA
+      label: Package version or commit
+      description: Use the exact package version or commit SHA.
+      placeholder: 0.6.0 or full commit SHA
     validations:
       required: true
   - type: input
     id: subpath
     attributes:
       label: Package subpath
-      description: Name the private candidate subpath involved, such as @openlup/core/pricing.
+      description: Name the candidate subpath involved, such as @openlup/core/pricing.
     validations:
       required: true
   - type: dropdown

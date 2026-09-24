@@ -1,4 +1,4 @@
 console.error(
-  "CORE_PUBLICATION_BLOCKED: @openlup/core is private and must not be published.",
+  "CORE_DIRECTORY_PUBLISH_REFUSED: @openlup/core is published only as a checked tarball through the staged preview channel; npm publish from the package directory is refused.",
 );
 process.exit(1);

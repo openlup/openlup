@@ -274,12 +274,16 @@ consumer before adoption. The later
 has a separate catalog-slug compatibility action. Publication alone updates no
 adopter; no preview is a supported upgrade channel.
 
-## Package preview channel (inactive)
+## Package preview channel
 
-`@openlup/*` packages are not published yet: every released package in
-[`config/openlup-packages.json`](../config/openlup-packages.json) is still
-`publish: false`. The channel below is inert until a package becomes publishable
-and the repository variable `OPENLUP_NPM_STAGE` is set to `enabled`.
+`@openlup/core` is the one publishable package in
+[`config/openlup-packages.json`](../config/openlup-packages.json)
+(`publish: true`). Its version is `0.<n>.0` for source preview
+`openlup-source-preview/<n>`: `0.6.0` rides on preview 6. Before each later cut,
+a commit sets the next version in that file, in each listed `package.json` and
+in both lockfiles, and regenerates the source release contract; otherwise the
+pack job refuses and that preview carries no package. The channel is inert until
+the repository variable `OPENLUP_NPM_STAGE` is set to `enabled`.
 
 When a source preview `openlup-source-preview/<n>` is published,
 [`.github/workflows/publish-packages.yml`](workflows/publish-packages.yml) works
@@ -297,24 +301,55 @@ in two jobs:
    stored npm token.
 
 A staged version is not public. A maintainer inspects it (`npm stage download`)
-and publishes it with 2FA (`npm stage approve`), or rejects it. Packages carry
-the `preview` dist-tag only; `latest` is not used before the stable channel
-exists. A compromised version is deprecated and fixed forward, never unpublished.
+and publishes it with 2FA (`npm stage approve`), or rejects it. Every channel
+version carries the `preview` dist-tag. The registry gives a new package's first
+version the `latest` tag, whatever tag that publish names, and keeps a `latest`
+tag on every package, so `latest` points at the first, inert version (setup
+step 5) and no channel version moves it before a stable channel exists. A
+tarball publish does not take its tag from `publishConfig`, so every manual
+publish passes `--tag preview` explicitly, as the stage job does. A package's
+`prepublishOnly` refuses `npm publish` from its directory: only a checked
+tarball is published. A compromised version is deprecated and fixed forward,
+never unpublished.
 
-The approval gate holds only with this maintainer setup, made before the variable
-is enabled:
+A release runs the workflow file of its tagged commit, so whoever can create a
+preview-named tag on a commit can also change every check in that workflow. The
+tag ruleset therefore restricts who may create `openlup-source-preview/*` tags,
+besides updating and deleting them. The environment's tag rule limits only
+which refs may deploy to it. The gates that hold whatever the tagged workflow
+says are the required reviewer of the `npm-stage` environment and the 2FA
+`npm stage approve`.
 
-- The `npm-stage` environment has the maintainer as required reviewer, and its
-  deployments are limited to `openlup-source-preview/*` tags. A release runs the
-  workflow file of its tagged commit, so this restriction is what keeps an
-  arbitrary tag from staging.
-- Each package's trusted publisher names this repository, `publish-packages.yml`
-  and the `npm-stage` environment. It allows staged publication only (`npm trust
-  github <package> --allow-stage-publish`, without direct publish). Package access
-  requires 2FA and disallows tokens.
-- A package name must exist on the registry before a trusted publisher can be
-  bound to it. The maintainer publishes the first, inert version of each new name
-  with 2FA, outside this workflow.
+The maintainer sets the channel up in this order, before the variable is
+enabled:
+
+1. The `@openlup` scope belongs to the npm organization `openlup`, whose members
+   are maintainers with 2FA.
+2. The maintainer's npm account requires 2FA for authorization and writes
+   (`npm profile enable-2fa auth-and-writes`), and holds no token that bypasses
+   2FA.
+3. The GitHub environment `npm-stage` exists, with the maintainer as required
+   reviewer, no administrator bypass, deployments limited to
+   `openlup-source-preview/*` tags, and no secrets or variables. It must exist
+   before the variable: a first run would otherwise create it unprotected.
+4. The preview tag ruleset restricts tag creation to repository administrators.
+5. A trusted publisher can be bound only to an existing package name. For each
+   new name the maintainer publishes a placeholder version `0.0.0` by hand with
+   2FA and `--tag preview`, outside this workflow, then deprecates it
+   (`npm deprecate`).
+6. Package access requires 2FA and disallows tokens
+   (`npm access set mfa=publish @openlup/core`).
+7. The trusted publisher allows staged publication only, without direct
+   publish:
+   `npm trust github @openlup/core --file publish-packages.yml --repository openlup/openlup --environment npm-stage --allow-stage-publish`
+   (npm 11.15 or later; check with `npm trust list @openlup/core`).
+8. The repository variable, not an environment variable, `OPENLUP_NPM_STAGE` is
+   `enabled`: the pack job reads it before any environment applies.
+
+Before cutting a preview that carries a package, run
+`npm run packages:check -- --out "$(mktemp -d)" --release-tag openlup-source-preview/<n>`
+on the exact commit to be tagged: the pack job first runs after the preview is
+published, when a refusal can no longer be corrected in that preview.
 
 If staging stops partway, reject the versions already staged before re-running
 the stage job.

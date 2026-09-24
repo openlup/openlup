@@ -144,8 +144,9 @@ jobs:
             if (manifest.packages.length === 0) throw new Error("no publishable package in this release");
             const listed = new Set(manifest.packages.map(({ filename }) => filename));
             for (const name of readdirSync("packs")) if (name !== "packages-manifest.json" && !listed.has(name)) throw new Error(`unlisted file ${name}`);
-            for (const { filename, sha256 } of manifest.packages) {
+            for (const { name, filename, sha256 } of manifest.packages) {
               if (!/^[a-z0-9-]+-\d+\.\d+\.\d+\.tgz$/.test(filename)) throw new Error(`unexpected tarball name ${filename}`);
+              if (filename !== `${name.slice(1).replace("/", "-")}-${manifest.version}.tgz`) throw new Error(`${filename} is not ${name}@${manifest.version}`);
               const actual = createHash("sha256").update(readFileSync(`packs/${filename}`)).digest("hex");
               if (actual !== sha256) throw new Error(`${filename} changed after packing`);
             }
