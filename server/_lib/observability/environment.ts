@@ -12,7 +12,7 @@ export type ObservedEnvironment =
  * duplicating a vendor- or brand-spelled literal of its own.
  */
 export const APPLICATION_ENVIRONMENT_KEY = "APP_ENVIRONMENT";
-export const LEGACY_APPLICATION_ENVIRONMENT_KEY = "openlup_ENVIRONMENT";
+export const LEGACY_APPLICATION_ENVIRONMENT_KEY = "OPENLUP_ENVIRONMENT";
 export const HOST_ENVIRONMENT_KEY = "VERCEL_ENV";
 export const readHiddenPreviewEnabled = (env: Record<string, string | undefined>) => env.HIDDEN_SANDBOX_PREVIEW_ENABLED === "true";
 

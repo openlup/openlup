@@ -2,7 +2,7 @@
  * Central registry for build-time preview/config feature flags read on the
  * frontend. Every flag here follows one shape: a `VITE_*` env value that is
  * "true"/not, with a `MODE !== "production"` test override so specs can flip it
- * via a `globalThis.__openlup_TEST_*` global without rebuilding.
+ * via a `globalThis.__OPENLUP_TEST_*` global without rebuilding.
  *
  * Why one module: the same 8-line accessor was copy-pasted across nine helper
  * files (and drifted into a few raw `import.meta.env` reads). Collapsing them
@@ -34,31 +34,31 @@ import { createCustomerJourneyActionKey } from "./diagnostics/customerJourneyAct
 
 declare global {
   // eslint-disable-next-line no-var
-  var __openlup_TEST_CATALOG_ADMIN__: boolean | undefined;
+  var __OPENLUP_TEST_CATALOG_ADMIN__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_CONFIGURATOR_CHECKOUT_REDESIGN: boolean | undefined;
+  var __OPENLUP_TEST_CONFIGURATOR_CHECKOUT_REDESIGN: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_DHL_ONLY_DELIVERY__: boolean | undefined;
+  var __OPENLUP_TEST_DHL_ONLY_DELIVERY__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_INPOST_GEOWIDGET__: boolean | undefined;
+  var __OPENLUP_TEST_INPOST_GEOWIDGET__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_STRIPE_CHECKOUT_UI__: boolean | undefined;
+  var __OPENLUP_TEST_STRIPE_CHECKOUT_UI__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_TPAY_CHECKOUT_SCAFFOLDING__: boolean | undefined;
+  var __OPENLUP_TEST_TPAY_CHECKOUT_SCAFFOLDING__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_TPAY_BLIK_MODEL_O__: boolean | undefined;
+  var __OPENLUP_TEST_TPAY_BLIK_MODEL_O__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_TPAY_SIMULATOR_UI__: boolean | undefined;
+  var __OPENLUP_TEST_TPAY_SIMULATOR_UI__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_TPAY_ONE_CLICK_UI__: boolean | undefined;
+  var __OPENLUP_TEST_TPAY_ONE_CLICK_UI__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__: boolean | undefined;
+  var __OPENLUP_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_PLATFORM_ALERTS_ADMIN__: boolean | undefined;
+  var __OPENLUP_TEST_PLATFORM_ALERTS_ADMIN__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_OFFER_POLICY_V2_CAPABILITY__: boolean | undefined;
+  var __OPENLUP_TEST_OFFER_POLICY_V2_CAPABILITY__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __openlup_TEST_BUNDLE_ADMIN__: boolean | undefined;
+  var __OPENLUP_TEST_BUNDLE_ADMIN__: boolean | undefined;
   // eslint-disable-next-line no-var
   var __TEST_CUSTOMER_DIAGNOSTIC_HISTORY__: boolean | undefined;
 }
@@ -69,7 +69,7 @@ declare global {
  * not a production build), otherwise the `VITE_*` env value compared to "true".
  *
  * @param envKey       the `import.meta.env` key (e.g. "VITE_COMMERCE_...")
- * @param testGlobalKey the `globalThis.__openlup_TEST_*` override key
+ * @param testGlobalKey the `globalThis.__OPENLUP_TEST_*` override key
  */
 export function makePreviewFlag(envKey: string, testGlobalKey: string): () => boolean {
   return () => {
@@ -86,7 +86,7 @@ export function makePreviewFlag(envKey: string, testGlobalKey: string): () => bo
 /** Admin "Katalog" (agent-operable catalog) preview surface. */
 export const catalogAdminEnabled = makePreviewFlag(
   "VITE_COMMERCE_CATALOG_ADMIN_ENABLED",
-  "__openlup_TEST_CATALOG_ADMIN__",
+  "__OPENLUP_TEST_CATALOG_ADMIN__",
 );
 
 /**
@@ -98,20 +98,20 @@ export const catalogAdminEnabled = makePreviewFlag(
  */
 export const bundleAdminEnabled = makePreviewFlag(
   "VITE_COMMERCE_BUNDLE_ADMIN_ENABLED",
-  "__openlup_TEST_BUNDLE_ADMIN__",
+  "__OPENLUP_TEST_BUNDLE_ADMIN__",
 );
 
 /** Admin shell platform-alerts surface (health pill + notification bell). */
 export const platformAlertsAdminEnabled = makePreviewFlag(
   "VITE_PLATFORM_ALERTS_ADMIN_ENABLED",
-  "__openlup_TEST_PLATFORM_ALERTS_ADMIN__",
+  "__OPENLUP_TEST_PLATFORM_ALERTS_ADMIN__",
 );
 
 /** Krok 5/6 checkout redesign preview: purchase-mode tiles (subskrypcja /
  * jednorazowe / pakiet startowy) + condensed step-6 package recap. */
 export const configuratorCheckoutRedesignEnabled = makePreviewFlag(
   "VITE_COMMERCE_CONFIGURATOR_CHECKOUT_REDESIGN",
-  "__openlup_TEST_CONFIGURATOR_CHECKOUT_REDESIGN",
+  "__OPENLUP_TEST_CONFIGURATOR_CHECKOUT_REDESIGN",
 );
 
 /** The standalone direct-DHL checkout fallback is permanently retired. */
@@ -124,19 +124,19 @@ export const dhlOnlyDeliveryEnabled = () => false;
  */
 export const inpostGeowidgetEnabled = makePreviewFlag(
   "VITE_INPOST_GEOWIDGET_ENABLED",
-  "__openlup_TEST_INPOST_GEOWIDGET__",
+  "__OPENLUP_TEST_INPOST_GEOWIDGET__",
 );
 
 /** Stripe checkout UI (card + wallets). */
 export const stripeCheckoutUiEnabled = makePreviewFlag(
   "VITE_COMMERCE_STRIPE_CHECKOUT_UI_ENABLED",
-  "__openlup_TEST_STRIPE_CHECKOUT_UI__",
+  "__OPENLUP_TEST_STRIPE_CHECKOUT_UI__",
 );
 
 /** Tpay checkout scaffolding. */
 export const tpayCheckoutScaffoldingEnabled = makePreviewFlag(
   "VITE_PAYMENTS_TPAY_CHECKOUT_SCAFFOLDING",
-  "__openlup_TEST_TPAY_CHECKOUT_SCAFFOLDING__",
+  "__OPENLUP_TEST_TPAY_CHECKOUT_SCAFFOLDING__",
 );
 
 /**
@@ -148,19 +148,19 @@ export const tpayCheckoutScaffoldingEnabled = makePreviewFlag(
  */
 export const tpayBlikModelOEnabled = makePreviewFlag(
   "VITE_PAYMENTS_TPAY_BLIK_MODEL_O_ENABLED",
-  "__openlup_TEST_TPAY_BLIK_MODEL_O__",
+  "__OPENLUP_TEST_TPAY_BLIK_MODEL_O__",
 );
 
 /** Tpay simulator UI. */
 export const tpaySimulatorUiEnabled = makePreviewFlag(
   "VITE_PAYMENTS_TPAY_SIMULATOR_UI",
-  "__openlup_TEST_TPAY_SIMULATOR_UI__",
+  "__OPENLUP_TEST_TPAY_SIMULATOR_UI__",
 );
 
 /** Tpay one-click UI. */
 export const tpayOneClickUiEnabled = makePreviewFlag(
   "VITE_PAYMENTS_TPAY_ONE_CLICK_UI",
-  "__openlup_TEST_TPAY_ONE_CLICK_UI__",
+  "__OPENLUP_TEST_TPAY_ONE_CLICK_UI__",
 );
 
 /**
@@ -171,13 +171,13 @@ export const tpayOneClickUiEnabled = makePreviewFlag(
  */
 export const subscriptionCheckoutContractEnabled = makePreviewFlag(
   "VITE_COMMERCE_V2_W11_SUBSCRIPTION_CHECKOUT_CONTRACT_ENABLED",
-  "__openlup_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__",
+  "__OPENLUP_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__",
 );
 
 /** Client can preserve a server-authored v2 policy assignment. Default off. */
 export const offerPolicyV2CapabilityEnabled = makePreviewFlag(
   "VITE_COMMERCE_OFFER_POLICY_V2_CAPABILITY_ENABLED",
-  "__openlup_TEST_OFFER_POLICY_V2_CAPABILITY__",
+  "__OPENLUP_TEST_OFFER_POLICY_V2_CAPABILITY__",
 );
 
 /**

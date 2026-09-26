@@ -111,7 +111,7 @@ export function buildTpayAdapterIfEnabled(
     // this mode outside confirmed production.
     if (env.TPAY_PRODUCTION_CONFIRMED !== "true") return null;
     if (!isTpayProductionOpenApiBaseUrl(baseUrl)) return null;
-    if (![notificationUrl, successUrl, errorUrl].every(isCanonicalTpayProductionCallbackUrl)) {
+    if (![notificationUrl, successUrl, errorUrl].every((value) => isCanonicalTpayProductionCallbackUrl(value))) {
       return null;
     }
   }

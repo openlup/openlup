@@ -1,7 +1,7 @@
 import type { InventoryReservationLegacySchemaFallbackConfig } from "../../adapters/managed/commerce/inventoryReservationPort.js";
 
 type InventoryReservationRuntimeEnv = {
-  openlup_ENVIRONMENT?: string;
+  OPENLUP_ENVIRONMENT?: string;
   VERCEL_ENV?: string;
   NODE_ENV?: string;
 };
@@ -9,7 +9,7 @@ type InventoryReservationRuntimeEnv = {
 export function readInventoryReservationLegacySchemaFallbackConfig(
   env: InventoryReservationRuntimeEnv = process.env,
 ): InventoryReservationLegacySchemaFallbackConfig {
-  const openlupEnvironment = normalizeEnvValue(env.openlup_ENVIRONMENT);
+  const openlupEnvironment = normalizeEnvValue(env.OPENLUP_ENVIRONMENT);
   const vercelEnvironment = normalizeEnvValue(env.VERCEL_ENV);
   const nodeEnvironment = normalizeEnvValue(env.NODE_ENV);
 

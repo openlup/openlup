@@ -13,14 +13,14 @@ import {
 } from "./environment.js";
 
 const stagingOnProductionHost = {
-  openlup_ENVIRONMENT: "staging",
+  OPENLUP_ENVIRONMENT: "staging",
   VERCEL_ENV: "production",
 } as const;
 
 describe("readObservedEnvironment", () => {
   it.each(["production", "staging"] as const)("preserves legacy %s precedence over the hosted deployment class", (environment) => {
     expect(readObservedEnvironment({
-      openlup_ENVIRONMENT: ` ${environment.toUpperCase()} `,
+      OPENLUP_ENVIRONMENT: ` ${environment.toUpperCase()} `,
       VERCEL_ENV: "preview",
     }))
       .toBe(environment);
@@ -31,7 +31,7 @@ describe("readObservedEnvironment", () => {
   });
 
   it("preserves legacy fallback from an unrecognized value to a recognized hosted environment", () => {
-    expect(LEGACY_APPLICATION_ENVIRONMENT_KEY).toBe("openlup_ENVIRONMENT");
+    expect(LEGACY_APPLICATION_ENVIRONMENT_KEY).toBe("OPENLUP_ENVIRONMENT");
     expect(HOST_ENVIRONMENT_KEY).toBe("VERCEL_ENV");
     expect(readObservedEnvironment({
       [LEGACY_APPLICATION_ENVIRONMENT_KEY]: "test",
@@ -94,7 +94,7 @@ describe("noopSettlementAllowed", () => {
   });
 
   it.each([
-    ["staging", { openlup_ENVIRONMENT: "staging" }],
+    ["staging", { OPENLUP_ENVIRONMENT: "staging" }],
     ["NODE_ENV=test", { NODE_ENV: "test" }],
     ["LOCAL_BFF=1", { LOCAL_BFF: "1" }],
   ] as const)("allows an explicit non-production capability: %s", (_capability, env) => {
@@ -102,8 +102,8 @@ describe("noopSettlementAllowed", () => {
   });
 
   it.each([
-    { openlup_ENVIRONMENT: "production", NODE_ENV: "test" },
-    { openlup_ENVIRONMENT: "production", LOCAL_BFF: "1" },
+    { OPENLUP_ENVIRONMENT: "production", NODE_ENV: "test" },
+    { OPENLUP_ENVIRONMENT: "production", LOCAL_BFF: "1" },
     { ...stagingOnProductionHost, LOCAL_BFF: "1" },
   ])("refuses production even when a local capability marker is present", (env) => {
     expect(noopSettlementAllowed(env)).toBe(false);

@@ -8,7 +8,9 @@ business.
 ## Status: development preview
 
 This development preview does not constitute a stable framework release,
-supported adopter distribution, package/image channel, or upgrade contract.
+supported adopter distribution, image channel, or upgrade contract.
+`@openlup/core` is published on npm under the `preview` dist-tag for evaluation;
+that package channel does not establish framework stability or support.
 An immutable [source preview release](https://github.com/openlup/openlup/releases)
 can be used for bounded evaluation; it is not a supported full-platform install.
 Claims of framework stability wait for the separate `P1-SF` gate: a release/BOM, thin

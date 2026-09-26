@@ -2814,6 +2814,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/_lib/publicCoordinates.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/_lib/publicDeploymentPolicies.test.ts",
       "class": "public-output"
     },
@@ -17511,10 +17515,6 @@
     },
     {
       "path": "src/routes/AppRuntimeEffects.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/test/appRouteMocks.tsx",
       "class": "public-output"
     },
     {

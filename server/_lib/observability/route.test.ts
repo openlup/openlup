@@ -10,10 +10,10 @@ describe("withObservedRoute", () => {
 
   it("logs successful route metadata with status, method, duration, request id, and auth kind", async () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-    const originalopenlupEnvironment = process.env.openlup_ENVIRONMENT;
+    const originalopenlupEnvironment = process.env.OPENLUP_ENVIRONMENT;
     const originalVercelEnvironment = process.env.VERCEL_ENV;
     const originalHostedRuntime = process.env.VERCEL;
-    process.env.openlup_ENVIRONMENT = "staging";
+    process.env.OPENLUP_ENVIRONMENT = "staging";
     process.env.VERCEL_ENV = "preview";
     process.env.VERCEL = "1";
     const res = createResponse();
@@ -54,7 +54,7 @@ describe("withObservedRoute", () => {
       });
       expect(log.duration_ms).toEqual(expect.any(Number));
     } finally {
-      restoreEnv("openlup_ENVIRONMENT", originalopenlupEnvironment);
+      restoreEnv("OPENLUP_ENVIRONMENT", originalopenlupEnvironment);
       restoreEnv("VERCEL_ENV", originalVercelEnvironment);
       restoreEnv("VERCEL", originalHostedRuntime);
     }

@@ -28,7 +28,7 @@ afterEach(() => {
   clearAllRequestCaches();
   vi.clearAllMocks();
   vi.useRealTimers();
-  delete globalThis.__openlup_TEST_OFFER_POLICY_V2_CAPABILITY__;
+  delete globalThis.__OPENLUP_TEST_OFFER_POLICY_V2_CAPABILITY__;
 });
 
 function snapshot(
@@ -125,7 +125,7 @@ describe("buildQuoteRequest", () => {
   });
 
   it("reuses a bound policy token even when new capability assignment is off", () => {
-    globalThis.__openlup_TEST_OFFER_POLICY_V2_CAPABILITY__ = false;
+    globalThis.__OPENLUP_TEST_OFFER_POLICY_V2_CAPABILITY__ = false;
     const token = "pp1.persisted-visitor-bound-policy-token.signature-value";
 
     expect(buildQuoteRequest({ ...baseInput, pricingPolicyToken: token }))
@@ -136,7 +136,7 @@ describe("buildQuoteRequest", () => {
         },
       });
 
-    delete globalThis.__openlup_TEST_OFFER_POLICY_V2_CAPABILITY__;
+    delete globalThis.__OPENLUP_TEST_OFFER_POLICY_V2_CAPABILITY__;
   });
 
   it("returns null for a non-checkoutable snapshot", () => {
