@@ -106,11 +106,9 @@ export const companyIdentitySourceSchema = z
   })
   .strict();
 
-/** A lookup request. `country` is an open ISO-3166 alpha-2 code (not restricted
- * to any single country); `identifierKind`/`identifierValue` name and carry the
- * tax/registry id; `manualCompany` optionally seeds user-entered data an adapter
- * may reconcile against a registry. Parsing normalizes country to upper-case and
- * identifier kind to lower-case. */
+/** Lookup coordinates with optional manual identity for registry reconciliation.
+ * Country is an open ISO-3166 alpha-2 code. Parsing uppercases country and
+ * lowercases identifier kind; national tax-id rules belong to extensions. */
 /** @beta */
 export const companyIdentityLookupRequestSchema = z
   .object({
@@ -166,8 +164,6 @@ interface NormalizableCompanyIdentityLookupRequest {
   manualCompany?: Partial<CompanyIdentityCompany>;
 }
 
-/** Normalize neutral lookup coordinates and align manual identity fields.
- * Country-specific identifier rules belong to an adapter outside this kernel. */
 /** @beta */
 export function normalizeCompanyIdentityLookupRequest(
   request: NormalizableCompanyIdentityLookupRequest,

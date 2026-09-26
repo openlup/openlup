@@ -37,9 +37,7 @@ SemVer promise.
 
 ### Added
 
-- Export `normalizeCompanyIdentityLookupRequest` from `./company-identity` so
-  schema extensions reuse neutral normalization without copying it. National
-  identifier validation and normalization stay outside the kernel.
+- Export neutral lookup normalization from `./company-identity` for extensions.
 
 - `recordPaymentFailure` accepts an optional neutral `failureClass` and passes it
   to the canonical retry-ladder decision. Existing callers remain
