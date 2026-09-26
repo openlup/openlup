@@ -133,6 +133,20 @@ The unused appRouteMocks fixture is removed; it has no imports in
 the public tree. The publication catalogue and source release contract reflect
 that deletion. No database schema changes accompany these upgrade actions.
 
+## Pending preview upgrade notes: shared core schemas
+
+Status: unreleased source change; include these actions in the preview that
+first carries it. Stock and ATP contracts now use `@openlup/core/inventory`.
+ATP no longer inserts an implicit country region. Set server-only
+`INVENTORY_REGION` for the admin ATP route or provide an explicit request region;
+without either, the optional region stays absent. An explicit request region
+wins, and malformed configured regions refuse the route.
+
+Company identity extensions reuse the neutral core input schema and the public
+`normalizeCompanyIdentityLookupRequest` export. National tax-id checks and
+optional registry fields remain in the extension layer. The core helper is an
+additive development-preview API, not a stable contract.
+
 ## Maintaining source previews
 
 Contributors propose generic changes through public PRs and the DCO/checks in

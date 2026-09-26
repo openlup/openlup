@@ -4,10 +4,21 @@ import {
   companyIdentityLookupRequestSchema,
   companyIdentityLookupResponseSchema,
   isCompleteCompanyIdentity,
+  normalizeCompanyIdentityLookupRequest,
   type CompanyIdentityLookupPort,
 } from "@openlup/core/company-identity";
 
 describe("company identity standalone", () => {
+  it("exports neutral normalization without national identifier rules", () => {
+    expect(normalizeCompanyIdentityLookupRequest({
+      country: " pl ", identifierKind: " PL_NIP ", identifierValue: " 123-456-32-18 ",
+      purpose: "checkout_invoice",
+    })).toEqual({
+      country: "PL", identifierKind: "pl_nip", identifierValue: "123-456-32-18",
+      purpose: "checkout_invoice",
+    });
+  });
+
   it("exports a neutral lookup contract and structural port", async () => {
     const request = companyIdentityLookupRequestSchema.parse({
       country: "zz",

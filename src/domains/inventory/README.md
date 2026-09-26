@@ -24,6 +24,17 @@ Hidden stock/ATP/reservation control plane: stock ledger, available-to-promise, 
 - Server domain: `server/domains/inventory/inventoryHandlers.ts`
 - Managed persistence adapter: `server/adapters/managed/inventory/inventoryPort.ts`
 
+## ATP region configuration
+
+The stock and ATP schemas are re-exported from `@openlup/core/inventory`.
+The optional `region` field accepts a configured region string; it has no country
+default. The admin ATP route uses server-only `INVENTORY_REGION` when the request
+omits `region`. An explicit request region takes precedence. With neither input,
+region remains absent. A configured value must be a trimmed string of 2–32
+characters; malformed configuration refuses the route before the inventory port
+runs. On upgrade, configure the intended region or send it explicitly instead
+of relying on the former implicit country value.
+
 ## Subscription forecast
 
 `GET /api/bff/admin/inventory/subscription-forecast` is read-only. It uses

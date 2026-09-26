@@ -166,7 +166,10 @@ interface NormalizableCompanyIdentityLookupRequest {
   manualCompany?: Partial<CompanyIdentityCompany>;
 }
 
-function normalizeCompanyIdentityLookupRequest(
+/** Normalize neutral lookup coordinates and align manual identity fields.
+ * Country-specific identifier rules belong to an adapter outside this kernel. */
+/** @beta */
+export function normalizeCompanyIdentityLookupRequest(
   request: NormalizableCompanyIdentityLookupRequest,
 ): NormalizableCompanyIdentityLookupRequest {
   const country = String(request.country).trim().toUpperCase();

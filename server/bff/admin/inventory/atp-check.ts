@@ -1,3 +1,4 @@
+import { inventoryAtpRequestSchema } from "../../../../src/domains/inventory/contracts.js";
 import { withObservedRoute } from "../../../_lib/observability/route.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 import { sendBffError } from "../../../_lib/bff/response.js";
@@ -21,8 +22,15 @@ export function createAdminInventoryAtpCheckRouteHandler(
       return Promise.resolve();
     }
 
+    const region = inventoryAtpRequestSchema.shape.region.safeParse(env.INVENTORY_REGION);
+    if (!region.success) {
+      sendBffError(res, "UPSTREAM_UNAVAILABLE", "Inventory region configuration is invalid");
+      return Promise.resolve();
+    }
+
     return createAdminInventoryAtpCheckHandler({
       inventoryPort: binding.readPort,
+      configuredRegion: region.data,
       authorizeAdmin: binding.authorizeAdmin,
     })(req, res);
   };

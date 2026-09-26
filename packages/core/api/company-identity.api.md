@@ -223,6 +223,10 @@ interface NormalizableCompanyIdentityLookupRequest {
     purpose: CompanyIdentityPurpose;
     manualCompany?: Partial<CompanyIdentityCompany>;
 }
+/** Normalize neutral lookup coordinates and align manual identity fields.
+ * Country-specific identifier rules belong to an adapter outside this kernel. */
+/** @beta */
+export declare function normalizeCompanyIdentityLookupRequest(request: NormalizableCompanyIdentityLookupRequest): NormalizableCompanyIdentityLookupRequest;
 /** True when the company has the minimum fields needed to render/persist a full
  * billing identity: legal name plus a complete registered address. Used to gate
  * whether a `partial` lookup is usable for its purpose. */
@@ -234,7 +238,7 @@ export {};
 
 ```ts
 /** @beta */
-export { COMPANY_IDENTITY_CONTRACT_VERSION, companyIdentityAddressSchema, companyIdentityCompanySchema, companyIdentityIdentifierKindSchema, companyIdentityLookupRequestSchema, companyIdentityLookupResponseSchema, companyIdentityLookupStatusSchema, companyIdentityPurposeSchema, companyIdentitySourceSchema, companyIdentitySourceStatusSchema, companyIdentityVerificationLevelSchema, isCompleteCompanyIdentity, } from "./contracts.js";
+export { COMPANY_IDENTITY_CONTRACT_VERSION, companyIdentityAddressSchema, companyIdentityCompanySchema, companyIdentityIdentifierKindSchema, companyIdentityLookupRequestSchema, companyIdentityLookupResponseSchema, companyIdentityLookupStatusSchema, companyIdentityPurposeSchema, companyIdentitySourceSchema, companyIdentitySourceStatusSchema, companyIdentityVerificationLevelSchema, isCompleteCompanyIdentity, normalizeCompanyIdentityLookupRequest, } from "./contracts.js";
 /** @beta */
 export type { CompanyIdentityCompany, CompanyIdentityLookupRequest, CompanyIdentityLookupResponse, CompanyIdentityPurpose, CompanyIdentitySource, CompanyIdentitySourceStatus, CompanyIdentityVerificationLevel, } from "./contracts.js";
 /** @beta */
