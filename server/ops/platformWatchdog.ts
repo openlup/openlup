@@ -1,3 +1,4 @@
+import siteRoutesManifest from "../../config/site-routes.json" with { type: "json" };
 import type { VercelRequest } from "../_lib/types/vercel.js";
 import { createSupabaseDataGateway } from "../adapters/supabase/dataGateway.js";
 import {
@@ -66,7 +67,7 @@ type Env = {
   PLATFORM_BUNDLE?: string;
   PLATFORM_OPERATOR_ID?: string;
   DATABASE_URL?: string;
-  openlup_ENVIRONMENT?: string;
+  OPENLUP_ENVIRONMENT?: string;
   VERCEL_ENV?: string;
 };
 
@@ -77,11 +78,10 @@ function parseDedupePrefixes(value: string | undefined): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-export function platformAlertEnvironment(env: Pick<Env, "openlup_ENVIRONMENT" | "VERCEL_ENV">): string {
-  return env.openlup_ENVIRONMENT?.trim() || env.VERCEL_ENV?.trim() || "unknown";
+export function platformAlertEnvironment(env: Pick<Env, "OPENLUP_ENVIRONMENT" | "VERCEL_ENV">): string {
+  return env.OPENLUP_ENVIRONMENT?.trim() || env.VERCEL_ENV?.trim() || "unknown";
 }
 
-const PLATFORM_EMAIL_PRODUCTION_HOSTS = ["openlup.com", "www.openlup.com"] as const;
 export type PlatformWatchdogHttpResult = {
   status: number;
   body: Record<string, unknown>;
@@ -199,7 +199,7 @@ export async function runPlatformWatchdogRoute(
               COMMUNICATION_SYNC_RECONCILE_ENABLED: env.COMMUNICATION_SYNC_RECONCILE_ENABLED === "true",
               SUBSCRIPTION_RENEWAL_REMINDER_ENABLED: env.SUBSCRIPTION_RENEWAL_REMINDER_ENABLED === "true",
             },
-            { emailProductionHosts: PLATFORM_EMAIL_PRODUCTION_HOSTS, readOpenDeliveryAlignmentCases: () => readOpenDeliveryAlignmentCases(client) },
+            { emailProductionHosts: siteRoutesManifest.productionHosts, readOpenDeliveryAlignmentCases: () => readOpenDeliveryAlignmentCases(client) },
             ),
             client as never,
             { issueTrigger: accountingRuntime.issueTrigger },

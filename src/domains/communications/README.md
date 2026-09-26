@@ -72,7 +72,7 @@ single boundary for transactional/marketing email side effects.
   anchors and duplicate keys, and registry array order is part of its
   characterized contract.
 - Email origin policy: `email/originPolicy.ts` is the Node source of truth for
-  customer CTA origins. It normalizes `openlup_BASE_URL`,
+  customer CTA origins. It normalizes `OPENLUP_BASE_URL`,
   `CUSTOMER_AUTH_REDIRECT_ORIGIN`, and `SITE_URL`, rejects invalid URL values,
   and fails closed for hidden-preview/preview/staging when the resolved origin is
   missing or points at `openlup.com`. This is the only implementation; the Deno

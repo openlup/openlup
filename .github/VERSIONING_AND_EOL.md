@@ -109,6 +109,30 @@ support promise. Database schema changes are forward-only; there is no supported
 downgrade path, so take a backup you have actually restored from at least once
 before upgrading.
 
+## Pending preview upgrade notes: public coordinates
+
+Status: unreleased source change; these notes must accompany the preview that
+first includes it. They do not describe an already published preview transition.
+
+Rename every lowercase-prefixed `openlup_` environment key to `OPENLUP_` in an
+adopting deployment's configuration. In particular, use `OPENLUP_ENVIRONMENT`,
+`OPENLUP_BASE_URL` and `OPENLUP_BFF_BASE_URL`; the previous spellings are no
+longer read. Existing `APP_ENVIRONMENT` and `APP_BASE_URL` precedence is unchanged.
+The internal provider-attempt namespace constant and test override globals use
+`OPENLUP_` too; provider-attempt identifiers retain the same namespace value.
+
+Configure the canonical production hostnames in
+`config/site-routes.json.productionHosts`. Live Tpay callbacks and the watchdog's
+preview-email production-domain check both use this list. There is no implicit
+production domain: an empty list refuses live Tpay callbacks and supplies no
+production domains to the email check. Confirm that registered Tpay callback URLs
+use HTTPS and resolve directly without redirects. The reference hostname is an
+evaluation placeholder, not production configuration.
+
+The unused appRouteMocks fixture is removed; it has no imports in
+the public tree. The publication catalogue and source release contract reflect
+that deletion. No database schema changes accompany these upgrade actions.
+
 ## Maintaining source previews
 
 Contributors propose generic changes through public PRs and the DCO/checks in

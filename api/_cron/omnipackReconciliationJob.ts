@@ -264,7 +264,7 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
 
 function isStagingOmnipackRuntime(env: Env): boolean {
   return env.HIDDEN_SANDBOX_PREVIEW_ENABLED === "true" ||
-    env.openlup_ENVIRONMENT === "staging" ||
+    env.OPENLUP_ENVIRONMENT === "staging" ||
     env.STAGING_SUPABASE_PROJECT_REF === "abcdefghijklmnopqrst" ||
     env.HIDDEN_SANDBOX_SUPABASE_PROJECT_REF === "abcdefghijklmnopqrst";
 }

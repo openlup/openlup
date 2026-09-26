@@ -21,7 +21,7 @@ type PartnersB2BInquiryRuntimeEnv = Record<string, string | undefined> & {
   FROM_EMAIL?: string;
   B2B_NOTIFICATION_EMAIL?: string;
   APP_BASE_URL?: string;
-  openlup_BASE_URL?: string;
+  OPENLUP_BASE_URL?: string;
   CUSTOMER_AUTH_REDIRECT_ORIGIN?: string;
   SITE_URL?: string;
   HIDDEN_SANDBOX_PREVIEW_ENABLED?: string;

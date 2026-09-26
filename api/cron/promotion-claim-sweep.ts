@@ -14,7 +14,7 @@ type Env = Record<string, string | undefined> & {
   SUPABASE_URL?: string;
   VITE_SUPABASE_URL?: string;
   HIDDEN_SANDBOX_PREVIEW_ENABLED?: string;
-  openlup_ENVIRONMENT?: string;
+  OPENLUP_ENVIRONMENT?: string;
   STAGING_SUPABASE_PROJECT_REF?: string;
   HIDDEN_SANDBOX_SUPABASE_PROJECT_REF?: string;
 };
@@ -81,7 +81,7 @@ function readPromotionClaimSweepDriver(
 
 function isStagingRuntime(env: Env): boolean {
   return env.HIDDEN_SANDBOX_PREVIEW_ENABLED === "true" ||
-    env.openlup_ENVIRONMENT === "staging" ||
+    env.OPENLUP_ENVIRONMENT === "staging" ||
     env.STAGING_SUPABASE_PROJECT_REF === "abcdefghijklmnopqrst" ||
     env.HIDDEN_SANDBOX_SUPABASE_PROJECT_REF === "abcdefghijklmnopqrst";
 }

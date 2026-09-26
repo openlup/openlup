@@ -89,14 +89,14 @@ beforeEach(() => {
   clearAccountOrderReturn();
   localStorage.clear();
   sessionStorage.clear();
-  globalThis.__openlup_TEST_CONFIGURATOR_LIVE_QUOTE__ = undefined;
-  globalThis.__openlup_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__ = undefined;
+  globalThis.__OPENLUP_TEST_CONFIGURATOR_LIVE_QUOTE__ = undefined;
+  globalThis.__OPENLUP_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__ = undefined;
 });
 afterEach(() => {
-  globalThis.__openlup_TEST_CONFIGURATOR_LIVE_QUOTE__ = undefined;
-  globalThis.__openlup_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__ = undefined;
+  globalThis.__OPENLUP_TEST_CONFIGURATOR_LIVE_QUOTE__ = undefined;
+  globalThis.__OPENLUP_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__ = undefined;
   clearAccountOrderReturn();
-  delete globalThis.__openlup_TEST_COMMERCE_FORM_PERSISTENCE__;
+  delete globalThis.__OPENLUP_TEST_COMMERCE_FORM_PERSISTENCE__;
 });
 
 function setup(accountMode: boolean) {
@@ -124,7 +124,7 @@ function setup(accountMode: boolean) {
 
 describe("useConfiguratorCheckout account-mode Tpay return", () => {
   it("fails closed before intent submission when a selected subscription contract is disabled", async () => {
-    globalThis.__openlup_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__ = false;
+    globalThis.__OPENLUP_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__ = false;
     const { navigate, controller } = setup(false);
     let thrown: unknown;
 
@@ -189,7 +189,7 @@ describe("useConfiguratorCheckout account-mode Tpay return", () => {
   });
 
   it("clears only the selected account/pet draft after an immediate paid result", async () => {
-    globalThis.__openlup_TEST_COMMERCE_FORM_PERSISTENCE__ = true;
+    globalThis.__OPENLUP_TEST_COMMERCE_FORM_PERSISTENCE__ = true;
     const accountScope = createAccountConfiguratorDraftScope("client-123", "pet-123");
     const accountKey = getConfiguratorDraftStorageKey(accountScope);
     const publicKey = getConfiguratorDraftStorageKey(PUBLIC_CONFIGURATOR_DRAFT_SCOPE);

@@ -161,6 +161,15 @@ truth. Hosts can add adapters only through the contracts in
 [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) and
 [Canonical contracts](CANONICAL_CONTRACTS.md).
 
+Canonical production hostnames come from
+`config/site-routes.json.productionHosts`. Configure this list for an adopting
+deployment before enabling live Tpay settlement: every callback must use HTTPS
+and an exact listed host, without redirects. The watchdog uses the same list to
+detect preview emails linking to production. An empty list admits no live Tpay
+callback and gives the email check no production domains to recognize. See the
+[pending preview upgrade notes](../../.github/VERSIONING_AND_EOL.md#pending-preview-upgrade-notes-public-coordinates)
+for the accompanying `OPENLUP_` configuration rename.
+
 ## Preview posture
 
 Development-preview source may be evaluated, but it is not a stable release,

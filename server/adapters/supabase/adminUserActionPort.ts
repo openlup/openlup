@@ -283,7 +283,7 @@ export function resolveInviteAdminEmailOrigin(env: AdminUserActionRuntimeEnv): E
       defaultOrigin: APP_SITE_ORIGIN,
       productionEmailHosts: APP_PRODUCTION_EMAIL_HOSTS,
     }),
-    explicitBaseUrl: env.APP_BASE_URL?.trim() || env.openlup_BASE_URL,
+    explicitBaseUrl: env.APP_BASE_URL?.trim() || env.OPENLUP_BASE_URL,
     customerAuthRedirectOrigin: env.CUSTOMER_AUTH_REDIRECT_ORIGIN,
     siteUrl: env.SITE_URL,
     hiddenPreviewEnabled: readHiddenPreviewEnabled(env),

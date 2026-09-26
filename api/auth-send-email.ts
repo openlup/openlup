@@ -59,7 +59,7 @@ const handler = createAuthSendEmailHookCandidate({
   authServiceUrl: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
   defaultOrigin: APP_SITE_ORIGIN,
   productionEmailHosts: APP_PRODUCTION_EMAIL_HOSTS,
-  legacyBaseUrl: env.openlup_BASE_URL,
+  legacyBaseUrl: env.OPENLUP_BASE_URL,
   emailBrandForOrigin: appEmailBrandForOrigin,
   defaultSandboxRecipient: "delivered@resend.dev",
   defaultRedirectTo: env.AUTH_DEFAULT_REDIRECT_TO ?? "",

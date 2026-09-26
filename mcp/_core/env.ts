@@ -20,7 +20,7 @@ interface EnvSource {
 }
 
 export function readMcpEnv(env: EnvSource = process.env): McpEnvConfig {
-  const bffBaseUrl = env.openlup_BFF_BASE_URL;
+  const bffBaseUrl = env.OPENLUP_BFF_BASE_URL;
   const supabaseUrl = env.SUPABASE_URL ?? env.VITE_SUPABASE_URL;
   const supabaseAnonKey =
     env.VITE_SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_PUBLISHABLE_KEY ?? env.SUPABASE_ANON_KEY;
@@ -28,7 +28,7 @@ export function readMcpEnv(env: EnvSource = process.env): McpEnvConfig {
   const operatorPassword = env.AGENT_OPERATOR_PASSWORD;
 
   const missing = [
-    ["openlup_BFF_BASE_URL", bffBaseUrl],
+    ["OPENLUP_BFF_BASE_URL", bffBaseUrl],
     ["SUPABASE_URL (or VITE_SUPABASE_URL)", supabaseUrl],
     ["VITE_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)", supabaseAnonKey],
     ["AGENT_OPERATOR_EMAIL", operatorEmail],

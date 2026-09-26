@@ -77,7 +77,7 @@ type LocalProfileEnv = Record<string, string | undefined> & {
   OSS_REFERENCE_STORE_PROFILE?: string;
   LOCAL_BFF?: string;
   RAILWAY_ENVIRONMENT?: string;
-  openlup_ENVIRONMENT?: string;
+  OPENLUP_ENVIRONMENT?: string;
   NODE_ENV?: string;
 };
 const hostedRuntimeKeys = new Set(["VERCEL", "VERCEL_ENV", "VERCEL_URL", "VERCEL_REGION"]);
@@ -91,7 +91,7 @@ export function localReferenceDemoProfileEnabled(
   if (productionRolloutConfirmed(env)) return true;
   if (env.LOCAL_BFF !== "1") return false;
   if (env.RAILWAY_ENVIRONMENT || Object.entries(env).some(([key, value]) => hostedRuntimeKeys.has(key) && Boolean(value))) return false;
-  if (env.APP_ENVIRONMENT?.trim() || env.openlup_ENVIRONMENT || env.NODE_ENV === "production") return false;
+  if (env.APP_ENVIRONMENT?.trim() || env.OPENLUP_ENVIRONMENT || env.NODE_ENV === "production") return false;
   const urls = Object.entries(env)
     .filter(([key, value]) => isSupabaseUrlKey(key) && Boolean(value?.trim()))
     .map(([, value]) => value as string);

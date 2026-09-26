@@ -67,10 +67,10 @@ describe("accounting runtime config", () => {
       { COMMERCE_ACCOUNTING_KSEF_POLL_ENABLED: "true" },
     ]) {
       const config = readAccountingRuntimeConfig({
-        openlup_ENVIRONMENT: "staging",
+        OPENLUP_ENVIRONMENT: "staging",
         ...env,
       });
-      expect(() => assertAccountingRuntimeConfigAllowed({ openlup_ENVIRONMENT: "staging" }, config)).toThrow("staging_ksef_poll_forbidden");
+      expect(() => assertAccountingRuntimeConfigAllowed({ OPENLUP_ENVIRONMENT: "staging" }, config)).toThrow("staging_ksef_poll_forbidden");
     }
   });
 });

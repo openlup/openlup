@@ -8,7 +8,7 @@ import type { ManagedB2BInquiryPresenter } from "../../domains/partners/managedB
 export interface PrivateLabelB2BInquiryPresentationEnv extends Record<string, string | undefined> {
   FROM_EMAIL?: string;
   APP_BASE_URL?: string;
-  openlup_BASE_URL?: string;
+  OPENLUP_BASE_URL?: string;
   CUSTOMER_AUTH_REDIRECT_ORIGIN?: string;
   SITE_URL?: string;
   HIDDEN_SANDBOX_PREVIEW_ENABLED?: string;
@@ -22,7 +22,7 @@ export function createPrivateLabelB2BInquiryPresenter(env: PrivateLabelB2BInquir
     present({ request, sourceId, notificationTo }) {
       const origin = resolveEmailOrigin({
         ...readEmailOriginConfiguration(env, { defaultOrigin: APP_SITE_ORIGIN, productionEmailHosts: APP_PRODUCTION_EMAIL_HOSTS }),
-        explicitBaseUrl: env.APP_BASE_URL ?? env.openlup_BASE_URL,
+        explicitBaseUrl: env.APP_BASE_URL ?? env.OPENLUP_BASE_URL,
         customerAuthRedirectOrigin: env.CUSTOMER_AUTH_REDIRECT_ORIGIN,
         siteUrl: env.SITE_URL,
         hiddenPreviewEnabled: env.HIDDEN_SANDBOX_PREVIEW_ENABLED === "true",

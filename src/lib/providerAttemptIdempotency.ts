@@ -5,7 +5,7 @@ import {
   type ProviderAttemptIdentityInput as CoreProviderAttemptIdentityInput,
 } from "@openlup/core/payment";
 
-const openlup_PROVIDER_ATTEMPT_NAMESPACE = "openlup";
+const OPENLUP_PROVIDER_ATTEMPT_NAMESPACE = "openlup";
 
 export type ProviderAttemptIdentityInput = Omit<CoreProviderAttemptIdentityInput, "namespace">;
 export type { ProviderAttemptIdentity };
@@ -15,7 +15,7 @@ export function buildProviderAttemptIdentity(
 ): ProviderAttemptIdentity {
   return buildCoreProviderAttemptIdentity({
     ...input,
-    namespace: openlup_PROVIDER_ATTEMPT_NAMESPACE,
+    namespace: OPENLUP_PROVIDER_ATTEMPT_NAMESPACE,
   });
 }
 

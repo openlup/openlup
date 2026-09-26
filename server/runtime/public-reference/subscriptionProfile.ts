@@ -47,7 +47,7 @@ function scalar(config: string, section: string, key: string): string | undefine
 
 export function validateSubscriptionProfile(env: NodeJS.ProcessEnv) {
   if (!localReferenceDemoProfileEnabled(env) || env.LOCAL_BFF !== "1"
-    || env.NODE_ENV === "production" || env.APP_ENVIRONMENT || env.openlup_ENVIRONMENT
+    || env.NODE_ENV === "production" || env.APP_ENVIRONMENT || env.OPENLUP_ENVIRONMENT
     || ["VERCEL", "VERCEL_ENV", "VERCEL_URL", "VERCEL_REGION", "RAILWAY_ENVIRONMENT"].some((key) => Boolean(env[key]))
     || env.OPENLUP_REFERENCE_DISPOSABLE !== "1") {
     throw new Error("Subscription reference is restricted to an owned disposable local setup");
