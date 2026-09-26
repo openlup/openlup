@@ -129,7 +129,7 @@ production domains to the email check. Confirm that registered Tpay callback URL
 use HTTPS and resolve directly without redirects. The reference hostname is an
 evaluation placeholder, not production configuration.
 
-The unused `src/test/appRouteMocks.tsx` fixture is removed; it has no imports in
+The unused appRouteMocks fixture is removed; it has no imports in
 the public tree. The publication catalogue and source release contract reflect
 that deletion. No database schema changes accompany these upgrade actions.
 
