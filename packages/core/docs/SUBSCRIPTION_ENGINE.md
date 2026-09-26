@@ -2,8 +2,10 @@
 
 Owns: the pure subscription lifecycle kernel exported as `@openlup/core/subscription`.
 Watches: `src/subscription/**`
-Verified against: repository state `c03cd8e1a` (2026-09-07) — every exported
-name below was read out of the eight source files in `src/subscription/`, the
+Verified against: repository state `735d5d7` plus the lifecycle-parity change
+(2026-09-26) — every exported name below was read out of the eight source files
+in `src/subscription/`, the status matrix out of `subscriptionEngineLifecycle.ts`
+and the managed SQL guard it mirrors, the
 payment semantics out of `src/subscription/subscriptionEnginePayment.ts`, and
 the shipped retry class plus fail-open boundary out of `cycleHardening.ts` and
 its exact unit/parity tests.
@@ -25,9 +27,9 @@ exports.
 | Group | File | Exports |
 | --- | --- | --- |
 | Cycle planning | `subscriptionEngineCore.ts` | `createInitialSubscriptionCheckoutModel`, `planSubscriptionCycle`, `isRenewalDue`, `findDueSubscriptions`, `isEditWindowOpen`, `editCutoffAt` |
-| Lifecycle transitions | `subscriptionEngineLifecycle.ts` | `pauseSubscription`, `resumeSubscription`, `cancelSubscription`, `completeSubscription`, `skipNextCycle`, `slideNextCycle`, `swapTemplateLine`, `addPermanentAddon` |
+| Lifecycle transitions | `subscriptionEngineLifecycle.ts` | `SUBSCRIPTION_STATUS_TRANSITIONS`, `canTransitionSubscriptionStatus`, `pauseSubscription`, `resumeSubscription`, `cancelSubscription`, `completeSubscription`, `reactivateSubscription`, `pauseSubscriptionForExpiredDunning`, `resumeSubscriptionFromExpiredDunning`, `RESTART_LEAD_DAYS`, `skipNextCycle`, `slideNextCycle`, `swapTemplateLine`, `addPermanentAddon` |
 | Payment recording | `subscriptionEnginePayment.ts` | `recordPaymentSuccess`, `recordPaymentFailure` |
-| Retry ladder | `cycleHardening.ts` | `DEFAULT_CYCLE_RETRY_CADENCE`, `nextRetryAttemptAt`, `shouldScheduleRetry`, `maxRetryAttempts`, `ladderTerminatedByClass` |
+| Retry ladder | `cycleHardening.ts` | `DEFAULT_CYCLE_RETRY_CADENCE`, `nextRetryAttemptAt`, `shouldScheduleRetry`, `maxRetryAttempts`, `ladderTerminatedByClass`, `isDunningLadderExhausted` |
 
 `subscriptionEngineTypes.ts` and `types.ts` carry the shapes
 (`EngineSubscription`, `EngineCycle`, `EngineEvent`, the status unions, the
@@ -44,10 +46,11 @@ type SubscriptionEngineResult<T> =
   | { ok: false; error: { code: SubscriptionEngineErrorCode; message: string } };
 ```
 
-`SubscriptionEngineErrorCode` is a closed union of nine neutral codes
+`SubscriptionEngineErrorCode` is a closed union of eleven neutral codes
 (`invalid_timestamp`, `invalid_template`, `inactive_subscription`,
 `edit_window_closed`, `line_not_found`, `duplicate_line`,
-`invalid_slide_target`, `invalid_transition`, `terminal_cycle`). Refusals are
+`invalid_slide_target`, `invalid_transition`, `terminal_cycle`,
+`missing_payment_method`, `dunning_not_exhausted`). Refusals are
 values; add a code rather than an exception.
 
 Mutations also return the events they imply (`EngineEvent[]`), each already
@@ -154,6 +157,50 @@ recognise it, or when `failureClassDecision` says retry remains allowed. Only a
 listed, recognised class that the decision table already refuses can shorten
 the ladder. The SQL retry rail publishes the same singleton, and the parity test
 fails if those two spellings drift.
+
+## The status matrix, and the one non-payment pause
+
+`SUBSCRIPTION_STATUS_TRANSITIONS` is the whole status matrix, frozen:
+
+| From | To |
+| --- | --- |
+| `active` | `paused`, `cancelled`, `completed` |
+| `paused` | `active`, `cancelled` |
+| `cancelled` | `active` |
+| `completed` | none; terminal |
+
+It mirrors the managed SQL guard `public.subscription_guard_status_transition`
+over the engine's four statuses. The guard's remaining edges belong to the
+activation flow, which this engine never drives. `canTransitionSubscriptionStatus`
+answers from the matrix and nothing else.
+
+Each operation takes only its own edge. `resumeSubscription` leaves `paused`
+only. `cancelled` -> `active` is the win-back, and only `reactivateSubscription`
+takes it. It needs a stored payment method, because a win-back charges again,
+and it restarts the schedule.
+
+**The sanctioned non-payment rule.** Nothing in this engine suspends an active
+subscription for a reason its owner did not choose, except a renewal that
+exhausted the retry ladder. `isDunningLadderExhausted(cycle, cadence?)` holds
+only when the cycle is `payment_failed`, has no `nextRetryAt`, and its
+`retryAttempt` is past `maxRetryAttempts(cadence)`. Both halves are required: a
+class-terminated refusal on rung one also leaves nothing scheduled, and it must
+leave the subscription active. `pauseSubscriptionForExpiredDunning` pauses an
+active subscription when that predicate holds. It records `subscription.paused`
+with reason `payment_failed_expired` and never touches `nextCycleAt`. It refuses
+every other cycle as `dunning_not_exhausted`, and returns a subscription that is
+not active unchanged with no event, so a replay is harmless.
+
+`resumeSubscriptionFromExpiredDunning` is the customer's recovery. It needs a
+paused subscription, the exhausted cycle and a chargeable method, stored or
+supplied. The uncollected cycle becomes `skipped` rather than being charged late.
+
+Both restarts put `nextCycleAt` `RESTART_LEAD_DAYS` (two) days out, but never
+earlier than the instant already stored. The monotonic clamp on
+`recordPaymentSuccess` applies here too: a restart cannot pull a charge into a
+window already paid for. The managed SQL restarts assign `now + 2 days` without
+the clamp. The two agree whenever the stored instant is already behind that,
+which is the case for every subscription the exhausted ladder paused.
 
 ## Consuming it from a host application
 

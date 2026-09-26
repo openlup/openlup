@@ -1834,6 +1834,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/subscriptionDunningPause.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/subscriptionEngine.test.ts",
       "class": "public-output"
     },
@@ -1847,6 +1851,10 @@
     },
     {
       "path": "packages/core/test/subscriptionPurity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/subscriptionStatusTransitions.test.ts",
       "class": "public-output"
     },
     {
@@ -15522,6 +15530,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/subscription/subscriptionStatusTransitionParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/subscription/types.ts",
       "class": "public-output"
     },
@@ -18343,6 +18355,10 @@
     },
     {
       "path": "supabase/tests/subscription_starter_pack_marker_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/subscription_status_transition_matrix_test.sql",
       "class": "public-output"
     },
     {

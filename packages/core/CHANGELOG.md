@@ -16,6 +16,26 @@ SemVer promise.
 
 ### Changed
 
+- **BEHAVIOUR CHANGE for the subscription status matrix.** `cancelled` is no
+  longer terminal: `cancelled -> active` is now an allowed edge. This is the
+  owner win-back that the managed SQL guard
+  `public.subscription_guard_status_transition` already admits. Only the new
+  `reactivateSubscription` takes that edge. `resumeSubscription` still leaves
+  `paused` only and still refuses a cancelled subscription. `completed` stays
+  terminal. A caller that treated `cancelled` as final must now expect a
+  reactivated subscription to renew again.
+- **BEHAVIOUR CHANGE: an exhausted retry ladder now has a modelled outcome.** A
+  renewal whose refusals ran past the last rung may pause an active
+  subscription through `pauseSubscriptionForExpiredDunning`, which is the
+  sanctioned non-payment rule. It is the only engine path that suspends a live
+  subscription for a reason the owner did not choose. A ladder cut short by a
+  terminating refusal class, or a failure that still has a retry after it, is
+  refused as `dunning_not_exhausted` and leaves the subscription active.
+  `recordPaymentFailure` is unchanged and still never touches the subscription.
+- `SubscriptionEngineErrorCode` gains `missing_payment_method` and
+  `dunning_not_exhausted`. An exhaustive `switch` over the union must handle
+  both.
+
 - Publishable on the npm `preview` dist-tag as `0.6.0`, for source preview
   `openlup-source-preview/6`. Directory `npm publish` stays refused.
 
@@ -39,6 +59,20 @@ SemVer promise.
 
 - Export neutral lookup normalization from `./company-identity` for extensions.
 
+- `SUBSCRIPTION_STATUS_TRANSITIONS`, the frozen status matrix, and
+  `canTransitionSubscriptionStatus` on `./subscription`. The matrix mirrors the
+  managed SQL guard over the engine's four statuses, and a contract test
+  enumerates every ordered pair.
+- `reactivateSubscription`, the win-back from `cancelled`. It needs a stored
+  payment method and restarts the schedule `RESTART_LEAD_DAYS` (two) days out,
+  never earlier than the stored `nextCycleAt`.
+- `isDunningLadderExhausted(cycle, cadence?)` on the retry ladder. It holds when
+  a cycle is `payment_failed`, has nothing scheduled, and its attempt is past
+  `maxRetryAttempts(cadence)`.
+- `pauseSubscriptionForExpiredDunning` and
+  `resumeSubscriptionFromExpiredDunning`. The resume is the customer's recovery
+  from the non-payment pause: it takes an optional replacement method, skips the
+  uncollected cycle, and restarts the schedule like a win-back.
 - `recordPaymentFailure` accepts an optional neutral `failureClass` and passes it
   to the canonical retry-ladder decision. Existing callers remain
   source-compatible. The shipped terminating-class set is exactly
