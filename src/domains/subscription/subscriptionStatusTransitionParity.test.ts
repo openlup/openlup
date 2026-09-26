@@ -18,10 +18,11 @@ import { effectiveFunctionBody } from "../../test/effectiveMigration";
 
 type Edge = { from: string; to: string; conditional: boolean };
 
+const CLAUSE = /IF\s+OLD\.status\s*=\s*'(\w+)'\s+AND\s+NEW\.status\s*(?:IN\s*\(([^)]*)\)|=\s*'(\w+)')([\s\S]*?)\bTHEN\b/g;
+
 function guardEdges(body: string): Edge[] {
   const edges: Edge[] = [];
-  const clause = /IF\s+OLD\.status\s*=\s*'(\w+)'\s+AND\s+NEW\.status\s*(?:IN\s*\(([^)]*)\)|=\s*'(\w+)')([\s\S]*?)\bTHEN\b/g;
-  for (const match of body.matchAll(clause)) {
+  for (const match of body.matchAll(CLAUSE)) {
     const [, from, list, single, rest] = match;
     const targets = single ? [single] : [...(list ?? "").matchAll(/'(\w+)'/g)].map((target) => target[1]);
     for (const to of targets) edges.push({ from, to, conditional: /\bEXISTS\b/.test(rest) });
@@ -29,10 +30,20 @@ function guardEdges(body: string): Edge[] {
   return edges;
 }
 
-const edges = guardEdges(effectiveFunctionBody("subscription_guard_status_transition"));
+const guardBody = effectiveFunctionBody("subscription_guard_status_transition");
+const edges = guardEdges(guardBody);
 const key = (from: string, to: string) => `${from}->${to}`;
 
 describe("core subscription status matrix and the managed SQL guard", () => {
+  it("parses every admitting branch of the guard, so no edge escapes the parser", () => {
+    // Each admitted edge group returns NEW from its own IF; one more RETURN NEW
+    // is the unchanged-status early exit. A branch written in a shape the
+    // parser does not read would add a RETURN NEW without adding a clause.
+    const clauses = [...guardBody.matchAll(CLAUSE)].length;
+    expect(clauses).toBeGreaterThan(0);
+    expect(guardBody.match(/RETURN\s+NEW\s*;/g)?.length).toBe(clauses + 1);
+  });
+
   it("reads the guard's edges out of its live body", () => {
     expect(edges.map((edge) => key(edge.from, edge.to)).sort()).toEqual([
       "active->cancelled",

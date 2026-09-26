@@ -150,10 +150,11 @@ export function maxRetryAttempts(
  * subscription for non-payment. Both halves are required. An absent schedule on
  * its own is not exhaustion: a class-terminated refusal on rung one also leaves
  * nothing scheduled, and treating it as exhaustion would pause a subscription on
- * the day of its first refusal. The managed SQL dunning boundary draws the same
- * line with a rung constant (`v_ladder_exhausted_from`, 4 for the shipped
- * ladder); this predicate derives it from the cadence so a deployment ladder
- * moves both together.
+ * the day of its first refusal. The rung is derived from the cadence, so pass
+ * the same cadence here and to `recordPaymentFailure`. The managed SQL dunning
+ * boundary spells the shipped ladder's rung as a fixed constant
+ * (`v_ladder_exhausted_from`, 4); a deployment that publishes a different
+ * ladder must move that constant with it.
  *
  * @beta
  */

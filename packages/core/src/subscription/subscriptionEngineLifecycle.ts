@@ -192,7 +192,9 @@ export function resumeSubscription(input: {
   now: string;
 }): SubscriptionEngineResult<SubscriptionMutationResult> {
   // Resume leaves `paused` only. Leaving `cancelled` is a win-back and goes
-  // through reactivateSubscription, which re-arms the schedule.
+  // through reactivateSubscription, which re-arms the schedule. A subscription
+  // the exhausted ladder paused must resume through
+  // resumeSubscriptionFromExpiredDunning, which skips the uncollected cycle.
   return changeSubscriptionStatus(input.subscription, "active", input.now, "subscription.resumed", {}, ["paused"]);
 }
 
@@ -223,6 +225,10 @@ export function completeSubscription(input: {
  * action behind it. A reactivation charges again, so it needs a stored payment
  * method, and it re-arms the next cycle {@link RESTART_LEAD_DAYS} out rather
  * than leaving a stale instant that would make the renewal due immediately.
+ * The SQL action also clears the end instant and cancellation reason, requires
+ * the customer's confirmation of the charge timing, refuses while a cycle is
+ * locked and bumps the template version; those durable duties stay with the
+ * host.
  *
  * @beta
  */
@@ -320,10 +326,12 @@ export function pauseSubscriptionForExpiredDunning(input: {
  * subscription must be paused and the cycle it passes must be the refused cycle
  * that exhausted the ladder (the caller passes the LATEST such cycle, as the SQL
  * boundary reads the latest dunning case). A new payment method, when given,
- * replaces the stored one; without a stored method nothing can be charged, so
- * the resume is refused. The uncollected cycle becomes `skipped` rather than
- * being charged late, and the next cycle is re-armed {@link RESTART_LEAD_DAYS}
- * out.
+ * replaces the stored one; without any method the resume is refused. Whether
+ * the method is chargeable unattended is the host's check, as it is in SQL.
+ * The given cycle becomes `skipped` rather than being charged late; the SQL
+ * boundary skips every uncollected cycle, so a host that holds more than one
+ * must skip the rest itself. The next cycle is re-armed
+ * {@link RESTART_LEAD_DAYS} out.
  *
  * @beta
  */
@@ -353,9 +361,7 @@ export function resumeSubscriptionFromExpiredDunning(input: {
   const method: Partial<EngineSubscription> = replacementRef
     ? {
         paymentMethodRef: replacementRef,
-        paymentMethodKind: input.paymentMethodKind?.trim()
-          ? input.paymentMethodKind
-          : input.subscription.paymentMethodKind,
+        paymentMethodKind: input.paymentMethodKind?.trim() || input.subscription.paymentMethodKind,
       }
     : {};
   const withMethod = { ...input.subscription, ...method };
@@ -514,9 +520,10 @@ function restart(input: {
 // A restart re-arms the schedule RESTART_LEAD_DAYS out, but never earlier than
 // the instant already stored: the same monotonic clamp recordPaymentSuccess
 // applies, so a restart cannot pull a charge into a window already paid for.
-// The managed SQL restart paths assign `now + 2 days` without the clamp; the
-// two agree whenever the stored instant is already behind that, which is the
-// case for every subscription the exhausted ladder paused.
+// The managed SQL restart paths assign `now + 2 days` without the clamp, so
+// the two differ exactly when the stored instant is later than that: a win-back
+// of a subscription paid through a later date, or a schedule skipped or slid
+// while the ladder was still running. There SQL charges earlier; this does not.
 function restartNextCycleAt(subscription: EngineSubscription, now: Date): string | null {
   return new Date(Math.max(
     Date.parse(subscription.nextCycleAt) || 0,
@@ -560,5 +567,8 @@ export const SUBSCRIPTION_STATUS_TRANSITIONS: Readonly<
 
 /** @beta */
 export function canTransitionSubscriptionStatus(from: SubscriptionStatus, to: SubscriptionStatus): boolean {
-  return SUBSCRIPTION_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
+  // Own keys only: a status read from storage is an untyped string, and
+  // "constructor" or "__proto__" must answer false rather than throw.
+  return Object.prototype.hasOwnProperty.call(SUBSCRIPTION_STATUS_TRANSITIONS, from) &&
+    SUBSCRIPTION_STATUS_TRANSITIONS[from].includes(to);
 }

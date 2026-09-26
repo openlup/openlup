@@ -73,6 +73,9 @@ SemVer promise.
   `resumeSubscriptionFromExpiredDunning`. The resume is the customer's recovery
   from the non-payment pause: it takes an optional replacement method, skips the
   uncollected cycle, and restarts the schedule like a win-back.
+- `recordPaymentFailure` takes an optional `cadence`, so a deployment ladder
+  reaches the schedule and the exhaustion check alike. Callers that pass none
+  keep the shipped ladder.
 - `recordPaymentFailure` accepts an optional neutral `failureClass` and passes it
   to the canonical retry-ladder decision. Existing callers remain
   source-compatible. The shipped terminating-class set is exactly

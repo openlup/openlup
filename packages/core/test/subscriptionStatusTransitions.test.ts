@@ -69,6 +69,9 @@ describe(`subscription status matrix mirrors ${MIRRORED_SQL_GUARD}`, () => {
 
   it("answers false for a status outside the engine vocabulary", () => {
     expect(canTransitionSubscriptionStatus("pending_activation" as SubscriptionStatus, "active")).toBe(false);
+    for (const key of ["constructor", "__proto__", "toString"]) {
+      expect(canTransitionSubscriptionStatus(key as SubscriptionStatus, "active")).toBe(false);
+    }
   });
 });
 

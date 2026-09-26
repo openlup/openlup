@@ -1,4 +1,4 @@
-import { nextRetryAttemptAt } from "./cycleHardening.js";
+import { nextRetryAttemptAt, type CycleRetryCadence } from "./cycleHardening.js";
 import type { SubscriptionCycleStatus } from "./types.js";
 import type {
   CycleMutationResult,
@@ -124,6 +124,11 @@ export function recordPaymentFailure(input: {
   failedAt: string;
   reason: string;
   failureClass?: string | null;
+  /**
+   * The deployment's ladder. Pass the same cadence to
+   * `pauseSubscriptionForExpiredDunning` so both agree on exhaustion.
+   */
+  cadence?: CycleRetryCadence;
 }): SubscriptionEngineResult<CycleMutationResult> {
   const failedAt = parseIso(input.failedAt);
   if (!failedAt) return failure("invalid_timestamp", "failedAt must be a valid ISO timestamp");
@@ -136,7 +141,7 @@ export function recordPaymentFailure(input: {
   const nextRetryAt = nextRetryAttemptAt(
     failedAt.toISOString(),
     retryAttempt,
-    undefined,
+    input.cadence,
     input.failureClass,
   );
   const status: SubscriptionCycleStatus = nextRetryAt ? "retry_scheduled" : "payment_failed";

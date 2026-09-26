@@ -70,8 +70,8 @@ update the others in the same contribution.
 
 A matrix edge is not a licence for every operation. Only the owner's pause
 request, and the non-payment rule below, may move an active subscription to
-`paused`. Only the win-back leaves `cancelled`: it needs a stored payment method
-and restarts the schedule two days out.
+`paused`. Among the engine's statuses, only the win-back leaves `cancelled`: it
+needs a stored payment method and restarts the schedule two days out.
 
 **The sanctioned non-payment rule.** Nothing suspends, freezes or interrupts an
 active subscription except a renewal whose refusals ran past the last rung of
@@ -80,13 +80,28 @@ attempt number beyond the ladder's length. It pauses the subscription and
 records `subscription.paused` with reason `payment_failed_expired`. A ladder
 cut short by a terminating refusal class, or a failure that still has a retry
 after it, leaves the dunning case open and the subscription active. The
-customer's recovery resumes the paused subscription. It needs a chargeable
-method, skips the uncollected cycle and restarts the schedule two days out. A
-restart never moves `next_cycle_at` earlier than the stored instant. The
-managed SQL side is `subscription_handle_payment_failure_dunning` and
+customer's recovery resumes the paused subscription: it skips the uncollected
+cycle and restarts the schedule two days out. A plain resume must not be used
+for a subscription this rule paused, because it neither skips that cycle nor
+moves a stale `next_cycle_at`. The managed SQL side is
+`subscription_handle_payment_failure_dunning` and
 `subscription_resume_after_expired_dunning`. The engine side is
 `isDunningLadderExhausted`, `pauseSubscriptionForExpiredDunning` and
 `resumeSubscriptionFromExpiredDunning`.
+
+The engine models the decision; the host keeps the durable duties the managed
+SQL restarts also perform. Both restarts require the customer's confirmation of
+the charge timing. A win-back also clears `ended_at` and the cancellation
+reason, refuses while a cycle is locked, and bumps the template version. A
+recovery also requires a method that is chargeable unattended, not merely
+present, and skips every uncollected cycle of the subscription, not only the one
+it was given.
+
+The two sides restart the schedule differently. The engine re-arms
+`next_cycle_at` at the later of the stored instant and two days out, so a
+restart never moves it earlier. The managed SQL restarts assign two days out
+unconditionally. For a win-back from a subscription paid through a later date,
+the SQL side therefore charges earlier than the engine would.
 
 **Known limitation: the portable chain.** The portable PostgreSQL chain in
 `db/platform/migrations` does not yet carry this matrix. Its `subscriptions`
@@ -94,8 +109,14 @@ table admits only `active`, `paused` and `cancelled`, so it has no activation
 statuses and no `completed`. It has no status-transition trigger: each lifecycle
 function checks its own source status. It can send a win-back message to a
 cancelled subscriber, but no function reactivates a cancelled subscription.
-Its dunning rail does pause an active subscription when the ladder
-is exhausted. An adopter on the portable chain therefore cannot store a
+Its dunning rail, `dunning_lifecycle_handle_failure`, has no rung fence: it
+expires the case and pauses an active subscription whenever the next retry
+instant it is handed is NULL. A class-terminated refusal on rung one also has
+no next retry, so a caller that hands its schedule straight through would pause
+a live subscription on the first refusal, which the rule above forbids. No
+caller in this tree invokes it today. A future caller must not call it with
+NULL unless `isDunningLadderExhausted` holds for the refused cycle. A case cut
+short earlier must stay open without that call. An adopter on the portable chain therefore cannot store a
 completed or provisional subscription, and cannot reactivate a cancelled one,
 until a forward migration closes the gap under the compatibility lifecycle in
 [Data and migrations](DATA_AND_MIGRATIONS.md).

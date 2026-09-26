@@ -91,10 +91,11 @@ export declare function maxRetryAttempts(cadence?: CycleRetryCadence): number;
  * subscription for non-payment. Both halves are required. An absent schedule on
  * its own is not exhaustion: a class-terminated refusal on rung one also leaves
  * nothing scheduled, and treating it as exhaustion would pause a subscription on
- * the day of its first refusal. The managed SQL dunning boundary draws the same
- * line with a rung constant (`v_ladder_exhausted_from`, 4 for the shipped
- * ladder); this predicate derives it from the cadence so a deployment ladder
- * moves both together.
+ * the day of its first refusal. The rung is derived from the cadence, so pass
+ * the same cadence here and to `recordPaymentFailure`. The managed SQL dunning
+ * boundary spells the shipped ladder's rung as a fixed constant
+ * (`v_ladder_exhausted_from`, 4); a deployment that publishes a different
+ * ladder must move that constant with it.
  *
  * @beta
  */
@@ -203,6 +204,10 @@ export declare function completeSubscription(input: {
  * action behind it. A reactivation charges again, so it needs a stored payment
  * method, and it re-arms the next cycle {@link RESTART_LEAD_DAYS} out rather
  * than leaving a stale instant that would make the renewal due immediately.
+ * The SQL action also clears the end instant and cancellation reason, requires
+ * the customer's confirmation of the charge timing, refuses while a cycle is
+ * locked and bumps the template version; those durable duties stay with the
+ * host.
  *
  * @beta
  */
@@ -241,10 +246,12 @@ export declare function pauseSubscriptionForExpiredDunning(input: {
  * subscription must be paused and the cycle it passes must be the refused cycle
  * that exhausted the ladder (the caller passes the LATEST such cycle, as the SQL
  * boundary reads the latest dunning case). A new payment method, when given,
- * replaces the stored one; without a stored method nothing can be charged, so
- * the resume is refused. The uncollected cycle becomes `skipped` rather than
- * being charged late, and the next cycle is re-armed {@link RESTART_LEAD_DAYS}
- * out.
+ * replaces the stored one; without any method the resume is refused. Whether
+ * the method is chargeable unattended is the host's check, as it is in SQL.
+ * The given cycle becomes `skipped` rather than being charged late; the SQL
+ * boundary skips every uncollected cycle, so a host that holds more than one
+ * must skip the rest itself. The next cycle is re-armed
+ * {@link RESTART_LEAD_DAYS} out.
  *
  * @beta
  */
@@ -290,6 +297,7 @@ export declare function canTransitionSubscriptionStatus(from: SubscriptionStatus
 ## dist/subscription/subscriptionEnginePayment.d.ts
 
 ```ts
+import { type CycleRetryCadence } from "./cycleHardening.js";
 import type { CycleMutationResult, EngineCycle, EngineEvent, EngineSubscription, SubscriptionEngineResult } from "./subscriptionEngineTypes.js";
 /** @beta */
 export declare function recordPaymentSuccess(input: {
@@ -308,6 +316,11 @@ export declare function recordPaymentFailure(input: {
     failedAt: string;
     reason: string;
     failureClass?: string | null;
+    /**
+     * The deployment's ladder. Pass the same cadence to
+     * `pauseSubscriptionForExpiredDunning` so both agree on exhaustion.
+     */
+    cadence?: CycleRetryCadence;
 }): SubscriptionEngineResult<CycleMutationResult>;
 ```
 ## dist/subscription/subscriptionEngineTypes.d.ts

@@ -177,13 +177,18 @@ answers from the matrix and nothing else.
 Each operation takes only its own edge. `resumeSubscription` leaves `paused`
 only. `cancelled` -> `active` is the win-back, and only `reactivateSubscription`
 takes it. It needs a stored payment method, because a win-back charges again,
-and it restarts the schedule.
+and it restarts the schedule. The managed SQL `reactivate` action also clears
+the end instant and cancellation reason, requires the customer's confirmation of
+the charge timing, refuses while a cycle is locked and bumps the template
+version. Those durable duties stay with the host.
 
 **The sanctioned non-payment rule.** Nothing in this engine suspends an active
 subscription for a reason its owner did not choose, except a renewal that
 exhausted the retry ladder. `isDunningLadderExhausted(cycle, cadence?)` holds
 only when the cycle is `payment_failed`, has no `nextRetryAt`, and its
-`retryAttempt` is past `maxRetryAttempts(cadence)`. Both halves are required: a
+`retryAttempt` is past `maxRetryAttempts(cadence)`. A deployment with its own
+ladder passes the same cadence to `recordPaymentFailure` and to both dunning
+functions, or they disagree about exhaustion. Both halves are required: a
 class-terminated refusal on rung one also leaves nothing scheduled, and it must
 leave the subscription active. `pauseSubscriptionForExpiredDunning` pauses an
 active subscription when that predicate holds. It records `subscription.paused`
@@ -192,15 +197,21 @@ every other cycle as `dunning_not_exhausted`, and returns a subscription that is
 not active unchanged with no event, so a replay is harmless.
 
 `resumeSubscriptionFromExpiredDunning` is the customer's recovery. It needs a
-paused subscription, the exhausted cycle and a chargeable method, stored or
-supplied. The uncollected cycle becomes `skipped` rather than being charged late.
+paused subscription, the exhausted cycle and a payment method, stored or
+supplied. The given cycle becomes `skipped` rather than being charged late.
+Whether the method is chargeable unattended is the host's check, and so is
+skipping any other uncollected cycle the host holds; the SQL boundary does both.
+A subscription this rule paused must not go through plain `resumeSubscription`,
+which neither skips the cycle nor moves a stale `nextCycleAt`.
 
 Both restarts put `nextCycleAt` `RESTART_LEAD_DAYS` (two) days out, but never
 earlier than the instant already stored. The monotonic clamp on
 `recordPaymentSuccess` applies here too: a restart cannot pull a charge into a
 window already paid for. The managed SQL restarts assign `now + 2 days` without
-the clamp. The two agree whenever the stored instant is already behind that,
-which is the case for every subscription the exhausted ladder paused.
+the clamp, so the two differ exactly when the stored instant is later than
+that. Examples are a win-back of a subscription paid through a later date, or a
+schedule skipped or slid while the ladder was still running. There the SQL side
+charges earlier than the engine would.
 
 ## Consuming it from a host application
 

@@ -83,6 +83,23 @@ describe("isDunningLadderExhausted", () => {
     expect(isDunningLadderExhausted(cycle, DEFAULT_CYCLE_RETRY_CADENCE)).toBe(false);
   });
 
+  it("agrees with recordPaymentFailure when both are given the same custom ladder", () => {
+    const shortLadder: CycleRetryCadence = { backoffHours: [24] };
+    let cycle = plannedCycle();
+    cycle = unwrap(recordPaymentFailure({ cycle, failedAt, reason: "provider_declined", cadence: shortLadder })).cycle;
+    expect(cycle).toMatchObject({ status: "retry_scheduled", retryAttempt: 1 });
+    expect(isDunningLadderExhausted(cycle, shortLadder)).toBe(false);
+    cycle = unwrap(recordPaymentFailure({ cycle, failedAt, reason: "provider_declined", cadence: shortLadder })).cycle;
+    expect(cycle).toMatchObject({ status: "payment_failed", retryAttempt: 2, nextRetryAt: null });
+    expect(isDunningLadderExhausted(cycle, shortLadder)).toBe(true);
+    expect(unwrap(pauseSubscriptionForExpiredDunning({
+      subscription: makeSubscription(),
+      cycle,
+      now: failedAt,
+      cadence: shortLadder,
+    })).subscription.status).toBe("paused");
+  });
+
   it("is false for a cycle that is not refused, or still has a schedule", () => {
     expect(isDunningLadderExhausted({ status: "paid", retryAttempt: 9, nextRetryAt: null })).toBe(false);
     expect(isDunningLadderExhausted({ status: "payment_failed", retryAttempt: 9, nextRetryAt: failedAt })).toBe(false);
@@ -185,6 +202,13 @@ describe("resumeSubscriptionFromExpiredDunning", () => {
       paymentMethodRef: "pm-new",
       paymentMethodKind: "  ",
     })).subscription).toMatchObject({ paymentMethodRef: "pm-new", paymentMethodKind: "card" });
+    expect(unwrap(resumeSubscriptionFromExpiredDunning({
+      subscription,
+      cycle,
+      now: resumeAt,
+      paymentMethodRef: "pm-new",
+      paymentMethodKind: " sepa_debit ",
+    })).subscription).toMatchObject({ paymentMethodKind: "sepa_debit" });
   });
 
   it("refuses when nothing chargeable is stored or supplied", () => {
