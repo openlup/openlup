@@ -3,7 +3,7 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -28,14 +28,18 @@ const DOMAIN_TEST_FILES = DOMAIN_ROOTS.flatMap((root) => [
 const INFRA_DIRECTORIES = ["api", "server/adapters", "server/bff", "server/infra", "server/runtime", "src/checkout/adapters", "src/integrations"];
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const readJson = (file) => JSON.parse(readFileSync(path.join(tsconfigRootDir, file), "utf8"));
+const rootPath = (file) => path.join(tsconfigRootDir, file);
+const readJson = (file) => JSON.parse(readFileSync(rootPath(file), "utf8"));
+// An `exports` key such as "./*" matches any subpath in its place.
+const subpathRegex = (key) => escapeRegex(key.replace(/^\./, "")).replaceAll("\\*", ".+");
 
-const workspacePackages = readdirSync(path.join(tsconfigRootDir, "packages"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
+const workspacePackages = readdirSync(rootPath("packages"), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && existsSync(rootPath(`packages/${entry.name}/package.json`)))
   .map(({ name: directory }) => {
     const manifest = readJson(`packages/${directory}/package.json`);
+    if (typeof manifest.name !== "string") throw new Error(`packages/${directory}/package.json has no name`);
     const exports = manifest.exports && typeof manifest.exports === "object" ? Object.keys(manifest.exports) : ["."];
-    return { directory, name: manifest.name, subpaths: exports.map((key) => key.replace(/^\./, "")) };
+    return { directory, name: manifest.name, subpaths: exports.map(subpathRegex) };
   });
 
 const rootImportMap = readJson("package.json").imports ?? {};
@@ -48,7 +52,7 @@ const packageExports = {
   regexes: [
     `^\\.{1,2}/(?:.*/)?packages/(?:${workspacePackages.map(({ directory }) => escapeRegex(directory)).join("|")})(?:/|$)`,
     ...workspacePackages.map(({ name, subpaths }) =>
-      `^${escapeRegex(name)}(?!(?:${subpaths.map(escapeRegex).join("|")})$)(?:/.*)?$`),
+      `^${escapeRegex(name)}(?!(?:${subpaths.join("|")})$)(?:/.*)?$`),
   ],
 };
 
@@ -59,15 +63,16 @@ const domainIsolation = {
     "^@(?:stripe|supabase|vercel|modelcontextprotocol)/",
     // Reached only by climbing out of the domain tree, so shared helpers such as
     // server/_lib/bff or src/lib/bff stay importable.
-    `^(?:\\.\\./)+(?:server/)?(?:adapters|infra|runtime|bff|api)(?:/|$)`,
-    `^(?:\\.\\./)+(?:src/)?(?:integrations|checkout/adapters)(?:/|$)`,
+    `^(?:\\./)?(?:\\.\\./)+(?:server/)?(?:adapters|infra|runtime|bff|api)(?:/|$)`,
+    `^(?:\\./)?(?:\\.\\./)+(?:src/)?(?:integrations|checkout/adapters)(?:/|$)`,
     "^@/(?:integrations|checkout/adapters)(?:/|$)",
     ...(infraImportAliases.length > 0 ? [`^(?:${infraImportAliases.map(escapeRegex).join("|")})$`] : []),
   ],
 };
 
 // Crossings that predate these rules. Each entry allows one exact specifier in
-// one file; the list only shrinks, and a new crossing fails lint.
+// one file; a new crossing fails lint, and an entry whose import is gone fails
+// config load, so the list only shrinks.
 const DOMAIN_ISOLATION_EXCEPTIONS = [
   { file: "server/domains/commerce/commercePaymentStatusHandler.ts", allow: ["../../adapters/paymentFailureDisplay.js"] },
   { file: "server/domains/commerce/paymentRecoveryGuidanceAuthorization.ts", allow: ["../../adapters/paymentFailureDisplay.js"] },
@@ -79,10 +84,18 @@ const DOMAIN_ISOLATION_EXCEPTIONS = [
   { file: "src/domains/payment/components/useStripePromise.ts", allow: ["@stripe/stripe-js"] },
 ];
 
+for (const { file, allow } of DOMAIN_ISOLATION_EXCEPTIONS) {
+  const source = existsSync(rootPath(file)) ? readFileSync(rootPath(file), "utf8") : "";
+  const stale = allow.filter((specifier) => !source.includes(`"${specifier}"`));
+  if (stale.length > 0) throw new Error(`Remove the stale import-boundary exception for ${file}: ${stale.join(", ")}`);
+}
+
+// `depth` is the number of directories between the package root and the file;
+// a file deeper than MAX_PACKAGE_DEPTH may not climb out of its directory at all.
 const packageIsolation = (pkg, depth) => ({
   message: `A file under packages/${pkg.directory} imports nothing outside that directory.`,
   regexes: [
-    `^(?:\\./)?(?:\\.\\./){${depth}}\\.\\.(?:/|$)`,
+    depth === null ? "^(?:\\./)?\\.\\.(?:/|$)" : `^(?:\\./)?(?:\\.\\./){${depth}}\\.\\.(?:/|$)`,
     "^/",
     "^@/",
     "^#",
@@ -98,11 +111,16 @@ function boundaryRules(boundaries, allow = []) {
     "no-restricted-imports": ["error", {
       patterns: entries.map(({ regex, message }) => ({ regex, message, caseSensitive: true })),
     }],
-    // esquery's regex literal cannot contain "/", so it is written as \x2F.
-    "no-restricted-syntax": ["error", ...entries.map(({ regex, message }) => ({
-      selector: `ImportExpression > Literal.source[value=/${regex.replaceAll("/", "\\x2F")}/]`,
-      message,
-    }))],
+    // `import()` with a string or a plain template, and `import("…")` in a type
+    // position. esquery's regex literal cannot contain "/", so it is \x2F.
+    "no-restricted-syntax": ["error", ...entries.flatMap(({ regex, message }) => {
+      const value = `/${regex.replaceAll("/", "\\x2F")}/`;
+      return [
+        `ImportExpression > Literal.source[value=${value}]`,
+        `ImportExpression > TemplateLiteral.source[expressions.length=0] > TemplateElement[value.cooked=${value}]`,
+        `TSImportType Literal[value=${value}]`,
+      ].map((selector) => ({ selector, message }));
+    })],
   };
 }
 
@@ -155,9 +173,11 @@ export default tseslint.config(
     files: [file],
     rules: boundaryRules([packageExports, domainIsolation], allow),
   })),
-  ...workspacePackages.flatMap((pkg) =>
-    Array.from({ length: MAX_PACKAGE_DEPTH + 1 }, (_, depth) => ({
+  ...workspacePackages.flatMap((pkg) => [
+    { files: sourceFiles(`packages/${pkg.directory}/`), rules: boundaryRules([packageIsolation(pkg, null)]) },
+    ...Array.from({ length: MAX_PACKAGE_DEPTH + 1 }, (_, depth) => ({
       files: [`packages/${pkg.directory}/${"*/".repeat(depth)}*.${SOURCE_EXTENSIONS}`],
       rules: boundaryRules([packageIsolation(pkg, depth)]),
-    }))),
+    })),
+  ]),
 );

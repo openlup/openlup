@@ -29,12 +29,13 @@ contract, not to a browser client or provider response.
 `npm run lint` enforces the import side of this in
 [eslint.config.js](../../eslint.config.js). A package under `packages/` imports
 nothing outside its own directory. Code outside `packages/` reaches a package
-only through a subpath its `package.json` `exports` declares, never through
-`packages/*/src`, `packages/*/scripts` or a `src` or `dist` subpath of the
-package name. Domain code under `src/domains` and `server/domains` imports no
-provider SDK and no adapter, infrastructure, runtime or route code; its tests
-may compose a domain with an adapter. The config lists the few crossings that
-predate the rule, each as one exact import in one file, and that list only
+only through a subpath its `package.json` `exports` declares, never through a
+relative path into `packages/` or an undeclared subpath such as `src` or
+`dist`. Domain code under `src/domains` and `server/domains` imports none of
+the provider SDKs the config names and no adapter, infrastructure, runtime or
+route code; its tests may compose a domain with an adapter. The config lists
+the few crossings that predate the rule, each as one exact import in one file,
+and refuses to load with an entry whose import is gone, so that list only
 shrinks.
 
 ## Extension seams
