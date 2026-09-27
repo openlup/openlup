@@ -36,19 +36,43 @@ Measured against candidate `5f4094b73486371c872ededfb545b54cad6a5353` and public
 
 ## Root test dispositions
 
-Current structural mapping uses shipped definitions for current-shape obligations and preserves separate failures for missing historical transitions. Named failures remain in their original test files; no skipped replacement or fresh-install claim discharges an upgrade guarantee.
+Final local root execution after rebase onto `e2190c851c309ba0a08d9e44bd7b1824a36b9c03` ran 11,213 passing assertions, 58 failing assertions and 8 existing conditional pending assertions, with 29 failing files. The exit was 1. The controller tests merged in PR #50 are included by unrestricted discovery. This is pre-publication evidence; final mandatory verification remains required.
 
-| Family | Remaining obligation |
+Current structural mapping preserves separate missing-history failures. These named files remain executed, with the owner routing above:
+
+| Named test | Remaining reason |
 | --- | --- |
-| Diagnostic history; subscription own-engine and offer-policy migrations | Missing ordered backfill, destructive-transition, timeout and mixed-history evidence; current dump declarations alone cannot prove transitions. |
-| Admin membership; feedback-media authority | Historical predecessor-positive controls, ordered backfill and atomic upgrade/refusal proofs are absent. Current ACL text is not effective role-taking access. |
-| Commerce, OMS, inventory and provider boundary probes | Missing rollback-only probes, public seed/docs contracts, or differing permission/address-lock declarations. |
-| Local environment status; catalogue real-DB runner; reference journey readbacks | Promised public executables/transports are absent. A loader error does not prove the executable’s intended refusal. |
-| Renewal cron; order-review BFF routing; direct fulfillment Compose; starter checkout specs | Promised composition roots/specs are absent from the published profile. Other shipped callers have different enablement and cannot substitute for them. |
-| Scheduler SQL characterization; staging bridge invokers | Historical source producers are absent; synthetic parser tests cannot prove shipped routing. |
-| Accounting lifecycle coverage matrix; communications template seeds | Referenced public evidence/data contract is absent; catalogue or policy text is not an equivalent witness. |
+| `scripts/catalog-document-revision-foundation-real-db-proof.test.ts` | Promised public replay runner is absent; loader failure does not prove infrastructure refusal. |
+| `scripts/customer-diagnostic-history-schema.test.ts` | Current bodies are tested; historical parity, bounded installation, mixed-history and browser-revocation declarations remain missing. |
+| `scripts/local-env-status.test.ts` | Shipped credential-suppressing status-summary executable is absent. |
+| `scripts/oss-split-rehearsal-sql-edge.test.ts` | Checked-in historical scheduler producers are absent; parser fixtures do not prove shipped routing. |
+| `scripts/platform-accounting-document-lifecycle-parity.test.ts` | Referenced coverage matrix for deferred decisions is absent. |
+| `api/bff/[...path].test.ts` | Public profile omits the two order-review routes; pre-auth refusal ordering is unproved. |
+| `api/_cron/outboxHandlerGroupReadiness.test.ts` | Published Compose lacks the promised direct-fulfillment composition root. |
+| `api/_cron/stagingBridgeInvokerRouteContract.test.ts` | Shipped SQL scheduler invoker producers are absent. |
+| `api/cron/cronGateFlagAuthority.test.ts` | Dedicated subscription-renewal cron entrypoint and its flag contract are absent. |
+| `src/lib/adminUsersRlsRecursion.test.ts` | Historical helper, ordered backfill and direct-DML ACL declarations are absent; current body/policy witnesses pass. |
+| `src/lib/commerceFulfillmentIntegrationBoundary.test.ts` | Rollback-only fulfillment replay/consume-once probe is absent. |
+| `src/lib/commerceOmsBoundary.test.ts` | Missing probes/docs and differing current address-lock declarations need equivalent evidence or a contract decision. |
+| `src/lib/commerceV2MigrationsGuard.test.ts` | Historical commerce-v2 migration family is absent; an empty guard scan must fail. |
+| `src/lib/communicationProviderSyncBoundary.test.ts` | Disabled-by-default provider synchronization control seed is absent. |
+| `src/lib/domainSchemaMigration.test.ts` | Required historical additive/domain migration source is absent. |
+| `src/lib/ecommerceOrderDraftDbRehearsalCandidate.test.ts` | Current outbox policy declaration differs; historical rehearsal probe and apply report are absent. |
+| `src/lib/inventoryHiddenBoundary.test.ts` | Oversell/public-RPC-refusal rehearsal probe is absent. |
+| `src/lib/omnipackEvidenceBoundary.test.ts` | Explicit ACL declarations differ; provider seed, rollback-only evidence probe and documentation are absent. |
+| `src/lib/omnipackFulfillmentBoundary.test.ts` | Required provider integration configuration documentation is absent. |
+| `src/lib/subscriptionOfferPolicyPersistenceBoundary.test.ts` | Legacy-row freeze/backfill transition proof is absent. |
+| `src/lib/subscriptionOwnEngineMigration.test.ts` | Zero-row/destructive provider-ownership transition proof is absent. |
+| `src/lib/subscriptionOwnEngineRpcBoundary.test.ts` | Explicit browser revocation declaration and replay/atomic-refusal probe are absent. |
+| `src/lib/subscriptionPaymentResultBoundary.test.ts` | Historical browser ACL declaration and fail-fast nonmutation probe are absent. |
+| `src/lib/subscriptionSelfServiceGuardrails.test.ts` | Shipping-action smoke/docs proof chain is absent; current delegation chain is tested. |
+| `tests/postgres/adminMembershipAuthority.test.ts` | Missing historical forwards prevent ordered-backfill/cleanup/ACL transition proof. |
+| `tests/postgres/feedbackMediaAuthority.test.ts` | Missing historical forward and append contract prevent predecessor/overload/atomic rollback proof. |
+| `scripts/reference-adapters/reference-journey-readbacks.test.ts` | Public ordered-readback transport is absent; handler unit tests are not equivalent. |
+| `src/domains/communications/dbEmailTemplateSeedContent.test.ts` | Canonical delivery/in-transit template seeds are absent. |
+| `tests/preview/checkout/helpers/starterOfferCoverage.test.ts` | The three checkout specs required to carry starter-offer evidence markers are absent. |
 
-Two environment-only failures were independently diagnosed: sandbox access to the user npm cache and to the start time of the runner’s own process. Focused reruns use a worktree-local cache and permitted own-process readback; they do not alter application permissions or test exits.
+The npm cache and own-process identity environment failures were resolved by a worktree-local cache and permitted own-process readback. No application grant or test exit changed.
 
 ## Routing
 
