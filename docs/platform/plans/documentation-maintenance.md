@@ -215,3 +215,17 @@ wording with the native review contract. Current candidate review and required
 verification outcomes belong to the exact committed PR evidence; earlier local
 results do not attest that later candidate. No published release, website
 deployment or human onboarding acceptance is implied by this task.
+
+The first exact-commit native review completed both roles. Security review found
+ambient Git replacement/environment substitution and effective transport
+configuration in the shallow-base fallback. A peer check confirmed both mechanisms;
+the credential-helper subclaim was narrowed because a generic empty helper already
+clears matching helper lists. Lead real-Git fixtures showed a source obligation
+disappearing through a replacement ref, a literal public URL reaching a rewritten
+fixture repository, and a synthetic authorization header reaching a local receiver.
+The repair shares one sanitized reader across inventory, impact, blobs and bundle
+provenance, and refuses transport/credential configuration before fallback fetch.
+The same fixtures then preserved impact and contacted neither rewritten target.
+Regression cases cover commit/blob replacements, ambient redirects, included
+transport configuration, a remote alias named as the public URL and export provenance. Required fresh native review binds
+the repaired committed candidate; the earlier failing verdict is not approval.

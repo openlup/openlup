@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
-import { join, posix } from "node:path";
+import { join, posix, resolve } from "node:path";
 
 export const DOCUMENTATION_ROUTING_PATH = "config/doc-routing.json";
 export type DocumentationSurface = { id: string; when: string; paths: string[]; doc: string; anchor: string };
@@ -12,6 +12,19 @@ export type DocumentationState = {
 export type MarkdownHeading = { title: string; anchor: string; level: number; start: number; end: number };
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** All documentation reads use this checkout and actual objects, without ambient Git redirects. */
+export function documentationGit(root: string, args: string[], input?: string, maxBuffer = 64 * 1024 * 1024): Buffer {
+  const checkout = resolve(root);
+  const nullFile = process.platform === "win32" ? "NUL" : "/dev/null";
+  return execFileSync("git", ["--no-replace-objects", "--no-optional-locks", "-C", checkout,
+    "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always", ...args], {
+    cwd: checkout, input, maxBuffer, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    env: { PATH: process.env.PATH, LANG: "C", LC_ALL: "C", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: nullFile,
+      GIT_GRAFT_FILE: nullFile, GIT_NO_LAZY_FETCH: "1", GIT_CONFIG_COUNT: "0", GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "" },
+  });
+}
+
 export function assertDocumentationPath(path: string): void {
   const control = [...path].some((character) => character.codePointAt(0)! < 32 || character.codePointAt(0) === 127);
   if (!path || path.includes("\\") || control || path.startsWith("/") || path === "." || path === ".." || path.startsWith("../") || posix.normalize(path) !== path)
@@ -140,7 +153,7 @@ export function assertMaterializedDocumentationPath(root: string, path: string):
 }
 
 export function documentationCandidatePaths(root: string): string[] {
-  const git = (args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0").filter(Boolean);
+  const git = (args: string[]) => documentationGit(root, args).toString("utf8").split("\0").filter(Boolean);
   return [...new Set([...git(["ls-files", "-z"]), ...git(["ls-files", "-z", "--others", "--exclude-standard"])])].filter((path) => {
     try { lstatSync(join(root, path)); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
   }).sort();

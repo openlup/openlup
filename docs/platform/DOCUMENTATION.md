@@ -73,6 +73,11 @@ description. Authored guidance, source declarations and structural information
 are different evidence. A filename or exported symbol can establish a location
 or role, but cannot independently establish the module's behavior.
 
+Inventory, index, ancestry and object reads share one checkout-bound Git runner.
+It ignores ambient repository/index redirects, replacement objects and grafts,
+disables lazy fetching and filesystem monitors, and excludes global/system Git
+configuration. This preserves the actual object meaning of the reported SHA.
+
 ## Impact
 
 For a source change:
@@ -92,6 +97,12 @@ documentation has no impact. Hosted attribution takes precedence over
 validated SHA, without credential helpers, prompts or ref updates. An immutable
 evaluation checkout lacking `origin/main` can pass its own full commit as the
 explicit base; a contribution needs its actual branch comparison base.
+The fallback refuses effective repository/worktree URL, HTTP or credential
+configuration, including included files and an alias named as the public URL,
+before starting transport. Its public HTTPS request disallows redirects and other
+transport protocols, pruning, submodule recursion and automatic maintenance. Resolve unsafe
+configuration before retrying; refusal diagnostics never print configured values
+or potentially credential-bearing keys.
 
 Generated output, whitespace, a review date or an unrelated paragraph cannot
 satisfy an affected section's obligation. A scoped no-impact explanation must
@@ -142,6 +153,9 @@ identities, content digests and provenance.
 A clean export names the exact public source commit. A local candidate export
 binds its base revision and current content digest and is explicitly
 non-publishable; changed bytes must not be attributed to committed `HEAD`.
+HEAD, status, committed inventory and blob comparisons use the same isolated
+Git reader as impact checks, so local object replacements or environment
+redirects cannot substitute the revision being exported.
 Keep output in a new ignored `dist-docs/<name>` directory. The exporter refuses
 existing outputs, escaping paths and symbolic-link parents.
 Re-export the complete bundle after changing an input instead of copying an

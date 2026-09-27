@@ -8,22 +8,24 @@ import {
   readDocumentationState, resolveDocumentationOwner, type DocumentationSurface,
 } from "./documentation-routing.ts";
 import { checkDocumentationImpact, renderNoImpactComment, resolveDocumentationBase } from "./documentation-impact.ts";
+import { readDocumentationIndex, readDocumentationTree } from "./documentation-git.ts";
 
 const fetchMock = vi.hoisted(() => ({ source: "", calls: [] as { args: string[]; options: ExecFileSyncOptions }[] }));
 vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>();
   return { ...actual, execFileSync: (command: string, args: string[], options: ExecFileSyncOptions) => {
-    if (command === "git" && args.includes("https://github.com/openlup/openlup.git")) {
+    if (command === "git" && args.includes("fetch") && args.includes("https://github.com/openlup/openlup.git")) {
       fetchMock.calls.push({ args, options });
       if (!fetchMock.source) throw new Error("simulated public base fetch failure");
-      return actual.execFileSync(command, args.map((arg) => arg === "https://github.com/openlup/openlup.git" ? `file://${fetchMock.source}` : arg), options);
+      // The test transport alone admits the synthetic file repository; production admits HTTPS only.
+      return actual.execFileSync(command, ["-c", "protocol.file.allow=always", ...args.map((arg) => arg === "https://github.com/openlup/openlup.git" ? `file://${fetchMock.source}` : arg)], options);
     }
     return actual.execFileSync(command, args, options);
   } };
 });
 
 const directories: string[] = [];
-afterEach(() => { for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true }); fetchMock.source = ""; fetchMock.calls.length = 0; });
+afterEach(() => { vi.unstubAllEnvs(); for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true }); fetchMock.source = ""; fetchMock.calls.length = 0; });
 function temporary(): string { const path = mkdtempSync(join(tmpdir(), "documentation-guard-")); directories.push(path); return path; }
 function git(root: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -108,6 +110,27 @@ describe("public documentation routing", () => {
 });
 
 describe("attributable source and owner impact", () => {
+  it("compares actual commit and blob objects despite local replacement refs", () => {
+    const { root, base } = fixture(); const originalBlob = git(root, "rev-parse", `${base}:${SOURCE}`);
+    write(root, SOURCE, "export const value = 2;\n"); const head = commit(root); const changedBlob = git(root, "rev-parse", `HEAD:${SOURCE}`);
+    git(root, "replace", base, head);
+    expect(impact(root, base).failures).toHaveLength(1);
+    expect(readDocumentationTree(root, base).get(SOURCE)?.contents.toString()).toContain("value = 1");
+    git(root, "replace", "-d", base); git(root, "replace", originalBlob, changedBlob);
+    expect(readDocumentationTree(root, base).get(SOURCE)?.contents.toString()).toContain("value = 1");
+    expect(impact(root, base).failures).toHaveLength(1);
+  });
+  it("binds inventory, index and ancestry to the selected checkout despite ambient redirects", () => {
+    const { root, base } = fixture(); const decoy = fixture().root;
+    write(decoy, SOURCE, "export const value = 7;\n"); commit(decoy);
+    write(root, "src/domains/demo/new.ts", "export const added = true;\n");
+    vi.stubEnv("GIT_DIR", join(decoy, ".git")); vi.stubEnv("GIT_WORK_TREE", decoy); vi.stubEnv("GIT_INDEX_FILE", join(decoy, ".git/index"));
+    vi.stubEnv("GIT_CONFIG_COUNT", "1"); vi.stubEnv("GIT_CONFIG_KEY_0", "core.bare"); vi.stubEnv("GIT_CONFIG_VALUE_0", "true");
+    expect(readDocumentationState(root).paths).toContain("src/domains/demo/new.ts");
+    expect(readDocumentationIndex(root).get(SOURCE)?.contents.toString()).toContain("value = 1");
+    expect(resolveDocumentationBase(root, { env: {} }).head).toBe(base);
+    expect(impact(root, base).failures).toHaveLength(1);
+  });
   it("accepts a clean base and detects staged, unstaged, untracked, deleted and moved sources", () => {
     const { root, base } = fixture(); expect(impact(root, base).obligations).toHaveLength(0);
     write(root, SOURCE, "export const value = 2;\n"); expect(impact(root, base).failures).toHaveLength(1);
@@ -221,6 +244,21 @@ function hostedEvent(root: string, base: string, eventName = "push", extra: Reco
 }
 
 describe("strict documentation base attribution", () => {
+  it.each(["rewrite", "header", "included-header", "remote-alias"])("refuses effective %s configuration before public fallback transport", (setting) => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const shallow = join(temporary(), "checkout"); git(root, "clone", "-q", "--depth=1", `file://${root}`, shallow);
+    if (setting === "rewrite") git(shallow, "config", `url.file://${root}.insteadOf`, "https://github.com/openlup/openlup.git");
+    else if (setting === "header") git(shallow, "config", "http.https://github.com/openlup/.extraHeader", "Authorization: SyntheticDocumentationFixture");
+    else if (setting === "remote-alias") git(shallow, "config", "remote.https://github.com/openlup/openlup.git.url", `file://${root}`);
+    else {
+      const included = join(temporary(), "transport.gitconfig");
+      writeFileSync(included, '[http "https://github.com/openlup/"]\n extraHeader = Authorization: SyntheticDocumentationFixture\n');
+      git(shallow, "config", "include.path", included);
+    }
+    fetchMock.source = root;
+    expect(() => resolveDocumentationBase(shallow, { env: hostedEvent(shallow, base) })).toThrow(/transport or credential configuration/);
+    expect(fetchMock.calls).toHaveLength(0);
+  });
   it("uses a local merge base, refuses unknown/nonancestor bases and never silently skips", () => {
     const { root, base } = fixture(); expect(resolveDocumentationBase(root, { env: {} }).base).toBe(base);
     expect(() => resolveDocumentationBase(root, { base: "HEAD", env: {} })).toThrow(/full commit SHA/);
@@ -256,6 +294,8 @@ describe("strict documentation base attribution", () => {
     fetchMock.source = root; expect(resolveDocumentationBase(shallow, { env }).base).toBe(base);
     const call = fetchMock.calls.at(-1)!;
     expect(call.args).toContain("--no-write-fetch-head"); expect(call.args).toContain("credential.helper="); expect(call.args).toContain("core.askPass=");
+    for (const flag of ["--no-prune", "--no-prune-tags", "--no-recurse-submodules", "--refmap=", "--no-auto-maintenance", "--no-write-commit-graph"])
+      expect(call.args).toContain(flag);
     expect(call.options.env?.GIT_TERMINAL_PROMPT).toBe("0"); expect(call.options.env?.DEMONSTRATION_TOKEN).toBeUndefined();
     expect(existsSync(join(shallow, ".git/FETCH_HEAD"))).toBe(false);
   });

@@ -1,16 +1,13 @@
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { assertDocumentationPath, assertMaterializedDocumentationPath } from "./documentation-routing.ts";
+import { assertDocumentationPath, assertMaterializedDocumentationPath, documentationGit } from "./documentation-routing.ts";
+export { documentationGit } from "./documentation-routing.ts";
 
 export type DocumentationObject = { mode: string; digest: string; contents: Buffer };
 export type DocumentationBase = { base: string; head: string; provenance: "explicit" | "merge-base" | "pull-request" | "push" };
 const SHA = /^[0-9a-f]{40}$/u;
 export const documentationDigest = (bytes: string | Buffer): string => `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
-export function documentationGit(root: string, args: string[]): Buffer {
-  return execFileSync("git", args, { cwd: root, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
-}
 function fullCommit(root: string, ref: string): string {
   const sha = documentationGit(root, ["rev-parse", "--verify", `${ref}^{commit}`]).toString("utf8").trim();
   if (!SHA.test(sha)) throw new Error(`documentation: cannot resolve commit ${ref}`);
@@ -39,7 +36,7 @@ export function readDocumentationIndex(root: string): Map<string, DocumentationO
 function materializeGitRows(root: string, rows: { path: string; mode: string; oid: string }[]): Map<string, DocumentationObject> {
   const ids = [...new Set(rows.map((row) => row.oid))];
   if (ids.length === 0) return new Map();
-  const batch = execFileSync("git", ["cat-file", "--batch"], { cwd: root, input: `${ids.join("\n")}\n`, maxBuffer: 128 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] });
+  const batch = documentationGit(root, ["cat-file", "--batch"], `${ids.join("\n")}\n`, 128 * 1024 * 1024);
   const blobs = new Map<string, { contents: Buffer; digest: string }>();
   let position = 0;
   for (const oid of ids) {
@@ -88,11 +85,14 @@ export function resolveDocumentationBase(root: string, options: { base?: string;
   if (env.GITHUB_ACTIONS === "true") {
     const resolved = hostedBase(root, env, head);
     try { fullCommit(root, resolved.base); } catch {
-      // Literal public URL, no ref update, credential helper, askpass, token/header or FETCH_HEAD.
-      execFileSync("git", ["-c", "credential.helper=", "-c", "core.askPass=", "-c", "http.extraHeader=", "fetch", "--no-tags", "--depth=1", "--no-write-fetch-head", "https://github.com/openlup/openlup.git", resolved.base], {
-        cwd: root, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024,
-        env: { PATH: env.PATH ?? process.env.PATH, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_COUNT: "0" },
-      });
+      // A literal URL and generic header reset do not override URL-specific local settings.
+      // Refuse those settings before transport; never print possibly credential-bearing keys.
+      const keys = documentationGit(root, ["config", "--includes", "--null", "--name-only", "--list"]).toString("utf8").split("\0");
+      if (keys.some((key) => /^(?:url|http|credential)\./iu.test(key) || /^remote\.https:\/\/github\.com\/openlup\/openlup\.git\./iu.test(key)))
+        throw new Error("documentation: public base fetch refuses repository/worktree transport or credential configuration");
+      documentationGit(root, ["-c", "credential.helper=", "-c", "core.askPass=", "-c", "http.extraHeader=", "-c", "http.followRedirects=false",
+        "fetch", "--no-tags", "--depth=1", "--no-write-fetch-head", "--no-prune", "--no-prune-tags", "--no-recurse-submodules", "--refmap=",
+        "--no-auto-maintenance", "--no-write-commit-graph", "https://github.com/openlup/openlup.git", resolved.base]);
       fullCommit(root, resolved.base);
     }
     return { ...resolved, head };

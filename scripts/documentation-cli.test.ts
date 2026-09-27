@@ -76,6 +76,10 @@ describe("documentation CLI on the bare public runtime", () => {
       const env = { GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: "push", GITHUB_SHA: head, GITHUB_EVENT_PATH: event };
       const clean = execute(["--docs-base", head], env);
       expect(clean.stderr).toBe(""); expect(clean.status).toBe(0); expect(clean.stdout).toContain(`${base} (push)`);
+      const decoy = join(temporary, "decoy"); mkdirSync(decoy); git(decoy, ["init", "-q"]);
+      write(decoy, "different.txt", "Different repository inventory.\n"); commit(decoy);
+      const redirected = execute(["--docs-base", head], { GIT_DIR: join(decoy, ".git"), GIT_WORK_TREE: decoy, GIT_INDEX_FILE: join(decoy, ".git/index") });
+      expect(redirected.stderr).toBe(""); expect(redirected.status).toBe(0); expect(redirected.stdout).toContain(`${head} (explicit)`);
       write(checkout, "src/domains/demo/main.ts", "export const value = 2;\n");
       const original = readFileSync(join(checkout, "README.md"), "utf8");
       write(checkout, "README.md", original.replace("## Other", `<!-- openlup-doc-impact {"unit":"domain-demo","digest":"sha256-${"0".repeat(64)}","reason":"An invalid fingerprint is not an update."} -->\n\n## Other`));

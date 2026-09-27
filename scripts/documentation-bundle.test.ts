@@ -2,14 +2,14 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
 import { renderDocumentationSourceMap } from "./documentation-navigation.ts";
 import type { DocumentationState } from "./documentation-routing.ts";
 
 const fixtures: string[] = [];
-afterEach(() => fixtures.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+afterEach(() => { vi.unstubAllEnvs(); fixtures.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })); });
 function fixture(): { root: string; state: DocumentationState } {
   const root = mkdtempSync(join(tmpdir(), "documentation-bundle-")); fixtures.push(root);
   const files = {
@@ -34,6 +34,15 @@ function write(root: string, contents: Map<string, Buffer>, name = "export"): st
 }
 
 describe("public documentation bundle", () => {
+  it("keeps committed provenance bound to its checkout despite ambient Git redirects", () => {
+    const { root, state } = fixture(); const decoy = fixture().root;
+    const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
+    const head = git(root, ["rev-parse", "HEAD"]);
+    writeFileSync(join(decoy, "src/example.ts"), "export const sample = 7;\n"); git(decoy, ["add", "."]);
+    git(decoy, ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "decoy"]);
+    vi.stubEnv("GIT_DIR", join(decoy, ".git")); vi.stubEnv("GIT_WORK_TREE", decoy); vi.stubEnv("GIT_INDEX_FILE", join(decoy, ".git/index"));
+    expect(createDocumentationBundle(root, state).manifest.provenance.sourceCommit).toBe(head);
+  });
   it("is deterministic and reads back a complete pinned clean bundle", () => {
     const { root, state } = fixture();
     const first = createDocumentationBundle(root, state);

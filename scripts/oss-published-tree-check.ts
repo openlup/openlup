@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Self-checks for an already-published checkout; source-only partition inputs stay out of --policy.
 
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, posix } from "node:path";
@@ -12,7 +11,7 @@ import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-det
 import { runPlatformMigrationManifestCheck } from "./platform-migration-manifest.ts";
 import { comparePublicTypecheck, readPublicTypecheckCompatibility, runPublicTypecheckProjects, summarizePublicDiagnostics } from "./oss-public-typecheck.ts";
 import { assertDocumentationNavigation, readDocumentationState } from "./documentation-routing.ts";
-import { resolveDocumentationBase } from "./documentation-git.ts";
+import { documentationGit, resolveDocumentationBase } from "./documentation-git.ts";
 import { checkDocumentationImpact, renderDocumentationImpact } from "./documentation-impact.ts";
 import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
@@ -24,7 +23,7 @@ export type ProjectionDriftRow = { selector: string; sourceSelector: string | nu
 export type MaterializedOutputBytesInput = { sourceRoot: string; publicRoot: string; copiedSourcePaths: Iterable<string>; flattenedOutput: { path: string; contents: string | Buffer }; projectionWrites: Iterable<ProjectionWrite>; additionalProjectionPaths?: Iterable<string> };
 
 const trackedFiles = (root: string): string[] =>
-  execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0").filter(Boolean);
+  documentationGit(root, ["ls-files", "-z"]).toString("utf8").split("\0").filter(Boolean);
 
 const fileDigest = (path: string): string => `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;
 function sourceState(root: string, selector: string | null): ProjectionDriftRow["source"] {

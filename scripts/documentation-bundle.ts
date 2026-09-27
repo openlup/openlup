@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { markdownHeadings, type DocumentationState } from "./documentation-routing.ts";
 import { documentationDigest, documentationSources } from "./documentation-navigation.ts";
-import { readDocumentationTree } from "./documentation-git.ts";
+import { documentationGit, readDocumentationTree } from "./documentation-git.ts";
 
 export const DOCUMENTATION_REPOSITORY = "https://github.com/openlup/openlup";
 export const DOCUMENTATION_BUNDLE_FORMAT = 1;
@@ -25,7 +24,7 @@ export type DocumentationBundleManifest = {
 };
 export type DocumentationBundle = { manifest: DocumentationBundleManifest; contents: Map<string, Buffer> };
 
-const git = (root: string, args: string[]): string => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+const git = (root: string, args: string[]): string => documentationGit(root, args).toString("utf8");
 const encoded = (path: string): string => path.split("/").map(encodeURIComponent).join("/");
 const sourceHref = (revision: string, path: string, kind: "blob" | "tree" = "blob"): string => `${DOCUMENTATION_REPOSITORY}/${kind}/${revision}/${encoded(path)}`;
 const json = (value: unknown): Buffer => Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
