@@ -7,32 +7,35 @@ Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-
 
 ## Measurement and provenance
 
-Root measurement completed 2026-09-27 from integrated source commit `f868a8edb1c5a7117cd1836e0acfcd43bc2fd2c4`, against trusted main `7dca5213fa4ba0868bd56e4e665fd3e35b3e84f5`, with Node 24.20.0 and npm 11.19.0. Unrestricted `npm test` exited 1. The SQL result remains the earlier `node scripts/public-ci-pgtap.mjs` measurement (exit 1, Supabase CLI 2.98.2), from source `0d6cb97265c803c910024e891afe9b3bee4a972e` against base `c705c215955286a97606db7610446b69f5306e74`; it was not rerun for this integrated-source snapshot. The identical-input proof below preserves that result. No diagnostic failure prevents separate required core checks or the independent database job from being selected.
+Root measurement completed 2026-09-27 from integrated source commit `59b62deb26d43df1a77a5dbdff256951c588f622`, against trusted main `d0b7e4d9a7ef1653bd0ecaa30d621b6fa72957e7`, with Node 24.20.0 and npm 11.19.0. Unrestricted `npm test` completed on the host with `CI=true` and `TZ=UTC`, exiting 1. The SQL result remains the earlier `node scripts/public-ci-pgtap.mjs` measurement (exit 1, Supabase CLI 2.98.2), from source `0d6cb97265c803c910024e891afe9b3bee4a972e` against base `c705c215955286a97606db7610446b69f5306e74`; it was not rerun for this integrated-source snapshot. The identical-input proof below preserves that result. No diagnostic failure prevents separate required core checks or the independent database job from being selected.
 
 SHA-256 identities of the complete local reports, retained for exact-candidate review:
 
 | Report | SHA-256 |
 | --- | --- |
-| Root JSON | `c15eedc07131f6e006734b2d6c4f31c6f76a36059c88c1a749e6533f43d6f40b` |
-| Root raw log | `8102bf552c865ad9c88525ce2c5bb3de0da7c028a5165e5bd847d695f43bbeb0` |
+| Host root JSON | `a9b88b3dc09a9043bd86f77ed3f8b7f12b87b32b3df4b65c721e1af9df76fc37` |
+| Host root raw log | `55e17766db8206574debfbfb4983df1bcba7544b93082e399083872c4cbe5f4e` |
 | Database raw log | `ba01f1b3d09e2a6c57bedcccc644bb693b6522b8f520e901f6ca7a43570440fc` |
+| Initial sandbox root JSON | `35566c8be89a3b327b9a7ca846ab517dd79dd071db013e29e4377c094a3e8bfb` |
+| Initial sandbox root raw log | `ea5f0cc9fff8af68898182baed15b77c0f0e16c0a717ea20e590fe5c80e4427a` |
 
-The committed mode/blob/path inventory and current working bytes are identical between the earlier SQL source and the integrated source for both groups:
+The committed mode/blob/path inventory and current working bytes are identical between the earlier SQL source and the integrated source for the 211 executed SQL inputs:
 
 | SQL input identity group | Files | SHA-256 of identical committed inventories |
 | --- | --- | --- |
 | Executed runner, prerequisite SQL, public CLI config, two managed migrations and all 206 SQL tests | 211 | `e99b47be717c4cab2e905a686b6d2308cd347abddb9bf00682b380edfbe14083` |
-| Additional bootstrap/platform migrations, CLI configuration, manifest, package metadata and lockfile | 78 | `746588d1dbb7292069477f570360fa9e7e30d3d82cff6f5d7652c6f8451273b4` |
 
-The inventory hashes cover exact Git records, including each path, mode and blob identity. The runner imports only Node builtins; its pinned CLI, defaults, replay, assertion grants, formatter workaround and cleanup instructions are unchanged. This proves source-input identity, not a fresh SQL execution on the integrated commit.
+The inventory hashes cover exact Git records, including each path, mode and blob identity. The runner imports only Node builtins; its pinned CLI, defaults, replay, assertion grants, formatter workaround and cleanup instructions are unchanged. This proves source-input identity, not a fresh SQL execution on the integrated commit. The separate 78-file ancillary group is not identical: package.json changed to register the native queue selector and revise the required-test command inventory. Its other 77 files, the lockfile, SQL baseline, test SQL, runner and pinned CLI remain unchanged; no complete ancillary-identity claim carries forward.
 
 This document records measured sources, not its own later commit identity. After this evidence-only edit, unchanged execution inputs and final review must bind the final committed candidate. A change to an execution input invalidates its affected measurement. Final prescribed verification reruns both raw diagnostics and inspects their fresh logs before publication. These are local diagnostics, not hosted CI, release, installer or deployment certification.
 
 ## Root Vitest
 
-The JSON reports **1,641 file results**, including **118 failed or aborted files** and **35 failed files with no assertion results**. Of **11,335 reported tests**, **11,076 passed**, **251 failed** and **8 were skipped**. Vitest's 3,733 total suites includes nested describe blocks and is not a file count. The latest main integration adds 27 passing native review cases to an existing test file; failed-file identities and every row's P/F/S counts are unchanged.
+The JSON reports **1,642 file results**, including **118 failed or aborted files** and **35 failed files with no assertion results**. Of **11,390 reported tests**, **11,131 passed**, **251 failed** and **8 were skipped**. Vitest's 3,736 total suites includes nested describe blocks and is not a file count. The host run adds 55 passing tests relative to the preceding main integration; failed-file identities and every row's P/F/S counts are unchanged.
 
-The publication command-contract falsifiers passed **113 tests** and the real-CLI neutrality falsifiers passed **22 tests** in this full run. These results do not convert the unrelated failures below to success.
+The publication command-contract falsifiers passed **130 tests** and the real-CLI neutrality falsifiers passed **22 tests** in this full run. These results do not convert the unrelated failures below to success.
+
+The initial sandbox run also exited 1: 1,642 files, 120 failed or aborted files, 11,390 tests, 11,128 passing assertions, 254 failures and 8 skips. It added a 10,000 ms large-fixture timeout in scripts/agent-review-queue.test.ts and two null process-identity assertions in scripts/oss-readiness-run-cache.test.ts. The same unrestricted command on the host passed all 24 queue and 11 cache assertions, without source, timeout or selector changes. The initial result remains separate evidence of that execution limitation; its three failed assertions are not counted as executed successes in that run.
 
 Filename cells display exact shipped file identities; CommonMark character entities keep these data references from manufacturing neutrality findings. Each row gives reported passed/failed/skipped assertions (P/F/S). `0/0/0` means collection aborted before any assertion result. A hook-aborted row with only skips is also incomplete. Failed assertions establish no passing guarantee; historical forward-source reads cannot be replaced with a claim that inspecting the final baseline proves unavailable predecessor transitions.
 
