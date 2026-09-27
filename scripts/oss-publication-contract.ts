@@ -34,6 +34,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts",
   "server/runtime/public-reference/serve.ts",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
+  "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",
   "vitest.config.ts",
 ] as const;
 export const PUBLIC_WITHHELD_ABSENCE_PROBES = ["scripts/oss-published-tree-check.test.ts -> config/oss-core-readiness-blockers.json", "scripts/oss-published-tree-check.test.ts -> config/oss-split-rehearsal-baseline.json"] as const;

@@ -4,6 +4,8 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { NavigateFunction } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createInstance } from "i18next";
+import { I18nextProvider } from "react-i18next";
 import { renderWithProviders } from "@/test/render";
 
 const fake = vi.hoisted(() => ({
@@ -399,18 +401,36 @@ describe("Stripe critical path fake gate", () => {
   });
 });
 
+// The public package has no application-wide i18n bootstrap. The card panel
+// reads its words from the host, so the harness supplies the ones these tests
+// click on; no recovery-guidance keys, so the panel stays on the uncovered path.
+const cardI18n = createInstance();
+void cardI18n.init({
+  lng: "pl",
+  fallbackLng: "pl",
+  initAsync: false,
+  interpolation: { escapeValue: false },
+  resources: { pl: { checkout: { stripePay: {
+    title: "Płatność kartą",
+    body: "Wpisz dane karty.",
+    payButton: "Zapłać",
+    payingButton: "Przetwarzanie…",
+    errorPrefix: "Płatność odrzucona",
+  } } } },
+});
+
 const CardHarness = forwardRef<HarnessRef, { entry: Entry; mode: CheckoutMode; navigate: NavigateFunction }>(
   function CardHarness({ entry, mode, navigate }, ref) {
     const checkout = useCheckout(entry, navigate);
     useImperativeHandle(ref, () => ({
       submit: () => checkout.handleComplete(formData(mode), { paymentMethod: "card" } as never),
     }), [checkout, mode]);
-    return checkout.stripePay ? <SkomponujPakietStripePayPanel
+    return checkout.stripePay ? <I18nextProvider i18n={cardI18n}><SkomponujPakietStripePayPanel
       state={checkout.stripePay}
       onConfirmSettled={checkout.onConfirmSettled}
       onPollerTerminal={checkout.onPollerTerminal}
       returnPath={entry === "account" ? "/konto/zamowienie/status" : undefined}
-    /> : <div data-testid="step-6-card" />;
+    /></I18nextProvider> : <div data-testid="step-6-card" />;
   },
 );
 
