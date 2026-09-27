@@ -2506,6 +2506,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/public-reference/subscription-alignment.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/public-reference/subscription-prereqs.sql",
       "class": "public-output"
     },
@@ -11147,6 +11151,10 @@
     },
     {
       "path": "server/runtime/public-reference/subscriptionAccount.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionAlignmentSetup.test.ts",
       "class": "public-output"
     },
     {

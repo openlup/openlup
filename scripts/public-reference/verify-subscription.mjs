@@ -9,6 +9,7 @@ import { basename, dirname, join } from "node:path";
 import { parseEnv } from "node:util";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { verifySubscriptionAlignmentControl } from "./subscription-alignment.mjs";
 
 const repo = fileURLToPath(new URL("../..", import.meta.url));
 // The Supabase CLI configuration inside the operator-owned directory, joined at use so the
@@ -65,7 +66,7 @@ function setup() {
   } : null;
   if (resume) requireFact(uuid(resume.orderId) && uuid(resume.subscriptionId)
     && Number.isFinite(Date.parse(resume.date)), "Invalid restart-proof IDs or date");
-  return { file, origin, auth, mail, resume };
+  return { file, origin, auth, mail, resume, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY };
 }
 async function request(url, { method = "GET", body, bearer, origin } = {}) {
   const response = await fetch(url, {
@@ -170,6 +171,7 @@ async function verifyAfterRestart(setupData) {
 
 async function main() {
   const setupData = setup();
+  await verifySubscriptionAlignmentControl({ origin: setupData.auth, serviceRoleKey: setupData.serviceRoleKey });
   if (setupData.resume) return verifyAfterRestart(setupData);
   const { origin, mail } = setupData;
   const seen = new Set();
