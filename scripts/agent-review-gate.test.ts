@@ -2,9 +2,10 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { deflateSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { verifyReviewReceipt } from "./agent-review-gate.mjs";
-import { verifyReviewHook } from "./agent-review-hook.mjs";
+import { verifyReviewHook, verifyReviewObjectGraph } from "./agent-review-hook.mjs";
 
 // These keys exist only in memory for falsifiers; they are never controller credentials.
 const fixtureKey = generateKeyPairSync("ed25519");
@@ -128,11 +129,54 @@ describe("dormant hook snapshot falsifiers", () => {
     f.expected.tree = f.payload.tree = git("rev-parse", "HEAD^{tree}");
     const path = join(directory, "agent-review-gate.mjs"); copyFileSync(resolve("scripts/agent-review-gate.mjs"), path);
     const installation = { path, sha256: createHash("sha256").update(readFileSync(path)).digest("hex") };
-    const input = () => ({ cwd, expectation: f.expected, envelope: envelope(f.payload), installation });
+    const input = () => ({ cwd, expectation: f.expected, envelope: envelope(f.payload), installation, now: () => f.expected.now });
     return { ...f, cwd, directory, git, commit, installation, input };
   }
   it("admits exact clean synthetic input with a pinned fixture verifier", async () => {
     const f = harness(); expect(await verifyReviewHook(f.input())).toEqual(f.payload);
+  });
+  it("authenticates the actual reachable object graph of an unchanged fixture", async () => {
+    const f = harness();
+    await verifyReviewObjectGraph(f.cwd, { base: f.expected.base, head: f.expected.head, tree: f.expected.tree });
+  });
+  it("refuses raw commit bytes stored under another claimed commit digest", async () => {
+    const f = harness();
+    const raw = execFileSync("/usr/bin/git", ["-C", f.cwd, "cat-file", "commit", f.expected.head]);
+    const replaced = Buffer.concat([raw, Buffer.from("forged trailing commit message\n")]);
+    const target = join(f.cwd, ".git", "objects", f.expected.head.slice(0, 2), f.expected.head.slice(2));
+    chmodSync(target, 0o644);
+    writeFileSync(target, deflateSync(Buffer.concat([Buffer.from(`commit ${replaced.length}\0`), replaced])));
+    expect(f.git("rev-parse", "HEAD")).toBe(f.expected.head);
+    // Some Git versions refuse corrupt loose objects during revision peeling;
+    // direct graph authentication must also refuse independently of that behavior.
+    await expect(verifyReviewObjectGraph(f.cwd, { base: f.expected.base, head: f.expected.head, tree: f.expected.tree })).rejects.toThrow();
+    await expect(verifyReviewHook(f.input())).rejects.toThrow();
+  });
+  it("refuses benign tree bytes substituted under a different claimed tree digest", async () => {
+    const f = harness();
+    const baseTree = f.git("rev-parse", `${f.expected.base}^{tree}`);
+    const raw = execFileSync("/usr/bin/git", ["-C", f.cwd, "cat-file", "tree", baseTree]);
+    writeFileSync(join(f.cwd, "file.txt"), "baseline\n"); f.git("read-tree", baseTree);
+    const target = join(f.cwd, ".git", "objects", f.expected.tree.slice(0, 2), f.expected.tree.slice(2));
+    chmodSync(target, 0o644);
+    writeFileSync(target, deflateSync(Buffer.concat([Buffer.from(`tree ${raw.length}\0`), raw])));
+    await expect(verifyReviewObjectGraph(f.cwd, { base: f.expected.base, head: f.expected.head, tree: f.expected.tree })).rejects.toThrow();
+    await expect(verifyReviewHook(f.input())).rejects.toThrow();
+  });
+  it("refuses a hash-valid commit whose late parent header does not establish Git ancestry", async () => {
+    const f = harness();
+    const raw = Buffer.from(`tree ${f.expected.tree}\nauthor Fixture <fixture@example.invalid> 1 +0000\ncommitter Fixture <fixture@example.invalid> 1 +0000\nparent ${f.expected.base}\n\nlate parent fixture\n`);
+    const object = Buffer.concat([Buffer.from(`commit ${raw.length}\0`), raw]);
+    const digest = createHash("sha1").update(object).digest("hex");
+    const directory = join(f.cwd, ".git", "objects", digest.slice(0, 2)); mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, digest.slice(2)), deflateSync(object));
+    expect(f.git("rev-list", "--parents", digest)).toBe(digest);
+    await expect(verifyReviewObjectGraph(f.cwd, { base: f.expected.base, head: digest, tree: f.expected.tree })).rejects.toThrow();
+  });
+  it("refuses a receipt that expires during the second actual snapshot scan", async () => {
+    const f = harness(); let samples = 0;
+    await expect(verifyReviewHook({ ...f.input(), now: () => ++samples === 1 ? f.expected.now : f.payload.expiresAt + 1 })).rejects.toThrow(/expired/u);
+    expect(samples).toBe(2);
   });
   it("refuses a dirty or untracked candidate", async () => {
     const f = harness(); writeFileSync(join(f.cwd, "untracked.txt"), "dirty");

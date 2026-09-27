@@ -109,7 +109,116 @@ support clear goals, observable completion and living plans for complex work.
 The review counts and controller protocol here are OpenLup design decisions,
 not a vendor-certified guarantee or a claim of universal best practice.
 
-## Progress
+## Follow-on controller implementation
+
+The next authorized implementation builds the actual supervisor and hosted
+observer, using Node built-ins and the existing receipt protocol. Three
+independent reconnaissance lanes confirmed that no protected signer/worker
+identity or controller App is presently available. Preparation continues;
+installed admission stays unchanged until those boundaries are demonstrated.
+
+The controller accepts a checkout and a request ID, loads approved acceptance,
+allowed scope and authority/policy commitments from protected records, and
+observes the current remote base, head and tree itself. It refuses actual changed
+paths outside the approved scope. It creates a neutral immutable
+source-data bundle (base, candidate and complete change inventory), never another
+authoring checkout. Commit, tree and blob contents are authenticated against
+their identifiers, including ancestry and raw-reference closure. Review data
+comes from that verified in-memory graph, preventing a later object-database
+substitution between hashing and source extraction. Git transports, lazy fetch,
+replacement objects, graft/shallow hints and commit-graph shortcuts are disabled.
+It launches fresh read-only Codex processes itself with bounded time/output,
+separate execution IDs and a fixed structured-report schema. It receives no
+author-supplied verdict. Candidate instructions and configuration are data;
+they are not startup instructions or executable hooks. The signing capability
+never enters the reviewer process, environment, readable files or source bundle.
+Only complete passing observations produce a signature. Any material finding
+requires fresh independent review of the repaired exact candidate.
+
+The hosted observer reads current PR/base/head and the latest attempt of the
+approved workflow through authenticated GitHub APIs. It verifies each of the
+six actual completed SUCCESS jobs and source identities. Initial admission
+requires current-base ancestry and proves the actual integration tree equals
+the reviewed head tree; it does not relabel a PR-head check as a merge-SHA check.
+Integration and workflow/run/attempt/job provenance are included in the trusted
+check identity. Final squash parent/tree read-back remains a separate obligation.
+
+A candidate job can impersonate another job name under the GitHub Actions App.
+Therefore the aggregate is a dedicated controller App check, required by that
+App's identity, rather than an extra candidate-controlled workflow. Existing
+six jobs remain untouched. The observer/publisher can be implemented and tested
+with bounded fake APIs before any App credential or repository setting changes.
+
+New public scope: one controller module, one hosted observer module and their
+focused tests; existing verifier/hook helpers where reuse avoids duplication;
+test-scope and publication registration; the owning contribution instructions.
+No general service framework, queue, dashboard, model-routing framework or new
+dependency. Production entrypoints refuse missing/unprotected installation.
+Tests use in-memory fixture keys and controlled subprocesses; they establish
+orchestration/refusal behaviour, never real OS isolation or active GitHub gating.
+
+Activation still requires owner-provisioned signer and separately isolated
+review worker/model authentication, a dedicated controller App installation,
+protected code/policy records and publication of the bootstrap under the old
+policy. Actual secrets, account provisioning, repository settings and public
+PR actions remain the explicit stops above. Record concrete prerequisites once
+the runnable implementation and negative evidence are ready.
+
+### Activation checklist and installed boundaries
+
+The executable interface is `protected controller <checkout> <request-id>`;
+only the protected registry supplies criteria, scope, risk, reviewer roles,
+authority/policy commitments and validity. Library callbacks are an integration
+API, not author-supplied evidence. The fixed supervisor and its sibling verifier
+and hook must be installed as immutable protected code. The reviewer launcher
+and model-authentication profile need their own unprivileged identity. The
+entire executable chain, including the actual Codex binary and runtime, must be
+protected; pinning a wrapper around an author-writable binary is insufficient.
+The supervisor drops worker UID/GID and supplementary groups; the root-owned
+signing key remains unreadable to both the task author and reviewer. An
+administrative author account prevents local production activation. A separate
+managed execution host or a demonstrably
+restricted author identity is needed; fixture keys are never an alternative.
+
+Before switching policy, demonstrate on the chosen host that author and reviewer
+cannot read the signer key, alter installed code/policy, substitute the launcher
+or escalate into the supervisor. Exercise missing/forged/expired receipts,
+dirty candidate, out-of-scope changes, changed main/head, failed/incomplete review
+and unresolved findings against the actual installed request interface.
+
+Then install the bounded authenticated GitHub transport, distinct controller
+App and event handler. `observeHostedCandidate` and `publishHostedAdmission`
+are the observer/publisher APIs; `routeAdmissionEvent` supplies routing hints,
+never webhook authentication or permission. Authenticate webhook delivery and
+serialize admission. Require `review-admission` from the installed App ID while
+retaining all six existing checks and strict up-to-date protection. Demonstrate
+that a same-name Actions check, skipped job, newer failed run/attempt, moved base
+or expired review cannot admit a change, including invalidation after success.
+Use the authenticated protected transport for `currentBase` at volume; the
+standalone probe has no credential and refuses unavailable or rate-limited API
+responses. It is not a throughput guarantee.
+
+Finally connect the installed local verifier to `openlup-dev verify` and
+pre-push. An unchanged bootstrap baseline may run mechanical checks but never
+produce task approval. Nonbaseline task delivery must require authenticated
+review of the exact clean committed snapshot. This hook/settings transition and
+bootstrap PR are owner actions under the active policy. Switch the pending AI
+policy only after those live refusal tests pass. Until then, this implementation
+is preparation and ordinary delivery still follows the human-read rule.
+
+### Dogfood execution
+
+After the implementation passes its focused checks, perform two separate usage
+sessions. The first exercises actual fresh Codex reviews of the committed task
+snapshot, refusal paths and handoff usability. Repair confirmed findings before
+the second session, then repeat the complete available path and check whether
+the repairs improve evidence, recovery, runtime and ceremony. Use ephemeral
+fixture signing keys; they confer no production authority. Actual protected
+hook installation and hosted admission cannot be counted as dogfood success
+before their infrastructure is provisioned. Record observations, limitations
+and recommendations separately from synthetic test coverage.
+
+## Earlier implementation evidence
 
 - Fresh isolated baseline: mechanical verify PASS; release-check already reports
   NOT-RELEASABLE on the baseline. That pre-existing release limitation is outside

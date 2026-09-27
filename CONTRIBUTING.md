@@ -214,6 +214,12 @@ PR-opening rules in the AI policy remain in force until the maintainer activates
 protected controller and hosted enforcement after refusal tests pass.
 `scripts/agent-review-gate.mjs` verifies authenticated receipt evidence; it does
 not launch reviewers, observe CI or establish a protected identity by itself.
+The controller in `scripts/agent-review-controller.mjs` launches fresh bounded
+review processes and signs only observed complete passing results. The hosted
+observer in `scripts/agent-review-hosted.mjs` checks the approved workflow's
+latest actual executions and publishes an aggregate through a distinct protected
+App. Their fixture tests demonstrate orchestration and refusal behaviour; they
+do not provision protected identities, model authentication or GitHub access.
 The hook adapter must be invoked by a pinned protected installation with trusted
 inputs. Its availability does not change the active policy or existing checks.
 
