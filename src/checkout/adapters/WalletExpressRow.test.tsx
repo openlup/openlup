@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,8 +90,42 @@ function row(onSettled = vi.fn(), returnPath = "/skomponuj-pakiet/platnosc", cov
   );
 }
 
+// The public package has no application-wide i18n bootstrap, so the copy the
+// assertions read is supplied here. The covered-checkout block below brings its
+// own instances; this one serves every other test.
+const walletI18n = createInstance();
+void walletI18n.init({
+  lng: "pl",
+  fallbackLng: "pl",
+  initAsync: false,
+  interpolation: { escapeValue: false },
+  resources: { pl: { checkout: {
+    step6: { walletOrDivider: "albo" },
+    stripePay: {
+      loadFailed: "Nie udało się wczytać formularza karty. Sprawdź połączenie i spróbuj ponownie.",
+      loadAlternative: "Możesz też wybrać inną metodę płatności.",
+      loadRetry: "Spróbuj ponownie",
+    },
+    errors: {
+      detailsIncomplete: "Sprawdź swoje dane i spróbuj ponownie.",
+      paymentDeclinedCard: "Bank nie autoryzował tej płatności. Użyj innej karty.",
+      walletDetailsIncomplete: "Uzupełnij brakujące dane w portfelu.",
+      subscriptionCheckoutUnavailable: "Subskrypcja jest chwilowo niedostępna.",
+      priceChanged: "Cena została zaktualizowana.",
+    },
+    recoveryGuidance: { messages: {
+      c09: "Sprawdzamy status płatności.",
+      c17: "Nie udało się rozpocząć płatności. Spróbuj ponownie za chwilę.",
+    } },
+  } } },
+});
+
+function withWalletI18n(ui: ReactElement) {
+  return <I18nextProvider i18n={walletI18n}>{ui}</I18nextProvider>;
+}
+
 function renderRow(onSettled = vi.fn(), returnPath = "/skomponuj-pakiet/platnosc") {
-  renderWithProviders(row(onSettled, returnPath));
+  renderWithProviders(withWalletI18n(row(onSettled, returnPath)));
   return onSettled;
 }
 
@@ -125,7 +159,7 @@ describe("WalletExpressRow", () => {
       status: "failed",
       retry: mockRetryStripeLoad,
     };
-    const rendered = renderWithProviders(row());
+    const rendered = renderWithProviders(withWalletI18n(row()));
 
     expect(screen.getByTestId("wallet-stripe-load-failed")).toHaveTextContent(
       "Nie udało się wczytać formularza karty",
@@ -142,7 +176,7 @@ describe("WalletExpressRow", () => {
       status: "ready",
       retry: mockRetryStripeLoad,
     };
-    rendered.rerender(row());
+    rendered.rerender(withWalletI18n(row()));
 
     expect(screen.queryByTestId("wallet-stripe-load-failed")).toBeNull();
     expect(screen.getByText("wallet-confirm")).toBeInTheDocument();
@@ -444,7 +478,7 @@ describe("WalletExpressRow", () => {
     });
 
     const onSettled = vi.fn();
-    renderWithProviders(row(onSettled, "/skomponuj-pakiet/platnosc", true));
+    renderWithProviders(withWalletI18n(row(onSettled, "/skomponuj-pakiet/platnosc", true)));
     fireEvent.click(screen.getByText("wallet-confirm"));
 
     await waitFor(() => expect(onSettled).toHaveBeenCalledWith({ kind: "retryable" }));

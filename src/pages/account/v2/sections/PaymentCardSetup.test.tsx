@@ -1,5 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import i18next from "i18next";
+import { I18nextProvider } from "react-i18next";
+import type { ReactElement } from "react";
+
+// The public package has no application-wide account i18n bootstrap, so the
+// copy the assertions read is supplied here.
+const fixtureI18n = i18next.createInstance();
+void fixtureI18n.init({
+  lng: "pl",
+  fallbackLng: "pl",
+  initAsync: false,
+  interpolation: { escapeValue: false },
+  resources: { pl: { account: { dashboard: { sectionsV2: { payments: { card: {
+    intro: "Dodaj nową kartę do subskrypcji.",
+    replaceCta: "Zmień kartę",
+    preparing: "Przygotowujemy formularz…",
+    submit: "Zapisz kartę",
+    submitting: "Zapisujemy…",
+    errorPrefix: "Nie udało się zapisać karty",
+    saved: "Zapisano nową kartę.",
+    savedInRecovery: "Zapisano nową kartę. Ponowimy płatność.",
+    startError: "Nie udało się rozpocząć aktualizacji karty.",
+    configMissing: "Płatność kartą jest teraz niedostępna.",
+  } } } } } } },
+});
+
+function renderWithI18n(ui: ReactElement) {
+  return render(<I18nextProvider i18n={fixtureI18n}>{ui}</I18nextProvider>);
+}
 
 const startCustomerCardSetup = vi.fn();
 const diagnosticReporter = vi.hoisted(() => ({ reportCustomerJourneyDiagnostic: vi.fn() }));
@@ -55,7 +84,7 @@ describe("PaymentCardSetup (CJ63-A)", () => {
       setup: { clientSecret: "seti_secret", setupIntentId: "seti_1", subscriptionId: SUB },
     });
     const onSaved = vi.fn();
-    render(<PaymentCardSetup subscriptionId={SUB} accessToken="tok" onSaved={onSaved} />);
+    renderWithI18n(<PaymentCardSetup subscriptionId={SUB} accessToken="tok" onSaved={onSaved} />);
 
     fireEvent.click(screen.getByText("Zmień kartę"));
     await waitFor(() => expect(startCustomerCardSetup).toHaveBeenCalledWith("tok", expect.objectContaining({ subscriptionId: SUB })));
@@ -80,7 +109,7 @@ describe("PaymentCardSetup (CJ63-A)", () => {
       contractVersion: "customer.payment-method-setup.v1",
       setup: { clientSecret: "seti_secret", setupIntentId: "seti_1", subscriptionId: SUB },
     });
-    render(<PaymentCardSetup subscriptionId={SUB} accessToken="tok" />);
+    renderWithI18n(<PaymentCardSetup subscriptionId={SUB} accessToken="tok" />);
 
     fireEvent.click(screen.getByText("Zmień kartę"));
     fireEvent.click(await screen.findByTestId("stub-decline-card"));
@@ -105,7 +134,7 @@ describe("PaymentCardSetup (CJ63-A)", () => {
 
   it("surfaces a localized error when the SetupIntent mint fails", async () => {
     startCustomerCardSetup.mockRejectedValueOnce(new Error("boom"));
-    render(<PaymentCardSetup subscriptionId={SUB} accessToken="tok" />);
+    renderWithI18n(<PaymentCardSetup subscriptionId={SUB} accessToken="tok" />);
     fireEvent.click(screen.getByText("Zmień kartę"));
     await screen.findByText(/Nie udało się rozpocząć aktualizacji karty/);
     await waitFor(() => expect(diagnosticReporter.reportCustomerJourneyDiagnostic).toHaveBeenLastCalledWith(

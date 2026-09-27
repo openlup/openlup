@@ -12,6 +12,17 @@ import {
   readCheckoutContinuation,
 } from "@/checkout/machine/checkoutNavigation";
 
+// The public package has no application-wide i18n bootstrap, so the panel gets
+// a fixture instance. It carries no recovery-guidance keys, which keeps these
+// tests on the uncovered (legacy) checkout path.
+const fixtureI18n = createInstance();
+void fixtureI18n.init({
+  lng: "xx",
+  fallbackLng: false,
+  initAsync: false,
+  resources: { xx: { checkout: { stripePay: { title: "fixture title", body: "fixture body" } } } },
+});
+
 const mockStripeSettled = vi.fn();
 const mockPollerTerminal = vi.fn();
 const mockStripeReturnUrl = vi.fn();
@@ -182,12 +193,14 @@ function renderPanel(
   returnPath?: string,
 ) {
   return renderWithProviders(
-    <SkomponujPakietStripePayPanel
-      state={state(overridesForState)}
-      onConfirmSettled={mockStripeSettled}
-      onPollerTerminal={mockPollerTerminal}
-      {...(returnPath ? { returnPath } : {})}
-    />,
+    <I18nextProvider i18n={fixtureI18n}>
+      <SkomponujPakietStripePayPanel
+        state={state(overridesForState)}
+        onConfirmSettled={mockStripeSettled}
+        onPollerTerminal={mockPollerTerminal}
+        {...(returnPath ? { returnPath } : {})}
+      />
+    </I18nextProvider>,
   );
 }
 
