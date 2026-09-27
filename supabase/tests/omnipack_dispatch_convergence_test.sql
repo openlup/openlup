@@ -3,8 +3,6 @@
 -- tracking ownership, address freeze, accounting, or provider-command execution.
 
 BEGIN;
-\ir fixtures/settlement.inc
-\ir fixtures/fulfillment-provider.inc
 SELECT plan(132);
 
 INSERT INTO public.clients (id, email, first_name, last_name, phone)

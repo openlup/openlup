@@ -92,24 +92,18 @@ SELECT results_eq(
   'replaying the same media confirmation is idempotent and does not notify again'
 );
 
--- The harness owner observes persisted state; direct table SELECT is not the
--- media RPC capability. Every actual RPC below still runs as service_role.
-RESET ROLE;
 SELECT is(
   (SELECT photo_urls[1] FROM public.feedback WHERE hash = 'hash-delivered'),
   'f5100000-0000-0000-0000-000000000001/c/photo.jpg',
   'delivered true-positive persists the confirmed media key'
 );
 
-SET LOCAL ROLE service_role;
 SELECT throws_like(
   $$ SELECT * FROM public.append_feedback_photo_url('hash-undelivered', 'f5100000-0000-0000-0000-000000000002/c/photo.jpg', 10) $$,
   '%Feedback media unlocks after delivery%',
   'undelivered tester cannot confirm media or trigger an admin notification'
 );
 
--- Observe the refused RPC's no-write result with harness authority.
-RESET ROLE;
 SELECT is(
   COALESCE(array_length(photo_urls, 1), 0),
   0,
@@ -118,17 +112,15 @@ SELECT is(
 FROM public.feedback
 WHERE hash = 'hash-undelivered';
 
-SET LOCAL ROLE service_role;
 SELECT results_eq(
   $$ SELECT remaining_count, removed FROM public.feedback_remove_photo_url_by_hash('hash-delivered', 'f5100000-0000-0000-0000-000000000001/c/photo.jpg') $$,
   $$ VALUES (0, true) $$,
   'service role retains supported metadata removal'
 );
--- Observe removal independently of the runtime's direct table privileges.
-RESET ROLE;
 SELECT is(COALESCE(array_length(photo_urls, 1), 0), 0,
   'service removal persists without a browser grant')
 FROM public.feedback WHERE hash = 'hash-delivered';
+RESET ROLE;
 
 SELECT * FROM finish();
 ROLLBACK;

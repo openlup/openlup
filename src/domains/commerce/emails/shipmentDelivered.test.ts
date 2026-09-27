@@ -1,23 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { Locale } from "../../../lib/i18n/resolveLocale.js";
 import { APP_EMAIL_BRAND, APP_EMAIL_TEAM_SIGNOFF } from "../../../lib/brand/appBrand.js";
 import { renderEmail } from "../../communications/email/render.js";
 import { shipmentDeliveredEmailContent } from "./shipmentDelivered.js";
-
-// The generic renderer receives a deliberately configured copy pack. This
-// suite does not establish public-default copy parity.
-vi.mock("#commerce-email-content", async (importOriginal) => {
-  const original = await importOriginal<typeof import("#commerce-email-content")>();
-  const content = original.commerceEmailContent;
-  return { commerceEmailContent: { ...content, orderRefPrefix: "OPENLUP",
-    shipmentDelivered: Object.fromEntries(Object.entries(content.shipmentDelivered).map(([locale, copy]) => [locale, {
-      ...copy, heading: "Paczka dostarczona",
-      intro: (orderRef: string, name: string | null) => `${orderRef}: ${name ?? "Twój pupil"}`,
-      startGuide: { ...copy.startGuide, path: "/porady/pliki/jak-wprowadzic-nowa-karme.pdf", image: { path: "/porady/pliki/okladka-jak-wprowadzic-nowa-karme.jpg", alt: "Test guide cover", widthPx: 320, heightPx: 200 } },
-    }])),
-  } };
-});
 
 const SITE = "https://example.test";
 const TEST_LOCALES = Object.keys(APP_EMAIL_BRAND.chrome) as Locale[];

@@ -1,17 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render as renderBase, screen } from "@testing-library/react";
-
-import type { ReactElement } from "react";
-import { createI18nFixture } from "@/test/i18nFixture";
-
-const I18nFixture = createI18nFixture({ account: {
-  "dashboard.subscriptionV2.holidayNote": "uwzględnia dni wolne",
-  "dashboard.subscriptionV2.chargeAndEditLine": "Opłata {{charge}}, zmiany w składzie do {{cutoff}}",
-  "dashboard.subscriptionV2.modals.reschedule.estimatedDelivery": "Szacowana dostawa: {{window}}",
-  "dashboard.panels.subscriptions.cancel.reasons.delivery_issue": "Dostawy przychodzą w złym terminie",
-  "dashboard.panels.subscriptions.cancel.offers.reschedule.body": "Odnowienie i planowaną opłatę ustawimy na {{renewal}}, dostawa {{window}}",
-} });
-const render = (ui: ReactElement) => renderBase(ui, { wrapper: I18nFixture });
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { resolveLocale } from "@/lib/i18n/resolveLocale";
 import type { Subscription } from "./lib/subscriptionEditModel";

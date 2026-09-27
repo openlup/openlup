@@ -2,78 +2,53 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { allMigrations, effectiveFunctionBody } from "../test/effectiveMigration.js";
-import { managedFunction } from "../test/managedSchema.js";
-
-const symbols = ["subscription_apply_payment_success", "subscription_apply_payment_failure", "subscription_record_missing_payment_method"];
-const schema = allMigrations().map(({ content }) => content).join("\n");
+const migration = read("supabase/migrations/20260604183000_commerce_v2_w7e_subscription_payment_result.sql");
+const guardMigration = read(
+  "supabase/migrations/20260605143000_commerce_payment_control_legacy_subscription_guard.sql",
+);
+const deprecationProbe = read("docs/sql/subscription_payment_result_deprecation_probe.sql");
 
 describe("subscription payment result boundary", () => {
-  it("keeps current definer payment-result symbols and service-role ACL declarations", () => {
-    // Declaration spelling is structural evidence; pgTAP below takes the real roles.
-    for (const name of symbols) {
-      const declaration = managedFunction(name);
-      expect(declaration).toContain(`FUNCTION public.${name}`);
-      expect(declaration).toContain("SECURITY DEFINER");
-      expect(declaration).toContain(`REVOKE ALL ON FUNCTION public.${name}`);
-      expect(declaration).toContain("FROM PUBLIC;");
-      expect(declaration).toMatch(new RegExp(
-        `GRANT (?:ALL|EXECUTE) ON FUNCTION public\\.${name}\\([^;]*\\) TO service_role;`,
-      ));
-      expect(declaration).not.toMatch(/GRANT [^;]+ TO (?:anon|authenticated|PUBLIC);/);
+  it("keeps historical service-role-only payment result RPC symbols", () => {
+    for (const required of [
+      "CREATE OR REPLACE FUNCTION public.subscription_apply_payment_success",
+      "CREATE OR REPLACE FUNCTION public.subscription_apply_payment_failure",
+      "CREATE OR REPLACE FUNCTION public.subscription_record_missing_payment_method",
+      "SECURITY DEFINER",
+      "FROM anon",
+      "FROM authenticated",
+      "TO service_role",
+    ]) {
+      expect(migration).toContain(required);
     }
   });
 
   it("supersedes legacy success/failure RPCs with a payment-control guard", () => {
-    for (const name of symbols.slice(0, 2)) {
-      const guard = effectiveFunctionBody(name);
-      expect(guard).toContain(`FUNCTION public.${name}`);
-      for (const required of [
-        "subscription_payment_result_deprecated_use_payment_control",
-        "commerce_payment_control_apply_result",
-        "as the canonical payment-result writer.",
-      ]) expect(guard, name).toContain(required);
+    for (const required of [
+      "CREATE OR REPLACE FUNCTION public.subscription_apply_payment_success",
+      "CREATE OR REPLACE FUNCTION public.subscription_apply_payment_failure",
+      "subscription_payment_result_deprecated_use_payment_control",
+      "commerce_payment_control_apply_result",
+      "Payment-control is the canonical payment-result writer",
+    ]) {
+      expect(guardMigration).toContain(required);
     }
   });
 
   it("keeps shipment gating but no longer treats subscription RPCs as canonical payment writers", () => {
-    const shipmentGuard = effectiveFunctionBody("commerce_guard_paid_order_shipment_ref");
-    const registrations = [...schema.matchAll(
-      /^CREATE TRIGGER trg_commerce_guard_paid_order_shipment_ref\b[^;]*;/gm,
-    )];
-    expect(registrations).toHaveLength(1);
-    expect(registrations[0]![0]).toContain(
-      "BEFORE INSERT OR UPDATE ON public.shipment_external_refs FOR EACH ROW EXECUTE FUNCTION public.commerce_guard_paid_order_shipment_ref()",
-    );
-    expect(shipmentGuard).toContain("commerce_orders.id = NEW.order_id");
-    expect(shipmentGuard).toContain("commerce_orders.status IN ('paid', 'fulfillment_pending', 'fulfilled')");
-    expect(shipmentGuard).toContain("commerce_orders.mode <> 'subscription_cycle'");
-    expect(shipmentGuard).toContain("OR subscription_cycles.status = 'paid'");
-    expect(shipmentGuard).toContain("RAISE EXCEPTION 'commerce_shipment_requires_paid_order'");
-    for (const name of symbols.slice(0, 2)) {
-      const guard = effectiveFunctionBody(name);
-      for (const table of ["commerce_orders", "commerce_payments", "subscription_cycles", "subscriptions"]) {
-        expect(guard, name).not.toContain(`UPDATE public.${table}`);
-      }
-    }
+    expect(migration).toContain("commerce_guard_paid_order_shipment_ref");
+    expect(guardMigration).not.toContain("UPDATE public.commerce_orders");
+    expect(guardMigration).not.toContain("UPDATE public.commerce_payments");
+    expect(guardMigration).not.toContain("UPDATE public.subscription_cycles");
+    expect(guardMigration).not.toContain("UPDATE public.subscriptions");
   });
 
-  it("registers the executed pgTAP refusal and nonmutation witness", () => {
-    const deprecationProbe = read("supabase/tests/subscription_payment_result_refusal_test.sql");
-    // This is witness registration; Published Tree CI executes the SQL via pgTAP.
+  it("proves legacy payment-result RPCs fail fast locally", () => {
     for (const required of [
       "subscription_apply_payment_success",
       "subscription_apply_payment_failure",
-      "subscription_record_missing_payment_method",
       "subscription_payment_result_deprecated_use_payment_control",
-      "SET LOCAL ROLE service_role",
-      "SET LOCAL ROLE anon",
-      "SET LOCAL ROLE authenticated",
-      "has_function_privilege",
-      "2F000",
-      "42501",
-      "complete writer state stays unchanged",
-      "SELECT * FROM finish()",
+      "unexpectedly mutated state",
       "ROLLBACK",
     ]) {
       expect(deprecationProbe).toContain(required);

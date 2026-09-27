@@ -1,4 +1,5 @@
-import { effectiveDefinitionMigration, effectiveFunctionBody } from "../../test/effectiveMigration";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { AdminCommerceOrdersListResponse } from "./omsContracts.js";
@@ -11,9 +12,20 @@ import {
 } from "./omsOperationalLadder.js";
 import { summarizeOmsListOrders } from "./omsReadModelListSummary.js";
 
-// Resolve the published function that the queue adapter actually executes.
-const LIVE_QUEUE_MIGRATION = effectiveDefinitionMigration("commerce_oms_admin_list_queue").file;
-const migration = effectiveFunctionBody("commerce_oms_admin_list_queue");
+// The precedent for reading migration text from a test is
+// src/lib/commerceOmsBoundary.test.ts. This is the LIVE body of
+// public.commerce_oms_admin_list_queue - the one the admin queue request
+// actually executes - not one of its superseded ancestors.
+//
+// ⛔ THIS PIN MUST MOVE WITH EVERY FULL-BODY REPLACE OF THE RPC. It was left on
+// 20260816082705 by 20260903190000 and the suite stayed green, because that
+// wave's body is byte-identical in the CASE arms this test parses. A stale pin
+// does not fail - it silently stops covering the body that runs, which is the
+// one failure mode this test exists to prevent. During the 20260903190000
+// expand/contract window two identities are live; this pin names the 17-argument
+// one, the one the BFF calls.
+const LIVE_QUEUE_MIGRATION = "supabase/migrations/20260903190000_oms_queue_hides_withdrawn_checkout_rows.sql";
+const migration = readFileSync(join(process.cwd(), LIVE_QUEUE_MIGRATION), "utf8");
 
 type ListOrder = AdminCommerceOrdersListResponse["orders"][number];
 type CaseArm = { predicate: string; value: string };

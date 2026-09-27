@@ -12,7 +12,6 @@
 -- returns the order. Nothing here dispatches anything; the point is candidacy.
 --
 BEGIN;
-\ir fixtures/fulfillment-provider.inc
 SELECT plan(12);
 
 -- The fixture's currency, country and product kind are deliberately the neutral placeholders this

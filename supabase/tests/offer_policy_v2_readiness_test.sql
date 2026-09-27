@@ -1,8 +1,6 @@
 -- pgTAP: fail-closed assignment readiness and legacy-money invariants.
 
 BEGIN;
-\ir fixtures/settlement.inc
-\ir fixtures/can-format.inc
 
 INSERT INTO public.catalog_products (
   id, slug, status, name, description, ingredients, allergens, marketing_content

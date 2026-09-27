@@ -8,7 +8,6 @@
 -- customer.
 
 BEGIN;
-\ir fixtures/client-classification.inc
 SELECT plan(32);
 
 SELECT has_column('public', 'clients', 'identity_kind',

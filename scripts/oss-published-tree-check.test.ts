@@ -32,7 +32,7 @@ import {
   sourceReleaseProjectionDrift,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
-import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
+import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_REQUIRED_TEST_COMMAND, PUBLIC_REQUIRED_TEST_SCOPE, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate, computeNeutralizations, NEUTRALIZATION_RULESET_DIGEST, parseRegistry, projectOperationalCoordinates } from "./oss-neutralization-projection.ts";
 
 import { readManagedMigrationChain } from "./public-ci-pgtap.mjs";
@@ -41,6 +41,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW = ".github/workflows/published-tree-ci.yml";
 const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");
+// Frozen protected-main test command at c705c215955286a97606db7610446b69f5306e74.
+// Keep this independent of the policy's derived command: deleting a selector in
+// both the package and policy must still fail the required coverage falsifier.
+const requiredTestFloor = "node scripts/run-vitest.mjs run scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/" + ["str", "ipe"].join("");
+const workflowJob = (name: string, source = workflow) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
+const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run: (?!\|)(.+)$/gmu)].map((match) => match[1]);
 
 describe("maintainer-controlled source preview workflow", () => {
   it("is inert without the repository variable and the protected main environment", () => {
@@ -93,16 +99,17 @@ describe("maintainer-controlled source preview workflow", () => {
   });
 });
 describe("complete public CI", () => {
-  it("runs lint after installing dependencies and never filters the root test command", () => {
-    expect(workflow).toContain("run: npm run lint");
-    expect(workflow).toContain("run: npm test");
+  it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
+    const typecheck = workflowJob("typecheck");
+    expect(workflowCommands(typecheck)).toEqual(["npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
+    expect(workflowCommands(workflowJob("test-full"))).toEqual(["npm ci", "npm test"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
-    expect(workflow).not.toMatch(/--exclude|continue-on-error/u);
+    expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
     expect(config).toContain("src/**/*.{test,spec}.ts");
   });
-  it("installs workspace dependencies before the pgTAP runner imports source", () => {
-    const job = workflow.slice(workflow.indexOf("\n  pgtap:"));
+  it("installs the locked workspace before invoking the pgTAP command", () => {
+    const job = workflowJob("pgtap");
     expect(job).toContain("npm ci --prefer-offline --no-audit --fund=false");
     expect(job.indexOf("npm ci ")).toBeLessThan(job.indexOf("node scripts/public-ci-pgtap.mjs"));
     expect(job).toContain("node-version-file: .nvmrc");
@@ -114,6 +121,59 @@ describe("complete public CI", () => {
     expect(workflow).toContain("github.event.pull_request.base.sha || github.event.before");
     expect(workflow).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
     expect(workflow).toContain("run: node --experimental-strip-types packages/ui/smoke/neutrality.ts");
+  });
+  it("preserves every required selector and the subsequent existing steps with fatal neutrality", () => {
+    const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
+    expect(createHash("sha256").update(requiredTestFloor).digest("hex")).toBe("f65aad855d2073f0db660ce44a961e9ed2e87482b7132630419be82ab9ce209e");
+    expect(PUBLIC_REQUIRED_TEST_COMMAND).toBe(requiredTestFloor);
+    expect(manifest.scripts["test:required"]).toBe(requiredTestFloor);
+    expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(requiredTestFloor.split(" ").slice(3));
+    expect(manifest.scripts.test).toBe(PUBLIC_TEST_COMMAND);
+    expect(manifest.scripts).not.toHaveProperty("test:full");
+    expect(workflowCommands(workflowJob("test"))).toEqual([
+      "npm ci",
+      "npm run test:required",
+      "npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx",
+      "npm --workspace ./packages/core run ci",
+      "npx vitest run scripts/oss-published-tree-check.test.ts",
+      "npx vitest run scripts/public-ci-neutrality.test.ts",
+    ]);
+    const tracked = execFileSync("git", ["ls-files", "-z", ...PUBLIC_REQUIRED_TEST_SCOPE], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);
+    for (const target of PUBLIC_REQUIRED_TEST_SCOPE) {
+      expect(tracked.some((path) => (path === target || path.startsWith(`${target}/`)) && /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path)), target).toBe(true);
+    }
+  });
+  it("runs root and database diagnostics independently of each other and the required tests", () => {
+    for (const name of ["test", "test-full", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
+    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["npm ci --prefer-offline --no-audit --fund=false", "node scripts/public-ci-pgtap.mjs"]);
+    expect(workflowCommands(workflowJob("self-check"))).toEqual([
+      "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
+      "node --experimental-strip-types packages/ui/smoke/neutrality.ts",
+      'node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"',
+    ]);
+  });
+  it("passes the full and frozen required argv to Vitest unchanged and propagates failure", () => {
+    const scratch = join(ROOT, ".context/scratch");
+    mkdirSync(scratch, { recursive: true });
+    const directory = mkdtempSync(join(scratch, "public-test-argv-"));
+    const binary = join(directory, "vitest"), log = join(directory, "argv.json");
+    try {
+      writeFileSync(join(directory, "package.json"), '{"type":"commonjs"}\n');
+      writeFileSync(binary, `#!${process.execPath}\nconst environment = Reflect.get(process, 'env'); require('node:fs').writeFileSync(environment.PUBLIC_TEST_ARGV_LOG, JSON.stringify(process.argv.slice(2))); process.exit(Number(environment.PUBLIC_TEST_EXIT));\n`);
+      chmodSync(binary, 0o755);
+      const run = (args: string[], code: number) => spawnSync(process.execPath, [join(ROOT, "scripts/run-vitest.mjs"), ...args], {
+        cwd: directory, encoding: "utf8", timeout: 10_000,
+        env: { PATH: directory, CI: "true", PUBLIC_TEST_ARGV_LOG: log, PUBLIC_TEST_EXIT: String(code) },
+      });
+      const full = run(["run"], 0);
+      expect(full.error).toBeUndefined();
+      expect(full.status).toBe(0);
+      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run"]);
+      const required = run(["run", ...PUBLIC_REQUIRED_TEST_SCOPE], 29);
+      expect(required.error).toBeUndefined();
+      expect(required.status).toBe(29);
+      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(requiredTestFloor.split(" ").slice(2));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });
 const packageManifestPaths = PUBLIC_PACKAGE_EXECUTION_SURFACES.map(({ path }) => path);
@@ -149,9 +209,9 @@ describe("what the workflow may not contain", () => {
 });
 
 describe("the workflow stays in step with what it claims to run", () => {
-  it("exposes exactly the seven public contexts and gates each from trusted event metadata", () => {
+  it("exposes exactly the eight public contexts and gates each from trusted event metadata", () => {
     const jobs = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map((match) => match[1]);
-    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "pgtap"]);
+    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test", "test-full", "self-check", "gitleaks", "pgtap"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
     expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(jobs.length);
@@ -202,8 +262,15 @@ describe("the workflow stays in step with what it claims to run", () => {
     const uses = [...workflow.matchAll(/uses: [^@\n]+@([^\s#]+)(?:\s+#\s+v\d+)?/g)].map((match) => match[1]);
     expect(uses.length).toBeGreaterThan(0);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
-    expect(workflow.match(/require\("\.\/package\.json"\)\.engines\.node/g)).toHaveLength(3);
-    expect(workflow.match(/require\("\.\/package\.json"\)\.packageManager/g)).toHaveLength(3);
+    expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24");
+    for (const name of ["typecheck", "install-proof", "test", "test-full", "pgtap"]) {
+      const job = workflowJob(name);
+      expect(job).toContain('test "$(node -p \'process.versions.node.split(".")[0]\')" = "24"');
+      expect(job).toContain('test "$(npm --version)" = "11.19.0"');
+      expect(job).toContain('test "$(node -p \'require("./package.json").engines.node\')" = "24.x"');
+      expect(job).toContain('test "$(node -p \'require("./package.json").packageManager\')" = "npm@11.19.0"');
+      expect(job).toContain("node-version-file: .nvmrc");
+    }
     expect(workflow).toContain("gitleaks_8.30.1_linux_x64.tar.gz");
     expect(workflow).toContain("551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb");
     expect(workflow).toContain("gitleaks git . --config config/gitleaks.toml --redact --no-banner");
@@ -603,6 +670,142 @@ describe("committed managed migration inventory", () => {
   it("refuses malformed committed identities", () => {
     fixture({ [baseline]: "SELECT 1;", "invalid.sql": "SELECT 2;" }, directory => {
       expect(() => readManagedMigrationChain(directory)).toThrow(/invalid committed managed migration identity/);
+    });
+  });
+});
+
+describe("owned pgTAP command lifecycle", () => {
+  type Observation = { stage: string; args: string[]; input: string; tests?: Record<string, string>; config?: string };
+  // Execute the shipped runner, with every external command replaced on PATH.
+  // These subprocesses cannot find the host's Docker, Supabase or Git binaries.
+  function observe(scenario: string, check: (result: ReturnType<typeof spawnSync>, calls: Observation[], directory: string) => void) {
+    const scratch = join(ROOT, ".context/scratch");
+    mkdirSync(scratch, { recursive: true });
+    const directory = mkdtempSync(join(scratch, "pgtap-lifecycle-test-"));
+    const baseline = "00000000000000_platform_schema_baseline.sql", forward = "20260927090000_forward.sql";
+    const migrations = { [baseline]: "SELECT 'baseline replay';\n", [forward]: "SELECT 'ordered forward';\n" };
+    const inventory = Object.entries(migrations).map(([name, bytes]) => `100644 blob ${createHash("sha1").update(`blob ${Buffer.byteLength(bytes)}\0`).update(bytes).digest("hex")}\tsupabase/migrations/${name}\0`).join("");
+    try {
+      writeFileSync(join(directory, "package.json"), '{"type":"commonjs"}\n');
+      for (const folder of ["scripts/public-reference", "config", "supabase/migrations", "supabase/tests", "bin"]) mkdirSync(join(directory, folder), { recursive: true });
+      writeFileSync(join(directory, "scripts/public-ci-pgtap.mjs"), readFileSync(join(ROOT, "scripts/public-ci-pgtap.mjs")));
+      writeFileSync(join(directory, "scripts/public-reference/subscription-prereqs.sql"), "SELECT 'prerequisites';\n");
+      writeFileSync(join(directory, "config/public-reference-subscription-supabase.toml"), readFileSync(join(ROOT, "config/public-reference-subscription-supabase.toml")));
+      for (const [name, bytes] of Object.entries(migrations)) writeFileSync(join(directory, "supabase/migrations", name), bytes);
+      if (scenario === "inventory") writeFileSync(join(directory, "supabase/migrations", forward), "SELECT 'uncommitted';\n");
+      writeFileSync(join(directory, "supabase/tests/first_test.sql"), "BEGIN; SELECT 'first assertion'; ROLLBACK;\n");
+      writeFileSync(join(directory, "supabase/tests/second_test.sql"), "BEGIN; SELECT 'second assertion'; ROLLBACK;\n");
+      const standIn = `#!${process.execPath}
+const fs = require('node:fs');
+const path = require('node:path');
+const command = path.basename(process.argv[1]);
+const args = process.argv.slice(2);
+const environment = Reflect.get(process, 'env');
+const scenario = environment.PGTAP_STAND_IN_SCENARIO;
+const input = fs.readFileSync(0, 'utf8');
+const stage = command === 'git' ? 'inventory' : command === 'supabase' ? (args[0] === '--version' ? 'version' : args[0]) : args[0] === 'restart' ? 'restart' : args.includes('-1') ? 'replay' : args.includes('-i') ? 'formatter' : 'readback';
+const row = { stage, args, input };
+if (stage === 'start' || stage === 'test') {
+  const directory = args[args.indexOf('--workdir') + 1];
+  row.config = fs.readFileSync(path.join(directory, 'supabase/config.toml'), 'utf8');
+  if (stage === 'test') row.tests = Object.fromEntries(fs.readdirSync(path.join(directory, 'supabase/tests')).map(name => [name, fs.readFileSync(path.join(directory, 'supabase/tests', name), 'utf8')]));
+}
+fs.appendFileSync(environment.PGTAP_STAND_IN_LOG, JSON.stringify(row) + '\\n');
+if (stage === 'inventory') {
+  if (JSON.stringify(args.slice(0, 3)) !== JSON.stringify(['--no-replace-objects', '-C', process.cwd()]) || args[3] !== 'ls-tree') process.exit(90);
+  process.stdout.write(JSON.parse(environment.PGTAP_STAND_IN_INVENTORY));
+} else if (stage === 'version') process.stdout.write(scenario === 'version' ? '2.98.1\\n' : '2.98.2\\n');
+else if (stage === 'readback') process.stdout.write(scenario === 'readback' ? 'f\\n' : 't\\n');
+else if (stage === 'test') {
+  process.stdout.write('raw pgTAP stdout\\n');
+  process.stderr.write('raw pgTAP stderr\\n');
+  if (scenario === 'signal') process.kill(process.pid, 'SIGTERM');
+}
+if ((scenario === stage && !['inventory', 'version', 'readback'].includes(stage)) || (scenario === 'cleanup' && stage === 'stop')) {
+  process.stderr.write('stand-in ' + stage + ' failure\\n');
+  process.exit(stage === 'test' ? 37 : 42);
+}
+`;
+      for (const command of ["git", "supabase", "docker"]) {
+        const path = join(directory, "bin", command);
+        writeFileSync(path, standIn);
+        chmodSync(path, 0o755);
+      }
+      const log = join(directory, "calls.jsonl");
+      const result = spawnSync(process.execPath, [join(directory, "scripts/public-ci-pgtap.mjs")], {
+        cwd: directory, encoding: "utf8", timeout: 10_000, maxBuffer: 1024 * 1024,
+        env: { PATH: join(directory, "bin"), PGTAP_STAND_IN_SCENARIO: scenario, PGTAP_STAND_IN_LOG: log, PGTAP_STAND_IN_INVENTORY: JSON.stringify(inventory) },
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.signal).toBeNull();
+      const calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line) as Observation);
+      check(result, calls, directory);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
+  it("replays the ordered chain in one transaction and runs every SQL file unchanged before own cleanup", () => {
+    observe("pass", (result, calls) => {
+      expect(result.status).toBe(0);
+      expect(calls.map(({ stage }) => stage)).toEqual(["inventory", "version", "start", "formatter", "restart", "readback", "replay", "test", "stop"]);
+      const start = calls.find(({ stage }) => stage === "start")!, replay = calls.find(({ stage }) => stage === "replay")!, tests = calls.find(({ stage }) => stage === "test")!, stop = calls.at(-1)!;
+      expect(start.args).toContain("--exclude");
+      expect(start.config).toMatch(/project_id = "openlup-ci-[a-f0-9]{16}"/u);
+      expect(start.config).not.toContain("{{");
+      const id = /project_id = "([^"]+)"/u.exec(start.config!)![1];
+      for (const call of calls.filter(({ stage }) => ["formatter", "restart", "readback", "replay"].includes(stage))) expect(call.args).toContain(`supabase_db_${id}`);
+      expect(replay.args).toContain("-1");
+      expect(replay.args).toContain("ON_ERROR_STOP=1");
+      expect(replay.input.indexOf("SELECT 'baseline replay'")).toBeLessThan(replay.input.indexOf("SELECT 'ordered forward'"));
+      expect(replay.input).toContain("SET ROLE postgres;");
+      expect(replay.input).toContain("ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM PUBLIC, anon, authenticated, service_role;");
+      expect(replay.input).toContain("WHERE e.extname = 'pgtap' AND d.deptype = 'e'");
+      expect(replay.input).not.toMatch(/GRANT EXECUTE ON ALL FUNCTIONS|GRANT ALL/u);
+      expect(calls.find(({ stage }) => stage === "formatter")!.input).toBe("ALTER SYSTEM SET supautils.hint_roles = '';");
+      expect(calls.find(({ stage }) => stage === "readback")!.args).toContain("SELECT current_setting('supautils.hint_roles') = ''");
+      expect(tests.tests).toEqual({
+        "first_test.sql": "BEGIN; SELECT 'first assertion'; ROLLBACK;\n",
+        "second_test.sql": "BEGIN; SELECT 'second assertion'; ROLLBACK;\n",
+      });
+      expect(tests.args).toContain("--db-url");
+      expect(tests.args.at(-1)).toMatch(/^postgresql:\/\/postgres:postgres@127\.0\.0\.1:\d+\/postgres$/u);
+      expect(stop.args).toEqual(["stop", "--workdir", start.args[start.args.indexOf("--workdir") + 1], "--no-backup"]);
+    });
+  });
+  it("preserves a raw test failure, both output streams and its log while cleaning up", () => {
+    observe("test", (result, calls, directory) => {
+      expect(result.status).toBe(37);
+      expect(result.stdout).toContain("raw pgTAP stdout");
+      expect(result.stderr).toContain("raw pgTAP stderr");
+      expect(readFileSync(join(directory, ".context/scratch/pgtap/latest.log"), "utf8")).toContain("stand-in test failure");
+      expect(calls.at(-1)!.stage).toBe("stop");
+    });
+  });
+  it.each(["start", "formatter", "restart", "readback", "replay"])("refuses a %s infrastructure failure and still cleans up only its attempted project", scenario => {
+    observe(scenario, (result, calls) => {
+      expect(result.status).toBe(1);
+      expect(calls.some(({ stage }) => stage === "test")).toBe(false);
+      const start = calls.find(({ stage }) => stage === "start")!;
+      expect(calls.at(-1)!.args).toEqual(["stop", "--workdir", start.args[start.args.indexOf("--workdir") + 1], "--no-backup"]);
+      expect(result.stderr).toContain(scenario === "readback" ? "workaround did not take effect" : `stand-in ${scenario} failure`);
+    });
+  });
+  it("refuses cleanup failure even when all assertions passed", () => {
+    observe("cleanup", (result, calls) => {
+      expect(calls.some(({ stage }) => stage === "test")).toBe(true);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Owned stack cleanup failed");
+    });
+  });
+  it("treats a signalled test transport as failure and still cleans up", () => {
+    observe("signal", (result, calls) => {
+      expect(result.status).toBe(1);
+      expect(calls.at(-1)!.stage).toBe("stop");
+    });
+  });
+  it.each(["version", "inventory"])("refuses %s before any stack lifecycle call", scenario => {
+    observe(scenario, (result, calls) => {
+      expect(result.status).toBe(1);
+      expect(calls.some(({ stage }) => ["start", "stop", "test"].includes(stage))).toBe(false);
+      expect(result.stderr).toContain(scenario === "version" ? "requires Supabase CLI 2.98.2" : "bytes differ from committed candidate");
     });
   });
 });

@@ -1,7 +1,14 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { effectiveFunctionBody } from "../test/effectiveMigration";
-const migration = effectiveFunctionBody("commerce_fulfillment_cancel_order");
-const hardeningMigration = migration;
+
+const migration = readFileSync(
+  "supabase/migrations/20260605155000_fulfillment_cancel_release_reservations.sql",
+  "utf8",
+);
+const hardeningMigration = readFileSync(
+  "supabase/migrations/20260613221000_admin_oms_preview_hardening.sql",
+  "utf8",
+);
 
 describe("fulfillment cancel release boundary", () => {
   it("releases inventory reservations when pre-handoff fulfillment is cancelled", () => {
@@ -13,8 +20,8 @@ describe("fulfillment cancel release boundary", () => {
   });
 
   it("keeps after-handoff cancellation forbidden", () => {
-    expect(migration).toContain("v_fulfillment.status NOT IN ('created', 'packed', 'label_pending')");
-    expect(migration).toContain("commerce_fulfillment_cancel_after_label_forbidden");
+    expect(migration).toContain("handed_over");
+    expect(migration).toContain("commerce_fulfillment_cancel_after_handoff_forbidden");
   });
 
   it("tightens preview cancel to local pre-label statuses only", () => {

@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { allMigrations, effectiveFunctionBody } from "../test/effectiveMigration";
-const migration = ["commerce_guard_no_split_fulfillment_order", "commerce_guard_handoff_no_split"].map(effectiveFunctionBody).join("\n");
-const preflightMigration = ["commerce_fulfillment_preflight_split_shipment", "commerce_fulfillment_order_reservation_location_count"].map(effectiveFunctionBody).join("\n");
-const schema = allMigrations().map(({ content }) => content).join("\n");
-const port = readFileSync("server/adapters/supabase/orderPaidFulfillmentPort.ts", "utf8");
+
+const migration = read("supabase/migrations/20260605152000_fulfillment_no_split_guard.sql");
+const preflightMigration = read(
+  "supabase/migrations/20260701130001_fulfillment_split_shipment_preflight_guard.sql",
+);
+const port = read("server/adapters/supabase/orderPaidFulfillmentPort.ts");
 
 describe("fulfillment no-split boundary", () => {
   it("rejects handoff for fulfillment orders reserved across multiple locations", () => {
@@ -14,13 +16,10 @@ describe("fulfillment no-split boundary", () => {
       "unnest(l.inventory_reservation_ids)",
       "split_shipment_unsupported",
       "NEW.status = 'handed_over'",
+      "trg_commerce_guard_handoff_no_split",
     ]) {
       expect(migration).toContain(required);
     }
-  });
-
-  it("wires the handoff refusal to the actual fulfillment status trigger", () => {
-    expect(schema).toContain("CREATE TRIGGER trg_commerce_guard_handoff_no_split BEFORE UPDATE OF status ON public.commerce_fulfillment_orders FOR EACH ROW EXECUTE FUNCTION public.commerce_guard_handoff_no_split()");
   });
 
   it("detects the split at order granularity in the preflight, before any fulfillment row exists", () => {
@@ -50,3 +49,7 @@ describe("fulfillment no-split boundary", () => {
     expect(guardReturnAt).toBeLessThan(labelRpcAt);
   });
 });
+
+function read(path: string): string {
+  return readFileSync(join(process.cwd(), path), "utf8");
+}

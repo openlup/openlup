@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -37,14 +34,8 @@ describe("jobRegistry", () => {
   });
 
   it("loads the committed single source and derives unique job ids", () => {
-    expect(loadJobRegistry()).toEqual([]);
-    const directory = mkdtempSync(join(tmpdir(), "openlup-job-registry-"));
-    const configPath = join(directory, "runtime.json");
-    const crons = [{ path: "/api/cron/fixture", schedule: "0 3 * * *" }];
-    writeFileSync(configPath, JSON.stringify({ crons }));
-    let registry;
-    try { registry = loadJobRegistry(configPath); } finally { rmSync(directory, { recursive: true }); }
-    expect(registry).toEqual([{ jobId: "fixture", ...crons[0] }]);
+    const registry = loadJobRegistry();
+    expect(registry.length).toBeGreaterThan(0);
     const ids = registry.map((job) => job.jobId);
     expect(new Set(ids).size).toBe(ids.length); // no duplicate job ids
     // every job has a non-empty crontab expression

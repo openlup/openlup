@@ -1,19 +1,16 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
-import { managedFunction, managedTable } from "../test/managedSchema";
 
 const repoRoot = process.cwd();
-const migration = managedFunction("commerce_finalize_order_for_checkout");
+const migration = read("supabase/migrations/20260605133000_hidden_checkout_runtime.sql");
 
 describe("hidden checkout runtime boundary", () => {
-  it("keeps pet-aware order finalize isolated from payment and reservation writers", () => {
-    const orders = managedTable("commerce_orders");
-    expect(orders).toContain("pet_id uuid");
-    expect(orders).toContain("FOREIGN KEY (pet_id) REFERENCES public.pets(id) ON DELETE SET NULL");
+  it("adds pet-aware order finalize as additive hidden infrastructure only", () => {
     for (const required of [
-      "CREATE FUNCTION public.commerce_finalize_order_for_checkout",
-      "GRANT ALL ON FUNCTION public.commerce_finalize_order_for_checkout",
+      "ADD COLUMN IF NOT EXISTS pet_id uuid REFERENCES public.pets",
+      "CREATE OR REPLACE FUNCTION public.commerce_finalize_order_for_checkout",
+      "GRANT EXECUTE ON FUNCTION public.commerce_finalize_order_for_checkout",
       "TO service_role",
     ]) {
       expect(migration).toContain(required);
@@ -35,9 +32,8 @@ describe("hidden checkout runtime boundary", () => {
     const uiFiles = [
       ...readFiles(join(repoRoot, "src/pages")),
       ...readFiles(join(repoRoot, "src/components")),
-      join(repoRoot, "src/public-reference/App.tsx"),
-      join(repoRoot, "src/public-reference/main.tsx"),
-      join(repoRoot, "src/public-reference/subscription-main.tsx"),
+      join(repoRoot, "src/App.tsx"),
+      join(repoRoot, "src/main.tsx"),
     ]
       .filter((file) => /\.(ts|tsx)$/.test(file))
       .filter((file) => !/\.(test|spec)\./.test(file));

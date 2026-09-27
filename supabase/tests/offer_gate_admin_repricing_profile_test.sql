@@ -6,7 +6,6 @@
 -- readiness paths below remain deliberately unchanged in behaviour.
 
 BEGIN;
-\ir fixtures/settlement.inc
 SELECT plan(19);
 
 -- ---- Fixtures ---------------------------------------------------------------

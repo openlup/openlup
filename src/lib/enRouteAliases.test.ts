@@ -1,7 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { canonicalizeEnAliasPathname } from "./enRouteAliases";
-
-vi.mock("@/lib/siteRoutes", async () => await import("@/test/siteRoutesFixture"));
 
 describe("canonicalizeEnAliasPathname", () => {
   it("maps generated EN aliases to runtime canonical paths", () => {

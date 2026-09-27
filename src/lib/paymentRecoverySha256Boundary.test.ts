@@ -1,13 +1,11 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { managedFunction } from "../test/managedSchema";
-const recoveryFunctions = ["subscription_record_payment_recovery_request", "subscription_resume_from_dunning_with_cycle_order"];
-const migration = recoveryFunctions.map(managedFunction).join("\n");
-const forbiddenCleanupEffects = ["CREATE TABLE", "ALTER TABLE", "DROP TABLE", "stripe", "tpay", "fakturownia"];
-function historicalCleanupSql() {
-  return readFileSync("supabase/migrations/20260627100000_payment_recovery_drop_md5_fallback.sql", "utf8")
-    .split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n");
-}
+
+// Post-transition end state: the MD5 read fallback has been dropped, so the
+// recovery-token lookups are SHA-256 only. This guards the cleanup migration
+// that supersedes the dual-hash transition in 20260612210000.
+const migration = read("supabase/migrations/20260627100000_payment_recovery_drop_md5_fallback.sql");
 // Executable SQL only — strip full-line `--` comments so the header prose (which
 // quotes the old `token_hash IN (... md5(...))` form for context) can't trip the
 // "no MD5 lookup" assertions below.
@@ -16,21 +14,22 @@ const sql = migration
   .filter((line) => !line.trimStart().startsWith("--"))
   .join("\n");
 
+const SHA256_LOOKUP =
+  "WHERE token_hash = encode(sha256(convert_to(p_recovery_token, 'UTF8')), 'hex')";
+
 describe("payment recovery SHA-256 cleanup (drop MD5 fallback) boundary", () => {
-  it("isolates the two currently executed lookup RPCs", () => {
+  it("replaces only the two lookup RPCs (the SHA-256 write fn is untouched)", () => {
     for (const fn of [
       "subscription_record_payment_recovery_request",
       "subscription_resume_from_dunning_with_cycle_order",
     ]) {
-      expect(sql).toContain(`CREATE FUNCTION public.${fn}`);
+      expect(sql).toContain(`CREATE OR REPLACE FUNCTION public.${fn}`);
     }
-    expect(sql).not.toContain("CREATE FUNCTION public.subscription_handle_payment_failure_dunning");
+    expect(sql).not.toContain("CREATE OR REPLACE FUNCTION public.subscription_handle_payment_failure_dunning");
   });
 
   it("narrows BOTH lookups to a single SHA-256 hash (no dual-hash, no MD5)", () => {
-    for (const fn of recoveryFunctions) {
-      expect(managedFunction(fn)).toMatch(/WHERE (?:token\.)?token_hash = encode\(sha256\(convert_to\(p_recovery_token, 'UTF8'\)\), 'hex'\)/);
-    }
+    expect(sql.split(SHA256_LOOKUP).length - 1).toBe(2);
     expect(sql).not.toContain("token_hash IN (");
     expect(sql).not.toContain("md5(p_recovery_token))");
     expect(sql).not.toContain(":= md5(v_token)");
@@ -42,12 +41,15 @@ describe("payment recovery SHA-256 cleanup (drop MD5 fallback) boundary", () => 
   });
 
   it("keeps the recovery RPCs service-role-only", () => {
-    for (const fn of recoveryFunctions) {
-      const source = managedFunction(fn);
-      expect(source).toMatch(new RegExp(`REVOKE ALL ON FUNCTION public\\.${fn}[^;]+FROM PUBLIC;`));
-      expect(source).toMatch(new RegExp(`GRANT ALL ON FUNCTION public\\.${fn}[^;]+TO service_role;`));
-      expect(source).not.toMatch(/GRANT [^;]+TO (?:PUBLIC|anon|authenticated)/);
+    for (const fn of [
+      "subscription_record_payment_recovery_request",
+      "subscription_resume_from_dunning_with_cycle_order",
+    ]) {
+      expect(sql).toContain(`REVOKE ALL ON FUNCTION public.${fn}`);
+      expect(sql).toContain(`GRANT EXECUTE ON FUNCTION public.${fn}`);
     }
+    expect(sql).toContain("FROM PUBLIC, anon, authenticated");
+    expect(sql).toContain("TO service_role");
   });
 
   it("has no explicit transaction control and no schema or provider side effects", () => {
@@ -55,21 +57,12 @@ describe("payment recovery SHA-256 cleanup (drop MD5 fallback) boundary", () => 
     // (.squawk.toml assume_in_transaction = true), so no explicit BEGIN/COMMIT.
     expect(sql).not.toContain("BEGIN;");
     expect(sql).not.toContain("COMMIT;");
-    for (const forbidden of forbiddenCleanupEffects) {
+    for (const forbidden of ["CREATE TABLE", "ALTER TABLE", "DROP TABLE", "stripe", "tpay", "fakturownia"]) {
       expect(sql).not.toContain(forbidden);
     }
   });
-  it("retains the historical whole-cleanup proof that only lookup RPCs replace and the SHA-256 writer stays untouched", () => {
-    const cleanup = historicalCleanupSql();
-    for (const name of recoveryFunctions) expect(cleanup).toContain(`CREATE OR REPLACE FUNCTION public.${name}`);
-    expect(cleanup).not.toContain("CREATE OR REPLACE FUNCTION public.subscription_handle_payment_failure_dunning");
-  });
-
-  it("retains historical whole-cleanup transaction, schema and provider side-effect refusal", () => {
-    const cleanup = historicalCleanupSql();
-    expect(cleanup).not.toContain("BEGIN;");
-    expect(cleanup).not.toContain("COMMIT;");
-    for (const forbidden of forbiddenCleanupEffects) expect(cleanup).not.toContain(forbidden);
-  });
-
 });
+
+function read(path: string): string {
+  return readFileSync(join(process.cwd(), path), "utf8");
+}

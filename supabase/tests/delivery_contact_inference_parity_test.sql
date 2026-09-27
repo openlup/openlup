@@ -30,7 +30,6 @@
 -- Run via: the local pgTAP lane, with a schema reset first (stale state lies).
 
 BEGIN;
-\ir fixtures/inventory-location.inc
 SELECT plan(17);
 
 INSERT INTO public.admin_users (id, email, role)

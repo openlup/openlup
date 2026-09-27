@@ -1,18 +1,17 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { allMigrations, effectiveFunctionBody } from "../src/test/effectiveMigration.js";
-import { managedFunction, managedTable } from "../src/test/managedSchema.js";
-
-const shippedSql = allMigrations().map(({ content }) => content).join("\n");
-const routines = ["customer_support_issue_recovery", "subscription_rotate_payment_recovery_token", "customer_support_refuse_recovery_ledger_mutation"];
-const sql = [
-  ...["clients", "subscription_dunning_notifications", "customer_support_recovery_commands", "customer_support_recovery_audit_events"].map(managedTable),
-  ...routines.map(managedFunction),
-  ...allMigrations().flatMap(({ content }) => [...content.matchAll(/^CREATE TRIGGER customer_support_recovery_[^;]+;/gm)].map(([statement]) => statement)),
-].join("\n");
+const FILE = "supabase/migrations/20260815130100_customer_recovery_console.sql";
+const sql = readFileSync(FILE, "utf8");
 const statements = sql.replace(/^\s*--.*$/gm, "");
 
-function routine(name: string): string { return effectiveFunctionBody(name); }
+function routine(name: string): string {
+  const start = statements.indexOf(`CREATE FUNCTION public.${name}`);
+  if (start < 0) throw new Error(`missing routine ${name}`);
+  const end = statements.indexOf("\n$$;", start);
+  if (end < 0) throw new Error(`unterminated routine ${name}`);
+  return statements.slice(start, end + 4);
+}
 
 describe("managed customer recovery console forward", () => {
   it("admits waitlist as an earlier stage of the same managed subject", () => {
@@ -20,11 +19,8 @@ describe("managed customer recovery console forward", () => {
   });
 
   it("matches the managed adapter's named eight-argument RPC", () => {
-    expect(statements).toMatch(/CREATE FUNCTION public\.customer_support_issue_recovery\(\s*p_operator_id uuid,\s*p_subject_id uuid,\s*p_case_id uuid,\s*p_idempotency_key text,\s*p_payload_fingerprint text,\s*p_token_hash text,\s*p_expires_at (?:timestamptz|timestamp with time zone),\s*p_recovery_path text/);
-    const journeyDefinitions = [...shippedSql.matchAll(
-      /^CREATE\s+(?:OR REPLACE\s+)?FUNCTION\s+public\.(customer_support_journey\w*)\s*\(/gim,
-    )].map((match) => match[1]);
-    expect(journeyDefinitions).toEqual([]);
+    expect(statements).toMatch(/CREATE FUNCTION public\.customer_support_issue_recovery\(\s*p_operator_id uuid,\s*p_subject_id uuid,\s*p_case_id uuid,\s*p_idempotency_key text,\s*p_payload_fingerprint text,\s*p_token_hash text,\s*p_expires_at timestamptz,\s*p_recovery_path text/);
+    expect(statements).not.toContain("CREATE FUNCTION public.customer_support_journey");
   });
 
   it("authorizes before reading customer or dunning state", () => {
@@ -88,12 +84,7 @@ describe("managed customer recovery console forward", () => {
     expect(action).toContain("v_source_notice.template_slug");
     expect(action).not.toMatch(/UPDATE public\.(?:subscriptions|subscription_cycles)/);
     expect(action.match(/INSERT INTO public\.subscription_dunning_notifications/g)).toHaveLength(1);
-    // The pre-existing token table is the only admitted token store; inspect
-    // every shipped table definition so a second store cannot evade this test.
-    const tokenTables = [...shippedSql.matchAll(
-      /^CREATE\s+TABLE\s+(?:IF NOT EXISTS\s+)?public\.((?:subscription|customer)\w*recovery_tokens)\s*\(/gim,
-    )].map((match) => match[1]);
-    expect([...new Set(tokenTables)].sort()).toEqual(["subscription_payment_recovery_tokens"]);
+    expect(statements).not.toMatch(/CREATE TABLE public\.(?:subscription|customer).*recovery_tokens/);
   });
 
   it("keeps command and audit evidence physically append-only", () => {
@@ -115,15 +106,11 @@ describe("managed customer recovery console forward", () => {
     expect(statements).not.toMatch(/RAISE (?:LOG|NOTICE|WARNING)/);
   });
 
-  it("declares service-role grants and fixed function search paths (text witness only)", () => {
-    const statements = [
-      ...["customer_support_recovery_commands", "customer_support_recovery_audit_events"].map(managedTable),
-      ...routines.map(managedFunction),
-    ].join("\n");
+  it("grants only service_role and fixes both function search paths", () => {
     expect(statements).not.toMatch(/GRANT .* TO (?:PUBLIC|anon|authenticated)/);
-    expect(statements).toMatch(/GRANT SELECT,\s*INSERT ON TABLE[\s\S]+TO service_role/);
-    expect(statements).toMatch(/GRANT (?:EXECUTE|ALL) ON FUNCTION public\.customer_support_issue_recovery[\s\S]+TO service_role/);
-    expect([...statements.matchAll(/SET search_path (?:= pg_catalog|TO 'pg_catalog')/g)]).toHaveLength(3);
+    expect(statements).toMatch(/GRANT SELECT, INSERT ON TABLE[\s\S]+TO service_role/);
+    expect(statements).toMatch(/GRANT EXECUTE ON FUNCTION public\.customer_support_issue_recovery[\s\S]+TO service_role/);
+    expect([...statements.matchAll(/SET search_path = pg_catalog/g)]).toHaveLength(3);
     expect(statements).not.toMatch(/SECURITY DEFINER|CREATE POLICY/);
   });
 });

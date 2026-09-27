@@ -15,32 +15,6 @@
 BEGIN;
 SELECT no_plan();
 
--- Keep installation obligations separate from transaction-scoped behaviour.
-SELECT ok(EXISTS (
-    SELECT 1 FROM public.outbox_dormant_event_types
-     WHERE event_type = 'commerce.subscription_payment.requested'),
-  'bare installation: claim v3 has an explicit DB dormant registry seed');
-SELECT ok(EXISTS (
-    SELECT 1 FROM public.platform_job_controls
-     WHERE job_name = 'outbox-prune'
-       AND enabled = false
-       AND active_driver = 'vercel_cron'),
-  'bare installation: outbox-prune control row is seeded disabled with the vercel_cron driver');
-SELECT ok(EXISTS (
-    SELECT 1 FROM public.platform_job_controls
-     WHERE job_name = 'outbox-dispatch'
-       AND enabled = true
-       AND active_driver = 'vercel_cron'),
-  'bare installation: outbox-dispatch control row seeded enabled with the vercel_cron driver');
-
--- Configure dormant routing and scheduler controls within this transaction.
-INSERT INTO public.outbox_dormant_event_types (event_type, owner, reason)
-VALUES ('commerce.subscription_payment.requested', 'test', 'synthetic dormant handler')
-ON CONFLICT (event_type) DO NOTHING;
-INSERT INTO public.platform_job_controls (job_name, enabled, active_driver) VALUES
-  ('outbox-prune', false, 'vercel_cron'), ('outbox-dispatch', true, 'vercel_cron')
-ON CONFLICT (job_name) DO NOTHING;
-
 -- ===========================================================================
 -- claim: allowlist validation
 -- ===========================================================================
@@ -166,7 +140,10 @@ SELECT throws_ok(
   $$ SELECT * FROM public.outbox_claim_batch_v3(ARRAY[]::text[]) $$,
   '22023', 'outbox_claim_allowlist_required', 'claim v3 with empty allowlist raises 22023');
 
-
+SELECT ok(EXISTS (
+    SELECT 1 FROM public.outbox_dormant_event_types
+     WHERE event_type = 'commerce.subscription_payment.requested'),
+  'claim v3 has an explicit DB dormant registry seed');
 
 INSERT INTO public.outbox_events (id, created_at, aggregate_type, aggregate_id, event_type, idempotency_key, payload) VALUES
   ('a2000000-0000-0000-0000-000000000001', now() - interval '2 minutes', 'subscription', 'bb200000-0000-0000-0000-000000000001', 'commerce.subscription_payment.requested', 'v3-dormant-approved-1', '{}'::jsonb),
@@ -709,7 +686,12 @@ SELECT ok((SELECT NOT EXISTS (
      WHERE id = '93000000-0000-0000-0000-000000000004'
        AND metadata ? 'retentionCompactedAt')),
   'outbox_prune survives and skips malformed discardedAt timestamps');
-
+SELECT ok(EXISTS (
+    SELECT 1 FROM public.platform_job_controls
+     WHERE job_name = 'outbox-prune'
+       AND enabled = false
+       AND active_driver = 'vercel_cron'),
+  'outbox-prune control row is seeded disabled with the vercel_cron driver');
 
 -- ===========================================================================
 -- grants: anon + authenticated must lack EXECUTE on all outbox functions
@@ -753,7 +735,12 @@ SELECT ok(
 -- The activation migration (20260710120000_outbox_dispatch_enable) flips the
 -- seed enabled=true so production go-live needs no manual toggle; the env var
 -- COMMERCE_OUTBOX_DISPATCH_ENABLED is the only opt-out (kill-switch).
-
+SELECT ok(EXISTS (
+    SELECT 1 FROM public.platform_job_controls
+     WHERE job_name = 'outbox-dispatch'
+       AND enabled = true
+       AND active_driver = 'vercel_cron'),
+  'outbox-dispatch control row seeded enabled (activation migration) with the vercel_cron driver');
 
 -- Kill-switch path: a disabled row skips as job_disabled (no lease yet to mask it).
 UPDATE public.platform_job_controls SET enabled = false

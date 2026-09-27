@@ -6,7 +6,6 @@
 -- is incorrectly admitted to the new-dispatch candidate set.
 
 BEGIN;
-\ir fixtures/fulfillment-provider.inc
 SELECT plan(43);
 
 INSERT INTO public.admin_users (id, email, role)

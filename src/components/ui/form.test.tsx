@@ -1,4 +1,3 @@
-import { createI18nFixture } from "@/test/i18nFixture";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
@@ -15,12 +14,6 @@ import {
 } from "./form";
 import { Input } from "./input";
 
-const I18nFixture = createI18nFixture({
-  "forms": {
-    "fields.email.required": "Podaj adres email"
-  }
-});
-
 const schema = z.object({
   email: z.string().trim().min(1, "forms:fields.email.required"),
 });
@@ -29,7 +22,7 @@ type FormValues = z.infer<typeof schema>;
 
 describe("Form infrastructure", () => {
   it("renders required labels and translates Zod/RHF message keys", async () => {
-    render(<EmailDemo />, { wrapper: I18nFixture });
+    render(<EmailDemo />);
 
     const input = screen.getByLabelText(/Email/);
     expect(screen.getByText("*")).toHaveAttribute("aria-hidden", "true");
@@ -43,7 +36,7 @@ describe("Form infrastructure", () => {
   });
 
   it("keeps human-readable messages unchanged when no translation key exists", async () => {
-    render(<EmailDemo message="Already readable" />, { wrapper: I18nFixture });
+    render(<EmailDemo message="Already readable" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 

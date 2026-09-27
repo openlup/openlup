@@ -6,6 +6,9 @@ export const PUBLICATION_CATALOG_PATH = "config/openlup-publication-catalog.json
 export const PUBLIC_REFERENCE_BUILD_COMMAND = "npm --workspace @openlup/core run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender";
 export const PUBLIC_TEST_SCOPE = ["api", "mcp", "scripts", "server", "src", "tests"] as const;
 export const PUBLIC_TEST_COMMAND = "node scripts/run-vitest.mjs run";
+// Preserve the protected-main floor while the complete diagnostic jobs expose debt.
+export const PUBLIC_REQUIRED_TEST_SCOPE = ["scripts/agent-review-session.test.ts", "scripts/agent-review-controller.test.ts", "scripts/agent-review-gate.test.ts", "scripts/agent-review-hosted.test.ts", "scripts/oss-consume-engine.test.ts", "scripts/oss-consume-github-transport.test.ts", "scripts/packages", "packages/core", "server/_lib", "server/adapters/managed", "server/adapters/postgres", "server/bff/admin/commerce/catalog", "server/bff/commerce", "server/domains/accounting", "server/domains/channels", "server/domains/commerce", "server/domains/communications", "server/domains/fulfillment", "server/domains/payment", "server/domains/platform", "server/domains/support", "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts", "server/shared", "src/checkout/adapters", "src/checkout/machine", "src/components/admin", "src/domains/customers", "src/domains/payment", "src/domains/platform", "src/domains/shipping", "src/domains/subscription", "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts", "src/pages/account/v2/sections/PaymentCardSetup.test.tsx", "src/public-reference", "tests/stripe"] as const;
+export const PUBLIC_REQUIRED_TEST_COMMAND = `node scripts/run-vitest.mjs run ${PUBLIC_REQUIRED_TEST_SCOPE.join(" ")}`;
 export type ContractOwner = { id: string; owners: [string] };
 export type PublicPolicyRegistry = { schemaVersion: 1; activePaths: string[]; contracts: ContractOwner[] };
 export type PublicGuardViability = { id: string; status: "published"; path: string; command: string; publicInputs: string[]; publicDocs: string[]; publicCiEntrypoint: string; seededFalsifier: string } | { id: string; status: "withheld"; reason: string; withheldPaths: string[]; withheldCommands: string[] };
@@ -52,6 +55,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
   publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),
   publicCommand("test", PUBLIC_TEST_COMMAND),
+  publicCommand("test:required", PUBLIC_REQUIRED_TEST_COMMAND),
 ];
 export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] = [
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },

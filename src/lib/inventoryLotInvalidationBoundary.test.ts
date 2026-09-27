@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { managedFunction } from "../test/managedSchema";
-const functions = ["inventory_guard_consumable_lot", "inventory_invalidate_lot"];
-const migration = functions.map(managedFunction).join("\n");
+
+const migration = read("supabase/migrations/20260605153000_inventory_lot_invalidation_guard.sql");
+const revokeMigration = read(
+  "supabase/migrations/20260605160000_inventory_lot_invalidation_revoke_execute.sql",
+);
 
 describe("inventory lot invalidation boundary", () => {
   it("releases active reservations for recalled/expired lots and blocks stale consumption", () => {
@@ -19,11 +23,18 @@ describe("inventory lot invalidation boundary", () => {
   });
 
   it("keeps lot invalidation functions service-role-only", () => {
-    for (const fn of functions) {
-      const sql = managedFunction(fn);
-      expect(sql).toMatch(new RegExp(`REVOKE ALL ON FUNCTION public\\.${fn}[^;]+FROM PUBLIC;`));
-      expect(sql).not.toMatch(/GRANT [^;]+TO (?:PUBLIC|anon|authenticated)/);
+    for (const required of [
+      "REVOKE ALL ON FUNCTION public.inventory_guard_consumable_lot()",
+      "REVOKE ALL ON FUNCTION public.inventory_invalidate_lot(text, uuid, text, text, jsonb)",
+      "FROM PUBLIC, anon, authenticated",
+      "GRANT EXECUTE ON FUNCTION public.inventory_invalidate_lot(text, uuid, text, text, jsonb)",
+      "TO service_role",
+    ]) {
+      expect(revokeMigration).toContain(required);
     }
-    expect(managedFunction("inventory_invalidate_lot")).toMatch(/GRANT ALL ON FUNCTION public\.inventory_invalidate_lot[^;]+TO service_role;/);
   });
 });
+
+function read(path: string): string {
+  return readFileSync(join(process.cwd(), path), "utf8");
+}

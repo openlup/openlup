@@ -31,14 +31,12 @@ describe("vite manualChunks init-order guard", () => {
     ).toBe(false);
   });
 
-  it("keeps discovery enabled over the public HTML entry even when LOCAL_BFF is set", async () => {
+  it("keeps client dependency discovery enabled when LOCAL_BFF serves the lazy BFF", async () => {
     vi.stubEnv("LOCAL_BFF", "1");
     try {
       const config = await resolveConfig({ configFile: join(process.cwd(), "vite.config.ts") }, "serve");
       expect(config.optimizeDeps.noDiscovery).toBe(false);
-      // Vite 8 scans the normalized build input when no explicit discovery glob is set.
-      expect(config.optimizeDeps.entries).toBeUndefined();
-      expect(config.build.rolldownOptions.input).toBe(join(process.cwd(), "index.html"));
+      expect(config.optimizeDeps.entries).toEqual(["index.html"]);
     } finally {
       vi.unstubAllEnvs();
     }

@@ -27,14 +27,15 @@ describe("Vercel function root TypeScript contract", () => {
       const configured = probeDiagnostics(probePath, parsed.options);
       expect(configured).toEqual([]);
 
-      const importedReceiverRoot = "server/infra/stripe/stripeApiClient.ts";
       const rehearsalRoots = [
         "server/adapters/postgres/checkoutRecoveryOperations.ts",
-        importedReceiverRoot,
+        "server/infra/stripe/stripeApiClient.ts",
         "server/adapters/stripe/stripeFailureEvidence.ts",
         "api/_cron/unsubscribeFunctionsBaseUrl.ts",
         "server/domains/platform/invoicePositionSnapshot.ts",
         "server/adapters/supabase/adminPromotionCodes.ts",
+        "server/adapters/supabase/support/customerSupportJourney.ts",
+        "server/adapters/supabase/support/customerSupportClients.ts",
       ].map((relativePath) => join(repositoryRoot, relativePath));
       const rehearsalDiagnostics = diagnosticsFor(
         rehearsalRoots,
@@ -48,13 +49,10 @@ describe("Vercel function root TypeScript contract", () => {
       });
       expect(withoutExplicitLibrary.some((message) => message.includes("Property 'at'"))).toBe(true);
       expect(withoutExplicitLibrary.some((message) => message.includes("Property 'hasOwn'"))).toBe(true);
-      const negativeDiagnostics = diagnosticsFor(rehearsalRoots, {
+      expect(diagnosticsFor(rehearsalRoots, {
         ...parsed.options,
         lib: undefined,
-      }).filter(({ code }) => code === 2550);
-      expect(negativeDiagnostics.map(({ file }) => file).sort()).toEqual(
-        rehearsalRoots.filter((file) => file !== join(repositoryRoot, importedReceiverRoot)).sort(),
-      );
+      }).filter(({ code }) => code === 2550)).toHaveLength(8);
       expect(parsed.options.lib?.map((file) => basename(file)).sort()).toEqual([
         "lib.dom.d.ts",
         "lib.es2022.d.ts",
@@ -85,8 +83,8 @@ function diagnosticsFor(
       moduleResolution: options.moduleResolution ?? ts.ModuleResolutionKind.NodeNext,
       // The API typecheck owns dependency resolution. This test compiles only
       // the observed files so it remains cheap inside the full Vitest shards.
-      // Imported receiver types belong to the real API typecheck. Here each
-      // direct API user is named explicitly, and the probe covers both APIs.
+      // One of nine hosted diagnostics gets its receiver type from an import,
+      // so noResolve exposes eight direct failures; the probe covers both APIs.
       noResolve: true,
       noEmit: true,
       target: options.target ?? ts.ScriptTarget.ES2021,

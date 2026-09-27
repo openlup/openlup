@@ -26,7 +26,6 @@
 -- Run via: npm run test:db:local
 
 BEGIN;
-\ir fixtures/settlement.inc
 SELECT plan(22);
 
 -- The deployment's own code, captured once. It has to be captured rather than
@@ -90,9 +89,6 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE AS $fn$
       '{status}', '"pending_payment"'),
     '{paymentStatus}', '"pending"');
 $fn$;
-
--- The role-taking writer case uses these test-only snapshot builders.
-GRANT EXECUTE ON FUNCTION pg_temp.checkout_snapshot(text), pg_temp.renewal_snapshot(text) TO service_role;
 
 -- The message invariant 1 must produce, composed the way the body composes it:
 -- the distinct set, sorted under the C collation the migration pins for exactly

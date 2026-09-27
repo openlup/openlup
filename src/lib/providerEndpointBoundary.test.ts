@@ -39,10 +39,34 @@ const ALLOWED_PROVIDER_ENDPOINT_FILES = new Map<string, {
       reason: "customer auth client composition root",
     },
   ],
-
-
-
-
+  [
+    "api/_cron/abandonedCartHandlerWiring.ts",
+    {
+      patterns: ["unsubscribeFunctionsUrlEnv"],
+      reason: "legacy marketing unsubscribe URL compatibility wiring",
+    },
+  ],
+  [
+    "api/_cron/backInStockHandlerWiring.ts",
+    {
+      patterns: ["unsubscribeFunctionsUrlEnv"],
+      reason: "legacy marketing unsubscribe URL compatibility wiring",
+    },
+  ],
+  [
+    "api/_cron/reorderReminderHandlerWiring.ts",
+    {
+      patterns: ["unsubscribeFunctionsUrlEnv"],
+      reason: "legacy marketing unsubscribe URL compatibility wiring",
+    },
+  ],
+  [
+    "api/_cron/outboxExtraHandlerManifest.ts",
+    {
+      patterns: ["unsubscribeFunctionsUrlEnv"],
+      reason: "legacy marketing unsubscribe URL compatibility wiring",
+    },
+  ],
   [
     "api/_cron/outboxMarketingReadiness.ts",
     {
@@ -50,7 +74,13 @@ const ALLOWED_PROVIDER_ENDPOINT_FILES = new Map<string, {
       reason: "legacy marketing unsubscribe URL compatibility wiring",
     },
   ],
-
+  [
+    "api/_cron/reviewRequestOutboxHandlers.ts",
+    {
+      patterns: ["unsubscribeFunctionsUrlEnv"],
+      reason: "legacy marketing unsubscribe URL compatibility wiring",
+    },
+  ],
   [
     "api/_cron/unsubscribeFunctionsBaseUrl.ts",
     {

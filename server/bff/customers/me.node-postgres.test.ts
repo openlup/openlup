@@ -1,11 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-// This suite exercises the handler behind an explicitly admitting adopter policy.
-// The public composition's default refusal is covered by its own policy suite.
-vi.mock("#deployment-route-policy", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("#deployment-route-policy")>()),
-  enforceDeploymentRoutePolicy: () => true,
-}));
-
 
 const FLAG = "COMMERCE_V2_W12_CUSTOMER_AUTH_UI";
 const ORIGINAL_FLAG = process.env[FLAG];

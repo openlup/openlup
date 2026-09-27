@@ -105,11 +105,11 @@ local finalization. A unit result does not prove actual mailbox delivery.
 
 ## Verification and next links
 
-The [root public test command](../../../package.json) collects both the shared
-contracts under `src/domains/accounting` and the jobs and handlers under
-`server/domains/accounting`. Run that command for the full root suite, or name
-the affected test files while iterating. These links identify tests, not current
-passing results:
+The [root public test command](../../../package.json) selects the whole
+`server/domains/accounting` directory. The shared accounting tests are not
+selected by that directory selector; inspect their imports and choose an explicit
+compatible command when changing their contracts. These links identify tests,
+not current passing results:
 
 - [invoiceContracts.test.ts](invoiceContracts.test.ts)
 - [ports.test.ts](ports.test.ts)

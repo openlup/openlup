@@ -8,7 +8,6 @@ import {
 } from "../../_lib/observability/runtimeProvenance.ts";
 import { loadSiteRouteManifest } from "../../../scripts/site-routes.mjs";
 import { createSubscriptionProfile, SUBSCRIPTION_CSP, SUBSCRIPTION_PAGES } from "./subscriptionProfile.js";
-import { bootstrapAmbientSettlementProfile } from "../settlementProfileBootstrap.js";
 
 const SECURITY_HEADERS = {
   "content-security-policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'",
@@ -104,7 +103,6 @@ export function createPublicReferenceServer(options: PublicReferenceServerOption
   const current = runtime(options);
   const profileName = current.env.OPENLUP_REFERENCE_PROFILE;
   if (profileName && profileName !== "subscription") throw new Error("Unknown public reference profile");
-  bootstrapAmbientSettlementProfile(current.env);
   const subscription = profileName === "subscription" ? createSubscriptionProfile(current.env) : null;
   return createServer((request, res) => {
     const pathname = requestPath(request);

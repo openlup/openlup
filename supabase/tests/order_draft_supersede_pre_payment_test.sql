@@ -21,7 +21,6 @@
 -- Run via: supabase test db
 
 BEGIN;
-\ir fixtures/settlement.inc
 SELECT plan(28);
 
 INSERT INTO public.clients (id, email)

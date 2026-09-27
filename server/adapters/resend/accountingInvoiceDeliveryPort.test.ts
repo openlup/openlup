@@ -2,15 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { EmailTransport } from "../../infra/email/emailTransport.js";
 import { createAccountingInvoiceDeliveryPort } from "./accountingInvoiceDeliveryPort.js";
 
-// Exercise explicitly configured visual chrome without relying on deployment defaults.
-vi.mock("../../../src/lib/brand/appBrand.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../../../src/lib/brand/appBrand.js")>();
-  return { ...original, appEmailBrandForOrigin: (origin: string) => {
-    const brand = original.appEmailBrandForOrigin(origin);
-    return { ...brand, theme: { ...brand.theme, logoImageUrl: `${origin}/email-logo-wordmark.png` } };
-  } };
-});
-
 describe("accounting invoice delivery email adapter", () => {
   it("records required processing evidence before sending the PDF with a stable key", async () => {
     const calls: string[] = [];

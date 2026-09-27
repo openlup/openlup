@@ -1,11 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-// This suite exercises the handler behind an explicitly admitting adopter policy.
-// The public composition's default refusal is covered by its own policy suite.
-vi.mock("#deployment-route-policy", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("#deployment-route-policy")>()),
-  enforceDeploymentRoutePolicy: () => true,
-}));
-
 import handler from "./shipments-overview.js";
 
 vi.mock("./shared.js", () => ({

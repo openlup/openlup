@@ -8,12 +8,6 @@ import type { StorefrontItem } from "@/domains/catalog/storefrontItemModel";
 
 import ProductDetailsTabs from "./ProductDetailsTabs";
 
-// The published example intentionally has no adopter product catalogue.
-// These panel tests supply their own detail at the documented snapshot seam.
-vi.mock("#storefront-ssg-details", () => ({
-  storefrontSsgDetails: [{ locale: "pl", productSlug: "lamb", item: {}, faq: [] }],
-}));
-
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));

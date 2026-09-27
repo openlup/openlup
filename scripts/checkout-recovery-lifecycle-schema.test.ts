@@ -1,14 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { managedFunction } from "../src/test/managedSchema.js";
 
 const FILE = "db/platform/migrations/20260818120000_checkout_recovery_lifecycle.sql";
 const OPERATOR_AUTHORIZE_FILE =
   "db/platform/migrations/20260824090000_checkout_recovery_operator_email_authorize.sql";
-
+const MANAGED_RECOVERY_FILE = "supabase/migrations/20260721200000_expired_checkout_recovery.sql";
 const sql = readFileSync(FILE, "utf8");
 const operatorAuthorizeSql = readFileSync(OPERATOR_AUTHORIZE_FILE, "utf8");
-const managedRecoverySql = managedFunction("commerce_prepare_expired_checkout_recovery");
+const managedRecoverySql = readFileSync(MANAGED_RECOVERY_FILE, "utf8");
 
 describe("checkout recovery lifecycle public forward", () => {
   it("adds no privileged execution path", () => {
@@ -22,7 +21,7 @@ describe("checkout recovery lifecycle public forward", () => {
     expect(sql).not.toContain("commerce_open_settlement_intent");
     expect(sql).not.toContain("commerce_record_settlement");
     expect(managedRecoverySql).toContain(
-      "CREATE FUNCTION public.commerce_prepare_expired_checkout_recovery",
+      "CREATE OR REPLACE FUNCTION public.commerce_prepare_expired_checkout_recovery",
     );
   });
 

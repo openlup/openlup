@@ -12,7 +12,6 @@
 -- Run via: supabase test db
 
 BEGIN;
-\ir fixtures/settlement.inc
 SELECT plan(10);
 
 -- ---- Fixture --------------------------------------------------------------

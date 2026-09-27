@@ -47,7 +47,7 @@ handling.
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 `packageManager` field of `package.json`), and the committed npm lockfile. From
 the root of a materialized development-preview tree, these are the commands the
-seven jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
+eight jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
 run; each comment names its job:
 
 ```bash
@@ -61,12 +61,15 @@ npm run oss:published-tree -- --typecheck
 npm run build
 OPENLUP_REFERENCE_PROFILE=subscription OPENLUP_BUILD_OUT_DIR=dist-subscription \
   OPENLUP_SSR_OUT_DIR=dist-subscription-ssr npm run build:public-reference
-# test
-npm test
+# test: required coverage inherited from main
+npm run test:required
 npx vitest run server/runtime/public-reference \
   src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
 npm --workspace ./packages/core run ci
 npx vitest run scripts/oss-published-tree-check.test.ts
+npx vitest run scripts/public-ci-neutrality.test.ts
+# test-full: raw complete Vitest diagnostics
+npm test
 # self-check (needs no install)
 npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
@@ -96,10 +99,10 @@ The complete projected root command inventory is `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `lint`, `oss:published-tree`,
-`packages:check`, and `test`.
+`packages:check`, `test`, and `test:required`.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
-build, complete root tests, DCO check, and publication checks from this inventory.
+build, required root coverage, complete diagnostics, DCO check, and publication checks from this inventory.
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
 
@@ -111,9 +114,12 @@ the subpaths its `exports` declare, and domain code under `src/domains` and
 runtime or route code. Published Tree CI runs it in the `typecheck` job.
 
 The projected `npm test` command owns the complete root Vitest test
-scope, and [Published Tree CI](.github/workflows/published-tree-ci.yml) invokes
-that command without restating the directories. Run `npm test` for the public
-suite and narrower paths from that scope while iterating. The root Vitest
+scope. The independent `test-full` job invokes that command without restating
+the directories and preserves its raw failure result. The required `test` job
+uses `npm run test:required`, which retains every former main selector in order,
+then runs the existing subscription, core and materialized contract checks plus
+the neutrality CLI falsifiers. Run `npm test` for the complete public diagnostics
+and narrower paths while iterating. Required success is not complete-suite success. The root Vitest
 configuration does not collect the standalone `packages/core` test suite with the root configuration. From the repository root, run
 `npm --workspace @openlup/core run ci` for that package's separate checks
 (equivalently, use its local command from the package directory). Published Tree CI
@@ -160,10 +166,12 @@ The `pgtap` job uses Supabase CLI **2.98.2** and a fresh local database stack,
 replays the shipped managed baseline and every published forward in filename
 order, with its public prerequisite SQL, then runs
 all `supabase/tests`. It stops only its own project in a `finally` block. It
-never links a hosted database or installs application seed data. Transaction-scoped
-test fixtures declare their synthetic providers, inventory and controls explicitly.
-The wrapper supplies their settlement parameters from the public example profile;
-it does not load ambient deployment configuration. Run
+never links a hosted database or installs application seed data. It copies the
+shipped tests unchanged, without settlement parameters or generated fixtures.
+Replay uses a disposable diagnostic PostgreSQL owner with closed default grants;
+assertion helper grants cover only pgTAP extension members. This profile is not
+production installer authority. The pinned image workaround disables denial-hint
+formatting only; role identities and permission refusals remain. Run
 `node scripts/public-ci-pgtap.mjs` with Docker and the pinned CLI locally.
 
 The self-check job runs the existing UI neutrality gate and a tree-wide ratchet
@@ -177,10 +185,16 @@ previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
 
-The pull request introducing the widened jobs records the measured known-red
-files, reasons and their triage owner. It does not suppress tests or change
-failure exit codes. Making these checks required is the maintainer's ruleset
-decision; code changes do not change those settings.
+The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
+measured failing or aborted files, reasons, incomplete obligations and triage
+ownership. `test-full` and `pgtap` expose raw failures in separate diagnostic
+jobs. They do not suppress tests or normalize exits. Installation, database
+start/replay/cleanup and unexplained new failures block delivery; naming those
+failures does not waive broken CI. The six existing required contexts retain
+their coverage, with blocking lint and neutrality. Promoting diagnostic jobs to
+required checks is the maintainer's ruleset decision; this contribution changes
+no repository settings. Release workflows still check those six contexts, so a
+red diagnostic result is not automatically a release refusal.
 
 Documentation falsifiers are imported by the existing materialized
 command-contract test entrypoint. Run

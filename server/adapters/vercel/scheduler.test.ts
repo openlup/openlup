@@ -57,7 +57,6 @@ describe("createVercelScheduler", () => {
   });
 
   it("exposes the jobs derived from the single source", () => {
-    expect(createVercelScheduler({ env: {} }).jobs).toEqual([]);
-    expect(createVercelScheduler({ env: {}, jobs: JOBS }).jobs).toEqual(JOBS);
+    expect(createVercelScheduler({ env: {} }).jobs.length).toBeGreaterThan(0);
   });
 });

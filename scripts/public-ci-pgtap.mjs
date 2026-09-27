@@ -76,26 +76,6 @@ async function main() {
   mkdirSync(join(directory, "supabase"));
   writeFileSync(join(directory, "supabase/config.toml"), config);
   cpSync(join(root, "supabase/tests"), join(directory, "supabase/tests"), { recursive: true });
-  // Resolve the public settlement defaults with the same pure reader as the
-  // application, without ambient environment. Fixture parameters are validated
-  // before becoming psql literals and apply only inside each test transaction.
-  const profile = JSON.parse(must(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
-    "import { readSettlementProfile } from './src/lib/currency/settlementProfile.ts'; console.log(JSON.stringify(readSettlementProfile({})))",
-  ]));
-  if (!/^[A-Z]{3}$/.test(profile.defaultCurrency) || !/^[A-Z]{2}$/.test(profile.regionCode) || !Number.isSafeInteger(profile.minimumProductPayableMinor) || profile.minimumProductPayableMinor < 1) throw new Error("invalid test settlement profile");
-  const baseline = migrations[0].contents;
-  // The stock-authority function declares its provider/location dependency.
-  // Read that dependency from the shipped body instead of adding deployment seeds.
-  const stockBody = baseline.slice(baseline.indexOf("CREATE FUNCTION public.fulfillment_provider_upsert_stock_current("));
-  const provider = stockBody.match(/IF btrim\(p_provider_kind\) = '([a-z][a-z0-9_-]*)'/)?.[1];
-  const location = stockBody.match(/WHERE code = '([a-z][a-z0-9_-]*)'/)?.[1];
-  if (!provider || !location) throw new Error("stock authority fixture dependencies absent from baseline");
-  const parameters = `\\set fixture_payable_floor '${profile.minimumProductPayableMinor}'\n\\set fixture_currency '${profile.defaultCurrency}'\n\\set fixture_region '${profile.regionCode}'\n\\set fixture_provider '${provider}'\n\\set fixture_stock_location '${location}'\n`;
-  for (const file of readdirSync(join(directory, "supabase/tests"))) {
-    if (!file.endsWith(".sql")) continue;
-    const target = join(directory, "supabase/tests", file);
-    writeFileSync(target, parameters + readFileSync(target, "utf8"));
-  }
   // Only the local database is needed. CLI still owns its initialization and test transport.
   const excluded = "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor";
   let cleanupFailed = false;

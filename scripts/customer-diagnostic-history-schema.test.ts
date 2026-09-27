@@ -2,17 +2,15 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
-import { allMigrations, effectiveFunctionBody } from "../src/test/effectiveMigration.js";
-import { managedTable } from "../src/test/managedSchema.js";
 
-function managed() { return readFileSync("supabase/migrations/20260913120000_customer_diagnostic_coverage_v2.sql", "utf8"); }
+const managed = readFileSync("supabase/migrations/20260913120000_customer_diagnostic_coverage_v2.sql", "utf8");
 const portable = readFileSync("db/platform/migrations/20260913120000_customer_diagnostic_coverage_v2.sql", "utf8");
-function overviewManaged() { return readFileSync("supabase/migrations/20260913125000_customer_diagnostic_overview_v2.sql", "utf8"); }
+const overviewManaged = readFileSync("supabase/migrations/20260913125000_customer_diagnostic_overview_v2.sql", "utf8");
 const overviewPortable = readFileSync("db/platform/migrations/20260913125000_customer_diagnostic_overview_v2.sql", "utf8");
-function identityManaged() { return readFileSync("supabase/migrations/20260914120000_customer_diagnostic_ingress_identity.sql", "utf8"); }
+const identityManaged = readFileSync("supabase/migrations/20260914120000_customer_diagnostic_ingress_identity.sql", "utf8");
 const identityPortable = readFileSync("db/platform/migrations/20260914120000_customer_diagnostic_ingress_identity.sql", "utf8");
-function legacy() { return readFileSync("supabase/migrations/20260912190000_customer_diagnostic_history.sql", "utf8"); }
-function pruneManaged() { return readFileSync("supabase/migrations/20260914130000_customer_diagnostic_prune_job.sql", "utf8"); }
+const legacy = readFileSync("supabase/migrations/20260912190000_customer_diagnostic_history.sql", "utf8");
+const pruneManaged = readFileSync("supabase/migrations/20260914130000_customer_diagnostic_prune_job.sql", "utf8");
 const prunePortable = readFileSync("db/platform/migrations/20260914130000_customer_diagnostic_prune_job.sql", "utf8");
 // The three shapes the closed reference vocabulary admits are authored in TypeScript;
 // the SQL must carry those exact sources, or the route accepts what the table rejects.
@@ -28,34 +26,34 @@ const rpcCatalog = JSON.parse(readFileSync("config/supabase-rpc-catalog.json", "
 const paymentProducer = readFileSync("src/lib/diagnostics/customerJourneyPaymentProducer.ts", "utf8");
 describe("customer diagnostic history database contract", () => {
   it("keeps SQL behavior identical with only the runtime-specific service-role grants differing", () => {
-    expect(normalizeAuthority(portable)).toBe(normalizeAuthority(managed()));
-    expect(managed()).toContain("TO service_role");
+    expect(normalizeAuthority(portable)).toBe(normalizeAuthority(managed));
+    expect(managed).toContain("TO service_role");
     expect(portable).not.toContain("service_role");
   });
 
   it("keeps overview behavior identical with only the managed execution grant differing", () => {
-    expect(normalizeAuthority(overviewPortable)).toBe(normalizeAuthority(overviewManaged()));
-    expect(overviewManaged()).toContain("TO service_role");
+    expect(normalizeAuthority(overviewPortable)).toBe(normalizeAuthority(overviewManaged));
+    expect(overviewManaged).toContain("TO service_role");
     expect(overviewPortable).not.toContain("service_role");
   });
 
   it("installs the bounded overview access and index without validating historical rows", () => {
-    expect(overviewManaged()).toContain("SET LOCAL lock_timeout = '5s'");
-    expect(overviewManaged()).toContain("SET LOCAL statement_timeout = '30s'");
-    expect(overviewManaged()).toContain("SET lock_timeout = '5s'");
-    expect(overviewManaged()).toContain("SET statement_timeout = '30s'");
-    expect(overviewManaged()).toContain("RESET lock_timeout");
-    expect(overviewManaged()).toContain("RESET statement_timeout");
-    expect(overviewManaged()).toContain("DROP CONSTRAINT customer_diagnostic_access_events_operation_check");
-    expect(overviewManaged()).toContain("CHECK (operation IN ('search','history','overview')) NOT VALID");
-    expect(overviewManaged()).not.toContain("VALIDATE CONSTRAINT customer_diagnostic_access_events_operation_check");
-    expect(overviewManaged()).toContain("CREATE INDEX customer_diagnostic_events_overview_idx");
-    expect(overviewManaged()).toContain("received_at, coverage_version, action, phase, action_id, segment_id");
-    expect(overviewManaged()).toContain("INCLUDE (code, expires_at)");
+    expect(overviewManaged).toContain("SET LOCAL lock_timeout = '5s'");
+    expect(overviewManaged).toContain("SET LOCAL statement_timeout = '30s'");
+    expect(overviewManaged).toContain("SET lock_timeout = '5s'");
+    expect(overviewManaged).toContain("SET statement_timeout = '30s'");
+    expect(overviewManaged).toContain("RESET lock_timeout");
+    expect(overviewManaged).toContain("RESET statement_timeout");
+    expect(overviewManaged).toContain("DROP CONSTRAINT customer_diagnostic_access_events_operation_check");
+    expect(overviewManaged).toContain("CHECK (operation IN ('search','history','overview')) NOT VALID");
+    expect(overviewManaged).not.toContain("VALIDATE CONSTRAINT customer_diagnostic_access_events_operation_check");
+    expect(overviewManaged).toContain("CREATE INDEX customer_diagnostic_events_overview_idx");
+    expect(overviewManaged).toContain("received_at, coverage_version, action, phase, action_id, segment_id");
+    expect(overviewManaged).toContain("INCLUDE (code, expires_at)");
   });
 
   it("computes overview lifecycle rates from distinct action state instead of raw events", () => {
-    const overview = functionBody("customer_diagnostic_overview_v2");
+    const overview = functionBody("customer_diagnostic_overview_v2", overviewManaged);
     expect(overview).toContain("p_to - p_from > interval '7 days'");
     expect(overview).toContain("p_page_size NOT BETWEEN 1 AND 25");
     expect(overview).toContain("GROUP BY p.coverage_version, p.action, e.action_id");
@@ -82,7 +80,7 @@ describe("customer diagnostic history database contract", () => {
   });
 
   it("declares the observation-only action list once and reads it everywhere", () => {
-    const overview = functionBody("customer_diagnostic_overview_v2");
+    const overview = functionBody("customer_diagnostic_overview_v2", overviewManaged);
     const declared = overview.match(/v_static_actions text\[\] := ARRAY\[([\s\S]*?)\];/);
     expect(declared).not.toBeNull();
     const staticActions = [...(declared?.[1] ?? "").matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
@@ -121,18 +119,18 @@ describe("customer diagnostic history database contract", () => {
     }
     expect(paymentProducer).toContain('phase: "settled" as const');
 
-    const overview = functionBody("customer_diagnostic_overview_v2");
+    const overview = functionBody("customer_diagnostic_overview_v2", overviewManaged);
     const declared = overview.match(/v_static_actions text\[\] := ARRAY\[([\s\S]*?)\];/);
     const staticActions = [...(declared?.[1] ?? "").matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
     expect([...staticActions].sort()).toEqual([...checkEnforced, ...conventionStatic].sort());
   });
 
   it("keys and includes every column the matching CTE reads on the overview index", () => {
-    const overview = functionBody("customer_diagnostic_overview_v2");
+    const overview = functionBody("customer_diagnostic_overview_v2", overviewManaged);
     const matching = overview.match(/WITH matching AS MATERIALIZED \(\s*SELECT ([\s\S]*?)\s+FROM public\.customer_diagnostic_events e/);
     expect(matching).not.toBeNull();
     const readColumns = [...(matching?.[1] ?? "").matchAll(/\be\.([a-z_]+)/g)].map((match) => match[1]);
-    const index = allMigrations().map(({ content }) => content).join("\n").match(/CREATE INDEX customer_diagnostic_events_overview_idx[\s\S]*?\(([\s\S]*?)\) INCLUDE \(([^)]*)\);/);
+    const index = overviewManaged.match(/CREATE INDEX customer_diagnostic_events_overview_idx[\s\S]*?\(([\s\S]*?)\) INCLUDE \(([^)]*)\);/);
     expect(index).not.toBeNull();
     const indexed = new Set(`${index?.[1]},${index?.[2]}`.split(",").map((column) => column.trim()).filter(Boolean));
     expect(readColumns.length).toBeGreaterThan(0);
@@ -141,7 +139,7 @@ describe("customer diagnostic history database contract", () => {
   });
 
   it("states this migration's own delta without claiming a covering index", () => {
-    const header = overviewManaged().slice(0, overviewManaged().indexOf("\n\n"));
+    const header = overviewManaged.slice(0, overviewManaged.indexOf("\n\n"));
     expect(header).not.toContain("covering");
     expect(header).toContain("customer_diagnostic_events_overview_idx");
     expect(header).toContain(
@@ -149,14 +147,13 @@ describe("customer diagnostic history database contract", () => {
     );
     expect(header).toContain("migration file in autocommit while `supabase db push` wraps the same file in one transaction.");
     expect(overviewPortable).toContain("-- migration:allow-grant: ");
-    expect(overviewManaged()).toContain("-- migration:allow-grant: ");
+    expect(overviewManaged).toContain("-- migration:allow-grant: ");
   });
 
   it("keeps overview authorization, availability axes and audit fail-closed", () => {
-    const overview = functionBody("customer_diagnostic_overview_v2");
-    // The dump omits SECURITY INVOKER because it is PostgreSQL's default.
-    expect(overview.slice(0, overview.indexOf("AS $"))).not.toContain("SECURITY DEFINER");
-    expect(overview).toMatch(/SET search_path (?:= pg_catalog|TO 'pg_catalog')/);
+    const overview = functionBody("customer_diagnostic_overview_v2", overviewManaged);
+    expect(overview).toContain("SECURITY INVOKER");
+    expect(overview).toContain("SET search_path = pg_catalog");
     expect(overview.indexOf("communications_require_active_operator"))
       .toBeLessThan(overview.indexOf("IF p_from IS NULL"));
     expect(overview.indexOf("INSERT INTO public.customer_diagnostic_access_events"))
@@ -164,10 +161,7 @@ describe("customer diagnostic history database contract", () => {
     for (const fragment of ["'windowCoverage'", "'evidencePresence'", "'sourceHealth'", "'delivery','unknown'"]) {
       expect(overview).toContain(fragment);
     }
-  });
-
-  it("retains the historical overview browser-revocation declaration", () => {
-    expect(overviewManaged()).toContain(
+    expect(overviewManaged).toContain(
       "REVOKE ALL ON FUNCTION public.customer_diagnostic_overview_v2(uuid,timestamptz,timestamptz,integer,text,integer) FROM PUBLIC, anon, authenticated",
     );
   });
@@ -183,14 +177,14 @@ describe("customer diagnostic history database contract", () => {
   });
 
   it("backfills and defaults retained v1 coverage before accepting v2 rows", () => {
-    expect(managed()).toContain("SET LOCAL lock_timeout = '5s'");
-    expect(managed()).toContain("SET LOCAL statement_timeout = '30s'");
-    expect(managed()).toContain("ADD COLUMN coverage_version text NOT NULL DEFAULT 'purchase-auth-account.v1'");
-    expect(managed()).toContain("customer_diagnostic_events_coverage_version_check");
-    expect(managed()).toContain("NOT VALID");
-    expect(managed()).not.toContain("VALIDATE CONSTRAINT customer_diagnostic_events_coverage_version_check");
-    expect(managed()).toContain("purchase-auth-account.v2");
-    expect(legacy()).toContain("CREATE FUNCTION public.customer_diagnostic_ingest_v1");
+    expect(managed).toContain("SET LOCAL lock_timeout = '5s'");
+    expect(managed).toContain("SET LOCAL statement_timeout = '30s'");
+    expect(managed).toContain("ADD COLUMN coverage_version text NOT NULL DEFAULT 'purchase-auth-account.v1'");
+    expect(managed).toContain("customer_diagnostic_events_coverage_version_check");
+    expect(managed).toContain("NOT VALID");
+    expect(managed).not.toContain("VALIDATE CONSTRAINT customer_diagnostic_events_coverage_version_check");
+    expect(managed).toContain("purchase-auth-account.v2");
+    expect(legacy).toContain("CREATE FUNCTION public.customer_diagnostic_ingest_v1");
   });
 
   it("keeps admission and immutable replay boundaries in the additive v2 append", () => {
@@ -210,7 +204,7 @@ describe("customer diagnostic history database contract", () => {
     expect(functionBody("customer_diagnostic_ingest_v1")).toContain("v_existing.coverage_version <> 'purchase-auth-account.v1'");
   });
 
-  it("pins the corrected v2 hydration matrix", () => {
+  it("pins the corrected v2 hydration matrix and browser ACLs", () => {
     const ingest = functionBody("customer_diagnostic_ingest_v2");
     for (const fragment of [
       "p_client_event_key IS NULL", "p_action IS NULL", "p_phase IS NULL", "p_code IS NULL",
@@ -219,18 +213,15 @@ describe("customer diagnostic history database contract", () => {
       "p_coverage_version IS DISTINCT FROM 'purchase-auth-account.v2'",
       "p_action = 'entry_hydration'", "p_code = 'hydration_failed'",
     ]) expect(ingest).toContain(fragment);
-  });
-
-  it("retains the historical v2 browser-revocation declarations", () => {
     for (const name of ["customer_diagnostic_ingest_v2", "customer_diagnostic_search_v2", "customer_diagnostic_segment_v2"]) {
-      expect(managed()).toContain(`REVOKE ALL ON FUNCTION public.${name}`);
-      expect(managed()).toContain("FROM PUBLIC, anon, authenticated");
+      expect(managed).toContain(`REVOKE ALL ON FUNCTION public.${name}`);
+      expect(managed).toContain("FROM PUBLIC, anon, authenticated");
     }
   });
 
   it("keeps identity rotation and v2 read coverage per event", () => {
     const ingest = functionBody("customer_diagnostic_ingest_v2");
-    expect(managedTable("customer_diagnostic_segments")).toContain("principal_id uuid");
+    expect(legacy).toContain("principal_id uuid");
     expect(ingest).toContain("v_segment.principal_id IS NOT DISTINCT FROM p_principal_id");
     expect(ingest).toContain("v_segment.subject_id IS NOT DISTINCT FROM p_subject_id");
     expect(ingest).toContain("v_segment.principal_id IS NULL AND p_principal_id IS NOT NULL");
@@ -255,11 +246,15 @@ describe("customer diagnostic history database contract", () => {
     const hostedPattern = literalRegexSource(hostedProvenance, "HOSTED_REQUEST_ID");
     // The route's own gate must be the reporter's literal, or the route accepts what the table rejects.
     expect(literalRegexSource(observedRequestId, "REPORTED_UUID")).toBe(uuidPattern);
+    expect(identityManaged).toContain("DROP CONSTRAINT customer_diagnostic_events_reported_ref_check");
+    expect(identityManaged).toContain("ADD CONSTRAINT customer_diagnostic_events_reported_ref_check");
+    expect(identityManaged).toContain(") NOT VALID;");
+    expect(identityManaged).not.toContain("VALIDATE CONSTRAINT");
     // Character-identical, not merely equivalent: `~*` carries the reporter regex's /i flag.
-    expect(managedTable("customer_diagnostic_events")).toContain(`reported_request_id ~* '${uuidPattern}'`);
-    expect(managedTable("customer_diagnostic_events")).toContain(`reported_request_id ~ '${canaryPattern}'`);
-    expect(managedTable("customer_diagnostic_events")).toContain(`reported_request_id ~ '${hostedPattern}'`);
-    const ingest = functionBody("customer_diagnostic_ingest_v2");
+    expect(identityManaged).toContain(`reported_request_id ~* '${uuidPattern}'`);
+    expect(identityManaged).toContain(`reported_request_id ~ '${canaryPattern}'`);
+    expect(identityManaged).toContain(`reported_request_id ~ '${hostedPattern}'`);
+    const ingest = functionBody("customer_diagnostic_ingest_v2", identityManaged);
     expect(ingest).toContain(`p_reported_request_id ~* '${uuidPattern}'`);
     expect(ingest).toContain(`p_reported_request_id ~ '${canaryPattern}'`);
     expect(ingest).toContain(`p_reported_request_id ~ '${hostedPattern}'`);
@@ -268,19 +263,11 @@ describe("customer diagnostic history database contract", () => {
     const loose = "p_reported_request_id !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'";
     expect(ingest).not.toContain(loose);
     expect(functionBody("customer_diagnostic_ingest_v1")).toContain(loose);
-
-  });
-
-  it("replaces the reported-reference CHECK without validating retained history", () => {
-    expect(identityManaged()).toContain("DROP CONSTRAINT customer_diagnostic_events_reported_ref_check");
-    expect(identityManaged()).toContain("ADD CONSTRAINT customer_diagnostic_events_reported_ref_check");
-    expect(identityManaged()).toContain(") NOT VALID;");
-    expect(identityManaged()).not.toContain("VALIDATE CONSTRAINT");
-    expect(identityManaged()).not.toContain("customer_diagnostic_ingest_v1");
+    expect(identityManaged).not.toContain("customer_diagnostic_ingest_v1");
   });
 
   it("rotates a committed reuse inside the segment update and caps both lifetimes at the start", () => {
-    const ingest = functionBody("customer_diagnostic_ingest_v2");
+    const ingest = functionBody("customer_diagnostic_ingest_v2", identityManaged);
     const rotation = ingest.indexOf("credential_hash = CASE WHEN v_disposition = 'reused'");
     expect(rotation).toBeGreaterThan(ingest.indexOf("'deduplicated',true"));
     expect(rotation).toBeGreaterThan(ingest.lastIndexOf("RETURN jsonb_build_object('outcome','rate_limited')"));
@@ -302,17 +289,17 @@ describe("customer diagnostic history database contract", () => {
   });
 
   it("ships the ingress identity pair with parity, bounded timeouts and a catalogued digest", () => {
-    expect(normalizeAuthority(identityPortable)).toBe(normalizeAuthority(identityManaged()));
-    expect(identityManaged()).toContain("TO service_role");
+    expect(normalizeAuthority(identityPortable)).toBe(normalizeAuthority(identityManaged));
+    expect(identityManaged).toContain("TO service_role");
     expect(identityPortable).not.toContain("service_role");
-    expect(identityManaged()).toContain("-- migration:allow-grant: ");
+    expect(identityManaged).toContain("-- migration:allow-grant: ");
     expect(identityPortable).toContain("-- migration:allow-grant: ");
     for (const fragment of [
       "SET LOCAL lock_timeout = '5s'", "SET LOCAL statement_timeout = '30s'",
       "SET lock_timeout = '5s'", "SET statement_timeout = '30s'",
       "RESET lock_timeout", "RESET statement_timeout",
-    ]) expect(identityManaged()).toContain(fragment);
-    expect(identityManaged()).toContain(
+    ]) expect(identityManaged).toContain(fragment);
+    expect(identityManaged).toContain(
       "REVOKE ALL ON FUNCTION public.customer_diagnostic_ingest_v2(text,text,uuid,uuid,uuid,uuid,text,text,text,integer,text,text,text,text,integer,text) FROM PUBLIC, anon, authenticated",
     );
     const path = "db/platform/migrations/20260914120000_customer_diagnostic_ingress_identity.sql";
@@ -325,7 +312,7 @@ describe("customer diagnostic history database contract", () => {
   // normalizing grants would be the wrong assertion. What must hold is that the
   // divergence is exactly the documented one and that neither seed arms itself.
   it("seeds the retention control row disabled on both chains and diverges only where the schemas do", () => {
-    for (const sql of [pruneManaged(), prunePortable]) {
+    for (const sql of [pruneManaged, prunePortable]) {
       expect(sql).toContain("INSERT INTO public.platform_job_controls");
       expect(sql).toMatch(/'customer-diagnostic-prune',\n\s+false,\n\s+'worker',/);
       expect(sql).toContain("ON CONFLICT (job_name) DO UPDATE");
@@ -335,7 +322,7 @@ describe("customer diagnostic history database contract", () => {
     // Divergences are asserted against the STATEMENTS, not the file: each header
     // names the other chain's shape on purpose, and that prose is the point.
     const portableBody = prunePortable.slice(prunePortable.lastIndexOf("INSERT INTO"));
-    const managedBody = pruneManaged().slice(pruneManaged().lastIndexOf("INSERT INTO"));
+    const managedBody = pruneManaged.slice(pruneManaged.lastIndexOf("INSERT INTO"));
     // Managed only: a NULL allowlist makes platform_claim_job_run_v3 refuse outright.
     expect(managedBody).toContain("ARRAY['worker']::text[]");
     expect(portableBody).not.toContain("allowed_trigger_kinds");
@@ -344,31 +331,31 @@ describe("customer diagnostic history database contract", () => {
     expect(portableBody).not.toContain("'scheduler'");
     expect(portableBody).not.toContain("service_role");
     expect(portableBody).not.toContain("requiresFlag");
-    expect(pruneManaged()).toContain("-- migration:allow-dml: ");
+    expect(pruneManaged).toContain("-- migration:allow-dml: ");
     const path = "db/platform/migrations/20260914130000_customer_diagnostic_prune_job.sql";
     expect(manifest.forward.find((candidate) => candidate.file === path)?.sha256)
       .toBe(createHash("sha256").update(prunePortable).digest("hex"));
   });
 
   it("states the retention control delta in a header written for each chain", () => {
-    const managedHeader = pruneManaged().slice(0, pruneManaged().indexOf("\nINSERT"));
+    const managedHeader = pruneManaged.slice(0, pruneManaged.indexOf("\nINSERT"));
     const portableHeader = prunePortable.slice(0, prunePortable.indexOf("\nINSERT"));
     expect(managedHeader).not.toBe(portableHeader);
     expect(managedHeader).toContain("platform_job_v3_control_not_configured");
     expect(managedHeader).toContain("COMMERCE_CUSTOMER_DIAGNOSTIC_PRUNE_ENABLED");
     expect(portableHeader).toContain("EVERY DEPARTURE FROM THE MANAGED TWIN");
     expect(portableHeader).toContain("inactive_driver");
-    expect(managedHeader).not.toBe(identityManaged().slice(0, identityManaged().indexOf("\n\n")));
+    expect(managedHeader).not.toBe(identityManaged.slice(0, identityManaged.indexOf("\n\n")));
   });
 
   it("states the ingress identity delta in a header written for this replay", () => {
-    const header = identityManaged().slice(0, identityManaged().indexOf("\n\n"));
+    const header = identityManaged.slice(0, identityManaged.indexOf("\n\n"));
     expect(header).toContain("customer_diagnostic_events_reported_ref_check");
     expect(header).toContain("NOT VALID");
     expect(header).toContain("rotate the segment credential");
     expect(header).toContain("LEAST(started_at + retention, ...)");
-    expect(header).not.toBe(overviewManaged().slice(0, overviewManaged().indexOf("\n\n")));
-    expect(header).not.toBe(managed().slice(0, managed().indexOf("\n\n")));
+    expect(header).not.toBe(overviewManaged.slice(0, overviewManaged.indexOf("\n\n")));
+    expect(header).not.toBe(managed.slice(0, managed.indexOf("\n\n")));
   });
 
   it("retains the v1 read signatures as v1-only views during mixed-history rollout", () => {
@@ -381,7 +368,14 @@ describe("customer diagnostic history database contract", () => {
   });
 });
 
-function functionBody(name: string): string { return effectiveFunctionBody(name); }
+function functionBody(name: string, sql = managed): string {
+  const start = sql.indexOf(`CREATE FUNCTION public.${name}`) >= 0
+    ? sql.indexOf(`CREATE FUNCTION public.${name}`)
+    : sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
+  const end = sql.indexOf("\n$$;", start);
+  if (start < 0 || end < 0) throw new Error(`missing ${name}`);
+  return sql.slice(start, end);
+}
 
 /** The exact source of a named TypeScript regular-expression literal, flags excluded. */
 function literalRegexSource(source: string, name: string): string {

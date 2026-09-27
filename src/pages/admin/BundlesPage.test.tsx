@@ -5,17 +5,6 @@ import BundlesPage from "@/pages/admin/BundlesPage";
 import { renderWithProviders } from "@/test/render";
 import { bundleDetail, bundleSummary, listResponse } from "@/test/bundleAdminFixtures";
 
-import { createI18nFixture } from "@/test/i18nFixture";
-
-const I18nFixture = createI18nFixture({ admin: {
-  "adminBundles.disabled": "Konfigurator pakietów jest wyłączony w tym środowisku.",
-  "adminBundles.title": "Pakiety",
-  "adminBundles.publish.title": "Cykl życia",
-  "adminBundles.publish.activate": "Opublikuj",
-  "adminBundles.publish.blockedPrice": "Publikacja wymaga aktywnej ceny docelowej.",
-  "adminBundles.publish.blockedComposition": "Publikacja wymaga niepustego składu.",
-} });
-
 /**
  * The page is the flag gate and the composition; each card's own behaviour is
  * pinned by its own spec. What is pinned HERE is what only the page can get
@@ -94,7 +83,7 @@ describe("BundlesPage", () => {
   it("renders disabled copy and asks the server for nothing when the flag is off", () => {
     setBundleAdminFlag(false);
 
-    renderWithProviders(<I18nFixture><BundlesPage /></I18nFixture>);
+    renderWithProviders(<BundlesPage />);
 
     expect(
       screen.getByText("Konfigurator pakietów jest wyłączony w tym środowisku."),
@@ -104,14 +93,14 @@ describe("BundlesPage", () => {
   });
 
   it("lists bundles when the flag is on", async () => {
-    renderWithProviders(<I18nFixture><BundlesPage /></I18nFixture>);
+    renderWithProviders(<BundlesPage />);
 
     expect(await screen.findByText("Zestaw startowy")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Pakiety" })).toBeInTheDocument();
   });
 
   it("mounts every card once a bundle is selected", async () => {
-    renderWithProviders(<I18nFixture><BundlesPage /></I18nFixture>);
+    renderWithProviders(<BundlesPage />);
 
     fireEvent.click(await screen.findByText("Zestaw startowy"));
 
@@ -122,7 +111,7 @@ describe("BundlesPage", () => {
   });
 
   it("offers publish for an admin whose bundle satisfies both preconditions", async () => {
-    renderWithProviders(<I18nFixture><BundlesPage /></I18nFixture>);
+    renderWithProviders(<BundlesPage />);
 
     fireEvent.click(await screen.findByText("Zestaw startowy"));
 
@@ -131,7 +120,7 @@ describe("BundlesPage", () => {
 
   it("withholds publish from a non-admin operator even when the bundle is ready", async () => {
     mockUseAuth.mockReturnValue({ session: { access_token: "token" }, role: "support" });
-    renderWithProviders(<I18nFixture><BundlesPage /></I18nFixture>);
+    renderWithProviders(<BundlesPage />);
 
     fireEvent.click(await screen.findByText("Zestaw startowy"));
 
@@ -141,7 +130,7 @@ describe("BundlesPage", () => {
 
   it("withholds publish when the bundle has no active target price", async () => {
     mockGetBundle.mockResolvedValue(bundleDetail({ hasActiveTargetPrice: false, prices: [] }));
-    renderWithProviders(<I18nFixture><BundlesPage /></I18nFixture>);
+    renderWithProviders(<BundlesPage />);
 
     fireEvent.click(await screen.findByText("Zestaw startowy"));
 
@@ -151,7 +140,7 @@ describe("BundlesPage", () => {
 
   it("withholds publish when the composition is empty", async () => {
     mockGetBundle.mockResolvedValue(bundleDetail({ components: [], componentCount: 0 }));
-    renderWithProviders(<I18nFixture><BundlesPage /></I18nFixture>);
+    renderWithProviders(<BundlesPage />);
 
     fireEvent.click(await screen.findByText("Zestaw startowy"));
 

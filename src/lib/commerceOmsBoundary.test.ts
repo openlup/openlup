@@ -1,47 +1,48 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
-import { managedFunction, managedTable } from "../test/managedSchema.js";
 
 const repoRoot = process.cwd();
-const holdFunctions = ["commerce_oms_create_hold", "commerce_oms_release_hold"];
-const migration = [...["commerce_order_holds", "commerce_order_operations"].map(managedTable), ...holdFunctions.map(managedFunction)].join("\n");
-const hardeningMigration = managedFunction("commerce_oms_update_shipping_address");
-const liveQueueMigration = managedFunction("commerce_oms_admin_list_queue");
+const migration = read("supabase/migrations/20260605100000_commerce_v2_phase1_hidden_oms.sql");
+const hardeningMigration = read("supabase/migrations/20260613221000_admin_oms_preview_hardening.sql");
+// The LIVE body of public.commerce_oms_admin_list_queue: the one an admin queue
+// request actually executes. Until W0 these assertions read three SUPERSEDED
+// migrations (20260614143000_admin_oms_queue_aggregates,
+// 20260704180000_admin_oms_paid_summary_totals,
+// 20260704190000_admin_dashboard_command_center_queue), each of which had since
+// been fully replaced. They therefore proved nothing about production.
+const liveQueueMigration = read("supabase/migrations/20260816082705_oms_queue_summary_single_currency.sql");
+const probe = read("docs/sql/commerce_oms_hold_rehearsal_probe.sql");
+const queueProbe = read("docs/sql/commerce_oms_queue_aggregates_probe.sql");
 
-describe("published commerce OMS structural boundary", () => {
+describe("commerce OMS hidden boundary", () => {
   it("adds OMS hold and operation tables without payment-control result logic", () => {
-    expect(migration).toContain("CREATE TABLE public.commerce_order_holds");
-    expect(migration).toContain("CREATE TABLE public.commerce_order_operations");
-    expect(migration).toContain("CREATE FUNCTION public.commerce_oms_create_hold");
-    expect(migration).toContain("CREATE FUNCTION public.commerce_oms_release_hold");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.commerce_order_holds");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.commerce_order_operations");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.commerce_oms_create_hold");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.commerce_oms_release_hold");
     expect(migration).not.toContain("commerce_payment_control_apply_result");
     expect(migration).not.toContain("commerce_payment_state_transitions");
   });
 
-  it("declares hold RPC service-role access and rehearses payment-control non-mutation", () => {
-    const probe = read("supabase/tests/commerce_oms_boundary_test.sql");
+  it("keeps hold RPCs service-role-only and rehearses payment-control non-mutation", () => {
     for (const required of [
       "TO service_role",
-      "same-input hold create replays",
-      "same-input hold release replays",
-      "preserves complete payment-control and protected rows",
-      "SET LOCAL ROLE service_role",
-      "SET LOCAL ROLE anon",
-      "SET LOCAL ROLE authenticated",
-      "42501",
+      "commerce_oms_hold_replay_failed",
+      "commerce_oms_touched_payment_control_tables",
+      "commerce_oms_hold_rpc_publicly_exposed",
       "ROLLBACK",
     ]) {
       expect(`${migration}\n${probe}`).toContain(required);
     }
   });
 
-  it("keeps hidden OMS routes out of the published browser UI", () => {
+  it("keeps hidden OMS routes out of the current production UI", () => {
     const uiFiles = [
       ...readFiles(join(repoRoot, "src/pages")),
       ...readFiles(join(repoRoot, "src/components")),
-      join(repoRoot, "src/public-reference/App.tsx"),
-      join(repoRoot, "src/public-reference/main.tsx"),
+      join(repoRoot, "src/App.tsx"),
+      join(repoRoot, "src/main.tsx"),
     ]
       .filter((file) => /\.(ts|tsx)$/.test(file))
       .filter((file) => !/\.(test|spec)\./.test(file))
@@ -60,31 +61,37 @@ describe("published commerce OMS structural boundary", () => {
 
   it("hardens admin OMS preview address correction behind a service-role RPC", () => {
     expect(hardeningMigration).toContain("'shipping_address_updated'");
-    expect(hardeningMigration).toContain("CREATE FUNCTION public.commerce_oms_update_shipping_address");
+    expect(hardeningMigration).toContain("CREATE OR REPLACE FUNCTION public.commerce_oms_update_shipping_address");
     expect(hardeningMigration).toContain("commerce_oms_shipping_address_locked_after_label");
     expect(hardeningMigration).toContain("shipping_address_snapshot = v_shipping_address_snapshot");
     expect(hardeningMigration).toContain("TO service_role");
   });
 
-  it("declares the shipped admin OMS queue structure and service-role access", () => {
-    expect(liveQueueMigration).toContain("CREATE FUNCTION public.commerce_oms_admin_list_queue");
+  it("keeps the live admin OMS queue aggregate read model service-role-only", () => {
+    expect(liveQueueMigration).toContain("CREATE OR REPLACE FUNCTION public.commerce_oms_admin_list_queue");
     expect(liveQueueMigration).toContain("STABLE");
     expect(liveQueueMigration).toContain("SECURITY DEFINER");
     expect(liveQueueMigration).toContain("summaryCounts");
     expect(liveQueueMigration).toContain("fulfillment_blocked");
     expect(liveQueueMigration).toContain("review_fulfillment");
     expect(liveQueueMigration).toContain("TO service_role");
-    // Source declaration is not effective ACL evidence; executable role-taking proof is separate.
-    expect(liveQueueMigration).toContain("FROM PUBLIC;");
-    expect(liveQueueMigration).not.toMatch(/GRANT [^;]+ TO (?:anon|authenticated|PUBLIC);/);
+    expect(liveQueueMigration).toContain("FROM PUBLIC, anon, authenticated");
   });
 
-  it("registers executed pgTAP queue pagination and global-summary proof beyond 500", () => {
-    const queueProbe = read("supabase/tests/commerce_oms_boundary_test.sql");
+  // The provider-coupling MEASUREMENT that used to live here as an assertion has
+  // moved to docs/plan/oms-w0-honest-proof.md (finding 4). It pinned a token
+  // count inside a forward migration, and forward migrations are immutable, so
+  // the assertion could never go red - it was a finding wearing a test's
+  // clothes, which is the exact defect this wave exists to remove. The finding
+  // itself (the live body names OmniPack in 13 places) is recorded where
+  // findings belong, and the OSS readiness scanner already measures that
+  // vocabulary continuously against its own baseline.
+
+  it("documents a rollback-only probe for Admin OMS queue pagination beyond 500", () => {
     expect(queueProbe).toContain("generate_series(1, 506)");
-    expect(queueProbe).toContain("sixth queue page exposes the six orders beyond 500");
+    expect(queueProbe).toContain("commerce_oms_queue_beyond_500_wrong");
     expect(queueProbe).toContain("summaryCounts,readyForFulfillment");
-    expect(queueProbe).toContain("has_function_privilege");
+    expect(queueProbe).toContain("commerce_oms_queue_rpc_grants_wrong");
     expect(queueProbe).toContain("ROLLBACK");
   });
 

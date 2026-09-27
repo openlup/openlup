@@ -1,29 +1,31 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { managedFunction, managedTable } from "../test/managedSchema.js";
 
 const repoRoot = process.cwd();
-const migration = [managedTable("outbox_events"), managedFunction("commerce_create_order_draft_with_outbox")].join("\n");
+const migration = read("supabase/migrations/20260601170000_order_draft_rpc_outbox.sql");
+const probe = read("docs/sql/commerce_order_draft_rpc_rehearsal_probe.sql");
+const report = read("docs/archive/supabase/SUPABASE_REHEARSAL_REPORT_DB5_2026-06-01.md");
+const prodReport = read("docs/archive/supabase/SUPABASE_PROD_APPLY_REPORT_DB12_2026-06-05.md");
+const driftMatrix = read("docs/SUPABASE_MIGRATION_DRIFT_MATRIX.md");
+const preflight = read("docs/ECOMMERCE_ORDER_DRAFT_DB_ACTIVATION_PREFLIGHT.md");
+const handoff = read("docs/ECOMMERCE_READINESS_HANDOFF.md");
 
 function read(path: string): string {
   return readFileSync(join(repoRoot, path), "utf8");
 }
 
 describe("ecommerce order draft DB rehearsal candidate", () => {
-  it("declares the outbox table and current RPC without public grants", () => {
-    expect(migration).toContain("CREATE TABLE public.outbox_events");
+  it("adds the outbox table and RPC candidate without public grants", () => {
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.outbox_events");
     expect(migration).toContain("UNIQUE (event_type, idempotency_key)");
     expect(migration).toContain("ALTER TABLE public.outbox_events ENABLE ROW LEVEL SECURITY");
-    expect(migration).toContain("CREATE FUNCTION public.commerce_create_order_draft_with_outbox");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.commerce_create_order_draft_with_outbox");
     expect(migration).toContain("SECURITY DEFINER");
-    expect(migration).toContain("SET search_path TO 'public', 'pg_catalog'");
-    // Named arguments and ALL-for-functions are dump syntax for the same
-    // EXECUTE declaration; effective role-taking access remains an SQL obligation.
-    expect(migration).toContain("p_client_id uuid DEFAULT NULL::uuid");
-    expect(migration).toContain("REVOKE ALL ON FUNCTION public.commerce_create_order_draft_with_outbox(p_idempotency_key text, p_quote_snapshot jsonb, p_order_draft_snapshot jsonb, p_client_id uuid) FROM PUBLIC;");
-    expect(migration).toContain("GRANT SELECT,INSERT,UPDATE ON TABLE public.outbox_events TO service_role");
-    expect(migration).toContain("GRANT ALL ON FUNCTION public.commerce_create_order_draft_with_outbox(p_idempotency_key text, p_quote_snapshot jsonb, p_order_draft_snapshot jsonb, p_client_id uuid) TO service_role");
+    expect(migration).toContain("SET search_path = public, pg_catalog");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.commerce_create_order_draft_with_outbox(text, jsonb, jsonb) FROM PUBLIC");
+    expect(migration).toContain("GRANT SELECT, INSERT, UPDATE ON TABLE public.outbox_events TO service_role");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.commerce_create_order_draft_with_outbox(text, jsonb, jsonb) TO service_role");
     expect(migration).not.toMatch(/\bGRANT\b[\s\S]*?\bTO\s+(anon|authenticated)\b/i);
     expect(migration).not.toMatch(/\bCREATE POLICY\b/i);
     expect(migration).not.toMatch(/\bstripe\b/i);
@@ -56,7 +58,6 @@ describe("ecommerce order draft DB rehearsal candidate", () => {
   });
 
   it("ships a rollback-only probe for rehearsal target verification", () => {
-    const probe = read("docs/sql/commerce_order_draft_rpc_rehearsal_probe.sql");
     const requiredPhrases = [
       "BEGIN;",
       "ROLLBACK;",
@@ -75,11 +76,6 @@ describe("ecommerce order draft DB rehearsal candidate", () => {
   });
 
   it("records the local rehearsal result and later production apply boundary", () => {
-    const report = read("docs/archive/supabase/SUPABASE_REHEARSAL_REPORT_DB5_2026-06-01.md");
-    const prodReport = read("docs/archive/supabase/SUPABASE_PROD_APPLY_REPORT_DB12_2026-06-05.md");
-    const driftMatrix = read("docs/SUPABASE_MIGRATION_DRIFT_MATRIX.md");
-    const preflight = read("docs/ECOMMERCE_ORDER_DRAFT_DB_ACTIVATION_PREFLIGHT.md");
-    const handoff = read("docs/ECOMMERCE_READINESS_HANDOFF.md");
     expect(report).not.toContain("TBD");
     expect(report).toContain("Target type: `local-supabase-orbstack`");
     expect(report).toContain("Replay, conflict, rollback, and atomic outbox probes: `passed`");

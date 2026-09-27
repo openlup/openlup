@@ -1,6 +1,6 @@
 # Tree-wide neutrality ratchet
 
-Status: approved implementation contract; initial scanner identities require review of the concrete counting interfaces.
+Status: implementation contract for the staged public CI checks; initial scanner identities require review of the concrete counting interfaces.
 Audience: contributors implementing and reviewing public source checks.
 Scope: development-preview tree checks using the existing core source scanner and UI neutrality patterns.
 
@@ -11,6 +11,18 @@ Removed neutrality debt must not return. Counts belong to an exact relative path
 For a PR, use the event's full base SHA and record the actual checked-out candidate SHA separately from the PR head. For a main push, use the event's previous SHA. Local execution resolves an explicit full SHA or `origin/main`. Missing, malformed, unavailable or all-zero bases refuse; a parentless repository bootstrap is outside this implementation slice.
 
 Scan all tracked text regardless of extension. Local dirty execution also scans nonignored untracked files. Inventory binary files separately. Genuine deletions are allowed; unreadable existing objects refuse. Git objects and filesystem entries must not cause the check to follow a symlink or escape the source tree. Read historical blobs as data, not historical programs.
+
+## Required CI execution
+
+The `self-check` job runs both the existing UI neutrality gate and this tree-wide ratchet as blocking checks. The ratchet receives the event base through `--base-commit`; diagnostic root or database test failures do not relax either neutrality check.
+
+The required `test` job explicitly runs the CLI falsifiers after its existing required root scope, subscription tests, complete core package checks and publication command-contract tests:
+
+```bash
+npx vitest run scripts/public-ci-neutrality.test.ts
+```
+
+Run this command from the repository root with the pinned development dependencies installed. The local verification helper mirrors that required invocation. Collection through unrestricted `npm test` alone is insufficient: that command runs in the separate raw `test-full` diagnostic job, and `pgtap` is a separate raw diagnostic job. Their failures remain visible and do not change the six existing required contexts or the release workflows' context selection. Promoting diagnostic coverage requires a separate maintainer decision.
 
 ## Count and baseline rules
 

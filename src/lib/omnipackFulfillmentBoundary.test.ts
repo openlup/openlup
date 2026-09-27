@@ -1,14 +1,14 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { managedFunction, managedTable } from "../test/managedSchema.js";
 
-const fulfillmentSql = ["commerce_fulfillment_record_provider_attempt", "commerce_fulfillment_record_label_created", "commerce_fulfillment_record_tracking_event", "commerce_fulfillment_mark_handed_over"].map(managedFunction).join("\n") + managedTable("commerce_fulfillment_provider_attempts");
-const stockAuthoritySql = ["commerce_fulfillment_mark_provider_stock_consumed", "commerce_fulfillment_mark_handed_over"].map(managedFunction).join("\n");
-const hardeningSql = managedFunction("commerce_fulfillment_record_tracking_event");
+const fulfillmentSql = read("supabase/migrations/20260605123000_commerce_fulfillment_integration_control_plane.sql");
+const stockAuthoritySql = read("supabase/migrations/20260710130000_fulfillment_provider_stock_authority.sql");
+const hardeningSql = read("supabase/migrations/20260613221000_admin_oms_preview_hardening.sql");
 const omnipackMapper = read("server/infra/omnipack/outboundOrderMapper.ts");
 const omnipackOutboundPayload = read("server/_lib/omnipackOutboundOrderPayload.ts");
-
+const omnipackDocs = read("docs/COMMERCE_OMNIPACK_INTEGRATION.md");
+const docsIndex = read("docs/README.md");
 
 describe("hidden Omnipack fulfillment boundary", () => {
   it("uses existing local fulfillment RPCs for provider attempts, labels, tracking, and handoff", () => {
@@ -61,8 +61,6 @@ describe("hidden Omnipack fulfillment boundary", () => {
   });
 
   it("keeps OmniPack credentials on Basic Auth and blocks stage/live without merchant inputs", () => {
-    const omnipackDocs = read("docs/platform/FULFILLMENT_ADAPTER.md");
-    const docsIndex = read("docs/platform/README.md");
     for (const required of [
       "OMNIPACK_USERNAME",
       "OMNIPACK_PASSWORD",
@@ -76,12 +74,12 @@ describe("hidden Omnipack fulfillment boundary", () => {
 
     expect(omnipackMapper).not.toContain("OMNIPACK_API_TOKEN");
     expect(omnipackMapper).not.toContain("OMNIPACK_WAREHOUSE_ID");
-    expect(omnipackDocs).toContain("OMNIPACK_STAGE_BASE_URL");
-    expect(omnipackDocs).toContain("OMNIPACK_PRODUCTION_BASE_URL");
+    expect(omnipackDocs).toContain("https://api.stage.omnipack.tech");
+    expect(omnipackDocs).toContain("https://api.omnipack.tech");
     expect(omnipackDocs).toContain("BLOCKED");
-    expect(docsIndex).toContain("FULFILLMENT_ADAPTER.md");
-    expect(omnipackDocs).toContain("synthetic configuration and injected HTTP transport");
-    expect(omnipackDocs).toContain("does not complete those obligations or prove stage/live readiness");
+    expect(docsIndex).toContain("COMMERCE_OMNIPACK_INTEGRATION.md");
+    expect(docsIndex).toContain("**[evidence/snapshot]**");
+    expect(docsIndex).toContain("[archive/COMMERCE_VENDOR_RESEARCH.md](archive/COMMERCE_VENDOR_RESEARCH.md)");
   });
 
   it("keeps the OmniPack HTTP client out of browser-side src imports", () => {
@@ -97,9 +95,9 @@ function extractFunction(name: string): string {
 }
 
 function extractFunctionFrom(source: string, name: string): string {
-  const body = managedFunction(name);
-  expect(source).toContain(body);
-  return body;
+  const start = source.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
+  const rest = source.slice(start);
+  return rest.slice(0, rest.indexOf("CREATE OR REPLACE FUNCTION public.", 1));
 }
 
 function read(path: string): string {

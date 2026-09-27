@@ -26,11 +26,7 @@ const IMAGE_URL = "https://blob.example.test/share/abcdef.png";
 
 /** The neutral path the handler writes, and the file this deployment answers it with. */
 const NEUTRAL_ICON = "/platform/favicon.svg";
-const DEPLOYMENT_ICON = "/platform/og/social-preview.png";
-vi.mock("../../src/lib/brand/appBrand.js", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../../src/lib/brand/appBrand.js")>(),
-  APP_SHELL_ASSET_OVERRIDES: { "/platform/favicon.svg": "/platform/og/social-preview.png" },
-}));
+const DEPLOYMENT_ICON = APP_SHELL_ASSET_OVERRIDES[NEUTRAL_ICON];
 
 vi.mock("../../server/_lib/facades/blob.facade.js", () => ({
   blobFacade: {
@@ -62,7 +58,7 @@ describe("/api/c/[slug] share document", () => {
     // also couples the two, so a renamed key cannot leave this expectation passing.
     expect(markup).toContain(`href="${DEPLOYMENT_ICON}"`);
     // The override must have been applied, not merely declared.
-    expect(markup).not.toContain(`href="${NEUTRAL_ICON}"`);
+    expect(markup).not.toContain("/platform/");
   });
 
   it("resolves the neutral shell path this deployment overrides", () => {

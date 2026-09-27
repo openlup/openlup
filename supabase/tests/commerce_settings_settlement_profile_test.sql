@@ -22,26 +22,23 @@
 BEGIN;
 SELECT plan(17);
 
--- ---- The bare installation stores all three rows, in the right lanes ---------------
+-- ---- The migration seeded all three rows, in the right lanes ---------------
 SELECT is(
   (SELECT count(*)::int FROM public.commerce_settings
     WHERE key IN ('settlement_currency', 'settlement_region', 'min_product_payable_minor')),
-  3, 'the bare installation stores all three required rows');
+  3, 'the migration seeded all three settlement rows');
 
 SELECT matches(
   (SELECT value_text FROM public.commerce_settings WHERE key = 'settlement_currency'),
-  '^[A-Z]{3}$', 'the bare installation settlement currency is a well-formed ISO 4217 code');
+  '^[A-Z]{3}$', 'the seeded settlement currency is a well-formed ISO 4217 code');
 
 SELECT matches(
   (SELECT value_text FROM public.commerce_settings WHERE key = 'settlement_region'),
-  '^[A-Z]{2}$', 'the bare installation settlement region is a well-formed ISO 3166-1 alpha-2 code');
+  '^[A-Z]{2}$', 'the seeded settlement region is a well-formed ISO 3166-1 alpha-2 code');
 
 SELECT ok(
   (SELECT value_minor >= 1 FROM public.commerce_settings WHERE key = 'min_product_payable_minor'),
-  'the bare installation payable floor is at least one minor unit');
-
--- Configure only subsequent behaviour; this does not prove bare-install readiness.
-\ir fixtures/settlement.inc
+  'the seeded payable floor is at least one minor unit');
 
 -- ---- The readers return exactly what is stored -----------------------------
 SELECT is(

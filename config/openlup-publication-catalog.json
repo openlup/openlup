@@ -1134,10 +1134,6 @@
       "class": "platform-documentation"
     },
     {
-      "path": "docs/platform/FULFILLMENT_ADAPTER.md",
-      "class": "public-output"
-    },
-    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },
@@ -1167,10 +1163,6 @@
     },
     {
       "path": "docs/platform/plans/documentation-maintenance.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/plans/managed-installation-proof-contract.md",
       "class": "platform-documentation"
     },
     {
@@ -2322,10 +2314,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/local-env-status.sh",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/local-env-status.test.ts",
       "class": "public-output"
     },
@@ -2683,10 +2671,6 @@
     },
     {
       "path": "scripts/reference-adapters/reference-journey-readbacks.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/reference-adapters/reference-journey-readbacks.ts",
       "class": "public-output"
     },
     {
@@ -17722,10 +17706,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/test/commerceEmailContentFixture.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/test/effectiveMigration.ts",
       "class": "public-output"
     },
@@ -17738,27 +17718,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/test/i18nFixture.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/test/managedSchema.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/test/managedSchema.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/test/render.tsx",
       "class": "public-output"
     },
     {
       "path": "src/test/setup.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/test/siteRoutesFixture.ts",
       "class": "public-output"
     },
     {
@@ -17938,14 +17902,6 @@
       "class": "public-output"
     },
     {
-      "path": "supabase/tests/commerce_fulfillment_boundary_test.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/commerce_oms_boundary_test.sql",
-      "class": "public-output"
-    },
-    {
       "path": "supabase/tests/commerce_oms_cancel_unpaid_order_test.sql",
       "class": "public-output"
     },
@@ -18054,30 +18010,6 @@
       "class": "public-output"
     },
     {
-      "path": "supabase/tests/fixtures/can-format.inc",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/fixtures/client-classification.inc",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/fixtures/cron-identity.inc",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/fixtures/fulfillment-provider.inc",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/fixtures/inventory-location.inc",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/fixtures/settlement.inc",
-      "class": "public-output"
-    },
-    {
       "path": "supabase/tests/fulfillment_cancel_provider_dispatch_guard_test.sql",
       "class": "public-output"
     },
@@ -18103,10 +18035,6 @@
     },
     {
       "path": "supabase/tests/inherited_table_privilege_class_test.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/inventory_local_boundary_test.sql",
       "class": "public-output"
     },
     {
@@ -18510,10 +18438,6 @@
       "class": "public-output"
     },
     {
-      "path": "supabase/tests/subscription_payment_result_refusal_test.sql",
-      "class": "public-output"
-    },
-    {
       "path": "supabase/tests/subscription_plan_and_mix_test.sql",
       "class": "public-output"
     },
@@ -18910,12 +18834,22 @@
       ],
       "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
+      "name": "test:required",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     }
   ],
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-42e4ac43e71a52453ba20b3e18f1ba72c26d4eea47943a3173fad92d9319a465"
+      "digest": "sha256-528ca830abc732d139e2772441b75719f7236311b10883d8685cafd3e75a338e"
     },
     {
       "path": "packages/core/package.json",

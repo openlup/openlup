@@ -1,99 +1,128 @@
-# Complete, credible checks for the published source tree
+# Complete observation of the published source tree
 
-Status: approved implementation direction; schema authority, capability admission and release activation remain separate decisions.
-Audience: contributors and the maintainer of the development-preview source tree.
-Support: this plan improves preview evidence; it does not establish stable-framework, portable-database or production readiness.
+Status: maintainer-approved bounded implementation; final evidence is recorded below.
+Audience: development-preview contributors and the public repository maintainer.
+Purpose: expose all shipped test obligations while preserving required-main coverage.
 
-## Goal
+## Outcome and scope
 
-Run every shipped public test and make its result meaningful without deployment-specific history, data or configuration. A clean runner must exercise the managed installation and actual access boundaries. Fixture repairs must preserve the obligation of each test. Green checks must not depend on broadening privileges, excluding failing files or silently changing application behaviour.
+Published Tree CI selects every root Vitest project and every shipped managed
+pgTAP file from public inputs. Failing and aborted files stay visible with a
+reason, accountable triage owner and incomplete obligation. Complete observation
+is useful before every platform defect is repaired; required-check success is
+not a claim that the full test tree passes or that the framework is stable.
 
-The intended benefit is repeatable evaluation and contribution from public inputs, with defects found before immutable publication and deliberate adoption. An adopter retains its configuration, extensions, local measurements and deployment decisions. Public installation proof and consumer upgrade proof are separate outcomes.
+This contribution owns the workflow, command inventory, disposable pgTAP runner,
+shrink-only neutrality ratchet, their falsifiers and documentation. Platform
+runtime changes, SQL/ACL corrections, test-fixture repairs, historical-obligation
+rewrites and installer reconciliation are deferred. No test is disabled to get
+green. No live database, provider, secret, release or adopter operation belongs
+to this task.
 
-## Starting evidence
+The maintainer approved staged admission before separate repairs, the matching
+local verifier amendment and this task's native review registration. The local
+amendment is independently reviewed as exact bytes before installation. It
+preserves other task mirrors and records raw diagnostic exits; it is not a hook
+bypass. Repository settings and rulesets are unchanged.
 
-The earlier reviewed CI candidate was `5f4094b73486371c872ededfb545b54cad6a5353`, based on public main `03dbbedc953b96607f1ef1fc3342847cf49aa16e`. It widens root test discovery, adds managed pgTAP and tree-wide neutrality, and uses explicit fixtures. Source release automation, bounded additive-forward admission and the managed alignment seed have already merged separately.
+## Required and diagnostic execution
 
-That local measurement found 31 failing root files and 23 failing pgTAP files out of 206 executed files. These are unresolved obligations, not an accepted failure budget. The complete local verifier failed. The evidence is dated; final acceptance requires a new serial verification on the final commit.
+The existing six contexts remain `dco`, `typecheck`, `install-proof`, `test`,
+`self-check` and `gitleaks`. `npm run test:required` preserves the former main
+root-test command, including every selector and its ordering. The required test
+job retains standalone subscription tests, complete core CI and the materialized
+contract falsifiers, and additionally runs the neutrality CLI refusal tests.
+Lint blocks `typecheck`; UI neutrality and the tree ratchet block `self-check`.
 
-Code review identified missing dependency installation before the pgTAP runner imports `tsx`, different installation authority between CI and the reference setup, textual helpers being used as access proofs, a neutrality ceiling that permits regrowth, and a seller-tax fallback change mixed into fixture repairs.
+Independent `test-full` runs unrestricted `npm test`; independent `pgtap` runs
+all supplied SQL tests against the committed managed baseline and ordered
+forwards with Supabase CLI 2.98.2. Their raw failures remain red. No dependencies
+on successful full-root diagnostics can prevent required core checks or pgTAP.
+Actions use full commit pins and jobs retain trusted event-metadata fences.
 
-## Constraints
+The [known-red record](public-ci-known-red.md) is diagnostic documentation, not
+an executable exception list or failure budget. New infrastructure failures,
+missing dependencies, zero discovery, incomplete execution evidence and
+unexplained changed failures block delivery. Historical collection or SQL aborts
+must name the assertions they did not reach; selection does not prove completion.
 
-Preserve payment/idempotency boundaries, active subscriptions and delivery obligations. Late delivery may extend a cycle but never move it earlier or stack deliveries. Never confirm an undelivered replacement.
+Promoting the new diagnostic jobs to required checks is the maintainer's ruleset
+decision. Release workflows retain their six required-context checks, so diagnostic
+red does not itself refuse a release. Merge neither cuts a preview nor authorizes
+an installation or adoption.
 
-Existing migration bytes remain immutable. New platform authority must have a concrete owner and compatibility evidence; test setup cannot grant the application the very privilege being tested. Platform code does not write adopter-owned `app` objects. No new test exclusions, skips or normalized failure exits. No neutrality allowance increase.
+## Runner and ratchet contracts
 
-The public required-check configuration and release activation are maintainer decisions. The native review policy merged in PR #52 delegates technical review to independent fresh-context subscription agents in the same task. It does not grant publication authority or waive mechanical checks. This plan does not change rulesets, hooks, credentials or deployments.
+The runner checks committed migration identities, bytes, modes and strictly
+increasing versions before starting services. It refuses missing, modified,
+untracked, duplicate or symlinked migrations. Replay is transactional in one
+owned disposable CLI project, with public prerequisites, a diagnostic PostgreSQL
+owner and closed default grants. Only pgTAP extension assertion members receive
+test-helper execution grants. The pinned image's denial-hint formatting workaround
+is verified after restart; permission identities and actual refusals remain.
 
-## Implementation waves
+Tests are copied unchanged. The runner adds no settlement parameters, provider
+fixtures or application seed. Finally cleanup targets only its own project and a
+cleanup failure remains visible. This measurement profile does not select the
+reference installer's production authority or prove an existing-install upgrade.
 
-1. **Runner and neutrality.** Install locked dependencies in the pgTAP job, retain pinned Node/CLI/actions and add a workflow prerequisite falsifier. Implement the [neutrality contract](public-ci-neutrality-contract.md). Repair deterministic fixtures independently. Restore the prior seller fallback behaviour; any deliberate tax-ID policy change needs its own functional change and compatibility tests.
-2. **Managed authority and proof mapping.** Establish the [managed installation contract](managed-installation-proof-contract.md). Measure owners, role attributes, default and effective privileges in the current callers before selecting a profile. Map historical-file assertions to the same shipped public obligation. Do not treat SQL text as effective denial.
-3. **Effective proofs and remaining failures.** Verify real role-taking positive and negative operations. Separate bare-install prerequisites from transaction-scoped behaviour fixtures. Each failing shipped test gets an equivalent executable witness or remains a named blocker. A scope decision alone does not make a test pass. Missing public RPCs or entrypoints require a minimal capability contract, not synthetic implementations in test setup.
-4. **Approved corrections and compatibility.** Prepare one precise correction at a time after its authority is established. Email access, trigram operator namespace, audit invocation and absent catalogue seams are separate obligations. The current release predicate refuses general grants and function replacement; a bounded admission amendment or explicit preview hold must precede merging such corrections. Preserve old receipts and verify genuine previous-preview compatibility.
-5. **Integration and delivery.** Rebase last, regenerate the publication catalogue and derived source contract, run one serial full verification and DCO on full SHAs, then report release-check reasons beyond main. Prepare two fresh-context native reviews of the exact final committed candidate, record actual execution observations, and resolve incomplete or material findings automatically within the approved scope. Obtain fresh reviews after source changes. Earlier scoped reviews are historical evidence, not final native admission. After an authorised push, stop under this task’s explicit publication instruction and request authorisation of the concrete PR. Do not claim the maintainer personally read the diff. Hosted checks follow the authorised non-draft PR; task-branch push alone does not execute them. Merge, release and adoption remain separate transitions.
+The [neutrality contract](public-ci-neutrality-contract.md) preserves existing
+matcher semantics and binds the four-source scanner chain. Both the actual base
+and accepted ceiling constrain every path/category, so shrink followed by
+regrowth fails. Baseline regeneration never authorizes higher allowances.
 
-## Agent ownership
+## Execution and ownership
 
-Use disjoint lanes for neutrality, deterministic fixtures, commerce structural tests and subscription structural tests. Give each writer exact files. One integrator owns workflows, package/lock files, generated baseline/catalogue/contract, managed replay and shared schema helpers, documentation and Git operations.
+1. Preserve the broad repair candidate as a recoverable ancestor; restore deferred
+   paths to selected main bytes in an ordinary signed commit. A narrow final diff
+   still publishes earlier commits in branch history. Scan the whole history.
+2. Work in disjoint runner/contract and neutrality lanes. The integrator owns the
+   workflow, package/policy, generated files, documentation, local-tool activation,
+   Git and serial full measurements. Shared files have one writer.
+3. Run focused required falsifiers, the preserved required coverage and independent
+   full diagnostics. Record inventories, raw exits, failed/aborted files and owners.
+   Diagnose infrastructure failures without accumulating platform repairs.
+4. Rebase last, preserve any advanced main coverage, regenerate navigation,
+   catalogue and derived source contract, and obtain two parallel fresh-context
+   native reviews of the exact committed candidate and staged local-tool bytes.
+   Consolidate material findings before repairs; retain complete prior evidence
+   and use the installed protocol's closure route for eligible ordinary repairs.
+   Sensitive or unknown repairs retain two reviewers; at most two automatic repair
+   cycles precede regrouping. A current complete pass ends review.
+5. Run the prescribed verifier and DCO on the final candidate. Inspect the fresh
+   diagnostic logs after verifier execution; a required-admission exit 0 cannot
+   waive a new infrastructure failure. Push only accepted evidence, then stop
+   under this task's publication instruction. Opening and squash-merging the
+   concrete PR require their applicable explicit maintainer instructions.
 
-Workers may run focused tests on existing dependencies. Dependency installation, shared database lifecycle/application and full verification are serial. Do not inspect or use another session's worktree, database or ports. Recheck merged and active work before assigning conflict-sensitive paths. Review the integrated implementation independently; planning review does not certify its code.
+The tracked `.agent-protocol.yml` names an absent template and validator. The
+maintainer previously authorized this public task-record format for this task;
+no native Plan Protocol pass is claimed. Approved scope and guarantees remain
+fixed while computed SHAs, measurements and execution notes evolve.
 
-Fresh installation and existing-installation upgrade are separate slices. A migration-history mechanism is not required just to replay a fresh disposable CI database. An uncertain existing history must refuse automatic upgrade rather than guess or replay every forward. Do not add a general migration framework to resolve a test fixture.
+## Acceptance and simpler route
 
-## Acceptance and holds
+Preserve every former required selector and retained standalone step. Required
+CI-infrastructure falsifiers, lint, typecheck, builds, core CI, policy/inventory,
+DCO and leak checks pass. Full Vitest and pgTAP select all supplied tests and
+preserve raw exits; every failure has named diagnostic ownership. Final native
+review binds actual source; local-tool review binds separately staged bytes.
 
-Capture the collected test-file inventory, existing conditional skips and exclusion configuration. All current root and managed tests must execute with their raw failure semantics. Final lint, published typecheck, builds, core checks, policy/inventory, catalogue/contract equality, DCO and leak checks must pass. The [named known-red record](public-ci-known-red.md) is diagnostic evidence, not a waiver.
+The existing commands, scanners and helper selftest provide this outcome without
+a new failure-classification framework, skip list, migration ledger or platform
+capability. Blanket grants, synthetic history and tolerated exits would falsify
+proof. Requiring every platform repair first would delay the original observation
+outcome and silently expand this contribution. Later repairs use the named debt
+and separate compatibility/authority scope.
 
-Unspecified installation authority, unprovable applied history, absent public capabilities, new privileges and release admission remain concrete holds. Prepare their smallest reviewable proposals before requesting decisions; unrelated local repairs may continue. Do not report complete CI while those failures remain.
+## Implementation evidence
 
-Upgrade evidence must preserve existing owners/ACLs, operator choices, subscription/payment/outbox records and extensions, including interruption and restart. Fresh fixtures do not prove that preservation. Portable parity, external adoption, P1-SF and production evidence remain separate programmes.
+The current measurement and its limitations are maintained in the
+[known-red record](public-ci-known-red.md). Planning reviews do not certify the
+implemented candidate; final review and execution evidence are recorded in the
+pull request. This work improves evaluation and contribution evidence, without
+claiming stable support, portable parity, external adoption or production readiness.
 
-## Implemented local checkpoint
-
-The pgTAP dependency prerequisite and its workflow contract check are implemented. The ratchet now measures both actual-base findings and accepted allowances and binds the full four-source scanner chain. Current structural fixtures retain separate historical failures. Seller fallback behaviour matches public main. The shipped Node server now bootstraps the explicitly selected ambient settlement profile before subscription-profile composition; regression tests cover invalid input, same-profile reuse and conflicting reuse. This is a runtime boot correction exposed by coverage, not a test-only change.
-
-Focused runtime/accounting/graph/workflow checks, neutrality CLI falsifiers, lint and published typecheck pass locally. Full root execution and managed pgTAP remain red on the listed obligations. No push, PR, release or adoption result is established by this checkpoint.
-
-## Native review integration
-
-PR #52's native policy is the review default. Two independent fresh-context reviewers found that the pgTAP runner accepted duplicate migration versions and did not bind replay to committed blobs. The bounded correction snapshots the committed inventory and verifies file identities, bytes and strictly increasing versions before starting the database. Focused refusal witnesses cover malformed/duplicate versions, missing/modified/untracked files, symlinks and mode changes. It adds no migration ledger or schema change.
-
-Installation expectations now execute before synthetic configuration in the five named tests. Fixtures still support subsequent behaviour tests; their presence cannot certify installation readiness. Fixed merchandising, settlement and driver/default expectations remain explicit unresolved dispositions rather than newly declared universal defaults. The separate managed-authority decision is still held. Failed reviews and stale candidates refuse admission; repair requires new independent review of the final committed candidate.
-
-## Simpler routes considered
-
-Unfiltered execution with named failures is useful diagnosis but does not finish the repair. Blanket grants, fabricated historical files, silent rebaselining and omitted tests would weaken the proof. Reuse existing scanners and callers; write specifications only for shared contracts. Waves are integration checkpoints, not a requirement to create a separate PR for every slice.
-
-## Review and plan routing
-
-Two session-local independent planning perspectives challenged CI/neutrality and installation/adoption compatibility. The revised plan protects scanner semantics, distinguishes committed migration state from instance ownership and fixes the hosted-check sequence. This is planning evidence, not implementation or deployment approval.
-
-The tracked `.agent-protocol.yml` references an absent template and validator. This document does not claim a native Plan Protocol pass. The maintainer explicitly authorised this public plan format for this task after the prerequisite was identified. CI, verifier and hook controls are unchanged.
-
-Owner links: [Contributing](../../../CONTRIBUTING.md), [data and migrations](../DATA_AND_MIGRATIONS.md), [versioning](../../../.github/VERSIONING_AND_EOL.md).
-
-## Repair execution waves
-
-The maintainer instructed repairs before publication. This orders the existing work; it does not waive green verification or select new privileges, activation, missing capabilities or unsupported upgrade contracts. The exact-candidate assertion map is in the [known-red record](public-ci-known-red.md).
-
-1. Bind all 30 root and 29 managed red files to failed assertions and positive/negative witnesses. Separate current installation, configured reference behavior, runtime capability, authentic upgrade and historical external evidence. A named historical hold is not completed acceptance.
-2. Run disjoint proof/tool lanes in parallel: credential-suppressing status; ordered neutral readback transport; diagnostic-query proof; commerce replay/consume-once/oversell; subscription idempotency/nonmutation/shipping. One integrator owns shared helpers and database lifecycle. Missing BFF, scheduler or composition capabilities are separately selected, not invented as fixtures.
-3. Measure CI/reference owners, default ACLs, PUBLIC/inherited access and real caller operations. Select the fresh authority profile before reconciling installers. Separate disabled/native prerequisites from settlement, merchandising, driver and enabled-notification decisions; never overwrite operator choices or enable providers for test colour.
-4. Admit narrow email-read, INVOKER trigram, audit and missing catalogue corrections separately. Inventory all audit callers: promotions, shipping, catalogue prices and subscription bands may mutate before a separate audit call. Scope atomicity changes and preserve replay/failure behavior. Existing draft functions and explicit unsupported-publication refusal are preferable to rebuilding publication infrastructure.
-5. Prove genuine supported historical transitions and nonempty seed idempotence independently from fresh installation. Unknown history refuses automatic upgrade. Rebase last, regenerate catalogue/contract and any shrink-only baseline, commit with DCO and obtain two cold exact-candidate reviews. Full verifier and mandatory hosted checks must pass before merge readiness.
-
-A fresh-context source challenge passed this plan for preparation with authority/capability clarifications preserved. It confirmed the internal audit/direct caller conflict, INVOKER trigram mismatch and existing draft capabilities. Its requirements are complete assertion mapping, explicit bare-versus-configured decisions, inventory of every audit caller and completed TAP plans. This is planning evidence, not a publication or new-capability approval.
-
-### Bounded tool/proof repair checkpoint
-
-The local-status executable reports only the selected project directory's branch, numeric ports, CLI availability and matching local containers. It discards Supabase status stdout/stderr even on failure. From the chosen local Supabase project directory, run `bash <checkout>/scripts/local-env-status.sh`; no environment file is read and no service is started or stopped. An absent CLI or configuration reports unavailable. A caller-selected resource reporter is optional; OpenLup supplies no private dependency.
-
-The exported readback transport executes the neutral routes in order, validating successful list/detail identity and anonymous/cross-user denials. Its tests bridge the real shipped handlers to synthetic auth/data ports. They do not prove BFF activation, live RLS or a browser journey. Both added paths are registered in the publication catalogue; the status script is also a registered direct entrypoint.
-
-### Executable commerce witness checkpoint
-
-The second bounded wave replaces missing commerce probes with four actively executed transactional pgTAP files. A single integrator runs the disposable managed chain; disjoint contributors own payment refusal, local inventory, fulfillment and OMS witnesses. Every witness uses actual shipped RPCs and grants, nonempty synthetic state, replay/refusal readbacks and browser-role execution checks. Fixture settlement, settled payments and inventory prerequisites are explicitly distinct from their writers and deployment activation. The [known-red record](public-ci-known-red.md#executed-commerce-proof-repairs) records completed assertion counts and retained contract holds.
-
-Native review additionally restored historical whole-cleanup obligations that selected current function bodies cannot prove. Their missing source stays a named raw failure. Repairing proof quality can expose an additional blocker; it does not grant authority to fabricate history or weaken admission.
+Owner links: [contribution checks](../../../CONTRIBUTING.md#development-preview-checks),
+[canonical contracts](../CANONICAL_CONTRACTS.md#compatibility-posture),
+[documentation maintenance](../DOCUMENTATION.md).

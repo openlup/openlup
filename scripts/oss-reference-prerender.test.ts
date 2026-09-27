@@ -35,22 +35,11 @@ describe("public reference prerender", () => {
     expect(detail).toContain("Field notes");
   });
 
-  it("refuses a deployment manifest before loading SSR code", async () => {
+  it("refuses the source deployment manifest rather than silently prerendering its 79 routes", async () => {
     const root = temp();
     mkdirSync(join(root, "config"));
     mkdirSync(join(root, "dist"));
-    const manifest = JSON.parse(readFileSync("config/public-reference-site-routes.json", "utf8"));
-    manifest.siteLifecycle = "storefront";
-    manifest.csrFallback = { exactPaths: ["/account"], routeFamilies: ["/checkout"] };
-    const route = manifest.routes[0];
-    manifest.routes = Array.from({ length: 79 }, (_, index) => ({
-      ...route, path: index === 0 ? "/" : `/fixture-${index}`,
-      canonicalPath: index === 0 ? "/" : `/fixture-${index}`,
-      id: `${index === 0 ? "pl" : route.locale}:${index === 0 ? "/" : `/fixture-${index}`}`,
-      seoKey: `fixture.${index}`, seoPath: ["fixture", String(index)], contentSentinel: `Fixture ${index}`,
-      ...(index === 0 ? { locale: "pl", htmlLang: "pl", ogLocale: "pl_PL" } : {}),
-    }));
-    writeFileSync(join(root, "config", "site-routes.json"), JSON.stringify(manifest));
+    writeFileSync(join(root, "config", "site-routes.json"), readFileSync("config/site-routes.json", "utf8"));
     writeFileSync(join(root, "dist", "index.html"), "<div id=\"root\"></div>");
 
     await expect(prerenderPublicReference(root)).rejects.toThrow(/projected public reference/);

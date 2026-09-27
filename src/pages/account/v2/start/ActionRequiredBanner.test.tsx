@@ -1,22 +1,5 @@
-import type { ReactElement } from "react";
-import { createI18nFixture } from "@/test/i18nFixture";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render as renderBase, screen } from "@testing-library/react";
-
-const I18nFixture = createI18nFixture({
-  "account": {
-    "dashboard.start.actionRequired.amount": "Do zapłaty: {{amount}}",
-    "dashboard.start.actionRequired.nextRetry": "Kolejna próba obciążenia: {{date}}",
-    "dashboard.start.actionRequired.due": "Termin: {{date}}",
-    "dashboard.start.actionRequired.methodStatus.revoked": "Zgoda na obciążenia została cofnięta",
-    "dashboard.start.actionRequired.supportNote": "Automatyczne próby zostały wyczerpane",
-    "dashboard.start.actionRequired.cta": "Napraw płatność",
-    "dashboard.start.actionRequired.expired.body": "nie udało się pobrać opłaty",
-    "dashboard.start.actionRequired.expired.cta": "Zaktualizuj płatność i wznów",
-    "dashboard.subscriptionV2.blocked.expiredResumeNeedsMethod": "Dodaj metodę płatności, którą możemy obciążyć automatycznie"
-  }
-});
-const render = (ui: ReactElement) => renderBase(ui, { wrapper: I18nFixture });
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import type { SubscriptionArrears } from "../lib/dunningFacts";
 import { ActionRequiredBanner } from "./ActionRequiredBanner";
