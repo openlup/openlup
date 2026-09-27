@@ -46,13 +46,13 @@ describe("maintainer-controlled source preview workflow", () => {
     expect(sourcePreviewWorkflow).toContain("environment: release");
     expect(sourcePreviewWorkflow).toContain("group: publish-source-preview\n  cancel-in-progress: false");
     expect(sourcePreviewWorkflow).toContain("persist-credentials: false");
-    expect(sourcePreviewWorkflow).not.toMatch(/^      contents: write$/mu);
+    expect(sourcePreviewWorkflow).not.toMatch(/^ {6}contents: write$/mu);
     expect(sourcePreviewWorkflow).not.toContain("${{ inputs.target_commit }}\"\n");
   });
 
   it("reuses the package workflow's required-context check exactly", () => {
     const packages = readFileSync(join(ROOT, ".github/workflows/publish-packages.yml"), "utf8");
-    const loop = (text: string) => /          for context in [\s\S]*?          done/u.exec(text)?.[0];
+    const loop = (text: string) => / {10}for context in [\s\S]*? {10}done/u.exec(text)?.[0];
     expect(loop(sourcePreviewWorkflow)).toBe(loop(packages)?.replaceAll("GITHUB_SHA", "TARGET_COMMIT"));
     expect(sourcePreviewWorkflow).toContain('git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD');
     expect(sourcePreviewWorkflow).toContain('test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"');
