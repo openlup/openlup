@@ -1126,6 +1126,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/DOCUMENTATION.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },
@@ -1134,7 +1138,15 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/SOURCE_MAP.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/SUBSCRIPTION_REFERENCE.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/SUBSCRIPTION_WORKFLOWS.md",
       "class": "platform-documentation"
     },
     {
@@ -1143,6 +1155,10 @@
     },
     {
       "path": "docs/platform/plans/autonomous-reviewed-delivery.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/documentation-maintenance.md",
       "class": "platform-documentation"
     },
     {
@@ -2195,6 +2211,42 @@
     },
     {
       "path": "scripts/docker-rm-volume-flag.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-bundle-io.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-bundle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-bundle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-cli.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-git.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-impact.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-impact.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-navigation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/documentation-routing.ts",
       "class": "public-output"
     },
     {
@@ -12770,6 +12822,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/accounting/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/accounting/accountingClient.test.ts",
       "class": "public-output"
     },
@@ -18774,6 +18830,24 @@
       "withheldCommands": [
         "guard:browser-role-execute"
       ]
+    },
+    {
+      "id": "documentation-maintenance",
+      "status": "published",
+      "path": "scripts/oss-published-tree-check.ts",
+      "command": "npm run oss:published-tree -- --policy",
+      "publicInputs": [
+        "config/doc-routing.json",
+        "config/openlup-publication-catalog.json",
+        "src/lib/coreDomains.ts"
+      ],
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "docs/platform/DOCUMENTATION.md",
+        "docs/platform/SOURCE_MAP.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
       "id": "env-defaults",

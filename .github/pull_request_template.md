@@ -15,7 +15,8 @@ one-time public-root projection is not an ongoing authoring route. -->
 - One concern per pull request. If this carries more than one, say why here.
 - Task record (outcome, scope, authority, acceptance, risk and proof plan):
 - Tests added or updated for the behaviour this changes:
-- Documentation updated, or not needed because:
+- Affected documentation owner sections and meaningful updates:
+- Scoped no-impact explanations, if any, and why the existing text remains correct:
 - Simpler alternative considered where meaningful; added complexity justified:
 
 ## Risk and rollback
@@ -30,6 +31,8 @@ one-time public-root projection is not an ongoing authoring route. -->
       pass, or every failure is explained above.
 - [ ] Contributor-facing behaviour or commands changed here are documented in
       `README.md` and/or `CONTRIBUTING.md`.
+- [ ] Generated navigation is current; affected owner explanations or fresh
+      scoped no-impact records were reviewed for meaning, not only fingerprints.
 - [ ] Every commit carries a `Signed-off-by:` line (`git commit -s`). The
       Developer Certificate of Origin section of `CONTRIBUTING.md` explains what
       that line certifies.
@@ -41,5 +44,6 @@ one-time public-root projection is not an ongoing authoring route. -->
 - Check the accepted outcome, failure boundaries and unnecessary maintenance
   cost. Report concrete mechanisms and effects, not style preferences or a quota.
 - AI assistance (agents and what they did, or none):
-- Admission: current human-read and explicit PR-opening requirements apply;
-  proposed delegated review is pending protected enforcement and activation.
+- Publication authority (actual maintainer task or bounded delivery scope):
+- Native review evidence for the exact committed candidate, as required by the
+  AI contribution policy; no claim that the maintainer personally read the diff:

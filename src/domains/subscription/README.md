@@ -1,5 +1,7 @@
 # subscription domain
 
+Status: development-preview source guidance.
+
 Browser-shareable subscription surface: the platform's own subscription
 lifecycle (cadence, edit window, cycles, skip/slide, swap, timed
 pause/resume/cancel, self-service preview, and price-agreement policy) exposed as
@@ -20,7 +22,7 @@ contracts that cross domain boundaries.
 ## Shim boundary
 
 ⚠️ **The engine is not in this directory.** It lives in
-`packages/core/src/subscription/` and is imported through the
+[packages/core/src/subscription](../../../packages/core/src/subscription/) and is imported through the
 `@openlup/core/subscription` package export. The files here that look like the
 engine are **re-export shims**: one-line modules whose whole body forwards names
 out of the core package.
@@ -58,16 +60,17 @@ so:
 Anything beyond narrowing a type or requiring a parameter the engine defaults is
 a second engine. Put it in core.
 
-The engine's own public contract (deterministic clock, late-payment cycle shift,
-retry termination, and no I/O) is in
-`packages/core/docs/SUBSCRIPTION_ENGINE.md`.
+The engine's own [public contract](../../../packages/core/docs/SUBSCRIPTION_ENGINE.md)
+defines the deterministic clock, late-payment cycle shift, retry termination and
+no-I/O boundary. The [lifecycle and retry reading path](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#lifecycle-and-retry)
+links those decisions to the implementation and package tests.
 
 ## Delivery-alignment boundary
 
 The pure engine does not decide whether a physical parcel reached the customer
 and does not persist delivery-alignment cases. That durable server rail is
-defined by `docs/platform/CANONICAL_CONTRACTS.md` and orchestrated from
-`server/domains/subscription`: a delayed delivery may only move the next cycle
+defined by [canonical contracts](../../../docs/platform/CANONICAL_CONTRACTS.md) and orchestrated from
+[server subscription services](../../../server/domains/subscription/README.md): a delayed delivery may only move the next cycle
 later, a delivered replacement may settle its predecessor's case as `aligned`,
 and a parcel superseded through `replaces_fulfillment_order_id` is no longer an
 outstanding obligation. An in-flight or undelivered replacement remains the
@@ -92,20 +95,44 @@ moving this physical-delivery decision into the browser-shareable engine.
   from core, plus first-party test helpers.
 
 ## Where the code lives
-- Engine: `packages/core/src/subscription/` (`@openlup/core/subscription`) — the
+- Engine: [packages/core/src/subscription](../../../packages/core/src/subscription/)
+  (`@openlup/core/subscription`) — the
   pure lifecycle kernel, and the only place engine behaviour changes.
-- Shared/frontend: `src/domains/subscription/` (re-export shims, contracts,
+- Shared/frontend: [this directory](./) (re-export shims, contracts,
   self-service policy, tests).
-- Server: `server/domains/subscription/` (checkout activation bridge, runtime
+- Server: [server/domains/subscription](../../../server/domains/subscription/README.md)
+  (checkout activation bridge, runtime
   service/ports, dunning/recovery handlers).
+
+## Workflow navigation
+
+- [Choose the right layer](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#choose-the-right-layer)
+  before changing a contract or a shim.
+- [Renew one cycle](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#renew-one-cycle)
+  follows admission, payment-method policy, durable attempt preparation and replay.
+- [Protect delivery](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#protect-delivery)
+  follows the physical-delivery decision outside the pure engine.
+- [Recover payment](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#recover-payment)
+  follows authenticated, customer-bound recovery evidence.
+
+## Verification
+
+The [root public test command](../../../package.json) selects the shared
+subscription directory. The extracted engine has a separate package suite:
+`npm --workspace ./packages/core run ci`. A green root run does not establish
+that package result. Inspect
+[self-service tests](selfServiceActions.test.ts),
+[shared engine tests](subscriptionEngine.test.ts) and the
+[workflow evidence limits](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#evidence-and-limits)
+before choosing the affected checks.
 
 ## Further reading
 
-Read `docs/platform/CANONICAL_CONTRACTS.md` for the public delivery-alignment,
-status, idempotency, and provider boundaries;
-`packages/core/docs/SUBSCRIPTION_ENGINE.md` for the pure engine; and
-`server/domains/subscription/README.md` for server orchestration and refusal
-edges. A private deployment may add its own `SUBSCRIPTION_ORIENTATION.md`
-composition map, but public contributors do not need it and it cannot redefine
-these contracts. None of these source documents proves a hosted deployment is
-active.
+Read [canonical contracts](../../../docs/platform/CANONICAL_CONTRACTS.md) for
+delivery-alignment, status, idempotency and provider boundaries;
+the [core engine contract](../../../packages/core/docs/SUBSCRIPTION_ENGINE.md)
+for pure behavior; and the
+[server owner](../../../server/domains/subscription/README.md) for orchestration
+and refusal edges. The [reference profile](../../../docs/platform/SUBSCRIPTION_REFERENCE.md)
+owns its bounded evaluation instructions. Source guidance does not prove that a
+hosted installation is active.

@@ -2,22 +2,26 @@
 
 Status: source-of-truth
 
-`server/domains/subscription` owns subscription lifecycle use cases that are
-independent from HTTP routing: checkout activation bridges, recurring cycle
-charging, dunning/pause/resume decisions, and subscription outbox handlers.
+`server/domains/subscription` owns checkout activation bridges, recurring cycle
+charging, dunning/pause/resume decisions and subscription outbox handlers.
+Its use-case services work over injected ports. Some existing handler factories
+and invocation helpers retain transport types; this directory is not uniformly
+HTTP-independent.
 
 ## Engine Location
 
 ⚠️ This directory orchestrates the engine; it does not contain it. The pure
-lifecycle kernel lives in `packages/core/src/subscription/` behind the
+lifecycle kernel lives in [packages/core/src/subscription](../../../packages/core/src/subscription/) behind the
 `@openlup/core/subscription` package export, and the `subscriptionEngine*.ts` /
 `cycleHardening.ts` files in `src/domains/subscription` are re-export shims over
 it. Server code that reaches an engine function through those shims is reaching
 core. A change to cycle planning, a lifecycle transition, the payment-recording
 semantics, or the retry ladder is a `packages/core` change; this directory owns
 only what surrounds it — persistence, leases, ports, and the decision to call.
-The public behavioral, status, and idempotency boundary is in `docs/platform/CANONICAL_CONTRACTS.md`; the engine's own
-contract is in `packages/core/docs/SUBSCRIPTION_ENGINE.md`.
+Read [canonical contracts](../../../docs/platform/CANONICAL_CONTRACTS.md) for
+behavioral, status and idempotency boundaries, and the
+[engine contract](../../../packages/core/docs/SUBSCRIPTION_ENGINE.md) for pure
+behavior.
 
 ## Owns
 
@@ -39,10 +43,34 @@ contract is in `packages/core/docs/SUBSCRIPTION_ENGINE.md`.
 - PSP readback/reconciliation claiming: `server/domains/payment`. It may open
   subscription dunning only after payment-control has applied a failed renewal
   result and the cycle retry state has been read back from the database.
-- Route/auth composition: `server/bff/customers/subscriptions` and cron
-  entrypoints under `api/cron`.
+- Route and adapter composition: [server/bff](../../bff/), including the
+  [local renewal tick](../../bff/subscriptions/renewal-ticks.ts), and scheduled
+  entrypoint support under [api/_cron](../../../api/_cron/).
 - Browser account UI contracts: `src/domains/subscription` and
   `src/domains/customers`.
+
+## Workflow navigation
+
+The [subscription workflow map](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md)
+links each meaningful step to code and tests:
+
+- [Renew one cycle](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#renew-one-cycle):
+  outer lease/composition → serial batch → admission/preflight → durable attempt.
+- [Recover payment](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#recover-payment):
+  authenticated token evidence → owner check → record/replay operation.
+- [Protect delivery](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#protect-delivery):
+  admission, outstanding replacement and schedule alignment.
+- [Available domain services](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#available-domain-services):
+  activation bridge and neutral renewal orchestration, without assuming mounting.
+
+### Transport boundary
+
+[paymentRecoveryHandler.ts](paymentRecoveryHandler.ts) reads HTTP method/body
+and writes a BFF response. [subscriptionRenewalInvocation.ts](subscriptionRenewalInvocation.ts)
+contains the transport-independent `runSubscriptionRenewalBatch` alongside
+`resolveSubscriptionRenewalInvocation`, which reads request headers. Preserve
+that distinction when describing or reusing a unit. The filename's directory
+does not prove that every export is a portable service.
 
 ## Sharp Edges
 
@@ -123,10 +151,15 @@ and the schedule intact.
 
 ## Before Changing
 
-Read `docs/platform/CANONICAL_CONTRACTS.md` first, then the engine contract in
-`packages/core/docs/SUBSCRIPTION_ENGINE.md`. For composition boundaries, read
-`docs/platform/RUNTIME_AND_SELF_HOSTING.md` and the subscription boundary in
-`docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`. Historical implementation plans
-are audit trail, not current behavior. A private deployment may keep its own
-`SUBSCRIPTION_ORIENTATION.md` mapping, but that file is not a public prerequisite
-and cannot override the public contracts above.
+Read [canonical contracts](../../../docs/platform/CANONICAL_CONTRACTS.md) first,
+then the [engine contract](../../../packages/core/docs/SUBSCRIPTION_ENGINE.md).
+Use [runtime boundaries](../../../docs/platform/RUNTIME_AND_SELF_HOSTING.md)
+and [architecture](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md) for
+composition and ownership. Historical records do not establish current behavior.
+
+The [root public test command](../../../package.json) does not select the local
+`server/domains/subscription` tests. The workflow map's
+[evidence section](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#evidence-and-limits)
+distinguishes source falsifiers, the selected shared suite, the core package
+checks and reference-profile evidence. Record an actual compatible test run;
+the presence of a test file does not prove its result or a live installation.

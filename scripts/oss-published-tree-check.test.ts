@@ -9,6 +9,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+// Keep documentation falsifiers under the test file explicitly invoked by Published Tree CI.
+import "./documentation-impact.test.ts";
+import "./documentation-bundle.test.ts";
+import "./documentation-cli.test.ts";
 
 import {
   EXPLICIT_PUBLIC_PROJECTION_PATHS,
@@ -487,7 +491,7 @@ describe("the public-only policy check", () => {
       mkdirSync(join(root, "config"), { recursive: true });
       mkdirSync(join(root, "docs", "platform"), { recursive: true });
       writeFileSync(join(root, "README.md"), "# Public source\n");
-      writeFileSync(join(root, "docs", "platform", "README.md"), "[Guide](AGENT_GUIDE.md)\n");
+      writeFileSync(join(root, "docs", "platform", "README.md"), "[Guide](AGENT_GUIDE.md)\n[Directory](../../docs/platform/)\n");
       writeFileSync(join(root, "docs", "platform", "AGENT_GUIDE.md"), "# Guide\n");
       for (const path of PUBLIC_EXECUTION_ENTRYPOINTS) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), "public\n"); }
       writePackageManifests(root);
