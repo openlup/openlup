@@ -37,6 +37,8 @@ SemVer promise.
 
 ### Added
 
+- Export neutral lookup normalization from `./company-identity` for extensions.
+
 - `recordPaymentFailure` accepts an optional neutral `failureClass` and passes it
   to the canonical retry-ladder decision. Existing callers remain
   source-compatible. The shipped terminating-class set is exactly

@@ -1,21 +1,20 @@
 import { z } from "../../lib/validation/zod.js";
+import { INVENTORY_CONTRACT_VERSION, inventoryStockLineSchema } from "@openlup/core/inventory";
+export {
+  INVENTORY_CONTRACT_VERSION,
+  inventoryLocationKindSchema,
+  inventoryLocationStatusSchema,
+  inventoryLotStatusSchema,
+  inventoryAtpStatusSchema,
+  inventoryStockLineSchema,
+  inventoryAtpRequestLineSchema,
+  inventoryAtpRequestSchema,
+  inventoryAllocationSchema,
+  inventoryAtpLineResultSchema,
+  inventoryAtpResultSchema,
+} from "@openlup/core/inventory";
+export type { InventoryAtpRequest, InventoryAtpResult, InventoryStockLine } from "@openlup/core/inventory";
 
-export const INVENTORY_CONTRACT_VERSION = "inventory.v0";
-
-export const inventoryLocationKindSchema = z.enum([
-  "internal_warehouse",
-  "third_party_logistics",
-  "supplier",
-  "quarantine",
-  "virtual",
-]);
-export const inventoryLocationStatusSchema = z.enum(["active", "inactive"]);
-export const inventoryLotStatusSchema = z.enum([
-  "available",
-  "quarantined",
-  "expired",
-  "recalled",
-]);
 export const inventoryReservationStatusSchema = z.enum([
   "reserved",
   "released",
@@ -26,12 +25,6 @@ export const inventoryReservationKindSchema = z.enum([
   "checkout_payment_window",
   "subscription_retry_window",
   "manual_ops",
-]);
-export const inventoryAtpStatusSchema = z.enum([
-  "fulfillable",
-  "insufficient",
-  "review_required",
-  "unsupported",
 ]);
 export const inventoryMovementTypeSchema = z.enum([
   "receipt",
@@ -49,71 +42,6 @@ const uuidSchema = z.guid();
 const datetimeSchema = z.string().datetime({ offset: true });
 const quantitySchema = z.number().int().nonnegative();
 const positiveQuantitySchema = z.number().int().positive();
-
-export const inventoryStockLineSchema = z.object({
-  skuId: uuidSchema,
-  sku: z.string().trim().min(1),
-  locationId: uuidSchema,
-  locationCode: z.string().trim().min(1),
-  locationKind: inventoryLocationKindSchema,
-  locationStatus: inventoryLocationStatusSchema,
-  fulfillable: z.boolean(),
-  lotId: uuidSchema.nullable(),
-  lotCode: z.string().trim().min(1).nullable(),
-  lotStatus: inventoryLotStatusSchema.nullable(),
-  expiresAt: datetimeSchema.nullable(),
-  onHand: quantitySchema,
-  reserved: quantitySchema,
-  unavailable: quantitySchema,
-  incoming: quantitySchema,
-  safetyStock: quantitySchema,
-}).strict();
-
-export const inventoryAtpRequestLineSchema = z.object({
-  skuId: uuidSchema,
-  sku: z.string().trim().min(1),
-  quantity: positiveQuantitySchema,
-}).strict();
-
-export const inventoryAtpRequestSchema = z.object({
-  contractVersion: z.literal(INVENTORY_CONTRACT_VERSION),
-  lines: z.array(inventoryAtpRequestLineSchema).min(1),
-  requestedAt: datetimeSchema,
-  orderMode: z.enum(["one_time", "subscription_cycle"]),
-  region: z.literal("PL").default("PL"),
-  noSplitShipment: z.boolean().default(true),
-  minShelfLifeDays: z.number().int().min(0).max(730).default(0),
-}).strict();
-
-export const inventoryAllocationSchema = z.object({
-  skuId: uuidSchema,
-  sku: z.string().trim().min(1),
-  locationId: uuidSchema,
-  locationCode: z.string().trim().min(1),
-  lotId: uuidSchema.nullable(),
-  lotCode: z.string().trim().min(1).nullable(),
-  quantity: positiveQuantitySchema,
-  expiresAt: datetimeSchema.nullable(),
-}).strict();
-
-export const inventoryAtpLineResultSchema = z.object({
-  skuId: uuidSchema,
-  sku: z.string().trim().min(1),
-  requestedQuantity: positiveQuantitySchema,
-  availableQuantity: quantitySchema,
-  missingQuantity: quantitySchema,
-  status: inventoryAtpStatusSchema,
-  allocations: z.array(inventoryAllocationSchema),
-}).strict();
-
-export const inventoryAtpResultSchema = z.object({
-  contractVersion: z.literal(INVENTORY_CONTRACT_VERSION),
-  status: inventoryAtpStatusSchema,
-  reason: z.string().trim().min(1).nullable(),
-  locationId: uuidSchema.nullable(),
-  locationCode: z.string().trim().min(1).nullable(),
-  lines: z.array(inventoryAtpLineResultSchema),
-}).strict();
 
 export const adminInventoryStockRequestSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -255,10 +183,7 @@ export const inventoryForecastResponseSchema = z.object({
   shortages: z.array(inventoryForecastShortageSchema),
 }).strict();
 
-export type InventoryAtpRequest = z.input<typeof inventoryAtpRequestSchema>;
-export type InventoryAtpResult = z.infer<typeof inventoryAtpResultSchema>;
 export type InventoryReservationStatus = z.infer<typeof inventoryReservationStatusSchema>;
-export type InventoryStockLine = z.infer<typeof inventoryStockLineSchema>;
 export type AdminInventoryStockRequest = z.infer<typeof adminInventoryStockRequestSchema>;
 export type AdminInventoryReservationsRequest = z.infer<typeof adminInventoryReservationsRequestSchema>;
 export type AdminInventoryStockAdjustmentRequest = z.infer<typeof adminInventoryStockAdjustmentRequestSchema>;

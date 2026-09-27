@@ -82,7 +82,8 @@ export function createAdminInventoryReservationsHandler({
 export function createAdminInventoryAtpCheckHandler({
   authorizeAdmin,
   inventoryPort,
-}: BaseDeps & { inventoryPort: Pick<InventoryReadPort, "checkAtp"> }) {
+  configuredRegion,
+}: BaseDeps & { inventoryPort: Pick<InventoryReadPort, "checkAtp">; configuredRegion?: string }) {
   return async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     if (req.method !== "POST") return sendMethodNotAllowed(res, ["POST"]);
     if (!(await authorize(req, res, authorizeAdmin))) return;
@@ -96,7 +97,10 @@ export function createAdminInventoryAtpCheckHandler({
     }
 
     try {
-      const result = await inventoryPort.checkAtp(request.data);
+      const result = await inventoryPort.checkAtp({
+        ...request.data,
+        region: request.data.region ?? configuredRegion,
+      });
       const response = inventoryAtpResultSchema.safeParse(result);
       if (!response.success) return sendBffError(res, "INVALID_RESPONSE", "Inventory ATP response invalid");
       sendBffSuccess(res, response.data);

@@ -107,11 +107,9 @@ export declare const companyIdentitySourceSchema: z.ZodObject<{
     observedAt: z.ZodString;
     evidenceHash: z.ZodNullable<z.ZodString>;
 }, z.core.$strict>;
-/** A lookup request. `country` is an open ISO-3166 alpha-2 code (not restricted
- * to any single country); `identifierKind`/`identifierValue` name and carry the
- * tax/registry id; `manualCompany` optionally seeds user-entered data an adapter
- * may reconcile against a registry. Parsing normalizes country to upper-case and
- * identifier kind to lower-case. */
+/** Lookup coordinates with optional manual identity for registry reconciliation.
+ * Country is an open ISO-3166 alpha-2 code. Parsing uppercases country and
+ * lowercases identifier kind; national tax-id rules belong to extensions. */
 /** @beta */
 export declare const companyIdentityLookupRequestSchema: z.ZodPipe<z.ZodObject<{
     country: z.ZodString;
@@ -223,6 +221,8 @@ interface NormalizableCompanyIdentityLookupRequest {
     purpose: CompanyIdentityPurpose;
     manualCompany?: Partial<CompanyIdentityCompany>;
 }
+/** @beta */
+export declare function normalizeCompanyIdentityLookupRequest(request: NormalizableCompanyIdentityLookupRequest): NormalizableCompanyIdentityLookupRequest;
 /** True when the company has the minimum fields needed to render/persist a full
  * billing identity: legal name plus a complete registered address. Used to gate
  * whether a `partial` lookup is usable for its purpose. */
@@ -234,7 +234,7 @@ export {};
 
 ```ts
 /** @beta */
-export { COMPANY_IDENTITY_CONTRACT_VERSION, companyIdentityAddressSchema, companyIdentityCompanySchema, companyIdentityIdentifierKindSchema, companyIdentityLookupRequestSchema, companyIdentityLookupResponseSchema, companyIdentityLookupStatusSchema, companyIdentityPurposeSchema, companyIdentitySourceSchema, companyIdentitySourceStatusSchema, companyIdentityVerificationLevelSchema, isCompleteCompanyIdentity, } from "./contracts.js";
+export { COMPANY_IDENTITY_CONTRACT_VERSION, companyIdentityAddressSchema, companyIdentityCompanySchema, companyIdentityIdentifierKindSchema, companyIdentityLookupRequestSchema, companyIdentityLookupResponseSchema, companyIdentityLookupStatusSchema, companyIdentityPurposeSchema, companyIdentitySourceSchema, companyIdentitySourceStatusSchema, companyIdentityVerificationLevelSchema, isCompleteCompanyIdentity, normalizeCompanyIdentityLookupRequest, } from "./contracts.js";
 /** @beta */
 export type { CompanyIdentityCompany, CompanyIdentityLookupRequest, CompanyIdentityLookupResponse, CompanyIdentityPurpose, CompanyIdentitySource, CompanyIdentitySourceStatus, CompanyIdentityVerificationLevel, } from "./contracts.js";
 /** @beta */

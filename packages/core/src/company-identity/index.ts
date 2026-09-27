@@ -12,6 +12,7 @@ export {
   companyIdentitySourceStatusSchema,
   companyIdentityVerificationLevelSchema,
   isCompleteCompanyIdentity,
+  normalizeCompanyIdentityLookupRequest,
 } from "./contracts.js";
 /** @beta */
 export type {

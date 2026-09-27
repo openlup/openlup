@@ -5,6 +5,8 @@ import {
   companyIdentityCompanySchema as coreCompanyIdentityCompanySchema,
   companyIdentityIdentifierKindSchema,
   companyIdentityLookupResponseSchema as coreCompanyIdentityLookupResponseSchema,
+  companyIdentityLookupRequestSchema as coreCompanyIdentityLookupRequestSchema,
+  normalizeCompanyIdentityLookupRequest,
   companyIdentityLookupStatusSchema,
   companyIdentityPurposeSchema,
   companyIdentitySourceSchema,
@@ -22,12 +24,9 @@ export const companyIdentityCompanySchema = z
   })
   .strict();
 
-export const companyIdentityLookupRequestSchema = z
-  .object({
-    country: z.string().trim().toUpperCase().length(2),
-    identifierKind: companyIdentityIdentifierKindSchema,
-    identifierValue: z.string().trim().min(1).max(120),
-    purpose: companyIdentityPurposeSchema,
+// Extend the core input shape only for the existing registry-specific fields.
+export const companyIdentityLookupRequestSchema = coreCompanyIdentityLookupRequestSchema.in
+  .extend({
     manualCompany: companyIdentityCompanySchema.partial({
       identifierKind: true,
       identifierValue: true,
@@ -35,8 +34,18 @@ export const companyIdentityLookupRequestSchema = z
       registryStatus: true,
     }).optional(),
   })
-  .strict()
-  .transform((request) => normalizeCompanyIdentityLookupRequest(request as NormalizableCompanyIdentityLookupRequest));
+  .transform((request) => {
+    const identifierValue = request.country === "PL" && request.identifierKind === "pl_nip"
+      ? normalizePolishNip(request.identifierValue) ?? request.identifierValue
+      : request.identifierValue;
+    const normalized = normalizeCompanyIdentityLookupRequest({ ...request, identifierValue });
+    return {
+      ...normalized,
+      ...(normalized.manualCompany ? {
+        manualCompany: { ...request.manualCompany, ...normalized.manualCompany },
+      } : {}),
+    };
+  });
 
 export const companyIdentityLookupResponseSchema = coreCompanyIdentityLookupResponseSchema
   .extend({
@@ -63,45 +72,6 @@ export {
   companyIdentityVerificationLevelSchema,
   isCompleteCompanyIdentity,
 };
-
-interface NormalizableCompanyIdentityLookupRequest {
-  country: string;
-  identifierKind: string;
-  identifierValue: string;
-  purpose: CompanyIdentityPurpose;
-  manualCompany?: Partial<CompanyIdentityCompany>;
-}
-
-function normalizeCompanyIdentityLookupRequest(
-  request: NormalizableCompanyIdentityLookupRequest,
-): NormalizableCompanyIdentityLookupRequest {
-  const country = String(request.country).trim().toUpperCase();
-  const identifierKind = String(request.identifierKind).trim().toLowerCase();
-  const normalizedIdentifier =
-    country === "PL" && identifierKind === "pl_nip"
-      ? normalizePolishNip(request.identifierValue) ?? request.identifierValue.trim()
-      : request.identifierValue.trim();
-
-  const normalized = {
-    country,
-    identifierKind,
-    identifierValue: normalizedIdentifier,
-    purpose: request.purpose,
-  };
-  if (request.manualCompany) {
-    return {
-      ...normalized,
-      manualCompany: {
-        ...request.manualCompany,
-        country,
-        identifierKind,
-        identifierValue: normalizedIdentifier,
-        registryStatus: request.manualCompany.registryStatus ?? "manual",
-      },
-    };
-  }
-  return normalized;
-}
 
 export function isValidCompanyIdentifier(country: string, identifierKind: string, value: string): boolean {
   if (identifierKind === "custom") return value.trim().length > 0;

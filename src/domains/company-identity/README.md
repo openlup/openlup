@@ -38,7 +38,10 @@ consequence is larger.
   store.
 - `companyIdentityContracts.ts` — the local layer on top of the neutral base:
   downstream registry extensions and the country-specific normalization
-  described below.
+  described below. It extends the imported core request input schema and uses
+  the core's public `normalizeCompanyIdentityLookupRequest`; it does not copy
+  the neutral schema or normalization. Optional registry fields survive the
+  local extension. National tax-id normalization and validation stay here.
 - `companyIdentityClient.ts` — the browser client for
   `/api/bff/company-identity/lookup`.
 - `server/domains/company-identity/companyIdentityService.ts` — composes an
