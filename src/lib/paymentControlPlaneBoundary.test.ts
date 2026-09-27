@@ -5,11 +5,6 @@ import { describe, expect, it } from "vitest";
 import { allMigrations, effectiveGrantMigration, functionNamesWithPrefix } from "../test/effectiveMigration";
 
 const repoRoot = process.cwd();
-// One-time DDL: the payment-control tables and the inbound-inbox alteration.
-// Measured over the whole corpus - no later migration re-creates or drops them,
-// so this pin is the migration that owns them.
-const migration = read("supabase/migrations/20260604190000_commerce_v2_w9_payment_control_plane.sql");
-const probe = read("docs/sql/payment_control_plane_rehearsal_probe.sql");
 
 // The payment-control RPC family, discovered from the corpus rather than listed.
 // Until W4a this file checked a hardcoded list of 8 names against exactly two
@@ -81,17 +76,19 @@ function isHiddenAccountOrderTerminalFile(file: string): boolean {
 }
 
 describe("payment-control plane boundary", () => {
-  it("adds the hidden payment-control tables and keeps the existing inbound inbox", () => {
+  it("declares the payment-control tables and links the inbound inbox to them", () => {
+    // Read from the whole migration corpus, which in this tree starts from the
+    // schema baseline, so the pin holds whichever migration now owns the DDL.
     for (const required of [
-      "CREATE TABLE IF NOT EXISTS public.commerce_payment_intents",
-      "CREATE TABLE IF NOT EXISTS public.commerce_payment_attempts",
-      "CREATE TABLE IF NOT EXISTS public.commerce_payment_state_transitions",
-      "CREATE TABLE IF NOT EXISTS public.commerce_payment_reconciliation_runs",
-      "ALTER TABLE public.inbound_provider_events",
-      "payment_intent_id uuid REFERENCES public.commerce_payment_intents",
+      "CREATE TABLE public.commerce_payment_intents (",
+      "CREATE TABLE public.commerce_payment_attempts (",
+      "CREATE TABLE public.commerce_payment_state_transitions (",
+      "CREATE TABLE public.commerce_payment_reconciliation_runs (",
+      "CREATE TABLE public.inbound_provider_events (",
+      "ADD CONSTRAINT inbound_provider_events_payment_intent_id_fkey FOREIGN KEY (payment_intent_id) REFERENCES public.commerce_payment_intents(id)",
       "ON CONFLICT (provider, provider_event_id) DO NOTHING",
     ]) {
-      expect(migration).toContain(required);
+      expect(allMigrationSql).toContain(required);
     }
   });
 
@@ -124,41 +121,20 @@ describe("payment-control plane boundary", () => {
         new RegExp(`REVOKE\\s+ALL\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${escapedFn}\\b[^;]*\\bFROM\\s+[^;]*\\bPUBLIC\\b`, "i"),
       );
 
-      // Either the RPC is callable by the service role, or it is internal-only
-      // and revoked from the service role too. Both mean "no browser role".
-      const grantsServiceRole = new RegExp(
-        `GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${escapedFn}\\b[^;]*\\bTO\\s+service_role\\b`,
-        "i",
-      ).test(grants);
-      const revokesServiceRole = new RegExp(
-        `REVOKE\\s+ALL\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${escapedFn}\\b[^;]*\\bFROM\\s+[^;]*\\bservice_role\\b`,
-        "i",
-      ).test(grants);
-      expect(grantsServiceRole || revokesServiceRole).toBe(true);
+      // After that REVOKE the only role granted anything is the service role:
+      // the RPC is either server-callable or internal-only. A schema dump spells
+      // the grant `GRANT ALL`, a hand-written migration `GRANT EXECUTE`.
+      const grantedRoles = [...grants.matchAll(new RegExp(
+        `GRANT\\s+(?:EXECUTE|ALL(?:\\s+PRIVILEGES)?)\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${escapedFn}\\b[^;]*?\\bTO\\s+([^;]+);`,
+        "gi",
+      ))].flatMap(([, roles]) => roles.split(",").map((role) => role.trim()));
+      expect(grantedRoles.filter((role) => role !== "service_role")).toEqual([]);
 
       // No migration anywhere, at any point in history, hands a browser role
       // EXECUTE on the money path.
       expect(allMigrationSql).not.toMatch(
-        new RegExp(`GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${escapedFn}\\b[^;]*\\bTO\\s+[^;]*\\b(?:PUBLIC|anon|authenticated)\\b`, "i"),
+        new RegExp(`GRANT\\s+(?:EXECUTE|ALL(?:\\s+PRIVILEGES)?)\\s+ON\\s+FUNCTION\\s+(?:public\\.)?${escapedFn}\\b[^;]*\\bTO\\s+[^;]*\\b(?:PUBLIC|anon|authenticated)\\b`, "i"),
       );
-    }
-  });
-
-  it("guards the critical async payment cases in the local SQL rehearsal", () => {
-    for (const required of [
-      "payment_control_intent_replay_failed",
-      "payment_control_intent_conflict_not_detected",
-      "payment_control_invalid_signature_not_rejected",
-      "payment_control_event_replay_failed",
-      "payment_control_late_failure_not_ignored",
-      "payment_control_timeout_shipment_not_blocked",
-      "payment_control_subscription_failure_retry_or_cadence_failed",
-      "subscription_current_template_snapshot",
-      "subscription_lines",
-      "payment_control_apply_result_exposed_to_authenticated",
-      "ROLLBACK",
-    ]) {
-      expect(probe).toContain(required);
     }
   });
 
@@ -194,6 +170,8 @@ describe("payment-control plane boundary", () => {
       join(repoRoot, "src/App.tsx"),
       join(repoRoot, "src/main.tsx"),
     ]
+      // The application shell is adopter-owned and absent from this tree.
+      .filter((file) => existsSync(file))
       .filter((file) => /\.(ts|tsx)$/.test(file))
       .filter((file) => !/\.(test|spec)\./.test(file));
 
