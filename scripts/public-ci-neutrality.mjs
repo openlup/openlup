@@ -1,12 +1,28 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baselinePath = "config/openlup-neutrality-baseline.json";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
+const blobIdentity = (bytes) => createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+const scannerPaths = [
+  "packages/core/scripts/neutrality-source-scanner.ts",
+  "packages/core/scripts/neutrality-shell-fold.ts",
+  "packages/core/scripts/neutrality-tree-counts.ts",
+  "packages/ui/smoke/neutrality.ts",
+];
+// Exact initial counting interfaces, reviewed with this installation. Existing
+// matcher and shell-fold bytes must additionally equal the trusted base.
+const initialAdapters = {
+  "packages/core/scripts/neutrality-tree-counts.ts": "2999eae190b237ababb4ab75a82e9288c58c4b3c",
+  "packages/ui/smoke/neutrality.ts": "18a59f35931a273537d02a460e9b0b4b69c02c1f",
+};
+const categoryPattern = /^(?:brand|legacy-env|ui-(?:[0-9]|1[0-7]))$/;
+const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const label = (path) => JSON.stringify(path);
 
 export function neutralityIncreases(baseline, current) {
   const increases = [];
@@ -16,83 +32,185 @@ export function neutralityIncreases(baseline, current) {
   }
   return increases;
 }
-
 export function validateBaseline(baseline) {
-  if (baseline.schemaVersion !== 1 || !/^[a-f0-9]{40}$/.test(baseline.sourceCommit) || !baseline.counts || Array.isArray(baseline.counts) || typeof baseline.counts !== "object") throw new Error("invalid neutrality baseline");
+  if (!record(baseline) || baseline.schemaVersion !== 2 || !/^[a-f0-9]{40}$/.test(baseline.sourceCommit) || !record(baseline.counts)) throw new Error("invalid neutrality baseline");
+  if (!record(baseline.scannerPins) || JSON.stringify(Object.keys(baseline.scannerPins).sort()) !== JSON.stringify([...scannerPaths].sort())) throw new Error("invalid neutrality scanner pins");
+  for (const pin of Object.values(baseline.scannerPins)) if (!/^[a-f0-9]{40}$/.test(pin)) throw new Error("invalid neutrality scanner pin identity");
   for (const [path, counts] of Object.entries(baseline.counts)) {
-    if (!/^[a-f0-9]{64}$/.test(path) || !counts || Array.isArray(counts) || typeof counts !== "object") throw new Error("invalid neutrality baseline path");
-    for (const [category, count] of Object.entries(counts)) {
-      if (!/^(?:brand|legacy-env|ui-(?:[0-9]|1[0-7]))$/.test(category) || !Number.isSafeInteger(count) || count < 0) throw new Error("invalid neutrality baseline count");
+    if (!/^[a-f0-9]{64}$/.test(path) || !record(counts)) throw new Error("invalid neutrality baseline path");
+    for (const [category, count] of Object.entries(counts)) if (!categoryPattern.test(category) || !Number.isSafeInteger(count) || count < 0) throw new Error("invalid neutrality baseline count");
+  }
+}
+function git(args, options = {}) {
+  try { return execFileSync("git", args, { cwd: root, maxBuffer: 256 * 1024 * 1024, ...options }); }
+  catch { throw new Error("neutrality Git inventory or object unavailable"); }
+}
+function inventoryRecords(args) {
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(git(args)).split("\0").filter(Boolean); }
+  catch { throw new Error("unsupported or unavailable UTF-8 Git inventory"); }
+}
+function validPath(path) {
+  if (!path || path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => !part || part === "." || part === "..")) throw new Error(`unsupported inventory path: ${label(path)}`);
+  return path;
+}
+function readLocal(path, deletionAllowed = false) {
+  validPath(path);
+  const components = path.split("/");
+  for (let index = 1; index <= components.length; index++) {
+    const component = components.slice(0, index).join("/");
+    let stat;
+    try { stat = lstatSync(join(root, component)); }
+    catch (error) {
+      if (deletionAllowed && error.code === "ENOENT") return undefined;
+      throw new Error(`unreadable inventory path: ${label(path)}`);
+    }
+    if (stat.isSymbolicLink() || (index < components.length ? !stat.isDirectory() : !stat.isFile())) throw new Error(`unsupported filesystem entry: ${label(component)}`);
+  }
+  try { return readFileSync(join(root, path)); }
+  catch { throw new Error(`unreadable inventory path: ${label(path)}`); }
+}
+function treeBytes(ref) {
+  const entries = inventoryRecords(["ls-tree", "-r", "-z", ref]).map((entry) => {
+    const match = /^(\d{6}) (\w+) ([a-f0-9]{40})\t([\s\S]+)$/.exec(entry);
+    if (!match) throw new Error("unsupported Git inventory record");
+    if (!["100644", "100755"].includes(match[1]) || match[2] !== "blob") throw new Error(`unsupported Git inventory object: ${label(match[4])}`);
+    return { oid: match[3], path: validPath(match[4]) };
+  });
+  // Requests contain object identities, never pathname expressions or delimiters.
+  const output = git(["cat-file", "--batch"], { input: entries.map(({ oid }) => `${oid}\n`).join("") });
+  let offset = 0;
+  const snapshots = new Map();
+  for (const { oid, path } of entries) {
+    const end = output.indexOf(10, offset);
+    const match = /^([a-f0-9]{40}) blob (\d+)$/.exec(output.subarray(offset, end).toString("utf8"));
+    if (!match || match[1] !== oid) throw new Error(`unreadable inventory blob: ${label(path)}`);
+    const size = Number(match[2]);
+    if (!Number.isSafeInteger(size) || end + size + 1 >= output.length || output[end + size + 1] !== 10) throw new Error(`invalid inventory blob: ${label(path)}`);
+    snapshots.set(path, output.subarray(end + 1, end + size + 1));
+    offset = end + size + 2;
+  }
+  if (offset !== output.length) throw new Error("invalid Git blob transport");
+  return snapshots;
+}
+function workingBytes() {
+  const snapshots = new Map();
+  for (const entry of inventoryRecords(["ls-files", "--stage", "-z"])) {
+    const match = /^(\d{6}) [a-f0-9]{40} (\d)\t([\s\S]+)$/.exec(entry);
+    if (!match) throw new Error("unsupported Git index record");
+    if (!["100644", "100755"].includes(match[1]) || match[2] !== "0") throw new Error(`unsupported or unmerged Git index object: ${label(match[3])}`);
+    const bytes = readLocal(match[3], true);
+    if (bytes !== undefined) snapshots.set(match[3], bytes);
+  }
+  for (const path of inventoryRecords(["ls-files", "--others", "--exclude-standard", "-z"])) snapshots.set(path, readLocal(path));
+  return new Map([...snapshots].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+}
+function pinsFor(snapshots) {
+  return Object.fromEntries(scannerPaths.map((path) => {
+    const bytes = snapshots.get(path);
+    if (!bytes) throw new Error(`missing scanner source: ${label(path)}`);
+    return [path, blobIdentity(bytes)];
+  }));
+}
+function validateScannerChain(snapshots) {
+  for (const path of scannerPaths) {
+    const source = snapshots.get(path)?.toString("utf8");
+    if (source === undefined) throw new Error(`missing scanner source: ${label(path)}`);
+    if (/\b(?:import|require)\s*\(/u.test(source) || /^[ \t]*import\s*["']/m.test(source)) throw new Error(`unchecked scanner dependency: ${label(path)}`);
+    for (const [, specifier] of source.matchAll(/^[ \t]*(?:import|export)\s+[^;]*?\bfrom\s*["']([^"']+)["'];/gm)) {
+      if (specifier.startsWith("node:")) continue;
+      const dependency = resolve(root, dirname(path), specifier);
+      if (!scannerPaths.some((allowed) => join(root, allowed) === dependency)) throw new Error(`unchecked scanner dependency: ${label(path)}`);
     }
   }
 }
-
-export function scanTree(ref) {
-  const paths = [...new Set(execFileSync("git", ref ? ["ls-tree", "-r", "--name-only", "-z", ref] : ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean))].sort();
-  const snapshots = new Map();
-  if (ref) {
-    const output = execFileSync("git", ["cat-file", "--batch"], { cwd: root, input: paths.map((path) => `${ref}:${path}\n`).join(""), maxBuffer: 256 * 1024 * 1024 });
-    let offset = 0;
-    for (const path of paths) {
-      const end = output.indexOf(10, offset);
-      const header = output.subarray(offset, end).toString("utf8");
-      const match = /^[a-f0-9]{40} blob (\d+)$/.exec(header);
-      if (!match) throw new Error(`unreadable baseline blob: ${path}`);
-      const size = Number(match[1]);
-      snapshots.set(path, output.subarray(end + 1, end + 1 + size));
-      offset = end + 2 + size;
-    }
+function verifyPins(parent, current, base) {
+  validateScannerChain(current);
+  const pins = pinsFor(current);
+  for (const path of scannerPaths) {
+    const approved = parent ? parent.scannerPins[path] : initialAdapters[path] ?? (base.get(path) && blobIdentity(base.get(path)));
+    if (!approved || pins[path] !== approved) throw new Error(`${parent ? "scanner pin drift" : "unreviewed initial scanner identity"}: ${label(path)}`);
+    if (parent && (!base.get(path) || blobIdentity(base.get(path)) !== approved)) throw new Error(`base scanner pin drift: ${label(path)}`);
   }
+  return pins;
+}
+function scanSnapshots(snapshots) {
   const sources = [], binary = [];
-  for (const path of paths) {
-    const bytes = ref ? snapshots.get(path) : readFileSync(join(root, path));
+  for (const [path, bytes] of snapshots) {
     try {
       if (bytes.includes(0)) throw new Error("binary");
       sources.push({ path, contents: new TextDecoder("utf-8", { fatal: true }).decode(bytes) });
     } catch { binary.push(path); }
   }
-  const invoke = (path, input, args = []) => JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", path, ...args], { cwd: root, input: JSON.stringify(input), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }));
+  const invoke = (path, input, args = []) => {
+    try { return JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", path, ...args], { cwd: root, input: JSON.stringify(input), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 })); }
+    catch { throw new Error(`neutrality scanner failed: ${label(path)}`); }
+  };
   const ui = invoke("packages/ui/smoke/neutrality.ts", sources, ["--counts-json"]);
+  if (!record(ui) || !Array.isArray(ui.counts) || !record(ui.policy)) throw new Error("invalid neutrality scanner output");
   const core = invoke("packages/core/scripts/neutrality-tree-counts.ts", { sources, policy: ui.policy });
+  if (!Array.isArray(core)) throw new Error("invalid neutrality scanner output");
+  const paths = Object.fromEntries([...snapshots.keys()].map((path) => [hash(path), path]));
   const rows = {};
-  for (const row of [...ui.counts, ...core]) if (Object.keys(row.counts).length) rows[hash(row.path)] = { ...rows[hash(row.path)], ...row.counts };
-  return { rows: Object.fromEntries(Object.entries(rows).sort()), paths: Object.fromEntries(paths.map((path) => [hash(path), path])), textFiles: sources.length, binaryFiles: binary.length };
+  for (const row of [...ui.counts, ...core]) {
+    if (!record(row) || !snapshots.has(row.path) || !record(row.counts)) throw new Error("invalid neutrality scanner row");
+    for (const [category, count] of Object.entries(row.counts)) if (!categoryPattern.test(category) || !Number.isSafeInteger(count) || count < 0) throw new Error("invalid neutrality scanner count");
+    if (Object.keys(row.counts).length) rows[hash(row.path)] = { ...rows[hash(row.path)], ...row.counts };
+  }
+  return { rows: Object.fromEntries(Object.entries(rows).sort()), paths, textFiles: sources.length, binaryFiles: binary.length, binary };
 }
-
-function baseCommit() {
-  const index = process.argv.indexOf("--base-commit");
-  const explicit = index < 0 ? undefined : process.argv[index + 1];
+export function scanTree(ref) { return scanSnapshots(ref ? treeBytes(ref) : workingBytes()); }
+function baseCommit(args) {
+  const index = args.indexOf("--base-commit");
+  const explicit = index < 0 ? undefined : args[index + 1];
   if (index >= 0 && !explicit) throw new Error("missing neutrality base SHA");
-  if (explicit && !/^[a-f0-9]{40}$/.test(explicit)) throw new Error("neutrality base must be a full commit SHA");
-  return execFileSync("git", ["rev-parse", "--verify", `${explicit ?? "origin/main"}^{commit}`], { cwd: root, encoding: "utf8" }).trim();
+  if (explicit && (!/^[a-f0-9]{40}$/.test(explicit) || /^0+$/.test(explicit))) throw new Error("neutrality base must be a nonzero full commit SHA");
+  if (index >= 0) args.splice(index, 2);
+  return git(["rev-parse", "--verify", `${explicit ?? "origin/main"}^{commit}`], { encoding: "utf8" }).trim();
 }
-function readParent(base) {
-  const paths = execFileSync("git", ["ls-tree", "--name-only", base, "--", baselinePath], { cwd: root, encoding: "utf8" });
-  if (!paths.trim()) return undefined;
-  return JSON.parse(execFileSync("git", ["show", `${base}:${baselinePath}`], { cwd: root, encoding: "utf8" }));
+function parseBaseline(bytes) {
+  let value;
+  try { value = JSON.parse(bytes.toString("utf8")); }
+  catch { throw new Error("invalid neutrality baseline JSON"); }
+  validateBaseline(value);
+  return value;
+}
+function report(increases, paths) {
+  for (const row of increases) console.error(`${label(paths[row.path] ?? row.path)}: ${row.category} increased ${row.before} -> ${row.after}`);
 }
 function main() {
-  const base = baseCommit();
-  const parent = readParent(base);
-  if (parent) validateBaseline(parent);
   const options = process.argv.slice(2);
-  const baseIndex = options.indexOf("--base-commit");
-  if (baseIndex >= 0) options.splice(baseIndex, 2);
-  if (options.length > 1) throw new Error("unknown neutrality options");
-  const mode = options[0];
-  const current = scanTree(mode === "--write-baseline" ? base : undefined);
-  if (mode === "--write-baseline") {
-    if (parent && neutralityIncreases(parent.counts, current.rows).length) throw new Error("baseline regeneration would increase accepted debt");
-    writeFileSync(join(root, baselinePath), `${JSON.stringify({ schemaVersion: 1, sourceCommit: base, counts: current.rows }, null, 2)}\n`);
-  } else if (mode === undefined) {
-    const baseline = JSON.parse(readFileSync(join(root, baselinePath), "utf8"));
-    validateBaseline(baseline);
-    if (!parent && (baseline.sourceCommit !== base || JSON.stringify(baseline.counts) !== JSON.stringify(scanTree(base).rows))) throw new Error("initial neutrality baseline must equal the measured base tree");
+  const base = baseCommit(options);
+  if (options.length > 1 || (options[0] !== undefined && options[0] !== "--write-baseline")) throw new Error("expected no option or --write-baseline");
+  const baseBytes = treeBytes(base);
+  const parent = baseBytes.has(baselinePath) ? parseBaseline(baseBytes.get(baselinePath)) : undefined;
+  const currentBytes = workingBytes();
+  const scannerPins = verifyPins(parent, currentBytes, baseBytes);
+  const measuredBase = scanSnapshots(baseBytes);
+  const current = scanSnapshots(currentBytes);
+  for (const path of current.binary) if (Object.keys(measuredBase.rows[hash(path)] ?? {}).length) throw new Error(`contaminated text became binary: ${label(path)}`);
+  const baseIncreases = neutralityIncreases(measuredBase.rows, current.rows);
+  if (options[0] === "--write-baseline") {
+    const counts = parent ? current.rows : measuredBase.rows;
+    const raised = parent ? neutralityIncreases(parent.counts, counts) : [];
+    if (baseIncreases.length || raised.length) {
+      report([...baseIncreases, ...raised], { ...measuredBase.paths, ...current.paths });
+      throw new Error("baseline regeneration would increase accepted debt");
+    }
+    readLocal(baselinePath, true); // Refuse a symlink or nonregular target.
+    try { writeFileSync(join(root, baselinePath), `${JSON.stringify({ schemaVersion: 2, sourceCommit: base, scannerPins, counts }, null, 2)}\n`); }
+    catch { throw new Error(`unable to write neutrality baseline: ${label(baselinePath)}`); }
+  } else {
+    if (!currentBytes.has(baselinePath)) throw new Error("neutrality baseline missing or removed");
+    const baseline = parseBaseline(currentBytes.get(baselinePath));
+    for (const path of scannerPaths) if (baseline.scannerPins[path] !== scannerPins[path]) throw new Error(`baseline scanner pin drift: ${label(path)}`);
+    if (!parent && (baseline.sourceCommit !== base || JSON.stringify(baseline.counts) !== JSON.stringify(measuredBase.rows))) throw new Error("initial neutrality baseline must equal the measured base tree");
     const raised = parent ? neutralityIncreases(parent.counts, baseline.counts) : [];
     const increases = neutralityIncreases(baseline.counts, current.rows);
-    for (const row of [...raised, ...increases]) console.error(`${current.paths[row.path] ?? row.path}: ${row.category} increased ${row.before} -> ${row.after}`);
-    console.log(`Neutrality: ${current.textFiles} text files, ${current.binaryFiles} binary files inventoried; ${increases.length + raised.length} increases. Baseline path keys are SHA-256 hashes of exact relative paths.`);
-    if (increases.length || raised.length) process.exitCode = 1;
-  } else throw new Error("expected no option or --write-baseline");
+    report([...baseIncreases, ...raised, ...increases], { ...measuredBase.paths, ...current.paths });
+    console.log(`Neutrality: ${current.textFiles} text files, ${current.binaryFiles} binary files inventoried; ${baseIncreases.length + raised.length + increases.length} increases. Base ${base}; candidate ${git(["rev-parse", "HEAD"], { encoding: "utf8" }).trim()}; path keys are SHA-256 hashes of exact relative paths.`);
+    if (baseIncreases.length || raised.length || increases.length) process.exitCode = 1;
+  }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; }
+}

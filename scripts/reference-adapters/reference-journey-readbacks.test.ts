@@ -10,7 +10,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(new URL("./reference-journey-readbacks.ts", import.meta.url), "utf8");
+function transportSource(): string {
+  return readFileSync(new URL("./reference-journey-readbacks.ts", import.meta.url), "utf8");
+}
 
 const CUSTOMER_ROUTE = "/api/bff/reference-journey/customer/order-readback";
 const OPERATOR_ROUTE = "/api/bff/reference-journey/operator/order-readback";
@@ -24,7 +26,7 @@ type Call = { route: string; operation: string | null; authenticated: boolean };
 // call list is the transport contract. `unwrap(` in front of a call is what marks the four
 // authenticated list/detail readbacks; the remaining calls are the anonymous/cross-user denials.
 function requestedCalls(): Call[] {
-  return [...source.matchAll(/(unwrap\(await\s+)?requestJson\(baseUrl,\s*[`"]([^`"]+)[`"](,\s*\{\s*token)?/g)].map(
+  return [...transportSource().matchAll(/(unwrap\(await\s+)?requestJson\(baseUrl,\s*[`"]([^`"]+)[`"](,\s*\{\s*token)?/g)].map(
     ([, unwrapped, url, token]) => {
       const [route, query = ""] = url.split("?");
       return { route: route!, operation: /operation=([a-z]+)/.exec(query)?.[1] ?? null, authenticated: Boolean(unwrapped) && Boolean(token) };
@@ -58,6 +60,7 @@ describe("reference journey readback transport", () => {
   });
 
   it("does not reach for the product routes the seam moved off", () => {
+    const source = transportSource();
     for (const productRoute of PRODUCT_ROUTES) expect(source).not.toContain(productRoute);
     expect(source.match(new RegExp(CUSTOMER_ROUTE, "g"))).toHaveLength(5);
     expect(source.match(new RegExp(OPERATOR_ROUTE, "g"))).toHaveLength(3);

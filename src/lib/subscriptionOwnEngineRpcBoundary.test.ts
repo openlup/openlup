@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { effectiveFunctionBody, effectiveGrantMigration } from "../test/effectiveMigration";
+import { allMigrations, effectiveFunctionBody } from "../test/effectiveMigration";
+import { managedFunction } from "../test/managedSchema.js";
 
 // LIVE bodies, not the migrations that introduced them. Until W4a this file read
 // 20260604180000 for the cycle-order RPC (two full-body replaces later:
@@ -13,34 +14,26 @@ import { effectiveFunctionBody, effectiveGrantMigration } from "../test/effectiv
 const cycleOrderRpc = effectiveFunctionBody("subscription_create_cycle_order_with_outbox");
 const renewalDue = effectiveFunctionBody("subscription_list_due_for_renewal");
 
-// Privileges are resolved separately: CREATE OR REPLACE preserves them, so the
-// migration that last GRANTed is not in general the one that last defined.
-const cycleOrderGrants = effectiveGrantMigration("subscription_create_cycle_order_with_outbox").content;
+// Explicit ACL statements are a text witness; effective access needs database readback.
+const cycleOrderGrants = managedFunction("subscription_create_cycle_order_with_outbox");
 
-// One-time DDL is not superseded by a body replace, so it stays pinned to the
-// migration that created it: the constraint and the two unique indexes that make
-// a duplicate subscription-cycle order impossible, and the payment-pending
-// template-snapshot trigger (single definition in the whole corpus).
-const cycleOrderDdl = read("supabase/migrations/20260604180000_commerce_v2_w7d_subscription_cycle_order_rpc.sql");
-const templateGuardMigration = read(
-  "supabase/migrations/20260605144000_subscription_cycle_template_snapshot_guard.sql",
-);
-const probe = read("docs/sql/subscription_cycle_order_rpc_rehearsal_probe.sql");
+// Constraints, indexes and trigger registration are read from the shipped corpus.
+const cycleOrderDdl = allMigrations().map(({ content }) => content).join("\n");
 
 describe("subscription own-engine RPC boundary", () => {
   it("keeps the cycle-order RPC a definer function with a fixed idempotency scope", () => {
-    expect(cycleOrderRpc).toContain("CREATE OR REPLACE FUNCTION public.subscription_create_cycle_order_with_outbox");
+    expect(cycleOrderRpc).toMatch(/CREATE (?:OR REPLACE )?FUNCTION public\.subscription_create_cycle_order_with_outbox/);
     expect(cycleOrderRpc).toContain("SECURITY DEFINER");
     expect(cycleOrderRpc).toContain("v_scope constant text := 'subscription.cycle_order.create'");
   });
 
-  it("keeps the cycle-order RPC service-role-only", () => {
+  it("retains cycle-order service-role-only ACL declarations (text witness only)", () => {
     expect(cycleOrderGrants).toContain("REVOKE ALL ON FUNCTION public.subscription_create_cycle_order_with_outbox");
     expect(cycleOrderGrants).toContain("FROM anon");
     expect(cycleOrderGrants).toContain("FROM authenticated");
     expect(cycleOrderGrants).toContain("TO service_role");
     expect(cycleOrderGrants).not.toMatch(
-      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.subscription_create_cycle_order_with_outbox\b[^;]*\bTO\s+[^;]*\b(?:PUBLIC|anon|authenticated)\b/i,
+      /GRANT\s+(?:EXECUTE|ALL)\s+ON\s+FUNCTION\s+public\.subscription_create_cycle_order_with_outbox\b[^;]*\bTO\s+[^;]*\b(?:PUBLIC|anon|authenticated)\b/i,
     );
   });
 
@@ -68,21 +61,26 @@ describe("subscription own-engine RPC boundary", () => {
   });
 
   it("rejects stale payment-pending cycle template snapshots at the DB boundary", () => {
-    for (const required of [
-      "subscription_current_template_snapshot",
-      "FOR UPDATE",
-      "JOIN public.catalog_skus",
-      "subscription_lines",
-      "trg_subscription_guard_payment_pending_cycle_template",
-      "subscription_cycle_order_stale_template_snapshot",
-    ]) {
-      expect(templateGuardMigration).toContain(required);
+    const guard = effectiveFunctionBody("subscription_guard_payment_pending_cycle_template");
+    const snapshot = effectiveFunctionBody("subscription_current_template_snapshot");
+    const trigger = cycleOrderDdl.match(
+      /^CREATE TRIGGER trg_subscription_guard_payment_pending_cycle_template\b[^;]*;/m,
+    )?.[0];
+    expect(trigger).toBeDefined();
+    expect(trigger).toContain("BEFORE INSERT OR UPDATE OF subscription_id, status, template_snapshot ON public.subscription_cycles");
+    expect(trigger).toContain("EXECUTE FUNCTION public.subscription_guard_payment_pending_cycle_template()");
+    expect(guard).toContain("IF NEW.status <> 'payment_pending' THEN");
+    expect(guard).toContain("v_expected := public.subscription_current_template_snapshot(NEW.subscription_id)");
+    expect(guard).toContain("IF NEW.template_snapshot IS DISTINCT FROM v_expected THEN");
+    expect(guard).toContain("subscription_cycle_order_stale_template_snapshot");
+    for (const required of ["FOR UPDATE", "JOIN public.catalog_skus", "FROM public.subscription_lines"]) {
+      expect(snapshot).toContain(required);
     }
   });
 
   it("keeps renewal due selection from creating duplicate open cycles", () => {
     for (const required of [
-      "CREATE OR REPLACE FUNCTION public.subscription_list_due_for_renewal",
+      "FUNCTION public.subscription_list_due_for_renewal",
       "c.status = 'retry_scheduled'",
       "c.next_retry_at <= p_as_of",
       // The open-cycle guard, and it is strictly wider than the retry/pending pair
@@ -95,6 +93,7 @@ describe("subscription own-engine RPC boundary", () => {
   });
 
   it("keeps the rehearsal probe focused on replay, conflict, atomic rollback and public-role denial", () => {
+    const probe = read("docs/sql/subscription_cycle_order_rpc_rehearsal_probe.sql");
     for (const required of [
       "ROLLBACK",
       "sub-cycle-probe-success",

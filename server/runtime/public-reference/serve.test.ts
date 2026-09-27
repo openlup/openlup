@@ -3,7 +3,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createPublicReferenceServer } from "./serve.ts";
 
@@ -134,5 +134,22 @@ describe("public reference health", () => {
     } finally {
       await running.close();
     }
+  });
+});
+
+describe("public reference settlement bootstrap", () => {
+  it("uses its configured profile and refuses malformed or conflicting process profiles", async () => {
+    vi.resetModules();
+    const { createPublicReferenceServer: create } = await import("./serve.ts");
+    const currency = await import("../../../src/lib/currency/platformCurrency.js");
+    const root = temp();
+    expect(() => create({ root, env: { COMMERCE_SETTLEMENT_CURRENCY: "not-a-code" } }))
+      .toThrow(currency.InvalidSettlementCurrencyError);
+    expect(currency.platformCurrencySchema.safeParse("XTS").success).toBe(false);
+    create({ root, env: { COMMERCE_SETTLEMENT_CURRENCY: "XTS" } });
+    expect(currency.platformCurrencySchema.safeParse("XTS").success).toBe(true);
+    expect(() => create({ root, env: { COMMERCE_SETTLEMENT_CURRENCY: "XTS" } })).not.toThrow();
+    expect(() => create({ root, env: {} })).toThrow(currency.ConflictingAmbientSettlementProfileError);
+    expect(currency.platformCurrencySchema.safeParse("XTS").success).toBe(true);
   });
 });

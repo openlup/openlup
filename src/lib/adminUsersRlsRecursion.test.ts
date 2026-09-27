@@ -1,36 +1,58 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { effectiveDefinitionMigration, effectiveFunctionBody } from "../test/effectiveMigration";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
 
-const migration = readFileSync(
-  "supabase/migrations/20260901143000_admin_membership_authority_foundation.sql",
-  "utf8",
-);
+import { managedFunction, managedTable } from "../test/managedSchema.js";
+
+function historicalMigration(): string {
+  return readFileSync("supabase/migrations/20260901143000_admin_membership_authority_foundation.sql", "utf8");
+}
 const isAdminUser = effectiveFunctionBody("is_admin_user");
 
 describe("admin_users RLS recursion fix", () => {
   it("keeps effective admin detection behind an active-membership security definer helper", () => {
-    expect(effectiveDefinitionMigration("is_admin_user").file).toBe(
-      "supabase/migrations/20260901143000_admin_membership_authority_foundation.sql",
-    );
     expect(isAdminUser).toContain("SECURITY DEFINER");
-    expect(isAdminUser).toContain("SET search_path = pg_catalog, public");
+    expect(isAdminUser).toMatch(/SET search_path (?:= pg_catalog, public|TO 'pg_catalog', 'public')/);
     expect(isAdminUser).toContain("admin_users.membership_state = 'active'");
-    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.is_admin_user() TO authenticated, service_role");
   });
 
-  it("keeps the final self policy non-recursive and denies retained revoked rows", () => {
-    const policyStart = migration.indexOf('CREATE POLICY "admin_select_admin_users"');
-    const policyBlock = migration.slice(policyStart, migration.indexOf("-- Role change", policyStart));
+  it("keeps the final self policy definition non-recursive and active-only", () => {
+    const table = managedTable("admin_users");
+    const policyBlock = table.match(/CREATE POLICY "?admin_select_admin_users"? ON public\.admin_users\b[^;]*;/)?.[0];
+    expect(policyBlock).toBeDefined();
+    expect(table).not.toMatch(/CREATE POLICY "?admin_manage_admin_users"? /);
 
-    expect(policyBlock).toContain('CREATE POLICY "admin_select_admin_users"');
+    expect(policyBlock).toMatch(/CREATE POLICY "?admin_select_admin_users"? /);
     expect(policyBlock).toContain("membership_state = 'active'");
-    expect(policyBlock).not.toContain('CREATE POLICY "admin_manage_admin_users"');
     expect(policyBlock).not.toMatch(/EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+public\.admin_users/i);
     expect(policyBlock).not.toMatch(/EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+admin_users/i);
   });
 
+  it("keeps current revoke and lockout refusal bodies", () => {
+    const revoke = effectiveFunctionBody("admin_revoke_admin_user");
+    const lockout = effectiveFunctionBody("admin_users_prevent_last_admin_lockout");
+    expect(revoke).toContain("RAISE EXCEPTION 'self_revoke_forbidden'");
+    expect(revoke).toContain("RAISE EXCEPTION 'machine_actor_revoke_forbidden'");
+    expect(lockout).toContain("RAISE EXCEPTION 'admin_membership_delete_forbidden'");
+    expect(lockout).toContain("current_setting('app.admin_membership_revoke', true)");
+  });
+
+  it("declares current helper and revoke execution for the authenticated role (text witness only)", () => {
+    for (const name of ["is_admin_user", "admin_revoke_admin_user"]) {
+      expect(managedFunction(name)).toMatch(new RegExp(
+        `GRANT (?:ALL|EXECUTE) ON FUNCTION public\\.${name}\\([^;]*\\) TO authenticated;`,
+      ));
+    }
+  });
+
+  it("retains the historical helper-definition and execution-grant witness", () => {
+    const migration = historicalMigration();
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.is_admin_user()");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.is_admin_user() TO authenticated, service_role");
+  });
+
   it("backfills before active-only authorization and exposes one authenticated revoke command", () => {
+    const migration = historicalMigration();
     expect(migration.indexOf("UPDATE public.admin_users")).toBeLessThan(
       migration.indexOf("CREATE OR REPLACE FUNCTION public.is_admin_user()"),
     );
@@ -41,7 +63,8 @@ describe("admin_users RLS recursion fix", () => {
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.admin_revoke_admin_user(uuid, text) TO authenticated");
   });
 
-  it("uses table ACLs rather than a forgeable setting for direct membership DML", () => {
+  it("retains the historical direct-membership DML ACL and non-authority-setting declarations", () => {
+    const migration = historicalMigration();
     expect(migration).toContain("REVOKE UPDATE, DELETE ON TABLE public.admin_users");
     expect(migration).toContain("FROM PUBLIC, anon, authenticated, service_role");
     expect(migration).toContain("current_setting('app.admin_membership_revoke', true)");

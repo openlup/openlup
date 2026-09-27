@@ -15,6 +15,10 @@ This is the public documentation set for the OpenLup platform. It describes the 
 - [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the limits of preview self-hosting.
 - [Canonical contracts](CANONICAL_CONTRACTS.md) — status, idempotency, and provider-boundary rules.
 
+## Implementation plans
+
+- [Published CI completeness](plans/public-ci-completeness.md) — approved repair direction, implementation waves and separate schema/authority holds.
+
 ## Preview boundary
 
 The intended topology is one platform monorepo plus separately owned adopter applications. A source preview may make the platform available for evaluation; it does not make a source checkout an upgrade contract. Stable-framework claims wait for the separate `P1-SF` gate: a versioned release/BOM, a thin adopter app, public extension and conformance contracts, upgrade tooling, and passing public installation, build, test, compatibility, provenance, and independent-adopter evidence.

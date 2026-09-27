@@ -265,20 +265,26 @@ describe("every entrypoint that can reach the currency module initialises", () =
    */
   const DELEGATES_TO_DISPATCH = ["api/bff/[...path].ts", "api/bff-router.ts"];
   const DISPATCHER = "server/runtime/bffDispatch.ts";
+  const NODE_ENTRYPOINT = "server/runtime/public-reference/serve.ts";
 
   it("names the dispatcher as the BFF entrypoints' initialiser", () => {
     expect(readFileSync(join(REPO_ROOT, DISPATCHER), "utf8")).toContain(`${BOOTSTRAP_CALL}(`);
   });
 
   it("leaves no reaching entrypoint uninitialised", () => {
+    const apiRoot = join(REPO_ROOT, "api");
+    expect(statSync(apiRoot).isDirectory()).toBe(true);
+    const serverlessEntrypoints = sourceFilesUnder(apiRoot)
+      // Underscore-prefixed jobs are not routable and are imported by roots.
+      .filter((file) => !relative(REPO_ROOT, file).startsWith("api/_cron/"));
+    expect(serverlessEntrypoints.length).toBeGreaterThan(0);
     const entrypoints = [
-      // Everything a serverless function boots from, minus the underscore-prefixed
-      // job modules, which are not routable and are only ever imported by one.
-      ...sourceFilesUnder(join(REPO_ROOT, "api"))
-        .filter((file) => !relative(REPO_ROOT, file).startsWith("api/_cron/")),
-      ...sourceFilesUnder(join(REPO_ROOT, "server/workers")),
-      join(REPO_ROOT, "server/runtime/serve.node.ts"),
+      ...serverlessEntrypoints,
+      // The shipped public Node host is the plain-process composition root.
+      join(REPO_ROOT, NODE_ENTRYPOINT),
     ];
+    for (const entrypoint of entrypoints) expect(statSync(entrypoint).isFile()).toBe(true);
+    for (const delegate of DELEGATES_TO_DISPATCH) expect(entrypoints).toContain(join(REPO_ROOT, delegate));
 
     const reaching = entrypoints
       .filter((file) => reachesCurrencyModule(file))
@@ -287,6 +293,8 @@ describe("every entrypoint that can reach the currency module initialises", () =
     // A walk that reached nothing would pass the assertion below while proving
     // nothing; the BFF entrypoints alone are two of them.
     expect(reaching.length).toBeGreaterThanOrEqual(DELEGATES_TO_DISPATCH.length + 1);
+    for (const delegate of DELEGATES_TO_DISPATCH) expect(reaching).toContain(delegate);
+    expect(reaching).toContain(NODE_ENTRYPOINT);
 
     const uninitialised = reaching
       .filter((file) => !DELEGATES_TO_DISPATCH.includes(file))

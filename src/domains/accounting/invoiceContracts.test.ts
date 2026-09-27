@@ -104,7 +104,7 @@ describe("accounting invoice contracts", () => {
     };
     expect(readAccountingSellerConfig({}, seller)).toEqual(seller);
     expect(readAccountingSellerConfig({ ACCOUNTING_SELLER_NIP: "123-456-32-18" }, seller).taxId).toBe("1234563218");
-    expect(readAccountingSellerConfig({}, { ...seller, taxId: "EXAMPLE-123" }).taxId).toBe("EXAMPLE-123");
+    expect(readAccountingSellerConfig({}, { ...seller, taxId: "123-456-32-18" }).taxId).toBe("1234563218");
   });
 
   it("rejects unsafe fiscal policy defaults", () => {

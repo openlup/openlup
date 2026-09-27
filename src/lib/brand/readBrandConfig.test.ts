@@ -28,7 +28,8 @@ describe("readBrandConfig", () => {
       fromEmail: APP_FROM_EMAIL,
       replyToEmail: APP_REPLY_TO_EMAIL,
     });
-    expect(brand.seller).toMatchObject(APP_DEFAULT_SELLER);
+    // Seller IDs retain the published accounting reader's digit normalization.
+    expect(brand.seller).toMatchObject({ ...APP_DEFAULT_SELLER, taxId: "123" });
     expect(brand.email.copyBrandName).toBe("EXAMPLE STORE");
     expect(brand.email.copyBrandNameCased).toBe("Example Store");
     expect(brand.email.theme.logoText).toBe("Example Store");
@@ -48,7 +49,7 @@ describe("readBrandConfig", () => {
   });
 
   it("defaults to an empty env when called with no argument", () => {
-    expect(readBrandConfig().seller).toMatchObject(APP_DEFAULT_SELLER);
+    expect(readBrandConfig().seller).toMatchObject({ ...APP_DEFAULT_SELLER, taxId: "123" });
   });
 });
 

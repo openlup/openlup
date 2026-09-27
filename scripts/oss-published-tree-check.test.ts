@@ -99,6 +99,12 @@ describe("complete public CI", () => {
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
     expect(config).toContain("src/**/*.{test,spec}.ts");
   });
+  it("installs workspace dependencies before the pgTAP runner imports source", () => {
+    const job = workflow.slice(workflow.indexOf("\n  pgtap:"));
+    expect(job).toContain("npm ci --prefer-offline --no-audit --fund=false");
+    expect(job.indexOf("npm ci ")).toBeLessThan(job.indexOf("node scripts/public-ci-pgtap.mjs"));
+    expect(job).toContain("node-version-file: .nvmrc");
+  });
   it("uses the pinned local CLI and checks neutrality against the event base", () => {
     expect(workflow).toContain("supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359");
     expect(workflow).toContain("version: 2.98.2");

@@ -226,5 +226,7 @@ jobs:
       - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
         with:
           version: 2.98.2
+      - name: Install locked workspace dependencies
+        run: npm ci --prefer-offline --no-audit --fund=false
       - name: Every shipped pgTAP test against the owned managed baseline
         run: node scripts/public-ci-pgtap.mjs

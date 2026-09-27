@@ -1166,6 +1166,22 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/managed-installation-proof-contract.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/public-ci-completeness.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/public-ci-known-red.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/public-ci-neutrality-contract.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/subscription-reference-w1.md",
       "class": "platform-documentation"
     },

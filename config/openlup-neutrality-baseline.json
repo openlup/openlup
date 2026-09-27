@@ -1,6 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceCommit": "03dbbedc953b96607f1ef1fc3342847cf49aa16e",
+  "scannerPins": {
+    "packages/core/scripts/neutrality-source-scanner.ts": "ed0158a9149f9bdb53b70f9698e17ceff5f1181c",
+    "packages/core/scripts/neutrality-shell-fold.ts": "8821a4797bf2988cf2904bc094ef2658ecbcd5ad",
+    "packages/core/scripts/neutrality-tree-counts.ts": "2999eae190b237ababb4ab75a82e9288c58c4b3c",
+    "packages/ui/smoke/neutrality.ts": "18a59f35931a273537d02a460e9b0b4b69c02c1f"
+  },
   "counts": {
     "000a9a21a3a7367450624887223534f36b32a20ed0d6ae7103b03e07f129b793": {
       "ui-9": 1
