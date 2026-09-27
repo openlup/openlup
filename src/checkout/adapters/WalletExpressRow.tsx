@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 
 import { paymentFormErrorPresentation } from "@/domains/payment/components/paymentFormErrorPresentation";
-import { useStripeLoader } from "@/domains/payment/components/useStripePromise";
+import { useStripeLoader } from "./stripe/useStripePromise";
 import { reportCheckoutClientEvent } from "@/lib/telemetry/checkoutClientEvent";
 import type { ConfiguratorFormData } from "@/checkout/composer/configuratorFormStore";
 import type { TpayCheckoutMode } from "./tpayCheckoutDraft";

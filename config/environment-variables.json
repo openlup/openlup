@@ -187,7 +187,7 @@
       ],
       "requiredIn": [],
       "secret": false,
-      "source": "src/domains/payment/components/useStripePromise.ts",
+      "source": "src/checkout/adapters/stripe/useStripePromise.ts",
       "blastRadius": "Exposes Stripe publishable key to browser bundles; wrong values break checkout or point UI at the wrong account."
     },
     {

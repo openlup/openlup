@@ -11438,6 +11438,38 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/adapters/stripe/PaymentForm.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/stripe/PaymentForm.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/stripe/RecoveryPaymentSetupForm.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/stripe/StripePaymentStep.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/stripe/StripePaymentStep.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/stripe/useStripeLoader.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/stripe/useStripePromise.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/stripe/useStripePromise.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/adapters/stripeCheckoutFlags.ts",
       "class": "public-output"
     },
@@ -14694,31 +14726,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/payment/components/PaymentForm.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/PaymentForm.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/payment/components/PaymentStatusPoller.test.tsx",
       "class": "public-output"
     },
     {
       "path": "src/domains/payment/components/PaymentStatusPoller.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/RecoveryPaymentSetupForm.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/StripePaymentStep.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/StripePaymentStep.tsx",
       "class": "public-output"
     },
     {
@@ -14731,18 +14743,6 @@
     },
     {
       "path": "src/domains/payment/components/usePaymentStepDeparture.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/useStripeLoader.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/useStripePromise.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/useStripePromise.ts",
       "class": "public-output"
     },
     {
@@ -14767,6 +14767,10 @@
     },
     {
       "path": "src/domains/payment/paymentControlTypes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/payment/paymentFormContracts.ts",
       "class": "public-output"
     },
     {
@@ -18675,7 +18679,7 @@
     },
     {
       "name": "test",
-      "command": "node scripts/run-vitest.mjs run scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/domains/accounting server/domains/channels server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/public-reference",
+      "command": "node scripts/run-vitest.mjs run scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/domains/accounting server/domains/channels server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters/stripe src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/public-reference",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18687,7 +18691,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-39a54788ae7abebe93476b73f7d2146d32cb240ec69a783370e06fd4a18af75b"
+      "digest": "sha256-b1345a77ad321138bb9500c17e3cc846b3b13bbe528d6b67b1ceef262c363430"
     },
     {
       "path": "packages/core/package.json",

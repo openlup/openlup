@@ -4,7 +4,7 @@ import type { NavigateFunction } from "react-router-dom";
 import { submitCheckout } from "@/domains/commerce/commerceClient";
 import type { CheckoutRequest } from "@/domains/commerce/checkoutContracts";
 import type { PollerTerminalStatus } from "@/domains/payment/components/PaymentStatusPoller";
-import type { PaymentFormSettlement } from "@/domains/payment/components/PaymentForm";
+import type { PaymentFormSettlement } from "@/domains/payment/paymentFormContracts";
 
 import type { StripePayState } from "@/checkout/adapters/SkomponujPakietStripePayPanel";
 import type { ConfiguratorFormData } from "@/checkout/composer/configuratorFormStore";

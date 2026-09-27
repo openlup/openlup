@@ -65,7 +65,7 @@ vi.mock("@stripe/react-stripe-js", () => ({
   useStripe: () => ({ confirmPayment: mockConfirmPayment }),
   useElements: () => ({ submit: mockSubmit }),
 }));
-vi.mock("@/domains/payment/components/useStripePromise", () => ({
+vi.mock("./stripe/useStripePromise", () => ({
   useStripeLoader: () => mockStripeLoaderState,
 }));
 vi.mock("@/checkout/machine/useLiveQuote", () => ({ useLiveQuote: () => mockUseLiveQuote() }));

@@ -64,7 +64,7 @@ vi.mock("@/checkout/machine/useLiveQuote", () => ({
 vi.mock("@/checkout/composer/useEffectiveConfiguratorPackage", () => ({
   useEffectiveConfiguratorPackage: () => ({ snapshot: null }),
 }));
-vi.mock("@/domains/payment/components/useStripePromise", () => ({
+vi.mock("@/checkout/adapters/stripe/useStripePromise", () => ({
   useStripePromise: () => ({}),
   useStripeLoader: () => ({ stripePromise: {}, status: "ready", retry: () => {} }),
   STRIPE_LOAD_TIMEOUT_MS: 10_000,

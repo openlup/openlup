@@ -17,7 +17,7 @@ const mockPollerTerminal = vi.fn();
 const mockStripeReturnUrl = vi.fn();
 const mockCheckoutCopy = vi.fn();
 
-vi.mock("@/domains/payment/components/StripePaymentStep", () => ({
+vi.mock("./stripe/StripePaymentStep", () => ({
   StripePaymentStep: ({
     onSettled,
     onConfirmStart,

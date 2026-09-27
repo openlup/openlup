@@ -4,7 +4,7 @@
 // injection in src/components/Analytics.tsx (dedupe guard + createElement +
 // appendChild). The PUBLIC browsing token is read from the browser bundle via a
 // VITE_-prefixed var, the same mechanism as the Stripe publishable key in
-// src/domains/payment/components/useStripePromise.ts. It is named `_KEY` (public
+// src/checkout/adapters/stripe/useStripePromise.ts. It is named `_KEY` (public
 // key convention) rather than `_TOKEN` so the client-secret-boundary guard does
 // not mistake this public value for a server secret.
 
