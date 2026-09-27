@@ -154,11 +154,12 @@ Published Tree CI pass and its tree describes itself: the publication catalogue
 lists every tracked path, and `config/openlup-source-release-contract.json`
 matches the tree's bytes. Adding, removing or renaming a file, changing a mode, a
 dependency or a file pinned as projected is releasable on those terms. The release
-producer (`scripts/oss-source-release-contract.ts`) still refuses a preview that
-changes a platform migration (`db/platform/migrations/**`, `supabase/migrations/**`
-or a `.sql` file under `db/bootstrap/`), `config/platform-migration-manifest.json`,
-the database schema types (`src/integrations/supabase/types.ts`) or the policy
-registry (`config/openlup-policy-registry.json`), or that adds a public path at a
+producer (`scripts/oss-source-release-contract.ts`) admits additive forwards under
+[Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#additive-forward-release-path).
+It refuses edits or deletions of migration history, non-expand-only SQL, a
+non-prefix portable manifest, bootstrap SQL changes, database schema types
+(`src/integrations/supabase/types.ts`), policy registry changes
+(`config/openlup-policy-registry.json`), or a public path at a
 local-measurement selector of the latest preview's `openlup-source-receipt.json`
 release asset. Such a change can be merged, but say so in the pull request. To list
 those selectors, run
