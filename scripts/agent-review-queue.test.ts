@@ -26,7 +26,7 @@ async function fixture() {
   const input = { version: 1, targetRunId: 10, targetAttempt: 1, prNumber: 5, source, integration: null };
   const run = { id: 10, run_attempt: 1, repository: { id: 1376035358 }, path: '.github/workflows/published-tree-ci.yml', workflow_id: 100, event: 'pull_request', head_sha: head, head_branch: 'codex/task', head_repository: { id: 1376035358 }, status: 'in_progress' };
   const pr = { number: 5, state: 'open', draft: false, merged: false, base: { ref: 'main', repo: { id: 1376035358 } }, head: { sha: head, ref: 'codex/task', repo: { id: 1376035358 } } };
-  let entry: any; let queueBase = base; let queueHead = head;
+  let entry: { id: string; position: number; enqueuedAt: string; baseCommit: { oid: string }; headCommit: { oid: string }; pullRequest: { number: number; headRefOid: string; baseRefName: string } }; let queueBase = base; let queueHead = head;
   const api = {
     get: async (path: string) => {
       if (path.endsWith('/actions/runs/10')) return structuredClone(run);
