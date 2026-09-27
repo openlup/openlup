@@ -10822,10 +10822,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/resend/commerceEmailContentFixture.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/resend/emailOriginMetadata.ts",
       "class": "public-output"
     },
@@ -17695,6 +17691,10 @@
     },
     {
       "path": "src/test/bundleAdminFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/test/commerceEmailContentFixture.ts",
       "class": "public-output"
     },
     {

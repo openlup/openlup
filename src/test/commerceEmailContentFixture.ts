@@ -1,4 +1,4 @@
-import type { CommerceEmailContent } from "../../../src/domains/commerce/emails/commerceEmailContent.js";
+import type { CommerceEmailContent } from "../domains/commerce/emails/commerceEmailContent.js";
 
 /** Explicit synthetic presentation for adapter-to-content forwarding tests. */
 export function createCommerceEmailContentFixture(defaults: CommerceEmailContent): CommerceEmailContent { return {

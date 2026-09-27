@@ -17,7 +17,7 @@ import { emailPresentation as exampleEmailPresentation } from "../../../src/doma
 // The selected presentation is a local fixture; default public copy has separate parity coverage.
 vi.mock("#commerce-email-content", async (importOriginal) => {
   const original = await importOriginal<typeof import("#commerce-email-content")>();
-  const { createCommerceEmailContentFixture } = await import("./commerceEmailContentFixture.js");
+  const { createCommerceEmailContentFixture } = await import("../../../src/test/commerceEmailContentFixture.js");
   return { commerceEmailContent: createCommerceEmailContentFixture(original.commerceEmailContent) };
 });
 
