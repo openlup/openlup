@@ -73,3 +73,21 @@ Two session-local independent planning perspectives challenged CI/neutrality and
 The tracked `.agent-protocol.yml` references an absent template and validator. This document does not claim a native Plan Protocol pass. The maintainer explicitly authorised this public plan format for this task after the prerequisite was identified. CI, verifier and hook controls are unchanged.
 
 Owner links: [Contributing](../../../CONTRIBUTING.md), [data and migrations](../DATA_AND_MIGRATIONS.md), [versioning](../../../.github/VERSIONING_AND_EOL.md).
+
+## Repair execution waves
+
+The maintainer instructed repairs before publication. This orders the existing work; it does not waive green verification or select new privileges, activation, missing capabilities or unsupported upgrade contracts. The exact-candidate assertion map is in the [known-red record](public-ci-known-red.md).
+
+1. Bind all 30 root and 29 managed red files to failed assertions and positive/negative witnesses. Separate current installation, configured reference behavior, runtime capability, authentic upgrade and historical external evidence. A named historical hold is not completed acceptance.
+2. Run disjoint proof/tool lanes in parallel: credential-suppressing status; ordered neutral readback transport; diagnostic-query proof; commerce replay/consume-once/oversell; subscription idempotency/nonmutation/shipping. One integrator owns shared helpers and database lifecycle. Missing BFF, scheduler or composition capabilities are separately selected, not invented as fixtures.
+3. Measure CI/reference owners, default ACLs, PUBLIC/inherited access and real caller operations. Select the fresh authority profile before reconciling installers. Separate disabled/native prerequisites from settlement, merchandising, driver and enabled-notification decisions; never overwrite operator choices or enable providers for test colour.
+4. Admit narrow email-read, INVOKER trigram, audit and missing catalogue corrections separately. Inventory all audit callers: promotions, shipping, catalogue prices and subscription bands may mutate before a separate audit call. Scope atomicity changes and preserve replay/failure behavior. Existing draft functions and explicit unsupported-publication refusal are preferable to rebuilding publication infrastructure.
+5. Prove genuine supported historical transitions and nonempty seed idempotence independently from fresh installation. Unknown history refuses automatic upgrade. Rebase last, regenerate catalogue/contract and any shrink-only baseline, commit with DCO and obtain two cold exact-candidate reviews. Full verifier and mandatory hosted checks must pass before merge readiness.
+
+A fresh-context source challenge passed this plan for preparation with authority/capability clarifications preserved. It confirmed the internal audit/direct caller conflict, INVOKER trigram mismatch and existing draft capabilities. Its requirements are complete assertion mapping, explicit bare-versus-configured decisions, inventory of every audit caller and completed TAP plans. This is planning evidence, not a publication or new-capability approval.
+
+### Bounded tool/proof repair checkpoint
+
+The local-status executable reports only the selected project directory's branch, numeric ports, CLI availability and matching local containers. It discards Supabase status stdout/stderr even on failure. From the chosen local Supabase project directory, run `bash <checkout>/scripts/local-env-status.sh`; no environment file is read and no service is started or stopped. An absent CLI or configuration reports unavailable. A caller-selected resource reporter is optional; OpenLup supplies no private dependency.
+
+The exported readback transport executes the neutral routes in order, validating successful list/detail identity and anonymous/cross-user denials. Its tests bridge the real shipped handlers to synthetic auth/data ports. They do not prove BFF activation, live RLS or a browser journey. Both added paths are registered in the publication catalogue; the status script is also a registered direct entrypoint.

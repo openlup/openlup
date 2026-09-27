@@ -1,7 +1,7 @@
 -- pgTAP: bounded durable customer diagnostics, identity rotation and audited reads.
 
 BEGIN;
-SELECT plan(115);
+SELECT plan(126);
 
 SELECT has_table('public', 'customer_diagnostic_segments', 'diagnostic segments exist');
 SELECT has_table('public', 'customer_diagnostic_events', 'diagnostic events exist');
@@ -437,31 +437,136 @@ SELECT is((SELECT count(*)::integer FROM overview_result,
   WHERE group_row->>'action'='payment_confirm' AND bucket->>'classification'='terminalWithoutStart'), 0,
   'a settled-only payment group never reports a terminal without an in-window start');
 
+-- A tiny corpus can legitimately use the search or segment index even with
+-- sequential scans discouraged. Use a selective window over a larger retained
+-- corpus, with the normal planner, and explain the shipped matching SELECT.
+-- Extracting it also prevents an added ORDER BY from testing a different query.
+CREATE TEMP TABLE overview_index_fixture(id uuid PRIMARY KEY, kind text NOT NULL);
+INSERT INTO overview_index_fixture
+SELECT md5('overview-index:' || n)::uuid, 'outside-window'
+FROM generate_series(1, 10000) n;
+INSERT INTO overview_index_fixture VALUES
+  ('f1000000-0000-4000-8000-000000000001', 'lower-bound'),
+  ('f1000000-0000-4000-8000-000000000002', 'upper-bound'),
+  ('f1000000-0000-4000-8000-000000000003', 'expired-event'),
+  ('f1000000-0000-4000-8000-000000000004', 'expired-segment');
+INSERT INTO public.customer_diagnostic_segments(id, credential_hash, started_at, last_seen_at, expires_at)
+VALUES ('f2000000-0000-4000-8000-000000000001', repeat('9',64),
+  now()-interval '4 days', now()-interval '3 days', now()-interval '1 second');
+INSERT INTO public.customer_diagnostic_events(
+  id, segment_id, action_id, client_event_key, client_action_key, payload_fingerprint,
+  coverage_version, action, phase, code, ingest_request_id, received_at, expires_at
+)
+SELECT f.id,
+  CASE WHEN f.kind='expired-segment' THEN 'f2000000-0000-4000-8000-000000000001'::uuid
+    ELSE '90000000-0000-4000-8000-000000000001'::uuid END,
+  f.id, f.id, f.id, repeat('9',64), 'purchase-auth-account.v2',
+  'checkout_submit', 'attempted', 'observed', 'overview:index:' || f.id,
+  CASE f.kind
+    WHEN 'outside-window' THEN now()-interval '1 day'
+    WHEN 'lower-bound' THEN now()-interval '4 days'
+    WHEN 'upper-bound' THEN now()-interval '2 days'
+    ELSE now()-interval '3 days' END,
+  CASE WHEN f.kind='expired-event' THEN now()-interval '1 second'
+    ELSE now()+interval '3 days' END
+FROM overview_index_fixture f;
 ANALYZE public.customer_diagnostic_events;
-SET LOCAL enable_seqscan = off;
-CREATE TEMP TABLE overview_window_plan(line text);
+ANALYZE public.customer_diagnostic_segments;
+CREATE TEMP TABLE overview_window_plan(plan jsonb);
+CREATE TEMP TABLE overview_window_rows AS
+  SELECT segment_id, action_id, coverage_version, action, phase, code, received_at
+  FROM public.customer_diagnostic_events WITH NO DATA;
 DO $overview_plan$
-DECLARE v_line text;
+DECLARE
+  v_query text;
+  v_plan jsonb;
 BEGIN
-  FOR v_line IN EXECUTE $plan_sql$
-    EXPLAIN (FORMAT TEXT)
-    SELECT e.segment_id, e.action_id, e.coverage_version, e.action, e.phase, e.code, e.received_at
-      FROM public.customer_diagnostic_events e
-      JOIN public.customer_diagnostic_segments s ON s.id = e.segment_id
-     WHERE e.received_at >= now()-interval '4 days'
-       AND e.received_at < now()-interval '2 days'
-       AND e.expires_at > now()
-       AND s.expires_at > now()
-     ORDER BY e.received_at, e.coverage_version, e.action
-  $plan_sql$ LOOP
-    INSERT INTO overview_window_plan(line) VALUES (v_line);
-  END LOOP;
+  v_query := substring(pg_get_functiondef(
+    'public.customer_diagnostic_overview_v2(uuid,timestamptz,timestamptz,integer,text,integer)'::regprocedure)
+    FROM '(?s)WITH matching AS MATERIALIZED \((.*?)\), group_keys AS MATERIALIZED');
+  IF v_query IS NULL THEN
+    RAISE EXCEPTION 'overview matching query extraction failed; update the proof to match the shipped query';
+  END IF;
+  v_query := replace(replace(replace(v_query,
+    'p_from', quote_literal(now()-interval '4 days') || '::timestamptz'),
+    'p_to', quote_literal(now()-interval '2 days') || '::timestamptz'),
+    'v_now', quote_literal(now()) || '::timestamptz');
+  EXECUTE 'EXPLAIN (FORMAT JSON) ' || v_query INTO v_plan;
+  INSERT INTO overview_window_plan VALUES (v_plan);
+  EXECUTE 'INSERT INTO overview_window_rows ' || v_query;
 END
 $overview_plan$;
-SELECT ok((SELECT count(*) > 0 FROM overview_window_plan
-  WHERE line LIKE '%customer_diagnostic_events_overview_idx%'),
-  'the overview window read plans through its own index when a sequential scan is disabled');
-RESET enable_seqscan;
+-- The search index and overview index both lead with received_at. PostgreSQL
+-- may choose either for this window; the dedicated overview definition remains
+-- checked above. Require real range access to this relation, not an index name
+-- preference. Resolve the planned index in the catalogue so a scan of another
+-- relation cannot satisfy the proof (including a Bitmap Index Scan, which has
+-- no Relation Name in EXPLAIN).
+CREATE FUNCTION pg_temp.overview_window_has_bounded_index(p_plan jsonb)
+RETURNS boolean LANGUAGE sql AS $bounded_index$
+  SELECT EXISTS (
+    SELECT 1
+    FROM jsonb_path_query(p_plan, '$.** ? (exists(@."Index Name"))') AS plan_node(node)
+    JOIN pg_catalog.pg_class index_relation ON index_relation.relname=node->>'Index Name'
+    JOIN pg_catalog.pg_index index_definition ON index_definition.indexrelid=index_relation.oid
+    JOIN pg_catalog.pg_attribute leading_column
+      ON leading_column.attrelid=index_definition.indrelid
+     AND leading_column.attnum=index_definition.indkey[0]
+    WHERE index_definition.indrelid='public.customer_diagnostic_events'::regclass
+      AND leading_column.attname='received_at'
+      AND node->>'Node Type' IN ('Index Scan', 'Index Only Scan', 'Bitmap Index Scan')
+      AND (node->>'Node Type'='Bitmap Index Scan'
+        OR node->>'Relation Name'='customer_diagnostic_events')
+      AND node->>'Index Cond' LIKE '%received_at >=%'
+      AND node->>'Index Cond' LIKE '%received_at <%'
+  );
+$bounded_index$;
+SELECT ok((SELECT pg_temp.overview_window_has_bounded_index(plan) FROM overview_window_plan),
+  'the shipped overview window uses an event index led by received_at with both time bounds on a selective retained corpus');
+SELECT ok(pg_temp.overview_window_has_bounded_index('[{"Plan":{
+  "Node Type":"Index Scan", "Relation Name":"customer_diagnostic_events",
+  "Index Name":"customer_diagnostic_events_search_idx",
+  "Index Cond":"((received_at >= lower_bound) AND (received_at < upper_bound))"
+}}]'::jsonb), 'the plan proof accepts equivalent indexed access with both window bounds');
+SELECT is(pg_temp.overview_window_has_bounded_index('[{"Plan":{
+  "Node Type":"Seq Scan", "Relation Name":"customer_diagnostic_events",
+  "Filter":"((received_at >= lower_bound) AND (received_at < upper_bound))"
+}}]'::jsonb), false, 'the plan proof refuses a sequential scan with time bounds only in its filter');
+SELECT is(pg_temp.overview_window_has_bounded_index('[{"Plan":{
+  "Node Type":"Index Scan", "Relation Name":"customer_diagnostic_events",
+  "Index Name":"customer_diagnostic_events_search_idx", "Index Cond":"(received_at >= lower_bound)"
+}}]'::jsonb), false, 'the plan proof refuses an index scan missing the upper window bound');
+SELECT is(pg_temp.overview_window_has_bounded_index('[{"Plan":{
+  "Node Type":"Index Scan", "Relation Name":"customer_diagnostic_segments",
+  "Index Name":"customer_diagnostic_segments_pkey",
+  "Index Cond":"((received_at >= lower_bound) AND (received_at < upper_bound))"
+}}]'::jsonb), false, 'the plan proof refuses a bounded index scan on the wrong relation');
+SELECT is((SELECT count(*)::integer FROM overview_window_rows), 21,
+  'the shipped matching query returns only the twenty overview observations and the lower-bound event');
+SELECT is((SELECT count(*)::integer FROM overview_window_rows
+  WHERE action_id='f1000000-0000-4000-8000-000000000001'), 1,
+  'the shipped overview matching query includes the exact lower time bound');
+SELECT is((SELECT count(*)::integer FROM overview_window_rows
+  WHERE action_id='f1000000-0000-4000-8000-000000000002'), 0,
+  'the shipped overview matching query excludes the exact upper time bound');
+SELECT is((SELECT count(*)::integer FROM overview_window_rows
+  WHERE action_id='f1000000-0000-4000-8000-000000000003'), 0,
+  'the shipped overview matching query excludes an expired event in a live segment');
+SELECT is((SELECT count(*)::integer FROM overview_window_rows
+  WHERE action_id='f1000000-0000-4000-8000-000000000004'), 0,
+  'the shipped overview matching query excludes a live event in an expired segment');
+DELETE FROM public.customer_diagnostic_events WHERE id IN (SELECT id FROM overview_index_fixture);
+DELETE FROM public.customer_diagnostic_segments WHERE id='f2000000-0000-4000-8000-000000000001';
+ANALYZE public.customer_diagnostic_events;
+ANALYZE public.customer_diagnostic_segments;
+SELECT throws_ok($$SELECT public.customer_diagnostic_overview_v2(
+  '10000000-0000-4000-8000-000000000001'::uuid, now()-interval '8 days', now(), 25, NULL, 7)$$,
+  '22023', 'customer_diagnostic_overview_invalid',
+  'overview refuses a window above the seven-day bound');
+SELECT throws_ok($$SELECT public.customer_diagnostic_overview_v2(
+  '10000000-0000-4000-8000-000000000001'::uuid, now()-interval '1 day', now(), 26, NULL, 7)$$,
+  '22023', 'customer_diagnostic_overview_invalid',
+  'overview refuses a page above the twenty-five-group bound');
 
 CREATE TEMP TABLE overview_page_one AS SELECT public.customer_diagnostic_overview_v2(
   '10000000-0000-4000-8000-000000000001', now()-interval '4 days', now()-interval '2 days', 1, NULL, 7

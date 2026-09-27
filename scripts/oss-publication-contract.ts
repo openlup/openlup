@@ -28,7 +28,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/agent-review-controller.mjs", "scripts/agent-review-controller.test.ts",
   "scripts/agent-review-gate.mjs", "scripts/agent-review-gate.test.ts", "scripts/agent-review-hook.mjs",
   "scripts/agent-review-hosted.mjs", "scripts/agent-review-hosted.test.ts",
-  "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
+  "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts", "scripts/local-env-status.sh",
   "scripts/oss-consume-engine.test.ts", "scripts/oss-consume-github-transport.test.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",
   "scripts/packages/packages-check.ts",

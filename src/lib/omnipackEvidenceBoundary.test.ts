@@ -89,13 +89,15 @@ describe("OmniPack evidence model boundary", () => {
   });
 
   it("documents the evidence model and lists the rehearsal probe", () => {
-    const omnipackDocs = read("docs/COMMERCE_OMNIPACK_INTEGRATION.md");
-    const docsIndex = read("docs/README.md");
+    const omnipackDocs = read("docs/platform/FULFILLMENT_ADAPTER.md");
+    const docsIndex = read("docs/platform/README.md");
     expect(omnipackDocs).toContain("## Local Evidence Model");
     expect(omnipackDocs).toContain("omnipack_dispatch_refs");
     expect(omnipackDocs).toContain("omnipack_stock_snapshots");
     expect(omnipackDocs).toContain("omnipack_low_stock_evidence");
-    expect(docsIndex).toContain("sql/omnipack_fulfillment_evidence_probe.sql");
+    expect(docsIndex).toContain("FULFILLMENT_ADAPTER.md");
+    expect(omnipackDocs).toContain("missing rollback-only database replay/stock/nonmutation probe");
+    expect(omnipackDocs).toContain("plans/public-ci-known-red.md");
   });
 });
 

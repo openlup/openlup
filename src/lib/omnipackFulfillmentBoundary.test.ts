@@ -61,8 +61,8 @@ describe("hidden Omnipack fulfillment boundary", () => {
   });
 
   it("keeps OmniPack credentials on Basic Auth and blocks stage/live without merchant inputs", () => {
-    const omnipackDocs = read("docs/COMMERCE_OMNIPACK_INTEGRATION.md");
-    const docsIndex = read("docs/README.md");
+    const omnipackDocs = read("docs/platform/FULFILLMENT_ADAPTER.md");
+    const docsIndex = read("docs/platform/README.md");
     for (const required of [
       "OMNIPACK_USERNAME",
       "OMNIPACK_PASSWORD",
@@ -76,12 +76,12 @@ describe("hidden Omnipack fulfillment boundary", () => {
 
     expect(omnipackMapper).not.toContain("OMNIPACK_API_TOKEN");
     expect(omnipackMapper).not.toContain("OMNIPACK_WAREHOUSE_ID");
-    expect(omnipackDocs).toContain("https://api.stage.omnipack.tech");
-    expect(omnipackDocs).toContain("https://api.omnipack.tech");
+    expect(omnipackDocs).toContain("OMNIPACK_STAGE_BASE_URL");
+    expect(omnipackDocs).toContain("OMNIPACK_PRODUCTION_BASE_URL");
     expect(omnipackDocs).toContain("BLOCKED");
-    expect(docsIndex).toContain("COMMERCE_OMNIPACK_INTEGRATION.md");
-    expect(docsIndex).toContain("**[evidence/snapshot]**");
-    expect(docsIndex).toContain("[archive/COMMERCE_VENDOR_RESEARCH.md](archive/COMMERCE_VENDOR_RESEARCH.md)");
+    expect(docsIndex).toContain("FULFILLMENT_ADAPTER.md");
+    expect(omnipackDocs).toContain("synthetic configuration and injected HTTP transport");
+    expect(omnipackDocs).toContain("does not complete those obligations or prove stage/live readiness");
   });
 
   it("keeps the OmniPack HTTP client out of browser-side src imports", () => {

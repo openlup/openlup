@@ -15,6 +15,8 @@ This is the public documentation set for the OpenLup platform. It describes the 
 - [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the limits of preview self-hosting.
 - [Canonical contracts](CANONICAL_CONTRACTS.md) — status, idempotency, and provider-boundary rules.
 
+- [Fulfillment adapter evaluation](FULFILLMENT_ADAPTER.md) — shipped configuration, offline checks and remaining database proof.
+
 ## Implementation plans
 
 - [Published CI completeness](plans/public-ci-completeness.md) — approved repair direction, implementation waves and separate schema/authority holds.

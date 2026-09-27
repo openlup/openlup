@@ -1134,6 +1134,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/FULFILLMENT_ADAPTER.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },
@@ -2318,6 +2322,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/local-env-status.sh",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/local-env-status.test.ts",
       "class": "public-output"
     },
@@ -2675,6 +2683,10 @@
     },
     {
       "path": "scripts/reference-adapters/reference-journey-readbacks.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reference-adapters/reference-journey-readbacks.ts",
       "class": "public-output"
     },
     {
