@@ -1,3 +1,4 @@
+import { createI18nFixture } from "@/test/i18nFixture";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
@@ -8,6 +9,21 @@ import { CompanyField } from "./CompanyField";
 import { ConsentField } from "./ConsentField";
 import { EmailField } from "./EmailField";
 import { NameField } from "./NameField";
+
+const I18nFixture = createI18nFixture({
+  "forms": {
+    "fields.name.label": "Imię i nazwisko",
+    "fields.name.placeholder": "Anna",
+    "fields.name.required": "Podaj imię i nazwisko",
+    "fields.email.label": "Adres email",
+    "fields.email.required": "Podaj adres email",
+    "fields.company.label": "Firma",
+    "fields.company.placeholder": "Nazwa firmy",
+    "fields.company.required": "Podaj nazwę firmy",
+    "fields.consent.label": "Akceptuję",
+    "fields.consent.required": "Wymagana zgoda"
+  }
+});
 
 const schema = z.object({
   name: z.string().trim().min(1, "forms:fields.name.required"),
@@ -20,7 +36,7 @@ type FieldValues = z.infer<typeof schema>;
 
 describe("canonical form field components", () => {
   it("renders text fields with translated labels, placeholders and required markers", async () => {
-    render(<FieldsDemo />);
+    render(<FieldsDemo />, { wrapper: I18nFixture });
 
     expect(screen.getByLabelText(/Imię i nazwisko/)).toHaveAttribute("placeholder", "Anna");
     expect(screen.getByLabelText(/Adres email/)).toHaveAttribute("type", "email");
@@ -38,7 +54,7 @@ describe("canonical form field components", () => {
 
   it("submits checkbox consent as a boolean", async () => {
     const onSubmit = vi.fn();
-    render(<FieldsDemo onSubmit={onSubmit} />);
+    render(<FieldsDemo onSubmit={onSubmit} />, { wrapper: I18nFixture });
 
     fireEvent.change(screen.getByLabelText(/Imię i nazwisko/), {
       target: { value: "Anna Nowak" },

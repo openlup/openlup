@@ -1,5 +1,6 @@
 -- pgTAP: additive promotion-code control plane, admin idempotency and claims.
 BEGIN;
+\ir fixtures/settlement.inc
 SELECT plan(102);
 
 INSERT INTO public.admin_users (id,email,role,is_machine_actor) VALUES

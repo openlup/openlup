@@ -16,7 +16,14 @@ const isFile = (path: string) =>
   existsSync(join(ROOT, path)) && statSync(join(ROOT, path)).isFile();
 
 describe("app shell asset overrides", () => {
-  const entries = Object.entries(APP_SHELL_ASSET_OVERRIDES);
+  const fixtureOverrides = { "/platform/favicon.svg": "/platform/og/social-preview.png" };
+  const entries = Object.entries(fixtureOverrides);
+
+  it("keeps the public shell inert until an adopter supplies overrides", () => {
+    expect(APP_SHELL_ASSET_OVERRIDES).toEqual({});
+    const markup = readFileSync(join(ROOT, "index.html"), "utf8");
+    expect(applyAppShellAssetOverrides(markup)).toBe(markup);
+  });
 
   it("maps neutral shell files this repository ships onto override files it also ships", () => {
     expect(entries.length).toBeGreaterThan(0);
@@ -42,18 +49,19 @@ describe("app shell asset overrides", () => {
     expect(entangled, `shell paths that overlap another entry: ${entangled.join(", ")}`).toEqual([]);
   });
 
-  it("leaves no neutral shell path in the served entry document", () => {
-    const served = applyAppShellAssetOverrides(readFileSync(join(ROOT, "index.html"), "utf8"));
+  it("replaces every configured shell path in the served entry document", () => {
+    const markup = '<html><head><link rel="icon" href="/platform/favicon.svg"></head></html>';
+    const served = applyAppShellAssetOverrides(markup, fixtureOverrides);
     // Comments explain the seam and legitimately name the neutral prefix; only what the browser
     // fetches has to be free of it.
     const fetched = [...served.replace(/<!--[\s\S]*?-->/g, "").matchAll(/\b(?:href|src|content)\s*=\s*"([^"]*)"/g)];
-    const leftover = fetched.map(([, value]) => value).filter((value) => value.includes("/platform/"));
+    const leftover = fetched.map(([, value]) => value).filter((value) => entries.some(([neutral]) => value.includes(neutral)));
     expect(leftover, `neutral shell paths still served: ${leftover.join(", ")}`).toEqual([]);
     for (const [, override] of entries) expect(served).toContain(override);
   });
 
   it("is inert for a document that names no shell path", () => {
     const untouched = "<html><head><link rel=\"icon\" href=\"/other.svg\"></head></html>";
-    expect(applyAppShellAssetOverrides(untouched)).toBe(untouched);
+    expect(applyAppShellAssetOverrides(untouched, fixtureOverrides)).toBe(untouched);
   });
 });

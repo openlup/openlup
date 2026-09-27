@@ -2,6 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { VercelRequest, VercelResponse } from "../../server/_lib/types/vercel.js";
 
+// The handler's missing-runtime refusal is reached through an explicit admitting policy.
+// Default public-policy denials are covered by the deployment-policy suite.
+vi.mock("#deployment-route-policy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#deployment-route-policy")>()),
+  enforceDeploymentRoutePolicy: () => true,
+}));
+
 type Route = (req: VercelRequest, res: VercelResponse) => Promise<void>;
 
 let originalEnv: NodeJS.ProcessEnv;

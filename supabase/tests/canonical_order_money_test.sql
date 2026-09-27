@@ -1,6 +1,9 @@
 -- pgTAP: canonical order money persistence, allocation and writer invariants.
 
 BEGIN;
+\ir fixtures/fulfillment-provider.inc
+\ir fixtures/can-format.inc
+\ir fixtures/settlement.inc
 SELECT plan(79);
 UPDATE public.subscription_delivery_alignment_control SET mode = 'off' WHERE singleton;
 

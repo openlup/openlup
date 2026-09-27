@@ -20,6 +20,7 @@
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
+\ir fixtures/cron-identity.inc
 SELECT plan(25);
 
 INSERT INTO public.clients (id, email)

@@ -16,6 +16,11 @@
 --
 -- Run via: supabase test db
 BEGIN;
+-- Explicit notification controls for this test deployment, all rolled back.
+INSERT INTO public.comms_notification_controls (slug, enabled) VALUES
+  ('subscription-payment-recovered', true), ('subscription-payment-expired', true),
+  ('subscription-payment-failed-*', true), ('subscription-renewal-at-risk', true)
+ON CONFLICT (slug) DO NOTHING;
 SELECT plan(40);
 
 INSERT INTO public.clients (id, email)
@@ -532,7 +537,7 @@ SELECT is(
   (SELECT enabled FROM public.comms_notification_controls
     WHERE slug = 'subscription-payment-recovered'),
   true,
-  'W3: the payment-recovered notice has an operator kill switch, seeded enabled');
+  'W3: the payment-recovered notice has an operator kill switch, explicitly configured enabled');
 SELECT is(
   (SELECT count(*)::int FROM public.comms_notification_controls
     WHERE slug IN ('subscription-payment-recovered',
@@ -550,7 +555,7 @@ SELECT is(
   (SELECT enabled FROM public.comms_notification_controls
     WHERE slug = 'subscription-renewal-at-risk'),
   true,
-  'W3b: the at-risk renewal warning has an operator kill switch, seeded enabled');
+  'W3b: the at-risk renewal warning has an operator kill switch, explicitly configured enabled');
 SELECT is(
   (SELECT count(*)::int FROM public.comms_notification_controls
     WHERE slug IN ('subscription-renewal-at-risk',

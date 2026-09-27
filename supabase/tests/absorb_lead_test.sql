@@ -20,6 +20,7 @@
 -- reached them would error out instead of reporting green.
 
 BEGIN;
+\ir fixtures/client-classification.inc
 SELECT plan(41);
 
 -- One active operator and one deactivated, so the gate has its pair.
@@ -102,7 +103,7 @@ SELECT is(
         SELECT 1 FROM public.client_absorption_policy AS policy_row
          WHERE policy_row.table_name = referencing.relname)),
   0,
-  'every table referencing clients today is classified, so the shipped seed refuses nothing by accident');
+  'every table referencing clients today is classified, so the explicit fixture covers the published foreign-key inventory');
 
 -- ---------------------------------------------------------------------------
 -- The absorption itself, on the shape production actually holds.

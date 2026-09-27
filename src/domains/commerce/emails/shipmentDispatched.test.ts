@@ -1,9 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Locale } from "../../../lib/i18n/resolveLocale.js";
 import { APP_EMAIL_BRAND, APP_EMAIL_TEAM_SIGNOFF } from "../../../lib/brand/appBrand.js";
 import { renderEmail } from "../../communications/email/render.js";
 import { shipmentDispatchedEmailContent } from "./shipmentDispatched.js";
+
+// The generic renderer receives a deliberately configured copy pack. The
+// public default is independently covered by the public-parity suite.
+vi.mock("#commerce-email-content", async (importOriginal) => {
+  const original = await importOriginal<typeof import("#commerce-email-content")>();
+  const content = original.commerceEmailContent;
+  return { commerceEmailContent: { ...content, orderRefPrefix: "OPENLUP",
+    shipmentDispatched: Object.fromEntries(Object.entries(content.shipmentDispatched).map(([locale, copy]) => [locale, {
+      ...copy, heading: "Paczka w drodze",
+      intro: (orderRef: string, name: string | null) => `${orderRef}: ${name ?? "Twój pupil"}`,
+      accountGuide: { ...copy.accountGuide, text: (name: string | null) => `Guide for ${name ?? "customer"}`, path: "/porady/pliki/przewodnik-po-koncie-klienta.pdf" },
+    }])),
+  } };
+});
 
 const SITE = "https://example.test";
 const TEST_LOCALES = Object.keys(APP_EMAIL_BRAND.chrome) as Locale[];

@@ -1,6 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildTemplateCanonRows } from "./emailTemplateCanonView";
 import type { AdminEmailTemplate } from "@/domains/communications/contracts";
+
+// A terminal no-send row is an explicit registry projection, not a default seed.
+vi.mock("#email-registry-projection", async (importOriginal) => {
+  const original = await importOriginal<typeof import("#email-registry-projection")>();
+  return { ...original, emailRegistryProjection: { ...original.emailRegistryProjection,
+    staticCanonInsertions: [{ beforeSlug: null, entries: [{
+      slug: "packaging-digest-daily", owner: "test", recipientKind: "admin_internal",
+      customerFacing: false, triggerSource: "test", triggerEvent: "none",
+      renderer: "no_send_decision", originPolicy: "not_applicable", ledgerSource: "none",
+      timing: "never", idempotencyPolicy: "none", testCoverage: "canon view fixture",
+      status: "planned_no_send", localePolicy: "not_applicable", inventoryStatus: "no_send",
+      deliveryStatus: "no_send", policyFailureMode: "not_applicable",
+    }] }],
+    staticVerificationInsertions: [{ beforeSlug: null, entries: [["packaging-digest-daily", {
+      mechanism: "node_action", triggerRef: "not_applicable", verifiedFlag: "green", verifiedAt: "2026-07-03",
+    }]] }],
+  } };
+});
 
 function dbRow(overrides: Partial<AdminEmailTemplate> & { slug: string; id: string }): AdminEmailTemplate {
   return {

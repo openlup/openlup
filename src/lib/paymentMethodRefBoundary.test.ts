@@ -1,37 +1,30 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { allMigrations } from "../test/effectiveMigration";
+import { managedFunction, managedTable } from "../test/managedSchema";
 
-const migration = read("supabase/migrations/20260606160000_hidden_payment_method_refs.sql");
+const table = managedTable("commerce_payment_method_refs");
+const functions = [
+  "commerce_payment_method_ref_upsert", "commerce_payment_method_ref_deactivate",
+  "commerce_payment_method_ref_switch_active", "commerce_payment_method_ref_link_subscription_mirror",
+] as const;
+const migration = functions.map(managedFunction).join("\n");
+const indexes = allMigrations().map(({ content }) => content).join("\n")
+  .match(/^CREATE UNIQUE INDEX uniq_commerce_payment_method_refs_subscription_active[^;]*;/m)?.[0];
 
 describe("hidden reusable payment method refs boundary", () => {
-  it("adds a provider-neutral reusable payment method ledger", () => {
-    for (const required of [
-      "CREATE TABLE IF NOT EXISTS public.commerce_payment_method_refs",
-      "provider_kind text NOT NULL",
-      "method_kind text NOT NULL CHECK (method_kind IN ('card', 'blik_payid', 'wallet', 'alias'))",
-      "status text NOT NULL DEFAULT 'pending_verification'",
-      "consent_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb",
-      "raw_provider_payload jsonb NOT NULL DEFAULT '{}'::jsonb",
-      "UNIQUE (provider_kind, provider_method_ref)",
-      "uniq_commerce_payment_method_refs_subscription_active",
-    ]) {
-      expect(migration).toContain(required);
-    }
+  it("stores provider-neutral reusable references with bounded families and uniqueness", () => {
+    for (const field of ["provider_kind text NOT NULL", "consent_snapshot jsonb DEFAULT '{}'::jsonb NOT NULL", "raw_provider_payload jsonb DEFAULT '{}'::jsonb NOT NULL", "UNIQUE (provider_kind, provider_method_ref)"]) expect(table).toContain(field);
+    expect(table).toContain("method_kind = ANY (ARRAY['card'::text, 'blik_payid'::text, 'wallet'::text, 'alias'::text])");
+    expect(table).toContain("status text DEFAULT 'pending_verification'::text NOT NULL");
+    expect(indexes).toContain("WHERE (active AND (subscription_id IS NOT NULL))");
   });
 
-  it("keeps method-ref RPCs service-role-only", () => {
-    for (const fn of [
-      "commerce_payment_method_ref_upsert",
-      "commerce_payment_method_ref_deactivate",
-      "commerce_payment_method_ref_switch_active",
-      "commerce_payment_method_ref_link_subscription_mirror",
-    ]) {
-      expect(migration).toContain(`CREATE OR REPLACE FUNCTION public.${fn}`);
-      expect(migration).toContain(`REVOKE ALL ON FUNCTION public.${fn}`);
-      expect(migration).toContain("FROM PUBLIC, anon, authenticated");
-      expect(migration).toContain(`GRANT EXECUTE ON FUNCTION public.${fn}`);
-      expect(migration).toContain("TO service_role");
+  it("keeps every method-reference RPC service-role-only", () => {
+    for (const name of functions) {
+      const sql = managedFunction(name);
+      expect(sql).toContain(`REVOKE ALL ON FUNCTION public.${name}`);
+      expect(sql).toMatch(new RegExp(`GRANT ALL ON FUNCTION public\\.${name}\\([^;]+ TO service_role;`));
+      expect(sql).not.toMatch(/GRANT [^;]+ TO (?:PUBLIC|anon|authenticated);/);
     }
   });
 
@@ -53,7 +46,7 @@ describe("hidden reusable payment method refs boundary", () => {
       "FROM public.commerce_idempotency_keys",
       "payment_method_ref_idempotency_conflict",
       "ON CONFLICT (provider_kind, provider_method_ref) DO UPDATE",
-      "RETURN v_existing.response_payload",
+      "RETURN jsonb_set(v_existing.response_payload, '{paymentMethodRef,replayed}', 'true'::jsonb, true)",
     ]) {
       expect(migration).toContain(required);
     }
@@ -69,7 +62,3 @@ describe("hidden reusable payment method refs boundary", () => {
     expect(migration).not.toContain("subscription_handle_payment_failure_dunning");
   });
 });
-
-function read(path: string): string {
-  return readFileSync(join(process.cwd(), path), "utf8");
-}

@@ -12,7 +12,7 @@ import {
   type CatalogSkuEnvelopeSupabaseClient,
 } from "./catalogSkuEnvelope.js";
 
-const MANAGED_MIGRATION = "supabase/migrations/20260827220000_catalog_document_revision_foundation.sql";
+const ADAPTER_SOURCE = "server/adapters/supabase/catalogSkuEnvelope.ts";
 const DETAIL_SKU_ID = CATALOG_ENVELOPE_FIXTURE.skuIds.grams400;
 
 interface Call {
@@ -340,7 +340,7 @@ describe("Supabase catalog SKU envelope adapter", () => {
     await expect(createSupabaseCatalogSkuEnvelopeReadPort(probe.client).listSkuEnvelopes({ cursor: null, limit: 0 }))
       .rejects.toThrow("catalog_sku_envelope_invalid_limit");
     expect(probe.calls).toHaveLength(0);
-    expect(readFileSync(MANAGED_MIGRATION, "utf8")).not.toMatch(/catalog_skus\s*\.\s*gtin\b/i);
+    expect(readFileSync(ADAPTER_SOURCE, "utf8")).not.toMatch(/catalog_skus\s*\.\s*gtin\b|["']gtin["']/i);
   });
 
   it("paginates 500 products, 5,000 SKUs and 10,000 identifiers without query growth", async () => {

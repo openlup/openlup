@@ -1,4 +1,4 @@
-// Every `docker rm` in a tracked shell script under `scripts/` must carry `-v`.
+// Every Docker removal in a tracked shell or Node script must remove anonymous volumes.
 //
 // The local proof and parity scripts start a `postgres:16` container. That image
 // declares `VOLUME /var/lib/postgresql/data`, so every start mints an anonymous
@@ -19,11 +19,14 @@
 // filesystem: only tracked scripts count, and the file opens no path it computed,
 // so it stays out of the opaque-dependency-edge registry.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import ts from "typescript";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-const SHELL_SCRIPTS = "scripts/*.sh";
+
 
 /** `docker rm` or `docker container rm`, followed by its option words. */
 const DOCKER_RM = /\bdocker\s+(?:container\s+)?rm\b((?:\s+--?[A-Za-z][\w-]*(?:=\S*)?)*)/g;
@@ -54,28 +57,34 @@ function git(args: string[]): string {
   return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" });
 }
 
-function trackedShellScripts(): string[] {
-  return git(["ls-files", "-z", "--", SHELL_SCRIPTS]).split("\0").filter(Boolean).sort();
+function trackedScripts(): string[] {
+  return git(["ls-files", "-z", "--", "scripts/"]).split("\0")
+    .filter((file) => /\.(?:sh|ts|mjs|cjs|js)$/.test(file) && !/\.(?:test|spec)\./.test(file)).sort();
 }
 
-/** Every tracked line under `scripts/*.sh` that mentions docker, as `path:line:text`. */
-function trackedDockerLines(): Array<{ path: string; line: number; text: string }> {
-  let output = "";
-  try {
-    output = git(["grep", "-n", "-I", "-e", "docker", "--", SHELL_SCRIPTS]);
-  } catch (error) {
-    // `git grep` exits 1 when nothing matches; that is an empty scan, which the
-    // floor assertion below turns into a failure rather than a pass.
-    if ((error as { status?: number }).status !== 1) throw error;
-  }
-  return output.split("\n").filter(Boolean).map((row) => {
-    const match = /^([^:]+):(\d+):(.*)$/.exec(row);
-    if (!match) throw new Error(`unparseable git grep row: ${row}`);
-    return { path: match[1], line: Number(match[2]), text: match[3] };
-  });
+/** Node argv is code, so read literal Docker invocations through the TS AST. */
+export function nodeDockerRmInvocations(source: string): Invocation[] {
+  const file = ts.createSourceFile("script.ts", source, ts.ScriptTarget.Latest, true);
+  const found: Invocation[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const [command, argumentsNode] = node.arguments;
+      if (command && ts.isStringLiteral(command) && command.text === "docker" && argumentsNode && ts.isArrayLiteralExpression(argumentsNode)) {
+        const words = argumentsNode.elements.map((element) => ts.isStringLiteral(element) ? element.text : null);
+        const offset = words[0] === "rm" ? 1 : words[0] === "container" && words[1] === "rm" ? 2 : null;
+        if (offset !== null) {
+          const line = file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
+          found.push({ line, text: node.getText(file), volumes: words.slice(offset).some((word) => word !== null && word.startsWith("-") && carriesVolumeFlag(word)) });
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
 }
 
-describe("docker rm carries -v in every tracked shell script under scripts/", () => {
+describe("docker rm carries -v in every tracked runtime script under scripts/", () => {
   it("flags a force-remove that leaves the anonymous volume behind", () => {
     const fixture = [
       "#!/usr/bin/env bash",
@@ -104,24 +113,30 @@ describe("docker rm carries -v in every tracked shell script under scripts/", ()
     expect(invocations.every((invocation) => invocation.volumes)).toBe(true);
   });
 
-  it("finds no tracked shell script under scripts/ removing a container without -v", () => {
-    expect(trackedShellScripts().length).toBeGreaterThan(20);
+  it("detects Node argv removals and ignores documented or run-only examples", () => {
+    const fixture = `// exec("docker", ["rm", "-f", name]);
+      exec("docker", ["rm", "-f", name]);
+      exec("docker", ["rm", "-fv", name]);
+      exec("docker", ["container", "rm", "--volumes", name]);
+      exec("docker", ["run", "--rm", name]);`;
+    expect(nodeDockerRmInvocations(fixture).map(({ volumes }) => volumes)).toEqual([false, true, true]);
+  });
 
+  it("finds no tracked shell or Node runtime removing a container without volumes", () => {
+    const files = trackedScripts();
+    expect(files).toContain("scripts/customer-diagnostic-neutrality-proof.ts");
     const seen: string[] = [];
     const leaking: string[] = [];
-    for (const { path, line, text } of trackedDockerLines()) {
-      for (const invocation of dockerRmInvocations(text, line)) {
-        seen.push(`${path}:${invocation.line}`);
+    for (const path of files) {
+      const source = readFileSync(join(ROOT, path), "utf8");
+      const invocations = path.endsWith(".sh") ? dockerRmInvocations(source) : nodeDockerRmInvocations(source);
+      for (const invocation of invocations) {
+        seen.push(path);
         if (!invocation.volumes) leaking.push(`${path}:${invocation.line}: ${invocation.text}`);
       }
     }
-
-    // Not vacuous: the repository really does remove containers from shell, so a
-    // scan that saw none of those invocations is a broken scan, not a clean tree.
-    expect(seen.length).toBeGreaterThanOrEqual(13);
-    expect(
-      leaking,
-      "these `docker rm` calls orphan the container's anonymous volume; add `-v` (`docker rm -f -v ...`)",
-    ).toEqual([]);
+    // This published cleanup is real; an extractor that loses it must fail.
+    expect(seen).toContain("scripts/customer-diagnostic-neutrality-proof.ts");
+    expect(leaking, "container removals must also remove anonymous volumes").toEqual([]);
   });
 });

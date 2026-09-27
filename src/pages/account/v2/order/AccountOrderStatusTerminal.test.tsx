@@ -1,5 +1,18 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { createI18nFixture } from "@/test/i18nFixture";
+import { act, fireEvent, render as renderBase, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const I18nFixture = createI18nFixture({
+  "checkout": {
+    "thankYou.ctaAccountOrders": "Przejdź do zamówień",
+    "thankYou.ctaManageSubscription": "Zarządzaj subskrypcją",
+    "paymentStatus.subscriptionActivation.waiting_for_mandate.title": "Pierwsze zamówienie jest opłacone.",
+    "paymentStatus.subscriptionActivation.action_required.cta": "Dodaj kartę w koncie",
+    "paymentFailed.ctaRetry": "Dokończ płatność"
+  }
+});
+const render = (ui: ReactElement) => renderBase(ui, { wrapper: I18nFixture });
 
 import { formatCustomerOrderReference } from "@/lib/orderRef";
 

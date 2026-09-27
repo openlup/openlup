@@ -3,6 +3,7 @@
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
+\ir fixtures/inventory-location.inc
 SELECT plan(6);
 
 INSERT INTO public.providers (kind, capability, display_name, status)

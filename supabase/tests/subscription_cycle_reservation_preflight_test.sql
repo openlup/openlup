@@ -3,6 +3,7 @@
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
+\ir fixtures/fulfillment-provider.inc
 SELECT plan(10);
 
 INSERT INTO public.clients (id, email)

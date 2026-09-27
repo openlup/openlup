@@ -4,7 +4,7 @@
 --   * a fourth layout name is rejected by the key-scoped CHECK;
 --   * a row with neither value_minor nor value_text is rejected by the value-present CHECK
 --     (the invariant that replaced value_minor's NOT NULL);
---   * the migration seeded configurator_offer_layout = starter_first.
+--   * the explicit fixture configures configurator_offer_layout = starter_first.
 --
 -- Also covers the key-scoped money guard added by
 -- 20260804122501_commerce_settings_shipping_value_guard:
@@ -16,16 +16,21 @@
 -- Run via: supabase test db
 
 BEGIN;
+-- Configure both rows explicitly; the schema-only baseline contains no settings data.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('configurator_offer_layout', 'starter_first', NULL),
+  ('shipping_flat_minor', NULL, 100)
+ON CONFLICT (key) DO NOTHING;
 SELECT plan(10);
 
 -- ---- Seed shipped by the migration -----------------------------------------
 SELECT is(
   (SELECT value_text FROM public.commerce_settings WHERE key = 'configurator_offer_layout'),
-  'starter_first', 'migration seeded configurator_offer_layout = starter_first');
+  'starter_first', 'explicit fixture configures configurator_offer_layout = starter_first');
 
 SELECT ok(
   (SELECT value_minor IS NULL FROM public.commerce_settings WHERE key = 'configurator_offer_layout'),
-  'the seeded layout row carries no minor-unit amount');
+  'the fixture layout row carries no minor-unit amount');
 
 -- ---- The closed vocabulary is accepted -------------------------------------
 SELECT lives_ok(

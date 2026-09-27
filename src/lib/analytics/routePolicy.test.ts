@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   isDeploymentAnalyticsRouteEligible,
   isGtmAnalyticsRouteEligible,
   sanitizeDeploymentAnalyticsUrl,
 } from "./routePolicy";
+
+vi.mock("@/lib/siteRoutes", async () => await import("@/test/siteRoutesFixture"));
 
 describe("analytics route policy", () => {
   it.each([

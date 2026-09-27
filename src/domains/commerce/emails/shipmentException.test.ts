@@ -26,8 +26,9 @@ describe("shipmentExceptionEmailContent", () => {
       ctaUrl: "https://example.test/account",
     }, APP_EMAIL_TEAM_SIGNOFF[locale]), locale);
 
-    expect(rendered.subject).toContain("OPENLUP-ABC123");
-    expect(rendered.text).toContain("OPENLUP-ABC123");
+    expect(rendered.subject).toBe(_subject);
+    expect(rendered.text).toContain(_reassurance);
+    expect(rendered.text).toContain("ORDER-ABC123");
     expect(rendered.html).toContain('href="https://example.test/account"');
     expect(rendered.html).not.toMatch(/split|location|fulfillment_exception/);
   });

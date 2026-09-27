@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   renderCheckoutRecovery,
   renderCheckoutExpired,
@@ -13,6 +13,13 @@ import {
 } from "./transactionalEmailRenderers.js";
 import { APP_ORDER_REF_PREFIX } from "../../../src/lib/brand/appBrand.js";
 import { emailPresentation as exampleEmailPresentation } from "../../../src/domains/communications/email/exampleEmailPresentation.js";
+
+// The selected presentation is a local fixture; default public copy has separate parity coverage.
+vi.mock("#commerce-email-content", async (importOriginal) => {
+  const original = await importOriginal<typeof import("#commerce-email-content")>();
+  const { createCommerceEmailContentFixture } = await import("./commerceEmailContentFixture.js");
+  return { commerceEmailContent: createCommerceEmailContentFixture(original.commerceEmailContent) };
+});
 
 const signal = new AbortController().signal;
 const BASE = "https://preview.example.test";

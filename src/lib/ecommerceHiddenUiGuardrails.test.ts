@@ -143,7 +143,8 @@ describe("ecommerce hidden UI guardrails", () => {
       ...readFiles(join(repoRoot, "src/pages")),
       ...readFiles(join(repoRoot, "src/components")),
       join(repoRoot, "src/App.tsx"),
-      join(repoRoot, "src/main.tsx"),
+      join(repoRoot, "src/public-reference/main.tsx"),
+      join(repoRoot, "src/public-reference/subscription-main.tsx"),
     ]
       .filter((file) => /\.(ts|tsx)$/.test(file))
       .filter((file) => !/\.(test|spec)\./.test(file))

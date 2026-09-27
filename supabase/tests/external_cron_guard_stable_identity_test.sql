@@ -3,7 +3,11 @@
 -- Supabase URL, which a copied database cannot supply from its clone runtime.
 
 BEGIN;
+\ir fixtures/cron-identity.inc
 SELECT plan(18);
+INSERT INTO public.platform_job_controls (job_name, enabled, active_driver, metadata)
+VALUES ('abandoned-cart-reminder', false, 'vercel_cron', '{"requiresFlag":"COMMERCE_ABANDONED_CART_ENABLED"}'::jsonb)
+ON CONFLICT (job_name) DO NOTHING;
 
 UPDATE private.platform_cron_environment
    SET external_cron_enabled = true,

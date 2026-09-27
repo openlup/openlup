@@ -1,6 +1,7 @@
 -- IL-P2 characterization: these assertions pin known gaps, not safe admission.
 -- A future repair must enumerate changed expectations rather than silently rebase them.
 BEGIN;
+\ir fixtures/settlement.inc
 SELECT plan(10);
 
 INSERT INTO public.clients (id, email)

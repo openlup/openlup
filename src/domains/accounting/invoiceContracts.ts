@@ -163,12 +163,15 @@ export function readAccountingSellerConfig(
   env: Record<string, string | undefined>,
   fallback: AccountingSellerConfig,
 ): AccountingSellerConfig {
+  const taxIdOverride = readOptionalEnv(env, "ACCOUNTING_SELLER_NIP");
   return {
     name: readEnv(env, "ACCOUNTING_SELLER_NAME", fallback.name),
     street: readEnv(env, "ACCOUNTING_SELLER_STREET", fallback.street),
     postalCode: readEnv(env, "ACCOUNTING_SELLER_POSTAL_CODE", fallback.postalCode),
     city: readEnv(env, "ACCOUNTING_SELLER_CITY", fallback.city),
-    taxId: normalizePolishNip(readEnv(env, "ACCOUNTING_SELLER_NIP", fallback.taxId)) ?? fallback.taxId,
+    taxId: taxIdOverride
+      ? normalizePolishNip(taxIdOverride) ?? fallback.taxId
+      : fallback.taxId,
     krs: readEnv(env, "ACCOUNTING_SELLER_KRS", fallback.krs),
     bankAccount: readOptionalEnv(env, "ACCOUNTING_SELLER_BANK_ACCOUNT") ?? fallback.bankAccount,
     departmentId: readOptionalEnv(env, "FAKTUROWNIA_DEPARTMENT_ID"),

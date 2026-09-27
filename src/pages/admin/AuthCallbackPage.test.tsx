@@ -1,7 +1,15 @@
+import { createI18nFixture } from "@/test/i18nFixture";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AuthCallbackPage from "@/pages/admin/AuthCallbackPage";
 import { renderWithProviders } from "@/test/render";
+
+const I18nFixture = createI18nFixture({
+  "forms": {
+    "fields.password.tooShort": "Hasło jest za krótkie",
+    "fields.confirmPassword.mismatch": "Hasła nie są takie same"
+  }
+});
 
 const navigateMock = vi.fn();
 
@@ -93,7 +101,7 @@ describe("AuthCallbackPage", () => {
       data: { session: null },
     });
 
-    renderWithProviders(<AuthCallbackPage />);
+    renderWithProviders(<I18nFixture><AuthCallbackPage /></I18nFixture>);
 
     expect(await screen.findByText(/Link jest nieprawidłowy lub wygasł/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Wróć do logowania/i })).toHaveAttribute(
@@ -107,7 +115,7 @@ describe("AuthCallbackPage", () => {
       data: { session: { user: { id: "1" } } },
     });
 
-    renderWithProviders(<AuthCallbackPage />);
+    renderWithProviders(<I18nFixture><AuthCallbackPage /></I18nFixture>);
 
     expect(await screen.findByText("Ustaw hasło do panelu")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Min. 8 znaków")).toBeInTheDocument();
@@ -119,7 +127,7 @@ describe("AuthCallbackPage", () => {
       data: { session: { user: { id: "1" } } },
     });
 
-    renderWithProviders(<AuthCallbackPage />);
+    renderWithProviders(<I18nFixture><AuthCallbackPage /></I18nFixture>);
 
     const passwordInput = await screen.findByPlaceholderText("Min. 8 znaków");
     const confirmInput = screen.getByLabelText(/^Powtórz hasło/);
@@ -146,7 +154,7 @@ describe("AuthCallbackPage", () => {
       error: { message: "Token expired" },
     });
 
-    renderWithProviders(<AuthCallbackPage />);
+    renderWithProviders(<I18nFixture><AuthCallbackPage /></I18nFixture>);
 
     const passwordInput = await screen.findByPlaceholderText("Min. 8 znaków");
     const confirmInput = screen.getByLabelText(/^Powtórz hasło/);
@@ -166,7 +174,7 @@ describe("AuthCallbackPage", () => {
       error: null,
     });
 
-    renderWithProviders(<AuthCallbackPage />);
+    renderWithProviders(<I18nFixture><AuthCallbackPage /></I18nFixture>);
 
     const passwordInput = await screen.findByPlaceholderText("Min. 8 znaków");
     const confirmInput = screen.getByLabelText(/^Powtórz hasło/);
@@ -189,7 +197,7 @@ describe("AuthCallbackPage", () => {
     });
     mockRefreshAdmin.mockResolvedValue({ isAdmin: true, role: "admin" });
 
-    renderWithProviders(<AuthCallbackPage />);
+    renderWithProviders(<I18nFixture><AuthCallbackPage /></I18nFixture>);
 
     await waitFor(() => {
       expect(mockRefreshAdmin).toHaveBeenCalledWith(session);
@@ -209,7 +217,7 @@ describe("AuthCallbackPage", () => {
     mockGetSession.mockResolvedValue({ data: { session } });
     mockRefreshAdmin.mockResolvedValue({ isAdmin: true, role: "admin" });
 
-    renderWithProviders(<AuthCallbackPage />);
+    renderWithProviders(<I18nFixture><AuthCallbackPage /></I18nFixture>);
 
     await waitFor(() => {
       expect(mockRefreshAdmin).toHaveBeenCalledWith(session);
@@ -228,7 +236,7 @@ describe("AuthCallbackPage", () => {
     mockRefreshAdmin.mockResolvedValue({ isAdmin: false, role: null });
     mockSignOut.mockResolvedValue({ error: null });
 
-    renderWithProviders(<AuthCallbackPage />);
+    renderWithProviders(<I18nFixture><AuthCallbackPage /></I18nFixture>);
 
     expect(await screen.findByText("Nie masz dostępu do panelu admina.")).toBeInTheDocument();
     expect(mockSignOut).toHaveBeenCalled();

@@ -1,14 +1,12 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-
-const migration = read("supabase/migrations/20260605150000_inventory_paid_order_reservation_hold.sql");
+import { allMigrations, effectiveFunctionBody } from "../test/effectiveMigration";
+const migration = effectiveFunctionBody("commerce_pin_paid_order_reservations");
+const schema = allMigrations().map(({ content }) => content).join("\n");
 
 describe("inventory paid reservation hold boundary", () => {
   it("pins reserved stock when an order becomes paid", () => {
     for (const required of [
       "commerce_pin_paid_order_reservations",
-      "AFTER INSERT OR UPDATE OF status",
       "NEW.status <> 'paid'",
       "UPDATE public.inventory_reservations",
       "expires_at = NULL",
@@ -17,9 +15,6 @@ describe("inventory paid reservation hold boundary", () => {
     ]) {
       expect(migration).toContain(required);
     }
+    expect(schema).toMatch(/CREATE TRIGGER [^;]+AFTER INSERT OR UPDATE OF status ON public.commerce_orders[^;]+EXECUTE FUNCTION public.commerce_pin_paid_order_reservations\(\)/);
   });
 });
-
-function read(path: string): string {
-  return readFileSync(join(process.cwd(), path), "utf8");
-}

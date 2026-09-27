@@ -13,7 +13,17 @@ SELECT extensions.dblink_connect(
     || ' dbname=' || current_database() || ' user=postgres password=postgres'
 );
 
-SELECT extensions.dblink_exec('promo_checkout_a', $setup$
+SELECT extensions.dblink_exec('promo_checkout_a', replace(replace(replace($setup$
+  -- Committed settings are visible to both racing connections. Preserve an
+  -- existing local profile and restore it when the committed race graph is removed.
+  CREATE TEMP TABLE pgtap_promo_original_settings AS
+    SELECT * FROM public.commerce_settings
+    WHERE key IN ('settlement_currency', 'settlement_region', 'min_product_payable_minor');
+  INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+    ('settlement_currency', '@fixture_currency@', NULL),
+    ('settlement_region', '@fixture_region@', NULL),
+    ('min_product_payable_minor', NULL, '@fixture_payable_floor@'::integer)
+  ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
   INSERT INTO public.clients (id, email) VALUES
     ('b1410000-0000-4000-8000-000000000001', 'promotion-race-a@example.invalid'),
     ('b1410000-0000-4000-8000-000000000002', 'promotion-race-b@example.invalid');
@@ -51,6 +61,7 @@ SELECT extensions.dblink_exec('promo_checkout_a', $setup$
   DECLARE
     v_quote jsonb;
     v_draft jsonb;
+    v_currency text := (SELECT value_text FROM public.commerce_settings WHERE key = 'settlement_currency');
   BEGIN
     v_quote := jsonb_build_object(
       'contractVersion', 'commerce.v0',
@@ -78,27 +89,27 @@ SELECT extensions.dblink_exec('promo_checkout_a', $setup$
       'source', 'commerce.order_draft.bff.v0',
       'status', 'draft',
       'paymentStatus', 'not_started',
-      'currency', 'PLN',
+      'currency', v_currency,
       'taxIncluded', true,
       'lines', jsonb_build_array(jsonb_build_object(
         'sku', p_idempotency_key,
         'productSlug', 'promotion-race',
         'quantity', 1,
-        'unitPriceGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
-        'lineSubtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
+        'unitPriceGross', jsonb_build_object('amountMinor', 10000, 'currency', v_currency),
+        'lineSubtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', v_currency),
         'tax', jsonb_build_object(
           'vatRateBps', 800,
-          'netAmount', jsonb_build_object('amountMinor', 9259, 'currency', 'PLN'),
-          'vatAmount', jsonb_build_object('amountMinor', 741, 'currency', 'PLN'),
-          'grossAmount', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN')
+          'netAmount', jsonb_build_object('amountMinor', 9259, 'currency', v_currency),
+          'vatAmount', jsonb_build_object('amountMinor', 741, 'currency', v_currency),
+          'grossAmount', jsonb_build_object('amountMinor', 10000, 'currency', v_currency)
         )
       )),
       'totals', jsonb_build_object(
-        'subtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
-        'discountTotalGross', jsonb_build_object('amountMinor', 8000, 'currency', 'PLN'),
-        'netTotal', jsonb_build_object('amountMinor', 1852, 'currency', 'PLN'),
-        'taxTotal', jsonb_build_object('amountMinor', 148, 'currency', 'PLN'),
-        'totalGross', jsonb_build_object('amountMinor', 2000, 'currency', 'PLN')
+        'subtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', v_currency),
+        'discountTotalGross', jsonb_build_object('amountMinor', 8000, 'currency', v_currency),
+        'netTotal', jsonb_build_object('amountMinor', 1852, 'currency', v_currency),
+        'taxTotal', jsonb_build_object('amountMinor', 148, 'currency', v_currency),
+        'totalGross', jsonb_build_object('amountMinor', 2000, 'currency', v_currency)
       )
     );
     PERFORM public.commerce_create_order_draft_with_outbox(
@@ -110,7 +121,7 @@ SELECT extensions.dblink_exec('promo_checkout_a', $setup$
     RETURN SQLERRM;
   END
   $function$;
-$setup$);
+$setup$, '@fixture_currency@', :'fixture_currency'), '@fixture_region@', :'fixture_region'), '@fixture_payable_floor@', :'fixture_payable_floor'));
 
 SELECT extensions.dblink_send_query(
   'promo_checkout_a',
@@ -195,6 +206,10 @@ SELECT extensions.dblink_exec('promo_checkout_a', $cleanup$
      'b1410000-0000-4000-8000-000000000001',
      'b1410000-0000-4000-8000-000000000002'
    );
+  DELETE FROM public.commerce_settings
+    WHERE key IN ('settlement_currency', 'settlement_region', 'min_product_payable_minor');
+  INSERT INTO public.commerce_settings SELECT * FROM pgtap_promo_original_settings;
+  DROP TABLE pgtap_promo_original_settings;
 $cleanup$);
 SELECT extensions.dblink_disconnect('promo_checkout_a');
 SELECT extensions.dblink_disconnect('promo_checkout_b');

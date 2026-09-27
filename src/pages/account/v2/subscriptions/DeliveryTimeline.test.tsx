@@ -1,5 +1,18 @@
+import type { ReactElement } from "react";
+import { createI18nFixture } from "@/test/i18nFixture";
 import { describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render as renderBase, screen, within } from "@testing-library/react";
+
+const I18nFixture = createI18nFixture({
+  "account": {
+    "dashboard.subscriptionV2.schedule.nearest": "szacowana",
+    "dashboard.subscriptionV2.inFlightLabel": "W realizacji",
+    "dashboard.subscriptionV2.schedule.estimateNote": "Daty dostaw są szacowane na podstawie planowanego odnowienia i opłaty.",
+    "dashboard.ordersV2.steps.accepted": "Przyjęte",
+    "dashboard.ordersV2.steps.paid": "Opłacone"
+  }
+});
+const render = (ui: ReactElement) => renderBase(ui, { wrapper: I18nFixture });
 
 import { DeliveryTimeline } from "./DeliveryTimeline";
 

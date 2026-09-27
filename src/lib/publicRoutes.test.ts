@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   canonicalizeLegacyPublicPathname,
   publicLegacyRedirects,
   publicStaticRoutes,
 } from "./publicRoutes";
+
+vi.mock("@/lib/siteRoutes", async () => await import("@/test/siteRoutesFixture"));
 
 describe("public route manifest", () => {
   it("keeps static route paths unique", () => {

@@ -1,20 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const trackingSchemaMigration = readFileSync(
-  "supabase/migrations/20260630180001_customer_tracking_refs_schema_drift.sql",
-  "utf8",
-);
+import { managedTable } from "../../../src/test/managedSchema.js";
+const trackingSchemaMigration = managedTable("shipment_external_refs");
 const orderHistoryReadStore = readFileSync(
   "server/adapters/supabase/customerOrderHistoryReadStore.ts",
   "utf8",
 );
 
 describe("customer order history schema contract", () => {
-  it("keeps shipment tracking projection columns backed by an additive migration", () => {
+  it("backs every shipment tracking projection column with the published schema", () => {
     for (const column of ["tracking_url", "carrier_kind", "service"]) {
       expect(orderHistoryReadStore).toContain(column);
-      expect(trackingSchemaMigration).toContain(`ADD COLUMN IF NOT EXISTS ${column} text`);
+      expect(trackingSchemaMigration).toContain(`${column} text`);
     }
   });
 });

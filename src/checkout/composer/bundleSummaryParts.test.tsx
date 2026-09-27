@@ -1,5 +1,18 @@
+import { createI18nFixture } from "@/test/i18nFixture";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+
+const I18nFixture = createI18nFixture({
+  "checkout": {
+    "step5.summaryCans": "{{count}} puszek łącznie",
+    "step5.startDiscountLabel": "Rabat na start −{{percent}}%",
+    "step5.productDiscountLabel": "Rabat na produkty",
+    "step5.productsAfterDiscount": "Produkty po rabacie",
+    "step5.shippingLabel": "Dostawa",
+    "step5.shippingFree": "Gratis",
+    "step5.summaryTotalToday": "Razem dziś"
+  }
+});
 
 import { BundlePriceBreakdown } from "./bundleSummaryParts";
 import { formatMoney } from "./configuratorPricing";
@@ -48,6 +61,7 @@ function renderBreakdown({
       compact={compact}
       lang="pl"
     />,
+    { wrapper: I18nFixture },
   );
 }
 

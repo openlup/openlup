@@ -1,5 +1,19 @@
+import { createI18nFixture } from "@/test/i18nFixture";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+
+const I18nFixture = createI18nFixture({
+  "checkout": {
+    "step5.statDaysValue": "~{{days}} dni",
+    "step5.statPerDayLabel": "za dzień na start",
+    "step5.statCansLabel": "puszek",
+    "step5.statFeedingLabel": "karmienia",
+    "step5.portionTipLabel": "Porcja",
+    "step5.portionTip": "Porcję dopasowaliśmy do potrzeb",
+    "step5.summarySubtitle": "Porcję dopasowaliśmy na podstawie Twojej ankiety.",
+    "step5.detailsToggle": "Jak liczymy porcję"
+  }
+});
 
 import { PackageCardHeader } from "./PackageCardHeader";
 import type { StarterPlanView } from "@/checkout/machine/quoteBandPricing";
@@ -31,6 +45,7 @@ function renderHeader(props: Partial<Parameters<typeof PackageCardHeader>[0]> = 
       isMobile={false}
       {...props}
     />,
+    { wrapper: I18nFixture },
   );
 }
 
@@ -113,7 +128,9 @@ describe("optional portion tip", () => {
     vi.doMock("@/components/ui/popover", () => { throw new Error("optional chunk unavailable"); });
     try {
       const { PackageCardHeader: HeaderWithFailedTip } = await import("./PackageCardHeader");
-      render(<HeaderWithFailedTip totalCans={34} feedingDays={34} dailyKcal={null} dailyGrams={null} isMobile />);
+      const { createI18nFixture: freshFixture } = await import("@/test/i18nFixture");
+      const FailedTipFixture = freshFixture({ checkout: { "step5.summarySubtitle": "Porcję dopasowaliśmy na podstawie Twojej ankiety.", "step5.statCansLabel": "puszek", "step5.statDaysValue": "~{{days}} dni", "step5.statFeedingLabel": "karmienia" } });
+      render(<HeaderWithFailedTip totalCans={34} feedingDays={34} dailyKcal={null} dailyGrams={null} isMobile />, { wrapper: FailedTipFixture });
       fireEvent.click(screen.getByTestId("package-portion-tip"));
       expect(await screen.findByRole("status")).toHaveTextContent("Porcję dopasowaliśmy na podstawie Twojej ankiety.");
       const stats = screen.getByTestId("package-stat-bar");

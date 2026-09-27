@@ -1,9 +1,60 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render as renderBase, screen, within } from "@testing-library/react";
 
 import type { CustomerAccountV2Response } from "@/domains/customers/accountV2Contracts";
 import type { Pet, Subscription } from "../lib/subscriptionEditModel";
 import { SubscriptionScreen, type SubscriptionActions } from "./SubscriptionScreen";
+
+import type { ReactElement } from "react";
+import { createI18nFixture } from "@/test/i18nFixture";
+
+// An explicit calendar makes the Easter deferral proof independent of deployment policy.
+vi.mock("#delivery-dispatch-policy", () => ({ DELIVERY_DISPATCH_POLICY: {
+  timeZone: "UTC", cutoffHour: 16, businessDays: [1, 2, 3, 4, 5],
+  holidays: ["2026-04-06"], minTransitBusinessDays: 1, maxTransitBusinessDays: 2,
+} }));
+const I18nFixture = createI18nFixture({ account: {
+  "dashboard.subscriptionV2.package.summary": "{{cans}} puszek na {{days}} dni",
+  "dashboard.subscriptionV2.estimatedDeliveryEyebrow": "Szacowana dostawa",
+  "dashboard.subscriptionV2.facts.nextRenewal": "Następne odnowienie",
+  "dashboard.subscriptionV2.schedule.nextRenewal": "Następne odnowienie",
+  "dashboard.subscriptionV2.facts.estimatedDelivery": "Szacowana dostawa",
+    "dashboard.subscriptionV2.facts.priceValue": "{{price}}",
+  "dashboard.subscriptionV2.blocked.paymentBlocked": "Najpierw napraw płatność",
+  "dashboard.ordersV2.steps.transit": "W drodze",
+  "dashboard.subscriptionV2.package.editWindowPending": "Edycja pakietu będzie dostępna po aktywacji subskrypcji",
+  "dashboard.subscriptionV2.headerTitle": "Subskrypcja {{pet}}",
+  "dashboard.subscriptionV2.estimatedDeliveryValue": "{{range}} · za {{days}} dni",
+  "dashboard.subscriptionV2.chargeAndEditLine": "Planowana opłata {{charge}} · zmiany w składzie do {{cutoff}}",
+  "dashboard.subscriptionV2.holidayNote": "uwzględnia dni wolne",
+  "dashboard.subscriptionV2.package.edit": "Edytuj pakiet",
+  "dashboard.subscriptionV2.package.editWindow": "Zmiany w składzie możliwe do {{date}}",
+  "dashboard.subscriptionV2.schedule.reschedule": "Zmień termin",
+  "dashboard.subscriptionV2.inFlightLabel": "W realizacji",
+  "dashboard.subscriptionV2.schedule.nearest": "szacowana",
+  "dashboard.subscriptionV2.lifecycle.orderNow": "Zamów teraz",
+  "dashboard.subscriptionV2.lifecycle.resume": "Wznów dostawy",
+  "dashboard.subscriptionV2.lifecycle.cancel": "Anuluj subskrypcję",
+  "dashboard.subscriptionV2.lifecycle.changeAddress": "Zmień adres dostawy",
+  "dashboard.subscriptionV2.status.pending": "Oczekuje na płatność",
+  "dashboard.subscriptionV2.status.blocked": "Płatność",
+  "dashboard.subscriptionV2.status.paused": "Wstrzymana",
+  "dashboard.subscriptionV2.status.failed": "Aktywacja nieudana",
+  "dashboard.subscriptionV2.incomplete.pending.body": "Subskrypcja czeka na dokończenie płatności",
+  "dashboard.subscriptionV2.incomplete.pending.cta": "Dokończ płatność",
+  "dashboard.subscriptionV2.incomplete.failed.body": "Aktywacja subskrypcji nie powiodła się",
+  "dashboard.subscriptionV2.blocked.notActive": "Subskrypcja wymaga aktywacji",
+  "dashboard.subscriptionV2.facts.methodStatus": "Stan metody",
+  "dashboard.subscriptionV2.facts.methodStatusValue.expiring": "Wkrótce wygasa",
+  "dashboard.subscriptionV2.deliveryAlignment.protected.title": "Opóźniona przesyłka: kolejne odnowienie wstrzymane",
+  "dashboard.subscriptionV2.deliveryAlignment.protected.body": "Nie pobierzemy kolejnej opłaty, dopóki bieżąca paczka nie zostanie dostarczona.",
+  "dashboard.subscriptionV2.deliveryAlignment.aligned.title": "Paczka dotarła. Dopasowaliśmy termin",
+  "dashboard.subscriptionV2.deliveryAlignment.aligned.body": "Kolejne odnowienie przesunęliśmy na {{date}}, aby zachować rytm dostaw.",
+  "dashboard.start.actionRequired.amount": "Do zapłaty: {{amount}}",
+  "dashboard.start.actionRequired.nextRetry": "Kolejna próba obciążenia: {{date}}",
+  "dashboard.start.actionRequired.cta": "Napraw płatność",
+} });
+const render = (ui: ReactElement) => renderBase(ui, { wrapper: I18nFixture });
 
 const NOW = "2026-06-23T09:00:00.000Z";
 const CURRENCY = "PLN";

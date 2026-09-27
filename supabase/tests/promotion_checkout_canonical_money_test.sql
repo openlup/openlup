@@ -1,5 +1,10 @@
 -- pgTAP: v2 promotion claims are part of the canonical order/payment transaction.
 BEGIN;
+-- Independent scheduler control for the test deployment; the baseline has no job data.
+INSERT INTO public.platform_job_controls (job_name, enabled, active_driver)
+VALUES ('promotion-claim-sweep', true, 'vercel_cron')
+ON CONFLICT (job_name) DO NOTHING;
+\ir fixtures/settlement.inc
 SELECT plan(54);
 
 CREATE TEMP TABLE _promotion_checkout_bootstrap (ready boolean);

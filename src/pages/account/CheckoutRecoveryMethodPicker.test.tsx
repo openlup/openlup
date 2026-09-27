@@ -1,5 +1,20 @@
+import type { ReactElement } from "react";
+import { createI18nFixture } from "@/test/i18nFixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render as renderBase, screen, waitFor } from "@testing-library/react";
+
+const I18nFixture = createI18nFixture({
+  "account": {
+    "completePayment.blikBankUnsupportedExitBody": "Nie mamy potwierdzenia obsługi BLIK dla subskrypcji w tym banku. Wybierz kartę.",
+    "completePayment.blikBankUnsupportedExitCta": "Wybierz kartę",
+    "completePayment.cardSelected": "Wybrano kartę"
+  },
+  "checkout": {
+    "recoveryGuidance.messages.c12": "Nie możemy teraz dokończyć płatności. Skontaktuj się z nami.",
+    "recoveryGuidance.actions.support": "Napisz do nas"
+  }
+});
+const render = (ui: ReactElement) => renderBase(ui, { wrapper: I18nFixture });
 
 import { CheckoutRecoveryMethodPicker } from "./CheckoutRecoveryMethodPicker";
 import {

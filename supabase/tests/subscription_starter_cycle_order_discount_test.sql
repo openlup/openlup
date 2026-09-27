@@ -23,6 +23,9 @@
 -- Run via: npm run test:db:local (the guarded local database lane)
 
 BEGIN;
+\ir fixtures/settlement.inc
+\ir fixtures/fulfillment-provider.inc
+\ir fixtures/can-format.inc
 SELECT plan(9);
 
 INSERT INTO public.clients (id, email)

@@ -13,6 +13,13 @@
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
+-- Configure dormant routing and scheduler controls within this transaction.
+INSERT INTO public.outbox_dormant_event_types (event_type, owner, reason)
+VALUES ('commerce.subscription_payment.requested', 'test', 'synthetic dormant handler')
+ON CONFLICT (event_type) DO NOTHING;
+INSERT INTO public.platform_job_controls (job_name, enabled, active_driver) VALUES
+  ('outbox-prune', false, 'vercel_cron'), ('outbox-dispatch', true, 'vercel_cron')
+ON CONFLICT (job_name) DO NOTHING;
 SELECT no_plan();
 
 -- ===========================================================================
@@ -143,7 +150,7 @@ SELECT throws_ok(
 SELECT ok(EXISTS (
     SELECT 1 FROM public.outbox_dormant_event_types
      WHERE event_type = 'commerce.subscription_payment.requested'),
-  'claim v3 has an explicit DB dormant registry seed');
+  'claim v3 has an explicit DB dormant registry fixture');
 
 INSERT INTO public.outbox_events (id, created_at, aggregate_type, aggregate_id, event_type, idempotency_key, payload) VALUES
   ('a2000000-0000-0000-0000-000000000001', now() - interval '2 minutes', 'subscription', 'bb200000-0000-0000-0000-000000000001', 'commerce.subscription_payment.requested', 'v3-dormant-approved-1', '{}'::jsonb),
@@ -691,7 +698,7 @@ SELECT ok(EXISTS (
      WHERE job_name = 'outbox-prune'
        AND enabled = false
        AND active_driver = 'vercel_cron'),
-  'outbox-prune control row is seeded disabled with the vercel_cron driver');
+  'outbox-prune control row is configured disabled with the vercel_cron driver');
 
 -- ===========================================================================
 -- grants: anon + authenticated must lack EXECUTE on all outbox functions
@@ -740,7 +747,7 @@ SELECT ok(EXISTS (
      WHERE job_name = 'outbox-dispatch'
        AND enabled = true
        AND active_driver = 'vercel_cron'),
-  'outbox-dispatch control row seeded enabled (activation migration) with the vercel_cron driver');
+  'outbox-dispatch control row explicitly configured enabled with the vercel_cron driver');
 
 -- Kill-switch path: a disabled row skips as job_disabled (no lease yet to mask it).
 UPDATE public.platform_job_controls SET enabled = false

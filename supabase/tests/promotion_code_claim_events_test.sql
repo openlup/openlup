@@ -1,5 +1,6 @@
 -- pgTAP: append-only, privacy-safe promotion claim transition evidence.
 BEGIN;
+\ir fixtures/cron-identity.inc
 SELECT plan(74);
 
 SELECT has_table('public', 'promotion_code_claim_events',

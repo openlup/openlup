@@ -4,6 +4,30 @@ import DashboardPage from "@/pages/admin/DashboardPage";
 import { renderWithProviders } from "@/test/render";
 import { listResponse } from "./OrdersPage.testHelpers";
 
+import { createI18nFixture } from "@/test/i18nFixture";
+
+const I18nFixture = createI18nFixture({ admin: {
+  "adminDashboard.title": "Cześć, Operator",
+  "adminDashboard.mode.kpi": "KPI",
+  "adminDashboard.mode.queue": "Kolejka",
+  "adminDashboard.range.24h": "24 godz.",
+  "adminDashboard.range.7d": "7 dni",
+  "adminDashboard.range.30d": "30 dni",
+  "adminDashboard.range.all": "Cały okres",
+  "adminDashboard.kpi.gmv": "Przychód (GMV)",
+  "adminDashboard.kpi.orders": "Zamówienia",
+  "adminDashboard.kpi.aov": "Śr. wartość (AOV)",
+  "adminDashboard.kpi.subscriptions": "Opłacone cykle subskrypcji",
+  "adminDashboard.kpi.emptyWindowHint": "Brak opłaconych zamówień w wybranym oknie. Poszerz zakres.",
+  "adminDashboard.tiles.attention": "Wymaga decyzji",
+  "adminDashboard.tiles.fulfillment": "Gotowe do zlecenia wysyłki",
+  "adminDashboard.tiles.fulfillmentExceptions": "Wyjątki wysyłki",
+  "adminDashboard.tiles.payment": "Problemy z płatnością",
+  "adminDashboard.tiles.inventory": "Brak rezerwacji",
+  "adminDashboard.tiles.invoices": "Problemy z fakturami",
+  "adminDashboard.recent.title": "Ostatnie zamówienia",
+} });
+
 const { mockGetAdminCommerceOrders } = vi.hoisted(() => ({
   mockGetAdminCommerceOrders: vi.fn(),
 }));
@@ -54,7 +78,7 @@ describe("DashboardPage", () => {
   });
 
   it("renders OMS KPI data from summaryTotals without client-side aggregation", async () => {
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<I18nFixture><DashboardPage /></I18nFixture>);
 
     expect(await screen.findByRole("heading", { name: "Cześć, Operator" })).toBeInTheDocument();
     expect(screen.getByText("KPI")).toBeInTheDocument();
@@ -80,7 +104,7 @@ describe("DashboardPage", () => {
   });
 
   it("defaults the KPI window to 30 days and offers an all-time range", async () => {
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<I18nFixture><DashboardPage /></I18nFixture>);
 
     await screen.findByRole("heading", { name: "Cześć, Operator" });
     expect(screen.getByRole("button", { name: "30 dni" })).toBeInTheDocument();
@@ -96,7 +120,7 @@ describe("DashboardPage", () => {
   });
 
   it("renders a genuine recent-orders feed independent of the attention queue", async () => {
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<I18nFixture><DashboardPage /></I18nFixture>);
 
     await screen.findByRole("heading", { name: "Cześć, Operator" });
     expect(await screen.findByText("Ostatnie zamówienia")).toBeInTheDocument();
@@ -120,7 +144,7 @@ describe("DashboardPage", () => {
       );
     });
 
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<I18nFixture><DashboardPage /></I18nFixture>);
 
     await screen.findByRole("heading", { name: "Cześć, Operator" });
     expect(
@@ -129,7 +153,7 @@ describe("DashboardPage", () => {
   });
 
   it("renders operational tile counts from matching summaryCounts fields", async () => {
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<I18nFixture><DashboardPage /></I18nFixture>);
 
     await screen.findByRole("heading", { name: "Cześć, Operator" });
 
@@ -145,7 +169,7 @@ describe("DashboardPage", () => {
   });
 
   it("switches dashboard mode and period through segmented controls", async () => {
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<I18nFixture><DashboardPage /></I18nFixture>);
 
     await screen.findByRole("heading", { name: "Cześć, Operator" });
     fireEvent.click(screen.getByRole("button", { name: "Kolejka" }));
@@ -161,7 +185,7 @@ describe("DashboardPage", () => {
   });
 
   it("does not render raw Polish fulfillment jargon on the dashboard", async () => {
-    renderWithProviders(<DashboardPage />);
+    renderWithProviders(<I18nFixture><DashboardPage /></I18nFixture>);
 
     await screen.findByRole("heading", { name: "Cześć, Operator" });
 

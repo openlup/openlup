@@ -1,5 +1,16 @@
+import type { ReactElement } from "react";
+import { createI18nFixture } from "@/test/i18nFixture";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render as renderBase, screen, waitFor } from "@testing-library/react";
+
+const I18nFixture = createI18nFixture({
+  "account": {
+    "dashboard.workspace.edit": "Edytuj",
+    "dashboard.workspace.save": "Zapisz",
+    "dashboard.workspace.cancel": "Anuluj"
+  }
+});
+const render = (ui: ReactElement) => renderBase(ui, { wrapper: I18nFixture });
 
 import type { CustomerAccountV2Response } from "@/domains/customers/accountV2Contracts";
 import { PaymentsSection } from "./PaymentsSection";

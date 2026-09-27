@@ -1,5 +1,12 @@
 -- pgTAP: neutral v3 accounting trigger-control contract.
 BEGIN;
+-- Explicit inactive controls for this transaction; the schema-only baseline
+-- intentionally configures no scheduler or worker for a deployment.
+INSERT INTO public.platform_job_controls (job_name, enabled, allowed_trigger_kinds) VALUES
+  ('accounting-invoice-issue', false, ARRAY['worker', 'scheduler']),
+  ('accounting-invoice-delivery', false, ARRAY['worker', 'scheduler']),
+  ('accounting-invoice-correction', false, ARRAY['worker', 'scheduler']),
+  ('accounting-ksef-status', false, ARRAY['scheduler']);
 SELECT plan(25);
 
 SELECT is(
@@ -20,7 +27,7 @@ SELECT is(
   'KSeF status allows only scheduler execution');
 SELECT ok(
   NOT (SELECT enabled FROM public.platform_job_controls WHERE job_name = 'accounting-ksef-status'),
-  'KSeF control remains disabled by default');
+  'the explicit KSeF fixture remains disabled');
 
 CREATE TEMP TABLE _disabled AS
 SELECT * FROM public.platform_claim_job_run_v3(

@@ -12,6 +12,8 @@
 --
 -- Run via: supabase test db
 BEGIN;
+\ir fixtures/settlement.inc
+\ir fixtures/fulfillment-provider.inc
 SELECT plan(39);
 
 -- ---------------------------------------------------------------------------

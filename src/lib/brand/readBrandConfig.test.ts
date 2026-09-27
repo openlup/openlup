@@ -29,9 +29,9 @@ describe("readBrandConfig", () => {
       replyToEmail: APP_REPLY_TO_EMAIL,
     });
     expect(brand.seller).toMatchObject(APP_DEFAULT_SELLER);
-    expect(brand.email.copyBrandName).toBe("OPENLUP");
-    expect(brand.email.copyBrandNameCased).toBe("openlup");
-    expect(brand.email.theme.logoText).toBe("openlup");
+    expect(brand.email.copyBrandName).toBe("EXAMPLE STORE");
+    expect(brand.email.copyBrandNameCased).toBe("Example Store");
+    expect(brand.email.theme.logoText).toBe("Example Store");
   });
 
   it("overlays ACCOUNTING_SELLER_* env onto the seller defaults", () => {
@@ -60,8 +60,8 @@ describe("sender identity seam", () => {
     // Pins the composed default against the constants it is built from, and
     // against the shape every call site's literal had: display label, one
     // space, then the mailbox in angle brackets, nothing else.
-    expect(APP_FROM_EMAIL).toBe(`${APP_EMAIL_BRAND.copyBrandName} <${APP_SUPPORT_EMAIL}>`);
-    expect(APP_FROM_EMAIL).toMatch(/^\S+ <[^@\s]+@[^@\s]+>$/);
+    expect(APP_FROM_EMAIL).toBe("Example Store <notifications@example.test>");
+    expect(APP_FROM_EMAIL).toMatch(/^[^<>\r\n]+ <[^@\s]+@[^@\s]+>$/);
     expect(readBrandConfig({}).fromEmail).toBe(APP_FROM_EMAIL);
     expect(readBrandConfig({ ACCOUNTING_SELLER_NAME: "Acme" }).fromEmail).toBe(APP_FROM_EMAIL);
     expect(readBrandFromEmail()).toBe(APP_FROM_EMAIL);
