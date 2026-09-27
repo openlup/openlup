@@ -20,7 +20,9 @@ export type SubscriptionEngineErrorCode =
   | "duplicate_line"
   | "invalid_slide_target"
   | "invalid_transition"
-  | "terminal_cycle";
+  | "terminal_cycle"
+  | "missing_payment_method"
+  | "dunning_not_exhausted";
 
 /** @beta */
 export type SubscriptionEngineResult<T> =

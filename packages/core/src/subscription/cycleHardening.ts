@@ -2,7 +2,7 @@
  * Subscription cycle hardening helpers — the canonical retry ladder a renewal
  * payment failure follows.
  *
- * This module is the SINGLE authority on the ladder. It answers three questions:
+ * This module is the SINGLE authority on the ladder. It answers four questions:
  *
  *   - `nextRetryAttemptAt(failedAt, attemptNumber, cadence?, failureClass?)` —
  *     when the next charge is due, or `null` when no next charge is due.
@@ -10,6 +10,8 @@
  *     — whether a failed payment may move into `retry_scheduled`.
  *   - `ladderTerminatedByClass(failureClass, cadence?)` — whether the REASON for
  *     the refusal, rather than the rung reached, ends the ladder.
+ *   - `isDunningLadderExhausted(cycle, cadence?)` — whether a refused cycle has
+ *     run past the last rung, the only non-payment reason to pause.
  *
  * TERMINATING, not capping. An attempt past the end of the ladder answers
  * `null`, which is the pause signal; it does not answer "the last slot again".
@@ -138,4 +140,35 @@ export function maxRetryAttempts(
   cadence: CycleRetryCadence = DEFAULT_CYCLE_RETRY_CADENCE,
 ): number {
   return cadence.backoffHours.length;
+}
+
+/**
+ * Whether a refused cycle has EXHAUSTED the ladder: it failed, nothing is
+ * scheduled after it, and the attempt that failed sits past the last rung.
+ *
+ * This is the one condition under which the platform may pause a live
+ * subscription for non-payment. Both halves are required. An absent schedule on
+ * its own is not exhaustion: a class-terminated refusal on rung one also leaves
+ * nothing scheduled, and treating it as exhaustion would pause a subscription on
+ * the day of its first refusal. The rung is derived from the cadence, so pass
+ * the same cadence here and to `recordPaymentFailure`. The managed SQL dunning
+ * boundary spells the shipped ladder's rung as a fixed constant
+ * (`v_ladder_exhausted_from`, 4); a deployment that publishes a different
+ * ladder must move that constant with it.
+ *
+ * @beta
+ */
+export function isDunningLadderExhausted(
+  cycle: {
+    readonly status: CycleHandlerStatus;
+    readonly retryAttempt: number;
+    readonly nextRetryAt: string | null;
+  },
+  cadence: CycleRetryCadence = DEFAULT_CYCLE_RETRY_CADENCE,
+): boolean {
+  return (
+    cycle.status === "payment_failed" &&
+    cycle.nextRetryAt === null &&
+    cycle.retryAttempt > maxRetryAttempts(cadence)
+  );
 }
