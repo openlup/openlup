@@ -540,6 +540,17 @@ describe("descendant source release producer", () => {
     try { await expect(sample.release(change, seal)).rejects.toThrow(expected); } finally { sample.cleanup(); }
   });
 
+  it("admits the real managed alignment seed forward and binds its digest", async () => {
+    const path = "supabase/migrations/20260927131453_seed_subscription_delivery_alignment_control.sql";
+    const sql = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+    const sample = syntheticRelease({ extraFiles: { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n" } });
+    try {
+      const { receipt } = await sample.release({ [path]: sql });
+      expect(receipt.schemaVersion).toBe(5);
+      expect(receipt.disclosure.paths).toContainEqual({ path, mode: "100644", digest: digest(sql) });
+    } finally { sample.cleanup(); }
+  });
+
   it.each(["managed", "portable"] as const)("admits an appended %s forward and binds its bytes in schema 5", async (rail) => {
     const sample = syntheticRelease({ extraFiles: { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n" } });
     const path = rail === "managed" ? "supabase/migrations/20260927000000_add_control.sql" : "db/platform/migrations/20260927000000_add_control.sql";

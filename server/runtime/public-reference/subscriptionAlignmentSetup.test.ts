@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -17,6 +18,19 @@ function database() {
 }
 
 describe("subscription reference alignment prerequisite", () => {
+  it("keeps the reference seed identical to the managed forward and makes it a no-op", () => {
+    const forward = readFileSync(new URL("../../../supabase/migrations/20260927131453_seed_subscription_delivery_alignment_control.sql", import.meta.url), "utf8");
+    expect(forward.replace(/^--.*$/gm, "").trim()).toBe(subscriptionAlignmentSeedSql.trim());
+    const db = database();
+    try {
+      db.exec(forward);
+      const before = db.prepare("SELECT singleton, mode FROM public.subscription_delivery_alignment_control").all();
+      db.exec(subscriptionAlignmentSeedSql);
+      expect(db.prepare("SELECT singleton, mode FROM public.subscription_delivery_alignment_control").all()).toEqual(before);
+      expect(before).toEqual([{ singleton: 1, mode: "auto_align" }]);
+    } finally { db.close(); }
+  });
+
   it("seeds the absent singleton as auto_align and is safe to replay", () => {
     const db = database();
     try {

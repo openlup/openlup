@@ -56,9 +56,10 @@ apply the separate `db/platform/migrations` portable PostgreSQL chain or claim
 that the two installation paths are interchangeable. The public setup creates
 one owned local Supabase project, adds `pg_trgm` in `public` and the non-login,
 non-RLS-bypass `openlup_mcp_reader` role required by that baseline, and replays
-the baseline transactionally. Its synthetic seed supplies only the recurring
-catalog item, prices, stock, settlement settings and the delivery-alignment
-control row; it does not insert a paid order or active subscription.
+the baseline transactionally, then applies the managed alignment seed forward.
+Its synthetic seed supplies only the recurring catalog item, prices, stock and
+settlement settings. The compatibility alignment seed is now a no-op. Setup
+does not insert a paid order or active subscription.
 
 For accidental-attachment protection, setup records a per-installation opaque
 id in the existing `commerce_settings` table and in its generated local marker.
@@ -68,9 +69,8 @@ prerequisite or seed SQL, and the selected runtime checks the same id before an
 API operation. This row records development-reference ownership; it is not a
 platform migration or an adopter data contract. Reusing the same database
 volume preserves the identity and business state; a different database at the
-same port refuses. The managed
-baseline replay and one local fixture do not establish a forward upgrade path,
-N-1 compatibility or general self-hosted database support.
+same port refuses. The managed baseline and forward replay plus one local fixture do not establish N-1
+compatibility or general self-hosted database support.
 
 ## Known managed-baseline alignment gap
 
@@ -80,18 +80,25 @@ does not move the next cycle. `subscription_delivery_alignment_set_mode` updates
 only existing rows and can report success after updating zero rows; it does not
 repair this missing prerequisite.
 
-The owned disposable subscription setup inserts the singleton with
-`mode = auto_align`, including when its catalog seed already exists. It uses
-`ON CONFLICT (singleton) DO NOTHING`, so rerunning setup neither duplicates the
-row nor overwrites an existing mode. Reference verification refuses a missing
-row or a mode other than `auto_align` before either a new journey or restart
-proof. This mode is the prerequisite for the monotonic late-delivery rule in
+The managed forward
+`supabase/migrations/20260927131453_seed_subscription_delivery_alignment_control.sql`
+inserts the singleton with `mode = auto_align` and
+`ON CONFLICT (singleton) DO NOTHING`. It repairs a missing row while preserving
+any existing mode choice. Apply it after the immutable baseline; never edit the
+baseline to add seed data. pgTAP reads the installed singleton and tests replay
+and preservation of an operator's mode choice.
+
+The owned disposable subscription setup applies this forward before its seeds,
+including on reruns where the catalog already exists. Its matching compatibility
+seed becomes a no-op. Reference verification still refuses a missing row or a
+mode other than `auto_align` before either a new journey or restart proof. This
+mode is the prerequisite for the monotonic late-delivery rule in
 [Canonical contracts](CANONICAL_CONTRACTS.md#subscription-delivery-alignment).
 
-This repair is limited to the public reference. The managed baseline and
-migration chains are unchanged. The additive forward admission path above permits
-a managed repair, but no such repair ships yet; the reference seed supplies no general upgrade proof and does
-not prove the complete delivery-alignment journey.
+There is no portable twin: the delivery-alignment rail is managed-only. The
+portable installation's lack of this capability remains a known gap; this
+forward establishes neither installation-path parity nor the complete
+late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 

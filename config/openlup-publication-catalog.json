@@ -17606,6 +17606,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20260927131453_seed_subscription_delivery_alignment_control.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -18215,6 +18219,10 @@
     },
     {
       "path": "supabase/tests/subscription_cycle_reservation_preflight_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/subscription_delivery_alignment_control_seed_test.sql",
       "class": "public-output"
     },
     {
