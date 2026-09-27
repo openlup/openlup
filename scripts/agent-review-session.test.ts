@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, link, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { agentReviewReportBinding, captureSessionCandidate, prepareAgentReview, pristineAgentReviewBaseline, recordAgentReview, verifyAgentReview } from './agent-review-session.mjs';
 
@@ -118,6 +118,26 @@ describe('actual source snapshot without candidate execution', () => {
     expect(invoke('record', reportPath).status).toBe('reviewed'); expect(invoke('verify').status).toBe('reviewed');
     expect((await captureSessionCandidate(cwd, baseline)).changedPaths).toEqual(['source.txt']);
     expect(base).not.toBe(baseline);
+  });
+  it.each(['.context', '.context/scratch', '.context/scratch/agent-review'])('refuses symlink ancestor %s before creating directories', async ancestor => {
+    const { cwd } = await fixture(); const target = await mkdtemp(join(cwd, 'victim-'));
+    const components = ancestor.split('/'); if (components.length > 1) await mkdir(join(cwd, ...components.slice(0, -1)), { recursive: true });
+    await symlink(target, join(cwd, ancestor)); const script = resolve('scripts/agent-review-session.mjs');
+    expect(() => execFileSync(process.execPath, [script, 'prepare'], { cwd, encoding: 'utf8', stdio: 'pipe' })).toThrow('session ancestor is a symlink');
+    expect(await readdir(target)).toEqual([]);
+  });
+  it('atomically replaces hardlinked state without overwriting its sibling inode', async () => {
+    const { cwd, git } = await fixture(); await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
+    const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
+    await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
+    const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent: { ...intent, risk: 'prose' }, base: baseline, authorSessionId: 'author' }));
+    const script = resolve('scripts/agent-review-session.mjs'); const invoke = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' }));
+    invoke('prepare'); const path = join(directory, 'session.json'); const victim = join(directory, 'sibling.json'); await link(path, victim);
+    const before = await readFile(victim, 'utf8'); invoke('prepare'); expect(await readFile(victim, 'utf8')).toBe(before); expect(await readFile(path, 'utf8')).not.toBe(before);
+    const state = JSON.parse(await readFile(path, 'utf8')); await rm(victim); await link(path, victim); const recordedBefore = await readFile(victim, 'utf8');
+    const reportPath = join(directory, 'observed.json'); await writeFile(reportPath, JSON.stringify({ ...report(state.request), completedAt: Date.now() }));
+    expect(invoke('record', reportPath).status).toBe('reviewed'); expect(await readFile(victim, 'utf8')).toBe(recordedBefore);
   });
   it('does not run a candidate clean filter while hashing bytes', async () => {
     const { cwd, base } = await fixture(); await writeFile(join(cwd, '.gitattributes'), 'source.txt filter=trap\n');

@@ -3,7 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, readlink, realpath } from 'node:fs/promises';
+import { lstat, mkdir, open, readlink, realpath, rename, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -165,14 +165,40 @@ async function boundedJson(path) {
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, bytesRead)));
   } finally { await handle.close(); }
 }
-async function saveState(directory, path, state) {
-  await mkdir(directory, { recursive: true }); demand(await realpath(directory) === directory, 'session directory is a symlink');
-  const handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
-  try { demand((await handle.stat()).isFile(), 'session state is not regular'); await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`); } finally { await handle.close(); }
+async function sessionDirectory(cwd, create = false) {
+  demand(await realpath(cwd) === cwd && (await lstat(cwd)).isDirectory(), 'checkout directory is not canonical');
+  let directory = cwd;
+  for (const name of ['.context', 'scratch', 'agent-review']) {
+    directory = join(directory, name);
+    let metadata;
+    try { metadata = await lstat(directory); } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      if (!create) return;
+      // Validate the existing parent before each individual mkdir. Never use a
+      // recursive mkdir through an unchecked operational-directory ancestor.
+      demand(await realpath(dirname(directory)) === dirname(directory), 'session ancestor is a symlink');
+      await mkdir(directory, { mode: 0o700 }); metadata = await lstat(directory);
+    }
+    demand(metadata.isDirectory() && !metadata.isSymbolicLink() && await realpath(directory) === directory, 'session ancestor is a symlink or not a directory');
+  }
+}
+async function saveState(cwd, directory, path, state) {
+  await sessionDirectory(cwd, true);
+  const temporary = join(directory, `.session-${randomUUID()}.tmp`);
+  let handle;
+  try {
+    handle = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
+    await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`); await handle.sync(); await handle.close(); handle = undefined;
+    await sessionDirectory(cwd);
+    // Replacing a directory entry never truncates the old inode or any of its
+    // hardlinks. The temporary inode is created exclusively in this directory.
+    await rename(temporary, path);
+  } finally { if (handle) await handle.close(); await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
 }
 async function main() {
   const [verb, input] = process.argv.slice(2); demand(['prepare', 'record', 'verify', 'status'].includes(verb), 'use prepare <intent.json>, record <observed-report.json>, verify, or status');
   const cwd = await realpath(process.cwd()); const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
+  await sessionDirectory(cwd);
   if (verb === 'prepare') {
     const spec = await boundedJson(input ?? join(directory, 'intent.json'));
     demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
@@ -180,7 +206,7 @@ async function main() {
     const request = await prepareAgentReview({ cwd, ...spec });
     let previous; try { previous = await boundedJson(path); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     demand(!previous?.reports?.some(report => report.materialFindings?.length > 0) || previous.request.candidate.workingDigest !== request.candidate.workingDigest, 'unresolved material findings require a changed source candidate before fresh review');
-    await saveState(directory, path, { request, reports: [] });
+    await saveState(cwd, directory, path, { request, reports: [] });
     console.log(JSON.stringify(await verifyAgentReview({ cwd, request }), null, 2));
   } else {
     let state; try { state = await boundedJson(path); } catch (error) { if (error.code === 'ENOENT') {
@@ -189,7 +215,7 @@ async function main() {
       console.log(JSON.stringify(result)); process.exitCode = verb === 'verify' && !baseline.pristine ? 1 : 0; return;
     } throw error; }
     exact(state, ['request', 'reports'], 'session state');
-    if (verb === 'record') { state.reports = await recordAgentReview({ cwd, ...state, report: await boundedJson(input) }); await saveState(directory, path, state); }
+    if (verb === 'record') { state.reports = await recordAgentReview({ cwd, ...state, report: await boundedJson(input) }); await saveState(cwd, directory, path, state); }
     const result = await verifyAgentReview({ cwd, ...state }); console.log(JSON.stringify(result, null, 2)); if (verb === 'verify' && result.status !== 'reviewed') process.exitCode = 1;
   }
 }
