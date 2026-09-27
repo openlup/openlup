@@ -18875,7 +18875,7 @@
     },
     {
       "name": "test",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
+      "command": "node scripts/run-vitest.mjs run",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18887,7 +18887,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-692bf260acdad2cdad1c21436a927a4d175b336f8212dbbeeb10766be44e6b5b"
+      "digest": "sha256-42e4ac43e71a52453ba20b3e18f1ba72c26d4eea47943a3173fad92d9319a465"
     },
     {
       "path": "packages/core/package.json",
