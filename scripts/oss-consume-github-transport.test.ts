@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
 import { createSourceReleaseContract, deriveSourceReleaseContract, writeDescendantSourceReleaseReceipt, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
+import { assertDraft, assertNextPreview, authenticatedIdentity, previewInputs, previousPreview } from "./source-preview-release.ts";
 
 const digest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const blob = (value: Buffer) => createHash("sha1").update(`blob ${value.length}\0`).update(value).digest("hex");
@@ -63,6 +64,48 @@ function fixture(scenario: Scenario = {}) {
   const input: GithubSourceTransportInput = { repository: "https://github.com/openlup/openlup", releaseTag: targetTag, assetName: "openlup-source-receipt.json", receiptCodec: parseSourceReleaseReceiptEnvelope };
   return { calls, fetcher, input, receiptBytes, oldReceiptBytes, previous, contractBlob };
 }
+
+describe("source preview workflow preparation", () => {
+  it("refuses refs, shell fragments and noncanonical preview numbers while retaining exact note bytes", () => {
+    const note = "Reviewed upgrade action.\n\n";
+    expect(previewInputs(target, "7", note)).toEqual({ target, number: 7, tag: "openlup-source-preview/7", message: "OpenLup source preview 7.", note });
+    for (const value of ["main", "a".repeat(12), "A".repeat(40), `${target}; echo bad`]) expect(() => previewInputs(value, "7", note)).toThrow(/full lowercase/);
+    for (const value of ["1", "0", "07", "7.0", "7\n", "9007199254740992"]) expect(() => previewInputs(target, value, note)).toThrow(/preview_number/);
+    expect(() => previewInputs(target, "7", " \n")).toThrow(/release_notes/);
+  });
+
+  it("derives the previous root identity from the strict authenticator", async () => {
+    const sample = fixture();
+    const actual = await previousPreview(2, undefined, sample.fetcher);
+    const authenticated = await authenticateGithubSourceRelease(sample.input, sample.fetcher);
+    expect(actual.identity).toEqual(authenticatedIdentity(authenticated));
+    expect(actual.previous.releaseTag).toBe("openlup-source-preview/1");
+    expect(actual.previous.previousRelease).toBeUndefined();
+    await expect(previousPreview(2, undefined, fixture({ release: { immutable: false } }).fetcher)).rejects.toThrow(/immutable/);
+  });
+
+  it("refuses stale ordinals, abandoned drafts, existing tags and API failures", async () => {
+    const fetcher = (changes: { draft?: boolean; refStatus?: number; inventoryStatus?: number } = {}): GithubFetch => async (url) => {
+      if (url.includes("/releases?")) return Response.json([{ tag_name: "openlup-source-preview/6", immutable: true, prerelease: true, draft: changes.draft ?? false }], { status: changes.inventoryStatus ?? 200 });
+      return new Response(null, { status: changes.refStatus ?? 404 });
+    };
+    await expect(assertNextPreview(7, undefined, fetcher())).resolves.toBeUndefined();
+    await expect(assertNextPreview(6, undefined, fetcher())).rejects.toThrow(/newest/);
+    await expect(assertNextPreview(8, undefined, fetcher())).rejects.toThrow(/newest/);
+    await expect(assertNextPreview(7, undefined, fetcher({ draft: true }))).rejects.toThrow(/unfinished/);
+    await expect(assertNextPreview(7, undefined, fetcher({ refStatus: 200 }))).rejects.toThrow(/never retag/);
+    await expect(assertNextPreview(7, undefined, fetcher({ refStatus: 403 }))).rejects.toThrow(/unavailable/);
+    await expect(assertNextPreview(7, undefined, fetcher({ inventoryStatus: 503 }))).rejects.toThrow(/HTTP 503/);
+  });
+
+  it("checks exact draft note and asset bytes before publication", () => {
+    const sample = fixture({ descendant: true });
+    const release = { tag_name: tag, draft: true, prerelease: true, body: "release note", assets: [{ name: "openlup-source-receipt.json", digest: digest(sample.receiptBytes) }] };
+    expect(() => assertDraft(release, tag, "release note", sample.receiptBytes)).not.toThrow();
+    for (const change of [{ body: "release note\n" }, { draft: false }, { prerelease: false }, { assets: [{ name: "openlup-source-receipt.json", digest: digest("changed") }] }, { assets: [...release.assets, ...release.assets] }]) expect(() => assertDraft({ ...release, ...change }, tag, "release note", sample.receiptBytes)).toThrow(/differs/);
+    expect(() => assertDraft(release, tag, "other note", sample.receiptBytes)).toThrow(/bind/);
+  });
+});
 
 describe("GitHub source consume transport", () => {
   it("rejects a local-fixture receipt after a wide v4 decode", async () => {

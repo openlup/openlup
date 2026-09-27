@@ -1,0 +1,141 @@
+# Inert until the maintainer protects release, installs the release App and enables
+# OPENLUP_SOURCE_RELEASE. No PAT and no default-token release event suppression.
+name: Publish Source Preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_commit:
+        description: Reviewed full commit SHA on main
+        required: true
+        type: string
+      preview_number:
+        description: Immediately next source preview number N
+        required: true
+        type: string
+      release_notes:
+        description: Exact reviewed release body, including adjacent-preview upgrade actions
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: publish-source-preview
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_SOURCE_RELEASE == 'enabled' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read
+      checks: read
+      id-token: write
+      attestations: write
+    env:
+      TARGET_COMMIT: ${{ inputs.target_commit }}
+      PREVIEW_NUMBER: ${{ inputs.preview_number }}
+      RELEASE_NOTES: ${{ inputs.release_notes }}
+    steps:
+      - name: Validate dispatch coordinates before checkout
+        run: |
+          [[ "$TARGET_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$PREVIEW_NUMBER" =~ ^[1-9][0-9]*$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.target_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Assert Node and npm contract
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      # Same main ancestry and required-context check as publish-packages.yml.
+      - name: The target commit is on main and passed the required contexts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+          git fetch --no-tags --quiet origin main
+          git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD || { echo "::error::$TARGET_COMMIT is not on main"; exit 1; }
+          for context in dco typecheck install-proof test self-check gitleaks; do
+            verdict="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_COMMIT/check-runs?check_name=$context&filter=latest&per_page=100" \
+              --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
+            if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $TARGET_COMMIT"; exit 1; fi
+          done
+      - name: Authenticate previous preview and prepare public inputs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          release_out="$(realpath "$(mktemp -d "$RUNNER_TEMP/source-preview.XXXXXX")")"
+          echo "RELEASE_OUTPUT_DIR=$release_out" >> "$GITHUB_ENV"
+          RELEASE_OUTPUT_DIR="$release_out" node --experimental-strip-types scripts/source-preview-release.ts prepare
+      - name: Obtain the maintainer-configured release identity
+        id: release-identity
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.OPENLUP_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: openlup
+          permission-contents: write
+          permission-administration: read
+      - name: Refuse unless repository release immutability is enabled
+        env:
+          GH_TOKEN: ${{ steps.release-identity.outputs.token }}
+        run: test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
+      - name: Create the exact annotated tag with the release identity
+        env:
+          GH_TOKEN: ${{ steps.release-identity.outputs.token }}
+        run: |
+          tag="openlup-source-preview/$PREVIEW_NUMBER"
+          message="OpenLup source preview $PREVIEW_NUMBER."
+          tag_object="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$tag" -f message="$message"$'\n' -f object="$TARGET_COMMIT" -f type=commit --jq .sha)"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$tag_object"
+          git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"
+      - name: Produce the descendant receipt from authenticated inputs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types scripts/source-preview-release.ts produce
+      - name: Attest the exact receipt bytes
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ env.RELEASE_OUTPUT_DIR }}/openlup-source-receipt.json
+      - name: Create a draft prerelease and attach the receipt
+        env:
+          GH_TOKEN: ${{ steps.release-identity.outputs.token }}
+        run: |
+          tag="openlup-source-preview/$PREVIEW_NUMBER"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --prerelease \
+            --title "OpenLup source preview $PREVIEW_NUMBER" --notes-file "$RELEASE_OUTPUT_DIR/notes.md"
+          gh release upload "$tag" "$RELEASE_OUTPUT_DIR/openlup-source-receipt.json" --repo "$GITHUB_REPOSITORY"
+      - name: Refuse publication if draft bytes differ
+        env:
+          GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}
+        run: node --experimental-strip-types scripts/source-preview-release.ts check-draft
+      # The App token, rather than GITHUB_TOKEN, emits release.published for Publish Packages.
+      - name: Publish the immutable prerelease with the release identity
+        env:
+          GH_TOKEN: ${{ steps.release-identity.outputs.token }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
+          gh release edit "openlup-source-preview/$PREVIEW_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --draft=false --prerelease --notes-file "$RELEASE_OUTPUT_DIR/notes.md"
+      - name: Authenticate the completed immutable release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types scripts/source-preview-release.ts verify
+      - name: Recovery requires the maintainer
+        if: failure()
+        run: |
+          echo '::error::Release refused. Inspect this run and any unpublished tag/draft before retrying. No tag, asset or body is overwritten or deleted automatically; published releases are corrected forward.'

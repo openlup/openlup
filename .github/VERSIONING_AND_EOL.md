@@ -169,6 +169,86 @@ action. Use the same nonempty, trimmed ID in configuration and the allowed set;
 valid adopter-defined IDs remain exact and case-sensitive. A source rule does
 not make this a stable API.
 
+### One-click source preview workflow
+
+Maintainers can cut an adjacent development preview with
+[`publish-source-preview.yml`](workflows/publish-source-preview.yml). This
+workflow is inert until the repository variable `OPENLUP_SOURCE_RELEASE` is
+`enabled`. It runs only when dispatched from `main`, and its sole job waits for
+the maintainer's approval in the `release` environment. Dispatching a run is
+not publication authorization: the environment approval is the publication gate.
+
+Before enabling it, the maintainer configures every item below:
+
+1. Create the **`release` environment**, with the maintainer as its **only
+   required reviewer**, no administrator bypass, and deployments restricted to
+   the `main` branch. Leave prevention of self-review disabled if the sole
+   maintainer also dispatches the run. Create these protections before enabling
+   the variable; an absent environment could otherwise be created unprotected.
+2. Register a dedicated **GitHub App release identity**, install it only on
+   `openlup/openlup`, and grant repository **Contents: write** and
+   **Administration: read**. The read permission checks release immutability;
+   the workflow never changes that setting. No agent-linked PAT is used.
+3. In the protected `release` environment, set variable
+   **`OPENLUP_RELEASE_APP_CLIENT_ID`** to the App's client ID and secret
+   **`OPENLUP_RELEASE_APP_PRIVATE_KEY`** to its private key. Only the maintainer
+   provisions or rotates these values. Do not place the key in repository-level
+   secrets, notes, receipts or logs. The workflow requests a repository-scoped,
+   short-lived installation token and the action revokes it when the job ends.
+4. Allow the App to create `openlup-source-preview/*` tags in the **tag-creation
+   ruleset**. Preserve restrictions on tag updates and deletions in a separate
+   ruleset without an App bypass. The workflow refuses an existing tag and
+   never retags or deletes one. Main's existing required contexts remain
+   `dco`, `typecheck`, `install-proof`, `test`, `self-check` and `gitleaks`.
+5. Enable **release immutability** for the repository (or enforce it from the
+   organization). The workflow refuses before tag creation and again before
+   publication if the setting is not enabled or cannot be read.
+6. Permit the workflow's pinned actions, GitHub-hosted runner, and artifact
+   attestations under the repository/organization Actions policies. The job
+   needs `contents: read`, `checks: read`, `id-token: write` and
+   `attestations: write` on its default token. That token cannot create a release.
+7. Finally set the **repository variable** `OPENLUP_SOURCE_RELEASE` to
+   **`enabled`**. Removing it or using another value disables future runs.
+   `OPENLUP_NPM_STAGE`, the `npm-stage` environment and npm trusted-publisher
+   setup remain separate; follow [Package preview channel](#package-preview-channel)
+   to enable package staging after a source release.
+
+In Actions, choose **Publish Source Preview → Run workflow**, select **main**,
+and enter the reviewed full lowercase **target commit SHA**, immediately next
+**preview number N**, and **exact release note body**. Read that body and the
+target diff before approving the `release` environment. Include the adjacent
+preview's upgrade actions and any applicable pending notes from this document.
+If a future release policy defines a release-semantics block, include that block
+in these same note bytes; this document currently defines no such block.
+Confirm the package version `0.<n>.0` and its pack proof before approving a
+preview that should stage packages.
+
+The job repeats the package workflow's main-ancestry and six required-context
+check at the target. It authenticates the preceding release and its predecessor,
+deriving the `previousRelease` tuple from the authenticator rather than an
+operator JSON. It then creates the annotated tag with exactly
+`OpenLup source preview N.`, runs the existing descendant receipt producer
+without selector retirements, and attests `openlup-source-receipt.json`.
+The producer's schema, catalogue, contract and projection refusals are unchanged.
+
+The App creates a **draft prerelease**, uploads the attested receipt, and checks
+the draft's exact body and asset digest against the prepared bytes before
+publishing it. Both creation and publication use the same saved note file.
+Publication makes the prerelease immutable. The App token emits the release
+event that starts `publish-packages.yml`; the default `GITHUB_TOKEN` would
+suppress that downstream workflow. The final step authenticates the completed
+immutable release, target SHA and receipt asset. Package staging still needs its
+own enabled variable and human approval; a source release changes no deployment.
+
+A failed run never automatically deletes a tag or draft, replaces an asset, or
+edits a published release. An abandoned tag/draft blocks the next attempt.
+The maintainer inspects the logs and authorizes recovery of unpublished state
+before retrying. A published release is corrected forward; a failed final
+authentication does not undo publication. Runs share one concurrency group so
+different preview numbers cannot publish simultaneously. The manual procedure
+below remains available for exceptional recovery and explicitly authorized
+selector retirements; it carries the same authority and refusal rules.
+
 ### Prepare from public inputs
 
 Use Node 24, dependencies from `CONTRIBUTING.md`, a clean reviewed public commit

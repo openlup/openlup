@@ -34,6 +34,58 @@ import { carriesPrivateOperationalCoordinate, computeNeutralizations, NEUTRALIZA
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW = ".github/workflows/published-tree-ci.yml";
 const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
+const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");
+
+describe("maintainer-controlled source preview workflow", () => {
+  it("is inert without the repository variable and the protected main environment", () => {
+    expect(sourcePreviewWorkflow).toContain("workflow_dispatch:");
+    expect(sourcePreviewWorkflow).toContain("target_commit:");
+    expect(sourcePreviewWorkflow).toContain("preview_number:");
+    expect(sourcePreviewWorkflow).toContain("release_notes:");
+    expect(sourcePreviewWorkflow).toContain("github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_SOURCE_RELEASE == 'enabled'");
+    expect(sourcePreviewWorkflow).toContain("environment: release");
+    expect(sourcePreviewWorkflow).toContain("group: publish-source-preview\n  cancel-in-progress: false");
+    expect(sourcePreviewWorkflow).toContain("persist-credentials: false");
+    expect(sourcePreviewWorkflow).not.toMatch(/^      contents: write$/mu);
+    expect(sourcePreviewWorkflow).not.toContain("${{ inputs.target_commit }}\"\n");
+  });
+
+  it("reuses the package workflow's required-context check exactly", () => {
+    const packages = readFileSync(join(ROOT, ".github/workflows/publish-packages.yml"), "utf8");
+    const loop = (text: string) => /          for context in [\s\S]*?          done/u.exec(text)?.[0];
+    expect(loop(sourcePreviewWorkflow)).toBe(loop(packages)?.replaceAll("GITHUB_SHA", "TARGET_COMMIT"));
+    expect(sourcePreviewWorkflow).toContain('git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD');
+    expect(sourcePreviewWorkflow).toContain('test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"');
+  });
+
+  it("pins actions and uses an environment App token for tag and release writes", () => {
+    const uses = [...sourcePreviewWorkflow.matchAll(/uses: [^@\n]+@([^\s#]+)/gu)].map((match) => match[1]);
+    expect(uses).toHaveLength(4);
+    expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
+    expect(sourcePreviewWorkflow).toContain("secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY");
+    expect(sourcePreviewWorkflow).toContain("vars.OPENLUP_RELEASE_APP_CLIENT_ID");
+    expect(sourcePreviewWorkflow).toContain("repositories: openlup\n          permission-contents: write\n          permission-administration: read");
+    for (const name of ["Create the exact annotated tag with the release identity", "Create a draft prerelease and attach the receipt", "Publish the immutable prerelease with the release identity"]) {
+      const step = sourcePreviewWorkflow.split(`      - name: ${name}\n`)[1]?.split("      - name:")[0];
+      expect(step).toContain("GH_TOKEN: ${{ steps.release-identity.outputs.token }}");
+    }
+    expect(sourcePreviewWorkflow).toContain("id-token: write\n      attestations: write");
+    expect(sourcePreviewWorkflow).toContain("actions/attest-build-provenance@");
+    expect(sourcePreviewWorkflow).toContain("subject-path: ${{ env.RELEASE_OUTPUT_DIR }}/openlup-source-receipt.json");
+    expect(sourcePreviewWorkflow).not.toMatch(/--clobber|git push.*--force|--method DELETE/u);
+  });
+
+  it("attests before uploading, checks the draft before publishing and authenticates afterward", () => {
+    const steps = ["source-preview-release.ts prepare", "Create the exact annotated tag", "source-preview-release.ts produce", "Attest the exact receipt", "gh release create", "gh release upload", "source-preview-release.ts check-draft", "gh release edit", "source-preview-release.ts verify"];
+    const positions = steps.map((step) => sourcePreviewWorkflow.indexOf(step));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(sourcePreviewWorkflow).toContain("--verify-tag --draft --prerelease");
+    expect(sourcePreviewWorkflow.match(/--notes-file "\$RELEASE_OUTPUT_DIR\/notes.md"/gu)).toHaveLength(2);
+    expect(sourcePreviewWorkflow.match(/immutable-releases/gu)).toHaveLength(2);
+    expect(sourcePreviewWorkflow).toContain("Recovery requires the maintainer");
+  });
+});
 const packageManifestPaths = PUBLIC_PACKAGE_EXECUTION_SURFACES.map(({ path }) => path);
 const publicRootManifest = () => JSON.stringify({ workspaces: (JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { workspaces?: string[] }).workspaces, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) });
 function writePackageManifests(root: string): void {
