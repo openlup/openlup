@@ -3,12 +3,12 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
-import { createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, writeDescendantSourceReleaseReceipt, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
-import { assertDraft, assertNextPreview, authenticatedIdentity, previewInputs, previousPreview } from "./source-preview-release.ts";
+import { assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, writeDescendantSourceReleaseReceipt, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
+import { assertDraft, assertNextPreview, authenticatedIdentity, preparePreview, previewInputs, previousPreview } from "./source-preview-release.ts";
 
 const digest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const blob = (value: Buffer) => createHash("sha1").update(`blob ${value.length}\0`).update(value).digest("hex");
@@ -96,6 +96,126 @@ describe("source preview workflow preparation", () => {
     await expect(assertNextPreview(7, undefined, fetcher({ refStatus: 200 }))).rejects.toThrow(/never retag/);
     await expect(assertNextPreview(7, undefined, fetcher({ refStatus: 403 }))).rejects.toThrow(/unavailable/);
     await expect(assertNextPreview(7, undefined, fetcher({ inventoryStatus: 503 }))).rejects.toThrow(/HTTP 503/);
+  });
+
+  // Removal markers are built at run time, so this file carries none of its own.
+  const marker = (preview: number | string, prefix = "") => `${prefix}// openlup-remove-before: openlup-source-preview/${preview}\nexport {};\n`;
+  function markerRepository(files: Record<string, string | Buffer>) {
+    const repo = mkdtempSync(join(tmpdir(), "openlup-removal-markers-")), run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+    run(["init", "--quiet"]); run(["config", "user.name", "Release Test"]); run(["config", "user.email", "release@example.com"]);
+    for (const [path, contents] of Object.entries(files)) { mkdirSync(dirname(join(repo, path)), { recursive: true }); writeFileSync(join(repo, path), contents); }
+    run(["add", "--all"]); run(["commit", "--quiet", "-m", "markers"]);
+    return { repo, run, head: run(["rev-parse", "HEAD"]), cleanup: () => rmSync(repo, { recursive: true, force: true }) };
+  }
+
+  it("refuses a preview while a file tracked at the target is marked for removal by it", () => {
+    const sample = markerRepository({ "src/shim.ts": marker(9), "src/other.ts": marker(9, "  "), "src/later.ts": marker(10), "NOTES.md": "The re-exports are removed in openlup-source-preview/9.\n" });
+    try {
+      expect(() => assertNoOverdueRemovals(8, sample.head, sample.repo)).not.toThrow();
+      expect(() => assertNoOverdueRemovals(9, sample.head, sample.repo)).toThrow(/^openlup-source-preview\/9 refuses files marked for removal by it: src\/other\.ts, src\/shim\.ts$/u);
+      expect(() => assertNoOverdueRemovals(10, sample.head, sample.repo)).toThrow(/^openlup-source-preview\/10 refuses files marked for removal by it: src\/later\.ts, src\/other\.ts, src\/shim\.ts$/u);
+      sample.run(["rm", "--quiet", "src/shim.ts", "src/other.ts"]); sample.run(["commit", "--quiet", "-m", "remove"]);
+      // Only the target commit's tree counts, not the working tree.
+      writeFileSync(join(sample.repo, "src/uncommitted.ts"), marker(2));
+      expect(() => assertNoOverdueRemovals(9, sample.run(["rev-parse", "HEAD"]), sample.repo)).not.toThrow();
+    } finally { sample.cleanup(); }
+  });
+
+  it("counts only whole marker comment lines in code files and refuses a marker line that does not parse", () => {
+    const quoted = markerRepository({
+      "docs/notes.md": `Each shim carries a removal marker in its header:\n\n${marker(2)}`,
+      "docs/example.md": "```ts\n// openlup-remove-before: openlup-source-preview/2\n```\n",
+      "src/inline.ts": "export {}; // openlup-remove-before: openlup-source-preview/2\n",
+      "src/block.ts": "/* openlup-remove-before: openlup-source-preview/2 */\nexport {};\n",
+      "src/prose.ts": "export const text = \"openlup-remove-before: openlup-source-preview/2\";\n",
+      "src/beforehand.ts": "// openlup-remove-beforehand: not a removal marker\nexport {};\n",
+      "src/launch.ts": "// openlup-remove-before-launch: not a removal marker either\nexport {};\n",
+      "src/colonless.ts": "// openlup-remove-before openlup-source-preview/2\nexport {};\n",
+    });
+    try { expect(() => assertNoOverdueRemovals(9, quoted.head, quoted.repo)).not.toThrow(); } finally { quoted.cleanup(); }
+    for (const line of ["//openlup-remove-before: openlup-source-preview/9", "// openlup-remove-before: openlup-source-preview/09", "// openlup-remove-before: openlup-source-preview/9 later", "  // openlup-remove-before: preview 9", "// openlup-remove-before:"]) {
+      const malformed = markerRepository({ "src/shim.mts": `${line}\nexport {};\n` });
+      try { expect(() => assertNoOverdueRemovals(1, malformed.head, malformed.repo)).toThrow(/^src\/shim\.mts: malformed removal marker: /u); } finally { malformed.cleanup(); }
+    }
+  });
+
+  it("finds a marker whatever the attributes, git settings, pathspec environment, byte order mark or working directory", () => {
+    const sample = markerRepository({
+      "src/deep/shim.ts": marker(9),
+      "src/view.tsx": marker(9),
+      "src/attributed.ts": marker(9),
+      ".gitattributes": "src/attributed.ts -diff\n",
+      "src/bom.cts": `\uFEFF${marker(9)}`,
+      "src/late-nul.js": Buffer.concat([Buffer.from(marker(9)), Buffer.alloc(8000, 0x20), Buffer.from([0])]),
+      "assets/early-nul.ts": Buffer.concat([Buffer.from(marker(2)), Buffer.from([0, 1, 2])]),
+    });
+    const all = /^openlup-source-preview\/9 refuses files marked for removal by it: src\/attributed\.ts, src\/bom\.cts, src\/deep\/shim\.ts, src\/late-nul\.js, src\/view\.tsx$/u;
+    try {
+      writeFileSync(join(sample.repo, ".git/info/attributes"), "*.ts binary\n*.js binary\n*.cts binary\n");
+      writeFileSync(join(sample.repo, "binary-attributes"), "* binary\n"); writeFileSync(join(sample.repo, "opaque-attributes"), "* diff=opaque\n");
+      const pathspecEnvironment = ["GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"].map((name) => ({ [name]: "1" }));
+      const gitSettings = [[["grep.lineNumber", "true"], ["grep.column", "true"], ["color.grep", "always"], ["color.ui", "always"], ["core.quotePath", "true"]], [["core.attributesFile", join(sample.repo, "binary-attributes")]], [["core.attributesFile", join(sample.repo, "opaque-attributes")], ["diff.opaque.binary", "true"]]]
+        .map((settings) => Object.fromEntries([["GIT_CONFIG_COUNT", String(settings.length)], ...settings.flatMap(([key, value], index) => [[`GIT_CONFIG_KEY_${index}`, key], [`GIT_CONFIG_VALUE_${index}`, value]])]));
+      for (const environment of [{}, ...pathspecEnvironment, ...gitSettings]) {
+        for (const [name, value] of Object.entries(environment)) vi.stubEnv(name, value);
+        expect(() => assertNoOverdueRemovals(8, sample.head, sample.repo)).not.toThrow();
+        expect(() => assertNoOverdueRemovals(9, sample.head, sample.repo)).toThrow(all);
+        expect(() => assertNoOverdueRemovals(9, sample.head, join(sample.repo, "src/deep"))).toThrow(all);
+        vi.unstubAllEnvs();
+      }
+    } finally { vi.unstubAllEnvs(); sample.cleanup(); }
+  });
+
+  it("reads the target's own objects despite replacement refs and an inherited GIT_DIR", () => {
+    const sample = markerRepository({ "src/shim.ts": marker(9) }), decoy = markerRepository({ "src/other.ts": "export {};\n" });
+    try {
+      const markedBlob = sample.run(["rev-parse", "HEAD:src/shim.ts"]);
+      const cleanBlob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: sample.repo, input: "export {};\n", encoding: "utf8" }).trim();
+      sample.run(["replace", markedBlob, cleanBlob]);
+      expect(sample.run(["cat-file", "blob", markedBlob])).toBe("export {};");
+      expect(() => assertNoOverdueRemovals(9, sample.head, sample.repo)).toThrow(/by it: src\/shim\.ts$/u);
+      vi.stubEnv("GIT_DIR", join(decoy.repo, ".git")); vi.stubEnv("GIT_WORK_TREE", decoy.repo);
+      expect(() => assertNoOverdueRemovals(9, sample.head, sample.repo)).toThrow(/by it: src\/shim\.ts$/u);
+    } finally { vi.unstubAllEnvs(); sample.cleanup(); decoy.cleanup(); }
+  });
+
+  it("refuses an unknown target and scan output it cannot read", () => {
+    const sample = markerRepository({ "src/shim.ts": marker(9) });
+    try { expect(() => assertNoOverdueRemovals(8, "f".repeat(40), sample.repo)).toThrow(); } finally { sample.cleanup(); }
+    for (const preview of [0, -1, 1.5, Number.NaN]) expect(() => assertNoOverdueRemovals(preview, target)).toThrow(/positive integer preview number/u);
+    const blob = "1".repeat(40), other = "2".repeat(40);
+    expect(removalScanBlobs(`100644 blob ${blob}\tsrc/shim.ts\x00100755 blob ${other}\tbin/tool.mjs\x00100644 blob ${other}\tREADME.md\x00120000 blob ${other}\tsrc/link.ts\x00160000 commit ${other}\tvendor/module.ts\x00`))
+      .toEqual([{ path: "src/shim.ts", oid: blob }, { path: "bin/tool.mjs", oid: other }]);
+    for (const listing of [`100644 blob ${blob} src/shim.ts\x00`, `100644 blob ${blob}\tsrc/shim.ts\n`, `100644 file ${blob}\tsrc/shim.ts\x00`, `100644 blob ${blob.slice(1)}\tsrc/shim.ts\x00`, `100644 blob ${blob}\t\x00`]) {
+      expect(() => removalScanBlobs(listing), listing).toThrow(/^removal marker scan output is malformed$/u);
+    }
+    expect(splitRemovalScanBatch(Buffer.from(`${blob} blob 3\nabc\n${other} blob 0\n\n`), [blob, other])).toEqual([Buffer.from("abc"), Buffer.alloc(0)]);
+    for (const batch of [`${blob} missing\n`, `${other} blob 3\nabc\n`, `${blob} blob 4\nabc\n`, `${blob} blob 3\nabc\nextra`, `${blob} tree 3\nabc\n`, `${blob} blob 03\nabc\n`]) {
+      expect(() => splitRemovalScanBatch(Buffer.from(batch), [blob]), batch).toThrow(/^removal marker scan output is malformed$/u);
+    }
+    expect(removalMarkerLines(Buffer.from(`\uFEFF${marker(9)}`))).toEqual(["// openlup-remove-before: openlup-source-preview/9"]);
+    expect(overdueRemovals(9, [{ path: "src/a.ts", line: "// openlup-remove-before: openlup-source-preview/10" }])).toEqual([]);
+    expect(() => overdueRemovals(9, [{ path: "src/a.ts", line: "// openlup-remove-before: soon" }])).toThrow(/^src\/a\.ts: malformed removal marker: /u);
+  });
+
+  it("finds no overdue or malformed removal marker in this repository at the current lockstep preview", () => {
+    const { version } = JSON.parse(readFileSync(join(process.cwd(), "packages/core/package.json"), "utf8")) as { version: string };
+    const [, major, minor] = /^(\d+)\.(\d+)\./u.exec(version) ?? [];
+    expect(minor, `packages/core/package.json version ${version} is not a lockstep version`).toBeDefined();
+    expect(() => assertNoOverdueRemovals(Number(major) > 0 ? Number.MAX_SAFE_INTEGER : Number(minor), "HEAD", process.cwd())).not.toThrow();
+  });
+
+  it("runs the removal scan in prepare, after the ordinal check and before any previous-release read", async () => {
+    const fetcher: GithubFetch = async (url) => url.includes("/releases?")
+      ? Response.json([{ tag_name: "openlup-source-preview/6", immutable: true, prerelease: true, draft: false }])
+      : new Response(null, { status: 404 });
+    for (const [preview, expected] of [[7, /^openlup-source-preview\/7 refuses files marked for removal by it: src\/shim\.ts$/u], [8, /source preview API refused \/releases\/tags\//u]] as const) {
+      const sample = markerRepository({ "src/shim.ts": marker(preview) }), out = mkdtempSync(join(tmpdir(), "openlup-prepare-out-"));
+      try {
+        await expect(preparePreview(previewInputs(sample.head, "7", "note"), sample.repo, out, undefined, fetcher)).rejects.toThrow(expected);
+        expect(existsSync(join(out, "previous.json"))).toBe(false);
+      } finally { sample.cleanup(); rmSync(out, { recursive: true, force: true }); }
+    }
   });
 
   it("checks exact draft note and asset bytes before publication", () => {
@@ -499,6 +619,18 @@ describe("descendant source release producer", () => {
       const original = readFileSync(input.outputPath); await expect(writeDescendantSourceReleaseReceipt(input)).rejects.toThrow(/already exists/u); expect(readFileSync(input.outputPath)).toEqual(original);
       const checkoutOutput = join(realpathSync(sample.repo), "receipt.json"); await expect(writeDescendantSourceReleaseReceipt({ ...input, outputPath: checkoutOutput })).rejects.toThrow(/outside the checkout/u); expect(() => readFileSync(checkoutOutput)).toThrow();
     } finally { sample.cleanup(); }
+  });
+
+  it("refuses to produce a preview while a tracked file is marked for removal by it", async () => {
+    const shim = (preview: number) => ({ "src/synthetic/shim.ts": `// openlup-remove-before: openlup-source-preview/${preview}\nexport {};\n` });
+    const refused = syntheticRelease();
+    try {
+      const input = refused.input();
+      await expect(refused.release(shim(2), {}, { outputPath: input.outputPath })).rejects.toThrow(/^openlup-source-preview\/2 refuses files marked for removal by it: src\/synthetic\/shim\.ts$/u);
+      expect(existsSync(input.outputPath)).toBe(false);
+    } finally { refused.cleanup(); }
+    const admitted = syntheticRelease();
+    try { await expect(admitted.release(shim(3))).resolves.toMatchObject({ receipt: { schemaVersion: 5 } }); } finally { admitted.cleanup(); }
   });
 
   it.each([

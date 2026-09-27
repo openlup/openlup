@@ -111,7 +111,14 @@ source command-name inventory before a new preview can be materialized.
 nothing outside its own directory, other code reaches a package only through
 the subpaths its `exports` declare, and domain code under `src/domains` and
 `server/domains` imports no provider SDK and no adapter, infrastructure,
-runtime or route code. Published Tree CI runs it in the `typecheck` job.
+runtime or route code; the config exempts domain tests. In this repository,
+five deprecated re-exports at the old payment module paths also cross that
+boundary: `PaymentForm.tsx`, `RecoveryPaymentSetupForm.tsx`,
+`StripePaymentStep.tsx` and `useStripePromise.ts` in
+`src/domains/payment/components/`, and
+`server/domains/payment/paymentAdapterRegistry.ts`. Each disables the rule only
+for the statement that re-exports the moved module and is removed in
+`openlup-source-preview/9`. Published Tree CI runs lint in the `typecheck` job.
 
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating
@@ -222,6 +229,13 @@ those selectors, run
 `jq -r '.drift[] | select(.class == "local-measurement") | .selector' openlup-source-receipt.json`
 on that asset. [Versioning and EOL](.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
 states the complete rule.
+
+The producer, and the workflow's prepare step before it tags, also refuse a
+preview while a tracked code file carries a removal marker
+(`// openlup-remove-before: openlup-source-preview/<m>`) naming that preview or
+an earlier one, or a comment line starting `// openlup-remove-before:` that does
+not parse. Temporary compatibility files use such a marker so that a preview
+cannot ship them past their announced removal.
 
 A new or renamed path also needs its row in
 `config/openlup-publication-catalog.json`. After changing that catalogue, a

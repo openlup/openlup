@@ -9942,6 +9942,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/payment/paymentAdapterRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/payment/paymentAdapterRegistry.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/payment/paymentAttemptSilenceWindow.test.ts",
       "class": "public-output"
     },
@@ -14866,11 +14874,27 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/payment/components/PaymentForm.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/payment/components/PaymentStatusPoller.test.tsx",
       "class": "public-output"
     },
     {
       "path": "src/domains/payment/components/PaymentStatusPoller.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/payment/components/RecoveryPaymentSetupForm.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/payment/components/StripePaymentStep.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/payment/components/deprecatedReExportBindings.test.ts",
       "class": "public-output"
     },
     {
@@ -14886,7 +14910,15 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/payment/components/useStripePromise.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/payment/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/payment/deprecatedReExportRemoval.test.ts",
       "class": "public-output"
     },
     {

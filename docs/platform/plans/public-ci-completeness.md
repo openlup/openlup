@@ -82,7 +82,8 @@ regrowth fails. Baseline regeneration never authorizes higher allowances.
 3. Run focused required falsifiers, the preserved required coverage and independent
    full diagnostics. Record inventories, raw exits, failed/aborted files and owners.
    Diagnose infrastructure failures without accumulating platform repairs.
-4. Rebase last, preserve any advanced main coverage, regenerate navigation,
+4. Integrate the current main last with the maintainer-authorized signed merge,
+   preserve its coverage and the exact recovery ancestor, regenerate navigation,
    catalogue and derived source contract, and obtain two parallel fresh-context
    native reviews of the exact committed candidate and staged local-tool bytes.
    Consolidate material findings before repairs; retain complete prior evidence

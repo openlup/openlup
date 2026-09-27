@@ -4,7 +4,7 @@ import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, type AuthenticatedSourceCandidate, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity } from "./oss-consume-github-transport.ts";
-import { writeDescendantSourceReleaseReceipt } from "./oss-source-release-contract.ts";
+import { assertNoOverdueRemovals, writeDescendantSourceReleaseReceipt } from "./oss-source-release-contract.ts";
 
 const repository = "https://github.com/openlup/openlup";
 const api = "https://api.github.com/repos/openlup/openlup";
@@ -83,6 +83,18 @@ export async function assertNextPreview(number: number, token?: string, fetcher:
   if (ref.status !== 404) throw new Error(`preview tag is present or unavailable (HTTP ${ref.status}); never retag or overwrite`);
 }
 
+/** The prepare phase, before any tag exists: the next ordinal, removal markers, the previous release and ancestry. */
+export async function preparePreview(input: ReturnType<typeof previewInputs>, root: string, out: string, token?: string, fetcher: GithubFetch = fetch) {
+  await assertNextPreview(input.number, token, fetcher);
+  assertNoOverdueRemovals(input.number, input.target, root);
+  const { previous, identity } = await previousPreview(input.number, token, fetcher);
+  if (identity.targetPublicSha === input.target) throw new Error("target must advance the previous preview");
+  execFileSync("git", ["merge-base", "--is-ancestor", identity.targetPublicSha, input.target], { cwd: root });
+  const { token: _token, receiptCodec: _codec, ...publicPrevious } = previous;
+  writeFileSync(resolve(out, "previous.json"), `${JSON.stringify({ previous: publicPrevious, identity }, null, 2)}\n`, { flag: "wx" });
+  writeFileSync(resolve(out, "notes.md"), input.note, { flag: "wx" });
+}
+
 export function assertDraft(value: unknown, tag: string, note: string, receiptBytes: Buffer) {
   const release = record(value);
   const receipt = parseSourceReleaseReceiptEnvelope(receiptBytes);
@@ -102,13 +114,7 @@ async function main() {
   const path = (name: string) => resolve(out, name);
   const phase = process.argv[2];
   if (phase === "prepare") {
-    await assertNextPreview(input.number, token);
-    const { previous, identity } = await previousPreview(input.number, token);
-    if (identity.targetPublicSha === input.target) throw new Error("target must advance the previous preview");
-    execFileSync("git", ["merge-base", "--is-ancestor", identity.targetPublicSha, input.target]);
-    const { token: _token, receiptCodec: _codec, ...publicPrevious } = previous;
-    writeFileSync(path("previous.json"), `${JSON.stringify({ previous: publicPrevious, identity }, null, 2)}\n`, { flag: "wx" });
-    writeFileSync(path("notes.md"), input.note, { flag: "wx" });
+    await preparePreview(input, root, out, token);
   } else if (phase === "produce") {
     const state = JSON.parse(readFileSync(path("previous.json"), "utf8"));
     await writeDescendantSourceReleaseReceipt({ root, previous: { ...state.previous, receiptCodec: parseSourceReleaseReceiptEnvelope, token }, releaseTag: input.tag, tagMessage: input.message, releaseNote: readFileSync(path("notes.md")), outputPath: path(assetName) });
