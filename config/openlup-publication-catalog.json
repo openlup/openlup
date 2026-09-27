@@ -9050,14 +9050,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/communications/newsletterProviderRegistry.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/communications/newsletterProviderRegistry.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/communications/newsletterWebhookHandler.test.ts",
       "class": "public-output"
     },
@@ -9811,14 +9803,6 @@
     },
     {
       "path": "server/domains/payment/paidSubscriptionActivationGap.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/payment/paymentAdapterRegistry.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/payment/paymentAdapterRegistry.ts",
       "class": "public-output"
     },
     {
@@ -10974,6 +10958,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/communications/newsletterProviderRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/newsletterProviderRegistry.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/communications/testerProgramEmailBinding.test.ts",
       "class": "public-output"
     },
@@ -11119,6 +11111,14 @@
     },
     {
       "path": "server/runtime/partners/partnerAcquisitionBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/payment/paymentAdapterRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/payment/paymentAdapterRegistry.ts",
       "class": "public-output"
     },
     {
@@ -18675,7 +18675,7 @@
     },
     {
       "name": "test",
-      "command": "node scripts/run-vitest.mjs run scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/domains/accounting server/domains/channels server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/shared src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/public-reference",
+      "command": "node scripts/run-vitest.mjs run scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/domains/accounting server/domains/channels server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/public-reference",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18687,7 +18687,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-67dfe82d65bf337526dc137b758097a75a2101fdc675ead4dc7675a08aeb968d"
+      "digest": "sha256-39a54788ae7abebe93476b73f7d2146d32cb240ec69a783370e06fd4a18af75b"
     },
     {
       "path": "packages/core/package.json",

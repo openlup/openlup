@@ -74,8 +74,6 @@ const domainIsolation = {
 // one file; a new crossing fails lint, and an entry whose import is gone fails
 // config load, so the list only shrinks.
 const DOMAIN_ISOLATION_EXCEPTIONS = [
-  { file: "server/domains/communications/newsletterProviderRegistry.ts", allow: ["../../adapters/noop_newsletter/noopNewsletterSyncAdapter.js"] },
-  { file: "server/domains/payment/paymentAdapterRegistry.ts", allow: ["../../adapters/noop_payment/noopPaymentExecutionAdapter.js"] },
   { file: "src/domains/payment/components/PaymentForm.tsx", allow: ["@stripe/react-stripe-js"] },
   { file: "src/domains/payment/components/RecoveryPaymentSetupForm.tsx", allow: ["@stripe/react-stripe-js"] },
   { file: "src/domains/payment/components/StripePaymentStep.tsx", allow: ["@stripe/react-stripe-js", "@stripe/stripe-js"] },

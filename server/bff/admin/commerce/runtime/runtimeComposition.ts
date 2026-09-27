@@ -22,7 +22,7 @@ import {
 } from "../../../../adapters/managed/commerce/paymentControlRuntimePort.js";
 import {
   getPaymentExecutionAdapter,
-} from "../../../../domains/payment/paymentAdapterRegistry.js";
+} from "../../../../runtime/payment/paymentAdapterRegistry.js";
 import { noopSettlementAllowed } from "../../../../_lib/observability/environment.js";
 import { buildStripeAdapterIfEnabled } from "../../../../adapters/stripe/stripeAdapterFactory.js";
 import { buildTpayAdapterIfEnabled } from "../../../../adapters/tpay/tpayAdapterFactory.js";

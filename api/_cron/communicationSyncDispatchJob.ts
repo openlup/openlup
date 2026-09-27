@@ -8,7 +8,7 @@ import {
   runCommunicationSyncDispatchForProviders,
   type CommunicationSyncRunResult,
 } from "../../server/domains/communications/communicationSyncWorker.js";
-import { createNewsletterSyncProviderRegistry } from "../../server/domains/communications/newsletterProviderRegistry.js";
+import { createNewsletterSyncProviderRegistry } from "../../server/runtime/communications/newsletterProviderRegistry.js";
 import { createSupabaseCommunicationSyncStore } from "../../server/adapters/supabase/communications/communicationSync.js";
 import type { DataGatewayPort } from "../../src/domains/platform-runtime/ports.js";
 import { claimJobRun, finishJobRun } from "./platformJobRunner.js";
