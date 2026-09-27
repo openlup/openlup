@@ -1,17 +1,15 @@
 # The checks this tree runs on itself.
 #
-# Six public checks, each carrying a falsifier: every proposed commit is signed off, the
-# tree compiles to its signed debt, it installs and clears its prebuild chain, a measured scope of
-# its tests passes, and its own inventory still matches the manifest that describes it. Nothing
-# here deploys or publishes; network use is limited to the package registry and the GitHub API
-# download of the checksum-verified gitleaks release.
+# Seven public checks, each carrying a falsifier: every proposed commit is signed off, the
+# tree compiles to its signed debt, it installs and clears its prebuild chain, its shipped tests
+# are executed, and its own inventory still matches the manifest that describes it. Nothing
+# here deploys or publishes; the database job creates a disposable local CLI stack.
 #
 # The workflow stays product-name-neutral so a future rename does not churn CI. The current public
 # name is settled as OpenLup; neutrality here is an automation-maintenance choice, not indecision.
 #
-# This workflow is also carried by the private source checkout, so every one of the exact six
-# public contexts applies the same trusted event-metadata fence directly. No helper job creates a
-# seventh context. Repository visibility comes from GitHub's event context, never checked-out bytes.
+# This workflow is also carried by the private source checkout, so every one of the seven
+# public contexts applies the same trusted event-metadata fence directly. Repository visibility comes from GitHub's event context, never checked-out bytes.
 
 name: Published Tree CI
 
@@ -93,6 +91,8 @@ jobs:
       # NOT `npm run typecheck`. The release contract names every compiler project and carries the
       # signed preview-debt ratchet. The source-only measurement baseline is deliberately absent.
       # A new unresolved edge fails, and so does a signed edge that is gone.
+      - name: Package and domain import boundaries
+        run: npm run lint
       - run: npm run oss:published-tree -- --typecheck
 
   install-proof:
@@ -145,15 +145,9 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci
-      # ⛔ NOT the whole suite. Some source-tree tests depend on withheld modules, individual
-      # migrations flattened by publication, or repository history. Their compatibility debt is
-      # owned by the public typecheck/inventory gates and must close in dedicated changes, not by
-      # loosening this job or copying a volatile test-file denominator into YAML.
-      #
-      # The projected `npm test` owns the runnable scope as whole directories - no file is picked
-      # out of one - so the consumer command and CI cannot drift. A new failing test in a selected
-      # directory turns this job red instead of being quietly skipped.
-      - name: Scoped test run
+      # Runs every root Vitest project without directory or file filters. The core
+      # workspace keeps its complete CI contract in the separate step below.
+      - name: Complete published root test run
         run: npm test
       - name: Subscription profile composition and existing renewal modal
         run: npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
@@ -171,6 +165,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -182,6 +177,12 @@ jobs:
       # this tree was created from.
       - run: npm run oss:published-tree -- --policy
       - run: npm run oss:published-tree -- --inventory
+      - name: UI package neutrality
+        run: node --experimental-strip-types packages/ui/smoke/neutrality.ts
+      - name: Tree-wide neutrality shrink-only ratchet
+        env:
+          NEUTRALITY_BASE_COMMIT: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"
 
   gitleaks:
     name: gitleaks
@@ -208,3 +209,22 @@ jobs:
           "$install_dir/gitleaks" version
       - name: Scan the complete available history
         run: gitleaks git . --config config/gitleaks.toml --redact --no-banner
+
+  pgtap:
+    name: pgtap
+    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        with:
+          version: 2.98.2
+      - name: Every shipped pgTAP test against the owned managed baseline
+        run: node scripts/public-ci-pgtap.mjs

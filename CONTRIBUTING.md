@@ -47,7 +47,7 @@ handling.
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 `packageManager` field of `package.json`), and the committed npm lockfile. From
 the root of a materialized development-preview tree, these are the commands the
-six required jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
+seven jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
 run; each comment names its job:
 
 ```bash
@@ -55,6 +55,7 @@ npm ci
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
 # typecheck
+npm run lint
 npm run oss:published-tree -- --typecheck
 # install-proof (CI installs with: npm ci --prefer-offline --no-audit --fund=false)
 npm run build
@@ -69,6 +70,10 @@ npx vitest run scripts/oss-published-tree-check.test.ts
 # self-check (needs no install)
 npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
+node scripts/public-ci-neutrality.mjs
+node --experimental-strip-types packages/ui/smoke/neutrality.ts
+# pgtap (Docker and Supabase CLI 2.98.2 required)
+node scripts/public-ci-pgtap.mjs
 # gitleaks 8.30.1, as CI pins it, over the checkout's history
 gitleaks git . --config config/gitleaks.toml --redact --no-banner
 ```
@@ -94,7 +99,7 @@ The complete projected root command inventory is `build`,
 `packages:check`, and `test`.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
-build, scoped tests, DCO check, and publication checks from this inventory.
+build, complete root tests, DCO check, and publication checks from this inventory.
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
 
@@ -103,15 +108,13 @@ source command-name inventory before a new preview can be materialized.
 nothing outside its own directory, other code reaches a package only through
 the subpaths its `exports` declare, and domain code under `src/domains` and
 `server/domains` imports no provider SDK and no adapter, infrastructure,
-runtime or route code. Published Tree CI does not run it yet, so run it before
-you push.
+runtime or route code. Published Tree CI runs it in the `typecheck` job.
 
-The projected `npm test` command owns the canonical whole-directory public test
+The projected `npm test` command owns the complete root Vitest test
 scope, and [Published Tree CI](.github/workflows/published-tree-ci.yml) invokes
 that command without restating the directories. Run `npm test` for the public
 suite and narrower paths from that scope while iterating. The root Vitest
-configuration does not collect the standalone `packages/core` test suite just
-because the root command names that directory. From the repository root, run
+configuration does not collect the standalone `packages/core` test suite with the root configuration. From the repository root, run
 `npm --workspace @openlup/core run ci` for that package's separate checks
 (equivalently, use its local command from the package directory). Published Tree CI
 invokes this package command separately, including its coverage, release gates and
@@ -122,7 +125,7 @@ journey has its own evidence; a build or mocked test does not stand in for it.
 The root test command also includes the source release transport/producer
 falsifiers and the package release-shape checks under `scripts/packages`. The
 public test job separately runs the materialized command-contract falsifiers,
-which are outside that root command's scope.
+which also run in the complete root scope.
 
 `npm run packages:check` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each
@@ -147,21 +150,33 @@ version to be `0.<n>.0`. The command publishes nothing; the package preview
 channel in [`.github/VERSIONING_AND_EOL.md`](.github/VERSIONING_AND_EOL.md)
 describes how a publication is staged.
 
-No hosted job and no command above runs these test classes (measured on `main`
-at `f09d865`, 2026-09-23):
+The root test command has no directory or file filters. It collects the shipped
+Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
+including `src/lib/*Boundary*` and `*Guardrails*`. Playwright specifications
+retain their separate browser/profile runners; the root Vitest command does not
+claim browser journey evidence.
 
-- 1,256 of the 1,622 test files the root Vitest configuration collects
-  (`npx vitest list --filesOnly`); the `test` job runs the other 366. They are
-  outside the public test scope, and their status is unmeasured. They include
-  the 3 files in `tests/postgres/`, 2 of which need Docker.
-- The 204 pgTAP files in `supabase/tests/`; no repository command runs them.
-- The 6 root Playwright configurations; 5 of them match no spec
-  (`npx playwright test --list --config <file>`).
-- The UI package's neutrality check,
-  `node --experimental-strip-types packages/ui/smoke/neutrality.ts`;
-  `packages/ui` is not a root workspace.
+The `pgtap` job uses Supabase CLI **2.98.2** and a fresh local database stack,
+replays the shipped managed baseline and its public prerequisite SQL, then runs
+all `supabase/tests`. It stops only its own project in a `finally` block. It
+never links a hosted database or installs application seed data. Run
+`node scripts/public-ci-pgtap.mjs` with Docker and the pinned CLI locally.
 
-Admitting any of them to a hosted job is separate quality work.
+The self-check job runs the existing UI neutrality gate and a tree-wide ratchet
+that reuses both that gate's patterns and the core source scanner. The initial
+[`neutrality baseline`](config/openlup-neutrality-baseline.json) records the
+counts on main at its full `sourceCommit`. Counts are pinned per exact path
+(SHA-256 key) and category: a decrease elsewhere cannot pay for an increase.
+Text files are scanned regardless of extension; binary files are inventoried.
+The job also rejects baseline increases relative to the PR base/main push's
+previous commit. For a first baseline, or to regenerate from main without
+increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
+After removing debt, lower the affected counts; never raise them.
+
+The pull request introducing the widened jobs records the measured known-red
+files, reasons and their triage owner. It does not suppress tests or change
+failure exit codes. Making these checks required is the maintainer's ruleset
+decision; code changes do not change those settings.
 
 Documentation falsifiers are imported by the existing materialized
 command-contract test entrypoint. Run

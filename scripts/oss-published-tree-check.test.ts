@@ -90,6 +90,24 @@ describe("maintainer-controlled source preview workflow", () => {
     expect(sourcePreviewWorkflow).toContain("Recovery requires the maintainer");
   });
 });
+describe("complete public CI", () => {
+  it("runs lint after installing dependencies and never filters the root test command", () => {
+    expect(workflow).toContain("run: npm run lint");
+    expect(workflow).toContain("run: npm test");
+    expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
+    expect(workflow).not.toMatch(/--exclude|continue-on-error/u);
+    const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
+    expect(config).toContain("src/**/*.{test,spec}.ts");
+  });
+  it("uses the pinned local CLI and checks neutrality against the event base", () => {
+    expect(workflow).toContain("supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359");
+    expect(workflow).toContain("version: 2.98.2");
+    expect(workflow).toContain("run: node scripts/public-ci-pgtap.mjs");
+    expect(workflow).toContain("github.event.pull_request.base.sha || github.event.before");
+    expect(workflow).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
+    expect(workflow).toContain("run: node --experimental-strip-types packages/ui/smoke/neutrality.ts");
+  });
+});
 const packageManifestPaths = PUBLIC_PACKAGE_EXECUTION_SURFACES.map(({ path }) => path);
 const publicRootManifest = () => JSON.stringify({ workspaces: (JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { workspaces?: string[] }).workspaces, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) });
 function writePackageManifests(root: string): void {
@@ -123,9 +141,9 @@ describe("what the workflow may not contain", () => {
 });
 
 describe("the workflow stays in step with what it claims to run", () => {
-  it("exposes exactly the six public contexts and gates each from trusted event metadata", () => {
+  it("exposes exactly the seven public contexts and gates each from trusted event metadata", () => {
     const jobs = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map((match) => match[1]);
-    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks"]);
+    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "pgtap"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
     expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(jobs.length);
@@ -194,9 +212,8 @@ describe("the workflow stays in step with what it claims to run", () => {
     const scope = [...PUBLIC_TEST_SCOPE];
     expect(workflow).toContain("run: npm test");
     expect(workflow).not.toContain("npm test --");
-    expect(PUBLIC_TEST_COMMAND).toBe(`node scripts/run-vitest.mjs run ${scope.join(" ")}`);
-    expect(scope.length).toBeGreaterThan(10);
-    expect(scope).toEqual(expect.arrayContaining(["scripts/oss-consume-engine.test.ts", "scripts/oss-consume-github-transport.test.ts"]));
+    expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
+    expect(scope).toEqual(["api", "mcp", "scripts", "server", "src", "tests"]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...scope], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);
     for (const target of scope) expect(tracked.some((path) => path === target || path.startsWith(`${target}/`))).toBe(true);
   });
@@ -455,7 +472,7 @@ describe("the materialized public catalogue", () => {
       reset();
       for (const mutate of [
         (manifest: { scripts: Record<string, string>; bin?: Record<string, string> }) => { manifest.scripts.postinstall = "node scripts/oss-published-tree-check.ts"; },
-        (manifest: { scripts: Record<string, string>; bin?: Record<string, string> }) => { manifest.scripts.test = "node scripts/run-vitest.mjs run"; },
+        (manifest: { scripts: Record<string, string>; bin?: Record<string, string> }) => { manifest.scripts.test = "node scripts/run-vitest.mjs run scripts"; },
         (manifest: { scripts: Record<string, string>; bin?: Record<string, string> }) => { manifest.bin = { openlup: "scripts/oss-published-tree-check.ts" }; },
       ]) {
         const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")); mutate(manifest); writeFileSync(join(root, "package.json"), JSON.stringify(manifest));
