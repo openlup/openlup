@@ -38,6 +38,8 @@ an adapter. Provider UI, such as the card payment form, lives with the
 adapters, while the words and outcomes it exchanges with its host stay in the
 domain's contracts.
 
+<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-54cfe124209b675599cf203202532ac90997bf3bbd1861ee061bced8dc247a43","reason":"This delta changes browser and boundary test witnesses, synthetic brand/profile fixtures and mappings to the shipped managed functions. It preserves dependency directions, browser import rules and the hidden operational UI boundary; no browser application or authorization implementation changes. Missing historical or capability evidence remains a raw test failure, so the architecture described here is unchanged."} -->
+
 ## Extension seams
 
 Extensions belong at explicit seams:

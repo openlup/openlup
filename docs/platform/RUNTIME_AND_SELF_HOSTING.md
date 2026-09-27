@@ -14,6 +14,8 @@ is runtime-only input and must not be embedded in a browser artifact. Hosts must
 provide their own storage, identity, delivery, and provider configuration where
 the selected capabilities require it.
 
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-90cd42057917f0a87a47df9f10b2652dcf27016516084f042f664079a3c6aa85","reason":"This source delta updates route tests and synthetic profile/copy fixtures, including handler success and refusal expectations, without editing the BFF/router or its authentication, persistence and provider composition. It does not activate missing public routes or claim a live HTTP or browser proof. The server boundary and host obligations in this section therefore remain unchanged."} -->
+
 ## Self-host boundary
 
 The platform target is portable PostgreSQL with a reproducible baseline and
@@ -37,6 +39,12 @@ profile uses a closed route set and loopback origin; it does not start a worker,
 external payment provider, external mail service or full self-hosted platform.
 See [Evaluate a subscription account](SUBSCRIPTION_REFERENCE.md) for the exact
 setup, server command, operator setup and verification boundary.
+
+Before serving requests, the Node composition root initializes the ambient
+settlement profile from its selected server environment. Shared money schemas
+therefore use that same profile instead of silently using the platform default.
+Initialization is idempotent for one profile and refuses conflicting profiles
+within one process. This does not activate a provider or widen the closed routes.
 
 The setup requires a new owned directory, unique project id and free ports. It
 replays the managed baseline with its two explicit local prerequisites and
@@ -170,6 +178,8 @@ detect preview emails linking to production. An empty list admits no live Tpay
 callback and gives the email check no production domains to recognize. See the
 [pending preview upgrade notes](../../.github/VERSIONING_AND_EOL.md#pending-preview-upgrade-notes-public-coordinates)
 for the accompanying `OPENLUP_` configuration rename.
+
+<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-90de62db3260ee93f90417716f57159d1704cf3e095b3f3399b69aca03523595","reason":"The two infrastructure changes are renderer-test fixtures and assertions for the selected neutral brand profile. Renderer code, transport, provider credentials, production host configuration and callback admission are unchanged. These offline checks neither send mail nor activate a provider, so the provider/host boundaries described here remain correct."} -->
 
 ## Preview posture
 
