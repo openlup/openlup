@@ -86,6 +86,19 @@ tracks `openlup/openlup` in place of `origin`. The subscription profile build
 writes `dist-subscription/` and `dist-subscription-ssr/`, which `.gitignore`
 does not cover, so do not commit them.
 
+The native review session in `scripts/agent-review-session.mjs` checks committed
+candidate lineage, complete prior coverage, closure dispositions, inherited
+evidence expiry and the two-cycle repair/review budget. Run the focused
+`scripts/agent-review-session.test.ts` regressions while changing that contract;
+fixtures do not prove installed enforcement. Installed verification must refuse
+workflow drift before expensive checks or replacement of prior logs, and acquire
+a shared heavy-verification lock before running those checks. An existing lock
+is refused without stealing it or disturbing another task's checks. The required
+six-job commands remain unchanged; exact-candidate review evidence may be reused
+by pre-push, but this process adds no general test-result cache. Prove actual
+CLI and hook refusal paths in two dogfooding passes, batch material repairs, and
+repeat affected scenarios before claiming live activation.
+
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
@@ -239,13 +252,28 @@ scope and delivery authority without reading every diff or transferring prompts,
 reports or authentication between sessions. The same contract applies to Codex,
 Claude Code and future agents; no model API, backend or new host is required.
 
-Use one bounded review for ordinary prose, two for behaviour, executable
-instructions, contracts, controls and unknown risk. Review the exact final
-committed candidate without author history or another reviewer's verdict.
-Record actual platform execution observations and complete findings. After
-repairs, commit and obtain fresh review. Handle `needs_agent_review` automatically
-within the active task and retry the gate; do not ask the owner to reapprove the
-same authorized behaviour.
+Use one initial bounded review for ordinary prose, or two independent parallel
+reviews for behaviour, executable instructions, contracts, controls and unknown
+risk. Review the exact committed candidate without author history or another
+reviewer's verdict. Record actual platform observations and complete findings;
+blockers demonstrate an effect on correctness or acceptance, while optional
+advice cannot block or require another edit after acceptance is satisfied.
+
+Commit repairs before review. Complete prior coverage and validated exact lineage
+allow one fresh cold closure review of a narrow repair within unchanged intent,
+scope and base. Supply neutral prior finding cards and actual repair/interactions,
+never old verdicts or author history. The reviewer independently confirms semantic
+risk; control, security, schema, executable instruction and unknown repairs need
+two focused reviews regardless of filenames. Account for every prior material
+finding and preserve inherited expiry; unavailable or expired coverage requires
+two fresh full-scope reviews. Carry the two-cycle repair/review budget through
+prepare and full-review escalation. Exhaustion stays blocked while the supervisor regroups
+within existing authority. Changed intent requires explicit regrouping; an
+ancestor-preserving base integration gets fresh full-scope review within the
+same budget.
+Handle `needs_agent_review` in the active task without asking the owner to repeat
+approved behaviour. After criteria, review and checks pass, stop optional edits
+and proceed only through authorized delivery steps.
 
 `scripts/agent-review-session.mjs` binds process evidence to the candidate,
 intent, scope and reviewer results. Installed verify and pre-push must refuse
