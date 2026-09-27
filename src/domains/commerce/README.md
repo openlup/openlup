@@ -76,4 +76,4 @@ Domain-boundary rules, including the Domain Map and the feature trace, live in
 the maintainer canon `DOMAIN_ARCHITECTURE.md`, which belongs to the private
 overlay and is not part of the published tree.
 
-<!-- openlup-doc-impact {"unit":"domain-commerce","digest":"sha256-4ab6bbe8da728934bf5011420b4d546a91f1d79065b9104b1ba91aaae9191013","reason":"The email tests use neutral default order references or explicitly supplied copy packs, while the operational ladder test resolves the effective published queue function instead of removed migration history. Email content implementations, checkout contracts, completed-order money authority and queue behavior are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"domain-commerce","digest":"sha256-6f79f4542aaa95aaa7a41b51d2ae614aaf1b336320563c4914ff2ecac49ea1f1","reason":"The email tests use neutral default order references or explicitly supplied copy packs, while the operational ladder test resolves the effective published queue function instead of removed migration history. Email content implementations, checkout contracts, completed-order money authority and queue behavior are unchanged."} -->

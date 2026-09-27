@@ -5,8 +5,8 @@ import { APP_EMAIL_BRAND, APP_EMAIL_TEAM_SIGNOFF } from "../../../lib/brand/appB
 import { renderEmail } from "../../communications/email/render.js";
 import { shipmentDeliveredEmailContent } from "./shipmentDelivered.js";
 
-// The generic renderer receives a deliberately configured copy pack. The
-// public default is independently covered by the public-parity suite.
+// The generic renderer receives a deliberately configured copy pack. This
+// suite does not establish public-default copy parity.
 vi.mock("#commerce-email-content", async (importOriginal) => {
   const original = await importOriginal<typeof import("#commerce-email-content")>();
   const content = original.commerceEmailContent;

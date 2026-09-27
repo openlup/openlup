@@ -8,7 +8,7 @@ import {
 } from "./transactionalFulfillmentEmailRenderers.js";
 import { APP_ORDER_REF_PREFIX } from "../../../src/lib/brand/appBrand.js";
 
-// The selected presentation is a local fixture; default public copy has separate parity coverage.
+// This suite exercises an explicitly configured presentation fixture; it does not prove the public-default copy.
 vi.mock("#commerce-email-content", async (importOriginal) => {
   const original = await importOriginal<typeof import("#commerce-email-content")>();
   const { createCommerceEmailContentFixture } = await import("../../../src/test/commerceEmailContentFixture.js");

@@ -179,7 +179,7 @@ callback and gives the email check no production domains to recognize. See the
 [pending preview upgrade notes](../../.github/VERSIONING_AND_EOL.md#pending-preview-upgrade-notes-public-coordinates)
 for the accompanying `OPENLUP_` configuration rename.
 
-<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-90de62db3260ee93f90417716f57159d1704cf3e095b3f3399b69aca03523595","reason":"The two infrastructure changes are renderer-test fixtures and assertions for the selected neutral brand profile. Renderer code, transport, provider credentials, production host configuration and callback admission are unchanged. These offline checks neither send mail nor activate a provider, so the provider/host boundaries described here remain correct."} -->
+<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-8e5a4538dd94087c947ed45187e29eedcb342f935d8c9519241ca78e2596628e","reason":"The two infrastructure changes are renderer-test fixtures and assertions for the selected neutral brand profile. Renderer code, transport, provider credentials, production host configuration and callback admission are unchanged. These offline checks neither send mail nor activate a provider, so the provider/host boundaries described here remain correct."} -->
 
 ## Preview posture
 
