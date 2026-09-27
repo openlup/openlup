@@ -6,7 +6,7 @@ Decision owner: OpenLup maintainer. Repair owner: CI completeness contributors. 
 
 ## Managed pgTAP snapshot
 
-Measured against candidate `5f4094b73486371c872ededfb545b54cad6a5353` and public main `03dbbedc953b96607f1ef1fc3342847cf49aa16e`: 206 files executed, 23 red files. This is a historical diagnostic snapshot. Subsequent repairs bind the runner to committed migration bytes and restore pre-fixture installation assertions. A new managed rerun remains required; the historical 23-file count is not the current acceptance result.
+Measured against candidate `5f4094b73486371c872ededfb545b54cad6a5353` and public main `03dbbedc953b96607f1ef1fc3342847cf49aa16e`: 206 files executed, 23 red files. This is a historical diagnostic snapshot. Subsequent repairs bind the runner to committed migration bytes and restore pre-fixture installation assertions. The subsequent local run against public main `deb03a7f109775eeced947482bf584d0868e63d7` executed the same 206 files and 4,325 assertions, exiting 1 with 28 red files. The five additional files are the restored pre-fixture obligations listed below; their configured behaviour checks completed. This remains diagnostic execution, not final mandatory acceptance.
 
 | Named test | Observed failure / unresolved obligation |
 | --- | --- |
@@ -85,6 +85,8 @@ Current structural mapping preserves separate missing-history failures. These na
 | `tests/preview/checkout/helpers/starterOfferCoverage.test.ts` | The three checkout specs required to carry starter-offer evidence markers are absent. |
 
 The npm cache and own-process identity environment failures were resolved by a worktree-local cache and permitted own-process readback. No application grant or test exit changed.
+
+The root rerun after integrating PR #52 passed 11,262 assertions and failed the same 58 assertions across 29 files, with 8 existing conditional pending assertions. The committed-inventory refusal suite then passed 42 assertions, including duplicate versions, missing/modified/untracked files, symlinks and mode changes. These bounded checks do not waive full verification.
 
 ## Routing
 

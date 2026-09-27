@@ -56,6 +56,12 @@ The pgTAP dependency prerequisite and its workflow contract check are implemente
 
 Focused runtime/accounting/graph/workflow checks, neutrality CLI falsifiers, lint and published typecheck pass locally. Full root execution and managed pgTAP remain red on the listed obligations. No push, PR, release or adoption result is established by this checkpoint.
 
+## Native review integration
+
+PR #52's native policy is the review default. Two independent fresh-context reviewers found that the pgTAP runner accepted duplicate migration versions and did not bind replay to committed blobs. The bounded correction snapshots the committed inventory and verifies file identities, bytes and strictly increasing versions before starting the database. Focused refusal witnesses cover malformed/duplicate versions, missing/modified/untracked files, symlinks and mode changes. It adds no migration ledger or schema change.
+
+Installation expectations now execute before synthetic configuration in the five named tests. Fixtures still support subsequent behaviour tests; their presence cannot certify installation readiness. Fixed merchandising, settlement and driver/default expectations remain explicit unresolved dispositions rather than newly declared universal defaults. The separate managed-authority decision is still held. Failed reviews and stale candidates refuse admission; repair requires new independent review of the final committed candidate.
+
 ## Simpler routes considered
 
 Unfiltered execution with named failures is useful diagnosis but does not finish the repair. Blanket grants, fabricated historical files, silent rebaselining and omitted tests would weaken the proof. Reuse existing scanners and callers; write specifications only for shared contracts. Waves are integration checkpoints, not a requirement to create a separate PR for every slice.
