@@ -144,6 +144,14 @@ describe("payment status canon (TypeScript vocabularies against the DB CHECKs)",
     expect([...PAYMENT_FAILURE_CLASSES]).toEqual(attempts);
   });
 
+  it("keeps flattened-history expectations after appending a forward", () => {
+    const baseline = "00000000000000_platform_schema_baseline.sql";
+    expect(isFlattenedBaseline([baseline])).toBe(true);
+    expect(isFlattenedBaseline([baseline, "20260927131453_seed_subscription_delivery_alignment_control.sql"])).toBe(true);
+    expect(isFlattenedBaseline(["20260101000000_historical_introduction.sql", "20260927000000_forward.sql"])).toBe(false);
+    expect(isFlattenedBaseline([])).toBe(false);
+  });
+
   /**
    * The admission gate. `commerce_payment_control_prepare_provider_attempt` is
    * the only thing standing between a retry and a second charge, and it decides
@@ -160,7 +168,8 @@ describe("payment status canon (TypeScript vocabularies against the DB CHECKs)",
     const lists = gateStatusExclusionLists("public.commerce_payment_control_prepare_provider_attempt");
 
     // Source history contains the introducing site plus two live-body sites. A
-    // flattened pg_dump baseline intentionally contains only the two live sites.
+    // flattened pg_dump baseline contains only the two live sites; appended
+    // forwards do not restore the discarded introducing migration.
     expect(lists.length).toBeGreaterThanOrEqual(isFlattenedBaseline() ? 2 : 3);
     for (const site of lists) {
       expect(site.statuses, `gate list at ${site.file}:${site.line}`)
@@ -271,9 +280,8 @@ function latestCheckValues(
   return latest;
 }
 
-function isFlattenedBaseline(): boolean {
-  const files = migrationFiles();
-  return files.length === 1 && files[0] === "00000000000000_platform_schema_baseline.sql";
+function isFlattenedBaseline(files: readonly string[] = migrationFiles()): boolean {
+  return files[0] === "00000000000000_platform_schema_baseline.sql";
 }
 
 /** The `CREATE TABLE` body for one table, so an inline CHECK cannot be read off a neighbour. */
