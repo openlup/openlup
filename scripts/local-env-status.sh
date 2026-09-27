@@ -57,7 +57,7 @@ fi
 
 printf '\nLocal containers\n'
 if [ -n "$project_id" ] && command -v docker >/dev/null 2>&1; then
-  docker ps -a --filter "name=^supabase_.*_${project_id}$" --format '{{.Names}} {{.Status}}' 2>/dev/null || printf 'container status unavailable\n'
+  docker ps -a --filter "label=com.supabase.cli.project=$project_id" --format '{{.Names}} {{.Status}}' 2>/dev/null || printf 'container status unavailable\n'
 else
   printf 'container status unavailable\n'
 fi

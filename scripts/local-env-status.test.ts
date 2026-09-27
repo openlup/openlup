@@ -25,7 +25,7 @@ function fixture(cliExit: number | null) {
   executable('lsof', 'exit 1');
   executable('docker', [
     '[ "$1" = ps ] && [ "$2" = -a ] && [ "$3" = --filter ] || exit 99',
-    '[ "$4" = "name=^supabase_.*_fixture$" ] && [ "$5" = --format ] || exit 99',
+    '[ "$4" = "label=com.supabase.cli.project=fixture" ] && [ "$5" = --format ] || exit 99',
     '[ "$6" = "{{.Names}} {{.Status}}" ] && [ "$#" = 6 ] || exit 99',
     'printf "fixture-container-status\\n"',
   ].join('\n'));
@@ -97,4 +97,25 @@ describe('local environment status credential boundary', () => {
     expect(result.stdout).not.toContain('fixture-container-status');
     for (const canary of canaries) expect(result.stdout).not.toContain(canary);
   });
+  it('isolates exact project labels when a sibling project shares the selected suffix', () => {
+    const { root, bin } = fixture(0);
+    writeFileSync(join(bin, 'docker'), `#!/bin/bash
+filter=
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = --filter ]; then shift; filter=$1; fi
+  shift
+done
+case "$filter" in
+  label=com.supabase.cli.project=fixture) printf 'supabase_db_fixture Up\\n' ;;
+  name=*) printf 'supabase_db_fixture Up\\nsupabase_db_other_fixture Up\\n' ;;
+  *) exit 91 ;;
+esac
+`, { mode: 0o755 });
+    const result = spawnSync('/bin/bash', [script], { cwd: root, env: { PATH: bin }, encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('supabase_db_fixture Up');
+    expect(result.stdout).not.toContain('supabase_db_other_fixture');
+  });
+
 });
