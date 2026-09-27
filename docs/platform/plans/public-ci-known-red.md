@@ -7,21 +7,30 @@ Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-
 
 ## Measurement and provenance
 
-Measured 2026-09-27 from source commit `0d6cb97265c803c910024e891afe9b3bee4a972e`, against base `c705c215955286a97606db7610446b69f5306e74`, with Node 24.20.0, npm 11.19.0 and Supabase CLI 2.98.2. Commands were unrestricted `npm test` (exit 1) and `node scripts/public-ci-pgtap.mjs` (exit 1), executed serially. No diagnostic failure prevents the separate required core checks or the independent database job from being selected.
+Root measurement completed 2026-09-27 from integrated source commit `049ebe90af007cb31038cbcc1b18f996a9296773`, against trusted main `0f438aa92a7d0b4e0e6e4783ce0c163420e6ae00`, with Node 24.20.0 and npm 11.19.0. Unrestricted `npm test` exited 1. The SQL result remains the earlier `node scripts/public-ci-pgtap.mjs` measurement (exit 1, Supabase CLI 2.98.2), from source `0d6cb97265c803c910024e891afe9b3bee4a972e` against base `c705c215955286a97606db7610446b69f5306e74`; it was not rerun for this integrated-source snapshot. The identical-input proof below preserves that result. No diagnostic failure prevents separate required core checks or the independent database job from being selected.
 
 SHA-256 identities of the complete local reports, retained for exact-candidate review:
 
 | Report | SHA-256 |
 | --- | --- |
-| Root JSON | `31e9015f9fe88b39f565778ec413116e28443f3d05dc754247d9fe10c9533c7d` |
-| Root raw log | `7dbb2515020d55e24e8b9e70d27ed433e0b9dd86bb74d16190b2933bb19d18fa` |
+| Root JSON | `ad45e2da9bc239af217d268d391dc5d8b2506d4826b946829d2ed608bb1cd17a` |
+| Root raw log | `0437b4d7408ef1b1d26e1389d986b10f071b8ed2b1350fced247602feb3cf06a` |
 | Database raw log | `ba01f1b3d09e2a6c57bedcccc644bb693b6522b8f520e901f6ca7a43570440fc` |
 
-This document records the measured source, not its own later commit identity. After this evidence-only edit, unchanged execution inputs and final review must bind the final committed candidate. A source/base change invalidates the affected measurement. These are local diagnostics, not hosted CI, release, installer or deployment certification.
+The committed mode/blob/path inventory and current working bytes are identical between the earlier SQL source and the integrated source for both groups:
+
+| SQL input identity group | Files | SHA-256 of identical committed inventories |
+| --- | --- | --- |
+| Executed runner, prerequisite SQL, public CLI config, two managed migrations and all 206 SQL tests | 211 | `e99b47be717c4cab2e905a686b6d2308cd347abddb9bf00682b380edfbe14083` |
+| Additional bootstrap/platform migrations, CLI configuration, manifest, package metadata and lockfile | 78 | `746588d1dbb7292069477f570360fa9e7e30d3d82cff6f5d7652c6f8451273b4` |
+
+The inventory hashes cover exact Git records, including each path, mode and blob identity. The runner imports only Node builtins; its pinned CLI, defaults, replay, assertion grants, formatter workaround and cleanup instructions are unchanged. This proves source-input identity, not a fresh SQL execution on the integrated commit.
+
+This document records measured sources, not its own later commit identity. After this evidence-only edit, unchanged execution inputs and final review must bind the final committed candidate. A change to an execution input invalidates its affected measurement. Final prescribed verification reruns both raw diagnostics and inspects their fresh logs before publication. These are local diagnostics, not hosted CI, release, installer or deployment certification.
 
 ## Root Vitest
 
-The JSON reports **1,638 file results**, including **118 failed or aborted files** and **35 failed files with no assertion results**. Of **11,289 reported tests**, **11,030 passed**, **251 failed** and **8 were skipped**. Vitest's 3,726 total suites includes nested describe blocks and is not a file count.
+The JSON reports **1,641 file results**, including **118 failed or aborted files** and **35 failed files with no assertion results**. Of **11,308 reported tests**, **11,049 passed**, **251 failed** and **8 were skipped**. Vitest's 3,732 total suites includes nested describe blocks and is not a file count. The integrated run adds 19 passing tests in three files; failed-file identities and every row's P/F/S counts are unchanged.
 
 The publication command-contract falsifiers passed **113 tests** and the real-CLI neutrality falsifiers passed **22 tests** in this full run. These results do not convert the unrelated failures below to success.
 
