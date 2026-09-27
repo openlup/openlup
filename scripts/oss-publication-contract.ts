@@ -33,7 +33,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/run-vitest.mjs", "scripts/site-routes.mjs", "scripts/source-preview-release.ts",
   "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts",
   "server/runtime/public-reference/serve.ts",
-  "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts",
+  "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
   "vitest.config.ts",
 ] as const;
 export const PUBLIC_WITHHELD_ABSENCE_PROBES = ["scripts/oss-published-tree-check.test.ts -> config/oss-core-readiness-blockers.json", "scripts/oss-published-tree-check.test.ts -> config/oss-split-rehearsal-baseline.json"] as const;
