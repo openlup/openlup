@@ -39,11 +39,17 @@ describe("inventory hidden boundary", () => {
     expect(migration).not.toMatch(/\bstripe\b|\badyen\b|\bdhl\b|\binpost\b/i);
   });
 
-  it("guards against oversell and public RPC exposure in the SQL probe", () => {
-    const probe = read("docs/sql/inventory_phase1_rehearsal_probe.sql");
+  it("requires the executable local stock and role-refusal pgTAP witness", () => {
+    const probe = read("supabase/tests/inventory_local_boundary_test.sql");
     for (const required of [
-      "inventory_probe_oversell_not_blocked",
-      "inventory_probe_rpc_publicly_exposed",
+      "inventory_reservation_insufficient_available_stock",
+      "SET LOCAL ROLE anon",
+      "SET LOCAL ROLE authenticated",
+      "SET LOCAL ROLE service_role",
+      "inventory_reserve_order",
+      "inventory_consume_reservation_for_fulfillment",
+      "throws_ok",
+      "SELECT * FROM finish()",
       "ROLLBACK",
     ]) {
       expect(probe).toContain(required);

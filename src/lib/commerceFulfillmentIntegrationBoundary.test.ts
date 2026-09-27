@@ -60,17 +60,30 @@ describe("commerce fulfillment integration boundary", () => {
   });
 
   it("rehearses create, idempotency, label-without-consume, and handoff consume-once", () => {
-    const probe = read("docs/sql/commerce_fulfillment_integration_rehearsal_probe.sql");
+    // Root checks own the shipped proof inventory; pgTAP owns actual RPC execution.
+    const probe = read("supabase/tests/commerce_fulfillment_boundary_test.sql");
     for (const required of [
-      "commerce_fulfillment_probe_create_replay_failed",
-      "commerce_fulfillment_probe_expected_failed_payment_rejection",
-      "commerce_fulfillment_probe_expected_no_reservation_rejection",
-      "commerce_fulfillment_probe_label_consumed_inventory",
-      "commerce_fulfillment_probe_double_consume",
-      "ROLLBACK",
+      "SET LOCAL ROLE service_role;",
+      "SET LOCAL ROLE anon;",
+      "SET LOCAL ROLE authenticated;",
+      "public.commerce_fulfillment_create_order(",
+      "public.commerce_fulfillment_record_label_created(",
+      "public.commerce_fulfillment_mark_handed_over(",
+      "commerce_fulfillment_payment_not_succeeded",
+      "commerce_fulfillment_missing_inventory_reservation",
+      "pg_temp.boundary_state()",
+      "before_label_inventory",
+      "after_handoff",
+      "'42501'",
+      "has_function_privilege(",
+      "permission denied for function commerce_fulfillment_create_order",
+      "permission denied for function commerce_fulfillment_record_label_created",
+      "permission denied for function commerce_fulfillment_mark_handed_over",
+      "ROLLBACK;",
     ]) {
       expect(probe).toContain(required);
     }
+    expect(probe).not.toMatch(/\bGRANT\b/i);
   });
 
 });

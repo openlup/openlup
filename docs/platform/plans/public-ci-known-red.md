@@ -115,3 +115,24 @@ The repaired diagnostic SQL test completes all 126 assertions. Its shipped match
 The subsequent unrestricted root rerun with a worktree-local npm cache and permitted own-process identity readback passed 11,314 assertions and failed 51 across 27 files, retaining eight existing conditional skips. The restricted sandbox run additionally exposed six environment failures; these were resolved by the permitted execution environment, not source changes. Lint, published typecheck, policy/inventory and the tree neutrality ratchet pass. These local results still do not satisfy the complete verifier or publication prerequisites.
 
 An owned disposable replay also measured effective authority: baseline application objects belong to postgres; service_role has BYPASSRLS but lacks table access to several INVOKER readers, including email_sends/email_events and subscriptions. EXECUTE exists for the email and renewal readers. The audit primitive has no service EXECUTE. The trigram extension is in public while the search function resolves its operator through extensions. These readbacks explain failures; they authorize no grant or existing-instance conversion.
+
+### Restored cleanup-transition hold
+
+`src/lib/paymentRecoverySha256Boundary.test.ts` additionally retains two historical whole-cleanup obligations: only the lookup RPCs change while the SHA-256 writer remains untouched, and the cleanup adds no transaction/schema/provider side effects. Selected current function bodies cannot prove either whole-delta property. The missing historical cleanup source therefore remains a lazy raw failure, independently from the passing current-function checks. Repair owner: CI completeness contributors; transition-contract decision owner: maintainer. The preceding root snapshot predates this restoration. No historical migration is fabricated.
+
+### Executed commerce proof repairs
+
+Four new transactional pgTAP witnesses complete all 160 assertions against the shipped managed chain, with no application grants or schema changes:
+
+| Witness | Assertions | Executed obligation |
+| --- | --- | --- |
+| `subscription_payment_result_refusal_test.sql` | 27 | Exact legacy success/failure deprecation under service_role, repeated refusal without changes to complete writer state, effective execution rights and actual browser-role denials for all three symbols. |
+| `inventory_local_boundary_test.sql` | 35 | Physical local ATP oversell refusal, accepted runtime reservation/consumption, unchanged complete nonempty state on same-input replay and exact browser-role function refusals. Changed-input replay defects remain separately characterized. |
+| `commerce_fulfillment_boundary_test.sql` | 50 | Actual fresh create and replay, failed-payment/missing-reservation refusal, label without inventory consumption, first/repeated handoff with exactly one consumption movement, effective ACLs and exact browser function denials. Payment settlement and reservation prerequisites are synthetic fixture facts, not proofs of their own writers or provider activation. |
+| `commerce_oms_boundary_test.sql` | 48 | Actual hold create/release replay with complete state comparisons, real 506-order queue pagination and summaries beyond 500, effective ACLs and exact browser function denials. |
+
+Their root boundary tests register the actively collected SQL witnesses rather than absent historical probes. These prove current behavior only. The OMS shipping-address-lock mismatch, historical migration and cleanup-transition holds remain raw failures. No existing-history migration, provider operation, live BFF authorization or production behavior is claimed.
+
+The managed rerun executes 210 files and 4,496 assertions, with the same 28 existing red files and raw exit 1. All four new files complete their TAP plans. The owned local stack is removed after the run. New witnesses do not waive any remaining mandatory check.
+
+The unrestricted root rerun after these proof repairs passed 11,321 assertions and failed 47, with eight existing conditional skips and 25 red files. It includes the restored two-assertion cleanup-transition hold and the remaining OMS address-lock mismatch. This is a pre-rebase measurement; current mandatory verification remains required.

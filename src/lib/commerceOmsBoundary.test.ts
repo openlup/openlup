@@ -20,12 +20,16 @@ describe("published commerce OMS structural boundary", () => {
   });
 
   it("declares hold RPC service-role access and rehearses payment-control non-mutation", () => {
-    const probe = read("docs/sql/commerce_oms_hold_rehearsal_probe.sql");
+    const probe = read("supabase/tests/commerce_oms_boundary_test.sql");
     for (const required of [
       "TO service_role",
-      "commerce_oms_hold_replay_failed",
-      "commerce_oms_touched_payment_control_tables",
-      "commerce_oms_hold_rpc_publicly_exposed",
+      "same-input hold create replays",
+      "same-input hold release replays",
+      "preserves complete payment-control and protected rows",
+      "SET LOCAL ROLE service_role",
+      "SET LOCAL ROLE anon",
+      "SET LOCAL ROLE authenticated",
+      "42501",
       "ROLLBACK",
     ]) {
       expect(`${migration}\n${probe}`).toContain(required);
@@ -75,12 +79,12 @@ describe("published commerce OMS structural boundary", () => {
     expect(liveQueueMigration).not.toMatch(/GRANT [^;]+ TO (?:anon|authenticated|PUBLIC);/);
   });
 
-  it("documents a rollback-only probe for Admin OMS queue pagination beyond 500", () => {
-    const queueProbe = read("docs/sql/commerce_oms_queue_aggregates_probe.sql");
+  it("registers executed pgTAP queue pagination and global-summary proof beyond 500", () => {
+    const queueProbe = read("supabase/tests/commerce_oms_boundary_test.sql");
     expect(queueProbe).toContain("generate_series(1, 506)");
-    expect(queueProbe).toContain("commerce_oms_queue_beyond_500_wrong");
+    expect(queueProbe).toContain("sixth queue page exposes the six orders beyond 500");
     expect(queueProbe).toContain("summaryCounts,readyForFulfillment");
-    expect(queueProbe).toContain("commerce_oms_queue_rpc_grants_wrong");
+    expect(queueProbe).toContain("has_function_privilege");
     expect(queueProbe).toContain("ROLLBACK");
   });
 

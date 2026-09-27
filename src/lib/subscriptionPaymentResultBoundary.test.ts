@@ -6,21 +6,21 @@ import { allMigrations, effectiveFunctionBody } from "../test/effectiveMigration
 import { managedFunction } from "../test/managedSchema.js";
 
 const symbols = ["subscription_apply_payment_success", "subscription_apply_payment_failure", "subscription_record_missing_payment_method"];
-const migration = symbols.map(managedFunction).join("\n");
 const schema = allMigrations().map(({ content }) => content).join("\n");
 
 describe("subscription payment result boundary", () => {
-  it("keeps historical service-role-only payment result RPC symbols", () => {
-    for (const required of [
-      "FUNCTION public.subscription_apply_payment_success",
-      "FUNCTION public.subscription_apply_payment_failure",
-      "FUNCTION public.subscription_record_missing_payment_method",
-      "SECURITY DEFINER",
-      "FROM anon",
-      "FROM authenticated",
-      "TO service_role",
-    ]) {
-      expect(migration).toContain(required);
+  it("keeps current definer payment-result symbols and service-role ACL declarations", () => {
+    // Declaration spelling is structural evidence; pgTAP below takes the real roles.
+    for (const name of symbols) {
+      const declaration = managedFunction(name);
+      expect(declaration).toContain(`FUNCTION public.${name}`);
+      expect(declaration).toContain("SECURITY DEFINER");
+      expect(declaration).toContain(`REVOKE ALL ON FUNCTION public.${name}`);
+      expect(declaration).toContain("FROM PUBLIC;");
+      expect(declaration).toMatch(new RegExp(
+        `GRANT (?:ALL|EXECUTE) ON FUNCTION public\\.${name}\\([^;]*\\) TO service_role;`,
+      ));
+      expect(declaration).not.toMatch(/GRANT [^;]+ TO (?:anon|authenticated|PUBLIC);/);
     }
   });
 
@@ -58,13 +58,22 @@ describe("subscription payment result boundary", () => {
     }
   });
 
-  it("proves legacy payment-result RPCs fail fast locally", () => {
-    const deprecationProbe = read("docs/sql/subscription_payment_result_deprecation_probe.sql");
+  it("registers the executed pgTAP refusal and nonmutation witness", () => {
+    const deprecationProbe = read("supabase/tests/subscription_payment_result_refusal_test.sql");
+    // This is witness registration; Published Tree CI executes the SQL via pgTAP.
     for (const required of [
       "subscription_apply_payment_success",
       "subscription_apply_payment_failure",
+      "subscription_record_missing_payment_method",
       "subscription_payment_result_deprecated_use_payment_control",
-      "unexpectedly mutated state",
+      "SET LOCAL ROLE service_role",
+      "SET LOCAL ROLE anon",
+      "SET LOCAL ROLE authenticated",
+      "has_function_privilege",
+      "2F000",
+      "42501",
+      "complete writer state stays unchanged",
+      "SELECT * FROM finish()",
       "ROLLBACK",
     ]) {
       expect(deprecationProbe).toContain(required);

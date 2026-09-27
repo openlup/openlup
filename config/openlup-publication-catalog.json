@@ -17938,6 +17938,14 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/commerce_fulfillment_boundary_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/commerce_oms_boundary_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/commerce_oms_cancel_unpaid_order_test.sql",
       "class": "public-output"
     },
@@ -18095,6 +18103,10 @@
     },
     {
       "path": "supabase/tests/inherited_table_privilege_class_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/inventory_local_boundary_test.sql",
       "class": "public-output"
     },
     {
@@ -18495,6 +18507,10 @@
     },
     {
       "path": "supabase/tests/subscription_payment_not_chargeable_cleanup_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/subscription_payment_result_refusal_test.sql",
       "class": "public-output"
     },
     {

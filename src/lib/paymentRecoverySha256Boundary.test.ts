@@ -1,7 +1,13 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { managedFunction } from "../test/managedSchema";
 const recoveryFunctions = ["subscription_record_payment_recovery_request", "subscription_resume_from_dunning_with_cycle_order"];
 const migration = recoveryFunctions.map(managedFunction).join("\n");
+const forbiddenCleanupEffects = ["CREATE TABLE", "ALTER TABLE", "DROP TABLE", "stripe", "tpay", "fakturownia"];
+function historicalCleanupSql() {
+  return readFileSync("supabase/migrations/20260627100000_payment_recovery_drop_md5_fallback.sql", "utf8")
+    .split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n");
+}
 // Executable SQL only — strip full-line `--` comments so the header prose (which
 // quotes the old `token_hash IN (... md5(...))` form for context) can't trip the
 // "no MD5 lookup" assertions below.
@@ -49,8 +55,21 @@ describe("payment recovery SHA-256 cleanup (drop MD5 fallback) boundary", () => 
     // (.squawk.toml assume_in_transaction = true), so no explicit BEGIN/COMMIT.
     expect(sql).not.toContain("BEGIN;");
     expect(sql).not.toContain("COMMIT;");
-    for (const forbidden of ["CREATE TABLE", "ALTER TABLE", "DROP TABLE", "stripe", "tpay", "fakturownia"]) {
+    for (const forbidden of forbiddenCleanupEffects) {
       expect(sql).not.toContain(forbidden);
     }
   });
+  it("retains the historical whole-cleanup proof that only lookup RPCs replace and the SHA-256 writer stays untouched", () => {
+    const cleanup = historicalCleanupSql();
+    for (const name of recoveryFunctions) expect(cleanup).toContain(`CREATE OR REPLACE FUNCTION public.${name}`);
+    expect(cleanup).not.toContain("CREATE OR REPLACE FUNCTION public.subscription_handle_payment_failure_dunning");
+  });
+
+  it("retains historical whole-cleanup transaction, schema and provider side-effect refusal", () => {
+    const cleanup = historicalCleanupSql();
+    expect(cleanup).not.toContain("BEGIN;");
+    expect(cleanup).not.toContain("COMMIT;");
+    for (const forbidden of forbiddenCleanupEffects) expect(cleanup).not.toContain(forbidden);
+  });
+
 });
