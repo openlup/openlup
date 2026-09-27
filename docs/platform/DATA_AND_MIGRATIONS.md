@@ -113,7 +113,7 @@ Code rollback must remain compatible with the expanded schema. A destructive
 down migration is not a rollback plan. Each stage needs a clear readback and
 failure boundary; a backfill that cannot be safely retried is incomplete.
 
-<!-- openlup-doc-impact {"unit":"data","digest":"sha256-28f1fa0a7d516ed8f089e59e8e2caedee9e1624c595401b943ff2a16abe46d7a","reason":"Only test SQL and transaction-local fixture includes change: public settlement/profile prerequisites become explicit, current replay and refusal witnesses execute with shipped grants, and diagnostic access is measured on the shipped bounded query. No managed or portable migration, application grant, schema/type/manifest or installed database changes. Historical transitions and absent installation controls stay named failures; the expand, backfill and later-contract lifecycle remains required."} -->
+<!-- openlup-doc-impact {"unit":"data","digest":"sha256-e74eed6d0da8737cbaa7d022f2dcf6dccfd9042621dfb32a882e5b514695b74a","reason":"Only test SQL and transaction-local fixture includes change: public settlement/profile prerequisites become explicit, current replay and refusal witnesses execute with shipped grants, diagnostic access is measured on the shipped bounded query, and feedback persisted-state observations use harness authority independently from unchanged service-role RPC execution. No managed or portable migration, application grant, schema/type/manifest or installed database changes. Historical transitions and absent installation controls stay named failures; the expand, backfill and later-contract lifecycle remains required."} -->
 
 ## Contract changes
 
