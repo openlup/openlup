@@ -1,4 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The public route policy (server/_lib/publicDeploymentPolicies.ts) refuses
+// every mutation route until an adopter supplies its own; this file tests the
+// route behind an adopter policy that admits it.
+vi.mock("#deployment-route-policy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#deployment-route-policy")>()),
+  enforceDeploymentRoutePolicy: () => true,
+}));
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 
 const { mockCreateClient } = vi.hoisted(() => ({
