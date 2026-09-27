@@ -12,9 +12,9 @@ The intended benefit is repeatable evaluation and contribution from public input
 
 ## Starting evidence
 
-The reviewed CI candidate is `5f4094b73486371c872ededfb545b54cad6a5353`, based on public main `03dbbedc953b96607f1ef1fc3342847cf49aa16e`. It widens root test discovery, adds managed pgTAP and tree-wide neutrality, and uses explicit fixtures. Source release automation, bounded additive-forward admission and the managed alignment seed have already merged separately.
+The earlier reviewed CI candidate was `5f4094b73486371c872ededfb545b54cad6a5353`, based on public main `03dbbedc953b96607f1ef1fc3342847cf49aa16e`. It widens root test discovery, adds managed pgTAP and tree-wide neutrality, and uses explicit fixtures. Source release automation, bounded additive-forward admission and the managed alignment seed have already merged separately.
 
-The latest local measurement found 31 failing root files and 23 failing pgTAP files out of 206 executed files. These are unresolved obligations, not an accepted failure budget. The complete local verifier failed. The evidence is dated; final acceptance requires a new serial verification on the final commit.
+That local measurement found 31 failing root files and 23 failing pgTAP files out of 206 executed files. These are unresolved obligations, not an accepted failure budget. The complete local verifier failed. The evidence is dated; final acceptance requires a new serial verification on the final commit.
 
 Code review identified missing dependency installation before the pgTAP runner imports `tsx`, different installation authority between CI and the reference setup, textual helpers being used as access proofs, a neutrality ceiling that permits regrowth, and a seller-tax fallback change mixed into fixture repairs.
 
@@ -24,7 +24,7 @@ Preserve payment/idempotency boundaries, active subscriptions and delivery oblig
 
 Existing migration bytes remain immutable. New platform authority must have a concrete owner and compatibility evidence; test setup cannot grant the application the very privilege being tested. Platform code does not write adopter-owned `app` objects. No new test exclusions, skips or normalized failure exits. No neutrality allowance increase.
 
-The public required-check configuration and release activation are maintainer decisions. Existing contribution and human-review rules apply until their replacement is explicitly activated. This plan does not change rulesets, hooks, credentials or deployments.
+The public required-check configuration and release activation are maintainer decisions. The native review policy merged in PR #52 delegates technical review to independent fresh-context subscription agents in the same task. It does not grant publication authority or waive mechanical checks. This plan does not change rulesets, hooks, credentials or deployments.
 
 ## Implementation waves
 
@@ -32,7 +32,7 @@ The public required-check configuration and release activation are maintainer de
 2. **Managed authority and proof mapping.** Establish the [managed installation contract](managed-installation-proof-contract.md). Measure owners, role attributes, default and effective privileges in the current callers before selecting a profile. Map historical-file assertions to the same shipped public obligation. Do not treat SQL text as effective denial.
 3. **Effective proofs and remaining failures.** Verify real role-taking positive and negative operations. Separate bare-install prerequisites from transaction-scoped behaviour fixtures. Each failing shipped test gets an equivalent executable witness or remains a named blocker. A scope decision alone does not make a test pass. Missing public RPCs or entrypoints require a minimal capability contract, not synthetic implementations in test setup.
 4. **Approved corrections and compatibility.** Prepare one precise correction at a time after its authority is established. Email access, trigram operator namespace, audit invocation and absent catalogue seams are separate obligations. The current release predicate refuses general grants and function replacement; a bounded admission amendment or explicit preview hold must precede merging such corrections. Preserve old receipts and verify genuine previous-preview compatibility.
-5. **Integration and delivery.** Rebase last, regenerate the publication catalogue and derived source contract, run one serial full verification and DCO on full SHAs, then report release-check reasons beyond main. After an authorised push, stop for human reading and explicit authorisation of the concrete PR. Hosted checks follow the authorised non-draft PR; task-branch push alone does not execute them. Merge, release and adoption remain separate transitions.
+5. **Integration and delivery.** Rebase last, regenerate the publication catalogue and derived source contract, run one serial full verification and DCO on full SHAs, then report release-check reasons beyond main. Prepare two fresh-context native reviews of the exact final committed candidate, record actual execution observations, and resolve incomplete or material findings automatically within the approved scope. Obtain fresh reviews after source changes. Earlier scoped reviews are historical evidence, not final native admission. After an authorised push, stop under this task’s explicit publication instruction and request authorisation of the concrete PR. Do not claim the maintainer personally read the diff. Hosted checks follow the authorised non-draft PR; task-branch push alone does not execute them. Merge, release and adoption remain separate transitions.
 
 ## Agent ownership
 

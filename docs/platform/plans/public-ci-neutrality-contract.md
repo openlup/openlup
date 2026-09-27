@@ -33,7 +33,7 @@ Baseline and scanner files remain in the scanned inventory. Use hashes and categ
 
 A legitimate scanner upgrade is a separate contract change. It needs old/new semantic measurements, category mapping, attribution of newly detected existing debt and explicit admission of any revised allowance. Ordinary baseline generation cannot approve it. Do not build a general policy-migration framework in this change.
 
-The ratchet and workflow execute from the reviewed candidate tree. Scanner pins prevent silent matcher drift under that reviewed enforcement code; they do not make candidate CI an immutable security boundary. Changes to enforcement or workflow behaviour require maintainer code review. Required status checks and their governance remain the maintainer’s responsibility.
+The ratchet and workflow execute from the reviewed candidate tree. Scanner pins prevent silent matcher drift under that reviewed enforcement code; they do not make candidate CI an immutable security boundary. Changes to enforcement or workflow behaviour require independent native review of the exact committed candidate under the contribution policy and applicable maintainer authority. Required status checks and their governance remain the maintainer’s responsibility.
 
 ## Acceptance witnesses
 
