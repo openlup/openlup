@@ -7,8 +7,8 @@ import {
   type PollerStatusSnapshot,
   type PollerTerminalStatus,
 } from "@/domains/payment/components/PaymentStatusPoller";
-import type { PaymentFormSettlement } from "@/domains/payment/components/PaymentForm";
-import { StripePaymentStep } from "@/domains/payment/components/StripePaymentStep";
+import type { PaymentFormSettlement } from "@/domains/payment/paymentFormContracts";
+import { StripePaymentStep } from "./stripe/StripePaymentStep";
 import { FinishInBrowserHatch } from "./FinishInBrowserHatch";
 import { useLocalizedPath } from "@/lib/i18nRoutes";
 import {

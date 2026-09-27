@@ -33,10 +33,10 @@ only through a subpath its `package.json` `exports` declares, never through a
 relative path into `packages/` or an undeclared subpath such as `src` or
 `dist`. Domain code under `src/domains` and `server/domains` imports none of
 the provider SDKs the config names and no adapter, infrastructure, runtime or
-route code; its tests may compose a domain with an adapter. The config lists
-the few crossings that predate the rule, each as one exact import in one file,
-and refuses to load with an entry whose import is gone, so that list only
-shrinks.
+route code, and there are no exceptions; its tests may compose a domain with
+an adapter. Provider UI, such as the card payment form, lives with the
+adapters, while the words and outcomes it exchanges with its host stay in the
+domain's contracts.
 
 ## Extension seams
 

@@ -221,8 +221,9 @@ describe("payment-control plane boundary", () => {
       ];
       const hiddenAccountPaymentImports =
         // W11.7 Wave D-4b + checkout-recovery — hidden account files may import
-        // the recovery client and the PSP-public Stripe Elements wrappers in
-        // `domains/payment/components/`; no payment-control plane leakage.
+        // the recovery client and the neutral payment contracts (the Stripe
+        // Elements wrappers live in `src/checkout/adapters/stripe/`); no
+        // payment-control plane leakage.
         isHiddenAccountFile(file) &&
         !isHiddenAccountOrderTerminalFile(file) &&
         new RegExp(

@@ -4,7 +4,7 @@ import { CreditCard, Loader2 } from "lucide-react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 
-import { RecoveryPaymentSetupForm } from "@/domains/payment/components/RecoveryPaymentSetupForm";
+import { RecoveryPaymentSetupForm } from "@/checkout/adapters/stripe/RecoveryPaymentSetupForm";
 import { startCustomerCardSetup } from "@/domains/customers/paymentMethodSetupClient";
 import {
   createCustomerDiagnosticActionKeyWhenEnabled,

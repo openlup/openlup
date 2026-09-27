@@ -70,22 +70,6 @@ const domainIsolation = {
   ],
 };
 
-// Crossings that predate these rules. Each entry allows one exact specifier in
-// one file; a new crossing fails lint, and an entry whose import is gone fails
-// config load, so the list only shrinks.
-const DOMAIN_ISOLATION_EXCEPTIONS = [
-  { file: "src/domains/payment/components/PaymentForm.tsx", allow: ["@stripe/react-stripe-js"] },
-  { file: "src/domains/payment/components/RecoveryPaymentSetupForm.tsx", allow: ["@stripe/react-stripe-js"] },
-  { file: "src/domains/payment/components/StripePaymentStep.tsx", allow: ["@stripe/react-stripe-js", "@stripe/stripe-js"] },
-  { file: "src/domains/payment/components/useStripePromise.ts", allow: ["@stripe/stripe-js"] },
-];
-
-for (const { file, allow } of DOMAIN_ISOLATION_EXCEPTIONS) {
-  const source = existsSync(rootPath(file)) ? readFileSync(rootPath(file), "utf8") : "";
-  const stale = allow.filter((specifier) => !source.includes(`"${specifier}"`));
-  if (stale.length > 0) throw new Error(`Remove the stale import-boundary exception for ${file}: ${stale.join(", ")}`);
-}
-
 // `depth` is the number of directories between the package root and the file;
 // a file deeper than MAX_PACKAGE_DEPTH may not climb out of its directory at all.
 const packageIsolation = (pkg, depth) => ({
@@ -99,10 +83,9 @@ const packageIsolation = (pkg, depth) => ({
   ],
 });
 
-function boundaryRules(boundaries, allow = []) {
-  const allowed = allow.length > 0 ? `(?!(?:${allow.map(escapeRegex).join("|")})$)` : "";
+function boundaryRules(boundaries) {
   const entries = boundaries.flatMap(({ message, regexes }) =>
-    regexes.map((regex) => ({ regex: `${allowed}${regex}`, message })));
+    regexes.map((regex) => ({ regex, message })));
   return {
     "no-restricted-imports": ["error", {
       patterns: entries.map(({ regex, message }) => ({ regex, message, caseSensitive: true })),
@@ -165,10 +148,6 @@ export default tseslint.config(
     ignores: DOMAIN_TEST_FILES,
     rules: boundaryRules([packageExports, domainIsolation]),
   },
-  ...DOMAIN_ISOLATION_EXCEPTIONS.map(({ file, allow }) => ({
-    files: [file],
-    rules: boundaryRules([packageExports, domainIsolation], allow),
-  })),
   ...workspacePackages.flatMap((pkg) => [
     { files: sourceFiles(`packages/${pkg.directory}/`), rules: boundaryRules([packageIsolation(pkg, null)]) },
     ...Array.from({ length: MAX_PACKAGE_DEPTH + 1 }, (_, depth) => ({

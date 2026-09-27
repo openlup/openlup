@@ -1,11 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 
-export interface RecoveryPaymentSetupFormCopy {
-  submitButton: string;
-  submittingButton: string;
-  errorPrefix: string;
-}
+import type { RecoveryPaymentSetupFormCopy } from "@/domains/payment/paymentFormContracts";
 
 const DEFAULT_COPY: RecoveryPaymentSetupFormCopy = {
   submitButton: "Zaktualizuj metodę płatności",

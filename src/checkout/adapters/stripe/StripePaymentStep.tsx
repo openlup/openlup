@@ -1,11 +1,9 @@
 import { Elements } from "@stripe/react-stripe-js";
 import type { StripeElementsOptions } from "@stripe/stripe-js";
 
-import {
-  PaymentForm,
-  type PaymentFormCopy,
-  type PaymentFormSettlement,
-} from "./PaymentForm";
+import type { PaymentFormCopy, PaymentFormSettlement } from "@/domains/payment/paymentFormContracts";
+
+import { PaymentForm } from "./PaymentForm";
 import { useStripeLoader } from "./useStripePromise";
 
 const DEFAULT_UNAVAILABLE = "Płatność kartą jest teraz niedostępna.";

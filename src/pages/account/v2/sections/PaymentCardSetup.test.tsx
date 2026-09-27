@@ -19,7 +19,7 @@ vi.mock("@/lib/flags", () => ({
 // stub them so the test focuses on this component's state machine.
 vi.mock("@stripe/react-stripe-js", () => ({ Elements: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("@stripe/stripe-js", () => ({ loadStripe: () => Promise.resolve({}) }));
-vi.mock("@/domains/payment/components/RecoveryPaymentSetupForm", () => ({
+vi.mock("@/checkout/adapters/stripe/RecoveryPaymentSetupForm", () => ({
   RecoveryPaymentSetupForm: ({ onMethodReady, onError }: {
     onMethodReady: (m: { paymentMethodRef: string; paymentMethodKind: string }) => void;
     // The real form calls this on a refused card and stays mounted for a retry.

@@ -3,38 +3,10 @@ import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js"
 
 import { reportCheckoutClientEvent } from "@/lib/telemetry/checkoutClientEvent";
 
-import { paymentFormErrorPresentation } from "./paymentFormErrorPresentation";
-import { usePaymentStepDeparture } from "./usePaymentStepDeparture";
+import { paymentFormErrorPresentation } from "@/domains/payment/components/paymentFormErrorPresentation";
+import { usePaymentStepDeparture } from "@/domains/payment/components/usePaymentStepDeparture";
+import type { PaymentFormCopy, PaymentFormSettlement } from "@/domains/payment/paymentFormContracts";
 import { STRIPE_LOAD_TIMEOUT_MS } from "./useStripePromise";
-
-/**
- * Every word this domain renders comes from its host, because
- * `src/domains/payment` is a candidate neutral kernel and must not reach into
- * the application's translation namespaces. The `*` fields below are the
- * failure vocabulary added for the silent-dead-end fix; they are optional so
- * existing callers keep compiling, and every in-repo host fills them from
- * `checkout:stripePay.*` or `account:completePayment.*`.
- */
-export interface PaymentFormCopy {
-  /** Host-translated approved guidance; supplied only by covered checkout callers. */
-  recoveryMessage?: (key: string) => string;
-  payButton: string;
-  payingButton: string;
-  errorPrefix: string;
-  /** Shown when no publishable key is configured at all. */
-  unavailable?: string;
-  /** Shown while the payment fields are still painting. */
-  loading?: string;
-  /** Shown when the provider script failed or never finished loading. */
-  loadFailed?: string;
-  /** Label of the button that starts a fresh load attempt. */
-  loadRetry?: string;
-  /** Points the buyer at the payment methods that do not need this script. */
-  loadAlternative?: string;
-}
-
-/** Browser confirmation outcome; `unknown` requires payment-control readback. */
-export type PaymentFormSettlement = "succeeded" | "failed" | "unknown" | "retryable";
 
 const DEFAULT_COPY: PaymentFormCopy = {
   payButton: "Zapłać",
