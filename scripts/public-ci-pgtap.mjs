@@ -1,18 +1,41 @@
 // Replays the shipped managed baseline and ordered forwards in an owned CLI project.
 // No linked project, remote database, application seed or stored credential is used.
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = join(root, ".context/scratch/pgtap");
-mkdirSync(scratch, { recursive: true });
-const directory = mkdtempSync(join(scratch, "run-"));
 const projectId = `openlup-ci-${randomBytes(8).toString("hex")}`;
 const cliVersion = "2.98.2";
+
+// Bind replay to committed bytes before starting any disposable service.
+export function readManagedMigrationChain(checkout) {
+  const folder = join(checkout, "supabase/migrations");
+  if (!lstatSync(folder).isDirectory() || lstatSync(folder).isSymbolicLink()) throw new Error("invalid managed migration directory");
+  const result = spawnSync("git", ["--no-replace-objects", "-C", checkout, "ls-tree", "-r", "-z", "HEAD", "--", "supabase/migrations"], { encoding: "utf8" });
+  if (result.error || result.status !== 0) throw new Error("cannot read committed managed migration inventory");
+  const entries = result.stdout.split("\0").filter(Boolean).map((entry) => {
+    const match = /^(100644) blob ([a-f0-9]{40})\tsupabase\/migrations\/(\d{14}_[a-z0-9_]+\.sql)$/u.exec(entry);
+    if (!match) throw new Error("invalid committed managed migration identity");
+    return { name: match[3], digest: match[2] };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+  const names = entries.map((entry) => entry.name);
+  if (names[0] !== "00000000000000_platform_schema_baseline.sql"
+    || entries.some((entry, index) => index > 0 && entry.name.slice(0, 14) <= entries[index - 1].name.slice(0, 14))) throw new Error("invalid or duplicate managed migration version");
+  if (JSON.stringify(readdirSync(folder).sort()) !== JSON.stringify(names)) throw new Error("managed migration paths differ from committed inventory");
+  return entries.map(({ name, digest }) => {
+    const path = join(folder, name);
+    if (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink() || (lstatSync(path).mode & 0o111) !== 0) throw new Error("managed migration is not a regular committed file");
+    const bytes = readFileSync(path);
+    const actual = createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+    if (actual !== digest) throw new Error("managed migration bytes differ from committed candidate");
+    return { name, contents: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+  });
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, ...options });
@@ -40,6 +63,9 @@ async function selectPorts() {
 }
 
 async function main() {
+  const migrations = readManagedMigrationChain(root);
+  mkdirSync(scratch, { recursive: true });
+  const directory = mkdtempSync(join(scratch, "run-"));
   if (must("supabase", ["--version"]).trim() !== cliVersion) throw new Error(`pgTAP requires Supabase CLI ${cliVersion}`);
   const base = await selectPorts();
   const replacements = { PROJECT_ID: projectId, SHADOW_PORT: base, API_PORT: base + 1, DB_PORT: base + 2, STUDIO_PORT: base + 3, MAIL_PORT: base + 4, POOLER_PORT: base + 9, APP_PORT: base + 10 };
@@ -57,13 +83,7 @@ async function main() {
     "import { readSettlementProfile } from './src/lib/currency/settlementProfile.ts'; console.log(JSON.stringify(readSettlementProfile({})))",
   ]));
   if (!/^[A-Z]{3}$/.test(profile.defaultCurrency) || !/^[A-Z]{2}$/.test(profile.regionCode) || !Number.isSafeInteger(profile.minimumProductPayableMinor) || profile.minimumProductPayableMinor < 1) throw new Error("invalid test settlement profile");
-  const baseline = readFileSync(join(root, "supabase/migrations/00000000000000_platform_schema_baseline.sql"), "utf8");
-  const migrations = readdirSync(join(root, "supabase/migrations"))
-    .filter((file) => file.endsWith(".sql")).sort();
-  if (migrations[0] !== "00000000000000_platform_schema_baseline.sql"
-    || migrations.some((file) => !/^\d{14}_[a-z0-9_]+\.sql$/.test(file))) {
-    throw new Error("invalid published managed migration order");
-  }
+  const baseline = migrations[0].contents;
   // The stock-authority function declares its provider/location dependency.
   // Read that dependency from the shipped body instead of adding deployment seeds.
   const stockBody = baseline.slice(baseline.indexOf("CREATE FUNCTION public.fulfillment_provider_upsert_stock_current("));
@@ -117,7 +137,7 @@ async function main() {
     const sql = [
       readFileSync(join(root, "scripts/public-reference/subscription-prereqs.sql"), "utf8"),
       defaults, "SET ROLE postgres;",
-      ...migrations.map((file) => readFileSync(join(root, "supabase/migrations", file), "utf8")),
+      ...migrations.map(({ contents }) => contents),
       "RESET ROLE; CREATE EXTENSION IF NOT EXISTS pg_cron; CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;",
       // Role-taking tests still need the assertion helpers. Grant only members
       // of the test extension, never application functions or whole schemas.
@@ -146,4 +166,6 @@ async function main() {
   process.exitCode = cleanupFailed ? 1 : testStatus;
 }
 
-main().catch((error) => { console.error(error instanceof Error ? error.message : "managed baseline pgTAP failed"); process.exitCode = 1; });
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => { console.error(error instanceof Error ? error.message : "managed baseline pgTAP failed"); process.exitCode = 1; });
+}

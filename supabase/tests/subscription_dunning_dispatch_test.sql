@@ -16,12 +16,51 @@
 --
 -- Run via: supabase test db
 BEGIN;
+SELECT plan(40);
+
+-- Bare-install controls must be visible before behaviour fixtures.
+-- W3 (20260808090000): the payment-recovered notice is the newest customer-facing
+-- message on this rail, and it must be silenceable like every sibling. The
+-- delivery-shaping policy is fail-open, so a MISSING control row would read as
+-- "allowed" and leave an operator with nothing to toggle.
+SELECT is(
+  (SELECT enabled FROM public.comms_notification_controls
+    WHERE slug = 'subscription-payment-recovered'),
+  true,
+  'W3: the payment-recovered notice has an operator kill switch, seeded enabled before fixtures');
+SELECT is(
+  (SELECT count(*)::int FROM public.comms_notification_controls
+    WHERE slug IN ('subscription-payment-recovered',
+                   'subscription-payment-expired',
+                   'subscription-payment-failed-*')),
+  3,
+  'W3: every customer-facing dunning message is individually controllable');
+
+-- W3 PR-3b (20260809090000): the at-risk pre-renewal warning is the only
+-- per-slug stop that does NOT also silence the failure and recovery notices, so
+-- its control row is what lets an operator kill a bad health classification
+-- without taking the whole dunning rail down. Fail-open policy means a MISSING
+-- row reads as "allowed" and leaves nothing to toggle.
+SELECT is(
+  (SELECT enabled FROM public.comms_notification_controls
+    WHERE slug = 'subscription-renewal-at-risk'),
+  true,
+  'W3b: the at-risk renewal warning has an operator kill switch, seeded enabled before fixtures');
+SELECT is(
+  (SELECT count(*)::int FROM public.comms_notification_controls
+    WHERE slug IN ('subscription-renewal-at-risk',
+                   'subscription-payment-recovered',
+                   'subscription-payment-expired',
+                   'subscription-payment-failed-*')),
+  4,
+  'W3b: every customer-facing dunning message is individually controllable');
+
+
 -- Explicit notification controls for this test deployment, all rolled back.
 INSERT INTO public.comms_notification_controls (slug, enabled) VALUES
   ('subscription-payment-recovered', true), ('subscription-payment-expired', true),
   ('subscription-payment-failed-*', true), ('subscription-renewal-at-risk', true)
 ON CONFLICT (slug) DO NOTHING;
-SELECT plan(40);
 
 INSERT INTO public.clients (id, email)
 VALUES ('d4000000-0000-0000-0000-000000000001', 'dunning-dispatch@example.invalid');
@@ -528,42 +567,6 @@ SELECT is(
     WHERE id = 'd4000000-0000-0000-0000-000000000007'::uuid),
   'failed|resend_idempotency_window_expired_manual_review',
   'W10: a leased sending row outside the provider window becomes manual-review work');
-
--- W3 (20260808090000): the payment-recovered notice is the newest customer-facing
--- message on this rail, and it must be silenceable like every sibling. The
--- delivery-shaping policy is fail-open, so a MISSING control row would read as
--- "allowed" and leave an operator with nothing to toggle.
-SELECT is(
-  (SELECT enabled FROM public.comms_notification_controls
-    WHERE slug = 'subscription-payment-recovered'),
-  true,
-  'W3: the payment-recovered notice has an operator kill switch, explicitly configured enabled');
-SELECT is(
-  (SELECT count(*)::int FROM public.comms_notification_controls
-    WHERE slug IN ('subscription-payment-recovered',
-                   'subscription-payment-expired',
-                   'subscription-payment-failed-*')),
-  3,
-  'W3: every customer-facing dunning message is individually controllable');
-
--- W3 PR-3b (20260809090000): the at-risk pre-renewal warning is the only
--- per-slug stop that does NOT also silence the failure and recovery notices, so
--- its control row is what lets an operator kill a bad health classification
--- without taking the whole dunning rail down. Fail-open policy means a MISSING
--- row reads as "allowed" and leaves nothing to toggle.
-SELECT is(
-  (SELECT enabled FROM public.comms_notification_controls
-    WHERE slug = 'subscription-renewal-at-risk'),
-  true,
-  'W3b: the at-risk renewal warning has an operator kill switch, explicitly configured enabled');
-SELECT is(
-  (SELECT count(*)::int FROM public.comms_notification_controls
-    WHERE slug IN ('subscription-renewal-at-risk',
-                   'subscription-payment-recovered',
-                   'subscription-payment-expired',
-                   'subscription-payment-failed-*')),
-  4,
-  'W3b: every customer-facing dunning message is individually controllable');
 
 SELECT * FROM finish();
 ROLLBACK;

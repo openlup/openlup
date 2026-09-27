@@ -6,7 +6,7 @@ Decision owner: OpenLup maintainer. Repair owner: CI completeness contributors. 
 
 ## Managed pgTAP snapshot
 
-Measured against candidate `5f4094b73486371c872ededfb545b54cad6a5353` and public main `03dbbedc953b96607f1ef1fc3342847cf49aa16e`: 206 files executed, 23 red files. The later fixture/neutrality integration did not change managed SQL or the pgTAP runner. A final serial rerun remains required.
+Measured against candidate `5f4094b73486371c872ededfb545b54cad6a5353` and public main `03dbbedc953b96607f1ef1fc3342847cf49aa16e`: 206 files executed, 23 red files. This is a historical diagnostic snapshot. Subsequent repairs bind the runner to committed migration bytes and restore pre-fixture installation assertions. A new managed rerun remains required; the historical 23-file count is not the current acceptance result.
 
 | Named test | Observed failure / unresolved obligation |
 | --- | --- |
@@ -34,9 +34,21 @@ Measured against candidate `5f4094b73486371c872ededfb545b54cad6a5353` and public
 | `supabase/tests/subscription_quote_drift_observation_time_test.sql` | Assertion 19: "effective ACLs retain the inherited browser and service-role execution without migration ACL churn" |
 | `supabase/tests/subscription_renewal_due_as_of_test.sql` | permission denied for table subscriptions |
 
+## Restored pre-fixture installation obligations
+
+These assertions now run before synthetic configuration is inserted. They retain the original installation expectations as unresolved obligations; their fixed values do not silently become universal adopter defaults. Decision owner and repair owner are the roles stated above. No schema or permissions are changed by this restoration.
+
+| Named test | Obligation retained before fixtures |
+| --- | --- |
+| `supabase/tests/commerce_settings_offer_layout_test.sql` | Historical `starter_first` seed and its value lane; merchandising selection requires an explicit disposition. |
+| `supabase/tests/commerce_settings_settlement_profile_test.sql` | Required configured settlement rows and shapes; bare schema and selected reference readiness remain distinct. |
+| `supabase/tests/outbox_dispatch_rpcs_test.sql` | Dormant producer registry and disabled prune control; enabled dispatch/driver expectation is separate deployment activation. |
+| `supabase/tests/platform_job_control_v3_test.sql` | Accounting trigger allowlists and disabled KSeF control before behaviour setup; no implicit lane activation. |
+| `supabase/tests/subscription_dunning_dispatch_test.sql` | Actual operator kill-switch rows and historical enabled expectations; missing rows must not be masked by fixture insertion. |
+
 ## Root test dispositions
 
-Final local root execution after rebase onto `e2190c851c309ba0a08d9e44bd7b1824a36b9c03` ran 11,213 passing assertions, 58 failing assertions and 8 existing conditional pending assertions, with 29 failing files. The exit was 1. The controller tests merged in PR #50 are included by unrestricted discovery. This is pre-publication evidence; final mandatory verification remains required.
+Earlier local root execution after rebase onto `e2190c851c309ba0a08d9e44bd7b1824a36b9c03` ran 11,213 passing assertions, 58 failing assertions and 8 existing conditional pending assertions, with 29 failing files. The exit was 1. The controller tests merged in PR #50 are included by unrestricted discovery. This is pre-publication evidence; final mandatory verification remains required.
 
 Current structural mapping preserves separate missing-history failures. These named files remain executed, with the owner routing above:
 

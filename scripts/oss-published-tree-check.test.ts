@@ -4,7 +4,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,8 @@ import {
 } from "./oss-published-tree-check.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate, computeNeutralizations, NEUTRALIZATION_RULESET_DIGEST, parseRegistry, projectOperationalCoordinates } from "./oss-neutralization-projection.ts";
+
+import { readManagedMigrationChain } from "./public-ci-pgtap.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW = ".github/workflows/published-tree-ci.yml";
@@ -555,5 +557,52 @@ describe("the public-only policy check", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+
+describe("committed managed migration inventory", () => {
+  function fixture(files: Record<string, string>, check: (directory: string) => void) {
+    const scratch = join(ROOT, ".context/scratch");
+    mkdirSync(scratch, { recursive: true });
+    const directory = mkdtempSync(join(scratch, "migration-inventory-test-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: directory, stdio: "pipe" });
+    try {
+      git("init", "--quiet");
+      mkdirSync(join(directory, "supabase/migrations"), { recursive: true });
+      for (const [name, bytes] of Object.entries(files)) writeFileSync(join(directory, "supabase/migrations", name), bytes);
+      git("add", "supabase/migrations");
+      git("-c", "user.name=Bartłomiej Roszkowski", "-c", "user.email=dev@openlup.com", "commit", "--quiet", "-s", "-m", "Synthetic migration inventory fixture");
+      check(directory);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
+  const baseline = "00000000000000_platform_schema_baseline.sql";
+  const forward = "20260927090000_forward.sql";
+  const chain = { [baseline]: "SELECT 1;\n", [forward]: "SELECT 2;\n" };
+  it("uses exactly the committed baseline and ordered forward bytes", () => {
+    fixture(chain, directory => expect(readManagedMigrationChain(directory)).toEqual([
+      { name: baseline, contents: chain[baseline] }, { name: forward, contents: chain[forward] },
+    ]));
+  });
+  it("refuses duplicate committed versions before replay", () => {
+    fixture({ ...chain, "20260927090000_duplicate.sql": "SELECT 3;" }, directory => {
+      expect(() => readManagedMigrationChain(directory)).toThrow(/duplicate managed migration version/);
+    });
+  });
+  it.each(["missing", "modified", "untracked", "symlink", "executable"])("refuses a %s working migration", variant => {
+    fixture(chain, directory => {
+      const path = join(directory, "supabase/migrations", forward);
+      if (variant === "missing" || variant === "symlink") unlinkSync(path);
+      if (variant === "modified") writeFileSync(path, "SELECT 99;");
+      if (variant === "executable") chmodSync(path, 0o755);
+      if (variant === "untracked") writeFileSync(join(directory, "supabase/migrations/20260928000000_extra.sql"), "SELECT 3;");
+      if (variant === "symlink") symlinkSync(baseline, path);
+      expect(() => readManagedMigrationChain(directory)).toThrow(/managed migration/);
+    });
+  });
+  it("refuses malformed committed identities", () => {
+    fixture({ [baseline]: "SELECT 1;", "invalid.sql": "SELECT 2;" }, directory => {
+      expect(() => readManagedMigrationChain(directory)).toThrow(/invalid committed managed migration identity/);
+    });
   });
 });
