@@ -1,3 +1,36 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+/** The managed forward that seeds the alignment singleton. */
+export const MANAGED_ALIGNMENT_FORWARD = "supabase/migrations/20260927131453_seed_subscription_delivery_alignment_control.sql";
+
+const PLATFORM_COMPANION = /^\s*--\s*migration:platform-companion:\s*(.*?)\s*$/;
+
+/**
+ * The SQL of a managed platform forward, named by its OpenLup repository path.
+ * An adopter's hosted chain may carry that forward under its own migration name,
+ * as a platform companion whose leading comment block holds
+ * `-- migration:platform-companion: openlup:<path>`. When the file itself is
+ * absent, exactly one such companion supplies the SQL, less its marker lines.
+ */
+export function readManagedForward(root, path) {
+  const exact = join(root, path);
+  if (existsSync(exact)) return readFileSync(exact, "utf8");
+  const directory = join(root, "supabase", "migrations");
+  const reference = `openlup:${path}`;
+  const companions = (existsSync(directory) ? readdirSync(directory).sort() : [])
+    .filter((name) => name.endsWith(".sql"))
+    .map((name) => ({ name, lines: readFileSync(join(directory, name), "utf8").split("\n") }))
+    .filter(({ lines }) => {
+      const body = lines.findIndex((line) => line.trim() !== "" && !line.trimStart().startsWith("--"));
+      return lines.slice(0, body < 0 ? lines.length : body).some((line) => PLATFORM_COMPANION.exec(line)?.[1] === reference);
+    });
+  if (companions.length === 1) return companions[0].lines.filter((line) => !PLATFORM_COMPANION.test(line)).join("\n");
+  throw new Error(companions.length === 0
+    ? `Managed forward ${path} is absent, and no supabase/migrations/*.sql header carries "-- migration:platform-companion: ${reference}"`
+    : `Managed forward ${path} is absent, and more than one supabase/migrations file names it as its platform companion: ${companions.map(({ name }) => name).join(", ")}`);
+}
+
 // Compatibility seed for the owned disposable subscription reference.
 // Matches the managed forward; after it runs, this is a no-op that preserves operator choices.
 export const subscriptionAlignmentSeedSql = `

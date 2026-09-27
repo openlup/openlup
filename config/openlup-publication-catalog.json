@@ -2566,6 +2566,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/eslint-import-map.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/package-manifest-policy.test.ts",
       "class": "public-output"
     },

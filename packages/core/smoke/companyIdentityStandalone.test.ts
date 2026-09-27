@@ -11,10 +11,10 @@ import {
 describe("company identity standalone", () => {
   it("exports neutral normalization without national identifier rules", () => {
     expect(normalizeCompanyIdentityLookupRequest({
-      country: " pl ", identifierKind: " PL_NIP ", identifierValue: " 123-456-32-18 ",
+      country: " zz ", identifierKind: " REGISTRY_ID ", identifierValue: " EXAMPLE-12-34 ",
       purpose: "checkout_invoice",
     })).toEqual({
-      country: "PL", identifierKind: "pl_nip", identifierValue: "123-456-32-18",
+      country: "ZZ", identifierKind: "registry_id", identifierValue: "EXAMPLE-12-34",
       purpose: "checkout_invoice",
     });
   });

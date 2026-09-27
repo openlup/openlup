@@ -55,6 +55,8 @@ supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
 
+<!-- openlup-doc-impact {"unit": "reference", "digest": "sha256-909e61289de47c5343aa5c4eeeccf2f4280cad68f352f1f72df2a5ce3a6f3b35", "reason": "Test-only delta. The alignment setup test reads the managed forward through the helper that falls back to a platform companion, adds cases for that helper, and skips its byte comparison where the platform file is absent. The profile still replays the managed baseline and seeds the delivery-alignment control row as described; the companion convention is documented in Data and migrations."} -->
+
 ## Customer diagnostic history preview
 
 Customer diagnostic history is a development-preview, default-off platform

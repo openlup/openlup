@@ -15,7 +15,7 @@ import { makeSubscription, now } from "./subscriptionFixtures.js";
 // The contract this file pins: the engine's status matrix is the managed SQL
 // guard `public.subscription_guard_status_transition`, restricted to the four
 // statuses the engine manages. The same pairs are asserted against the guard
-// itself in supabase/tests/subscription_status_transition_matrix_test.sql.
+// itself by the platform's pgTAP status-transition matrix test.
 // Change one side and the other must move in the same contribution.
 //
 // Edges the guard also admits, outside the engine's four statuses: the

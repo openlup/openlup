@@ -95,11 +95,11 @@ function row(onSettled = vi.fn(), returnPath = "/skomponuj-pakiet/platnosc", cov
 // own instances; this one serves every other test.
 const walletI18n = createInstance();
 void walletI18n.init({
-  lng: "pl",
-  fallbackLng: "pl",
+  lng: "zz",
+  fallbackLng: "zz",
   initAsync: false,
   interpolation: { escapeValue: false },
-  resources: { pl: { checkout: {
+  resources: { zz: { checkout: {
     step6: { walletOrDivider: "albo" },
     stripePay: {
       loadFailed: "Nie udało się wczytać formularza karty. Sprawdź połączenie i spróbuj ponownie.",
@@ -146,7 +146,7 @@ beforeEach(() => {
   capturedOnConfirm = null;
   mockUseLiveQuote
     .mockReset()
-    .mockReturnValue({ loading: false, error: null, quote: { totalGross: { amountMinor: 12900, currency: "PLN" } } });
+    .mockReturnValue({ loading: false, error: null, quote: { totalGross: { amountMinor: 12900, currency: "XTS" } } });
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -246,7 +246,7 @@ describe("WalletExpressRow", () => {
     expect(mockStart).toHaveBeenCalledWith(
       expect.objectContaining({
         checkoutQuoteExpectation: {
-          totalGross: { amountMinor: 12900, currency: "PLN" },
+          totalGross: { amountMinor: 12900, currency: "XTS" },
         },
       }),
       expect.any(Object),
@@ -380,7 +380,7 @@ describe("WalletExpressRow", () => {
       loading: false,
       error: null,
       quote: {
-        totalGross: { amountMinor: 12900, currency: "PLN" },
+        totalGross: { amountMinor: 12900, currency: "XTS" },
         promotionAcceptanceToken: "opaque.signed-token",
       },
     });

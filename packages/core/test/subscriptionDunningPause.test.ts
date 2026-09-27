@@ -30,8 +30,8 @@ import {
 // rung of the retry ladder pauses an active subscription, and the customer's
 // recovery resumes it. Nothing else in the engine suspends a live subscription
 // for a reason the owner did not choose. The managed SQL side of the same rule
-// is pinned by supabase/tests/subscription_dunning_open_without_retry_test.sql
-// (attempt 1 without a schedule stays open and active; attempt 4 expires and
+// is pinned by the platform's pgTAP test of a dunning case opened without a
+// retry schedule (attempt 1 stays open and active; attempt 4 expires and
 // pauses).
 
 const failedAt = "2026-06-10T11:00:00.000Z";
