@@ -110,6 +110,14 @@ transport protocols, pruning, submodule recursion and automatic maintenance. Res
 configuration before retrying; refusal diagnostics never print configured values
 or potentially credential-bearing keys.
 
+For `merge_group.checks_requested`, hosted attribution requires the public
+repository, a nonzero event base on `main`, and the event head/ref matching the
+actual queue checkout. The event's commit and tree identity must also match
+Git objects. Impact compares that complete event-base-to-group range; unknown,
+malformed or mismatched group identity refuses rather than borrowing a PR base.
+These structural checks establish attribution, not independent integration
+review or live queue activation.
+
 Generated output, whitespace, a review date or an unrelated paragraph cannot
 satisfy an affected section's obligation. A scoped no-impact explanation must
 be refreshed when its source delta or owner text changes. Its fingerprint binds

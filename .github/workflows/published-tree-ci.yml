@@ -1,21 +1,27 @@
 # The checks this tree runs on itself.
 #
-# Eight public checks, each carrying a falsifier: every proposed commit is signed off, the
-# tree compiles to its signed debt, it installs and clears its prebuild chain, its shipped tests
-# are executed, and its own inventory still matches the manifest that describes it. Nothing
-# here deploys or publishes; the database job creates a disposable local CLI stack.
+# Six required mechanical checks preserve the protected-main contract. Full root tests
+# and pgTAP run as independent raw diagnostics; the database job creates a disposable
+# local CLI stack. The optional ninth context admits current native review only after
+# the six required checks actually succeeded. Nothing here deploys or publishes.
+# The gitleaks release download is checksum-verified before use.
 #
 # The workflow stays product-name-neutral so a future rename does not churn CI. The current public
 # name is settled as OpenLup; neutrality here is an automation-maintenance choice, not indecision.
 #
-# This workflow is also carried by the private source checkout, so every one of the eight
-# public contexts applies the same trusted event-metadata fence directly. Repository visibility comes from GitHub's event context, never checked-out bytes.
+# This workflow is also carried by the private source checkout, so every mechanical context applies
+# the same trusted event-metadata fence directly. Optional native admission waits for all six actual
+# successes once explicitly activated. Repository visibility comes from GitHub's event context,
+# never checked-out bytes. A disabled admission job is preparation, not activation proof.
 
 name: Published Tree CI
 
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
   push:
     branches: [main]
 
@@ -23,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: published-tree-ci-${{ github.ref }}
+  group: published-tree-ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'merge_group' && github.sha || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -34,7 +40,7 @@ jobs:
   # scripts/dco-signoff-check.ts, a small local Git reader with no dependency installation.
   #
   # The first push uses GitHub's all-zero before value to select the one-parentless-root mode.
-  # Later main pushes and pull requests check their complete before/base..head range.
+  # Later main pushes, pull requests and merge groups check their complete event base..head range.
   # The checker refuses malformed or empty ranges and missing sign-offs in every mode.
   dco:
     name: dco
@@ -60,6 +66,27 @@ jobs:
           RANGE_BASE: ${{ github.event.pull_request.base.sha }}
           RANGE_HEAD: ${{ github.event.pull_request.head.sha }}
         run: npm run check:dco-signoff -- "$RANGE_BASE" "$RANGE_HEAD"
+      - name: Sign-off on every merge-group commit
+        if: github.event_name == 'merge_group'
+        env:
+          QUEUE_ACTION: ${{ github.event.action }}
+          RANGE_BASE: ${{ github.event.merge_group.base_sha }}
+          RANGE_HEAD: ${{ github.event.merge_group.head_sha }}
+          RANGE_BASE_REF: ${{ github.event.merge_group.base_ref }}
+          RANGE_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          [[ "$RANGE_BASE" =~ ^[0-9a-f]{40}$ && "$RANGE_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          test "$QUEUE_ACTION" = "checks_requested"
+          test "$RANGE_BASE_REF" = "refs/heads/main"
+          test "$RANGE_REF" = "$GITHUB_REF"
+          case "$RANGE_REF" in refs/heads/gh-readonly-queue/main/*) ;; *) exit 1 ;; esac
+          git check-ref-format "$RANGE_REF"
+          test "$RANGE_HEAD" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$RANGE_HEAD"
+          test "$RANGE_BASE" != "$RANGE_HEAD"
+          test "$RANGE_BASE" != "0000000000000000000000000000000000000000"
+          git merge-base --is-ancestor "$RANGE_BASE" "$RANGE_HEAD"
+          npm run check:dco-signoff -- "$RANGE_BASE" "$RANGE_HEAD"
       - name: Sign-off on every main push
         if: github.event_name == 'push'
         env:
@@ -192,6 +219,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          # Group documentation impact uses its event base across the complete batch ancestry.
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -208,7 +236,7 @@ jobs:
         run: node --experimental-strip-types packages/ui/smoke/neutrality.ts
       - name: Tree-wide neutrality shrink-only ratchet
         env:
-          NEUTRALITY_BASE_COMMIT: ${{ github.event.pull_request.base.sha || github.event.before }}
+          NEUTRALITY_BASE_COMMIT: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"
 
   gitleaks:
@@ -263,3 +291,42 @@ jobs:
         run: npm ci --prefer-offline --no-audit --fund=false
       - name: Every shipped pgTAP test against the owned managed baseline
         run: node scripts/public-ci-pgtap.mjs
+
+  native-review:
+    name: native-review
+    if: ${{ always() && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && github.event.repository.private == false && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    needs: [dco, typecheck, install-proof, test, self-check, gitleaks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Require six actual mechanical successes
+        env:
+          NEEDS_DCO: ${{ needs.dco.result }}
+          NEEDS_TYPECHECK: ${{ needs.typecheck.result }}
+          NEEDS_INSTALL_PROOF: ${{ needs.install-proof.result }}
+          NEEDS_TEST: ${{ needs.test.result }}
+          NEEDS_SELF_CHECK: ${{ needs.self-check.result }}
+          NEEDS_GITLEAKS: ${{ needs.gitleaks.result }}
+        run: |
+          for result in "$NEEDS_DCO" "$NEEDS_TYPECHECK" "$NEEDS_INSTALL_PROOF" "$NEEDS_TEST" "$NEEDS_SELF_CHECK" "$NEEDS_GITLEAKS"; do
+            if [ "$result" != "success" ]; then
+              echo "Native admission requires six actual mechanical successes." >&2
+              exit 1
+            fi
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Await exact-candidate native review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/agent-review-queue.mjs wait

@@ -38,7 +38,10 @@ Independent `test-full` runs unrestricted `npm test`; independent `pgtap` runs
 all supplied SQL tests against the committed managed baseline and ordered
 forwards with Supabase CLI 2.98.2. Their raw failures remain red. No dependencies
 on successful full-root diagnostics can prevent required core checks or pgTAP.
-Actions use full commit pins and jobs retain trusted event-metadata fences.
+Actions use full commit pins and jobs retain trusted event-metadata fences,
+including inherited merge-group validation and the optional `native-review`
+admission job. That job depends on the six required contexts, independently of
+the two raw diagnostic jobs; its activation remains the maintainer's decision.
 
 The [known-red record](public-ci-known-red.md) is diagnostic documentation, not
 an executable exception list or failure budget. New infrastructure failures,

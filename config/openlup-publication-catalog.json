@@ -74,6 +74,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/native-review-admission.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-packages.yml",
       "class": "public-output"
     },
@@ -2039,6 +2043,14 @@
     },
     {
       "path": "scripts/agent-review-hosted.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-queue.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-queue.test.ts",
       "class": "public-output"
     },
     {
@@ -18869,7 +18881,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18881,7 +18893,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-528ca830abc732d139e2772441b75719f7236311b10883d8685cafd3e75a338e"
+      "digest": "sha256-48db9f9763b4969c5e475f42ffd78a236fdf93d1d55e715a04147633680b0f8d"
     },
     {
       "path": "packages/core/package.json",

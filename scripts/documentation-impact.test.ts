@@ -242,6 +242,13 @@ function hostedEvent(root: string, base: string, eventName = "push", extra: Reco
   writeFileSync(eventPath, JSON.stringify({ repository: { full_name: "openlup/openlup", private: false }, before: base, after: head, ...extra }));
   return { GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventPath, GITHUB_SHA: head, PATH: process.env.PATH };
 }
+function mergeGroupEvent(root: string, base: string, patch: Record<string, unknown> = {}): NodeJS.ProcessEnv {
+  const head = git(root, "rev-parse", "HEAD"); const ref = "refs/heads/gh-readonly-queue/main/pr-1-fixture";
+  return { ...hostedEvent(root, base, "merge_group", { action: "checks_requested", merge_group: {
+    base_sha: base, base_ref: "refs/heads/main", head_sha: head, head_ref: ref,
+    head_commit: { id: head, tree_id: git(root, "rev-parse", "HEAD^{tree}") }, ...patch,
+  } }), GITHUB_REF: ref };
+}
 
 describe("strict documentation base attribution", () => {
   it.each(["rewrite", "header", "included-header", "remote-alias"])("refuses effective %s configuration before public fallback transport", (setting) => {
@@ -284,6 +291,47 @@ describe("strict documentation base attribution", () => {
     expect(resolveDocumentationBase(root, { env }).provenance).toBe("pull-request");
     git(root, "checkout", "-q", "--detach", source); env.GITHUB_SHA = source;
     expect(() => resolveDocumentationBase(root, { env })).toThrow(/base\/head merge/);
+  });
+  it("attributes a complete merge batch to its exact event base, head, ref and checkout", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    write(root, "src/domains/demo/other.ts", "export const other = 2;\n"); const head = commit(root);
+    const env = mergeGroupEvent(root, base);
+    expect(resolveDocumentationBase(root, { base: head, env })).toEqual({ base, head, provenance: "merge-group" });
+    expect(fetchMock.calls).toEqual([]);
+    write(root, SOURCE, "export const value = 3;\n"); commit(root);
+    expect(() => resolveDocumentationBase(root, { env })).toThrow(/checkout identity/);
+  });
+  it.each([
+    { base_sha: undefined }, { base_sha: "invalid" }, { base_sha: "0".repeat(40) },
+    { base_ref: undefined }, { base_ref: "refs/heads/other" },
+    { head_sha: undefined }, { head_sha: "f".repeat(40) },
+    { head_ref: undefined }, { head_ref: "refs/heads/main" },
+    { head_commit: undefined }, { head_commit: { id: "f".repeat(40), tree_id: "a".repeat(40) } },
+  ])("refuses missing or malformed merge-group attribution %j before transport", (patch) => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    expect(() => resolveDocumentationBase(root, { env: mergeGroupEvent(root, base, patch) })).toThrow(/merge-group checkout/);
+    expect(fetchMock.calls).toEqual([]);
+  });
+  it("refuses missing group/action/ref, wrong tree, empty range and unrelated base", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); const head = commit(root);
+    const env = mergeGroupEvent(root, base);
+    const original = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH!, "utf8"));
+    for (const patch of [{ action: undefined }, { action: "destroyed" }, { merge_group: undefined }]) {
+      writeFileSync(env.GITHUB_EVENT_PATH!, JSON.stringify({ ...original, ...patch }));
+      expect(() => resolveDocumentationBase(root, { env })).toThrow(/merge-group checkout/);
+    }
+    writeFileSync(env.GITHUB_EVENT_PATH!, JSON.stringify(original));
+    for (const patch of [{ GITHUB_REF: undefined }, { GITHUB_REF: "refs/heads/gh-readonly-queue/main/pr-2-fixture" }])
+      expect(() => resolveDocumentationBase(root, { env: { ...env, ...patch } })).toThrow(/merge-group checkout/);
+    const wrongTree = mergeGroupEvent(root, base, { head_commit: { id: head, tree_id: "f".repeat(40) } });
+    expect(() => resolveDocumentationBase(root, { env: wrongTree })).toThrow(/merge-group checkout/);
+    expect(() => resolveDocumentationBase(root, { env: mergeGroupEvent(root, head) })).toThrow(/merge-group checkout/);
+    const badRef = "refs/heads/gh-readonly-queue/main/../fixture";
+    expect(() => resolveDocumentationBase(root, { env: { ...mergeGroupEvent(root, base, { head_ref: badRef }), GITHUB_REF: badRef } })).toThrow(/ref is malformed/);
+    git(root, "checkout", "--orphan", "unrelated"); git(root, "rm", "-rf", "."); write(root, "other.txt", "other\n"); const other = commit(root);
+    git(root, "checkout", "-q", "--detach", head);
+    expect(() => resolveDocumentationBase(root, { env: mergeGroupEvent(root, other) })).toThrow(/not an observed ancestor/);
+    expect(fetchMock.calls).toEqual([]);
   });
   it("fetches a missing shallow CI base with no credentials, refs or FETCH_HEAD; failure refuses", () => {
     const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);

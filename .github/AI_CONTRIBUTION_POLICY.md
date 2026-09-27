@@ -110,6 +110,25 @@ accepted outcomes, regressions, confirmed and false findings, lead time and
 total cost; code and pull-request volume are not quality targets. This
 perspective never waives existing controls or acceptance evidence.
 
+The approved [native queue follow-up](../docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
+adds an optional GitHub admission transport, not another reviewer host. The
+active supervisor retains actual native source-review observations and submits
+them for the exact hosted run and attempt. A queue group with the same complete
+tree as the reviewed source needs no new review; a different tree requires two
+fresh independent integration reviewers with unchanged approved criteria and
+separate group identity. Unknown or sensitive interactions cannot be excused by
+filenames, path separation or an author-written approval. Nonqueue base
+integration still requires fresh full-scope review under the existing protocol.
+
+Activation requires separate explicit maintainer approval of the exact settings
+and live refusal proof. A disabled or skipped admission job is not that proof.
+The six mechanical checks remain required; active queue admission adds a seventh
+required `native-review` context. Its success establishes freshness at admission,
+not a guarantee that evidence remains unexpired at the eventual merge. GitHub
+Actions source attribution does not isolate a workflow against a malicious
+writer able to spoof the same context. Native receipts remain process evidence;
+neither transport nor queue admission grants merge, release or settings authority.
+
 ## Why the current bar is where it is
 
 Review capacity is the scarce resource in a small project, and generated volume

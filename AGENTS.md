@@ -106,6 +106,23 @@ session receipts are process evidence, not cryptographic remote attestation or
 hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
+The optional [native queue admission](docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
+keeps reviewers in this same task and subscription. When explicitly activated,
+the supervisor supplies current source evidence for the exact CI run/attempt,
+then observes the queue's actual base, head, tree and source identity. An entire
+group tree equal to the reviewed source tree needs no additional review. A
+different tree needs two fresh independent full integration reviews under the
+same approved criteria; filenames or an author statement cannot establish
+noninteraction. Keep the source branch unchanged and record group evidence
+separately. The existing nonqueue base-integration and repair-budget rules remain.
+The supervisor creates the bounded transport input with
+`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`,
+submits it through the main-only workflow within authorized delivery, and waits
+for actual admission in this conversation. The script does not dispatch or
+authorize delivery. Missing evidence remains blocked; no maintainer handoff is
+needed for routine review. Queue rebuild recovery is bounded at two retries and
+does not reset repair cycles. Foundation code does not activate queue settings.
+
 Run `npm run oss:published-tree -- --policy` during implementation. Its report
 names the owner section for each changed source responsibility. Update that
 section with the code, or record the scoped, delta-bound no-impact explanation
