@@ -47,6 +47,31 @@ Copying a platform component or page into adopter source is source ejection. The
 
 ## Change and verification rules
 
+Each implementation task uses a dedicated worktree and branch, for Claude and
+Codex alike. From a coordination checkout, automatically create the task
+worktree with the configured repository helper before editing, installing or
+testing, then operate in that worktree. Recognize an already assigned task
+worktree and continue there; do not create another for the same task. Keep the
+coordination checkout clean and leave other tasks' worktrees, branches and
+processes alone. Read-only reviewers do not need their own worktree.
+
+Keep one compact task record of outcome, scope, authority, acceptance, risk and
+execution/proof plan. A small task needs no separate planning ceremony; a
+separate specification is justified by an ambiguous or durable contract.
+Execution notes may evolve, but approved goals, guarantees and authority cannot
+silently change. Ask whether removing the cause, using an existing seam or a
+direct change delivers the result faster with less maintenance and stronger
+evidence before adding an abstraction, dependency or gate. Explain a concrete
+benefit over the nearest simpler alternative when one exists; do not invent an
+alternatives essay for obvious work. Complexity findings need a concrete cost
+or unnecessary behaviour; style preferences do not block. Existing controls
+and acceptance evidence remain required.
+
+Follow the [AI contribution policy](../../.github/AI_CONTRIBUTION_POLICY.md) for active
+human-read admission. The [autonomous delivery intent](plans/autonomous-reviewed-delivery-intent.md)
+and [plan](plans/autonomous-reviewed-delivery.md) describe a pending
+replacement, not active unattended admission.
+
 Keep changes small, test the affected public contract, and make failures actionable. An adapter must demonstrate its declared capabilities and refusal behaviour without relying on live provider access.
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.
 

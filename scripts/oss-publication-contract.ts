@@ -24,6 +24,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "packages/core/scripts/release-bundle.ts", "packages/core/scripts/release-check.ts",
   "packages/core/test/assertNoZeroCoverage.ts", "packages/core/vitest.config.ts",
   "packages/ui/smoke/neutrality.ts",
+  "scripts/agent-review-gate.mjs", "scripts/agent-review-gate.test.ts", "scripts/agent-review-hook.mjs",
   "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
   "scripts/oss-consume-engine.test.ts", "scripts/oss-consume-github-transport.test.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",

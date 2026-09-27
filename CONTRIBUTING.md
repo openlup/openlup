@@ -19,6 +19,19 @@ alone does not establish that an install or feature works.
 
 ## Contribution shape
 
+Use a dedicated task worktree and branch for implementation; the coordination
+checkout stays clean. Claude and Codex create that isolation automatically with
+the configured repository helper before task edits, installs or tests. Continue
+in an already assigned task worktree and leave other tasks' checkouts alone.
+
+Record the outcome, scope, authority, acceptance, risk and execution/proof plan
+compactly. Small tasks need no separate planning ceremony or specification.
+Consider removing the cause or reusing an existing seam before adding a new
+abstraction; explain a concrete benefit over a simpler alternative when needed.
+Keep the accepted goal and guarantees fixed while execution notes evolve.
+The [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) owns active
+admission and the conditions for delegating review.
+
 Keep a change focused and explain its public contract, compatibility boundary,
 and test evidence. Add or update tests for the behaviour you change. Provider
 and runtime integrations must use documented ports and demonstrate both their
@@ -194,6 +207,20 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 ## Pull requests
+
+The [autonomous delivery plan](docs/platform/plans/autonomous-reviewed-delivery.md)
+is preparation, not active unattended admission. The human-read and explicit
+PR-opening rules in the AI policy remain in force until the maintainer activates
+protected controller and hosted enforcement after refusal tests pass.
+`scripts/agent-review-gate.mjs` verifies authenticated receipt evidence; it does
+not launch reviewers, observe CI or establish a protected identity by itself.
+The hook adapter must be invoked by a pinned protected installation with trusted
+inputs. Its availability does not change the active policy or existing checks.
+
+Reuse the compact task record in the PR description instead of writing another
+manual. Explain material deviations, evidence and remaining limitations. Review
+must assess correctness, approved scope and whether unnecessary complexity adds
+maintenance cost; findings need a concrete mechanism and effect, not a quota.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned
