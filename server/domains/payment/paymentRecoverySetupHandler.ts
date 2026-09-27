@@ -6,7 +6,7 @@ import {
 } from "../../_lib/bff/response.js";
 import { customerCauseForFailureClass } from "@openlup/core/payment";
 
-import type { DunningCaseDisplayFacts } from "../../adapters/dunningFailureClassPort.js";
+import type { DunningCaseDisplayFacts } from "../subscription/subscriptionDunningDispatchPorts.js";
 
 import {
   PAYMENT_RECOVERY_CONTRACT_VERSION,

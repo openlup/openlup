@@ -115,6 +115,15 @@ export interface DunningFailureClassPort {
   resolve(caseId: string, signal: AbortSignal): Promise<string | null>;
 }
 
+// caseId -> what a customer-facing surface may say about one dunning case: the
+// class behind the refusal and the money it left unpaid. Display-only and
+// fail-soft, like the class itself: an unreadable row answers nulls.
+export interface DunningCaseDisplayFacts {
+  failureClass: string | null;
+  amountMinor: number | null;
+  currency: string | null;
+}
+
 export interface DunningPaymentFailedEmailInput {
   to: string;
   firstName: string | null;

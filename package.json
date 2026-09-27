@@ -6,6 +6,7 @@
   "type": "module",
   "imports": {
     "#deployment-analytics": "./src/lib/analytics/noop.ts",
+    "#application-domains": "./src/lib/exampleApplicationDomains.ts",
     "#email-presentation": "./src/domains/communications/email/exampleEmailPresentation.ts",
     "#email-registry-projection": "./src/domains/communications/exampleEmailRegistryProjection.ts",
     "#commerce-email-content": "./src/domains/commerce/emails/exampleCommerceEmailContent.ts",
@@ -40,9 +41,10 @@
     "check:dco-signoff": "node --experimental-strip-types scripts/dco-signoff-check.ts",
     "guard:client-secret-boundary": "node --experimental-strip-types scripts/check-client-secret-boundary.ts",
     "guard:public-reference-site-routes": "node scripts/site-routes.mjs --public-reference",
+    "lint": "eslint .",
     "oss:published-tree": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
     "packages:check": "node --experimental-strip-types scripts/packages/packages-check.ts",
-    "test": "node scripts/run-vitest.mjs run scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/domains/accounting server/domains/channels server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/shared src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/orderRef.test.ts src/public-reference"
+    "test": "node scripts/run-vitest.mjs run scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/domains/accounting server/domains/channels server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/shared src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/public-reference"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.5.7",

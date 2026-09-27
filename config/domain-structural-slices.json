@@ -29,6 +29,7 @@
             "server/domains/commerce/checkoutRecoveryStartHandler.ts",
             "server/domains/commerce/adminCheckoutPaymentLinkHandler.ts",
             "server/adapters/managed/commerce/checkoutPaymentLinkTokenStore.ts",
+            "server/domains/commerce/checkoutPaymentLinkTokenStorePort.ts",
             "server/domains/commerce/checkoutRecoveryStartPort.ts",
             "server/domains/commerce/checkoutRecoveryOrderPort.ts",
             "server/domains/commerce/checkoutRecoverySubscriptionContextPort.ts",

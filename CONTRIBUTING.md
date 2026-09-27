@@ -76,13 +76,21 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `oss:published-tree`, `packages:check`,
-and `test`.
+`guard:public-reference-site-routes`, `lint`, `oss:published-tree`,
+`packages:check`, and `test`.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
 build, scoped tests, DCO check, and publication checks from this inventory.
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
+
+`npm run lint` runs ESLint over the tree, including the import boundaries in
+[eslint.config.js](eslint.config.js): a package under `packages/` imports
+nothing outside its own directory, other code reaches a package only through
+the subpaths its `exports` declare, and domain code under `src/domains` and
+`server/domains` imports no provider SDK and no adapter, infrastructure,
+runtime or route code. Published Tree CI does not run it yet, so run it before
+you push.
 
 The projected `npm test` command owns the canonical whole-directory public test
 scope, and [Published Tree CI](.github/workflows/published-tree-ci.yml) invokes

@@ -31,7 +31,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/public-reference/grant-operator.mjs", "scripts/public-reference/setup-subscription.mjs",
   "scripts/public-reference/verify-subscription.mjs",
   "scripts/run-vitest.mjs", "scripts/site-routes.mjs", "server/runtime/public-reference/serve.ts",
-  "src/lib/orderRef.test.ts",
+  "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts",
   "vitest.config.ts",
 ] as const;
 export const PUBLIC_WITHHELD_ABSENCE_PROBES = ["scripts/oss-published-tree-check.test.ts -> config/oss-core-readiness-blockers.json", "scripts/oss-published-tree-check.test.ts -> config/oss-split-rehearsal-baseline.json"] as const;
