@@ -5,7 +5,15 @@
  * as covered. With no Supabase env configured, composeAdminCatalog returns null
  * and the handler short-circuits with UPSTREAM_UNAVAILABLE before any DB call.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The public route policy (server/_lib/publicDeploymentPolicies.ts) refuses
+// every mutation route until an adopter supplies its own; this file tests the
+// route behind an adopter policy that admits it.
+vi.mock("#deployment-route-policy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#deployment-route-policy")>()),
+  enforceDeploymentRoutePolicy: () => true,
+}));
 import type { VercelRequest } from "../../../../_lib/types/vercel.js";
 import { createResponse } from "../../../../../tests/helpers/catalogRouteResponse.js";
 import handler from "./set-price.js";
