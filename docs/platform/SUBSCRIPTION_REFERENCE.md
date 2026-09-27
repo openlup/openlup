@@ -8,7 +8,8 @@ subscription behaviour without an adopter repository or external providers.
 ## Scope and prerequisites
 
 Use Node 24 and the npm version in `package.json`, Docker, and the Supabase CLI.
-The selected profile uses the managed Supabase baseline shipped in this tree.
+The selected profile uses the managed Supabase baseline and alignment seed
+forward shipped in this tree.
 It does not mix that schema with the separate portable PostgreSQL migration lane.
 The default public build remains the small static reference.
 
@@ -62,16 +63,18 @@ installation; it is not a reset command.
 
 ## Delivery-alignment prerequisite
 
-Setup seeds the delivery-alignment singleton in `auto_align` mode even when an
-older installation already has its synthetic catalog. Rerunning setup preserves
+Setup applies the managed alignment seed forward after the baseline, even when
+an older installation already has its synthetic catalog. The forward inserts
+the singleton in `auto_align` mode; the matching reference seed then is a no-op. Rerunning setup preserves
 an existing mode choice. HTTP verification checks this prerequisite before both
 a new journey and restart proof: a missing singleton or a mode other than
 `auto_align` fails loudly. If the row is missing, rerun the owned setup; if its
 mode was deliberately changed, restore `auto_align` through the local operator
 configuration before verification. See the
 [known managed-baseline gap](DATA_AND_MIGRATIONS.md#known-managed-baseline-alignment-gap).
-This seed does not install a forward migration or demonstrate a late-delivery
-journey; those remain separate acceptance stages.
+This managed-only forward has no portable twin. Applying it and verifying its
+row do not demonstrate a complete late-delivery journey; that remains a separate
+acceptance stage.
 
 ## Scoped operator read
 

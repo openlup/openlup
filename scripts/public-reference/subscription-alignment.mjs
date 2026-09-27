@@ -1,4 +1,5 @@
-// Control-row prerequisite for the owned disposable subscription reference.
+// Compatibility seed for the owned disposable subscription reference.
+// Matches the managed forward; after it runs, this is a no-op that preserves operator choices.
 export const subscriptionAlignmentSeedSql = `
 INSERT INTO public.subscription_delivery_alignment_control (singleton, mode)
 VALUES (true, 'auto_align')

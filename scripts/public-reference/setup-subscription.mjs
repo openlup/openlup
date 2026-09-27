@@ -32,6 +32,7 @@ const ports = { shadow: portBase, api: portBase + 1, db: portBase + 2, studio: p
 const markerPath = join(directory, "subscription-owner.json");
 const configPath = join(directory, ...OWNED_SUPABASE_CONFIG);
 const baseline = join(root, "supabase/migrations/00000000000000_platform_schema_baseline.sql");
+const alignmentForward = join(root, "supabase/migrations/20260927131453_seed_subscription_delivery_alignment_control.sql");
 const prereqs = join(root, "scripts/public-reference/subscription-prereqs.sql");
 const seed = join(root, "scripts/public-reference/subscription-seed.sql");
 const instanceKey = "public_reference_subscription_instance";
@@ -135,10 +136,12 @@ try {
   const schemaExists = sql(password, "", ["-Atqc", "SELECT to_regclass('public.clients') IS NOT NULL"]).trim();
   if (schemaExists === "f") sql(password, readFileSync(baseline), ["-1"]);
   else if (schemaExists !== "t") fail("Owned schema readback failed");
+  // Apply the managed prerequisite on fresh installs and owned setup reruns.
+  sql(password, readFileSync(alignmentForward), ["-1"]);
   const seeded = sql(password, "", ["-Atqc", "SELECT EXISTS (SELECT 1 FROM public.catalog_products WHERE slug = 'p5-neutral-refill')"]).trim();
   if (seeded === "f") sql(password, readFileSync(seed), ["-1"]);
   else if (seeded !== "t") fail("Owned seed readback failed");
-  // This prerequisite must also run when the catalog seed already exists.
+  // This compatibility seed is a no-op after the managed forward.
   // Never reset an operator's existing alignment mode on a setup rerun.
   sql(password, subscriptionAlignmentSeedSql, ["-1"]);
   if (marker.phase !== "sealed") {
