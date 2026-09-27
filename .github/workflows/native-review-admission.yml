@@ -1,0 +1,40 @@
+# Transport only: native reviewers stay in the active task and subscription.
+# This main-only workflow never checks out or executes the reviewed candidate.
+name: Native Review Receipt
+on:
+  workflow_dispatch:
+    inputs:
+      receipt:
+        description: Bounded native review state and exact target run/attempt
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  receipt:
+    if: ${{ github.event.repository.private == false && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Validate exact native source and integration evidence
+        id: validate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_REVIEW_RECEIPT: ${{ inputs.receipt }}
+        run: node scripts/agent-review-queue.mjs submit
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.validate.outputs.artifact }}
+          path: receipt.json
+          if-no-files-found: error
+          retention-days: 1

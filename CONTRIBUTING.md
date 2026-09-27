@@ -99,6 +99,52 @@ by pre-push, but this process adds no general test-result cache. Prove actual
 CLI and hook refusal paths in two dogfooding passes, batch material repairs, and
 repeat affected scenarios before claiming live activation.
 
+Published Tree CI also accepts `merge_group.checks_requested`. The six mechanical
+jobs run against the queue's actual group checkout. DCO checks the complete
+event-base-to-group range, including the synthetic tip; missing sign-off fails
+without an exemption. Documentation impact uses the event's exact group base,
+head, ref and tree, rather than inferring a PR head or using a stale local base.
+The configured local verification mirror must exercise these same steps.
+
+The optional seventh `native-review` job is active only when the separately
+approved repository variable `OPENLUP_NATIVE_QUEUE` is `enabled`. It runs after
+all six actual mechanical successes and waits at most twenty minutes for a
+receipt targeting its current run and attempt. Missing, stale, incomplete or
+mismatched evidence fails. Turning on that variable, requiring the context and
+enabling the queue are separate settings actions; merging the foundation does
+not perform them. A skipped inactive job is not evidence of admission.
+
+The supervisor obtains source reviews through fresh native agents in the same
+task, then selects the observed Published Tree CI run, attempt and PR number.
+From the task worktree, with `RUN`, `ATTEMPT` and `PR` set to those computed
+values and `source-session.json` holding complete native state, create the
+transport input:
+
+```bash
+node scripts/agent-review-queue.mjs input "$RUN" "$ATTEMPT" "$PR" \
+  source-session.json > native-review-input.json
+gh workflow run native-review-admission.yml --ref main --json < native-review-input.json
+```
+
+The second command is a GitHub write and requires the task's delivery authority.
+The input command only creates JSON; it does not dispatch. For a queue tree that
+differs from the reviewed source tree, append `group-session.json` to the input
+command. That state carries two fresh full integration reviews of the exact
+group base, head and tree with the same approved criteria. Do not copy a source
+PASS or change the source branch to manufacture group evidence. Entire-tree
+equality needs no additional review. The supervisor submits the receipt and
+waits for actual CI admission within the same conversation; the maintainer does
+not move prompts or reports. Compact input is limited to 56,000 bytes; oversize
+evidence is refused, never truncated.
+
+The main-only dispatch reads candidates as Git objects and uploads a validated
+artifact; it runs no model and executes no candidate code. Required admission
+rechecks artifact provenance, native evidence expiry, the PR head and live
+queue identity before success. See the [queue follow-up plan](docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
+for the one-source pilot, bounded rebuild recovery and activation falsifiers.
+Freshness is checked at admission, not guaranteed at the later merge; same-name
+checks from a malicious writer remain outside this process-evidence boundary.
+
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,

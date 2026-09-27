@@ -123,15 +123,48 @@ describe("what the workflow may not contain", () => {
 });
 
 describe("the workflow stays in step with what it claims to run", () => {
-  it("exposes exactly the six public contexts and gates each from trusted event metadata", () => {
+  it("runs every required context for main merge groups and isolates their concurrency by event and SHA", () => {
+    expect(workflow).toContain("  merge_group:\n    types: [checks_requested]\n    branches: [main]\n");
+    expect(workflow).toContain("group: published-tree-ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'merge_group' && github.sha || '' }}");
+    expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+    const selfCheck = workflow.split("  self-check:\n")[1]?.split("\n  gitleaks:")[0];
+    expect(selfCheck).toContain("fetch-depth: 0");
+    expect(selfCheck).toContain("run: npm run oss:published-tree -- --policy");
+    expect(selfCheck).toContain("run: npm run oss:published-tree -- --inventory");
+  });
+  it("exposes exactly six mechanical contexts plus optional native admission with trusted event fences", () => {
     const jobs = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map((match) => match[1]);
-    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks"]);
+    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "native-review"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
-    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(jobs.length);
-    for (const job of jobs) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
+    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(6);
+    for (const job of jobs.slice(0, 6)) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
     expect(workflow.replace("    name: dco", "    name: dco-renamed")).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
     expect(workflow.replace(predicate, `${predicate.slice(0, -3)} && false }}`)).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
+  });
+  it("native admission uses trusted main and refuses every non-success mechanical result", () => {
+    const admission = workflow.split("  native-review:\n")[1]!;
+    expect(admission).toContain("always() && vars.OPENLUP_NATIVE_QUEUE == 'enabled'");
+    expect(admission).toContain("github.event.repository.private == false");
+    expect(admission).toContain("github.event_name == 'merge_group'");
+    expect(admission).toContain("github.event_name == 'pull_request' && github.event.pull_request.draft == false");
+    expect(admission).toContain("github.event.pull_request.user.login != 'dependabot[bot]'");
+    expect(admission).toContain("needs: [dco, typecheck, install-proof, test, self-check, gitleaks]");
+    expect(admission).toContain("timeout-minutes: 25");
+    expect(admission).toContain("actions: read\n      contents: read\n      pull-requests: read");
+    expect(admission).not.toMatch(/(?:actions|contents|pull-requests): write/u);
+    expect(admission).toContain("ref: main\n          fetch-depth: 0\n          persist-credentials: false");
+    expect(admission).toContain("run: node scripts/agent-review-queue.mjs wait");
+    expect(admission).not.toContain("npm ci");
+    const command = admission.split("        run: |\n")[1]?.split("      - uses:")[0]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
+    expect(command).toBeTruthy();
+    const names = ["NEEDS_DCO", "NEEDS_TYPECHECK", "NEEDS_INSTALL_PROOF", "NEEDS_TEST", "NEEDS_SELF_CHECK", "NEEDS_GITLEAKS"];
+    const successes = Object.fromEntries(names.map((name) => [name, "success"]));
+    const run = (patch = {}) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { env: { ...process.env, ...successes, ...patch }, encoding: "utf8", timeout: 5000 });
+    expect(run().status).toBe(0);
+    for (const name of names) for (const result of ["skipped", "failure", "cancelled", ""]) {
+      const refused = run({ [name]: result }); expect(refused.status).toBe(1); expect(refused.stderr).toContain("six actual mechanical successes");
+    }
   });
 
   it("holds every pull request to the sign-off the contributing document promises", () => {
@@ -169,6 +202,47 @@ describe("the workflow stays in step with what it claims to run", () => {
       expect(run(descendant, descendant).status).toBe(1);
       expect(run("0".repeat(40), descendant).status).toBe(2);
       expect(run("invalid", descendant).status).toBe(2);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  it("checks the actual group DCO range and refuses unsigned contributions, unsigned group tips and event drift", () => {
+    const root = mkdtempSync(join(tmpdir(), "public-queue-dco-"));
+    const environment = { ...process.env, GIT_CONFIG_GLOBAL: "", GIT_CONFIG_SYSTEM: "", GIT_CONFIG_NOSYSTEM: "1" };
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: root, env: environment, encoding: "utf8" }).trim();
+    const step = workflow.split("      - name: Sign-off on every merge-group commit\n")[1]?.split("      - name: Sign-off on every main push\n")[0];
+    const command = step?.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
+    expect(command).toBeTruthy();
+    expect(step).toContain("RANGE_BASE: ${{ github.event.merge_group.base_sha }}");
+    expect(step).toContain("RANGE_HEAD: ${{ github.event.merge_group.head_sha }}");
+    try {
+      writeFileSync(join(root, "dco-signoff-check.ts"), readFileSync(join(ROOT, "scripts/dco-signoff-check.ts")));
+      writeFileSync(join(root, "package.json"), JSON.stringify({ type: "module", scripts: { "check:dco-signoff": "node --experimental-strip-types dco-signoff-check.ts" } }));
+      git("init", "--quiet", "--initial-branch=main"); git("add", "."); git("commit", "--quiet", "--no-gpg-sign", "-s", "-m", "baseline");
+      const base = git("rev-parse", "HEAD"); let serial = 0;
+      const group = (sourceSigned: boolean, mergeSigned: boolean) => {
+        serial += 1; const topic = `topic-${serial}`;
+        git("checkout", "-qb", topic, base);
+        git("commit", "--quiet", "--allow-empty", "--no-gpg-sign", ...(sourceSigned ? ["-s"] : []), "-m", "first contribution");
+        git("commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-s", "-m", "signed tip contribution");
+        git("checkout", "-qb", `group-${serial}`, base);
+        git("merge", "--quiet", "--no-ff", "--no-gpg-sign", ...(mergeSigned ? ["--signoff"] : []), "-m", "Queue group", topic);
+        return git("rev-parse", "HEAD");
+      };
+      const ref = "refs/heads/gh-readonly-queue/main/pr-1-fixture";
+      const run = (head: string, patch: Record<string, string> = {}) => spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], {
+        cwd: root, env: { ...environment, QUEUE_ACTION: "checks_requested", RANGE_BASE: base, RANGE_HEAD: head,
+          RANGE_BASE_REF: "refs/heads/main", RANGE_REF: ref, GITHUB_REF: ref, GITHUB_SHA: head, ...patch }, encoding: "utf8", timeout: 20_000,
+      });
+      const signed = group(true, true); const pass = run(signed);
+      expect(pass.status).toBe(0); expect(pass.stdout).toContain("- commits read: 3");
+      for (const patch of [{ QUEUE_ACTION: "destroyed" }, { RANGE_BASE: "" }, { RANGE_BASE: "invalid" }, { RANGE_BASE: "0".repeat(40) },
+        { RANGE_BASE: signed }, { RANGE_HEAD: "f".repeat(40) }, { RANGE_BASE_REF: "refs/heads/other" },
+        { RANGE_REF: "refs/heads/main" }, { GITHUB_REF: "refs/heads/gh-readonly-queue/main/pr-2-fixture" }, { GITHUB_SHA: base }])
+        expect(run(signed, patch).status).not.toBe(0);
+      const unsignedContribution = run(group(false, true));
+      expect(unsignedContribution.status).toBe(1); expect(unsignedContribution.stdout).toContain("without a sign-off: 1");
+      const unsignedGroup = run(group(true, false));
+      expect(unsignedGroup.status).toBe(1); expect(unsignedGroup.stdout).toContain("without a sign-off: 1");
+      expect(run(signed).status).not.toBe(0); // Event head no longer matches the actual checkout.
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 

@@ -57,6 +57,26 @@ function seed(root: string): string {
 }
 
 describe("documentation CLI on the bare public runtime", () => {
+  it("checks a merge group's event range on the bare runtime and refuses stale event refs", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "documentation-queue-cli-"));
+    try {
+      const checkout = join(temporary, "checkout"); mkdirSync(checkout); const base = seed(checkout);
+      write(checkout, "src/domains/demo/main.ts", "export const value = 2;\n");
+      write(checkout, "README.md", readFileSync(join(checkout, "README.md"), "utf8").replace("preserves replay safety", "preserves replay safety and refuses reordered events"));
+      const head = commit(checkout); const ref = "refs/heads/gh-readonly-queue/main/pr-1-fixture"; const event = join(temporary, "event.json");
+      writeFileSync(event, JSON.stringify({ repository: { full_name: "openlup/openlup", private: false }, action: "checks_requested",
+        merge_group: { base_sha: base, base_ref: "refs/heads/main", head_sha: head, head_ref: ref,
+          head_commit: { id: head, tree_id: git(checkout, ["rev-parse", "HEAD^{tree}"]) } } }));
+      const env = { ...process.env, GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: "merge_group", GITHUB_REF: ref, GITHUB_SHA: head, GITHUB_EVENT_PATH: event };
+      const execute = (patch = {}) => spawnSync(process.execPath, ["--experimental-strip-types", ENTRYPOINT, "--policy", "--docs-base", head], {
+        cwd: checkout, encoding: "utf8", env: { ...env, ...patch }, timeout: 30_000,
+      });
+      expect(existsSync(join(checkout, "node_modules"))).toBe(false);
+      const valid = execute(); expect(valid.status).toBe(0); expect(valid.stderr).toBe(""); expect(valid.stdout).toContain(`${base} (merge-group)`);
+      const stale = execute({ GITHUB_REF: "refs/heads/gh-readonly-queue/main/pr-2-fixture" });
+      expect(stale.status).toBe(1); expect(stale.stderr).toContain("merge-group checkout");
+    } finally { rmSync(temporary, { recursive: true, force: true }); }
+  });
   it("runs in a shallow checkout without node_modules, enforces source impact and trusts hosted attribution", () => {
     const temporary = mkdtempSync(join(tmpdir(), "documentation-cli-"));
     try {

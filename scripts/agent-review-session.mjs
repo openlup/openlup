@@ -82,6 +82,22 @@ export async function captureSessionCandidate(cwd, base) {
   return { base, head, tree, clean, workingDigest: digest([...actual.values()]), indexDigest: digest({ index, flags: flags.sort() }), changedPaths };
 }
 
+/** Read a committed candidate as data, without checking it out or executing its
+ * configuration. Hosted admission must not run a candidate with write tokens.
+ * The reconstructed clean index uses the same canonical digests as local review.
+ */
+export async function captureCommittedReviewCandidate(cwd, base, head) {
+  const graph = await verifyReviewObjectGraph(cwd, { base, head });
+  const entries = reviewTreeEntries(graph, graph.headTree).map(({ path, mode, object }) => ({ path, mode, object })).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const before = new Map(reviewTreeEntries(graph, graph.baseTree).map(entry => [entry.path, entry]));
+  const after = new Map(entries.map(entry => [entry.path, entry]));
+  const changedPaths = [...new Set([...before.keys(), ...after.keys()])].sort().filter(path => before.get(path)?.object !== after.get(path)?.object || before.get(path)?.mode !== after.get(path)?.mode);
+  paths(entries.map(entry => entry.path));
+  const index = entries.map(entry => `${entry.mode} ${entry.object} 0\t${entry.path}`).sort();
+  const flags = entries.map(entry => `H ${entry.path}`).sort();
+  return { base, head, tree: graph.headTree, clean: true, workingDigest: digest(entries), indexDigest: digest({ index, flags }), changedPaths };
+}
+
 function validateIntent(intent) {
   exact(intent, ['risk', 'scope', 'criteria', 'requiredRoles'], 'approved intent');
   demand(['prose', 'behavior', 'unknown'].includes(intent.risk), 'risk is invalid'); paths(intent.scope); text(intent.criteria, 'criteria', 64 * 1024);
