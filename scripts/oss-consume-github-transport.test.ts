@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
-import { createSourceReleaseContract, deriveSourceReleaseContract, writeDescendantSourceReleaseReceipt, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
+import { createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, writeDescendantSourceReleaseReceipt, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
 import { assertDraft, assertNextPreview, authenticatedIdentity, previewInputs, previousPreview } from "./source-preview-release.ts";
 
 const digest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -430,8 +430,8 @@ const SYNTHETIC_TREE: Record<string, string> = {
   "README.md": "public root\n",
   "docs/guide.md": "synthetic guide\n",
   "config/openlup-policy-registry.json": json({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "synthetic-readme", owners: ["README.md"] }] }),
-  "config/platform-migration-manifest.json": json({ synthetic: "manifest" }),
-  "db/platform/migrations/0001_synthetic.sql": "select 1;\n",
+  "config/platform-migration-manifest.json": json({ schemaVersion: 1, baseline: { file: "db/platform/migrations/00000000000000_platform_baseline.sql", sha256: createHash("sha256").update("select 1;\n").digest("hex") }, forward: [], objectInventorySha256: "0".repeat(64) }),
+  "db/platform/migrations/00000000000000_platform_baseline.sql": "select 1;\n",
   "src/integrations/supabase/types.ts": "export type SyntheticDatabase = never;\n",
   "package.json": json({ name: "synthetic-root", private: true, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }),
   "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3 }),
@@ -521,7 +521,7 @@ describe("descendant source release producer", () => {
     ["a stale class digest", {}, { regenerate: false, classes: { "docs/guide.md": "platform-documentation" } }, /does not describe its tree.*inventory\.classDigest/u],
     ["a changed fixed contract field", editContract((contract) => { contract.repository.owner.name = "Second Owner"; }), {}, /previous release's repository\.owner\.name/u],
     ["a public path at a local-measurement selector", { "local/measurement.json": "{}\n" }, {}, /local-measurement selector: local\/measurement\.json/u],
-    ["a migration manifest change", { "config/platform-migration-manifest.json": json({ synthetic: "changed" }) }, {}, /schema-bearing add, delete, mode or byte change, which needs a separately approved schema contract: config\/platform-migration-manifest\.json/u],
+    ["a migration manifest change", { "config/platform-migration-manifest.json": json({ synthetic: "changed" }) }, {}, /platform migration manifest/u],
     ["a database types change", { "src/integrations/supabase/types.ts": "export type SyntheticDatabase = unknown;\n" }, {}, /schema-bearing.*supabase\/types\.ts/u],
     ["a policy registry change", { "config/openlup-policy-registry.json": json({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "synthetic-readme-renamed", owners: ["README.md"] }] }) }, {}, /schema-bearing.*openlup-policy-registry/u],
     ["an added platform migration", { "db/platform/migrations/0002_synthetic.sql": "select 2;\n" }, {}, /schema-bearing.*0002_synthetic/u],
@@ -533,11 +533,63 @@ describe("descendant source release producer", () => {
     ["a deleted policy active path", { "README.md": null }, {}, /policy path is absent from the Git inventory: README\.md/u],
     ["a changed package execution surface", { "packages/ui/package.json": json({ name: "synthetic-ui", scripts: { ...UI_SCRIPTS, postinstall: "node install.js" } }) }, {}, /package execution surface differs from the catalogue: packages\/ui\/package\.json/u],
     ["an uncatalogued package manifest", { "packages/extra/package.json": json({ name: "synthetic-extra", scripts: { postinstall: "node install.js" } }) }, {}, /package manifests differ from the catalogued package execution surfaces/u],
-    ["a migration mode change", (repo: string) => chmodSync(join(repo, "db/platform/migrations/0001_synthetic.sql"), 0o755), {}, /schema-bearing.*0001_synthetic/u],
+    ["a migration mode change", (repo: string) => chmodSync(join(repo, "db/platform/migrations/00000000000000_platform_baseline.sql"), 0o755), {}, /schema-bearing.*platform_baseline/u],
     ["an unregistered direct execution entrypoint", { "scripts/synthetic-tool.mjs": "#!/usr/bin/env node\n" }, {}, /unregistered direct execution entrypoint/u],
   ] as const)("refuses %s", async (_label, change, seal, expected) => {
     const sample = syntheticRelease();
     try { await expect(sample.release(change, seal)).rejects.toThrow(expected); } finally { sample.cleanup(); }
+  });
+
+  it.each(["managed", "portable"] as const)("admits an appended %s forward and binds its bytes in schema 5", async (rail) => {
+    const sample = syntheticRelease({ extraFiles: { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n" } });
+    const path = rail === "managed" ? "supabase/migrations/20260927000000_add_control.sql" : "db/platform/migrations/20260927000000_add_control.sql";
+    const sql = "CREATE TABLE public.synthetic_control (singleton boolean primary key, mode text);\nINSERT INTO public.synthetic_control (singleton, mode) VALUES (true, 'auto_align') ON CONFLICT (singleton) DO NOTHING;\n";
+    const change: Record<string, string> = { [path]: sql };
+    if (rail === "portable") {
+      const manifest = JSON.parse(sample.read("config/platform-migration-manifest.json")!.toString());
+      manifest.forward.push({ file: path, sha256: createHash("sha256").update(sql).digest("hex") });
+      change["config/platform-migration-manifest.json"] = json(manifest);
+    }
+    try {
+      const { receipt } = await sample.release(change);
+      expect(receipt.schemaVersion).toBe(5);
+      expect(receipt.disclosure.paths).toContainEqual({ path, mode: "100644", digest: digest(sql) });
+    } finally { sample.cleanup(); }
+  });
+
+  it.each([
+    ["editing history", { "db/platform/migrations/00000000000000_platform_baseline.sql": "select 2;\n" }, /schema-bearing/u],
+    ["deleting history", { "db/platform/migrations/00000000000000_platform_baseline.sql": null }, /schema-bearing/u],
+    ["editing the managed baseline", { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 2;\n" }, /schema-bearing/u],
+    ["deleting a managed forward", { "supabase/migrations/20260926000000_existing.sql": null }, /schema-bearing/u],
+    ["editing a managed forward", { "supabase/migrations/20260926000000_existing.sql": "CREATE TABLE changed (id int);" }, /schema-bearing/u],
+    ["a non-increasing version", { "supabase/migrations/20260925000000_earlier.sql": "CREATE TABLE added (id int);" }, /non-increasing/u],
+    ["a duplicate version", { "supabase/migrations/20260926000000_duplicate.sql": "CREATE TABLE added (id int);" }, /non-increasing/u],
+    ...["DROP TABLE public.existing;", "DROP SCHEMA public;", "DROP VIEW public.existing;", "DROP TYPE public.existing;", "ALTER TABLE public.existing DROP COLUMN extra;", "TRUNCATE public.existing;", "ALTER TABLE public.existing RENAME TO other;", "ALTER TABLE public.existing SET SCHEMA other;", "ALTER TABLE public.existing OWNER TO other;"].map((sql) => [sql, { "supabase/migrations/20260927000000_refused.sql": sql }, /non-expand-only/u] as const),
+    ["destructive SQL", { "supabase/migrations/20260927000000_drop.sql": "DROP TABLE public.existing;" }, /non-expand-only/u],
+    ["adopter schema", { "supabase/migrations/20260927000000_app.sql": "CREATE TABLE app.extension (id int);" }, /non-expand-only/u],
+  ] as const)("refuses %s in the authenticated producer", async (_label, change, expected) => {
+    const sample = syntheticRelease({ extraFiles: { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n", "supabase/migrations/20260926000000_existing.sql": "CREATE TABLE existing (id int);" } });
+    try { await expect(sample.release(change)).rejects.toThrow(expected); } finally { sample.cleanup(); }
+  });
+
+  it("refuses a reordered portable manifest even when every file digest is valid", async () => {
+    const a = "db/platform/migrations/20260925000000_first.sql", b = "db/platform/migrations/20260926000000_second.sql", sql = "CREATE TABLE added (id int);";
+    const manifest = JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!);
+    manifest.forward = [a, b].map((file) => ({ file, sha256: createHash("sha256").update(sql).digest("hex") }));
+    const sample = syntheticRelease({ extraFiles: { [a]: sql, [b]: sql, "config/platform-migration-manifest.json": json(manifest) } });
+    manifest.forward.reverse();
+    try { await expect(sample.release({ "config/platform-migration-manifest.json": json(manifest) })).rejects.toThrow(/strict filename order|previous prefix/u); } finally { sample.cleanup(); }
+  });
+
+  it("refuses a removed portable prefix entry and an unmanifested append", async () => {
+    const path = "db/platform/migrations/20260925000000_existing.sql", sql = "CREATE TABLE added (id int);";
+    const manifest = JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!);
+    manifest.forward = [{ file: path, sha256: createHash("sha256").update(sql).digest("hex") }];
+    const sample = syntheticRelease({ extraFiles: { [path]: sql, "config/platform-migration-manifest.json": json(manifest) } });
+    try { await expect(sample.release({ "config/platform-migration-manifest.json": SYNTHETIC_TREE["config/platform-migration-manifest.json"]! })).rejects.toThrow(/manifest/u); } finally { sample.cleanup(); }
+    const missing = syntheticRelease();
+    try { await expect(missing.release({ "db/platform/migrations/20260927000000_unbound.sql": sql })).rejects.toThrow(/unmanifested/u); } finally { missing.cleanup(); }
   });
 
   it("refuses a next preview number that is not exactly the previous one plus one", async () => {
@@ -571,4 +623,34 @@ describe("descendant source release producer", () => {
     const sample = syntheticRelease();
     try { await expect(sample.release({ "README.md": "changed\n" }, {}, { retireProjectedSelectors })).rejects.toThrow(expected); } finally { sample.cleanup(); }
   });
+});
+
+
+describe("expand-only platform SQL admission", () => {
+  it.each([
+    "CREATE TABLE public.example (id bigint PRIMARY KEY);",
+    "ALTER TABLE public.example ADD COLUMN extra text;",
+    "CREATE UNIQUE INDEX example_id ON public.example (id);",
+    "CREATE TYPE public.example_mode AS ENUM ('off', 'auto_align');",
+    "BEGIN; INSERT INTO public.example (id, extra) VALUES (1, 'DROP TABLE app.x;'), (2, 'it''s safe') ON CONFLICT (id) DO NOTHING; COMMIT;",
+    "/* outer /* nested */ comment */ ALTER TABLE public.example ADD /* comment */ COLUMN extra text; -- end",
+  ])("admits %s", (sql) => { expect(isExpandOnlyPlatformForward(sql)).toBe(true); });
+  it.each([
+    ...["TABLE", "SCHEMA", "VIEW", "TYPE"].map((kind) => `DROP ${kind} public.example;`),
+    "ALTER TABLE public.example DROP COLUMN extra;", "TRUNCATE public.example;",
+    "ALTER TABLE public.example RENAME TO other;", "ALTER TABLE public.example SET SCHEMA other;",
+    "ALTER TABLE public.example OWNER TO other;", "dRoP/**/TABLE public.example;",
+    "CREATE TABLE app.example (id int);", 'CREATE TABLE "app".example (id int);',
+    "DO $$ BEGIN EXECUTE 'DROP TABLE public.example'; END $$;",
+    "CREATE OR REPLACE FUNCTION public.example() RETURNS void AS $$ DROP TABLE public.example; $$ LANGUAGE sql;",
+    "INSERT INTO public.example (id) SELECT destructive_function() ON CONFLICT DO NOTHING;",
+    "INSERT INTO public.example (id) VALUES (destructive_function()) ON CONFLICT DO NOTHING;",
+    "INSERT INTO public.example (id) VALUES (1) ON CONFLICT (id) WHERE destructive_function() DO NOTHING;",
+    "INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO UPDATE SET id = 2;",
+    "UPDATE public.example SET id = 2;", "ALTER TABLE public.example ALTER COLUMN id TYPE text;",
+    "ALTER TABLE public.example ADD COLUMN extra text, DETACH PARTITION child;",
+    "ALTER TABLE public.example ADD COLUMN extra text, NO FORCE ROW LEVEL SECURITY;",
+    "CREATE TABLE public.example (id int); /* unterminated", "INSERT INTO public.example VALUES ('unterminated);",
+    "", "-- comment only",
+  ])("refuses %s", (sql) => { expect(isExpandOnlyPlatformForward(sql)).toBe(false); });
 });

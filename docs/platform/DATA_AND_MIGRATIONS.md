@@ -6,8 +6,9 @@ it does not certify a migration path or an upgrade service.
 ## Data ownership
 
 The platform owns its schema, migration history, and documented data contracts.
-An adopter owns tables and migrations for its own extensions. Extension data must
-live beside platform data through explicit foreign keys, ports, or events rather
+An adopter owns tables and migrations for its own extensions in the `app` schema.
+The platform never writes there; the adopter owns extension compatibility and
+migration ordering. Extension data must live beside platform data through explicit foreign keys, ports, or events rather
 than by editing platform rows with undocumented assumptions.
 
 The published platform shape must expose a reproducible baseline and ordered
@@ -17,6 +18,34 @@ coordination mechanism for a multi-instance deployment.
 The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
+
+## Additive forward release path
+
+A development preview may append expand-only platform forwards to either chain:
+
+- Portable PostgreSQL: `db/platform/migrations/<14-digit-version>_<name>.sql`,
+  with `config/platform-migration-manifest.json` preserving the baseline and all
+  previous forward rows as an exact prefix and binding the added files by SHA-256.
+- Managed Supabase: `supabase/migrations/<14-digit-version>_<name>.sql` after
+  the frozen `00000000000000_platform_schema_baseline.sql` baseline.
+
+Each new version must exceed every preceding version in its own chain. Existing
+migration bytes and modes are immutable. The schema-5 release inventory binds
+forward bytes; the source contract binds the extended portable manifest digest.
+Database types, policy registry and bootstrap SQL remain frozen for this path.
+
+The release producer refuses destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`,
+`TYPE` or `COLUMN`, and `TRUNCATE`), renames, schema moves, ownership transfers
+and writes to adopter-owned `app`. Its bounded SQL predicate accepts additive
+object creation, `ALTER TABLE ... ADD`, transaction boundaries and literal
+`INSERT ... VALUES ... ON CONFLICT ... DO NOTHING`. Procedural or dynamic SQL
+and unsupported forms refuse; see [Versioning and EOL](../../.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
+for the exact admission boundary. Passing admission does not prove N-1 or live
+schema compatibility. Test the actual selected chain, constraints and replay.
+
+Rows that platform behaviour depends on must ship as idempotent statements in a
+forward, rather than relying on a reference fixture or process startup. A missing
+twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Disposable managed reference baseline
 
@@ -60,8 +89,8 @@ proof. This mode is the prerequisite for the monotonic late-delivery rule in
 [Canonical contracts](CANONICAL_CONTRACTS.md#subscription-delivery-alignment).
 
 This repair is limited to the public reference. The managed baseline and
-migration chains are unchanged. A real forward migration requires a later
-schema contract; the reference seed supplies no general upgrade path and does
+migration chains are unchanged. The additive forward admission path above permits
+a managed repair, but no such repair ships yet; the reference seed supplies no general upgrade proof and does
 not prove the complete delivery-alignment journey.
 
 ## Compatibility lifecycle

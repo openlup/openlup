@@ -340,18 +340,43 @@ policy registry's active paths exist and that the tree's `package.json` files an
 their execution surfaces match the catalogue. `config/openlup-source-release-contract.json` must equal
 `deriveSourceReleaseContract` (`scripts/oss-source-release-contract.ts`) of the
 commit's own bytes, so every digest field describes the tree. The contract keeps
-the previous release's `schemaVersion`, `platformMigrationManifest`,
+the previous release's `schemaVersion`, `platformMigrationManifest.path`,
 `databaseSchema`, `policy.registryDigest`, `repository` and `release`; the
 validator fixes `runtime`, and `compatibility` may change when it validates.
 
 The producer refuses:
 
-- any add, delete, mode or byte change of a schema-bearing path:
-  `config/platform-migration-manifest.json`, `src/integrations/supabase/types.ts`,
-  `config/openlup-policy-registry.json`, `db/platform/migrations/**`,
-  `supabase/migrations/**` and any `.sql` file under `db/bootstrap/`;
+- an edit, deletion or mode change of an existing migration, including the
+  frozen managed schema-only baseline; a change to bootstrap SQL, database
+  types (`src/integrations/supabase/types.ts`) or the policy registry;
+- a new migration outside the two direct migration directories, with a mode
+  other than `100644`, or without a strictly increasing 14-digit version;
+- a portable manifest that does not preserve its baseline and previous forward
+  entries as an exact prefix, or does not bind exactly the portable files by
+  SHA-256;
+- non-expand-only SQL: destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`, `TYPE`
+  or `COLUMN`, and `TRUNCATE`), `RENAME`, `SET SCHEMA`, or `OWNER TO`;
 - a public path at a `local-measurement` drift selector;
 - a previous receipt whose paths or drift rows differ from its own Git objects.
+
+The approved forward path appends additive platform migrations to
+`db/platform/migrations/` with the append-only portable manifest, or to
+`supabase/migrations/` after `00000000000000_platform_schema_baseline.sql`.
+Versions increase within each chain; the existing bytes remain immutable.
+The contract's `platformMigrationManifest.digest` now describes the extended
+manifest rather than equalling the preceding release's digest. Schema-5 receipt
+inventory entries bind every forward's bytes and mode; the receipt schema stays 5.
+
+The admission predicate accepts a bounded SQL subset: additive `CREATE TABLE`,
+`INDEX`, `TYPE`, `SEQUENCE` or `SCHEMA`, `ALTER TABLE ... ADD`, transaction
+boundaries, and literal `INSERT ... VALUES ... ON CONFLICT ... DO NOTHING` seeds.
+It refuses other statements, procedural/dynamic SQL, ambiguous escapes and
+unterminated comments or quotations. A new form needs its own reviewed predicate
+and regression coverage. Admission checks syntax, not live database compatibility;
+review constraints, defaults and replay behaviour on the selected installation.
+Rows required by platform behaviour belong in idempotent forward statements.
+The adopter owns extension objects and migrations in `app`; platform forwards
+never write to that schema. See [Data and migrations](../docs/platform/DATA_AND_MIGRATIONS.md).
 
 Every previous drift row carries forward. A `projection` row keeps its source side
 and takes its public side from the release commit, `absent` when the path was

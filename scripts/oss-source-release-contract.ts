@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { evaluatePlatformMigrationManifest, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
 import { execFileSync } from "node:child_process";
 import { closeSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, posix, resolve, sep } from "node:path";
@@ -195,10 +196,111 @@ function safeReceiptOutput(root: string, path: string): string {
   if (lstatSync(target, { throwIfNoEntry: false })) throw new Error("descendant receipt output already exists"); return target;
 }
 const SCHEMA_BEARING_PATHS = new Set<string>([MIGRATION_MANIFEST_PATH, DATABASE_TYPES_PATH, PUBLIC_POLICY_REGISTRY_PATH]);
-/** A path whose add, delete, mode or byte change a descendant preview refuses: it carries the platform database or policy schema. */
+/** A path subject to the frozen-schema or append-only-forward release rules: it carries the platform database or policy schema. */
 const isSchemaBearingSourceReleasePath = (path: string): boolean => SCHEMA_BEARING_PATHS.has(path) || path.startsWith("db/platform/migrations/") || path.startsWith("supabase/migrations/") || (path.startsWith("db/bootstrap/") && path.toLowerCase().endsWith(".sql"));
 /** Contract fields a descendant keeps from the previous release; the validator separately fixes `runtime`. */
-const PREVIOUS_RELEASE_CONTRACT_FIELDS = ["schemaVersion", "platformMigrationManifest", "databaseSchema", "policy.registryDigest", "repository", "release"] as const;
+const PREVIOUS_RELEASE_CONTRACT_FIELDS = ["schemaVersion", "platformMigrationManifest.path", "databaseSchema", "policy.registryDigest", "repository", "release"] as const;
+/** A deliberately bounded SQL admission check, not a general SQL interpreter.
+ * Comments and literal values cannot hide syntax; procedural/dynamic SQL refuses.
+ * Existing SQL is frozen, so only new forwards pass through this predicate.
+ */
+export function isExpandOnlyPlatformForward(sql: string): boolean {
+  const tokens: string[] = [];
+  for (let index = 0; index < sql.length;) {
+    const rest = sql.slice(index);
+    if (/^\s/u.test(rest)) { index++; continue; }
+    if (rest.startsWith("--")) { const end = sql.indexOf("\n", index); index = end < 0 ? sql.length : end; continue; }
+    if (rest.startsWith("/*")) {
+      let depth = 1; index += 2;
+      while (index < sql.length && depth) {
+        if (sql.startsWith("/*", index)) { depth++; index += 2; }
+        else if (sql.startsWith("*/", index)) { depth--; index += 2; }
+        else index++;
+      }
+      if (depth) return false;
+      continue;
+    }
+    if (rest[0] === "'" || rest[0] === '"') {
+      const quote = rest[0]; let value = "", closed = false; index++;
+      while (index < sql.length) {
+        if (sql[index] === "\\") return false; // Refuse escape-string ambiguity.
+        if (sql[index] === quote) {
+          if (sql[index + 1] === quote) { value += quote; index += 2; continue; }
+          index++; closed = true; break;
+        }
+        value += sql[index++];
+      }
+      if (!closed) return false;
+      tokens.push(quote === "'" ? "<literal>" : value.toUpperCase()); continue;
+    }
+    const word = /^[A-Za-z_][A-Za-z0-9_]*/u.exec(rest)?.[0];
+    if (word) { tokens.push(word.toUpperCase()); index += word.length; continue; }
+    const number = /^[0-9]+(?:\.[0-9]+)?/u.exec(rest)?.[0];
+    if (number) { tokens.push("<literal>"); index += number.length; continue; }
+    if (!";.,()+-=[]".includes(rest[0]!)) return false;
+    tokens.push(rest[0]!); index++;
+  }
+  const statements: string[][] = [[]];
+  for (const token of tokens) { if (token === ";") statements.push([]); else statements.at(-1)!.push(token); }
+  const nonempty = statements.filter((statement) => statement.length);
+  return nonempty.length > 0 && nonempty.every((statement) => {
+    if (statement.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
+    const text = statement.join(" ");
+    if (text === "BEGIN" || text === "COMMIT") return true;
+    if (/^INSERT INTO /u.test(text)) {
+      const values = statement.indexOf("VALUES"), conflict = statement.indexOf("ON", values);
+      if (values < 0 || conflict < 0 || !/ ON CONFLICT(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \)| ON CONSTRAINT [A-Z_][A-Z0-9_]*)? DO NOTHING$/u.test(text)) return false;
+      // Seed values are literals only; no subquery, function or dynamic execution.
+      return statement.slice(values + 1, conflict).every((token) => ["<literal>", "TRUE", "FALSE", "NULL", "(", ")", ",", "+", "-"].includes(token)) && statement.filter((token) => token === "DO").length === 1;
+    }
+    if (statement.includes("DO")) return false;
+    if (/^CREATE (?:UNIQUE )?(?:TABLE|INDEX|TYPE|SEQUENCE|SCHEMA) /u.test(text)) return !statement.includes("ALTER") && statement.filter((token) => token === "CREATE").length === 1;
+    if (/^ALTER TABLE /u.test(text)) {
+      const add = statement.indexOf("ADD");
+      if (add <= 2 || statement.slice(2, add).includes(",") || statement.filter((token) => token === "ALTER").length !== 1) return false;
+      let depth = 0;
+      for (let index = add; index < statement.length; index++) {
+        if (statement[index] === "(") depth++;
+        if (statement[index] === ")") depth--;
+        if (depth < 0 || (depth === 0 && statement[index] === "," && statement[index + 1] !== "ADD")) return false;
+      }
+      return depth === 0;
+    }
+    return false;
+  });
+}
+
+function assertPlatformSchemaForwards(old: PublicObjectInventoryEntry[], target: PublicObjectInventoryEntry[], readOld: SourceReleaseBlobReader, readTarget: SourceReleaseBlobReader): void {
+  const oldByPath = new Map(old.map((entry) => [entry.path, entry]));
+  const targetByPath = new Map(target.map((entry) => [entry.path, entry]));
+  const added: string[] = [];
+  for (const path of [...new Set([...oldByPath.keys(), ...targetByPath.keys()])].filter(isSchemaBearingSourceReleasePath).sort()) {
+    const before = oldByPath.get(path), after = targetByPath.get(path);
+    if (before?.mode === after?.mode && before?.gitBlobSha === after?.gitBlobSha) continue;
+    if (path === MIGRATION_MANIFEST_PATH && before && after && before.mode === after.mode) continue;
+    const rail = /^(db\/platform|supabase)\/migrations\/[0-9]{14}_[A-Za-z0-9_-]+\.sql$/u.test(path);
+    if (before || !after || after.mode !== "100644" || !rail || path.endsWith("/00000000000000_platform_schema_baseline.sql") || path.endsWith("/00000000000000_platform_baseline.sql")) throw new Error(`descendant receipt refuses a schema-bearing edit, delete, mode change or unsupported addition: ${path}`);
+    if (!isExpandOnlyPlatformForward(readTarget(path)!.toString())) throw new Error(`descendant receipt refuses a non-expand-only platform forward: ${path}`);
+    added.push(path);
+  }
+  if (added.some((path) => path.startsWith("supabase/migrations/")) && !oldByPath.has("supabase/migrations/00000000000000_platform_schema_baseline.sql")) throw new Error("descendant managed forwards require the previous frozen managed baseline");
+  for (const directory of ["db/platform/migrations/", "supabase/migrations/"]) {
+    let version = old.filter(({ path }) => path.startsWith(directory)).map(({ path }) => /^([0-9]{14})_/u.exec(path.slice(directory.length))?.[1] ?? "").sort().at(-1) ?? "";
+    for (const path of added.filter((path) => path.startsWith(directory))) {
+      const next = path.slice(directory.length, directory.length + 14);
+      if (next <= version) throw new Error(`descendant receipt refuses a non-increasing migration version: ${path}`);
+      version = next;
+    }
+  }
+  const before = parse(readOld(MIGRATION_MANIFEST_PATH)!.toString()), after = parse(readTarget(MIGRATION_MANIFEST_PATH)!.toString());
+  const errors = evaluatePlatformMigrationManifest({ manifest: after, migrations: target.filter(({ path }) => path.startsWith("db/platform/migrations/")).map(({ path }) => ({ file: path, content: readTarget(path)!.toString() })) });
+  if (errors.length) throw new Error(`descendant platform migration manifest refuses: ${errors.join("; ")}`);
+  const previous = before as unknown as PlatformMigrationManifest, current = after as unknown as PlatformMigrationManifest;
+  if (before.schemaVersion !== after.schemaVersion || JSON.stringify(before.baseline) !== JSON.stringify(after.baseline) || !Array.isArray(previous.forward) || JSON.stringify(current.forward.slice(0, previous.forward.length)) !== JSON.stringify(previous.forward) || current.forward.length < previous.forward.length) throw new Error("descendant platform migration manifest must extend the previous prefix");
+  const appended = current.forward.slice(previous.forward.length).map(({ file }) => file).sort();
+  if (JSON.stringify(appended) !== JSON.stringify(added.filter((path) => path.startsWith("db/platform/migrations/")))) throw new Error("descendant platform migration manifest must bind exactly the appended portable forwards");
+  if (appended.length === 0 && JSON.stringify(before) !== JSON.stringify(after)) throw new Error("descendant platform migration manifest cannot change without appended portable forwards");
+}
 const canonicalSelector = (value: unknown): value is string => typeof value === "string" && value !== "" && !value.includes("\\") && posix.normalize(value) === value && value.split("/").every((part) => part !== "" && part !== "." && part !== "..");
 function retiredProjectedSelectors(value: unknown, drift: SourceReceiptEnvelope["drift"]): Set<string> {
   if (value === undefined) return new Set();
@@ -211,7 +313,7 @@ function retiredProjectedSelectors(value: unknown, drift: SourceReceiptEnvelope[
 /**
  * The standing descendant check. The target commit must describe itself: its catalogue lists its
  * Git inventory, its contract equals `deriveSourceReleaseContract` of its own bytes and keeps the
- * previous release's fixed fields, and its schema-bearing paths are unchanged. Paths, packages,
+ * previous release's fixed fields, and its schema history is an immutable prefix with admitted expand-only forwards. Paths, packages,
  * the catalogue and projected content may otherwise change. Returns the receipt's disclosed paths
  * and its drift rows: every previous row except named retirements, projection rows refreshed from
  * the target tree and local-measurement rows unchanged.
@@ -230,10 +332,8 @@ function describeDescendantSourceRelease(root: string, previous: AuthenticatedSo
   const targetDigests = new Map(paths.map((entry) => [entry.path, entry.digest]));
   const readTarget = (path: string) => { const entry = targetByPath.get(path); return entry ? gitBytes(root, ["cat-file", "blob", entry.gitBlobSha]) : undefined; };
   const requireTarget = (path: string) => { const bytes = readTarget(path); if (bytes === undefined) throw new Error(`descendant tree is missing ${path}`); return bytes; };
-  for (const path of [...new Set([...oldByPath.keys(), ...targetByPath.keys()])].filter(isSchemaBearingSourceReleasePath).sort()) {
-    const before = oldByPath.get(path), after = targetByPath.get(path);
-    if (before?.mode !== after?.mode || before?.gitBlobSha !== after?.gitBlobSha) throw new Error(`descendant receipt refuses a schema-bearing add, delete, mode or byte change, which needs a separately approved schema contract: ${path}`);
-  }
+  const readOld = (path: string) => { const entry = oldByPath.get(path); return entry ? gitBytes(root, ["cat-file", "blob", entry.gitBlobSha]) : undefined; };
+  assertPlatformSchemaForwards(old, target, readOld, readTarget);
   const catalog = parsePublicPublicationCatalog(requireTarget(PUBLICATION_CATALOG_PATH).toString());
   if (JSON.stringify(catalog.publicPaths.map(({ path }) => path)) !== JSON.stringify(target.map(({ path }) => path))) throw new Error("descendant publication catalogue differs from the Git inventory");
   const allowedEntrypoints = new Set<string>(PUBLIC_EXECUTION_ENTRYPOINTS);
