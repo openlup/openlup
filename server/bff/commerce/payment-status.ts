@@ -1,6 +1,7 @@
 import { createSupabasePaymentRecoveryGuidancePort, type PaymentRecoveryGuidanceClient } from "../../adapters/supabase/commerce/paymentRecoveryGuidance.js";
 import { createSupabaseCheckoutRecoveryTokenPort, type CheckoutRecoveryTokenSupabaseClient } from "../../adapters/supabase/commerce/checkoutRecoveryToken.js";
 import { createPaymentRecoveryEvidenceNormalizer } from "../../adapters/paymentRecoveryGuidance.js";
+import { displayReasonFor } from "../../adapters/paymentFailureDisplay.js";
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { providerPaymentsEnabled } from "../../_lib/config/featureFlags.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
@@ -31,6 +32,7 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (!providerPaymentsEnabled()) {
     return createCommercePaymentStatusHandler({
       statusPort: { async getPaymentStatus() { return null; } },
+      resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: providerPaymentsEnabled,
     })(req, res);
   }
@@ -64,6 +66,7 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
       : undefined;
     return createCommercePaymentStatusHandler({
       statusPort: createSupabasePaymentStatusPort(client as unknown as PaymentStatusSupabaseClient),
+      resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: providerPaymentsEnabled,
       readContinuationClaims: codec
         ? (cookieHeader) => codec.verifyCookieHeader(cookieHeader)
@@ -72,6 +75,7 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
       recoveryGuidance: {
         port: createSupabasePaymentRecoveryGuidancePort(client as unknown as PaymentRecoveryGuidanceClient, createPaymentRecoveryEvidenceNormalizer()),
         tokenPort: createSupabaseCheckoutRecoveryTokenPort(client as unknown as CheckoutRecoveryTokenSupabaseClient),
+        resolveFailureDisplay: displayReasonFor,
       },
     })(req, res);
   });

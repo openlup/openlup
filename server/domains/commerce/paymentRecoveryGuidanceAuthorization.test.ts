@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PaymentRecoveryEvidence } from "@openlup/core/payment";
 import { createCheckoutPaymentContinuationCodec } from "./checkoutPaymentContinuationCredential.js";
 import { readAuthorizedPaymentRecovery, type PaymentRecoverySnapshot } from "./paymentRecoveryGuidanceAuthorization.js";
+import { displayReasonFor } from "../../adapters/paymentFailureDisplay.js";
 import { hashCheckoutRecoveryToken } from "./checkoutRecoveryToken.js";
 
 const ids = {
@@ -33,7 +34,7 @@ function reader(value: PaymentRecoverySnapshot | null = snapshot()) {
 describe("recovery guidance authority", () => {
   it("accepts a genuinely signed cookie only for its current attempt and projects bounded public facts", async () => {
     const port = reader();
-    const result = await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { port }, now });
+    const result = await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port }, now });
     expect(port.getGuidanceSnapshot).toHaveBeenCalledExactlyOnceWith({ orderId: ids.orderId, paymentIntentId: ids.paymentIntentId });
     expect(result?.guidance).toEqual({ version: 1, paymentAttemptId: ids.paymentAttemptId, purchaseContext: "one_time",
       cause: "generic_decline", methodKind: "card", methodKey: "card", operation: "one_time_payment", restriction: null,
@@ -53,7 +54,7 @@ describe("recovery guidance authority", () => {
       subscriptionStatus: purchaseContext === "subscription_initial" ? "pending_activation" : null,
       attempts: [{ id: ids.paymentAttemptId, status: "failed", provider, providerFlow, evidence: null }] });
     const result = await readAuthorizedPaymentRecovery({ request, claims: { ...claims, executionRail: provider },
-      authorization: undefined, deps: { port: reader(value) }, now });
+      authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port: reader(value) }, now });
     expect(result?.guidance).toMatchObject({ paymentAttemptId: ids.paymentAttemptId, methodKey: method,
       cause: failureReason === "blik_recurring_unsupported_bank" ? "recurring_setup_failed" : "generic_decline" });
   });
@@ -63,7 +64,7 @@ describe("recovery guidance authority", () => {
       subscriptionStatus: "pending_activation", attempts: [{ id: ids.paymentAttemptId, status: "failed", provider: "tpay",
         providerFlow: "blik_recurring_activation", evidence: activationRefusal }] });
     const result = await readAuthorizedPaymentRecovery({ request, claims: { ...claims, executionRail: "tpay" },
-      authorization: undefined, deps: { port: reader(value) }, now });
+      authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port: reader(value) }, now });
     expect(result?.guidance).toMatchObject({ cause: "generic_decline", methodKey: "blik", operation: "recurring_setup",
       restriction: null, actions: ["change_instrument", "change_method"] });
   });
@@ -76,7 +77,7 @@ describe("recovery guidance authority", () => {
       purchaseContext: "subscription_initial", subscriptionId: ids.clientId, subscriptionStatus: "pending_activation",
       attempts: [{ id: ids.paymentAttemptId, status: "failed", provider: "tpay", providerFlow: "blik_recurring_activation", evidence }] });
     const result = await readAuthorizedPaymentRecovery({ request, claims: { ...claims, executionRail: "tpay" },
-      authorization: undefined, deps: { port: reader(value) }, now });
+      authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port: reader(value) }, now });
     expect(result?.guidance).toMatchObject({ cause, methodKey: "blik", restriction: "method", actions: ["change_method"] });
   });
 
@@ -85,14 +86,14 @@ describe("recovery guidance authority", () => {
       purchaseContext: "subscription_initial", subscriptionId: ids.clientId, subscriptionStatus: "pending_activation",
       attempts: [{ id: ids.paymentAttemptId, status: "failed", provider: "tpay", providerFlow: "blik_recurring_activation", evidence: null }] });
     const result = await readAuthorizedPaymentRecovery({ request, claims: { ...claims, executionRail: "tpay" },
-      authorization: undefined, deps: { port: reader(value) }, now });
+      authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port: reader(value) }, now });
     expect(result?.guidance).toBeNull();
   });
 
   it("never lets a BLIK mandate reason restrict a refusal whose evidence is another method", async () => {
     const value = snapshot({ failureReason: "blik_recurring_unsupported_bank", purchaseContext: "subscription_initial",
       subscriptionId: ids.clientId, subscriptionStatus: "pending_activation" });
-    const result = await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { port: reader(value) }, now });
+    const result = await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port: reader(value) }, now });
     expect(result?.guidance).toMatchObject({ cause: "generic_decline", methodKey: "card", restriction: null,
       actions: ["change_instrument", "change_method"] });
   });
@@ -107,7 +108,7 @@ describe("recovery guidance authority", () => {
     const value = snapshot({ provider, failureReason, purchaseContext,
       attempts: [{ id: ids.paymentAttemptId, status: "failed", provider, providerFlow, evidence: null }] });
     const result = await readAuthorizedPaymentRecovery({ request, claims: { ...claims, executionRail: provider },
-      authorization: undefined, deps: { port: reader(value) }, now });
+      authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port: reader(value) }, now });
     expect(result?.guidance).toBeNull();
   });
 
@@ -119,39 +120,39 @@ describe("recovery guidance authority", () => {
       { id: ids.paymentAttemptId, status: "failed", provider: "stripe", providerFlow: "one_time_payment", evidence: null },
     ] });
     const result = await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined,
-      deps: { port: reader(value) }, now });
+      deps: { resolveFailureDisplay: displayReasonFor, port: reader(value) }, now });
     expect(result?.guidance).toBeNull();
   });
 
   it.each(["orderId", "clientId", "paymentIntentId", "journeyId"] as const)("rejects a cookie outside its %s scope before reading history", async (key) => {
     const port = reader();
     expect(await readAuthorizedPaymentRecovery({ request: { ...request, [key]: "another" }, claims,
-      authorization: undefined, deps: { port }, now })).toBeNull();
+      authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port }, now })).toBeNull();
     expect(port.getGuidanceSnapshot).not.toHaveBeenCalled();
   });
 
   it.each([null, codec.verifyCookieHeader(cookie.replace("=", "=tampered"))])("does not treat matching guessed IDs as authority", async (untrusted) => {
     const port = reader();
-    expect(await readAuthorizedPaymentRecovery({ request, claims: untrusted, authorization: undefined, deps: { port }, now })).toBeNull();
+    expect(await readAuthorizedPaymentRecovery({ request, claims: untrusted, authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port }, now })).toBeNull();
     expect(port.getGuidanceSnapshot).not.toHaveBeenCalled();
   });
 
   it("rejects an expired verified claim before history access", async () => {
     const port = reader();
-    expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { port }, now: claims.expiresAt * 1000 })).toBeNull();
+    expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port }, now: claims.expiresAt * 1000 })).toBeNull();
     expect(port.getGuidanceSnapshot).not.toHaveBeenCalled();
   });
 
   it.each([{ paymentAttemptId: "other" }, { provider: "tpay" }, { eligible: false }, { purchaseContext: null }] as Partial<PaymentRecoverySnapshot>[])(
     "withholds guidance for stale scope, renewal or ineligible context %j", async (overrides) => {
       const value = snapshot(overrides);
-      expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { port: reader(value) }, now }))
+      expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port: reader(value) }, now }))
         .toEqual({ snapshot: value, guidance: null });
     });
 
   it.each(["orderId", "clientId", "paymentIntentId"] as const)("fails back on an inconsistent snapshot %s", async (key) => {
     expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined,
-      deps: { port: reader(snapshot({ [key]: "different" })) }, now })).toBeNull();
+      deps: { resolveFailureDisplay: displayReasonFor, port: reader(snapshot({ [key]: "different" })) }, now })).toBeNull();
   });
 
   it("validates the opaque token and passes only its row ID for atomic liveness recheck", async () => {
@@ -162,7 +163,7 @@ describe("recovery guidance authority", () => {
     } : null);
     const port = reader(snapshot({ tokenAuthorized: true, purchaseContext: "subscription_initial" }));
     const result = await readAuthorizedPaymentRecovery({ request: { ...request, journeyId: undefined }, claims: null,
-      authorization: `Bearer ${raw}`, deps: { port, tokenPort: { validate } }, now });
+      authorization: `Bearer ${raw}`, deps: { resolveFailureDisplay: displayReasonFor, port, tokenPort: { validate } }, now });
     expect(validate).toHaveBeenCalledExactlyOnceWith(raw);
     expect(port.getGuidanceSnapshot).toHaveBeenCalledExactlyOnceWith({ orderId: ids.orderId, paymentIntentId: ids.paymentIntentId, recoveryTokenId: "token-row" });
     expect(result?.guidance?.purchaseContext).toBe("subscription_initial");
@@ -173,14 +174,14 @@ describe("recovery guidance authority", () => {
     const value = snapshot({ tokenAuthorized: false });
     const validate = vi.fn(async () => ({ tokenId: "revoked-row", ...ids, mode: "one_time_order", status: "pending_payment" }));
     const result = await readAuthorizedPaymentRecovery({ request, claims: null, authorization: "Bearer rcv_revoked",
-      deps: { port: reader(value), tokenPort: { validate } }, now });
+      deps: { resolveFailureDisplay: displayReasonFor, port: reader(value), tokenPort: { validate } }, now });
     expect(result).toEqual({ snapshot: value, guidance: null });
   });
 
   it.each([undefined, "Basic rcv_token", "Bearer token with spaces", ["Bearer token"], `Bearer ${"x".repeat(2049)}`])(
     "rejects malformed bearer headers without validating or reading history", async (authorization) => {
       const port = reader(); const validate = vi.fn(async () => null);
-      expect(await readAuthorizedPaymentRecovery({ request, claims: null, authorization, deps: { port, tokenPort: { validate } }, now })).toBeNull();
+      expect(await readAuthorizedPaymentRecovery({ request, claims: null, authorization, deps: { resolveFailureDisplay: displayReasonFor, port, tokenPort: { validate } }, now })).toBeNull();
       expect(validate).not.toHaveBeenCalled(); expect(port.getGuidanceSnapshot).not.toHaveBeenCalled();
     });
 
@@ -189,17 +190,17 @@ describe("recovery guidance authority", () => {
     "does not authorize invalid, expired or differently scoped tokens", async (token) => {
       const port = reader();
       expect(await readAuthorizedPaymentRecovery({ request, claims: null, authorization: "Bearer rcv_token",
-        deps: { port, tokenPort: { validate: async () => token } }, now })).toBeNull();
+        deps: { resolveFailureDisplay: displayReasonFor, port, tokenPort: { validate: async () => token } }, now })).toBeNull();
       expect(port.getGuidanceSnapshot).not.toHaveBeenCalled();
     });
 
   it("falls back to the legacy reader on missing snapshot or unavailable infrastructure", async () => {
-    expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { port: reader(null) }, now })).toBeNull();
+    expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port: reader(null) }, now })).toBeNull();
     const port = { getGuidanceSnapshot: vi.fn(async () => { throw new Error("unavailable"); }) };
-    expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { port }, now })).toBeNull();
+    expect(await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, deps: { resolveFailureDisplay: displayReasonFor, port }, now })).toBeNull();
     expect(port.getGuidanceSnapshot).toHaveBeenCalledTimes(1);
     expect(await readAuthorizedPaymentRecovery({ request, claims: null, authorization: "Bearer rcv_token",
-      deps: { port, tokenPort: { validate: async () => { throw new Error("unavailable"); } } }, now })).toBeNull();
+      deps: { resolveFailureDisplay: displayReasonFor, port, tokenPort: { validate: async () => { throw new Error("unavailable"); } } }, now })).toBeNull();
     expect(port.getGuidanceSnapshot).toHaveBeenCalledTimes(1);
   });
 });

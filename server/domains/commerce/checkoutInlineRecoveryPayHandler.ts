@@ -49,7 +49,7 @@ export function createCheckoutInlineRecoveryPayHandler(deps: CheckoutInlineRecov
       claims,
       // This sibling route is cookie-only. A bearer token must never widen it.
       authorization: undefined,
-      deps: { port: deps.recoveryGuidance.port },
+      deps: { port: deps.recoveryGuidance.port, resolveFailureDisplay: deps.recoveryGuidance.resolveFailureDisplay },
     });
     if (!recovery) return conflict(res, "recovery_state_unavailable");
 

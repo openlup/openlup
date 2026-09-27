@@ -14,7 +14,6 @@ import {
 } from "../../../src/domains/commerce/checkoutContracts.js";
 import { paymentStatusContinuationRequestSchema } from "../../../src/domains/commerce/paymentContinuationContracts.js";
 import { deriveAsyncCheckoutStatus } from "../../../src/domains/commerce/paymentStatus.js";
-import { displayReasonFor } from "../../adapters/paymentFailureDisplay.js";
 import { PAYMENT_FAILURE_DISPLAY_HEADER } from "../../../src/domains/commerce/paymentFailureDisplayContracts.js";
 import type {
   PaymentAttemptStatus,
@@ -28,7 +27,11 @@ import type {
 } from "../payment/contracts.js";
 
 import { PAYMENT_RECOVERY_GUIDANCE_HEADER } from "../../../src/domains/commerce/paymentRecoveryGuidanceContracts.js";
-import { readAuthorizedPaymentRecovery, type PaymentRecoveryReadDeps } from "./paymentRecoveryGuidanceAuthorization.js";
+import {
+  readAuthorizedPaymentRecovery,
+  type PaymentFailureDisplayResolver,
+  type PaymentRecoveryReadDeps,
+} from "./paymentRecoveryGuidanceAuthorization.js";
 
 export interface PaymentStatusSnapshot {
   orderId: string;
@@ -56,6 +59,7 @@ export interface PaymentStatusReadPort {
 
 export interface CommercePaymentStatusHandlerDeps {
   statusPort: PaymentStatusReadPort;
+  resolveFailureDisplay: PaymentFailureDisplayResolver;
   recoveryGuidance?: PaymentRecoveryReadDeps;
   mutationsEnabled: () => boolean;
   readContinuationClaims?: (cookieHeader: unknown) => CheckoutPaymentContinuationClaims | null;
@@ -64,6 +68,7 @@ export interface CommercePaymentStatusHandlerDeps {
 
 export function createCommercePaymentStatusHandler({
   statusPort,
+  resolveFailureDisplay,
   recoveryGuidance,
   mutationsEnabled,
   readContinuationClaims,
@@ -129,7 +134,7 @@ export function createCommercePaymentStatusHandler({
       });
     }
 
-    const response = buildPaymentStatusResponse(snapshot, nextAction);
+    const response = buildPaymentStatusResponse(snapshot, resolveFailureDisplay, nextAction);
     // Project after validation: older strict clients cannot accept even null.
     const { failureDisplay, ...legacyResponse } = response;
     const optedIn = req.headers[PAYMENT_FAILURE_DISPLAY_HEADER.toLowerCase()] === "1";
@@ -142,6 +147,7 @@ export function createCommercePaymentStatusHandler({
 
 export function buildPaymentStatusResponse(
   snapshot: PaymentStatusSnapshot,
+  resolveFailureDisplay: PaymentFailureDisplayResolver,
   nextAction: ProviderRecoveryAction | null = null,
 ): PaymentStatusResponse {
   return paymentStatusResponseSchema.parse({
@@ -169,7 +175,7 @@ export function buildPaymentStatusResponse(
     // The same refusal in a vocabulary a surface can render. Derived here rather
     // than in the browser so the provider's own naming never crosses into a
     // buyer's URL, and so one deployment answers the question once.
-    failureDisplay: displayReasonFor(snapshot.failureReason),
+    failureDisplay: resolveFailureDisplay(snapshot.failureReason),
     subscriptionActivation: {
       status: snapshot.subscriptionActivationStatus,
       subscriptionId: snapshot.subscriptionId,

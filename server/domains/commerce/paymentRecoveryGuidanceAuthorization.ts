@@ -2,10 +2,10 @@ import { derivePaymentRecoveryGuidance, type PaymentRecoveryAttempt } from "@ope
 import { deriveAsyncCheckoutStatus } from "../../../src/domains/commerce/paymentStatus.js";
 import type { PaymentStatusContinuationRequest } from "../../../src/domains/commerce/paymentContinuationContracts.js";
 import type { CheckoutPaymentRecoveryGuidance } from "../../../src/domains/commerce/paymentRecoveryGuidanceContracts.js";
+import type { PaymentFailureDisplayReason } from "../../../src/domains/commerce/paymentFailureDisplayContracts.js";
 import type { PaymentStatusSnapshot } from "./commercePaymentStatusHandler.js";
 import type { CheckoutPaymentContinuationClaims } from "./checkoutPaymentContinuationCredential.js";
 import type { CheckoutRecoveryTokenPort } from "./checkoutRecoveryToken.js";
-import { displayReasonFor } from "../../adapters/paymentFailureDisplay.js";
 
 interface PaymentRecoverySnapshotAttempt extends PaymentRecoveryAttempt {
   /** Exact server-owned execution provenance for conservative legacy fallback. */
@@ -27,9 +27,17 @@ export interface PaymentRecoverySnapshot extends PaymentStatusSnapshot {
 export interface PaymentRecoverySnapshotPort {
   getGuidanceSnapshot(input: { orderId: string; paymentIntentId: string; recoveryTokenId?: string }): Promise<PaymentRecoverySnapshot | null>;
 }
+/**
+ * Maps a recorded failure reason to the bucket a surface may render, or null
+ * when this deployment cannot say. The mapping reads provider reason codes, so
+ * the composition root supplies it from the adapter layer.
+ */
+export type PaymentFailureDisplayResolver = (failureReason: string | null | undefined) => PaymentFailureDisplayReason | null;
+
 export interface PaymentRecoveryReadDeps {
   port: PaymentRecoverySnapshotPort;
   tokenPort?: Pick<CheckoutRecoveryTokenPort, "validate">;
+  resolveFailureDisplay: PaymentFailureDisplayResolver;
 }
 
 /** Missing optional infrastructure fails back to the old reader, never mixed reads. */
@@ -63,7 +71,7 @@ export async function readAuthorizedPaymentRecovery(input: {
     if (!authorized || !snapshot.eligible || !snapshot.purchaseContext) return { snapshot, guidance: null };
     const status = deriveAsyncCheckoutStatus({ intentStatus: snapshot.intentStatus,
       attemptStatus: snapshot.attemptStatus, orderStatus: snapshot.orderStatus });
-    const exactDisplay = exactFailureDisplayGuidance(snapshot, status);
+    const exactDisplay = exactFailureDisplayGuidance(snapshot, status, deps.resolveFailureDisplay);
     const projected = derivePaymentRecoveryGuidance({
       paymentState: status === "paid" || status === "failed" || status === "expired" ? status : "pending",
       activeAttemptId: snapshot.paymentAttemptId, attempts: snapshot.attempts, historyComplete: snapshot.historyComplete,
@@ -78,7 +86,7 @@ export async function readAuthorizedPaymentRecovery(input: {
     // cannot be registered": normalized evidence names the operation, never that
     // cause. When the exact display cannot prove it, the projection still must
     // not offer the refused BLIK agreement again — only another method.
-    const mandateRefused = displayReasonFor(snapshot.failureReason) === "blik_recurring_unsupported_bank"
+    const mandateRefused = deps.resolveFailureDisplay(snapshot.failureReason) === "blik_recurring_unsupported_bank"
       && projected.method?.kind === "blik";
     const restriction = mandateRefused ? "method"
       : projected.advice?.code === "do_not_try_again" && projected.advice.scope !== "unknown"
@@ -106,13 +114,14 @@ export async function readAuthorizedPaymentRecovery(input: {
 function exactFailureDisplayGuidance(
   snapshot: PaymentRecoverySnapshot,
   status: ReturnType<typeof deriveAsyncCheckoutStatus>,
+  resolveFailureDisplay: PaymentFailureDisplayResolver,
 ): CheckoutPaymentRecoveryGuidance | null {
   if (status !== "failed" || snapshot.intentStatus !== "failed" || snapshot.attemptStatus !== "failed"
     || !snapshot.paymentAttemptId || !snapshot.purchaseContext || !snapshot.historyComplete
     || snapshot.observedSuccess || snapshot.attempts[0]?.id !== snapshot.paymentAttemptId
     || snapshot.attempts.some(({ status: attemptStatus }) => attemptStatus === "succeeded")) return null;
   const active = snapshot.attempts.find(({ id }) => id === snapshot.paymentAttemptId);
-  const display = displayReasonFor(snapshot.failureReason);
+  const display = resolveFailureDisplay(snapshot.failureReason);
   const provider = active?.provider ?? snapshot.provider;
   const flow = active?.providerFlow ?? null;
   const recurringBlik = display === "blik_recurring_unsupported_bank" && provider === "tpay"

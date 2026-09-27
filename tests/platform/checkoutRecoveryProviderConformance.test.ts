@@ -9,6 +9,7 @@ import { stripeFailureEvidence, normalizeStripeFailureEvidence } from "../../ser
 import { tpayFailureEvidence, normalizeTpayFailureEvidence } from "../../server/adapters/tpay/tpayFailureEvidence.js";
 
 import { readAuthorizedPaymentRecovery } from "../../server/domains/commerce/paymentRecoveryGuidanceAuthorization.js";
+import { displayReasonFor } from "../../server/adapters/paymentFailureDisplay.js";
 import { createCheckoutPaymentContinuationCodec } from "../../server/domains/commerce/checkoutPaymentContinuationCredential.js";
 import { hasCheckoutRecoveryCopy, presentCheckoutRecoveryGuidance } from "../../src/checkout/machine/checkoutRecoveryGuidance.js";
 
@@ -67,7 +68,7 @@ describe("portable checkout recovery adapter conformance", () => {
     // Only the storage boundary is supplied; normalizer, authorization, core projection
     // and browser presentation all run, so neither side of the repaired seam is mocked.
     const result = await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, now,
-      deps: { port: { getGuidanceSnapshot: async () => ({ ...request, paymentAttemptId,
+      deps: { resolveFailureDisplay: displayReasonFor, port: { getGuidanceSnapshot: async () => ({ ...request, paymentAttemptId,
         orderStatus: "pending_payment", intentStatus: "failed", attemptStatus: "failed", provider: "tpay",
         providerPaymentId: "tx_test", updatedAt: new Date(now).toISOString(), failureReason: "provider_declined",
         subscriptionActivationStatus: "not_applicable", subscriptionId: PET_ID,
@@ -104,7 +105,7 @@ describe("portable checkout recovery adapter conformance", () => {
       { now: () => new Date(now) })!;
     const claims = codec.verifyCookieHeader(codec.issue({ ...request, paymentAttemptId, executionRail: "tpay" }).setCookie)!;
     const result = await readAuthorizedPaymentRecovery({ request, claims, authorization: undefined, now,
-      deps: { port: { getGuidanceSnapshot: async () => ({ ...request, paymentAttemptId,
+      deps: { resolveFailureDisplay: displayReasonFor, port: { getGuidanceSnapshot: async () => ({ ...request, paymentAttemptId,
         orderStatus: "pending_payment", intentStatus: "failed", attemptStatus: "failed", provider: "tpay",
         providerPaymentId: "tx_test", updatedAt: new Date(now).toISOString(),
         failureReason: "blik_recurring_unsupported_bank", subscriptionActivationStatus: "not_applicable",
