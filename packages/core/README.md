@@ -65,9 +65,8 @@ from standard input, then emits finding counts for each path. Shell sources
 retain the scanner's existing shell handling. The interface adds no package
 export and changes no matcher or kernel behavior.
 
-The repository checker also calls the UI
-[`neutrality checker`](../ui/smoke/neutrality.ts) with `--counts-json` to count
-its existing patterns over the supplied sources. Running that checker without
+The repository checker also calls the UI neutrality counting process with
+`--counts-json` to count its existing patterns over the supplied sources. Running that checker without
 arguments still scans the UI source directory and refuses any forbidden hit.
 Together these interfaces let the repository measure existing findings without
 making one package import another package's internals. They provide source

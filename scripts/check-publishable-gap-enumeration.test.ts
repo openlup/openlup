@@ -56,6 +56,7 @@ describe("the public README delegates preview truth to machine contracts", () =>
   it("carries the complete B1 guard disposition vocabulary", () => {
     expect(catalogue.guardViability.map(({ id }) => id)).toEqual([
       "browser-role",
+      "documentation-maintenance",
       "env-defaults",
       "migration-header",
       "order-money",
@@ -66,7 +67,19 @@ describe("the public README delegates preview truth to machine contracts", () =>
       "source-size-complexity",
       "vercel-specifiers",
     ]);
-    expect(catalogue.guardViability.every((guard) => guard.status === "withheld" && guard.reason.trim() !== "")).toBe(true);
+    const withheld = catalogue.guardViability.filter((guard) => guard.id !== "documentation-maintenance");
+    expect(withheld).toHaveLength(10);
+    expect(withheld.every((guard) => guard.status === "withheld" && guard.reason.trim() !== "")).toBe(true);
+    expect(catalogue.guardViability.filter((guard) => guard.status === "published")).toEqual([{
+      id: "documentation-maintenance",
+      status: "published",
+      path: "scripts/oss-published-tree-check.ts",
+      command: "npm run oss:published-tree -- --policy",
+      publicInputs: ["config/doc-routing.json", "config/openlup-publication-catalog.json", "src/lib/coreDomains.ts"],
+      publicDocs: ["CONTRIBUTING.md", "docs/platform/DOCUMENTATION.md", "docs/platform/SOURCE_MAP.md"],
+      publicCiEntrypoint: ".github/workflows/published-tree-ci.yml",
+      seededFalsifier: "scripts/oss-published-tree-check.test.ts",
+    }]);
   });
 
   it("keeps the computed pre-act contract non-activating and non-circular", () => {
