@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { neutralityIncreases } from "./public-ci-neutrality.mjs";
+import { neutralityIncreases, validateBaseline } from "./public-ci-neutrality.mjs";
 
 describe("tree-wide neutrality ratchet", () => {
   it("does not let decreases in another path or category pay for new debt", () => {
@@ -13,5 +13,12 @@ describe("tree-wide neutrality ratchet", () => {
   });
   it("refuses malformed counts", () => {
     for (const count of [-1, 1.5, NaN, "1"]) expect(() => neutralityIncreases({}, { a: { brand: count } })).toThrow("nonnegative integers");
+  });
+  it("rejects malformed baseline digests, categories and accepted counts", () => {
+    const baseline = { schemaVersion: 1, sourceCommit: "a".repeat(40), counts: { ["b".repeat(64)]: { brand: 1 } } };
+    expect(() => validateBaseline(baseline)).not.toThrow();
+    expect(() => validateBaseline({ ...baseline, sourceCommit: "main" })).toThrow();
+    expect(() => validateBaseline({ ...baseline, counts: { path: { brand: 1 } } })).toThrow();
+    for (const counts of [{ brand: "10" }, { brand: -1 }, { unknown: 1 }]) expect(() => validateBaseline({ ...baseline, counts: { ["b".repeat(64)]: counts } })).toThrow();
   });
 });

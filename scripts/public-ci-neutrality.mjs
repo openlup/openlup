@@ -17,6 +17,16 @@ export function neutralityIncreases(baseline, current) {
   return increases;
 }
 
+export function validateBaseline(baseline) {
+  if (baseline.schemaVersion !== 1 || !/^[a-f0-9]{40}$/.test(baseline.sourceCommit) || !baseline.counts || Array.isArray(baseline.counts) || typeof baseline.counts !== "object") throw new Error("invalid neutrality baseline");
+  for (const [path, counts] of Object.entries(baseline.counts)) {
+    if (!/^[a-f0-9]{64}$/.test(path) || !counts || Array.isArray(counts) || typeof counts !== "object") throw new Error("invalid neutrality baseline path");
+    for (const [category, count] of Object.entries(counts)) {
+      if (!/^(?:brand|legacy-env|ui-(?:[0-9]|1[0-7]))$/.test(category) || !Number.isSafeInteger(count) || count < 0) throw new Error("invalid neutrality baseline count");
+    }
+  }
+}
+
 export function scanTree(ref) {
   const paths = [...new Set(execFileSync("git", ref ? ["ls-tree", "-r", "--name-only", "-z", ref] : ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean))].sort();
   const snapshots = new Map();
@@ -64,6 +74,7 @@ function readParent(base) {
 function main() {
   const base = baseCommit();
   const parent = readParent(base);
+  if (parent) validateBaseline(parent);
   const options = process.argv.slice(2);
   const baseIndex = options.indexOf("--base-commit");
   if (baseIndex >= 0) options.splice(baseIndex, 2);
@@ -75,7 +86,8 @@ function main() {
     writeFileSync(join(root, baselinePath), `${JSON.stringify({ schemaVersion: 1, sourceCommit: base, counts: current.rows }, null, 2)}\n`);
   } else if (mode === undefined) {
     const baseline = JSON.parse(readFileSync(join(root, baselinePath), "utf8"));
-    if (baseline.schemaVersion !== 1 || !baseline.counts || typeof baseline.counts !== "object") throw new Error("invalid neutrality baseline");
+    validateBaseline(baseline);
+    if (!parent && (baseline.sourceCommit !== base || JSON.stringify(baseline.counts) !== JSON.stringify(scanTree(base).rows))) throw new Error("initial neutrality baseline must equal the measured base tree");
     const raised = parent ? neutralityIncreases(parent.counts, baseline.counts) : [];
     const increases = neutralityIncreases(baseline.counts, current.rows);
     for (const row of [...raised, ...increases]) console.error(`${current.paths[row.path] ?? row.path}: ${row.category} increased ${row.before} -> ${row.after}`);
