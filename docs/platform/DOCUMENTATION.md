@@ -192,6 +192,10 @@ Before accepting a bundle, validate its format, required pages and source IDs,
 safe paths, content digests and consistent provenance. Refuse missing content,
 tampering or a mixture of revisions. Preserve the profile and development-preview
 status in the consumer's presentation.
+Source IDs must equal `source:<normalized repository path>` and remain unique.
+Each source's owner ID, page, anchor and purpose must agree with its navigation
+surface. Page headings are checked against the raw Markdown so an invented
+heading cannot make a dangling owner link appear valid.
 
 Pin the public revision and bundle digest from a trusted public build deliberately.
 Self-consistent hashes alone do not authenticate a downloaded manifest. A commit

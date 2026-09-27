@@ -1,7 +1,8 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
-import { documentationDigest } from "./documentation-navigation.ts";
+import { documentationDigest, type DocumentationSource } from "./documentation-navigation.ts";
+import { markdownHeadings } from "./documentation-routing.ts";
 import { DOCUMENTATION_REPOSITORY, documentationPageLinks, type DocumentationBundle, type DocumentationBundleManifest } from "./documentation-bundle.ts";
 
 const normalizedPath = (path: unknown): path is string => typeof path === "string" && path !== "" && !isAbsolute(path)
@@ -54,24 +55,35 @@ export function validateDocumentationBundle(root: string, pins: { sourceCommit?:
       || typeof page.title !== "string" || !Array.isArray(page.headings) || !Array.isArray(page.links)) throw new Error("invalid documentation page entry");
     const expectedSource = provenance.sourceCommit ? `${DOCUMENTATION_REPOSITORY}/blob/${provenance.sourceCommit}/${page.path.split("/").map(encodeURIComponent).join("/")}` : null;
     if (page.sourceHref !== expectedSource) throw new Error("documentation page mixes source revisions");
+    const headings = markdownHeadings(readFileSync(join(root, page.contentPath), "utf8")).map((heading) => ({ id: heading.anchor.slice(1), title: heading.title }));
+    if (JSON.stringify(page.headings) !== JSON.stringify(headings)) throw new Error("documentation headings differ from Markdown content");
     pageIds.set(page.id, page); pagePaths.push(page.contentPath);
   }
   if (JSON.stringify(pagePaths.sort()) !== JSON.stringify(paths.filter((path) => path.startsWith("markdown/")).sort())) throw new Error("documentation pages do not cover their Markdown inventory");
   if (!["sources.json", "search.json", "llms.txt", "llms-full.txt"].every((path) => paths.includes(path))) throw new Error("documentation bundle is missing a projection");
-  const navigationIds = new Set<string>();
+  const navigationOwners = new Map<string, typeof manifest.navigation[number]>();
   for (const surface of manifest.navigation) {
     const page = surface && pageIds.get(surface.page);
-    if (!page || typeof surface.id !== "string" || navigationIds.has(surface.id) || typeof surface.purpose !== "string" || !Array.isArray(surface.selectors)
+    if (!page || typeof surface.id !== "string" || navigationOwners.has(surface.id) || typeof surface.purpose !== "string" || !Array.isArray(surface.selectors)
       || typeof surface.anchor !== "string" || (surface.anchor !== "" && !page.headings.some((heading) => `#${heading.id}` === surface.anchor))) throw new Error("documentation navigation has an invalid owner or anchor");
-    navigationIds.add(surface.id);
+    navigationOwners.set(surface.id, surface);
   }
-  const inventory = JSON.parse(readFileSync(join(root, "sources.json"), "utf8")) as { sources: { path: string; digest: string; owner: { page: string; anchor: string } }[] };
-  if (!Array.isArray(inventory.sources) || new Set(inventory.sources.map((row) => row.path)).size !== inventory.sources.length) throw new Error("invalid documentation source inventory");
+  const inventory = JSON.parse(readFileSync(join(root, "sources.json"), "utf8")) as { sources: DocumentationSource[] };
+  if (!inventory || !Array.isArray(inventory.sources)) throw new Error("invalid documentation source inventory");
+  const sourcePaths = new Set<string>();
   for (const source of inventory.sources) {
-    if (!normalizedPath(source.path) || !digest(source.digest) || !pageIds.has(`page:${source.owner?.page}`)) throw new Error("source inventory has an invalid path, digest or owner");
+    if (!source || !normalizedPath(source.path) || sourcePaths.has(source.path) || source.id !== `source:${source.path}` || !digest(source.digest))
+      throw new Error("source inventory has an invalid path, identity or digest");
+    if (typeof source.class !== "string" || typeof source.role !== "string" || source.descriptionSource !== "authored-owner"
+      || !Array.isArray(source.symbols) || source.symbols.some((symbol) => typeof symbol !== "string")
+      || source.symbolSource !== (source.symbols.length ? "syntactic-export-declarations" : "none")) throw new Error("invalid documentation source hint format");
+    const owner = source.owner && navigationOwners.get(source.owner.unit);
+    if (!owner || owner.page !== `page:${source.owner.page}` || owner.anchor !== source.owner.anchor || owner.purpose !== source.owner.purpose)
+      throw new Error("source inventory has an invalid canonical owner or anchor");
+    sourcePaths.add(source.path);
     if (source.path.endsWith(".md") && manifest.files.find((file) => file.path === `markdown/${source.path}`)?.digest !== source.digest) throw new Error("source inventory and Markdown bytes differ");
   }
-  const sourcePaths = new Set(inventory.sources.map((source) => source.path));
+  if (manifest.pages.some((page) => !sourcePaths.has(page.path))) throw new Error("source inventory omits a Markdown page");
   const markdownPaths = new Set(manifest.pages.map((page) => page.path));
   for (const page of manifest.pages) {
     const expectedLinks = documentationPageLinks(page.path, readFileSync(join(root, page.contentPath), "utf8"), markdownPaths, sourcePaths, provenance.sourceCommit);

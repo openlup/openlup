@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
-import { renderDocumentationSourceMap } from "./documentation-navigation.ts";
+import { documentationDigest, renderDocumentationSourceMap, type DocumentationSource } from "./documentation-navigation.ts";
 import type { DocumentationState } from "./documentation-routing.ts";
 
 const fixtures: string[] = [];
@@ -80,6 +80,33 @@ describe("public documentation bundle", () => {
     writeFileSync(join(mixed, "manifest.json"), JSON.stringify(manifest));
     expect(() => validateDocumentationBundle(mixed)).toThrow(/manifest digest/u);
     expect(() => validateDocumentationBundle(extra, { sourceCommit: "f".repeat(40) })).toThrow(/both/u);
+  });
+
+  it.each(["missing-id", "wrong-id", "duplicate-id", "missing-anchor", "wrong-owner", "missing-page-source", "malformed-hint", "invented-heading"])("refuses self-consistent malformed source navigation: %s", (kind) => {
+    const { root, state } = fixture(); const bundle = createDocumentationBundle(root, state);
+    const inventory = JSON.parse(bundle.contents.get("sources.json")!.toString()) as { sources: DocumentationSource[] };
+    if (kind === "missing-id") delete (inventory.sources[0] as Partial<DocumentationSource>).id;
+    else if (kind === "wrong-id") inventory.sources[0].id = "source:unrelated.ts";
+    else if (kind === "duplicate-id") inventory.sources[1].id = inventory.sources[0].id;
+    else if (kind === "missing-anchor") inventory.sources[0].owner.anchor = "#missing";
+    else if (kind === "wrong-owner") inventory.sources[0].owner.unit = "unknown-owner";
+    else if (kind === "missing-page-source") inventory.sources = inventory.sources.filter((source) => source.path !== "README.md");
+    else if (kind === "malformed-hint") (inventory.sources[0] as unknown as { symbols: unknown }).symbols = 7;
+    else {
+      bundle.manifest.pages[0].headings.push({ id: "invented", title: "Invented" });
+      bundle.manifest.navigation[0].anchor = "#invented";
+      inventory.sources.forEach((source) => { source.owner.anchor = "#invented"; });
+    }
+    const bytes = Buffer.from(JSON.stringify(inventory)); bundle.contents.set("sources.json", bytes);
+    const file = bundle.manifest.files.find((entry) => entry.path === "sources.json")!;
+    file.bytes = bytes.length; file.digest = documentationDigest(bytes);
+    const { bundleDigest: _previous, ...unsigned } = bundle.manifest;
+    bundle.manifest.bundleDigest = documentationDigest(JSON.stringify(unsigned));
+    bundle.contents.set("manifest.json", Buffer.from(JSON.stringify(bundle.manifest)));
+    const directory = write(root, bundle.contents);
+    expect(() => validateDocumentationBundle(directory)).toThrow(/identity|owner or anchor|headings differ|omits a Markdown page|hint format/u);
+    expect(() => validateDocumentationBundle(directory, { sourceCommit: bundle.manifest.provenance.sourceCommit!, bundleDigest: bundle.manifest.bundleDigest }))
+      .toThrow(/identity|owner or anchor|headings differ|omits a Markdown page|hint format/u);
   });
 
   it("writes only a new safe ignored output and refuses symlink destinations", () => {
