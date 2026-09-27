@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +54,33 @@ describe("public documentation bundle", () => {
     expect(first.manifest.pages[0].links[0].href).toContain(`/blob/${first.manifest.provenance.sourceCommit}/src/example.ts`);
     expect(first.manifest.pages[0].links[1].href).toContain(`/tree/${first.manifest.provenance.sourceCommit}/src`);
     expect(renderDocumentationSourceMap(state)).toBe(renderDocumentationSourceMap(state));
+  });
+
+  it.each(["clean", "process"])("exports without executing a configured Git %s filter", (kind) => {
+    const { root, state } = fixture(); const marker = join(root, ".git/filter-executed");
+    const program = join(root, ".git/fixture-filter.mjs");
+    writeFileSync(program, `import { readFileSync, writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "executed"); ${kind === "clean" ? "process.stdout.write(readFileSync(0));" : "process.exit(1);"}`);
+    writeFileSync(join(root, ".git/fixture-attributes"), "src/example.ts filter=fixture\n");
+    const git = (args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+    const quote = (value: string): string => `'${value.replaceAll("'", "'\"'\"'")}'`;
+    git(["config", "core.attributesFile", ".git/fixture-attributes"]);
+    git(["config", `filter.fixture.${kind}`, `${quote(process.execPath)} ${quote(program)}`]);
+    utimesSync(join(root, "src/example.ts"), new Date(2000, 0, 1), new Date(2000, 0, 1));
+    expect(createDocumentationBundle(root, state).manifest.provenance.publishable).toBe(true);
+    expect(createDocumentationBundle(root, state, true).manifest.provenance.publishable).toBe(false);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("refuses a changed index even when materialized bytes match HEAD", () => {
+    const { root, state } = fixture(); const source = join(root, "src/example.ts"); const original = readFileSync(source);
+    writeFileSync(source, "export const sample = 2;\n"); execFileSync("git", ["add", "src/example.ts"], { cwd: root, stdio: "pipe" }); writeFileSync(source, original);
+    expect(() => createDocumentationBundle(root, state)).toThrow(/changed tree: index/u);
+    expect(createDocumentationBundle(root, state, true).manifest.provenance.publishable).toBe(false);
+  });
+
+  it("refuses an untracked source omitted from a supplied inventory", () => {
+    const { root, state } = fixture(); writeFileSync(join(root, "src/untracked.ts"), "export const added = true;\n");
+    expect(() => createDocumentationBundle(root, state)).toThrow(/changed tree: inventory/u);
   });
 
   it("labels changed bytes as non-publishable rather than committed HEAD", () => {

@@ -153,9 +153,12 @@ identities, content digests and provenance.
 A clean export names the exact public source commit. A local candidate export
 binds its base revision and current content digest and is explicitly
 non-publishable; changed bytes must not be attributed to committed `HEAD`.
-HEAD, status, committed inventory and blob comparisons use the same isolated
+HEAD, committed inventory, index and raw blob comparisons use the same isolated
 Git reader as impact checks, so local object replacements or environment
-redirects cannot substitute the revision being exported.
+redirects cannot substitute the revision being exported. The exporter compares
+raw bytes and modes without `git status` or worktree conversions, which could
+execute configured Git clean/process filters. A changed index or an untracked
+source also refuses a committed export.
 Keep output in a new ignored `dist-docs/<name>` directory. The exporter refuses
 existing outputs, escaping paths and symbolic-link parents.
 Re-export the complete bundle after changing an input instead of copying an

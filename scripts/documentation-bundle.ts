@@ -1,8 +1,8 @@
 import { lstatSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
-import { markdownHeadings, type DocumentationState } from "./documentation-routing.ts";
+import { documentationCandidatePaths, markdownHeadings, type DocumentationState } from "./documentation-routing.ts";
 import { documentationDigest, documentationSources } from "./documentation-navigation.ts";
-import { documentationGit, readDocumentationTree } from "./documentation-git.ts";
+import { documentationGit, readDocumentationIndex, readDocumentationTree } from "./documentation-git.ts";
 
 export const DOCUMENTATION_REPOSITORY = "https://github.com/openlup/openlup";
 export const DOCUMENTATION_BUNDLE_FORMAT = 1;
@@ -57,17 +57,22 @@ export function documentationPageLinks(path: string, markdown: string, pagePaths
 export function createDocumentationBundle(root: string, state: DocumentationState, local = false): DocumentationBundle {
   const head = git(root, ["rev-parse", "HEAD"]).trim();
   if (!/^[a-f0-9]{40}$/u.test(head)) throw new Error("documentation export needs an exact committed base");
-  const dirty = git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]) !== "";
-  if (!local && dirty) throw new Error("clean documentation export refuses a changed tree; use --docs-local for a non-publishable draft");
+  // Raw inventory, index and blob reads avoid worktree conversions: git status
+  // can execute locally configured clean/process filters even on a clean tree.
+  const committed = local ? null : readDocumentationTree(root, head);
   if (!local) {
-    const committed = git(root, ["ls-tree", "-r", "--name-only", "-z", head]).split("\0").filter(Boolean).sort();
-    if (JSON.stringify(committed) !== JSON.stringify([...state.paths].sort())) throw new Error("clean documentation export inventory is not committed HEAD");
+    const paths = JSON.stringify([...committed!.keys()].sort());
+    if (paths !== JSON.stringify([...state.paths].sort()) || paths !== JSON.stringify(documentationCandidatePaths(root)))
+      throw new Error("clean documentation export refuses a changed tree: inventory differs from committed HEAD");
+    const index = readDocumentationIndex(root);
+    if (index.size !== committed!.size || [...index].some(([path, row]) => committed!.get(path)?.digest !== row.digest || committed!.get(path)?.mode !== row.mode))
+      throw new Error("clean documentation export refuses a changed tree: index differs from committed HEAD");
   }
   const sources = documentationSources(root, state);
   const sourceInputs = sources.map(({ path, digest }) => ({ path, digest, mode: (lstatSync(join(root, path)).mode & 0o111) ? "100755" : "100644" }));
   if (!local) {
-    const committed = readDocumentationTree(root, head);
-    if (sourceInputs.some((row) => committed.get(row.path)?.digest !== row.digest || committed.get(row.path)?.mode !== row.mode)) throw new Error("clean documentation export bytes/modes differ from committed HEAD");
+    if (sourceInputs.some((row) => committed!.get(row.path)?.digest !== row.digest || committed!.get(row.path)?.mode !== row.mode))
+      throw new Error("clean documentation export refuses a changed tree: bytes/modes differ from committed HEAD; use --docs-local for a non-publishable draft");
   }
   const candidateDigest = documentationDigest(JSON.stringify(sourceInputs));
   const revision = local ? null : head;
