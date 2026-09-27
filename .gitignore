@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-docs/
 dist-public-reference-ssr
 # Deploy-parity build output. It used to be unlisted because the proof always
 # deleted it on the way out; `OPENLUP_PARITY_KEEP_DIST=1` now retains the client

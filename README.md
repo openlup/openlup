@@ -24,12 +24,19 @@ and integrations; platform code remains generic and evolves upstream.
 
 ## Platform documentation
 
+- [Explore all domains, packages and source responsibilities](docs/platform/SOURCE_MAP.md)
+- [Follow subscription workflows into the implementation](docs/platform/SUBSCRIPTION_WORKFLOWS.md)
 - [Platform documentation index](docs/platform/README.md)
 - [Public agent guide](docs/platform/AGENT_GUIDE.md)
 - [Architecture and extension boundaries](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md)
 - [Data and migration contract](docs/platform/DATA_AND_MIGRATIONS.md)
 - [Runtime and self-hosting boundary](docs/platform/RUNTIME_AND_SELF_HOSTING.md)
 - [Canonical status, idempotency, and provider contracts](docs/platform/CANONICAL_CONTRACTS.md)
+
+The [documentation maintenance guide](docs/platform/DOCUMENTATION.md) explains
+same-change impact checks and a reproducible Markdown/search bundle for website
+consumers. Repository pages are the canonical source; presentation consumes the
+checked bundle from a deliberately selected public revision.
 
 ## Evaluate the public reference
 
@@ -87,7 +94,7 @@ The projected root manifest exposes a closed command inventory: `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `oss:published-tree`, `packages:check`,
+`guard:public-reference-site-routes`, `lint`, `oss:published-tree`, `packages:check`,
 and `test`. The public workflow is the execution owner for that inventory;
 source-only deploy, secret-management, smoke, and environment-specific operator
 commands are not exported.

@@ -3,7 +3,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import { EXPLICIT_PUBLIC_PROJECTION_PATHS, PUBLIC_EXECUTION_ENTRYPOINTS, SOURCE_RELEASE_CONTRACT_PATH, assertExplicitPublicProjectionWrites, isDirectExecutionEntrypoint, publicProjectionSource, type ProjectionWrite, validateSourceReleaseContract } from "./oss-publication-contract.ts";
@@ -11,6 +11,12 @@ import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, createPublicPubl
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 import { runPlatformMigrationManifestCheck } from "./platform-migration-manifest.ts";
 import { comparePublicTypecheck, readPublicTypecheckCompatibility, runPublicTypecheckProjects, summarizePublicDiagnostics } from "./oss-public-typecheck.ts";
+import { assertDocumentationNavigation, readDocumentationState } from "./documentation-routing.ts";
+import { resolveDocumentationBase } from "./documentation-git.ts";
+import { checkDocumentationImpact, renderDocumentationImpact } from "./documentation-impact.ts";
+import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
+import { createDocumentationBundle } from "./documentation-bundle.ts";
+import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
 
 const MANIFEST = "package.json";
 export type ProjectionDriftRow = { selector: string; sourceSelector: string | null; source: { disposition: "present" | "absent"; digest: string | null }; public: { disposition: "projected" | "absent"; digest: string | null } };
@@ -40,7 +46,7 @@ function assertMaterializedMarkdownLinks(root: string, paths: Iterable<string>):
     for (const [, raw] of markdown.matchAll(/\]\(([^)]+)\)/gu)) {
       if (raw.startsWith("#") || /^(?:[a-z][a-z0-9+.-]*:|\/)/iu.test(raw)) continue;
       const target = raw.split(/[?#]/u)[0]; const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-      const candidate = posix.normalize(posix.join(parent, target)); const materialized = candidate !== ".." && !candidate.startsWith("../") && (inventory.has(candidate) || (target.endsWith("/") && [...inventory].some((item) => item.startsWith(`${candidate}/`)))); if (target !== "" && !materialized) throw new Error(`${path}: local Markdown link is missing ${raw}`);
+      const candidate = posix.normalize(posix.join(parent, target)).replace(/\/$/u, ""); const materialized = candidate !== ".." && !candidate.startsWith("../") && (inventory.has(candidate) || (target.endsWith("/") && [...inventory].some((item) => item.startsWith(`${candidate}/`)))); if (target !== "" && !materialized) throw new Error(`${path}: local Markdown link is missing ${raw}`);
     }
     for (const [, raw] of markdown.matchAll(/`([^`\n]+)`/gu)) {
       if (!exactPath.test(raw)) continue;
@@ -286,6 +292,9 @@ function main(root: string, argv: string[]): number {
     return 2;
   }
   const log = (line: string) => process.stdout.write(`${line}\n`);
+  const documentationArgs = argv.filter((arg) => arg.startsWith("--docs-"));
+  if (documentationArgs.length > 0 && modes[0] !== "--policy") throw new Error("documentation options require --policy");
+  if (modes[0] === "--policy") return documentationPolicyCommand(root, argv, log);
   const ok = modes[0] === "--typecheck"
     ? typecheckVerdict(root, readFileSync(join(root, SOURCE_RELEASE_CONTRACT_PATH), "utf8"), log)
     : modes[0] === "--inventory"
@@ -297,4 +306,51 @@ function main(root: string, argv: string[]): number {
   return ok ? 0 : 1;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) process.exit(main(process.cwd(), process.argv.slice(2)));
+export function documentationPolicyCommand(root: string, argv: string[], log: (line: string) => void): number {
+  const valued = new Set(["--docs-base", "--docs-export", "--docs-check-bundle", "--docs-source", "--docs-digest"]);
+  const flags = new Set(["--policy", "--docs-update", "--docs-local"]);
+  const options = new Map<string, string>();
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index];
+    if ((!valued.has(arg) && !flags.has(arg)) || options.has(arg)) throw new Error(`unknown or repeated documentation option ${arg}`);
+    const value = valued.has(arg) ? argv[++index] : "true";
+    if (!value || value.startsWith("--")) throw new Error(`missing value for ${arg}`);
+    options.set(arg, value);
+  }
+  if (options.has("--docs-local") && !options.has("--docs-export")) throw new Error("--docs-local requires --docs-export");
+  const bundleInput = options.get("--docs-check-bundle");
+  if (bundleInput) {
+    if (["--docs-export", "--docs-update", "--docs-base", "--docs-local"].some((arg) => options.has(arg))) throw new Error("bundle validation cannot be combined with source operations");
+    const manifest = validateDocumentationBundle(join(root, bundleInput), { sourceCommit: options.get("--docs-source"), bundleDigest: options.get("--docs-digest") });
+    log(`documentation bundle integrity valid: ${manifest.bundleDigest}; ${manifest.provenance.kind}; publishable=${manifest.provenance.publishable}`);
+    log("This validates the selected bundle, not the current source tree or behavioral meaning.");
+    return 0;
+  }
+  if (options.has("--docs-source") || options.has("--docs-digest")) throw new Error("consumer pins require --docs-check-bundle");
+  let state = readDocumentationState(root);
+  if (options.has("--docs-update")) {
+    writeFileSync(join(root, SOURCE_MAP_PATH), renderDocumentationSourceMap(state));
+    state = readDocumentationState(root);
+  }
+  if (!existsSync(join(root, SOURCE_MAP_PATH)) || readFileSync(join(root, SOURCE_MAP_PATH), "utf8") !== renderDocumentationSourceMap(state)) throw new Error("documentation source map is stale; run --policy --docs-update");
+  assertDocumentationNavigation(state);
+  policyVerdict(root, log);
+  const base = resolveDocumentationBase(root, { base: options.get("--docs-base") });
+  log(`- documentation comparison: ${base.base} (${base.provenance})`);
+  const result = checkDocumentationImpact(root, state, base.base);
+  for (const line of renderDocumentationImpact(result)) log(line);
+  if (result.failures.length > 0) return 1;
+  const output = options.get("--docs-export");
+  if (output) {
+    const bundle = createDocumentationBundle(root, state, options.has("--docs-local"));
+    writeDocumentationBundle(root, output, bundle);
+    log(`- documentation bundle: ${output}; ${bundle.manifest.bundleDigest}; ${bundle.manifest.provenance.kind}; publishable=${bundle.manifest.provenance.publishable}`);
+  }
+  log("the tree satisfies its public policy catalogue and documentation ownership/impact checks.");
+  return 0;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  try { process.exit(main(process.cwd(), process.argv.slice(2))); }
+  catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exit(1); }
+}

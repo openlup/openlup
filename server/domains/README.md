@@ -23,16 +23,19 @@ and the rules list were not re-proved beyond confirming that the paths they name
 exist.
 
 `server/domains/<domain>` contains server-only handler factories, use-case
-orchestration, auth helpers, and persistence/provider-neutral ports. It is
-HTTP-independent: nothing here reads a route, a request object, or a hosting
-runtime.
+orchestration, auth helpers and persistence/provider-neutral ports. The intended
+service boundary is HTTP-independent: a use case receives domain inputs and
+ports rather than a hosting request. Existing transport-aware factories and
+hybrid modules are identified under [Known non-neutrality](#known-non-neutrality);
+the directory name alone does not establish portability.
 
 ## Layers
 
 - `src/domains/<domain>` owns browser-safe contracts, public types, ports, and
   typed BFF clients.
-- `server/domains/<domain>` owns HTTP-independent handlers and services over
-  those contracts and ports.
+- `server/domains/<domain>` owns server use cases over those contracts and ports;
+  the intended portable service boundary and existing transport exceptions are
+  described below.
 - `server/bff/<domain>` owns route composition: request/response objects,
   auth/session wiring, env checks, database-client construction, provider
   adapter injection, and `withObservedRoute` metadata. This is where a route
@@ -71,13 +74,22 @@ the domains whose kernel reaches the server only through a re-export in
 
 ## Known non-neutrality
 
-The composition roots named above are shaped by the current deployment's
-hosting model: `api/bff/[...path].ts` and `api/_cron/*` are serverless function
-entrypoints, and the request/response types they pass down come from
-`server/_lib/types`. Domain code under `server/domains/*` does not import them
-and is hosting-independent; an adopter replaces the composition roots, not the
-domains. Hosting portability is an in-progress programme, so treat the
-entrypoint shape as a current-deployment fact rather than a settled contract.
+The composition roots named above use a serverless entrypoint shape:
+`api/bff/[...path].ts` and `api/_cron/*` pass request/response types from
+`server/_lib/types`. Some existing domain files also retain those types:
+
+- [accounting/accountingHandlers.ts](accounting/accountingHandlers.ts) contains
+  HTTP handler factories around accounting ports.
+- [subscription/paymentRecoveryHandler.ts](subscription/paymentRecoveryHandler.ts)
+  performs method/body checks and BFF response handling.
+- [subscription/subscriptionRenewalInvocation.ts](subscription/subscriptionRenewalInvocation.ts)
+  includes a request-header attribution helper alongside a transport-independent
+  batch service.
+
+An adopter must inspect both composition and the specific service/handler it
+reuses. These are observed examples, not an exhaustive inventory of transport
+dependencies. Hosting portability remains in progress; do not turn the current
+entrypoint shape into a platform-wide portable-runtime claim.
 
 Most ownership docs live in `src/domains/<domain>/README.md`. Add a local
 `server/domains/<domain>/README.md` only when the server surface has unusual
@@ -92,3 +104,9 @@ bounded public-source inventory. A repository path establishes source existence
 at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
+
+The [documentation maintenance guide](../../docs/platform/DOCUMENTATION.md#ownership)
+explains canonical owner routing. For a meaningful internal reading path, use
+the [subscription workflows](../../docs/platform/SUBSCRIPTION_WORKFLOWS.md)
+or the [accounting owner](../../src/domains/accounting/README.md). Follow their
+test links as falsifiers and check execution scope before claiming a result.

@@ -74,7 +74,8 @@ gitleaks git . --config config/gitleaks.toml --redact --no-banner
 ```
 
 The three `oss:published-tree` modes are distinct checks. `--policy` verifies
-the public policy and catalogue boundary, `--inventory` verifies the selected
+the public policy, catalogue, documentation ownership, generated navigation and
+same-change documentation impact boundary; `--inventory` verifies the selected
 tree, and `--typecheck` compares the preview's diagnostics with its tracked
 compatibility debt. The source repository's aggregate typechecker is not part of
 the projected command inventory and is not a substitute for `--typecheck`.
@@ -162,6 +163,15 @@ at `f09d865`, 2026-09-23):
 
 Admitting any of them to a hosted job is separate quality work.
 
+Documentation falsifiers are imported by the existing materialized
+command-contract test entrypoint. Run
+`npx vitest run scripts/oss-published-tree-check.test.ts` for routing, source-impact,
+bare-runtime CLI and bundle corruption cases. Those tests create disposable Git
+fixtures; they do not publish or validate the meaning of arbitrary prose.
+See [Documentation maintenance](docs/platform/DOCUMENTATION.md) for regeneration,
+exact comparison bases and clean versus local-draft exports. The public self-check
+uses Node built-ins and repository code without installing dependencies.
+
 A change can be released as the next source preview when the required checks of
 Published Tree CI pass and its tree describes itself: the publication catalogue
 lists every tracked path, and `config/openlup-source-release-contract.json`
@@ -236,6 +246,16 @@ Reuse the compact task record in the PR description instead of writing another
 manual. Explain material deviations, evidence and remaining limitations. Review
 must assess correctness, approved scope and whether unnecessary complexity adds
 maintenance cost; findings need a concrete mechanism and effect, not a quota.
+
+Include the affected documentation owners and what changed in their explanations.
+For a scoped no-impact record, challenge its reasoning as well as its fresh
+fingerprint: a hash identifies the delta and owner text, not semantic correctness.
+Keep generic corrections upstream; separately owned applications document their
+selected immutable release and own composition. Their private operations and
+adoption state are not public platform documentation inputs.
+Read the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) before
+submitting material AI-assisted work. Human accountability and DCO, independent
+native review, and actual task publication authority remain required.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned

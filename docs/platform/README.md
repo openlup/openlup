@@ -6,6 +6,9 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 ## Start here
 
+- [Source map](SOURCE_MAP.md) — every platform domain and source responsibility, with canonical owners and source links.
+- [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) — meaningful internal steps, refusal boundaries and the tests to inspect.
+- [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact, generated navigation and checked bundle export.
 - [Agent guide](AGENT_GUIDE.md) — the public guide for coding agents; the root `AGENTS.md` is its location-adjusted copy.
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) — module ownership, extension seams, and source-ejection consequences.
 - [Data and migrations](DATA_AND_MIGRATIONS.md) — compatibility-first schema evolution and adopter-owned data.
@@ -27,6 +30,11 @@ declared commands and the relevant release before describing a capability.
 Label a page as current guidance, a proposal, or dated history; a historical
 procedure must not look executable today. Name the available development-preview
 profile and its support limits without implying a stable install.
+
+Use the [ownership and maintenance route](DOCUMENTATION.md#ownership) before
+creating a page. The [generated source map](SOURCE_MAP.md) and its bundle are
+projections of existing public inputs. Regenerate them with the same change;
+review the authored explanation at the affected owner section.
 
 For a new task-oriented page, copy only the fields that serve its readers:
 
