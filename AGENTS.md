@@ -67,10 +67,24 @@ alternatives essay for obvious work. Complexity findings need a concrete cost
 or unnecessary behaviour; style preferences do not block. Existing controls
 and acceptance evidence remain required.
 
-Follow the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) for active
-human-read admission. The [autonomous delivery intent](docs/platform/plans/autonomous-reviewed-delivery-intent.md)
-and [plan](docs/platform/plans/autonomous-reviewed-delivery.md) describe a pending
-replacement, not active unattended admission.
+Follow the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) for accountability,
+DCO and delivery authority. The [autonomous delivery intent](docs/platform/plans/autonomous-reviewed-delivery-intent.md)
+and [plan](docs/platform/plans/autonomous-reviewed-delivery.md) require the active supervisor to launch independent
+fresh-context native subagents in the same conversation under the existing
+subscription. Supply approved criteria and exact source without author history
+or other reviewers' verdicts. Ordinary prose needs one bounded review; behaviour,
+executable instructions, contracts, controls and unknown risk need two. At least
+one review considers a simpler solution preserving all controls. The maintainer
+does not read each diff or move prompts/reports between sessions.
+
+After repairs, commit and review the exact final candidate. Handle
+`needs_agent_review` by launching the required reviews and retrying the gate,
+without another owner approval for the same authorized behaviour. Missing,
+stale, partial or materially failing evidence refuses verify and pre-push once
+installed enforcement passes its live refusal tests. Native session receipts are
+process evidence, not cryptographic remote attestation or hard signer isolation.
+No model API, backend, new host or copied subscription authentication is required.
+Review does not grant publication, merge, secret or settings authority.
 
 Keep changes small, test the affected public contract, and make failures actionable. An adapter must demonstrate its declared capabilities and refusal behaviour without relying on live provider access.
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.

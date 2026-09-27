@@ -1,5 +1,5 @@
-// Dormant adapter: no installed Git hook calls this module. Activation requires
-// a protected caller/configuration and verifier installation, not author opt-in.
+// The authenticated receipt adapter requires an explicitly installed caller.
+// The native session gate also reuses the source object-graph helpers below.
 import { createHash } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { constants, createReadStream } from 'node:fs';

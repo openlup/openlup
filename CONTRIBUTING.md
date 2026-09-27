@@ -29,8 +29,8 @@ compactly. Small tasks need no separate planning ceremony or specification.
 Consider removing the cause or reusing an existing seam before adding a new
 abstraction; explain a concrete benefit over a simpler alternative when needed.
 Keep the accepted goal and guarantees fixed while execution notes evolve.
-The [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) owns active
-admission and the conditions for delegating review.
+The [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) owns accountability,
+DCO, publication authority and independent native-session review.
 
 Keep a change focused and explain its public contract, compatibility boundary,
 and test evidence. Add or update tests for the behaviour you change. Provider
@@ -209,19 +209,28 @@ into a stable or supported artifact.
 ## Pull requests
 
 The [autonomous delivery plan](docs/platform/plans/autonomous-reviewed-delivery.md)
-is preparation, not active unattended admission. The human-read and explicit
-PR-opening rules in the AI policy remain in force until the maintainer activates
-protected controller and hosted enforcement after refusal tests pass.
-`scripts/agent-review-gate.mjs` verifies authenticated receipt evidence; it does
-not launch reviewers, observe CI or establish a protected identity by itself.
-The controller in `scripts/agent-review-controller.mjs` launches fresh bounded
-review processes and signs only observed complete passing results. The hosted
-observer in `scripts/agent-review-hosted.mjs` checks the approved workflow's
-latest actual executions and publishes an aggregate through a distinct protected
-App. Their fixture tests demonstrate orchestration and refusal behaviour; they
-do not provision protected identities, model authentication or GitHub access.
-The hook adapter must be invoked by a pinned protected installation with trusted
-inputs. Its availability does not change the active policy or existing checks.
+uses the supervisor in the current conversation to launch independent
+fresh-context subagents under the existing subscription. The maintainer controls
+scope and delivery authority without reading every diff or transferring prompts,
+reports or authentication between sessions. The same contract applies to Codex,
+Claude Code and future agents; no model API, backend or new host is required.
+
+Use one bounded review for ordinary prose, two for behaviour, executable
+instructions, contracts, controls and unknown risk. Review the exact final
+committed candidate without author history or another reviewer's verdict.
+Record actual platform execution observations and complete findings. After
+repairs, commit and obtain fresh review. Handle `needs_agent_review` automatically
+within the active task and retry the gate; do not ask the owner to reapprove the
+same authorized behaviour.
+
+`scripts/agent-review-session.mjs` binds process evidence to the candidate,
+intent, scope and reviewer results. Installed verify and pre-push must refuse
+missing, stale, partial or unresolved evidence; live enforcement is claimed only
+after installed refusal tests pass. These receipts do not cryptographically
+attest remote agent execution or establish hard author/signer OS separation.
+The merged authenticated verifier/controller and hosted observer remain optional
+libraries, not requirements for an external model service. Existing mechanical
+checks, DCO and applicable publication/merge authority remain required.
 
 Reuse the compact task record in the PR description instead of writing another
 manual. Explain material deviations, evidence and remaining limitations. Review

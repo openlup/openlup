@@ -21,46 +21,52 @@ The policy is therefore **disclosure and accountability**, not permission.
    is that human's, and the DCO requirement in `CONTRIBUTING.md` applies
    unchanged to AI-assisted work. A tool cannot sign off, and the maintainer's
    own agents are no exception: when an agent writes the sign-off line on a
-   human's instruction, the sign-off is that human's, certified through the
-   read that precedes authorising the pull request under rule 4 and, for
-   commits added after the pull request is opened, through that human's review
-   of them before it is merged.
+   human's instruction, the sign-off is that human's, certified by that
+   human's authority over provenance, submission rights and task delivery scope.
+   Delegated technical review does not assert personal reading of every diff.
 
 3. **You must be able to explain every line.** If a reviewer asks why a line
    exists and the honest answer is "the model wrote it", the contribution is not
    ready. This is the whole test, and it is deliberately strict: it is what
    separates an assisted contribution from an unreviewed one.
 
-4. **No autonomous, unattended pull requests.** An agent may write the code. A
-   human reads the pull request and authorises opening it; an agent may then
-   open it on that human's explicit instruction for that pull request, and the
-   pull request says so. Bulk or automated submissions without a human in the
-   loop are closed on sight, regardless of quality, and repeated submission is
-   treated as abuse.
+4. **No unauthorized submissions.** An agent may implement and independently
+   review an authorized task. Opening or merging a pull request still needs the
+   applicable explicit maintainer authority; a generated plan or review receipt
+   cannot grant it. Record the actual task or batch authority without claiming
+   that the maintainer personally read the diff. Unsolicited bulk submissions
+   without an accountable human and authorized scope are closed regardless of
+   quality; repeated submission is treated as abuse.
 
-## Active admission and DCO
+## Admission, native review and DCO
 
-These are the active admission rules, including the human read in rules 2 and
-4. DCO certifies provenance and the right to submit under the licence; it is not
-a certification of code quality. Human reading is a separate admission control.
-
-## Proposed delegation, pending enforcement
+DCO certifies human provenance and the right to submit under the licence; it is
+not a certification of code quality or personal reading of every diff. The
+maintainer controls outcomes, important contracts and delivery authority.
+Technical review of maintainer-authorized agent tasks is delegated to independent
+fresh-context reviewers in the same task conversation.
 
 The [autonomous delivery intent](../docs/platform/plans/autonomous-reviewed-delivery-intent.md)
 and [implementation plan](../docs/platform/plans/autonomous-reviewed-delivery.md)
-propose delegating technical review while retaining an accountable human who
-controls outcomes, important contracts and execution authority. They do not
-yet replace rules 2 and 4 or authorize unattended submissions.
+define the native subscription-backed default. The active supervisor launches
+reviewers using the platform's own subagent tools, without author conversation
+or another reviewer's verdict. Codex, Claude Code and future providers share
+this contract. No model API, backend, new host or authentication transfer is
+required; the maintainer performs no action between implementation and review.
 
-The replacement requires a protected controller that launches cold reviewers
-and authenticates observed results for the exact candidate, plus required
-hosted admission that refuses missing, stale, partial or unresolved material
-evidence. Authors cannot issue their own accepted review. Existing mechanical
-checks remain required; skipped checks are not successful execution. The
-maintainer must explicitly activate the replacement after its refusal tests
-pass. Until then, bootstrap contributions follow the active human-read rules.
+Installed verify and pre-push must refuse missing, stale, partial, mismatched or
+unresolved material evidence for the exact committed candidate. Their
+`needs_agent_review` response is handled by the supervisor, not by asking the
+maintainer to repeat an approved task. Each installation must demonstrate its actual refusal paths before claiming
+live enforcement; fixture results are not activation proof.
+Existing mechanical checks and publication authority remain unchanged.
 
-The proposed workflow records each task's outcome, scope, authority, acceptance,
+Native execution observations and receipts enforce the process; they do not
+cryptographically attest remote agent execution or establish hard OS separation
+between author and supervisor. An author-written approval is not independent
+review. The supervisor must obtain actual complete native platform observations.
+
+The workflow records each task's outcome, scope, authority, acceptance,
 risk and execution/proof plan in one compact record. A separate specification
 is needed for an ambiguous or durable contract, not for every small task.
 Agents may refine execution notes without changing approved goals or guarantees.
@@ -86,11 +92,10 @@ perspective never waives existing controls or acceptance evidence.
 ## Why the current bar is where it is
 
 Review capacity is the scarce resource in a small project, and generated volume
-consumes it faster than it produces value. The four rules above exist to keep the
-cost of a contribution on the contributor rather than on the reviewer. A
-contribution that a human has genuinely read and can defend costs a reviewer
-roughly what a hand-written one costs. One that has not been read costs more than
-it is worth.
+consumes it faster than it produces value. The four rules above keep provenance, authority and review work with the
+contributor. Independent bounded review of an exact candidate reduces the
+maintainer's reading burden; generated volume alone does not establish quality.
+Neither a human-read claim nor a model verdict substitutes for required evidence.
 
 The same reasoning, applied to security reports, is in
 `.github/SECURITY_RESPONSE_POSTURE.md`.
@@ -126,3 +131,12 @@ request. The decision is wrong if an agent-opened pull request turns out to have
 contained a commit that no human read before it was opened, or was opened
 without an instruction for that pull request; either would return rules 2 and 4
 to their earlier text.
+
+
+**Native-session delegation, decided 2026-09-27.** The maintainer authorized
+review through isolated fresh-context native subagents in the same conversation,
+under existing subscriptions. This replaces personal diff-reading claims for
+maintainer-authorized agent tasks while retaining human accountability, DCO and
+actual publication/merge authority. The earlier mandatory protected-root and
+GitHub model API routes are superseded. Installed enforcement must still pass
+its real refusal tests; process receipts are not cryptographic remote attestation.
