@@ -151,7 +151,7 @@ there because it is consent-gated and makes no false-urgency/price promise.
 - Add provider HTTP/env/signature code under `server/infra/<provider_kind>/`.
 - Add the execution adapter under `server/adapters/<provider_kind>/` implementing
   `NewsletterSyncProviderPort` with explicit capabilities.
-- Register the adapter in `server/domains/communications/newsletterProviderRegistry.ts`;
+- Register the adapter in `server/runtime/communications/newsletterProviderRegistry.ts`;
   `COMMUNICATION_NEWSLETTER_PROVIDER_KINDS` controls enabled providers.
 - Map provider webhook payloads to `NewsletterWebhookEvent` or post the canonical
   signed event to `/api/bff/communications/integrations/events`.

@@ -30,7 +30,9 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/packages/packages-check.ts",
   "scripts/public-reference/grant-operator.mjs", "scripts/public-reference/setup-subscription.mjs",
   "scripts/public-reference/verify-subscription.mjs",
-  "scripts/run-vitest.mjs", "scripts/site-routes.mjs", "server/runtime/public-reference/serve.ts",
+  "scripts/run-vitest.mjs", "scripts/site-routes.mjs",
+  "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts",
+  "server/runtime/public-reference/serve.ts",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts",
   "vitest.config.ts",
 ] as const;

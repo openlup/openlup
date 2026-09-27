@@ -7,7 +7,7 @@ type PromotionReadinessDecision = {
 
 /**
  * Payment providers that never reach an external PSP (see
- * `server/domains/payment/paymentAdapterRegistry.ts`). No money leaves the
+ * `server/runtime/payment/paymentAdapterRegistry.ts`). No money leaves the
  * platform for them, so no PSP can ever emit a trusted provider event.
  */
 const NO_OP_PAYMENT_PROVIDERS: ReadonlySet<string> = new Set([
