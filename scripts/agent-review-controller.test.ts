@@ -24,7 +24,8 @@ interface ReviewEvent {
   usage?: { input_tokens: number; output_tokens: number }; error?: { message: string };
 }
 interface ReviewExecution { exitCode: number; events: ReviewEvent[]; output: ReviewOutput }
-interface LaunchInput { runId: string; simplicityChecked: boolean; prompt: string }
+interface ReviewFailure extends Error { review?: { verification: string; candidate: typeof candidate; output: ReviewOutput | null } }
+interface LaunchInput { runId: string; simplicityChecked: boolean; prompt: string; schema?: unknown }
 interface FixtureRuntime {
   now: () => number; randomId: () => string;
   currentBase?: Mock<() => Promise<string>>; changedPaths?: Mock<() => Promise<string[]>>;
@@ -174,7 +175,7 @@ describe("controller observes reviews before signing", () => {
   });
 });
 
-function subprocessFixture(mode: string, options: { uid?: number; gid?: number } = {}) {
+function subprocessFixture(mode: string, options: { uid?: number; gid?: number; onEvent?: (event: ReviewEvent) => void } = {}) {
   const f = fixture();
   const script = join(f.cwd, "reviewer.cjs");
   const schemaPath = join(f.cwd, "schema.json");
@@ -189,11 +190,26 @@ process.stdin.on('end', () => {
   if (mode === 'malformed') return process.stdout.write('{truncated');
   if (mode === 'secret-env' && ['GH_TOKEN','OPENAI_API_KEY','NODE_OPTIONS'].some(k => process.env[k])) process.exit(7);
   if (mode === 'startup-config' && !['--ephemeral','--ignore-user-config','--ignore-rules'].every(flag => process.argv.includes(flag))) process.exit(8);
+  if (mode === 'bound-schema') {
+    const supplied = JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf('--output-schema') + 1], 'utf8'));
+    const candidate = ${JSON.stringify(candidate)};
+    if (!Object.entries(candidate).every(([key,value]) => JSON.stringify(supplied.properties.candidate.properties[key].enum) === JSON.stringify([value]))) process.exit(9);
+  }
   const output = {candidate:${JSON.stringify(candidate)},complete:true,coveredScope:['file.txt'],coveredCriteria:true,simplicityChecked:true,verdict:'pass',materialFindings:[]};
+  if (mode === 'wrong-candidate') output.candidate.tree = '9'.repeat(40);
+  if (mode === 'finding') {
+    output.verdict = 'fail';
+    output.materialFindings = [{mechanism:'Receipt replay',precondition:'Changed candidate',requirement:'Exact snapshot',effect:'Wrong change admitted'}];
+  }
+  if (mode === 'progress') fs.rmSync(${JSON.stringify(join(f.cwd, "child-finished"))}, {force:true});
   console.log(JSON.stringify({type:'thread.started',thread_id:'fixture-' + Math.random()}));
-  console.log(JSON.stringify({type:'item.completed',item:{id:'i',type:'agent_message',text:JSON.stringify(output)}}));
-  if (mode !== 'partial') console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:1,output_tokens:1}}));
-  if (mode === 'failed') process.exitCode = 1;
+  const finish = () => {
+    if (mode === 'progress') fs.writeFileSync(${JSON.stringify(join(f.cwd, "child-finished"))}, 'finished');
+    console.log(JSON.stringify({type:'item.completed',item:{id:'i',type:'agent_message',text:JSON.stringify(output)}}));
+    if (mode !== 'partial') console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:1,output_tokens:1}}));
+    if (mode === 'failed') process.exitCode = 1;
+  };
+  if (mode === 'progress') setTimeout(finish, 100); else finish();
 });
 `);
   const launch = createCodexLauncher({ executable: process.execPath, launcherArgs: [script, mode], cwd: f.cwd, schemaPath, environment: {}, timeoutMs: 500, maxOutputBytes: 8192, ...options }) as FixtureRuntime["launch"];
@@ -204,6 +220,45 @@ describe("bounded actual reviewer subprocess", () => {
   it("observes a real subprocess and signs only its completed review", async () => {
     const { f, launch } = subprocessFixture("pass"); f.runtime.launch = launch;
     await runReviewController(f.input()); expect(f.signer).toHaveBeenCalledTimes(1);
+  });
+  it("writes the exact candidate schema consumed by the actual reviewer subprocess", async () => {
+    const { f, launch } = subprocessFixture("bound-schema"); f.runtime.launch = launch;
+    await runReviewController(f.input()); expect(f.signer).toHaveBeenCalledTimes(1);
+  });
+  it("still refuses a completed passing subprocess that reports the wrong tree", async () => {
+    const { f, launch } = subprocessFixture("wrong-candidate"); f.runtime.launch = launch;
+    const error = await runReviewController(f.input()).catch((error: ReviewFailure) => error);
+    expect(error).toBeInstanceOf(Error);
+    const report = (error as ReviewFailure).review!;
+    expect(report.verification).toBe("unverified");
+    expect(report.output!.candidate.tree).toBe("9".repeat(40));
+    expect(f.signer).not.toHaveBeenCalled();
+  });
+  it("streams bounded progress before the actual reviewer subprocess finishes", async () => {
+    const events: string[] = [];
+    let directory = "";
+    const { f, launch } = subprocessFixture("progress", { onEvent: event => {
+      if (event.type === "thread.started") expect(existsSync(join(directory, "child-finished"))).toBe(false);
+      events.push(event.type);
+    } });
+    directory = f.cwd; f.runtime.launch = launch;
+    await runReviewController(f.input());
+    expect(events).toContain("thread.started"); expect(events).toContain("turn.completed");
+    expect(f.signer).toHaveBeenCalledTimes(1);
+  });
+  it("returns validated actionable findings while refusing to sign the failed candidate", async () => {
+    const { f, launch } = subprocessFixture("finding"); f.runtime.launch = launch;
+    const error = await runReviewController(f.input()).catch((error: ReviewFailure) => error);
+    expect(error).toBeInstanceOf(Error);
+    const report = (error as ReviewFailure).review!;
+    expect(report.verification).toBe("validated-output");
+    expect(report.output!.materialFindings[0]).toEqual({ mechanism: "Receipt replay", precondition: "Changed candidate", requirement: "Exact snapshot", effect: "Wrong change admitted" });
+    expect(f.signer).not.toHaveBeenCalled();
+  });
+  it("refuses callback failure instead of signing an unobserved execution", async () => {
+    const { f, launch } = subprocessFixture("progress", { onEvent: () => { throw new Error("progress observer failed"); } });
+    f.runtime.launch = launch;
+    await expect(runReviewController(f.input())).rejects.toThrow(); expect(f.signer).not.toHaveBeenCalled();
   });
   it.each(["malformed", "partial", "failed", "timeout", "overflow"])("refuses actual subprocess %s", async mode => {
     const { f, launch } = subprocessFixture(mode); f.runtime.launch = launch;

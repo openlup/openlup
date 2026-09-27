@@ -218,6 +218,21 @@ hook installation and hosted admission cannot be counted as dogfood success
 before their infrastructure is provisioned. Record observations, limitations
 and recommendations separately from synthetic test coverage.
 
+Session 1 exercised the real Codex launcher against the committed implementation.
+The first cold reviewer completed a passing structured review in 117.8 seconds,
+but copied the tree identifier incorrectly. The controller refused signing;
+the second reviewer was not launched. This is a useful refusal and a preventable
+false rejection. Bind deterministic candidate values in the generated response
+schema while retaining the independent exact-binding check.
+
+The same run first dumped more than 1 MB of the full source index for 19 changed
+paths. Observed usage was 694,091 input tokens, including 598,784 cached tokens,
+across the review turns. Make changes the starting point, retain full source
+context for bounded lookups, and compare the second session's observed cost.
+Progress and actionable refusal reports also need to reach the protected caller;
+buffering everything until process exit makes routine recovery unnecessarily
+opaque. None of these improvements adds a review committee or waives a control.
+
 ## Earlier implementation evidence
 
 - Fresh isolated baseline: mechanical verify PASS; release-check already reports
