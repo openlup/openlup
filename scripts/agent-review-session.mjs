@@ -92,7 +92,9 @@ export async function captureCommittedReviewCandidate(cwd, base, head) {
   const before = new Map(reviewTreeEntries(graph, graph.baseTree).map(entry => [entry.path, entry]));
   const after = new Map(entries.map(entry => [entry.path, entry]));
   const changedPaths = [...new Set([...before.keys(), ...after.keys()])].sort().filter(path => before.get(path)?.object !== after.get(path)?.object || before.get(path)?.mode !== after.get(path)?.mode);
-  paths(entries.map(entry => entry.path));
+  // Inventory and task scope have different bounds: a small task can review a
+  // large tree. The authenticated reader already caps the inventory at 30,000.
+  for (const entry of entries) paths([entry.path]);
   const index = entries.map(entry => `${entry.mode} ${entry.object} 0\t${entry.path}`).sort();
   const flags = entries.map(entry => `H ${entry.path}`).sort();
   return { base, head, tree: graph.headTree, clean: true, workingDigest: digest(entries), indexDigest: digest({ index, flags }), changedPaths };
@@ -315,6 +317,15 @@ export async function verifyAgentReview({ cwd, request, reports = [], history, s
   } catch (error) { return { status: error instanceof NeedsRescope ? 'needs_rescope' : 'needs_agent_review', evidence: EVIDENCE, reason: error.message, requestId: request?.id ?? null }; }
 }
 export function agentReviewReportBinding(request) { validateRequest(request); return { requestId: request.id, requestDigest: digest(request), candidate: structuredClone(request.candidate) }; }
+
+/** Last synchronous freshness sample after hosted identity reads. It does not
+ * replace source/lineage validation; no network work may follow before admission.
+ */
+export function assertAgentReviewFreshness(state, time = Date.now()) {
+  validateLineage(state, time, 86400000);
+  validateRound(state.request, state.reports, { complete: true, time });
+  state.reports.forEach(report => reportPasses(state.request, report));
+}
 
 async function boundedJson(path, maximum = INPUT_BYTES) {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);

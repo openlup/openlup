@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { agentReviewReportBinding, captureCommittedReviewCandidate, captureSessionCandidate, prepareAgentReview } from './agent-review-session.mjs';
+import { agentReviewReportBinding, captureCommittedReviewCandidate, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState } from './agent-review-session.mjs';
 import { observeNativeAdmission, parseNativeAdmission, readNativeAdmissionArtifact, verifyNativeAdmission } from './agent-review-queue.mjs';
 
 const roots: string[] = [];
@@ -51,6 +51,19 @@ describe('native review queue admission', () => {
     await writeFile(join(f.cwd, 'code.ts'), 'dirty\n'); expect(await captureSessionCandidate(f.cwd, f.base)).not.toEqual(f.candidate);
     expect(await captureCommittedReviewCandidate(f.cwd, f.base, f.head)).toEqual(f.candidate);
   });
+  it('reconstructs a small task in a tree larger than the scope limit', async () => {
+    const f = await fixture();
+    for (let i = 0; i < 4100; i++) await writeFile(join(f.cwd, `inventory-${i}.txt`), 'same bounded blob\n');
+    f.git('add', '.'); f.git('commit', '-qm', 'large baseline'); const base = f.git('rev-parse', 'HEAD'); f.git('update-ref', 'refs/remotes/origin/main', base);
+    await writeFile(join(f.cwd, 'code.ts'), 'small change\n'); f.git('add', '.'); f.git('commit', '-qm', 'small task');
+    const candidate = await captureCommittedReviewCandidate(f.cwd, base, f.git('rev-parse', 'HEAD'));
+    expect(candidate.changedPaths).toEqual(['code.ts']); expect(candidate).toEqual(await captureSessionCandidate(f.cwd, base));
+  });
+  it('samples freshness after the final live observation', async () => {
+    const f = await fixture(); let clock = 1000; let reads = 0; const get = f.api.get;
+    f.api.get = async path => { const value = await get(path); if (path.endsWith('/actions/runs/10') && ++reads === 2) clock = 86401001; return value; };
+    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => clock })).rejects.toThrow('expired');
+  });
   it('admits complete source reviews for this PR run and preserves advisory evidence', async () => {
     const f = await fixture(); f.input.source.reports[0].advisoryFindings = ['Optional future polish'];
     expect((await verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).sourceHead).toBe(f.head);
@@ -77,6 +90,19 @@ describe('native review queue admission', () => {
     expect((await verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).base).toBe(main);
     expect(f.pr.head.sha).toBe(f.head); f.input.integration.reports.pop();
     await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow();
+  });
+  for (const mode of ['focused', 'inherited-source-context']) it(`refuses integration ${mode}`, async () => {
+    const f = await fixture(); f.git('checkout', '-qb', 'new-main', f.base); await writeFile(join(f.cwd, 'other.ts'), 'new interaction\n'); f.git('add', '.'); f.git('commit', '-qm', 'new main'); const main = f.git('rev-parse', 'HEAD');
+    f.git('merge', '--no-ff', f.head, '-m', 'initial group'); const priorHead = f.git('rev-parse', 'HEAD');
+    const previous = await f.state(await captureCommittedReviewCandidate(f.cwd, main, priorHead));
+    if (mode === 'inherited-source-context') { previous.reports[0].reviewerId = f.input.source.reports[0].reviewerId; previous.reports[0].sessionId = f.input.source.reports[0].sessionId; }
+    await writeFile(join(f.cwd, 'code.ts'), 'repair interaction\n'); f.git('add', '.'); f.git('commit', '-qm', 'new group'); const head = f.git('rev-parse', 'HEAD'); f.group(main, head);
+    const candidate = await captureCommittedReviewCandidate(f.cwd, main, head);
+    const continuation = await prepareAgentReviewState({ cwd: f.cwd, base: main, previous, intent: previous.request.intent, authorSessionId: 'supervisor', snapshot: async () => candidate, repairRisk: 'control', fullRefresh: mode !== 'focused', now: () => 1000 });
+    const template = await f.state(candidate);
+    continuation.reports = template.reports.map(report => ({ ...report, ...agentReviewReportBinding(continuation.request), coveredScope: continuation.request.continuation.mode === 'full' ? continuation.request.intent.scope : continuation.request.continuation.deltaPaths, closure: { coveredDelta: continuation.request.continuation.deltaPaths, interactionsChecked: true, ordinarySemantics: false, resolvedFindings: [] } }));
+    f.input.integration = continuation;
+    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow(mode === 'focused' ? 'fresh full coverage' : 'reused source context');
   });
   it('same SHA requeue and changed live identities cannot reuse admission binding', async () => {
     const f = await fixture(); f.group(f.base, f.head); const binding = await observeNativeAdmission(f.api, f.input);

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { captureCommittedReviewCandidate, verifyAgentReview } from './agent-review-session.mjs';
+import { assertAgentReviewFreshness, captureCommittedReviewCandidate, verifyAgentReview } from './agent-review-session.mjs';
 
 const execute = promisify(execFile);
 const REPOSITORY = 'openlup/openlup';
@@ -75,9 +75,10 @@ export async function verifyNativeAdmission({ cwd, api, input, expected, now = D
     else {
       const state = input.integration;
       demand(state && state.request.intent.risk !== 'prose' && state.request.roles.length === 2 && state.request.candidate.base === first.base && state.request.candidate.head === first.head && state.request.candidate.tree === first.tree, 'changed integration requires two current independent group reviews');
+      demand(state.request.version === 1 || state.request.continuation?.mode === 'full', 'changed integration requires fresh full coverage, not inherited focused reviews');
       demand(state.request.intent.criteria === input.source.request.intent.criteria && state.request.authorSessionId === input.source.request.authorSessionId, 'integration changed approved criteria or supervisor');
       const priorIds = new Set([input.source, ...(input.source.history ?? [])].flatMap(round => round.reports.flatMap(report => [report.reviewerId, report.sessionId])));
-      demand(state.reports.every(report => !priorIds.has(report.reviewerId) && !priorIds.has(report.sessionId)), 'integration reviewers reused source context');
+      demand([state, ...(state.history ?? [])].every(round => round.reports.every(report => !priorIds.has(report.reviewerId) && !priorIds.has(report.sessionId))), 'integration reviewers reused source context');
       await verify(state);
     }
   }
@@ -86,6 +87,9 @@ export async function verifyNativeAdmission({ cwd, api, input, expected, now = D
   if (input.integration) await verify(input.integration);
   const final = await observeNativeAdmission(api, input);
   demand(equal(first, final), 'candidate, queue entry or workflow attempt changed during verification');
+  const admittedAt = now();
+  assertAgentReviewFreshness(input.source, admittedAt);
+  if (input.integration) assertAgentReviewFreshness(input.integration, admittedAt);
   return final;
 }
 function apiTransport() {
