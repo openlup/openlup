@@ -233,6 +233,51 @@ Progress and actionable refusal reports also need to reach the protected caller;
 buffering everything until process exit makes routine recovery unnecessarily
 opaque. None of these improvements adds a review committee or waives a control.
 
+Session 2 ran after those repairs against implementation commit
+`abdab31e2ca4c26d6a03081c1b8b782221f3577e`. Two fresh actual Codex executions
+covered all 19 changed paths, passed correctness/security review and preserved
+the exact candidate. The controller produced a fixture-signed local receipt;
+expired evidence, stale head, wrong authority and a verifier inside the author
+checkout all refused. Total available-path time was 325.7 seconds. This was
+same-identity lab orchestration, not protected-host or installed-hook proof;
+there was no hosted App publication or repository-setting change.
+
+The matched correctness review's observation file shrank from 1,383,638 to
+313,223 bytes. Its uncached input stayed approximately flat: 95,307 versus
+96,135 tokens. Duration increased from 117.8 to 212.2 seconds, and total input
+including cached turns increased. These are two observations on evolving code,
+not a controlled performance experiment or evidence of monetary savings.
+The second security review took 107.6 seconds and used 86,844 uncached input
+tokens. Streaming progress and actionable refusal evidence now work; the SHA
+copy failure did not recur.
+
+Implementation verification: 171 focused tests; final full mechanical verify
+PASS in 141 seconds, including 574 test files and 4,724 tests. Independent
+source reviews closed workflow-attempt races, stale clocks, raw-object/source
+binding and startup/progress/reporting concerns. Native Git already rejects
+some malformed loose-object cases; the added tests do not claim otherwise.
+
+Recommended next changes, in order:
+
+1. Provision the protected service/App and required-source enforcement, then
+   repeat refusal tests on the real installed path before replacing policy.
+   Use a controller-owned imported snapshot or equivalent bounded source
+   isolation; do not give a privileged supervisor unrestricted access to an
+   author's object stores, alternates or unrelated private repositories.
+2. Calibrate on representative small prose and behavioural changes, measuring
+   completed task latency, uncached/cached usage, false findings, recovery and
+   escaped regressions. This large control change cannot establish ordinary
+   task economics. Adjust review focus/model selection only from those results;
+   retain the existing risk floors and exact-candidate checks.
+3. Keep independent reviewer work parallel when protected per-run schemas and
+   workspaces are isolated; never share intermediate verdicts. The current
+   sequential implementation is the simple safe baseline, so measure its
+   critical-path cost before adding concurrency. Keep hosted admission serial
+   initially; add a merge queue only when measured contention justifies it.
+
+No additional mandatory document, reviewer or dashboard is recommended from
+these two sessions. The production activation prerequisites remain unproven.
+
 ## Earlier implementation evidence
 
 - Fresh isolated baseline: mechanical verify PASS; release-check already reports
