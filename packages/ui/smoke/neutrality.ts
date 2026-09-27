@@ -65,20 +65,28 @@ function listSourceFiles(dir: string): string[] {
   });
 }
 
-const violations: string[] = [];
-for (const file of listSourceFiles(sourceRoot)) {
-  const contents = readFileSync(file, "utf8");
-  for (const { label, pattern } of forbiddenPatterns) {
-    if (pattern.test(contents)) {
-      violations.push(`${file}: ${label} (${pattern})`);
-    }
+if (process.argv.slice(2).join(" ") === "--counts-json") {
+  const sources = JSON.parse(readFileSync(0, "utf8")) as { path: string; contents: string }[];
+  const counts = sources.map(({ path, contents }) => ({ path, counts: Object.fromEntries(forbiddenPatterns.flatMap(({ pattern }, index) => {
+    const count = [...contents.matchAll(new RegExp(pattern.source, `${pattern.flags}g`))].length;
+    return count ? [[`ui-${index}`, count]] : [];
+  })) }));
+  const policy = { productionScope: { activeClasses: ["brand", "legacy-env"] }, rules: [
+    { id: "tree-brand", category: "brand", mode: "identifier", terms: [brand, owner, `${brandTag.toLowerCase()}-`] },
+    { id: "tree-env", category: "legacy-env", mode: "environment-prefix", terms: [`${brand.toUpperCase()}_`] },
+  ] };
+  console.log(JSON.stringify({ counts, policy }));
+} else {
+  if (process.argv.length > 2) throw new Error("unknown neutrality mode");
+  const violations: string[] = [];
+  for (const file of listSourceFiles(sourceRoot)) {
+    const contents = readFileSync(file, "utf8");
+    for (const { label, pattern } of forbiddenPatterns) if (pattern.test(contents)) violations.push(`${file}: ${label} (${pattern})`);
   }
+  if (violations.length > 0) {
+    console.error("Neutrality gate FAILED for packages/ui/src:");
+    for (const violation of violations) console.error(`  - ${violation}`);
+    process.exit(1);
+  }
+  console.log("Neutrality gate passed: scanned packages/ui/src, zero forbidden hits.");
 }
-
-if (violations.length > 0) {
-  console.error("Neutrality gate FAILED for packages/ui/src:");
-  for (const violation of violations) console.error(`  - ${violation}`);
-  process.exit(1);
-}
-
-console.log(`Neutrality gate passed: scanned packages/ui/src, zero forbidden hits.`);

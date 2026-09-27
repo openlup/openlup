@@ -156,3 +156,24 @@ deployment, provider adapter, or public release has activated the rail.
 Stable status, idempotency, and provider-extension commitments wait for `P1-SF`.
 Before then, changes must still preserve the contracts above and state their
 preview compatibility boundary explicitly.
+
+The repository's
+[`neutrality baseline`](../../config/openlup-neutrality-baseline.json) records
+existing source findings rather than declaring the tree free of them. Its full
+source commit identifies the measured base, scanner blob identities pin the
+counting implementation, and SHA-256 keys identify exact relative paths. Each
+count belongs to one path and category; a reduction elsewhere cannot pay for an
+increase, and a new path has no inherited allowance.
+
+The [repository check](../../scripts/public-ci-neutrality.mjs) counts text
+regardless of filename extension and inventories binary files. It refuses
+increases against both the comparison tree and the accepted baseline, including
+an increased baseline allowance. Regeneration may lower existing allowances;
+it cannot admit new debt. These counts reuse the existing scanner semantics and
+do not expand a runtime contract or establish a stable preview channel.
+
+Published Tree CI enforces that ratchet in required `self-check` and exercises
+its CLI refusal tests in required `test`. The complete root and managed pgTAP
+jobs retain raw diagnostic failures with named ownership; their addition does
+not change platform behavior, grant application privileges or declare complete
+compatibility evidence. Existing release context checks remain unchanged.
