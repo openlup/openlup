@@ -20,8 +20,25 @@
 -- reached them would error out instead of reporting green.
 
 BEGIN;
-\ir fixtures/client-classification.inc
 SELECT plan(41);
+
+-- Fail-closed only works if the shipped seed actually covers what exists today.
+SELECT is(
+  (SELECT count(*)::int
+     FROM pg_catalog.pg_constraint AS fk
+     JOIN pg_catalog.pg_class AS referencing ON referencing.oid = fk.conrelid
+     JOIN pg_catalog.pg_namespace AS referencing_schema
+       ON referencing_schema.oid = referencing.relnamespace
+    WHERE fk.contype = 'f'
+      AND fk.confrelid = 'public.clients'::regclass
+      AND referencing_schema.nspname = 'public'
+      AND NOT EXISTS (
+        SELECT 1 FROM public.client_absorption_policy AS policy_row
+         WHERE policy_row.table_name = referencing.relname)),
+  0,
+  'every table referencing clients today is classified, so the shipped installation covers the public foreign-key inventory before fixtures');
+
+\ir fixtures/client-classification.inc
 
 -- One active operator and one deactivated, so the gate has its pair.
 INSERT INTO public.platform_communication_operators (principal_id, active)
@@ -88,22 +105,6 @@ SELECT has_function(
   'public', 'customer_support_absorb_lead_v1',
   ARRAY['uuid', 'uuid', 'uuid', 'text', 'text', 'timestamptz'],
   'the absorption exists with the operator id first, as every operator routine does');
-
--- Fail-closed only works if the shipped seed actually covers what exists today.
-SELECT is(
-  (SELECT count(*)::int
-     FROM pg_catalog.pg_constraint AS fk
-     JOIN pg_catalog.pg_class AS referencing ON referencing.oid = fk.conrelid
-     JOIN pg_catalog.pg_namespace AS referencing_schema
-       ON referencing_schema.oid = referencing.relnamespace
-    WHERE fk.contype = 'f'
-      AND fk.confrelid = 'public.clients'::regclass
-      AND referencing_schema.nspname = 'public'
-      AND NOT EXISTS (
-        SELECT 1 FROM public.client_absorption_policy AS policy_row
-         WHERE policy_row.table_name = referencing.relname)),
-  0,
-  'every table referencing clients today is classified, so the explicit fixture covers the published foreign-key inventory');
 
 -- ---------------------------------------------------------------------------
 -- The absorption itself, on the shape production actually holds.

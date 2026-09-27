@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { declaredTableGrants, managedTable } from "../test/managedSchema";
 import { addressCanonSourceStatusSchema } from "../domains/address-canon/contracts";
@@ -15,6 +16,18 @@ describe("published address canon boundary", () => {
       }
       for (const forbidden of ["client_id", "auth_user_id", "provider_payload"]) expect(table).not.toContain(forbidden);
     }
+  });
+  it("retains the unresolved historical PNA licensing prerequisite", () => {
+    // A vocabulary check cannot replace this installation obligation. Its absent
+    // historical evidence stays raw-red until an equivalent public witness or
+    // an explicit contract disposition is accepted; never fabricate the file.
+    const historical = readFileSync(
+      "supabase/migrations/20260606200000_hidden_address_canon_foundation.sql",
+      "utf8",
+    );
+    expect(historical).toContain("'poczta_pna'");
+    expect(historical).toContain("'disabled_pending_license'");
+    expect(historical).toContain("Disabled until PNA licensing");
   });
   it("retains the licensing-disabled state in both database and public contract", () => {
     // Schema-only publication does not seed any licensed directory source.

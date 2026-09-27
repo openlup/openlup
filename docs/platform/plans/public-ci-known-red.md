@@ -36,10 +36,11 @@ Measured against candidate `5f4094b73486371c872ededfb545b54cad6a5353` and public
 
 ## Restored pre-fixture installation obligations
 
-These assertions now run before synthetic configuration is inserted. They retain the original installation expectations as unresolved obligations; their fixed values do not silently become universal adopter defaults. Decision owner and repair owner are the roles stated above. No schema or permissions are changed by this restoration.
+These assertions now run before synthetic configuration is inserted, including absorption classification coverage. They retain the original installation expectations as unresolved obligations; their fixed values do not silently become universal adopter defaults. Decision owner and repair owner are the roles stated above. No schema or permissions are changed by this restoration.
 
 | Named test | Obligation retained before fixtures |
 | --- | --- |
+| `supabase/tests/absorb_lead_test.sql` | Every public clients foreign key is classified by the shipped installation before synthetic classification; missing policy seed is an unresolved operational prerequisite. |
 | `supabase/tests/commerce_settings_offer_layout_test.sql` | Historical `starter_first` seed and its value lane; merchandising selection requires an explicit disposition. |
 | `supabase/tests/commerce_settings_settlement_profile_test.sql` | Required configured settlement rows and shapes; bare schema and selected reference readiness remain distinct. |
 | `supabase/tests/outbox_dispatch_rpcs_test.sql` | Dormant producer registry and disabled prune control; enabled dispatch/driver expectation is separate deployment activation. |
@@ -87,6 +88,8 @@ Current structural mapping preserves separate missing-history failures. These na
 The npm cache and own-process identity environment failures were resolved by a worktree-local cache and permitted own-process readback. No application grant or test exit changed.
 
 The root rerun after integrating PR #52 passed 11,262 assertions and failed the same 58 assertions across 29 files, with 8 existing conditional pending assertions. The committed-inventory refusal suite then passed 42 assertions, including duplicate versions, missing/modified/untracked files, symlinks and mode changes. These bounded checks do not waive full verification.
+
+The subsequent absorption restoration is an additional unresolved bare-install assertion; the preceding 28-file pgTAP measurement predates it. `src/lib/addressCanonBoundary.test.ts` additionally retains the absent historical PNA disabled-seed/licensing-note expectation with raw failure semantics. Its schema-vocabulary checks do not prove licensed-source activation safety; this file is an additional named root blocker beyond the preceding 29-file measurement. No licensed data or synthetic migration history is supplied.
 
 ## Routing
 
