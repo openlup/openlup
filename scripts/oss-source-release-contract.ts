@@ -7,6 +7,7 @@ import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecution
 import { PUBLIC_EXECUTION_ENTRYPOINTS, isDirectExecutionEntrypoint } from "./oss-publication-contract.ts";
 import { readPublicTypecheckCompatibility, type PublicTypecheckCompatibility } from "./oss-public-typecheck.ts";
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type AuthenticatedSourceCandidate, type GithubFetch, type GithubSourceTransportInput, type PublicObjectInventoryEntry, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
+import { documentationGit } from "./documentation-routing.ts";
 
 export const SOURCE_RELEASE_CONTRACT_PATH = "config/openlup-source-release-contract.json";
 export const SOURCE_RELEASE_EVIDENCE_CLASS = "local-fixture";
@@ -363,6 +364,68 @@ function describeDescendantSourceRelease(root: string, previous: AuthenticatedSo
   return { paths, drift };
 }
 
+/** A removal marker is a whole `//` comment line in a code file naming the first preview that must no longer carry
+ * that file. Any comment line that starts with `openlup-remove-before:` must parse as one. */
+const REMOVAL_MARKER = /^[ \t]*\/\/ openlup-remove-before: openlup-source-preview\/([1-9][0-9]*)[ \t]*$/u;
+const REMOVAL_MARKER_START = /^[ \t]*\/\/[ \t]*openlup-remove-before:/u;
+const REMOVAL_MARKER_TEXT = "openlup-remove-before";
+const REMOVAL_SCAN_CODE_FILE = /\.(?:ts|tsx|js|mjs|cjs|mts|cts)$/u;
+
+/** The regular code-file blobs in `git ls-tree -r -z --full-tree` output, in listing order. */
+export function removalScanBlobs(listing: string): Array<{ path: string; oid: string }> {
+  return listing.split("\0").filter((row) => row !== "").flatMap((row) => {
+    const entry = /^([0-7]{6}) (blob|commit|tree) ([0-9a-f]{40}|[0-9a-f]{64})\t([^\n]+)$/u.exec(row);
+    if (!entry) throw new Error("removal marker scan output is malformed");
+    return entry[2] === "blob" && (entry[1] === "100644" || entry[1] === "100755") && REMOVAL_SCAN_CODE_FILE.test(entry[4]!) ? [{ path: entry[4]!, oid: entry[3]! }] : [];
+  });
+}
+
+/** Splits `git cat-file --batch` output into the contents of `oids`, in order. */
+export function splitRemovalScanBatch(batch: Buffer, oids: readonly string[]): Buffer[] {
+  let offset = 0;
+  const blobs = oids.map((oid) => {
+    const headerEnd = batch.indexOf(0x0a, offset);
+    const [name, type, size, extra] = headerEnd === -1 ? [] : batch.subarray(offset, headerEnd).toString("latin1").split(" ");
+    const length = /^(?:0|[1-9][0-9]*)$/u.test(size ?? "") ? Number(size) : Number.NaN;
+    if (name !== oid || type !== "blob" || extra !== undefined || !Number.isSafeInteger(length) || batch[headerEnd + 1 + length] !== 0x0a) throw new Error("removal marker scan output is malformed");
+    offset = headerEnd + length + 2;
+    return batch.subarray(headerEnd + 1, headerEnd + 1 + length);
+  });
+  if (offset !== batch.length) throw new Error("removal marker scan output is malformed");
+  return blobs;
+}
+
+/** The lines of one blob that start like a removal marker. A NUL byte in the first 8000 bytes makes the blob binary. */
+export function removalMarkerLines(bytes: Buffer): string[] {
+  if (bytes.subarray(0, 8000).includes(0) || !bytes.includes(REMOVAL_MARKER_TEXT)) return [];
+  return bytes.toString("utf8").replace(/^\uFEFF/u, "").split(/\r?\n/u).filter((line) => REMOVAL_MARKER_START.test(line));
+}
+
+/** The sorted files that preview `number` must not carry. A marker line that does not parse is refused, not ignored. */
+export function overdueRemovals(number: number, markers: ReadonlyArray<{ path: string; line: string }>): string[] {
+  const overdue = new Set<string>();
+  for (const { path, line } of markers) {
+    const marker = REMOVAL_MARKER.exec(line);
+    if (!marker || !Number.isSafeInteger(Number(marker[1]))) throw new Error(`${path}: malformed removal marker: ${line}`);
+    if (Number(marker[1]) <= number) overdue.add(path);
+  }
+  return [...overdue].sort();
+}
+
+/** Refuses to cut preview `number` while a code file anywhere in the tree of `target` carries a removal marker naming
+ * that preview or an earlier one. The workflow's prepare step and the receipt producer both run it. It lists the whole
+ * tree and reads the blobs themselves, with no pathspec and no attribute lookup, through the checkout-bound Git runner
+ * that ignores replacement objects, grafts and inherited Git environment; any git failure refuses. */
+export function assertNoOverdueRemovals(number: number, target: string, cwd = process.cwd()): void {
+  if (!Number.isSafeInteger(number) || number < 1) throw new Error(`the removal marker check needs a positive integer preview number, not ${number}`);
+  const git = (args: string[], input?: string) => documentationGit(cwd, args, input, 512 * 1024 * 1024);
+  const files = removalScanBlobs(git(["ls-tree", "-r", "-z", "--full-tree", target]).toString("utf8"));
+  const blobs = files.length === 0 ? [] : splitRemovalScanBatch(git(["cat-file", "--batch"], files.map(({ oid }) => `${oid}\n`).join("")), files.map(({ oid }) => oid));
+  const markers = files.flatMap(({ path }, index) => removalMarkerLines(blobs[index]!).map((line) => ({ path, line })));
+  const overdue = overdueRemovals(number, markers);
+  if (overdue.length > 0) throw new Error(`openlup-source-preview/${number} refuses files marked for removal by it: ${overdue.join(", ")}`);
+}
+
 /** Writes one schema-5 receipt from an authenticated prior release and actual clean Git objects. */
 export async function writeDescendantSourceReleaseReceipt(input: DescendantSourceReleaseInput): Promise<DescendantSourceReleaseResult> {
   const root = realpathSync(input.root), beforeHead = gitRead(root, ["rev-parse", "--verify", "HEAD^{commit}"]), beforeStatus = gitRead(root, ["status", "--porcelain=v1", "--untracked-files=all"]);
@@ -370,6 +433,7 @@ export async function writeDescendantSourceReleaseReceipt(input: DescendantSourc
   const previous = await authenticateGithubSourceRelease(input.previous, input.fetcher); if (gitRead(root, ["rev-parse", "--verify", "HEAD^{commit}"]) !== beforeHead || gitRead(root, ["status", "--porcelain=v1", "--untracked-files=all"]) !== beforeStatus) throw new Error("descendant receipt refused a moving public HEAD during authentication");
   const previousNumber = /^openlup-source-preview\/([1-9][0-9]*)$/u.exec(previous.release.tag), next = /^openlup-source-preview\/([1-9][0-9]*)$/u.exec(input.releaseTag), previousOrdinal = Number(previousNumber?.[1]), nextOrdinal = Number(next?.[1]);
   if (!previousNumber || !next || !Number.isSafeInteger(previousOrdinal) || !Number.isSafeInteger(nextOrdinal) || nextOrdinal !== previousOrdinal + 1 || input.tagMessage !== `OpenLup source preview ${next[1]}.`) throw new Error("descendant receipt requires the exactly next preview tag and message");
+  assertNoOverdueRemovals(nextOrdinal, beforeHead, root);
   try { execFileSync("git", ["merge-base", "--is-ancestor", previous.targetCommit, beforeHead], { cwd: root, stdio: "ignore" }); } catch { throw new Error("descendant receipt target does not descend from the authenticated previous release"); }
   if (beforeHead === previous.targetCommit) throw new Error("descendant receipt target must advance the previous release");
   const tagRaw = gitBytes(root, ["for-each-ref", `--format=%(objecttype)%00%(*objectname)%00%(refname:strip=2)%00%(contents)%00`, `refs/tags/${input.releaseTag}`]).toString();
