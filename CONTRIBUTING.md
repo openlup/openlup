@@ -157,9 +157,13 @@ retain their separate browser/profile runners; the root Vitest command does not
 claim browser journey evidence.
 
 The `pgtap` job uses Supabase CLI **2.98.2** and a fresh local database stack,
-replays the shipped managed baseline and its public prerequisite SQL, then runs
+replays the shipped managed baseline and every published forward in filename
+order, with its public prerequisite SQL, then runs
 all `supabase/tests`. It stops only its own project in a `finally` block. It
-never links a hosted database or installs application seed data. Run
+never links a hosted database or installs application seed data. Transaction-scoped
+test fixtures declare their synthetic providers, inventory and controls explicitly.
+The wrapper supplies their settlement parameters from the public example profile;
+it does not load ambient deployment configuration. Run
 `node scripts/public-ci-pgtap.mjs` with Docker and the pinned CLI locally.
 
 The self-check job runs the existing UI neutrality gate and a tree-wide ratchet

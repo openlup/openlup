@@ -10822,6 +10822,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/infra/resend/commerceEmailContentFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/infra/resend/emailOriginMetadata.ts",
       "class": "public-output"
     },
@@ -17706,11 +17710,27 @@
       "class": "public-output"
     },
     {
+      "path": "src/test/i18nFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/test/managedSchema.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/test/managedSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/test/render.tsx",
       "class": "public-output"
     },
     {
       "path": "src/test/setup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/test/siteRoutesFixture.ts",
       "class": "public-output"
     },
     {
@@ -17995,6 +18015,30 @@
     },
     {
       "path": "supabase/tests/first_subscription_offer_policy_v2_mirror_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/fixtures/can-format.inc",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/fixtures/client-classification.inc",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/fixtures/cron-identity.inc",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/fixtures/fulfillment-provider.inc",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/fixtures/inventory-location.inc",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/fixtures/settlement.inc",
       "class": "public-output"
     },
     {
