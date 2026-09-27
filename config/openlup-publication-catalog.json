@@ -682,6 +682,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/openlup-neutrality-baseline.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/openlup-packages.json",
       "class": "public-output"
     },
@@ -1439,6 +1443,10 @@
     },
     {
       "path": "packages/core/scripts/neutrality-source-scanner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/scripts/neutrality-tree-counts.ts",
       "class": "public-output"
     },
     {
@@ -2595,6 +2603,18 @@
     },
     {
       "path": "scripts/prelaunch-acquisition-schema.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-neutrality.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-neutrality.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-pgtap.mjs",
       "class": "public-output"
     },
     {
