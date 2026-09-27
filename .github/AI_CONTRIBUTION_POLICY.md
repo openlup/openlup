@@ -72,14 +72,35 @@ is needed for an ambiguous or durable contract, not for every small task.
 Agents may refine execution notes without changing approved goals or guarantees.
 Programme or batch authority must be explicit; a generated plan cannot grant it.
 
-Ordinary prose receives one short cold review. Behaviour, executable instructions,
-contracts and controls receive two independent bounded reviews; a specialist
-can fill one role. Unknown classification uses that two-review floor. A third
+The initial candidate receives one short cold review for ordinary prose, or two
+independent parallel bounded reviews for behaviour, executable instructions,
+contracts, controls and unknown risk; a specialist can fill one role. A third
 reviewer is reserved for a distinct uncovered concern or dispute. Reviewers see
 criteria and sufficient source context, not the author's conversation or each
 other's verdicts. A blocker states the mechanism, precondition, violated
-requirement and effect. Style preferences do not block; there is no findings
-quota and an evidence-backed no-findings verdict is acceptable.
+requirement and demonstrated effect on correctness or acceptance. Optional advice
+and style preferences do not block; there is no findings quota and an
+evidence-backed no-findings verdict is acceptable.
+
+A committed narrow repair within unchanged approved intent, scope and base may
+use one fresh cold closure reviewer after the complete initial floor and prior
+rounds are retained and exact lineage is validated. The closure prompt includes
+neutral prior finding cards, actual repair and interaction context, never prior
+verdicts or author history. Every prior material finding needs an explicit
+disposition. The reviewer independently confirms semantic risk; control,
+security, schema, executable instruction and unknown repairs retain two focused
+reviews, even in otherwise ordinary source files. Reduced repair reviews cannot
+renew inherited evidence expiry. Unavailable, incomplete or expired coverage
+requires two fresh full-scope reviews, preserving prior findings and lineage.
+
+Unchanged prepare preserves complete evidence. The task has at most two automatic
+repair/review continuation cycles across prepare and full-review escalation. Exhaustion
+stays blocked while the supervisor regroups the execution approach within actual
+authority; it cannot restart the counter, bypass review or merge automatically.
+Changed intent requires explicit regrouping. An ancestor-preserving base
+integration requires fresh full-scope review within the same budget; this route admits no
+cross-base reuse. Once criteria, required review and checks pass, stop optional
+edits and continue only authorized delivery steps.
 
 Planning and review ask whether a simpler solution delivers the outcome faster,
 with less maintenance and stronger evidence. New abstractions, dependencies,

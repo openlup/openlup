@@ -36,14 +36,33 @@ than lines of code, document count or pull-request volume.
 
 ## Independent review and enforcement
 
-Ordinary prose gets one short cold review. Changes to behaviour, executable
-instructions, contracts or controls get two independent bounded reviews. A
-specialist can fill one of those roles. A third reviewer is reserved for an
-uncovered concern or dispute. Unknown classification uses the behavioural
-floor. Reviewers receive approved criteria, the exact candidate and sufficient
-source context, without the author's conversation or other reviewers' verdicts.
-Findings identify a mechanism, precondition, violated requirement and effect;
-there is no quota and an evidence-backed no-findings verdict is acceptable.
+The initial candidate gets one short cold review for ordinary prose, or two
+independent parallel bounded reviews for behaviour, executable instructions,
+contracts, controls and unknown risk. A specialist can fill one role; a third
+reviewer is reserved for an uncovered concern or dispute. Reviewers receive
+approved criteria, the exact candidate and sufficient source context, without
+author history or other reviewers' verdicts. Blockers identify a mechanism,
+precondition, violated requirement and demonstrated effect on correctness or
+acceptance. There is no quota; optional advice cannot block, and evidence-backed
+no-findings is acceptable.
+
+Complete prior coverage and exact validated lineage allow one fresh cold closure
+review for a committed narrow repair within unchanged intent, scope and base.
+Necessary neutral prior finding cards, actual repair and interaction context are
+allowed; old verdicts and author history are not. Every prior material finding
+needs a disposition. The reviewer independently confirms semantic risk: control,
+security, schema, executable instruction and unknown repairs retain two focused
+reviews, regardless of filenames. Reduced repair reviews cannot renew inherited
+evidence expiry; unavailable or expired coverage requires two fresh full-scope
+reviews with all prior findings and lineage retained.
+
+Unchanged prepare preserves evidence. The two automatic repair/review cycles
+persist across prepare and full-review escalation. On exhaustion the supervisor
+automatically regroups the execution approach within existing authority while
+keeping honest blocked evidence; there is no budget reset, bypass or automatic
+merge. Changed intent requires explicit regrouping. An ancestor-preserving base
+integration requires fresh full-scope review, preserving history and budget. Stop optional edits
+when criteria, required review and checks pass, then complete authorized delivery.
 
 The supervisor in the active task conversation launches fresh-context reviewers
 through the platform's native subagent tools, using the existing subscription.
@@ -83,9 +102,11 @@ superseded as the default. Merged verifier and hosted-observer libraries may
 remain optional components; they do not create a requirement for an external
 model service or cryptographic separation in the same task.
 
-The design fails if self-approval replaces actual independent review, a stale or dirty
-candidate is admitted, green tests conceal a violated approved goal, simple
-tasks require a long ceremony, or ordinary authorized repairs repeatedly ask
+The design fails if self-approval replaces actual independent review, an erased
+finding or renewed expiry admits a stale or dirty candidate, green tests conceal
+a violated approved goal, optional advice starts another repair, exhausted cycles
+are silently restarted, simple tasks require a long ceremony, or ordinary
+authorized repairs repeatedly ask
 the maintainer to approve the same behaviour. The implementation plan must
 name activation prerequisites honestly rather than substitute prose for a gate.
 

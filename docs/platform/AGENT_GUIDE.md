@@ -74,19 +74,37 @@ DCO and delivery authority. The [autonomous delivery intent](plans/autonomous-re
 and [plan](plans/autonomous-reviewed-delivery.md) require the active supervisor to launch independent
 fresh-context native subagents in the same conversation under the existing
 subscription. Supply approved criteria and exact source without author history
-or other reviewers' verdicts. Ordinary prose needs one bounded review; behaviour,
-executable instructions, contracts, controls and unknown risk need two. At least
-one review considers a simpler solution preserving all controls. The maintainer
-does not read each diff or move prompts/reports between sessions.
+or other reviewers' verdicts. The initial candidate needs one bounded review for
+ordinary prose, or two independent parallel reviews for behaviour, executable
+instructions, contracts, controls and unknown risk. At least one review considers
+a simpler solution preserving all controls. A blocker demonstrates a mechanism,
+precondition, violated requirement and effect on correctness or acceptance;
+optional advice cannot block. The maintainer does not read each diff or move
+prompts/reports between sessions.
 
-After repairs, commit and review the exact final candidate. Handle
-`needs_agent_review` by launching the required reviews and retrying the gate,
-without another owner approval for the same authorized behaviour. Missing,
-stale, partial or materially failing evidence refuses verify and pre-push once
-installed enforcement passes its live refusal tests. Native session receipts are
-process evidence, not cryptographic remote attestation or hard signer isolation.
-No model API, backend, new host or copied subscription authentication is required.
-Review does not grant publication, merge, secret or settings authority.
+Commit repairs before review. A narrow repair within unchanged approved intent,
+scope and base may use one fresh cold closure reviewer only after complete prior
+coverage is retained and exact candidate lineage is validated. Supply neutral
+prior finding cards, the actual repair and interaction context; never supply old
+verdicts or author history. The reviewer independently confirms semantic risk:
+control, security, schema, executable instruction and unknown repairs require
+two reviews, regardless of filenames. Closure must account for every prior
+material finding and cannot renew inherited evidence expiry. Complete prior
+coverage permits focused repair reviews; unavailable or expired coverage requires
+two fresh reviews of the full approved scope.
+
+Handle `needs_agent_review` within the active task. Unchanged prepare preserves
+evidence; at most two automatic repair/review continuation cycles are allowed,
+including full-review escalation. Exhaustion remains blocked while the supervisor regroups
+the execution approach within existing authority; no reset, bypass or automatic
+merge follows. Changed intent requires explicit regrouping. An ancestor-preserving base
+integration requires fresh full-scope review, preserving history and budget. When criteria,
+required review and checks pass, stop optional edits and continue only authorized
+delivery steps. Missing, stale, dirty, partial or unclosed evidence refuses verify
+and pre-push once installed enforcement passes its live refusal tests. Native
+session receipts are process evidence, not cryptographic remote attestation or
+hard signer isolation. No model API, backend, new host or copied authentication
+is required. Review grants no publication, merge, secret or settings authority.
 
 Run `npm run oss:published-tree -- --policy` during implementation. Its report
 names the owner section for each changed source responsibility. Update that

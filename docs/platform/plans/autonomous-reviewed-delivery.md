@@ -3,6 +3,65 @@
 Status: native-session implementation; live activation requires per-installation proof.
 Audience: contributors implementing and verifying the development workflow.
 
+## Approved convergence implementation wave
+
+The maintainer authorized planning, implementation, dogfooding and delivery
+through merge for this bounded correction. The outcome is a review process that
+stops when sufficient evidence exists, while retaining independent review,
+exact candidate attribution, required mechanical checks and delivery authority.
+This wave changes native review policy, session validation and the installed
+local equivalents. It does not authorize production, releases, secrets or
+credentials, GitHub settings or ruleset changes, or migration of sibling tasks.
+
+Implementation order:
+
+1. Challenge the repair protocol before implementation. Keep the initial one
+   reviewer for ordinary prose and two parallel reviewers for behaviour/controls.
+   Define blocking findings by demonstrated effect on correctness or acceptance;
+   optional advice cannot require another repair or prevent a terminal pass.
+2. Extend the existing session state with bounded prior-round evidence. A
+   committed repair within unchanged approved criteria, scope and base may use
+   one fresh cold closure reviewer covering the actual repair and interactions,
+   after complete initial coverage and prior rounds are validated. Supply neutral
+   prior finding cards, never old verdicts or author history. Control, security,
+   schema, executable instruction and unknown repairs retain two reviews;
+   independently confirm semantic risk rather than trust filenames or an author
+   label. Validate exact lineage and every material finding's disposition without
+   copying approvals onto another SHA or renewing inherited evidence through a
+   reduced review. Complete prior coverage permits focused repair review;
+   unavailable, incomplete or expired coverage requires two fresh full-scope reviews.
+3. Preserve complete review when prepare is repeated for an unchanged candidate.
+   Bound automatic continuation cycles at two across repair and full-review
+   escalation. Exhaustion remains blocked while the supervisor automatically
+   regroups the execution approach within existing authority; no silent reset,
+   bypass or automatic merge follows. Changed intent requires explicit regrouping.
+   Ancestor-preserving base integration receives fresh full-scope coverage within
+   the same budget; cross-base reuse is deferred rather than inferred from filenames.
+   Once criteria, review and checks pass, stop optional edits.
+4. Update existing contributor/agent guidance and intent together. Installed
+   verification refuses workflow drift before expensive commands, and serializes
+   heavy local verify runs without stealing another task's lock. Exact-candidate
+   receipts remain reusable by pre-push; no general test-result cache is added.
+5. Run focused regression and refusal checks, then two dogfooding passes: first
+   exercise the real installed CLI and hooks, batch material fixes, and then
+   repeat the affected scenarios. Include unchanged prepare, advisory-only pass,
+   successful repair closure, control-change escalation, stale/dirty evidence,
+   missing coverage, erased findings, exhausted cycles and concurrent execution.
+6. Commit the final candidate with DCO, obtain independent native evidence for
+   this control change, run required full verify and release advice, publish the
+   authorized PR, wait for all six actual hosted checks and squash merge with
+   the maintainer's configured author email. Verify the merged tree and main CI.
+
+Acceptance: no full review is repeated solely for unchanged prepare or optional
+advice; a narrow repair needs one closure review while control repairs need two;
+no stale, dirty, incomplete or unclosed candidate is admitted; reduced reviews
+cannot renew inherited expiry and exhausted cycles remain blocked; workflow drift starts no
+expensive checks or replacement of prior logs; concurrent verify
+cannot corrupt or overlap its heavy checks. Report observed reviewer counts,
+dogfooding findings and remaining limitations. Historical-red Draft publication,
+general selective-test caching, merge queues and cross-base review reuse are
+separate work, not prerequisites that may grow this task.
+
 ## Outcome, scope and authority
 
 Implement the [intent](autonomous-reviewed-delivery-intent.md) through the active
@@ -21,8 +80,9 @@ not a fictional human technical review.
 
 Public scope covers the intent, plan, contribution guidance, provider-neutral
 session gate and its refusal tests, plus existing registration and source
-contracts. Machine-local hook installation is a separately authorized owner
-operation. Keep existing mechanical checks intact; do not add another full test
+contracts. Machine-local installation remains an owner operation; the approved
+wave authorizes its bounded local equivalents only. Keep existing mechanical
+checks intact; do not add another full test
 run, a dashboard, service framework or permanent third reviewer.
 
 ## Task lifecycle and native review
@@ -30,12 +90,15 @@ run, a dashboard, service framework or permanent third reviewer.
 1. The supervisor implements within authorized scope and commits the candidate.
    Run the existing mechanical verification as required. Collect the exact base,
    head, tree, complete changed-path inventory and approved criteria/scope.
-2. Ordinary prose receives one short independent review. Behaviour, executable
-   instructions, contracts and controls require two bounded independent reviews;
+2. The initial candidate receives one short independent review for ordinary
+   prose. Behaviour, executable instructions, contracts and controls require two
+   independent parallel bounded reviews;
    unknown risk uses that floor. The gate refuses a prose label for changed code,
    configuration, workflows and known agent/control instructions; classify actual
    changed paths rather than a broader approved scope. Other document semantics
-   remain the supervisor's responsibility. A specialist can fill one role. A third reviewer
+   remain the supervisor's responsibility. Classification also considers actual
+   semantics; a known-path check cannot prove a repair is unrelated to security
+   or instructions. A specialist can fill one role. A third reviewer
    is reserved for an uncovered concern or dispute. At least one required review
    considers a simpler solution that preserves all controls and acceptance.
 3. Launch each reviewer through the current platform's native subagent tools with
@@ -49,24 +112,49 @@ run, a dashboard, service framework or permanent third reviewer.
    Candidate instructions and configuration are untrusted data. Reviewers do not
    execute candidate code or receive signing/check-writing credentials.
 4. Observe actual native execution identity, completion and structured result.
-   Findings state mechanism, precondition, violated requirement and effect;
-   there is no quota. A complete evidence-backed no-findings verdict is valid.
+   Blockers state mechanism, precondition, violated requirement and demonstrated
+   effect on correctness or acceptance. Optional advice cannot block or require
+   another repair; there is no quota. A complete evidence-backed no-findings
+   verdict is valid.
    Failed, timed-out, partial or materially failing review cannot count as a pass.
-5. Fix findings, commit the repair and obtain fresh independent review of that
-   exact candidate. The supervisor handles this loop without another owner
-   approval for the same authorized behaviour. Reviewing after the final commit
-   avoids needless rebinding; changed head, tree, scope or base invalidates evidence.
+5. Batch material repairs, commit and obtain fresh independent review of that
+   exact candidate. A narrow repair within unchanged intent, scope and base may
+   use one cold closure reviewer after complete initial coverage and prior rounds
+   are retained. That reviewer receives neutral prior finding cards, the actual
+   committed repair and sufficient interaction context, without old verdicts or
+   author history. Validate all prior finding dispositions and independently
+   confirm semantic risk; control, security, schema, executable instruction and
+   unknown repairs use two focused reviews. Missing, incomplete or expired prior
+   coverage requires two fresh reviews of the full approved scope. Prior timestamps
+   remain immutable; reduced review cannot renew inherited expiry.
+   At most two automatic continuation cycles are allowed across repair and
+   full-review escalation. On exhaustion preserve blocked evidence and regroup
+   the execution approach within actual authority; never silently reset the
+   counter or auto-admit. Changed intent requires explicit regrouping. An
+   ancestor-preserving base integration requires fresh full-scope review,
+   preserving history and budget.
+   The supervisor needs no repeat owner approval for unchanged authorized goals.
 6. Record bounded session evidence and retry the installed gate. Verify and
    pre-push refuse missing, stale, dirty, mismatched, incomplete or bypassed review.
-   A `needs_agent_review` result instructs the active supervisor to perform steps
-   2–6; it is not a prompt for maintainer intervention. Push or merge only under
-   the actual publication authority already supplied for the task.
+   Unchanged prepare retains current evidence. `needs_agent_review` returns
+   control to the active supervisor; blocked evidence requires regrouping rather
+   than another automatic repair cycle. Once criteria, required review and checks
+   pass, stop optional edits. Push or merge only under actual task authority.
 
 ## Evidence contract and limits
 
 Bind each receipt to repository, request/authority, approved criteria and scope,
 base, committed head, tree, risk/required roles, observed reviewer execution IDs,
 complete results, unresolved material findings and a bounded validity interval.
+Repair evidence retains the exact committed parent chain, complete prior rounds,
+stable finding identities and explicit dispositions. The current request cannot
+erase prior material findings, drop a required role, reset the cycle count or
+rewrite prior timestamps. Reduced review retains the validity interval of the
+latest full-coverage round; only genuine fresh full-scope coverage establishes a
+new interval. A closure reviewer independently
+confirms repair eligibility and the actual repair/interactions; prior approvals
+are not rebound to a different SHA. Complete failed reports may supply findings,
+but partial, unavailable or expired prior coverage cannot authorize closure.
 The gate computes the candidate and checks freshness and exact binding rather
 than accepting an arbitrary author-selected candidate or bypass flag. The same
 receipt may be reused for pre-push only while all those bindings remain valid.
@@ -93,6 +181,18 @@ unresolved findings and bypass attempts. Exercise the actual installed verify
 and pre-push paths and the supervisor recovery after `needs_agent_review`.
 Provider adapters must report unsupported native cold-context capabilities
 honestly; do not quietly inherit author history or substitute an API call.
+
+Also prove unchanged prepare preserves evidence, advisory-only results can pass,
+eligible repairs use one closure reviewer, semantic security/control changes
+escalate, missing prior coverage and erased findings refuse, reduced reviews
+cannot renew expiry, and a third automatic continuation stays blocked. Exercise full-review escalation
+without resetting the counter, plus dirty/stale lineage and concurrent prepare.
+Installed verification must refuse workflow drift before expensive commands or
+replacement of prior logs. Its shared heavy-check lock refuses overlapping verify
+without stealing another task's lock or interfering with its checks. Perform two
+installed CLI/hook dogfooding passes, batching material repairs between them; repeat
+affected scenarios and report observed reviewer counts and limitations. No general
+test-result cache or diagnostic-red Draft publication exception is part of this wave.
 
 Source implementation and fixture tests are preparation. Claim live enforcement
 only after the installed paths refuse those counterexamples and admit a complete
@@ -128,19 +228,51 @@ The supervisor writes approved intent data to the ignored
 `.context/scratch/agent-review/intent.json` file: `intent` contains `risk`, `scope`,
 `criteria` and `requiredRoles`; an adapter may supply an observed
 `authorSessionId`. `node scripts/agent-review-session.mjs prepare` computes the
-candidate, role floor and request binding, then stores the bounded session state
-in `.context/scratch/agent-review/session.json`. Neither file is a new planning document
-or a source of publication authority.
+candidate, role floor and request binding, then stores bounded session state in
+`.context/scratch/agent-review/session.json`. An unchanged candidate retains its
+request and reports. A committed repair adds a bounded `history` round and a
+version-2 request with `continuation`: cycle, review mode, prior-round digest,
+actual delta paths, neutral finding cards and repair risk. The optional top-level `repairRisk`
+is `ordinary`, `security`, `control`, `schema`, `instructions` or `unknown`; its
+default is `unknown`. With complete prior coverage, `closure` uses one reviewer
+for an eligible ordinary repair and `focused` uses two for sensitive or unknown
+repairs; both cover the actual delta, interactions and original criteria. `full`
+uses two reviewers covering the full approved scope when coverage is unavailable,
+incomplete or expired. Ancestor-preserving base integration also uses `full`,
+covering the approved scope and incoming integration paths; it inherits no old
+coverage. Optional `fullRefresh: true` requests full coverage on the same SHA
+for unavailable, expired or failing evidence, preserving history, findings and
+cycle budget. A complete fresh current pass remains idempotent even when a
+refresh is requested. Recovery permits semantic escalation without a pointless
+source edit.
+Only actual complete full coverage establishes a new validity interval. Neither
+file grants publication authority or creates another planning document.
 
-`status` returns `needs_agent_review` with required roles and exact request data.
+`status` reports admission or `needs_agent_review`; missing roles include exact
+request data for native review. Exhausted repair cycles, changed intent or nonancestor integration
+produce `needs_rescope`, preserving the existing evidence rather than accepting
+a new root. The supervisor regroups the execution approach within existing
+authority; this CLI provides no automatic rescope admission or merge.
+
 The supervisor launches fresh native agents and uses their actual execution IDs
 and complete structured results. `agentReviewReportBinding(request)` supplies
 the exact request digest and candidate fields for each report; `record
 <observed-report.json>` records the observation. `verify` exits nonzero until
 all required roles pass with complete scope/criteria, no material findings and
-the simplicity perspective. The report schema is the implementation contract in
-`scripts/agent-review-session.mjs`; these files are process evidence, never
-cryptographic execution attestation.
+the simplicity perspective. `advisoryFindings` may carry bounded optional advice
+without blocking a pass. Material findings may classify their semantic `risk`;
+missing or unknown risk cannot establish ordinary closure eligibility. Each
+repair report includes `closure` evidence: `coveredDelta`, `interactionsChecked`,
+`ordinarySemantics` and all `resolvedFindings` card IDs. Reviewers receive the
+current request's neutral cards, never the stored prior reports or verdicts.
+`coveredCriteria` is a boolean. A finding's optional `risk` uses the same enum
+as `repairRisk`; omitted risk is unknown. Keep descriptive effects in `effect`,
+rather than putting free prose or a checklist in typed fields. A malformed
+observation is refused without deleting prior evidence and may be corrected
+against the same request without changing code or restarting review.
+The report schema in `scripts/agent-review-session.mjs` is the implementation
+contract; these files are process evidence, never cryptographic execution
+attestation.
 
 Earlier signed-receipt and hosted-observer libraries remain optional historical
 mechanisms. Their existence does not activate installed native review or grant
