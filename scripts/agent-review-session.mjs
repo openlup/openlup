@@ -12,6 +12,8 @@ import { reviewTreeEntries, verifyReviewObjectGraph } from './agent-review-hook.
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 const DIGEST = /^[a-f0-9]{64}$/u;
+const INPUT_BYTES = 1024 * 1024;
+const STATE_BYTES = 8 * 1024 * 1024;
 const EVIDENCE = 'native-supervisor-process-evidence';
 function demand(value, message) { if (!value) throw new Error(`Agent review required: ${message}`); }
 function text(value, label, bound = 160) { demand(typeof value === 'string' && value.length > 0 && value.length <= bound && !/[\u0000-\u001f\u007f]/u.test(value), `${label} is invalid`); }
@@ -103,6 +105,14 @@ function validateRequest(request) {
   for (const role of ['correctness', 'security']) if (roles.length < (request.intent.risk === 'prose' ? 1 : 2) && !roles.includes(role)) roles.push(role);
   demand(equal(request.roles, roles), 'request roles differ from approved risk floor');
   demand(request.candidate.changedPaths.every(path => request.intent.scope.includes(path)), 'candidate exceeds approved scope');
+  if (request.intent.risk === 'prose') {
+    const controls = /^(?:AGENTS|CLAUDE)(?:\.local)?$|^(?:CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY|AGENT_GUIDE)$/iu;
+    const ordinaryDocuments = request.candidate.changedPaths.every(path => {
+      const extension = /\.(?:md|txt|rst)$/iu.exec(path);
+      return extension && !path.toLowerCase().startsWith('.github/') && !controls.test(path.split('/').at(-1).slice(0, -extension[0].length));
+    });
+    demand(ordinaryDocuments, 'prose risk cannot cover code, workflow, or control-instruction changes; automatically prepare fresh behavior reviews');
+  }
 }
 export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, base }) {
   validateIntent(intent); text(authorSessionId, 'author session');
@@ -156,11 +166,11 @@ export async function verifyAgentReview({ cwd, request, reports = [], snapshot =
 }
 export function agentReviewReportBinding(request) { validateRequest(request); return { requestId: request.id, requestDigest: digest(request), candidate: structuredClone(request.candidate) }; }
 
-async function boundedJson(path) {
+async function boundedJson(path, maximum = INPUT_BYTES) {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
-    const metadata = await handle.stat(); demand(metadata.isFile() && metadata.size <= 1024 * 1024, 'input is not bounded JSON');
-    const bytes = Buffer.alloc(1024 * 1024 + 1); const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0); const after = await handle.stat();
+    const metadata = await handle.stat(); demand(metadata.isFile() && metadata.size <= maximum, 'input is not bounded JSON');
+    const bytes = Buffer.alloc(maximum + 1); const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0); const after = await handle.stat();
     demand(bytesRead === metadata.size && after.size === metadata.size && after.mtimeMs === metadata.mtimeMs && after.ctimeMs === metadata.ctimeMs, 'JSON input changed or exceeds bounds');
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, bytesRead)));
   } finally { await handle.close(); }
@@ -182,34 +192,50 @@ async function sessionDirectory(cwd, create = false) {
     demand(metadata.isDirectory() && !metadata.isSymbolicLink() && await realpath(directory) === directory, 'session ancestor is a symlink or not a directory');
   }
 }
+export function serializeAgentReviewState(state) {
+  const serialized = `${JSON.stringify(state, null, 2)}\n`;
+  demand(Buffer.byteLength(serialized) <= STATE_BYTES, 'aggregate session state exceeds 8 MiB; previous state is preserved');
+  return serialized;
+}
 async function saveState(cwd, directory, path, state) {
+  const serialized = serializeAgentReviewState(state);
   await sessionDirectory(cwd, true);
   const temporary = join(directory, `.session-${randomUUID()}.tmp`);
   let handle;
   try {
     handle = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
-    await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`); await handle.sync(); await handle.close(); handle = undefined;
+    await handle.writeFile(serialized); await handle.sync(); await handle.close(); handle = undefined;
     await sessionDirectory(cwd);
     // Replacing a directory entry never truncates the old inode or any of its
     // hardlinks. The temporary inode is created exclusively in this directory.
     await rename(temporary, path);
   } finally { if (handle) await handle.close(); await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
 }
+async function sessionTransaction(cwd, directory, operation) {
+  await sessionDirectory(cwd, true);
+  const path = join(directory, '.session.lock');
+  let handle;
+  try { handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600); }
+  catch (error) { if (error.code === 'EEXIST') throw new Error('Agent review required: session transaction is busy; retry after the active prepare/record finishes. Existing locks are never stolen.'); throw error; }
+  try { return await operation(); }
+  finally { await handle.close(); await unlink(path); }
+}
 async function main() {
   const [verb, input] = process.argv.slice(2); demand(['prepare', 'record', 'verify', 'status'].includes(verb), 'use prepare <intent.json>, record <observed-report.json>, verify, or status');
   const cwd = await realpath(process.cwd()); const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   await sessionDirectory(cwd);
+  const operation = async () => {
   if (verb === 'prepare') {
     const spec = await boundedJson(input ?? join(directory, 'intent.json'));
     demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
     spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= (await git(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
     const request = await prepareAgentReview({ cwd, ...spec });
-    let previous; try { previous = await boundedJson(path); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    let previous; try { previous = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     demand(!previous?.reports?.some(report => report.materialFindings?.length > 0) || previous.request.candidate.workingDigest !== request.candidate.workingDigest, 'unresolved material findings require a changed source candidate before fresh review');
     await saveState(cwd, directory, path, { request, reports: [] });
     console.log(JSON.stringify(await verifyAgentReview({ cwd, request }), null, 2));
   } else {
-    let state; try { state = await boundedJson(path); } catch (error) { if (error.code === 'ENOENT') {
+    let state; try { state = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code === 'ENOENT') {
       const baseline = await pristineAgentReviewBaseline(cwd);
       const result = baseline.pristine ? { status: 'pristine_baseline', evidence: EVIDENCE, candidate: baseline.candidate } : { status: 'needs_agent_review', evidence: EVIDENCE, reason: 'Prepare a request from the approved intent before native review.' };
       console.log(JSON.stringify(result)); process.exitCode = verb === 'verify' && !baseline.pristine ? 1 : 0; return;
@@ -218,5 +244,7 @@ async function main() {
     if (verb === 'record') { state.reports = await recordAgentReview({ cwd, ...state, report: await boundedJson(input) }); await saveState(cwd, directory, path, state); }
     const result = await verifyAgentReview({ cwd, ...state }); console.log(JSON.stringify(result, null, 2)); if (verb === 'verify' && result.status !== 'reviewed') process.exitCode = 1;
   }
+  };
+  if (verb === 'prepare' || verb === 'record') await sessionTransaction(cwd, directory, operation); else await operation();
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main().catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
-import { mkdir, link, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { agentReviewReportBinding, captureSessionCandidate, prepareAgentReview, pristineAgentReviewBaseline, recordAgentReview, verifyAgentReview } from './agent-review-session.mjs';
+import { agentReviewReportBinding, captureSessionCandidate, prepareAgentReview, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
 
 const base = 'a'.repeat(40);
 const candidate = { base, head: 'b'.repeat(40), tree: 'c'.repeat(40), clean: true, workingDigest: 'd'.repeat(64), indexDigest: 'e'.repeat(64), changedPaths: ['source.txt'] };
@@ -63,6 +63,18 @@ describe('native session review process evidence', () => {
     let tick = 1000;
     const result = await verify(req, [report(req)], { now: () => tick, snapshot: async () => { tick += 1; return candidate; }, maxAgeMs: 1 });
     expect(result.status).toBe('needs_agent_review'); expect(result.reason).toContain('final source scan');
+  });
+  for (const path of ['scripts/agent-review-session.mjs', 'package.json', '.github/workflows/ci.yml', '.github/README.md', 'AGENTS.md', 'docs/CLAUDE.local.md', 'CONTRIBUTING.txt', 'SECURITY.rst', '.github/AI_CONTRIBUTION_POLICY.md', 'docs/AGENT_GUIDE.md']) it(`refuses prose classification for actual control/code change ${path}`, async () => {
+    const scoped = { ...intent, risk: 'prose', scope: [path] }; const changed = { ...candidate, changedPaths: [path] };
+    await expect(prepareAgentReview({ cwd: '.', base, intent: scoped, authorSessionId: 'author', snapshot: async () => changed, now })).rejects.toThrow('automatically prepare fresh behavior reviews');
+    const req = await prepareAgentReview({ cwd: '.', base, intent: { ...scoped, risk: 'behavior' }, authorSessionId: 'author', snapshot: async () => changed, now });
+    req.intent.risk = 'prose'; req.roles = ['correctness'];
+    expect((await verify(req, [], { snapshot: async () => changed })).reason).toContain('prose risk cannot cover');
+  });
+  it('allows ordinary actual docs within a broader approved scope containing code', async () => {
+    const changed = { ...candidate, changedPaths: ['docs/overview.md', 'notes.rst', 'copy.txt'] };
+    const req = await prepareAgentReview({ cwd: '.', base, intent: { ...intent, risk: 'prose', scope: [...changed.changedPaths, 'scripts/tool.mjs', 'package.json'] }, authorSessionId: 'author', snapshot: async () => changed, now });
+    expect(req.roles).toEqual(['correctness']);
   });
   it('refuses over-scoped source before requesting reviewer execution', async () => {
     await expect(prepareAgentReview({ cwd: '.', base, intent, authorSessionId: 'author', snapshot: async () => ({ ...candidate, changedPaths: ['unexpected.txt'] }), now })).rejects.toThrow('exceeds approved scope');
@@ -138,6 +150,57 @@ describe('actual source snapshot without candidate execution', () => {
     const state = JSON.parse(await readFile(path, 'utf8')); await rm(victim); await link(path, victim); const recordedBefore = await readFile(victim, 'utf8');
     const reportPath = join(directory, 'observed.json'); await writeFile(reportPath, JSON.stringify({ ...report(state.request), completedAt: Date.now() }));
     expect(invoke('record', reportPath).status).toBe('reviewed'); expect(await readFile(victim, 'utf8')).toBe(recordedBefore);
+  });
+  it('fails concurrent prepare/record closed without losing a recorded material finding', async () => {
+    const { cwd, git } = await fixture(); await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
+    const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
+    await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
+    const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent, base: baseline, authorSessionId: 'author' }));
+    const script = resolve('scripts/agent-review-session.mjs'); const invoke = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', stdio: 'pipe' }));
+    invoke('prepare'); const statePath = join(directory, 'session.json'); const state = JSON.parse(await readFile(statePath, 'utf8'));
+    const failedPath = join(directory, 'failed.json'); const passPath = join(directory, 'pass.json');
+    const findings = [{ mechanism: 'lost clamp', precondition: 'late parcel', requirement: 'no early cycle', effect: 'early renewal' }];
+    await writeFile(failedPath, JSON.stringify({ ...report(state.request), completedAt: Date.now(), verdict: 'fail', materialFindings: findings }));
+    await writeFile(passPath, JSON.stringify({ ...report(state.request, 1), completedAt: Date.now() }));
+    const child = spawn(process.execPath, [script, 'record', failedPath], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = ''; let stderr = ''; child.stdout.on('data', bytes => { stdout += bytes; }); child.stderr.on('data', bytes => { stderr += bytes; });
+    const completed = new Promise<number | null>((resolve, reject) => { child.on('error', reject); child.on('close', resolve); });
+    for (let attempt = 0; ; attempt += 1) {
+      try { await stat(join(directory, '.session.lock')); break; } catch { if (attempt >= 500) throw new Error('transaction lock was not observed'); await new Promise(resolve => setTimeout(resolve, 2)); }
+    }
+    const contenders = ['record', 'prepare'].map(verb => {
+      const args = verb === 'record' ? [verb, passPath] : [verb];
+      return new Promise<string>((resolve, reject) => {
+        const rival = spawn(process.execPath, [script, ...args], { cwd, stdio: ['ignore', 'ignore', 'pipe'] }); let diagnostics = '';
+        rival.stderr.on('data', bytes => { diagnostics += bytes; }); rival.on('error', reject); rival.on('close', code => code === 1 ? resolve(diagnostics) : reject(new Error(`concurrent ${verb} unexpectedly completed`)));
+      });
+    });
+    expect(await completed).toBe(0); expect(stderr).toBe(''); expect(JSON.parse(stdout).status).toBe('needs_agent_review');
+    for (const diagnostics of await Promise.all(contenders)) expect(diagnostics).toContain('session transaction is busy');
+    expect(invoke('record', passPath).status).toBe('needs_agent_review');
+    const recorded = JSON.parse(await readFile(statePath, 'utf8')); expect(recorded.request.id).toBe(state.request.id); expect(recorded.reports).toHaveLength(2); expect(recorded.reports[0].materialFindings).toEqual(findings);
+    expect(() => invoke('prepare')).toThrow('unresolved material findings');
+    await expect(stat(join(directory, '.session.lock'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await writeFile(join(directory, '.session.lock'), 'existing owner'); expect(() => invoke('prepare')).toThrow('session transaction is busy'); expect(await readFile(join(directory, '.session.lock'), 'utf8')).toBe('existing owner');
+  });
+  it('keeps two 4096-path reports usable when persisted state exceeds the input-file bound', async () => {
+    const { cwd, git } = await fixture(); await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
+    const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
+    await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
+    const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
+    const scope = ['source.txt', ...Array.from({ length: 4095 }, (_, index) => `scope/${index}-${'a'.repeat(88)}`)];
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent: { ...intent, scope }, base: baseline, authorSessionId: 'author' }));
+    const script = resolve('scripts/agent-review-session.mjs'); const invoke = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }));
+    invoke('prepare'); const statePath = join(directory, 'session.json'); const state = JSON.parse(await readFile(statePath, 'utf8'));
+    for (const index of [0, 1]) {
+      const reportPath = join(directory, `observed-${index}.json`); await writeFile(reportPath, JSON.stringify({ ...report(state.request, index), coveredScope: scope, completedAt: Date.now() }));
+      expect((await stat(reportPath)).size).toBeLessThan(1024 * 1024); invoke('record', reportPath);
+    }
+    expect((await stat(statePath)).size).toBeGreaterThan(1024 * 1024); expect(invoke('status').status).toBe('reviewed'); expect(invoke('verify').status).toBe('reviewed');
+    const before = await readFile(statePath, 'utf8'); const huge = { ...state, reports: [{ payload: 'x'.repeat(8 * 1024 * 1024) }] };
+    expect(() => serializeAgentReviewState(huge)).toThrow('previous state is preserved'); expect(await readFile(statePath, 'utf8')).toBe(before);
+    await writeFile(join(directory, 'oversized.json'), JSON.stringify({ payload: 'x'.repeat(1024 * 1024) })); expect(() => invoke('record', join(directory, 'oversized.json'))).toThrow(); expect(await readFile(statePath, 'utf8')).toBe(before);
   });
   it('does not run a candidate clean filter while hashing bytes', async () => {
     const { cwd, base } = await fixture(); await writeFile(join(cwd, '.gitattributes'), 'source.txt filter=trap\n');
