@@ -38,7 +38,52 @@ The policy is therefore **disclosure and accountability**, not permission.
    loop are closed on sight, regardless of quality, and repeated submission is
    treated as abuse.
 
-## Why the bar is where it is
+## Active admission and DCO
+
+These are the active admission rules, including the human read in rules 2 and
+4. DCO certifies provenance and the right to submit under the licence; it is not
+a certification of code quality. Human reading is a separate admission control.
+
+## Proposed delegation, pending enforcement
+
+The [autonomous delivery intent](../docs/platform/plans/autonomous-reviewed-delivery-intent.md)
+and [implementation plan](../docs/platform/plans/autonomous-reviewed-delivery.md)
+propose delegating technical review while retaining an accountable human who
+controls outcomes, important contracts and execution authority. They do not
+yet replace rules 2 and 4 or authorize unattended submissions.
+
+The replacement requires a protected controller that launches cold reviewers
+and authenticates observed results for the exact candidate, plus required
+hosted admission that refuses missing, stale, partial or unresolved material
+evidence. Authors cannot issue their own accepted review. Existing mechanical
+checks remain required; skipped checks are not successful execution. The
+maintainer must explicitly activate the replacement after its refusal tests
+pass. Until then, bootstrap contributions follow the active human-read rules.
+
+The proposed workflow records each task's outcome, scope, authority, acceptance,
+risk and execution/proof plan in one compact record. A separate specification
+is needed for an ambiguous or durable contract, not for every small task.
+Agents may refine execution notes without changing approved goals or guarantees.
+Programme or batch authority must be explicit; a generated plan cannot grant it.
+
+Ordinary prose receives one short cold review. Behaviour, executable instructions,
+contracts and controls receive two independent bounded reviews; a specialist
+can fill one role. Unknown classification uses that two-review floor. A third
+reviewer is reserved for a distinct uncovered concern or dispute. Reviewers see
+criteria and sufficient source context, not the author's conversation or each
+other's verdicts. A blocker states the mechanism, precondition, violated
+requirement and effect. Style preferences do not block; there is no findings
+quota and an evidence-backed no-findings verdict is acceptable.
+
+Planning and review ask whether a simpler solution delivers the outcome faster,
+with less maintenance and stronger evidence. New abstractions, dependencies,
+retries, caches, artifacts or gates need a concrete benefit over the nearest
+simpler alternative. Obvious small tasks need no alternatives essay. Measure
+accepted outcomes, regressions, confirmed and false findings, lead time and
+total cost; code and pull-request volume are not quality targets. This
+perspective never waives existing controls or acceptance evidence.
+
+## Why the current bar is where it is
 
 Review capacity is the scarce resource in a small project, and generated volume
 consumes it faster than it produces value. The four rules above exist to keep the

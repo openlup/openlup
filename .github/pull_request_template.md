@@ -13,8 +13,10 @@ one-time public-root projection is not an ongoing authoring route. -->
 ## Scope
 
 - One concern per pull request. If this carries more than one, say why here.
+- Task record (outcome, scope, authority, acceptance, risk and proof plan):
 - Tests added or updated for the behaviour this changes:
 - Documentation updated, or not needed because:
+- Simpler alternative considered where meaningful; added complexity justified:
 
 ## Risk and rollback
 
@@ -36,4 +38,8 @@ one-time public-root projection is not an ongoing authoring route. -->
 
 ## Notes for reviewers
 
--
+- Check the accepted outcome, failure boundaries and unnecessary maintenance
+  cost. Report concrete mechanisms and effects, not style preferences or a quota.
+- AI assistance (agents and what they did, or none):
+- Admission: current human-read and explicit PR-opening requirements apply;
+  proposed delegated review is pending protected enforcement and activation.
