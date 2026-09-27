@@ -18,8 +18,8 @@ const EVIDENCE = 'native-supervisor-process-evidence';
 function demand(value, message) { if (!value) throw new Error(`Agent review required: ${message}`); }
 function text(value, label, bound = 160) { demand(typeof value === 'string' && value.length > 0 && value.length <= bound && !/[\u0000-\u001f\u007f]/u.test(value), `${label} is invalid`); }
 function exact(value, fields, label) { demand(value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === fields.length && fields.every(field => Object.hasOwn(value, field)), `${label} schema is invalid`); }
-function paths(values) {
-  demand(Array.isArray(values) && values.length > 0 && values.length <= 4096 && new Set(values).size === values.length, 'scope is invalid');
+function paths(values, allowEmpty = false) {
+  demand(Array.isArray(values) && (allowEmpty || values.length > 0) && values.length <= 4096 && new Set(values).size === values.length, 'scope is invalid');
   for (const value of values) { text(value, 'scope path', 4096); demand(!isAbsolute(value) && !value.split('/').some(part => part === '..' || part === '.' || part === '') && !value.includes('\\'), 'scope path escapes checkout'); }
 }
 function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -97,72 +97,206 @@ function validateCandidate(candidate) {
   exact(candidate, ['base', 'head', 'tree', 'clean', 'workingDigest', 'indexDigest', 'changedPaths'], 'candidate');
   demand(['base', 'head', 'tree'].every(field => SHA.test(candidate[field])) && ['workingDigest', 'indexDigest'].every(field => DIGEST.test(candidate[field])), 'candidate digest is invalid'); demand(typeof candidate.clean === 'boolean', 'candidate clean flag is invalid'); paths(candidate.changedPaths);
 }
+const REPAIR_RISKS = ['ordinary', 'security', 'control', 'schema', 'instructions', 'unknown'];
+const MAX_REPAIRS = 2;
+class NeedsRescope extends Error {}
+function rescope(value, message) { if (!value) throw new NeedsRescope(`Agent review needs rescope: ${message}`); }
+function sensitivePath(path) {
+  return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
+    /(?:^|\/)(?:AGENTS|CLAUDE)(?:\.local)?\.(?:md|txt|rst)$/iu.test(path) ||
+    /(?:^|\/)(?:CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY|AGENT_GUIDE)\.(?:md|txt|rst)$/iu.test(path) ||
+    /^scripts\/(?:agent-review|check-|oss-|dco-|run-|packages\/)/iu.test(path) ||
+    /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration).*)$/iu.test(path) ||
+    /^docs\/platform\/plans\/autonomous-reviewed-delivery/iu.test(path);
+}
+function requestRoles(intent, continuation) {
+  if (continuation?.mode === 'closure') return ['closure'];
+  const roles = [...intent.requiredRoles];
+  const count = continuation ? 2 : intent.risk === 'prose' ? 1 : 2;
+  for (const role of ['correctness', 'security']) if (roles.length < count && !roles.includes(role)) roles.push(role);
+  return roles;
+}
+function validateFinding(finding) {
+  const fields = ['mechanism', 'precondition', 'requirement', 'effect'];
+  if (Object.hasOwn(finding ?? {}, 'risk')) fields.push('risk');
+  exact(finding, fields, 'finding');
+  for (const field of ['mechanism', 'precondition', 'requirement', 'effect']) text(finding[field], field, 4096);
+  if (Object.hasOwn(finding, 'risk')) demand(REPAIR_RISKS.includes(finding.risk), 'finding risk is invalid');
+}
 function validateRequest(request) {
-  exact(request, ['version', 'evidence', 'id', 'authorSessionId', 'candidate', 'intent', 'roles', 'preparedAt'], 'request');
-  demand(request.version === 1 && request.evidence === EVIDENCE, 'request version/evidence is invalid'); text(request.id, 'request ID'); text(request.authorSessionId, 'author session'); validateIntent(request.intent); validateCandidate(request.candidate);
+  const fields = ['version', 'evidence', 'id', 'authorSessionId', 'candidate', 'intent', 'roles', 'preparedAt'];
+  if (request?.version === 2) fields.push('continuation');
+  exact(request, fields, 'request');
+  demand([1, 2].includes(request.version) && request.evidence === EVIDENCE, 'request version/evidence is invalid'); text(request.id, 'request ID'); text(request.authorSessionId, 'author session'); validateIntent(request.intent); validateCandidate(request.candidate);
   demand(Number.isSafeInteger(request.preparedAt) && request.preparedAt >= 0, 'request time is invalid');
-  const roles = [...request.intent.requiredRoles];
-  for (const role of ['correctness', 'security']) if (roles.length < (request.intent.risk === 'prose' ? 1 : 2) && !roles.includes(role)) roles.push(role);
-  demand(equal(request.roles, roles), 'request roles differ from approved risk floor');
+  if (request.version === 2) {
+    const continuation = request.continuation;
+    exact(continuation, ['cycle', 'mode', 'priorDigest', 'deltaPaths', 'findings', 'repairRisk'], 'continuation');
+    demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= MAX_REPAIRS && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
+    paths(continuation.deltaPaths, continuation.mode === 'full'); demand(continuation.mode === 'full' || continuation.deltaPaths.every(path => request.intent.scope.includes(path)), 'repair delta exceeds approved scope');
+    demand(REPAIR_RISKS.includes(continuation.repairRisk), 'repair risk is invalid');
+    demand(Array.isArray(continuation.findings) && continuation.findings.length <= 384, 'finding cards exceed bounds');
+    const ids = new Set();
+    for (const card of continuation.findings) { exact(card, ['id', 'finding'], 'finding card'); demand(DIGEST.test(card.id) && !ids.has(card.id), 'finding card ID is invalid or duplicated'); ids.add(card.id); validateFinding(card.finding); }
+    if (continuation.mode === 'closure') demand(continuation.repairRisk === 'ordinary' && !continuation.deltaPaths.some(sensitivePath) && continuation.findings.every(card => card.finding.risk === 'ordinary'), 'sensitive or unknown repair/finding requires full reviews');
+  }
+  demand(equal(request.roles, requestRoles(request.intent, request.continuation)), 'request roles differ from approved risk floor');
   demand(request.candidate.changedPaths.every(path => request.intent.scope.includes(path)), 'candidate exceeds approved scope');
   if (request.intent.risk === 'prose') {
-    const controls = /^(?:AGENTS|CLAUDE)(?:\.local)?$|^(?:CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY|AGENT_GUIDE)$/iu;
-    const ordinaryDocuments = request.candidate.changedPaths.every(path => {
-      const extension = /\.(?:md|txt|rst)$/iu.exec(path);
-      return extension && !path.toLowerCase().startsWith('.github/') && !controls.test(path.split('/').at(-1).slice(0, -extension[0].length));
-    });
+    const ordinaryDocuments = request.candidate.changedPaths.every(path => /\.(?:md|txt|rst)$/iu.test(path) && !sensitivePath(path));
     demand(ordinaryDocuments, 'prose risk cannot cover code, workflow, or control-instruction changes; automatically prepare fresh behavior reviews');
   }
 }
 export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, base }) {
   validateIntent(intent); text(authorSessionId, 'author session');
   const candidate = await snapshot(cwd, base); validateCandidate(candidate);
-  const roles = [...intent.requiredRoles];
-  for (const role of ['correctness', 'security']) if (roles.length < (intent.risk === 'prose' ? 1 : 2) && !roles.includes(role)) roles.push(role);
-  const request = { version: 1, evidence: EVIDENCE, id: randomUUID(), authorSessionId, candidate, intent: structuredClone(intent), roles, preparedAt: now() };
+  const request = { version: 1, evidence: EVIDENCE, id: randomUUID(), authorSessionId, candidate, intent: structuredClone(intent), roles: requestRoles(intent), preparedAt: now() };
   validateRequest(request); return request;
 }
 function validateReport(request, report) {
-  exact(report, ['requestId', 'requestDigest', 'reviewerId', 'sessionId', 'role', 'cold', 'completedAt', 'candidate', 'complete', 'coveredScope', 'coveredCriteria', 'simplicityChecked', 'verdict', 'materialFindings'], 'native agent report');
+  const fields = ['requestId', 'requestDigest', 'reviewerId', 'sessionId', 'role', 'cold', 'completedAt', 'candidate', 'complete', 'coveredScope', 'coveredCriteria', 'simplicityChecked', 'verdict', 'materialFindings'];
+  if (Object.hasOwn(report ?? {}, 'advisoryFindings')) fields.push('advisoryFindings');
+  if (request.version === 2) fields.push('closure');
+  exact(report, fields, 'native agent report');
   demand(report.requestId === request.id && report.requestDigest === digest(request) && equal(report.candidate, request.candidate), 'report covers a different request or candidate');
   text(report.reviewerId, 'native reviewer ID'); text(report.sessionId, 'native session ID');
   demand(report.reviewerId !== request.authorSessionId && report.sessionId !== request.authorSessionId && report.cold === true && request.roles.includes(report.role), 'reviewer is author, not cold, or has an unrequested role');
   demand(Number.isSafeInteger(report.completedAt) && report.completedAt >= request.preparedAt, 'report predates request');
   demand(typeof report.complete === 'boolean' && typeof report.coveredCriteria === 'boolean' && typeof report.simplicityChecked === 'boolean' && ['pass', 'fail'].includes(report.verdict), 'report flags are invalid');
-  paths(report.coveredScope); demand(equal([...report.coveredScope].sort(), [...request.intent.scope].sort()), 'review coverage differs from approved scope');
-  demand(Array.isArray(report.materialFindings) && report.materialFindings.length <= 64, 'findings exceed bounds');
-  for (const finding of report.materialFindings) { exact(finding, ['mechanism', 'precondition', 'requirement', 'effect'], 'finding'); for (const field of Object.keys(finding)) text(finding[field], field, 4096); }
+  const coverage = request.version === 2 && request.continuation.mode !== 'full' ? request.continuation.deltaPaths : [...new Set([...request.intent.scope, ...(request.continuation?.deltaPaths ?? [])])];
+  paths(report.coveredScope); demand(equal([...report.coveredScope].sort(), [...coverage].sort()), 'review coverage differs from required scope');
+  demand(Array.isArray(report.materialFindings) && report.materialFindings.length <= 64, 'findings exceed bounds'); report.materialFindings.forEach(validateFinding);
+  if (Object.hasOwn(report, 'advisoryFindings')) { demand(Array.isArray(report.advisoryFindings) && report.advisoryFindings.length <= 64, 'advice exceeds bounds'); report.advisoryFindings.forEach(finding => text(finding, 'advice', 4096)); }
+  if (request.version === 2) {
+    exact(report.closure, ['coveredDelta', 'interactionsChecked', 'ordinarySemantics', 'resolvedFindings'], 'closure evidence');
+    paths(report.closure.coveredDelta, request.continuation.mode === 'full'); demand(equal([...report.closure.coveredDelta].sort(), [...request.continuation.deltaPaths].sort()), 'closure coverage differs from actual repair delta');
+    demand(typeof report.closure.interactionsChecked === 'boolean' && typeof report.closure.ordinarySemantics === 'boolean' && Array.isArray(report.closure.resolvedFindings) && report.closure.resolvedFindings.length <= 384 && new Set(report.closure.resolvedFindings).size === report.closure.resolvedFindings.length && report.closure.resolvedFindings.every(id => DIGEST.test(id)), 'closure flags/findings are invalid');
+    demand(report.closure.resolvedFindings.every(id => request.continuation.findings.some(card => card.id === id)), 'closure resolves unknown finding cards');
+  }
+}
+function reportPasses(request, report) {
+  demand(report.complete && report.coveredCriteria && report.verdict === 'pass' && report.materialFindings.length === 0, 'review has incomplete coverage or unresolved material findings');
+  if (request.version === 2) {
+    demand(report.closure.interactionsChecked && equal([...report.closure.resolvedFindings].sort(), request.continuation.findings.map(card => card.id).sort()), 'repair interactions or material finding closure is incomplete');
+    demand(request.continuation.mode !== 'closure' || report.closure.ordinarySemantics, 'closure reviewer found sensitive or unknown semantics; prepare full reviews');
+  }
+}
+function validateRound(request, reports, { complete = false, time = Infinity, maxAgeMs = 86400000, identities = new Set() } = {}) {
+  validateRequest(request); demand(Array.isArray(reports) && reports.length <= request.roles.length, 'report count is invalid');
+  demand(time >= request.preparedAt && time - request.preparedAt <= maxAgeMs, 'review request expired');
+  const roles = new Set();
+  for (const report of reports) {
+    validateReport(request, report); demand(report.completedAt <= time, 'report completion is in the future');
+    demand(![report.reviewerId, report.sessionId].some(id => identities.has(id)) && !roles.has(report.role), 'reviewer/session/role is duplicated');
+    identities.add(report.reviewerId); identities.add(report.sessionId); roles.add(report.role);
+    if (complete) {
+      demand(report.complete && report.coveredCriteria && (report.verdict === 'pass' || report.materialFindings.length > 0), 'prior review round is incomplete or failed without material evidence');
+      if (report.verdict === 'pass' && report.materialFindings.length === 0) reportPasses(request, report);
+    }
+  }
+  if (complete) demand(roles.size === request.roles.length && reports.some(report => report.simplicityChecked), 'prior review round lacks required coverage or simplicity');
+  return identities;
+}
+function unresolvedCards(history) {
+  const cards = new Map();
+  for (const round of history) {
+    let closed = round.reports.length === round.request.roles.length && round.reports.some(report => report.simplicityChecked);
+    try { round.reports.forEach(report => reportPasses(round.request, report)); } catch { closed = false; }
+    if (closed) for (const report of round.reports) for (const id of report.closure?.resolvedFindings ?? []) cards.delete(id);
+    for (const report of round.reports) report.materialFindings.forEach((finding, index) => { const id = digest({ requestDigest: digest(round.request), reviewerId: report.reviewerId, index, finding }); cards.set(id, { id, finding: structuredClone(finding) }); });
+  }
+  return [...cards.values()];
+}
+function validateLineage(state, time, maxAgeMs) {
+  const fields = Object.hasOwn(state ?? {}, 'history') ? ['request', 'reports', 'history'] : ['request', 'reports']; exact(state, fields, 'session state');
+  const history = state.history ?? []; demand(Array.isArray(history) && history.length <= MAX_REPAIRS, 'repair history exceeds bounds');
+  const allRounds = [...history, state];
+  let anchor = 0;
+  for (let index = 1; index < allRounds.length; index += 1) if (allRounds[index].request?.continuation?.mode === 'full') anchor = index;
+  const identities = new Set();
+  for (let index = 0; index <= history.length; index += 1) {
+    const round = index === history.length ? state : history[index];
+    if (index < history.length) exact(round, ['request', 'reports'], 'prior round');
+    const request = round.request;
+    validateRequest(request);
+    if (index === 0) demand(request.version === 1, 'repair lineage root is missing');
+    else {
+      const previous = history[index - 1].request;
+      demand(request.version === 2 && request.continuation.cycle === index && request.continuation.priorDigest === digest(history.slice(0, index)), 'repair lineage digest or cycle differs');
+      demand(equal(request.continuation.findings, unresolvedCards(history.slice(0, index))), 'material finding cards were erased or altered');
+      demand(equal(request.intent, previous.intent) && request.authorSessionId === previous.authorSessionId && (request.continuation.mode === 'full' || request.candidate.base === previous.candidate.base) && request.candidate.clean && (request.continuation.mode === 'full' || previous.candidate.clean) && (request.continuation.mode === 'full' || request.candidate.head !== previous.candidate.head && request.candidate.workingDigest !== previous.candidate.workingDigest) && request.preparedAt >= previous.preparedAt && history[index - 1].reports.every(report => report.completedAt <= request.preparedAt), 'repair criteria, scope, base, or committed lineage differs');
+    }
+    validateRound(request, round.reports, { complete: index < history.length && (index + 1 < history.length ? history[index + 1].request : state.request).continuation.mode !== 'full', time, maxAgeMs: index < anchor ? Infinity : maxAgeMs, identities });
+  }
+  return { history, identities };
+}
+/** Authenticate ancestor commits and compare tree entries, including deletions and modes. */
+export async function captureAgentReviewDelta(cwd, previous, candidate) {
+  const graph = await verifyReviewObjectGraph(cwd, { base: previous.head, head: candidate.head, tree: candidate.tree });
+  demand(graph.baseTree === previous.tree, 'prior tree differs from authenticated commit');
+  const before = new Map(reviewTreeEntries(graph, graph.baseTree).map(entry => [entry.path, entry]));
+  const after = new Map(reviewTreeEntries(graph, graph.headTree).map(entry => [entry.path, entry]));
+  return [...new Set([...before.keys(), ...after.keys()])].filter(path => before.get(path)?.mode !== after.get(path)?.mode || before.get(path)?.object !== after.get(path)?.object).sort();
 }
 async function current(request, cwd, snapshot) { validateRequest(request); demand(equal(await snapshot(cwd, request.candidate.base), request.candidate), 'candidate changed; prepare fresh independent reviews'); }
-export async function recordAgentReview({ cwd, request, reports = [], report, snapshot = captureSessionCandidate, now = Date.now }) {
-  await current(request, cwd, snapshot); validateReport(request, report);
-  demand(report.completedAt <= now(), 'report completion is in the future');
-  demand(Array.isArray(reports) && reports.length < request.roles.length, 'report count exceeds requested roles');
-  for (const previous of reports) { validateReport(request, previous); demand(previous.role !== report.role && ![previous.reviewerId, previous.sessionId].some(id => [report.reviewerId, report.sessionId].includes(id)), 'reviewer/session/role is duplicated; findings cannot be overwritten'); }
+async function currentLineage(cwd, state, delta) {
+  const rounds = [...(state.history ?? []), state];
+  for (let index = 1; index < rounds.length; index += 1) demand(equal(await delta(cwd, rounds[index - 1].request.candidate, rounds[index].request.candidate), rounds[index].request.continuation.deltaPaths), 'actual committed repair delta differs from lineage');
+}
+/** Prepare is idempotent; continuation never erases findings or restarts its budget. */
+export async function prepareAgentReviewState({ previous, repairRisk = 'unknown', fullRefresh = false, delta = captureAgentReviewDelta, maxAgeMs = 86400000, ...options }) {
+  demand(REPAIR_RISKS.includes(repairRisk) && typeof fullRefresh === 'boolean', 'repair risk or refresh is invalid');
+  const request = await prepareAgentReview(options);
+  if (!previous) return { request, reports: [] };
+  const now = options.now ?? Date.now; const time = now();
+  // Validate bindings before reusing any state, including failed/partial unchanged rounds.
+  validateLineage(previous, time, Infinity); await currentLineage(options.cwd, previous, delta);
+  rescope(equal(previous.request.intent, request.intent) && previous.request.authorSessionId === request.authorSessionId, 'approved intent or author changed; a changed execution approach is required');
+  if (equal(previous.request.candidate, request.candidate)) {
+    if (!fullRefresh) return structuredClone(previous);
+    // Recovery is unnecessary for a terminal current pass, even if requested.
+    let reviewed = true;
+    try { validateLineage(previous, time, maxAgeMs); validateRound(previous.request, previous.reports, { complete: true, time, maxAgeMs }); previous.reports.forEach(report => reportPasses(previous.request, report)); } catch { reviewed = false; }
+    if (reviewed) return structuredClone(previous);
+  }
+  rescope((previous.history?.length ?? 0) < MAX_REPAIRS, 'two automatic repair cycles are exhausted; change execution approach');
+  demand(request.candidate.clean, 'repair requires clean committed candidates');
+  let priorComplete = previous.request.candidate.clean;
+  try { validateLineage(previous, time, maxAgeMs); validateRound(previous.request, previous.reports, { complete: true, time, maxAgeMs }); } catch { priorComplete = false; }
+  const history = [...(previous.history ?? []), { request: previous.request, reports: previous.reports }];
+  let deltaPaths;
+  try { deltaPaths = await delta(options.cwd, previous.request.candidate, request.candidate); } catch (error) { if (error.message.includes('not an authenticated ancestor')) throw new NeedsRescope('Agent review needs rescope: nonancestor integration requires a changed execution approach'); throw error; }
+  const findings = unresolvedCards(history);
+  const mode = fullRefresh || !priorComplete || previous.request.candidate.base !== request.candidate.base ? 'full' : repairRisk === 'ordinary' && !deltaPaths.some(sensitivePath) && findings.every(card => card.finding.risk === 'ordinary') ? 'closure' : 'focused';
+  paths(deltaPaths, mode === 'full');
+  request.version = 2; request.continuation = { cycle: history.length, mode, priorDigest: digest(history), deltaPaths, findings, repairRisk }; request.roles = requestRoles(request.intent, request.continuation);
+  const state = { request, reports: [], history: structuredClone(history) }; validateLineage(state, time, maxAgeMs); return state;
+}
+export async function recordAgentReview({ cwd, request, reports = [], history, report, snapshot = captureSessionCandidate, delta = captureAgentReviewDelta, now = Date.now }) {
+  const state = { request, reports, ...(history ? { history } : {}) }; const { identities } = validateLineage(state, now(), 86400000);
+  await current(request, cwd, snapshot); await currentLineage(cwd, state, delta); validateReport(request, report);
+  demand(report.completedAt <= now(), 'report completion is in the future'); demand(reports.length < request.roles.length, 'report count exceeds requested roles');
+  demand(!reports.some(previous => previous.role === report.role) && ![report.reviewerId, report.sessionId].some(id => identities.has(id)), 'reviewer/session/role is duplicated; findings cannot be overwritten');
   return [...structuredClone(reports), structuredClone(report)];
 }
 /** Return actionable needs without asking a maintainer to approve a verdict. */
-export async function verifyAgentReview({ cwd, request, reports = [], snapshot = captureSessionCandidate, now = Date.now, maxAgeMs = 24 * 60 * 60 * 1000 }) {
+export async function verifyAgentReview({ cwd, request, reports = [], history, snapshot = captureSessionCandidate, delta = captureAgentReviewDelta, now = Date.now, maxAgeMs = 86400000 }) {
   try {
-    await current(request, cwd, snapshot);
-    demand(Number.isSafeInteger(maxAgeMs) && maxAgeMs > 0 && maxAgeMs <= 24 * 60 * 60 * 1000, 'review freshness bound is invalid');
-    demand(request.candidate.clean, 'final review requires a clean committed candidate; commit and prepare fresh reviews');
-    const time = now(); demand(time >= request.preparedAt && time - request.preparedAt <= maxAgeMs, 'review request expired');
-    demand(Array.isArray(reports) && reports.length <= request.roles.length, 'report count is invalid');
-    const ids = new Set(); const sessions = new Set(); const roles = new Set();
-    for (const report of reports) {
-      validateReport(request, report); demand(report.completedAt <= time, 'report completion is in the future');
-      demand(![report.reviewerId, report.sessionId].some(id => ids.has(id) || sessions.has(id)) && !roles.has(report.role), 'reviewer/session/role is duplicated');
-      ids.add(report.reviewerId); sessions.add(report.sessionId); roles.add(report.role);
-      demand(report.complete && report.coveredCriteria && report.verdict === 'pass' && report.materialFindings.length === 0, 'review has incomplete coverage or unresolved material findings');
-    }
-    const missingRoles = request.roles.filter(role => !roles.has(role));
+    demand(Number.isSafeInteger(maxAgeMs) && maxAgeMs > 0 && maxAgeMs <= 86400000, 'review freshness bound is invalid');
+    const state = { request, reports, ...(history ? { history } : {}) }; validateLineage(state, now(), maxAgeMs);
+    const observed = await snapshot(cwd, request.candidate.base);
+    if (!equal(observed, request.candidate) && (history?.length ?? 0) >= MAX_REPAIRS) throw new NeedsRescope('Agent review needs rescope: two automatic repair cycles are exhausted; change execution approach');
+    demand(equal(observed, request.candidate), 'candidate changed; prepare fresh independent reviews');
+    demand(request.candidate.clean, 'final review requires a clean committed candidate; commit and prepare fresh reviews'); await currentLineage(cwd, state, delta);
+    reports.forEach(report => reportPasses(request, report));
+    const missingRoles = request.roles.filter(role => !reports.some(report => report.role === role));
     if (missingRoles.length) return { status: 'needs_agent_review', evidence: EVIDENCE, request, missingRoles, reason: 'Spawn fresh native platform agents for these roles, then record their observed reports.' };
     demand(reports.some(report => report.simplicityChecked), 'simplicity perspective is missing');
     await current(request, cwd, snapshot);
-    const finalTime = now(); demand(finalTime >= request.preparedAt && finalTime - request.preparedAt <= maxAgeMs && reports.every(report => report.completedAt <= finalTime), 'review expired or clock changed during final source scan');
-    return { status: 'reviewed', evidence: EVIDENCE, requestId: request.id, requestDigest: digest(request), candidate: request.candidate, reviewerIds: [...ids], verifiedAt: finalTime };
-  } catch (error) { return { status: 'needs_agent_review', evidence: EVIDENCE, reason: error.message, requestId: request?.id ?? null }; }
+    const finalTime = now();
+    try { validateLineage(state, finalTime, maxAgeMs); } catch { throw new Error('Agent review required: review expired or clock changed during final source scan'); }
+    return { status: 'reviewed', evidence: EVIDENCE, requestId: request.id, requestDigest: digest(request), candidate: request.candidate, reviewerIds: reports.map(report => report.reviewerId), verifiedAt: finalTime };
+  } catch (error) { return { status: error instanceof NeedsRescope ? 'needs_rescope' : 'needs_agent_review', evidence: EVIDENCE, reason: error.message, requestId: request?.id ?? null }; }
 }
 export function agentReviewReportBinding(request) { validateRequest(request); return { requestId: request.id, requestDigest: digest(request), candidate: structuredClone(request.candidate) }; }
 
@@ -227,20 +361,21 @@ async function main() {
   const operation = async () => {
   if (verb === 'prepare') {
     const spec = await boundedJson(input ?? join(directory, 'intent.json'));
-    demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
+    demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base', 'repairRisk', 'fullRefresh'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
     spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= (await git(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
-    const request = await prepareAgentReview({ cwd, ...spec });
     let previous; try { previous = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    demand(!previous?.reports?.some(report => report.materialFindings?.length > 0) || previous.request.candidate.workingDigest !== request.candidate.workingDigest, 'unresolved material findings require a changed source candidate before fresh review');
-    await saveState(cwd, directory, path, { request, reports: [] });
-    console.log(JSON.stringify(await verifyAgentReview({ cwd, request }), null, 2));
+    let state;
+    try { state = await prepareAgentReviewState({ cwd, ...spec, previous }); }
+    catch (error) { if (!(error instanceof NeedsRescope)) throw error; console.log(JSON.stringify({ status: 'needs_rescope', evidence: EVIDENCE, reason: error.message })); process.exitCode = 1; return; }
+    if (!equal(state, previous)) await saveState(cwd, directory, path, state);
+    console.log(JSON.stringify(await verifyAgentReview({ cwd, ...state }), null, 2));
   } else {
     let state; try { state = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code === 'ENOENT') {
       const baseline = await pristineAgentReviewBaseline(cwd);
       const result = baseline.pristine ? { status: 'pristine_baseline', evidence: EVIDENCE, candidate: baseline.candidate } : { status: 'needs_agent_review', evidence: EVIDENCE, reason: 'Prepare a request from the approved intent before native review.' };
       console.log(JSON.stringify(result)); process.exitCode = verb === 'verify' && !baseline.pristine ? 1 : 0; return;
     } throw error; }
-    exact(state, ['request', 'reports'], 'session state');
+    validateLineage(state, Date.now(), Infinity);
     if (verb === 'record') { state.reports = await recordAgentReview({ cwd, ...state, report: await boundedJson(input) }); await saveState(cwd, directory, path, state); }
     const result = await verifyAgentReview({ cwd, ...state }); console.log(JSON.stringify(result, null, 2)); if (verb === 'verify' && result.status !== 'reviewed') process.exitCode = 1;
   }
