@@ -44,6 +44,9 @@ the snapshot-aware resume RPC has no runtime caller.
 - `types.ts`, `paymentControlTypes.ts`, `methodRefs.ts` — sessions, method refs,
   attempt/intent/event statuses, `PaymentExecution*`.
 - `recoveryContracts.ts` — hidden payment recovery redeem/resend contracts.
+- `paymentFormContracts.ts` — `PaymentFormCopy`, `PaymentFormSettlement` and
+  `RecoveryPaymentSetupFormCopy`, the words and outcomes the card payment UI in
+  `src/checkout/adapters/stripe/` exchanges with its host.
 - `paymentRecoveryClient.ts` — hidden customer-auth BFF client for recovery token redemption.
 - `paymentControlTypes.ts`, `paymentStateMachine.ts` — compatibility shims to
   `@openlup/core/payment` for the neutral payment-control kernel.
@@ -56,6 +59,18 @@ the snapshot-aware resume RPC has no runtime caller.
   payment proof contract. It validates the required hidden-preview payment
   evidence subset before later waves commit real `docs/evidence/stripe-sandbox-*`
   artifacts.
+
+## Deprecated re-exports (do not use in new code; removed in preview 9)
+
+These keep the old paths of moved modules resolving until
+`openlup-source-preview/9`. Import the new paths instead.
+
+- `components/PaymentForm.tsx`, `components/RecoveryPaymentSetupForm.tsx`,
+  `components/StripePaymentStep.tsx`, `components/useStripePromise.ts` — moved
+  to `src/checkout/adapters/stripe/`; the neutral copy and settlement types
+  are in `paymentFormContracts.ts`.
+- `server/domains/payment/paymentAdapterRegistry.ts` — moved to
+  `server/runtime/payment/paymentAdapterRegistry.ts`.
 
 ## Where the code lives
 - Shared/frontend: `src/domains/payment/`

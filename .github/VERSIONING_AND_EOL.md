@@ -147,6 +147,85 @@ Company identity extensions reuse the neutral core input schema and the public
 optional registry fields remain in the extension layer. The core helper is an
 additive development-preview API, not a stable contract.
 
+## Pending preview upgrade notes: moved payment and communications modules
+
+Status: unreleased source change; include these notes in the preview that
+first carries it. PR #42 moved the payment adapter registry and the newsletter
+provider registry from `server/domains/` to `server/runtime/`, and PR #43 moved
+the Stripe payment UI from `src/domains/payment/components/` to
+`src/checkout/adapters/stripe/`. Each module's tests moved with it. Import the
+new paths:
+
+| Old path | New path |
+| --- | --- |
+| `src/domains/payment/components/PaymentForm.tsx` | `src/checkout/adapters/stripe/PaymentForm.tsx` |
+| `src/domains/payment/components/RecoveryPaymentSetupForm.tsx` | `src/checkout/adapters/stripe/RecoveryPaymentSetupForm.tsx` |
+| `src/domains/payment/components/StripePaymentStep.tsx` | `src/checkout/adapters/stripe/StripePaymentStep.tsx` |
+| `src/domains/payment/components/useStripePromise.ts` | `src/checkout/adapters/stripe/useStripePromise.ts` |
+| `server/domains/payment/paymentAdapterRegistry.ts` | `server/runtime/payment/paymentAdapterRegistry.ts` |
+| `server/domains/communications/newsletterProviderRegistry` (no re-export) | `server/runtime/communications/newsletterProviderRegistry.ts` |
+
+The neutral types `PaymentFormCopy`, `PaymentFormSettlement` and
+`RecoveryPaymentSetupFormCopy` are exported from
+`src/domains/payment/paymentFormContracts.ts`. Every old path in the table
+except the newsletter provider registry keeps a deprecated re-export of exactly
+its previous public bindings, so existing imports still resolve. The re-exports
+are removed in `openlup-source-preview/9`; move imports before adopting it.
+`server/domains/payment/paymentAdapterRegistry.test.ts` covers only the
+re-export; the registry's own tests are in `server/runtime/payment/`. The
+newsletter provider registry has no re-export because the preview 6
+communications README told adopters to register a provider adapter by editing
+that file, and a plain rename lets git carry those edits to the new path.
+
+Forks with local edits: without the re-exports these moves would be renames that
+git follows. With them, the old file counts as modified and the new file as
+added, so a fork's local edits to an old file no longer follow the move. Port
+those edits to the new path. Resolving the conflict with "keep mine" on the old
+path silently drops them from the running code, because every caller in this
+tree imports the new path. A fork that keeps its own copy of an old file instead
+of the re-export also fails the re-export tests, and a kept copy of
+`useStripePromise.ts` holds a second Stripe loader cache beside the one the
+moved callers use. A fork that appended its own tests to preview 6's
+`server/domains/payment/paymentAdapterRegistry.test.ts` merges without a
+conflict, and those tests then land in the re-export's test; move them to
+`server/runtime/payment/`. In a fork's own code files, a comment line that
+starts with `// openlup-remove-before:` is read as a release marker, so do not
+use that text for anything else.
+
+Each re-exported name carries a `@deprecated` tag, so an editor marks a named
+import from an old path, and each use of an imported value, as deprecated. These
+marks are TypeScript language service suggestions only: `tsc`, CI and this
+repository's ESLint config do not report them. They do not reach a namespace
+import line such as `import * as M from …` or a type reached through it such as
+`M.PaymentFormProps`, an `import("…").PaymentFormProps` type query, `export *`
+or `export * as` from an old path, or a re-export statement in consumer code.
+
+A `vi.mock` (or any other module mock) of an old path replaces only the imports
+that go through that old path. Every caller in this tree, including each
+re-export, imports the moved modules at their new paths, so mock a moved module
+under `src/checkout/adapters/stripe/` or `server/runtime/` to intercept it. This
+applies to every module in the table, not only the one without a re-export, and
+a new-path mock also reaches code that still imports through a re-export.
+
+The pull request that removes the re-exports makes these changes together. It
+deletes the five re-exports, and with them their removal marker lines, and their
+three tests: `src/domains/payment/deprecatedReExportRemoval.test.ts`,
+`src/domains/payment/components/deprecatedReExportBindings.test.ts` and
+`server/domains/payment/paymentAdapterRegistry.test.ts`. It removes the
+publication catalogue rows of those eight files and re-derives the source
+release contract. It removes the sentences that name the re-exports, including
+the one that begins "Each disables the rule only", from the import-boundary
+paragraphs of `docs/platform/ARCHITECTURE_AND_EXTENSIONS.md` and
+`CONTRIBUTING.md`, restores "and there are no exceptions" to the architecture
+guide's paragraph, and removes the deprecated re-export section of the payment
+domain README. It replaces this section with a short upgrade note for
+`openlup-source-preview/9`: the old paths no longer resolve, so import the new
+paths. That note may keep the move table and the mock guidance, but it names
+each old path without a file extension or outside inline code, because the old
+files are no longer in the tree. The removal-marker check in the release
+tooling, and its description under Maintaining source previews, stay. Until that
+change lands, the release refuses to cut `openlup-source-preview/9`.
+
 ## Maintaining source previews
 
 Contributors propose generic changes through public PRs and the DCO/checks in
@@ -224,12 +303,20 @@ Confirm the package version `0.<n>.0` and its pack proof before approving a
 preview that should stage packages.
 
 The job repeats the package workflow's main-ancestry and six required-context
-check at the target. It authenticates the preceding release and its predecessor,
-deriving the `previousRelease` tuple from the authenticator rather than an
-operator JSON. It then creates the annotated tag with exactly
-`OpenLup source preview N.`, runs the existing descendant receipt producer
-without selector retirements, and attests `openlup-source-receipt.json`.
-The producer's schema, catalogue, contract and projection refusals are unchanged.
+check at the target. Its prepare step refuses preview N, before any tag exists,
+while a code file (`.ts`, `.tsx`, `.js`, `.mjs`, `.cjs`, `.mts` or `.cts`)
+anywhere in the target's tree has a removal marker naming preview N or an
+earlier one, or a marker line that does not parse, and names each such file; the
+receipt producer repeats the check. A removal marker is a whole `//` comment
+line of the form `openlup-remove-before: openlup-source-preview/<m>`, and any
+comment line starting `// openlup-remove-before:` must parse as one. Only a NUL
+byte in a file's first 8000 bytes makes it binary and skips it; attributes do
+not. It authenticates the preceding release and its predecessor, deriving the
+`previousRelease` tuple from the authenticator rather than an operator JSON. It
+then creates the annotated tag with exactly `OpenLup source preview N.`, runs
+the existing descendant receipt producer without selector retirements, and
+attests `openlup-source-receipt.json`. The producer's schema, catalogue,
+contract and projection refusals are unchanged.
 
 The App creates a **draft prerelease**, uploads the attested receipt, and checks
 the draft's exact body and asset digest against the prepared bytes before
@@ -258,6 +345,22 @@ reads public GitHub metadata, branch rules, checks and release assets. Set
 `GITHUB_TOKEN` if anonymous access/rate limits are insufficient; no private repo
 permission is needed. Keep credentials out of JSON, receipts and logs. Unavailable
 API evidence refuses the operation.
+
+Before you create that annotated tag, set `OPENLUP_PREVIEW` to the new preview
+number and run the removal-marker check at the reviewed commit. It refuses, and
+names each file, exactly as the workflow's prepare step and the producer do: a
+marker naming that preview or an earlier one, or a marker line that does not
+parse. It also refuses when `OPENLUP_PREVIEW` is unset or not a positive integer.
+
+```sh
+node --experimental-strip-types --input-type=module - <<'NODE'
+import { assertNoOverdueRemovals } from './scripts/oss-source-release-contract.ts';
+const preview = process.env.OPENLUP_PREVIEW ?? '';
+if (!/^[1-9][0-9]*$/u.test(preview)) throw new Error('set OPENLUP_PREVIEW to the new preview number, not "' + preview + '"');
+assertNoOverdueRemovals(Number(preview), 'HEAD');
+console.log('No tracked code file is marked for removal by openlup-source-preview/' + preview + '.');
+NODE
+```
 
 Create an external operation JSON with actual paths. Confirm the current release
 number first; preview/4 → preview/5 below is an example. The output parent must exist
@@ -320,6 +423,10 @@ Git objects. It returns `receipt`, `contents`, `digest`, reconstructed `allowlis
 and `allowlistDigest`; only the receipt is written externally. Identical Git objects
 and inputs produce identical bytes, without timestamps or local paths.
 
+The producer applies the same removal-marker refusal as the workflow's prepare
+step, so a manual cut refuses a file that is marked for removal by the new
+preview even if the check above was skipped.
+
 For a preceding descendant, also supply `previousRelease` in the operation JSON.
 Every preview after preview/1 is a descendant, so `previousRelease` is required.
 Derive this tuple from the authenticator result for that descendant's predecessor:
@@ -357,6 +464,9 @@ The producer refuses:
 - non-expand-only SQL: destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`, `TYPE`
   or `COLUMN`, and `TRUNCATE`), `RENAME`, `SET SCHEMA`, or `OWNER TO`;
 - a public path at a `local-measurement` drift selector;
+- a tracked code file with a removal marker naming the new preview or an
+  earlier one, or with a comment line starting `// openlup-remove-before:` that
+  does not parse;
 - a previous receipt whose paths or drift rows differ from its own Git objects.
 
 The approved forward path appends additive platform migrations to
