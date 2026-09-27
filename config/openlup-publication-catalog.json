@@ -78,6 +78,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/publish-source-preview.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/published-tree-ci.yml",
       "class": "public-output"
     },
@@ -2579,6 +2583,10 @@
     },
     {
       "path": "scripts/site-routes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/source-preview-release.ts",
       "class": "public-output"
     },
     {
