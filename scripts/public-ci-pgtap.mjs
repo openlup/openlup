@@ -61,7 +61,10 @@ async function main() {
     // This is the CLI's fixed disposable-development password, not a stored credential.
     must("docker", ["exec", "-e", "PGPASSWORD=postgres", "-i", `supabase_db_${projectId}`, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", "postgres", "-1"], { input: sql });
     console.log("Managed baseline replayed transactionally; running every shipped pgTAP test");
-    const result = run("supabase", ["test", "db", "--workdir", directory]);
+    // Test fixtures may replace functions transactionally; use the same disposable
+    // bootstrap owner, while their explicit SET ROLE assertions still test grants.
+    const databaseUrl = `postgresql://supabase_admin:postgres@127.0.0.1:${base + 2}/postgres`;
+    const result = run("supabase", ["test", "db", "--workdir", directory, "--db-url", databaseUrl]);
     writeFileSync(join(scratch, "latest.log"), `${result.stdout}\n${result.stderr}`);
     process.stdout.write(result.stdout);
     process.stderr.write(result.stderr);
