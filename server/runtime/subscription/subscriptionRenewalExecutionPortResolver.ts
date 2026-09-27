@@ -2,14 +2,13 @@ import { buildStripeAdapterIfEnabled } from "../../adapters/stripe/stripeAdapter
 import { buildTpayAdapterIfEnabled } from "../../adapters/tpay/tpayAdapterFactory.js";
 import type { PaymentProviderCapabilityRegistry } from "@openlup/core/payment";
 import type { DueSubscription } from "../../domains/subscription/chargeSubscriptionCycleOffSession.js";
+import type { SubscriptionRenewalExecutionPortResolution } from "../../domains/subscription/subscriptionRenewalInvocation.js";
 import type { PaymentExecutionPort } from "../../../src/domains/payment/ports.js";
 import type { SubscriptionPaymentMethodPreflightReason } from "../../../src/domains/subscription/paymentMethodLifecycle.js";
 
 type Env = Record<string, string | undefined>;
 
-export type SubscriptionRenewalExecutionPortResolution =
-  | { port: PaymentExecutionPort; reason: null }
-  | { port: null; reason: SubscriptionPaymentMethodPreflightReason };
+export type { SubscriptionRenewalExecutionPortResolution };
 
 interface RenewalAdapterFactory {
   build: (env: Env) => { adapter: PaymentExecutionPort } | null;

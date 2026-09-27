@@ -26,6 +26,18 @@ on a provider SDK or provider environment shape. Provider-specific payloads and
 raw status values end at the adapter boundary. Durable state belongs to the data
 contract, not to a browser client or provider response.
 
+`npm run lint` enforces the import side of this in
+[eslint.config.js](../../eslint.config.js). A package under `packages/` imports
+nothing outside its own directory. Code outside `packages/` reaches a package
+only through a subpath its `package.json` `exports` declares, never through a
+relative path into `packages/` or an undeclared subpath such as `src` or
+`dist`. Domain code under `src/domains` and `server/domains` imports none of
+the provider SDKs the config names and no adapter, infrastructure, runtime or
+route code; its tests may compose a domain with an adapter. The config lists
+the few crossings that predate the rule, each as one exact import in one file,
+and refuses to load with an entry whose import is gone, so that list only
+shrinks.
+
 ## Extension seams
 
 Extensions belong at explicit seams:
@@ -36,6 +48,10 @@ Extensions belong at explicit seams:
 - event subscribers react to documented facts without taking hidden ownership of
   the originating transaction;
 - themes, copy, catalogue data, and local policy remain adopter-owned inputs;
+- an adopter's own domains sit beside the platform's under `src/domains` or
+  `server/domains` and are registered as application domains through the
+  `#application-domains` import (`src/lib/coreDomains.ts` names the platform's
+  core domains; the public binding registers none);
 - a new generic capability is proposed upstream with a compatibility owner and
   conformance evidence.
 

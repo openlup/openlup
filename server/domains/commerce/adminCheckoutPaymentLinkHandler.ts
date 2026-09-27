@@ -18,7 +18,7 @@ import {
   generateCheckoutRecoveryToken,
   hashCheckoutRecoveryToken,
 } from "./checkoutRecoveryToken.js";
-import type { CheckoutPaymentLinkTokenStore } from "../../adapters/managed/commerce/checkoutPaymentLinkTokenStore.js";
+import type { CheckoutPaymentLinkTokenStore } from "./checkoutPaymentLinkTokenStorePort.js";
 
 /**
  * POST /api/bff/admin/commerce/orders/payment-link — the operator's entry point

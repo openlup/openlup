@@ -25,7 +25,10 @@
 // — so every unhappy path answers null and the email simply drops one sentence.
 // Nothing here can block a send.
 
-import type { DunningFailureClassPort } from "../domains/subscription/subscriptionDunningDispatchPorts.js";
+import type {
+  DunningCaseDisplayFacts,
+  DunningFailureClassPort,
+} from "../domains/subscription/subscriptionDunningDispatchPorts.js";
 
 interface FailureClassQueryBuilder {
   select(columns: string): FailureClassQueryBuilder;
@@ -52,24 +55,20 @@ export function failureClassFromRow(row: unknown): string | null {
   return trimmed.length > 0 && trimmed.length <= CLASS_MAX_LENGTH ? trimmed : null;
 }
 
+export type { DunningCaseDisplayFacts };
+
 /**
  * Everything a customer-facing surface may say about one dunning case, beyond
  * what the case row already told its caller: the class behind the refusal and the
- * money it left unpaid.
+ * money it left unpaid. The contract is `DunningCaseDisplayFacts` in the domain.
  *
- * It lives beside the class read rather than in the recovery port under
+ * The read lives beside the class read rather than in the recovery port under
  * `server/domains` for the reason the domain-boundary ratchet exists — new
  * concrete reads belong in adapters, and the alternative measurably tripped that
  * gate. Two queries, both display-only, both fail-SOFT: an unreadable row answers
  * null and the surface drops a line. Nothing here may stand between a payer and
  * the form that repairs their method.
  */
-export interface DunningCaseDisplayFacts {
-  failureClass: string | null;
-  amountMinor: number | null;
-  currency: string | null;
-}
-
 export function createDunningCaseDisplayFactsPort(client: DunningFailureClassQueryClient): {
   read(caseId: string): Promise<DunningCaseDisplayFacts>;
 } {

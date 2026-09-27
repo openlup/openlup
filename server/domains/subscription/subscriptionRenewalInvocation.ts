@@ -1,16 +1,21 @@
 import type { PaymentProviderCapabilityRegistry } from "@openlup/core/payment";
 import type { VercelRequest } from "../../_lib/types/vercel.js";
+import type { PaymentExecutionPort } from "../../../src/domains/payment/ports.js";
 import type { SubscriptionRuntimeClock } from "../../../src/domains/subscription/ports.js";
-import { resolveSubscriptionPaymentMethodStatus } from "../../../src/domains/subscription/paymentMethodLifecycle.js";
+import { resolveSubscriptionPaymentMethodStatus, type SubscriptionPaymentMethodPreflightReason } from "../../../src/domains/subscription/paymentMethodLifecycle.js";
 import { chargeSubscriptionCycleOffSession, type ChargeDeps, type DueSubscription,
   type SubscriptionRenewalChargeResult } from "./chargeSubscriptionCycleOffSession.js";
 import { RENEWAL_DUNNING_PROPAGATION_FAILED_KEY } from "./propagateSubscriptionCycleChargeFailure.js";
 import { isOperatorConfigPreflightReason, isOperatorOnlyPreflightReason,
   isPaymentMethodIntegrityPreflightReason, recordSubscriptionRenewalPreflightBlock } from "./recordSubscriptionRenewalPreflightBlock.js";
-import type { SubscriptionRenewalExecutionPortResolution } from "../../runtime/subscription/subscriptionRenewalExecutionPortResolver.js";
 import { checkSubscriptionDeliveryAlignmentAdmission } from "./callSubscriptionDeliveryAlignmentAdmission.js";
 
 export const SUBSCRIPTION_RENEWAL_JOB_DRIVER = "vercel_cron";
+
+/** The execution port a due subscription renews through, or why it cannot renew. */
+export type SubscriptionRenewalExecutionPortResolution =
+  | { port: PaymentExecutionPort; reason: null }
+  | { port: null; reason: SubscriptionPaymentMethodPreflightReason };
 
 type SubscriptionRenewalInvocationSource = "vercel_cron" | "manual_smoke" | "github_actions_schedule"
   | "github_actions_dispatch" | "github_actions_poker_schedule" | "github_actions_poker_dispatch" | "unattributed_post";
