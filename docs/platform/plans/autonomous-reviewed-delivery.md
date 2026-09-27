@@ -122,11 +122,11 @@ for this native-session route.
 ## Native session interface
 
 The supervisor writes approved intent data to the ignored
-`.context/agent-review-intent.json` file: `intent` contains `risk`, `scope`,
+`.context/scratch/agent-review/intent.json` file: `intent` contains `risk`, `scope`,
 `criteria` and `requiredRoles`; an adapter may supply an observed
 `authorSessionId`. `node scripts/agent-review-session.mjs prepare` computes the
 candidate, role floor and request binding, then stores the bounded session state
-in `.context/agent-review-session.json`. Neither file is a new planning document
+in `.context/scratch/agent-review/session.json`. Neither file is a new planning document
 or a source of publication authority.
 
 `status` returns `needs_agent_review` with required roles and exact request data.

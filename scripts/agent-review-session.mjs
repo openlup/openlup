@@ -172,9 +172,9 @@ async function saveState(directory, path, state) {
 }
 async function main() {
   const [verb, input] = process.argv.slice(2); demand(['prepare', 'record', 'verify', 'status'].includes(verb), 'use prepare <intent.json>, record <observed-report.json>, verify, or status');
-  const cwd = await realpath(process.cwd()); const directory = join(cwd, '.context'); const path = join(directory, 'agent-review-session.json');
+  const cwd = await realpath(process.cwd()); const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   if (verb === 'prepare') {
-    const spec = await boundedJson(input ?? join(directory, 'agent-review-intent.json'));
+    const spec = await boundedJson(input ?? join(directory, 'intent.json'));
     demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
     spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= (await git(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
     const request = await prepareAgentReview({ cwd, ...spec });
