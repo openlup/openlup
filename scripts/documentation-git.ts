@@ -5,7 +5,7 @@ import { assertDocumentationPath, assertMaterializedDocumentationPath, documenta
 export { documentationGit } from "./documentation-routing.ts";
 
 export type DocumentationObject = { mode: string; digest: string; contents: Buffer };
-export type DocumentationBase = { base: string; head: string; provenance: "explicit" | "merge-base" | "pull-request" | "push" };
+export type DocumentationBase = { base: string; head: string; provenance: "explicit" | "merge-base" | "pull-request" | "merge-group" | "push" };
 const SHA = /^[0-9a-f]{40}$/u;
 export const documentationDigest = (bytes: string | Buffer): string => `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
 function fullCommit(root: string, ref: string): string {
@@ -58,12 +58,13 @@ export function readDocumentationCandidate(root: string, paths: string[]): Map<s
   }));
 }
 
-function hostedBase(root: string, env: NodeJS.ProcessEnv, head: string): { base: string; provenance: "pull-request" | "push" } {
+function hostedBase(root: string, env: NodeJS.ProcessEnv, head: string): { base: string; provenance: "pull-request" | "merge-group" | "push" } {
   if (env.GITHUB_REPOSITORY !== "openlup/openlup" || !env.GITHUB_EVENT_PATH || !SHA.test(env.GITHUB_SHA ?? "") || head !== env.GITHUB_SHA)
     throw new Error("documentation: hosted checkout identity does not match the public event");
   const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, "utf8")) as {
-    repository?: { full_name?: string; private?: boolean }; before?: string; after?: string;
+    repository?: { full_name?: string; private?: boolean }; before?: string; after?: string; action?: string;
     pull_request?: { base?: { sha?: string }; head?: { sha?: string }; merge_commit_sha?: string };
+    merge_group?: { base_sha?: string; base_ref?: string; head_sha?: string; head_ref?: string; head_commit?: { id?: string; tree_id?: string } };
   };
   if (event.repository?.full_name !== "openlup/openlup" || event.repository.private !== false)
     throw new Error("documentation: hosted attribution requires the public OpenLup repository");
@@ -77,6 +78,19 @@ function hostedBase(root: string, env: NodeJS.ProcessEnv, head: string): { base:
   }
   if (env.GITHUB_EVENT_NAME === "push" && SHA.test(event.before ?? "") && !/^0+$/u.test(event.before!) && event.after === head)
     return { base: event.before!, provenance: "push" };
+  if (env.GITHUB_EVENT_NAME === "merge_group") {
+    const group = event.merge_group;
+    if (event.action !== "checks_requested" || !SHA.test(group?.base_sha ?? "") || /^0+$/u.test(group!.base_sha!)
+      || group!.base_sha === head || group!.base_ref !== "refs/heads/main" || group!.head_sha !== head
+      || typeof group!.head_ref !== "string" || !group!.head_ref.startsWith("refs/heads/gh-readonly-queue/main/")
+      || group!.head_ref !== env.GITHUB_REF || group!.head_commit?.id !== head
+      || group!.head_commit?.tree_id !== documentationGit(root, ["rev-parse", "--verify", "HEAD^{tree}"]).toString("utf8").trim())
+      throw new Error("documentation: merge-group checkout does not match the event's base/head/ref");
+    try { documentationGit(root, ["check-ref-format", group!.head_ref]); } catch {
+      throw new Error("documentation: merge-group event ref is malformed");
+    }
+    return { base: group!.base_sha!, provenance: "merge-group" };
+  }
   throw new Error("documentation: missing or unsupported hosted comparison event");
 }
 
@@ -94,6 +108,11 @@ export function resolveDocumentationBase(root: string, options: { base?: string;
         "fetch", "--no-tags", "--depth=1", "--no-write-fetch-head", "--no-prune", "--no-prune-tags", "--no-recurse-submodules", "--refmap=",
         "--no-auto-maintenance", "--no-write-commit-graph", "https://github.com/openlup/openlup.git", resolved.base]);
       fullCommit(root, resolved.base);
+    }
+    if (resolved.provenance === "merge-group") {
+      try { documentationGit(root, ["merge-base", "--is-ancestor", resolved.base, head]); } catch {
+        throw new Error("documentation: merge-group event base is not an observed ancestor of the checkout; complete history is required");
+      }
     }
     return { ...resolved, head };
   }

@@ -1,6 +1,6 @@
 # Intent: autonomous delivery with accountable review
 
-Status: native-session implementation; live activation requires per-installation proof.
+Status: native-session implementation; optional queue foundation is inactive until separately approved live proof.
 Audience: maintainers and contributors designing the development workflow.
 
 ## Outcome
@@ -86,6 +86,34 @@ have separate OS authority. A report written by the author is not independent
 review. The supervisor must obtain actual platform observations; receipt
 validation checks their declared binding and completeness but cannot establish
 independence against a dishonest actor with control of the entire session.
+
+## Approved native queue follow-up
+
+Extend that same native process to an optional GitHub merge queue without a
+model API, reviewer host, new secret or transfer of subscription authentication.
+The active supervisor retains source-review evidence and transports it through
+a main-only dispatch artifact for the exact PR or merge-group CI run/attempt.
+All six mechanical jobs remain required. Activated queue admission adds a
+seventh bounded job which rechecks current source, group, artifact and native
+review identity before success. A source-head change after auto-merge was armed
+cannot inherit the old admission.
+
+For the one-source pilot, compare the actual entire group tree with the reviewed
+source tree. Equal trees need no additional review; a different tree requires
+two fresh independent full integration reviews with unchanged approved criteria.
+Keep source and group identities separate and leave the source branch unchanged.
+This does not alter the nonqueue base-integration protocol or reset its repair
+budget. At most two automatic queue-rebuild retries are a separate bound;
+exhaustion or unknown membership returns honest blocked evidence to the supervisor.
+
+Foundation implementation and authorized delivery through merge do not activate
+settings. Activation needs an exact separately approved proposal and live refusal
+proof, including changed heads, rebuilt groups, same-SHA attempt replay, and
+synthetic-tip DCO. Fixture success or unavailable sandbox evidence does not
+establish activation. Review freshness is checked at admission, not guaranteed
+at the later GitHub merge; Actions source attribution cannot isolate a workflow
+against a malicious writer who can spoof the same context. The queue retains
+the existing process-evidence boundary and grants no production or release authority.
 
 ## Boundaries and falsifiers
 

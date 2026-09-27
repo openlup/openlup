@@ -82,6 +82,24 @@ export async function captureSessionCandidate(cwd, base) {
   return { base, head, tree, clean, workingDigest: digest([...actual.values()]), indexDigest: digest({ index, flags: flags.sort() }), changedPaths };
 }
 
+/** Read a committed candidate as data, without checking it out or executing its
+ * configuration. Hosted admission must not run a candidate with write tokens.
+ * The reconstructed clean index uses the same canonical digests as local review.
+ */
+export async function captureCommittedReviewCandidate(cwd, base, head) {
+  const graph = await verifyReviewObjectGraph(cwd, { base, head });
+  const entries = reviewTreeEntries(graph, graph.headTree).map(({ path, mode, object }) => ({ path, mode, object })).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const before = new Map(reviewTreeEntries(graph, graph.baseTree).map(entry => [entry.path, entry]));
+  const after = new Map(entries.map(entry => [entry.path, entry]));
+  const changedPaths = [...new Set([...before.keys(), ...after.keys()])].sort().filter(path => before.get(path)?.object !== after.get(path)?.object || before.get(path)?.mode !== after.get(path)?.mode);
+  // Inventory and task scope have different bounds: a small task can review a
+  // large tree. The authenticated reader already caps the inventory at 30,000.
+  for (const entry of entries) paths([entry.path]);
+  const index = entries.map(entry => `${entry.mode} ${entry.object} 0\t${entry.path}`).sort();
+  const flags = entries.map(entry => `H ${entry.path}`).sort();
+  return { base, head, tree: graph.headTree, clean: true, workingDigest: digest(entries), indexDigest: digest({ index, flags }), changedPaths };
+}
+
 function validateIntent(intent) {
   exact(intent, ['risk', 'scope', 'criteria', 'requiredRoles'], 'approved intent');
   demand(['prose', 'behavior', 'unknown'].includes(intent.risk), 'risk is invalid'); paths(intent.scope); text(intent.criteria, 'criteria', 64 * 1024);
@@ -299,6 +317,15 @@ export async function verifyAgentReview({ cwd, request, reports = [], history, s
   } catch (error) { return { status: error instanceof NeedsRescope ? 'needs_rescope' : 'needs_agent_review', evidence: EVIDENCE, reason: error.message, requestId: request?.id ?? null }; }
 }
 export function agentReviewReportBinding(request) { validateRequest(request); return { requestId: request.id, requestDigest: digest(request), candidate: structuredClone(request.candidate) }; }
+
+/** Last synchronous freshness sample after hosted identity reads. It does not
+ * replace source/lineage validation; no network work may follow before admission.
+ */
+export function assertAgentReviewFreshness(state, time = Date.now()) {
+  validateLineage(state, time, 86400000);
+  validateRound(state.request, state.reports, { complete: true, time });
+  state.reports.forEach(report => reportPasses(state.request, report));
+}
 
 async function boundedJson(path, maximum = INPUT_BYTES) {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);

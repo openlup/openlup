@@ -1,6 +1,6 @@
 # Plan: autonomous reviewed delivery
 
-Status: native-session implementation; live activation requires per-installation proof.
+Status: native-session implementation; optional queue foundation is inactive until separately approved live proof.
 Audience: contributors implementing and verifying the development workflow.
 
 ## Approved convergence implementation wave
@@ -59,8 +59,9 @@ cannot renew inherited expiry and exhausted cycles remain blocked; workflow drif
 expensive checks or replacement of prior logs; concurrent verify
 cannot corrupt or overlap its heavy checks. Report observed reviewer counts,
 dogfooding findings and remaining limitations. Historical-red Draft publication,
-general selective-test caching, merge queues and cross-base review reuse are
-separate work, not prerequisites that may grow this task.
+general selective-test caching, merge queues and cross-base review reuse were
+outside that convergence wave. The separately approved queue follow-up below
+does not expand its repair protocol or supply a general cross-base reuse rule.
 
 ## Outcome, scope and authority
 
@@ -303,3 +304,133 @@ isolated. Calibrate on representative prose and behavioural tasks before adding
 another reviewer, orchestration layer or merge queue. Record lead time, confirmed
 and false findings, subscription usage and escaped regressions. This large control
 change alone cannot establish the economics of ordinary small tasks.
+
+## Approved native queue follow-up wave
+
+The maintainer authorized implementation and bounded delivery through merge for
+this follow-up. Its outcome is queue admission tied to actual native source
+review and the exact GitHub integration candidate. Public scope covers the
+queue transport and refusal tests, the six-job workflow's merge-group event
+support, its optional admission job, documentation attribution, contributor
+guidance and the configured local verification mirror. This foundation can
+merge while queue activation remains off. No production, release, new secret,
+subscription-authentication transfer, paid model call or settings change is
+authorized by foundation delivery.
+
+The simpler alternative of required GitHub PR approvals does not establish
+native evidence or bind integration review to a queue base/head/tree. A compact
+main-only artifact transport preserves existing native review without a hosted
+model or a separate service. Retain all six mechanical checks and their failure
+signals. The seventh `native-review` job provides the additional admission
+condition only after separate activation.
+
+### Source and integration evidence
+
+1. Commit and review the source through the existing session protocol. Obtain
+   actual complete fresh native observations in this conversation; never copy a
+   PASS to a new SHA. Preserve criteria, source scope, findings, lineage, expiry
+   and the two-cycle repair budget. Record the actual PR head and tree, distinct
+   from the PR workflow's test-merge checkout.
+2. Select the authenticated Published Tree CI run and current attempt. Transport
+   the complete source state for that exact target. A changed source head after
+   auto-merge arming needs current source evidence, even if mechanical CI is green.
+3. For a queue event, resolve actual queue membership and the live group ref.
+   Bind repository, PR, source head/tree, queue-entry ID and enqueue time, event
+   base/head/tree/ref, and workflow run/attempt. The pilot admits the first entry
+   only, whose base is current `main`; later waiting entries may remain queued.
+   Unknown, incomplete, ambiguous or batched membership refuses. A branch-name
+   pattern is only a routing hint, not source provenance.
+4. If the complete group tree equals the reviewed source tree, require no
+   additional model review. Otherwise prepare separate native group state for
+   the exact event base/head/tree and obtain two fresh independent full
+   integration reviews under the source's unchanged approved criteria. Review
+   actual interactions, including sensitive or unknown behavior; disjoint paths
+   or an author label cannot establish noninteraction. Group reviewers receive
+   exact source context and criteria without author history or prior verdicts,
+   and their execution identities cannot reuse the source reviewers' contexts.
+   Keep the source branch unchanged and do not turn integration evidence into a
+   rewritten source approval.
+5. The active supervisor submits and follows admission within this conversation.
+   Missing or invalid evidence is an agent recovery condition within authorized
+   scope, not a request for the maintainer to move reports or repeat approval.
+   At most two automatic retries may recover a rebuilt queue candidate. Each
+   new candidate gets its actual binding and required evidence; these retries
+   neither restart source repair cycles nor permit infinite requeueing.
+   Exhaustion, unresolved findings or unknown membership stays blocked while the
+   supervisor regroups within actual authority.
+
+The nonqueue ancestor-preserving base-integration rule remains fresh full-scope
+review with retained history and budget. The queue route is a separate identity
+mode; it does not silently change that rule or authorize cross-base repair reuse.
+
+### Native transport and admission
+
+From the task worktree, the supervisor creates input with
+`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`.
+Replace `RUN`, `ATTEMPT` and `PR` with tool-observed positive numeric identities;
+the bracketed group-state argument is supplied only when the group tree differs.
+The command outputs JSON for
+`gh workflow run native-review-admission.yml --ref main --json`, passed on stdin.
+Input creation does not dispatch automatically. Dispatch is a GitHub write and
+requires the task's actual delivery authority. The contributor checks show the
+complete redirection example. Compact input is bounded at 56,000 bytes; missing
+coverage cannot be removed to fit transport.
+
+`native-review-admission.yml` is transport only. Trusted `main` scripts validate
+the states against authenticated Git objects without executing candidate code
+or installing its dependencies. The workflow uploads one validated receipt
+artifact named for the target run/attempt and finishes. No model runs on GitHub,
+no subscription authentication is copied there, and no signing service or
+Checks-write publisher is provisioned.
+
+With `OPENLUP_NATIVE_QUEUE=enabled`, the seventh job runs for eligible PR and
+merge-group events after the existing six jobs finish. It requires six actual
+successes, then waits at most twenty minutes for the target receipt. It checks
+artifact digest, trusted dispatch workflow/run provenance, native completeness,
+lineage and expiry, current PR head and live queue tuple; final observation must
+match the initial binding. A different run or attempt cannot reuse the artifact.
+Missing, malformed, stale, partial, failed or changed evidence refuses admission.
+The configured local mirror retains all six jobs and refuses workflow drift;
+local verification does not assert hosted queue activation.
+
+Freshness is sampled at final admission. A successful GitHub context has no
+native receipt expiry timer, so this design does not guarantee validity at the
+eventual merge. Required context attribution to GitHub Actions establishes
+process provenance, not isolation from a malicious repository writer capable of
+spoofing the same context. These limits match the native process-evidence model;
+a stronger security boundary requires a separately approved design.
+
+### Verification and separate activation decision
+
+Implement and test authenticated source/group identity, whole-tree equality,
+changed-tree two-review requirements, stale/partial findings, expiry, input
+bounds, head movement during observation, group rebuilds, unknown membership,
+and exact run/attempt replay refusals. Preserve criteria and findings while
+testing repair and queue retry exhaustion independently. Exercise main-only
+transport and artifact provenance without moving model execution to GitHub.
+
+The six CI commands remain. Merge-group DCO checks the complete event-base-to-head
+range including the synthetic tip; an unsigned tip fails. Documentation impact
+validates event base/head/ref/tree against the checkout and compares that full
+range. Controlled local fixtures establish those mechanics only. When a hosted
+sandbox or live queue test is unavailable, record `UNAVAILABLE` with its missing
+precondition; fixture results cannot replace it or justify a waiver.
+
+Prepare an exact settings proposal for separate maintainer approval: squash
+queue, build concurrency one, minimum and maximum merge count one, `ALLGREEN`,
+all six existing contexts plus `native-review`, the activation variable and a
+check-response timeout covering mechanical CI plus the bounded receipt wait.
+Do not enable settings while delivering the foundation. The inactive admission
+job is skipped and is not enforcement proof.
+
+Before activation, prove on the actual GitHub queue that a head changed after
+arming stays blocked without new source evidence; a changed or sensitive group
+stays blocked without two current integration reviews; and an old same-SHA
+success cannot admit a new run/attempt with no new receipt. Prove exact live
+membership and base/head/tree/ref attribution, stale receipt failure, bounded
+wait expiry and rebuild recovery. Confirm the synthetic tip's DCO behavior and
+that the actual squash author email is `dev@openlup.com`; either unproven behavior
+blocks activation. No DCO exemption or unsupported email assumption is allowed.
+Keep queue settings inactive until the exact proposal and these live results
+support the owner's activation decision. A merge of foundation code is not that
+decision and does not authorize production or a release.
