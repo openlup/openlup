@@ -172,7 +172,11 @@ source command-name inventory before a new preview can be materialized.
 nothing outside its own directory, other code reaches a package only through
 the subpaths its `exports` declare, and domain code under `src/domains` and
 `server/domains` imports no provider SDK and no adapter, infrastructure,
-runtime or route code; the config exempts domain tests. In this repository,
+runtime or route code; the config exempts domain tests. An exact alias in the
+root `package.json` `imports` map counts as such code when any path it can
+resolve to lies in one of those directories, including a path selected by a
+condition, since Node allows a condition object as a target. A subpath pattern
+alias such as `#name/*` is not matched as a pattern. In this repository,
 five deprecated re-exports at the old payment module paths also cross that
 boundary: `PaymentForm.tsx`, `RecoveryPaymentSetupForm.tsx`,
 `StripePaymentStep.tsx` and `useStripePromise.ts` in
@@ -197,9 +201,10 @@ CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
 The root test command also includes the source release transport/producer
-falsifiers and the package release-shape checks under `scripts/packages`. The
-public test job separately runs the materialized command-contract falsifiers,
-which also run in the complete root scope.
+falsifiers and, under `scripts/packages`, the package release-shape checks and
+the test that loads the lint configuration with a conditional `imports` map.
+The public test job separately runs the materialized command-contract
+falsifiers, which also run in the complete root scope.
 
 `npm run packages:check` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each

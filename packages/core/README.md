@@ -83,3 +83,5 @@ neutrality evidence, not package activation or consumer compatibility evidence.
   `./subscription` kernel owns, its deterministic-clock contract, the
   late-payment cycle-shift rule and its monotonic clamp, and how a host
   application consumes it.
+
+<!-- openlup-doc-impact {"unit": "core", "digest": "sha256-18af725391afa6aa3d1a1aeb0e6365bb3e89f6fdae58ba6ffc9e7535063d29eb", "reason": "Test-only delta. The company-identity smoke test normalizes a neutral request instead of a national one and asserts the same trim and case rules; two kernel tests now name the platform pgTAP tests instead of repository paths. The export inventory, maturity, package smoke evidence and verification commands on this page are unchanged."} -->

@@ -47,6 +47,16 @@ Rows that platform behaviour depends on must ship as idempotent statements in a
 forward, rather than relying on a reference fixture or process startup. A missing
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
+An adopter's hosted chain may already carry a managed forward under its own
+migration name. Such a file is a platform companion: its leading comment block
+names the forward in the line
+`-- migration:platform-companion: openlup:<forward path>`, where the forward
+path is the platform forward's repository path, such as
+`supabase/migrations/<14-digit-version>_<name>.sql`. Where the tests and the
+reference setup read the managed alignment forward, they use the platform file
+when it exists, otherwise the SQL of the one companion that names it with every
+marker line removed, and they refuse when none or several do.
+
 ## Disposable managed reference baseline
 
 The opt-in [subscription reference](SUBSCRIPTION_REFERENCE.md) selects the
@@ -80,9 +90,8 @@ does not move the next cycle. `subscription_delivery_alignment_set_mode` updates
 only existing rows and can report success after updating zero rows; it does not
 repair this missing prerequisite.
 
-The managed forward
-`supabase/migrations/20260927131453_seed_subscription_delivery_alignment_control.sql`
-inserts the singleton with `mode = auto_align` and
+The managed forward seed_subscription_delivery_alignment_control, version
+20260927131453, inserts the singleton with `mode = auto_align` and
 `ON CONFLICT (singleton) DO NOTHING`. It repairs a missing row while preserving
 any existing mode choice. Apply it after the immutable baseline; never edit the
 baseline to add seed data. pgTAP reads the installed singleton and tests replay

@@ -3,12 +3,14 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
 import { assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, writeDescendantSourceReleaseReceipt, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
 import { assertDraft, assertNextPreview, authenticatedIdentity, preparePreview, previewInputs, previousPreview } from "./source-preview-release.ts";
+import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 
 const digest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const blob = (value: Buffer) => createHash("sha1").update(`blob ${value.length}\0`).update(value).digest("hex");
@@ -673,8 +675,8 @@ describe("descendant source release producer", () => {
   });
 
   it("admits the real managed alignment seed forward and binds its digest", async () => {
-    const path = "supabase/migrations/20260927131453_seed_subscription_delivery_alignment_control.sql";
-    const sql = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+    const path = MANAGED_ALIGNMENT_FORWARD;
+    const sql = readManagedForward(fileURLToPath(new URL("..", import.meta.url)), path);
     const sample = syntheticRelease({ extraFiles: { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n" } });
     try {
       const { receipt } = await sample.release({ [path]: sql });

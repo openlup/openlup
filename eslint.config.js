@@ -42,9 +42,17 @@ const workspacePackages = readdirSync(rootPath("packages"), { withFileTypes: tru
     return { directory, name: manifest.name, subpaths: exports.map(subpathRegex) };
   });
 
+// A package.json `imports` target is a path string, a condition object or a
+// fallback array, whose values are targets again, so they can nest. Every string
+// leaf is a file the alias may resolve to, and an alias is infra when any one is.
+const importTargetPaths = (target) => typeof target === "string" ? [target]
+  : target !== null && typeof target === "object" ? Object.values(target).flatMap(importTargetPaths)
+  : [];
+
 const rootImportMap = readJson("package.json").imports ?? {};
 const infraImportAliases = Object.entries(rootImportMap)
-  .filter(([, target]) => INFRA_DIRECTORIES.some((directory) => path.posix.normalize(target).startsWith(`${directory}/`)))
+  .filter(([, target]) => importTargetPaths(target).some((leaf) =>
+    INFRA_DIRECTORIES.some((directory) => path.posix.normalize(leaf).startsWith(`${directory}/`))))
   .map(([alias]) => alias);
 
 const packageExports = {
