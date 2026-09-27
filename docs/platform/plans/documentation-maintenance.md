@@ -174,58 +174,11 @@ same-change enforcement and copy-free publishing unsolved. Conversely a docs Saa
 new agent framework, mandatory model loop or a second registry adds maintenance
 without proving meaning. Use one owner map, existing checks and plain public data.
 
-## 8. Review and observed implementation
+## 8. Delivery evidence
 
-Independent plan review completed before implementation. Three attribution and
-falsifier clarifications were incorporated: receipt exclusion from substantive
-diffs, hosted identity/override precedence with credential-free fetch, and the
-bare-runtime CLI case. Actual execution evidence is recorded as the work lands.
-Integrated independent review found and falsified executable content hidden by
-a historical-directory exemption; the exemption now applies only to Markdown.
-Lead falsifiers additionally covered UTF-16 section offsets after emoji comments
-and normal branch iteration versus a concealed staged revert. All three were
-repaired together, with regression cases at the existing public test entrypoint.
-
-The guard worker authored routing/Git/impact helpers and their cases; the content
-worker authored owner pages and source explanations; the lead integrated CLI,
-navigation, bundle, authoring guidance and publication metadata. A nonauthor
-reviewer inspected the integrated contribution. Agents used the session's native
-defaults; effective model identities and token counts were not separately exposed.
-
-One public-only cold-context reader before changes took 131 seconds and 28 shell
-inspections; a fresh reader after changes answered the same six tasks correctly
-in 97 seconds and 17 shell inspections, with no wrong/dead target. This is a
-session-local orientation measurement, not a general benchmark or human acceptance.
-The initial local checkpoint was integrated with public main at
-`e2190c851c309ba0a08d9e44bd7b1824a36b9c03`. A bounded independent integration
-recheck found no remaining issues and confirmed that existing contribution
-admission, registrations and protected contract fields were preserved.
-
-Initial local maintainer verification exited 0 in 133 seconds: policy, inventory,
-typecheck, install/build proofs, root tests (4,724), subscription-profile tests
-(72), core package CI, published-tree falsifiers (67) and gitleaks passed.
-DCO and commit-range leak checks skipped the then-empty commit range. Lint exited 0 with 32 existing warnings outside the changed paths.
-The advisory release check exited 1 for a schema-bearing change already present
-on main; this task changes no schema-bearing path and does not establish release
-readiness. Clean export of this uncommitted contribution refused with exit 1 as
-required. The local draft and its consumer readback are delivery artifacts.
-The follow-on delivery integrates main at
-`deb03a7f109775eeced947482bf584d0868e63d7` and replaces stale human-read admission
-wording with the native review contract. Current candidate review and required
-verification outcomes belong to the exact committed PR evidence; earlier local
-results do not attest that later candidate. No published release, website
-deployment or human onboarding acceptance is implied by this task.
-
-The first exact-commit native review completed both roles. Security review found
-ambient Git replacement/environment substitution and effective transport
-configuration in the shallow-base fallback. A peer check confirmed both mechanisms;
-the credential-helper subclaim was narrowed because a generic empty helper already
-clears matching helper lists. Lead real-Git fixtures showed a source obligation
-disappearing through a replacement ref, a literal public URL reaching a rewritten
-fixture repository, and a synthetic authorization header reaching a local receiver.
-The repair shares one sanitized reader across inventory, impact, blobs and bundle
-provenance, and refuses transport/credential configuration before fallback fetch.
-The same fixtures then preserved impact and contacted neither rewritten target.
-Regression cases cover commit/blob replacements, ambient redirects, included
-transport configuration, a remote alias named as the public URL and export provenance. Required fresh native review binds
-the repaired committed candidate; the earlier failing verdict is not approval.
+The pull request records the exact committed candidate, comparison base and tree,
+actual native reviewer execution IDs, complete role coverage, required check
+results and remaining activation boundaries. Keep execution observations separate
+from this normative plan so fresh reviewers receive the contract and source
+without previous verdicts. Session-local navigation measurements do not establish
+general performance, human acceptance or framework maturity.
