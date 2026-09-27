@@ -1,6 +1,6 @@
 # Intent: autonomous delivery with accountable review
 
-Status: authorized native-session design; installed enforcement proof pending.
+Status: native-session implementation; live activation requires per-installation proof.
 Audience: maintainers and contributors designing the development workflow.
 
 ## Outcome

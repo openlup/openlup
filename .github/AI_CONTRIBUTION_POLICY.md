@@ -57,8 +57,8 @@ required; the maintainer performs no action between implementation and review.
 Installed verify and pre-push must refuse missing, stale, partial, mismatched or
 unresolved material evidence for the exact committed candidate. Their
 `needs_agent_review` response is handled by the supervisor, not by asking the
-maintainer to repeat an approved task. Actual installed enforcement remains
-pending until its refusal tests pass; fixture results are not activation proof.
+maintainer to repeat an approved task. Each installation must demonstrate its actual refusal paths before claiming
+live enforcement; fixture results are not activation proof.
 Existing mechanical checks and publication authority remain unchanged.
 
 Native execution observations and receipts enforce the process; they do not

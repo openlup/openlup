@@ -1,6 +1,6 @@
 # Plan: autonomous reviewed delivery
 
-Status: authorized native-session implementation; installed enforcement proof pending.
+Status: native-session implementation; live activation requires per-installation proof.
 Audience: contributors implementing and verifying the development workflow.
 
 ## Outcome, scope and authority
