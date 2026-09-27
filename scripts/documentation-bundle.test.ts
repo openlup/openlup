@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -119,5 +119,24 @@ describe("public documentation bundle", () => {
     expect(() => writeDocumentationBundle(root, "dist-docs/link/child", bundle)).toThrow(/unsafe parent/u);
     const linked = write(root, bundle.contents); symlinkSync(join(root, "README.md"), join(linked, "linked.md"));
     expect(() => validateDocumentationBundle(linked)).toThrow(/symbolic link/u);
+  });
+
+  it("refuses a linked or directory manifest before reading outside bytes", () => {
+    const { root, state } = fixture(); const bundle = createDocumentationBundle(root, state);
+    const linked = write(root, bundle.contents, "linked-manifest"); rmSync(join(linked, "manifest.json"));
+    const outside = join(root, "synthetic-outside.json"); writeFileSync(outside, "SYNTHETIC_OUTSIDE_BYTES_ARE_NOT_JSON");
+    symlinkSync(outside, join(linked, "manifest.json"));
+    expect(() => validateDocumentationBundle(linked)).toThrow(/symbolic link/u);
+    const directory = write(root, bundle.contents, "directory-manifest"); rmSync(join(directory, "manifest.json")); mkdirSync(join(directory, "manifest.json"));
+    expect(() => validateDocumentationBundle(directory)).toThrow(/plain manifest.json file/u);
+  });
+
+  it.skipIf(process.platform === "win32")("refuses a FIFO manifest without blocking the consumer", () => {
+    const { root, state } = fixture(); const bundle = createDocumentationBundle(root, state);
+    const directory = write(root, bundle.contents, "fifo-manifest"); rmSync(join(directory, "manifest.json"));
+    execFileSync("mkfifo", [join(directory, "manifest.json")]);
+    const script = `import { validateDocumentationBundle } from ${JSON.stringify(new URL("./documentation-bundle-io.ts", import.meta.url).href)}; validateDocumentationBundle(${JSON.stringify(directory)});`;
+    const child = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 2000 });
+    expect(child.error).toBeUndefined(); expect(child.status).toBe(1); expect(child.stderr).toMatch(/non-file manifest.json/u);
   });
 });

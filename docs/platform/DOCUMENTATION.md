@@ -192,6 +192,8 @@ Before accepting a bundle, validate its format, required pages and source IDs,
 safe paths, content digests and consistent provenance. Refuse missing content,
 tampering or a mixture of revisions. Preserve the profile and development-preview
 status in the consumer's presentation.
+Inspect the plain file tree, including `manifest.json`, before reading any bundle
+content. Symbolic links and special files are refused before their bytes are opened.
 Source IDs must equal `source:<normalized repository path>` and remain unique.
 Each source's owner ID, page, anchor and purpose must agree with its navigation
 surface. Page headings are checked against the raw Markdown so an invented

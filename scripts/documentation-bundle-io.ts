@@ -26,6 +26,8 @@ function plainFiles(root: string, prefix = ""): string[] {
 export function validateDocumentationBundle(root: string, pins: { sourceCommit?: string; bundleDigest?: string } = {}): DocumentationBundleManifest {
   if (!!pins.sourceCommit !== !!pins.bundleDigest) throw new Error("consumer requires both source commit and bundle digest pins");
   if (lstatSync(root).isSymbolicLink() || !lstatSync(root).isDirectory()) throw new Error("documentation bundle needs a plain directory");
+  const actualPaths = plainFiles(root);
+  if (!actualPaths.includes("manifest.json")) throw new Error("documentation bundle requires a plain manifest.json file");
   const manifest = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8")) as DocumentationBundleManifest;
   if (manifest?.formatVersion !== 1 || manifest.repository !== DOCUMENTATION_REPOSITORY || manifest.profile !== "public-development-preview"
     || !Array.isArray(manifest.files) || !Array.isArray(manifest.pages) || !Array.isArray(manifest.navigation) || !digest(manifest.bundleDigest)) throw new Error("unsupported documentation bundle manifest");
@@ -42,7 +44,7 @@ export function validateDocumentationBundle(root: string, pins: { sourceCommit?:
     if (!file || !normalizedPath(file.path) || file.path === "manifest.json" || !digest(file.digest) || !Number.isSafeInteger(file.bytes) || file.bytes < 0) throw new Error("invalid documentation file entry");
     return file.path;
   });
-  if (new Set(paths).size !== paths.length || JSON.stringify([...paths, "manifest.json"].sort()) !== JSON.stringify(plainFiles(root))) throw new Error("documentation bundle is incomplete or contains unexpected files");
+  if (new Set(paths).size !== paths.length || JSON.stringify([...paths, "manifest.json"].sort()) !== JSON.stringify(actualPaths)) throw new Error("documentation bundle is incomplete or contains unexpected files");
   for (const file of manifest.files) {
     const bytes = readFileSync(join(root, file.path));
     if (bytes.length !== file.bytes || documentationDigest(bytes) !== file.digest) throw new Error(`documentation content digest mismatch: ${file.path}`);
