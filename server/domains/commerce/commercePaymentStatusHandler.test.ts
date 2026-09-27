@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { createCommercePaymentStatusHandler } from "./commercePaymentStatusHandler.js";
+import { displayReasonFor } from "../../adapters/paymentFailureDisplay.js";
 import { PAYMENT_EXECUTION_PROVIDERS } from "../../../src/domains/payment/types.js";
 import { paymentStatusResponseSchema } from "../../../src/domains/commerce/checkoutContracts.js";
 import { PAYMENT_RECOVERY_GUIDANCE_HEADER, paymentRecoveryStatusResponseSchema } from "../../../src/domains/commerce/paymentRecoveryGuidanceContracts.js";
@@ -33,7 +34,7 @@ describe("commerce payment status handler", () => {
       attemptStatus: status === "paid" ? "succeeded" as const : "failed" as const,
       failureReason: status === "paid" ? null : DECLINE_FAILURE_REASONS.mandateUnsupported,
     };
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => true,
       statusPort: { getPaymentStatus: async () => snapshot },
     });
@@ -53,7 +54,7 @@ describe("commerce payment status handler", () => {
     const res = createResponse();
     const req = request({ orderId: ORDER_ID, paymentIntentId: PAYMENT_INTENT_ID, clientId: CLIENT_ID });
     req.headers[PAYMENT_FAILURE_DISPLAY_HEADER.toLowerCase()] = header;
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => true,
       statusPort: { getPaymentStatus: async () => processingSnapshot() },
     });
@@ -67,7 +68,7 @@ describe("commerce payment status handler", () => {
     vi.mocked(res.getHeader!).mockReturnValue("Accept-Encoding, cookie");
     const req = request({ orderId: ORDER_ID, paymentIntentId: PAYMENT_INTENT_ID, clientId: CLIENT_ID });
     req.headers[PAYMENT_FAILURE_DISPLAY_HEADER.toLowerCase()] = "1";
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => true,
       statusPort: { getPaymentStatus: async () => ({
         ...processingSnapshot(), intentStatus: "failed", attemptStatus: "failed", failureReason: reason,
@@ -82,7 +83,7 @@ describe("commerce payment status handler", () => {
 
   it("returns local processing status without trusting provider/browser return data", async () => {
     const res = createResponse();
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => true,
       statusPort: {
         async getPaymentStatus() {
@@ -134,7 +135,7 @@ describe("commerce payment status handler", () => {
 
   it("rejects status reads for the wrong client", async () => {
     const res = createResponse();
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => true,
       statusPort: {
         async getPaymentStatus() {
@@ -176,7 +177,7 @@ describe("commerce payment status handler", () => {
       provider: EMBEDDED_RAIL,
       clientSecret: "pi_client_secret_same_attempt",
     });
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => true,
       statusPort: { async getPaymentStatus() { return processingSnapshot(); } },
       readContinuationClaims: () => ({
@@ -222,7 +223,7 @@ describe("commerce payment status handler", () => {
   it("does not disclose or call the resolver when the journey does not match", async () => {
     const res = createResponse();
     const readActiveAction = vi.fn();
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => true,
       statusPort: { async getPaymentStatus() { return processingSnapshot(); } },
       readContinuationClaims: () => ({
@@ -264,13 +265,13 @@ describe("commerce payment status handler", () => {
       } }],
     };
     const getGuidanceSnapshot = vi.fn(async () => snapshot);
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => true, statusPort: { getPaymentStatus: legacyRead },
       readContinuationClaims: () => ({ version: 1, purpose: "commerce.checkout-payment-continuation.v1",
         expiresAt: Math.floor(Date.now() / 1000) + 3600, journeyId: JOURNEY_ID, orderId: ORDER_ID,
         clientId: CLIENT_ID, paymentIntentId: PAYMENT_INTENT_ID, paymentAttemptId: PAYMENT_ATTEMPT_ID,
         executionRail: EMBEDDED_RAIL }),
-      recoveryGuidance: { port: { getGuidanceSnapshot } },
+      recoveryGuidance: { resolveFailureDisplay: displayReasonFor, port: { getGuidanceSnapshot } },
     });
     const req = request({ orderId: ORDER_ID, paymentIntentId: PAYMENT_INTENT_ID, clientId: CLIENT_ID, journeyId: JOURNEY_ID });
     req.headers[PAYMENT_RECOVERY_GUIDANCE_HEADER.toLowerCase()] = "1";
@@ -286,9 +287,9 @@ describe("commerce payment status handler", () => {
 
   it("leaves legacy status available without valid guidance authority", async () => {
     const getGuidanceSnapshot = vi.fn();
-    const handler = createCommercePaymentStatusHandler({ mutationsEnabled: () => true,
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor, mutationsEnabled: () => true,
       statusPort: { getPaymentStatus: async () => processingSnapshot() },
-      recoveryGuidance: { port: { getGuidanceSnapshot } } });
+      recoveryGuidance: { resolveFailureDisplay: displayReasonFor, port: { getGuidanceSnapshot } } });
     const req = request({ orderId: ORDER_ID, paymentIntentId: PAYMENT_INTENT_ID, clientId: CLIENT_ID });
     req.headers[PAYMENT_RECOVERY_GUIDANCE_HEADER.toLowerCase()] = "1";
     const res = createResponse();
@@ -299,7 +300,7 @@ describe("commerce payment status handler", () => {
 
   it("fails closed while provider payments are disabled", async () => {
     const res = createResponse();
-    const handler = createCommercePaymentStatusHandler({
+    const handler = createCommercePaymentStatusHandler({ resolveFailureDisplay: displayReasonFor,
       mutationsEnabled: () => false,
       statusPort: { getPaymentStatus: vi.fn() },
     });

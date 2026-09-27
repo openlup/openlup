@@ -6,6 +6,7 @@ import {
   checkoutInlineRecoveryTransitionKey,
 } from "../../server/domains/commerce/checkoutInlineRecoveryPayHandler.js";
 import type { PaymentRecoverySnapshot } from "../../server/domains/commerce/paymentRecoveryGuidanceAuthorization.js";
+import { displayReasonFor } from "../../server/adapters/paymentFailureDisplay.js";
 import type { CheckoutRecoveryOrderSnapshot } from "../../server/domains/commerce/checkoutRecoveryOrderPort.js";
 import type { CheckoutRecoveryPayService } from "../../server/domains/commerce/checkoutRecoveryPayService.js";
 import type { ProviderRecoveryAction } from "../../server/domains/payment/checkoutRecoveryPaymentResolver.js";
@@ -73,7 +74,7 @@ function setup(input: { claims?: typeof claims | null; snapshot?: PaymentRecover
   const readActiveAction = vi.fn(async () => input.action ?? null);
   const handler = createCheckoutInlineRecoveryPayHandler({ recoveryEnabled: () => input.enabled ?? true,
     readContinuationClaims: () => input.claims === undefined ? claims : input.claims,
-    mintContinuation, recoveryGuidance: { port: { getGuidanceSnapshot } },
+    mintContinuation, recoveryGuidance: { resolveFailureDisplay: displayReasonFor, port: { getGuidanceSnapshot } },
     orderPort: { getRecoveryOrder }, payService: { pay }, activeActionResolver: { readActiveAction } });
   return { handler, getGuidanceSnapshot, getRecoveryOrder, pay, mintContinuation, readActiveAction };
 }
