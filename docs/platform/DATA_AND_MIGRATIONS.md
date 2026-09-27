@@ -28,8 +28,8 @@ that the two installation paths are interchangeable. The public setup creates
 one owned local Supabase project, adds `pg_trgm` in `public` and the non-login,
 non-RLS-bypass `openlup_mcp_reader` role required by that baseline, and replays
 the baseline transactionally. Its synthetic seed supplies only the recurring
-catalog item, prices, stock and settlement settings; it does not insert a paid
-order or active subscription.
+catalog item, prices, stock, settlement settings and the delivery-alignment
+control row; it does not insert a paid order or active subscription.
 
 For accidental-attachment protection, setup records a per-installation opaque
 id in the existing `commerce_settings` table and in its generated local marker.
@@ -42,6 +42,27 @@ volume preserves the identity and business state; a different database at the
 same port refuses. The managed
 baseline replay and one local fixture do not establish a forward upgrade path,
 N-1 compatibility or general self-hosted database support.
+
+## Known managed-baseline alignment gap
+
+The managed baseline creates `subscription_delivery_alignment_control` without
+its singleton row. Readers coalesce an absent mode to `off`, so late delivery
+does not move the next cycle. `subscription_delivery_alignment_set_mode` updates
+only existing rows and can report success after updating zero rows; it does not
+repair this missing prerequisite.
+
+The owned disposable subscription setup inserts the singleton with
+`mode = auto_align`, including when its catalog seed already exists. It uses
+`ON CONFLICT (singleton) DO NOTHING`, so rerunning setup neither duplicates the
+row nor overwrites an existing mode. Reference verification refuses a missing
+row or a mode other than `auto_align` before either a new journey or restart
+proof. This mode is the prerequisite for the monotonic late-delivery rule in
+[Canonical contracts](CANONICAL_CONTRACTS.md#subscription-delivery-alignment).
+
+This repair is limited to the public reference. The managed baseline and
+migration chains are unchanged. A real forward migration requires a later
+schema contract; the reference seed supplies no general upgrade path and does
+not prove the complete delivery-alignment journey.
 
 ## Compatibility lifecycle
 

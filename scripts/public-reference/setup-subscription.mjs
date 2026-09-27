@@ -7,6 +7,7 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
+import { subscriptionAlignmentSeedSql } from "./subscription-alignment.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 // The Supabase CLI configuration inside the operator-owned directory, joined at use so the
@@ -137,6 +138,9 @@ try {
   const seeded = sql(password, "", ["-Atqc", "SELECT EXISTS (SELECT 1 FROM public.catalog_products WHERE slug = 'p5-neutral-refill')"]).trim();
   if (seeded === "f") sql(password, readFileSync(seed), ["-1"]);
   else if (seeded !== "t") fail("Owned seed readback failed");
+  // This prerequisite must also run when the catalog seed already exists.
+  // Never reset an operator's existing alignment mode on a setup rerun.
+  sql(password, subscriptionAlignmentSeedSql, ["-1"]);
   if (marker.phase !== "sealed") {
     sql(password, "", ["-v", "ON_ERROR_STOP=1", "-c", `INSERT INTO public.commerce_settings (key,value_text,value_minor) VALUES ('${instanceKey}','${marker.instanceId}',NULL) ON CONFLICT (key) DO NOTHING`]);
     if (liveInstance(password) !== marker.instanceId) fail("Owned database instance could not be sealed");

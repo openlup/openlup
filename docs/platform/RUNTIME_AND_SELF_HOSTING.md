@@ -40,7 +40,8 @@ setup, server command, operator setup and verification boundary.
 
 The setup requires a new owned directory, unique project id and free ports. It
 replays the managed baseline with its two explicit local prerequisites and
-seeds only synthetic catalog, price, inventory and settlement settings. A
+seeds synthetic catalog, price, inventory, settlement settings and the
+delivery-alignment control row. A
 versioned local marker binds the generated configuration and baseline hash to
 one opaque installation id stored in the live database. An interrupted setup
 cannot resume on a replacement container before sealing; a sealed setup may

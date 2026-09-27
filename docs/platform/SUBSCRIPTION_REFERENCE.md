@@ -60,6 +60,19 @@ keep the database volume. Sign in again if the session expired. The stored order
 subscription and changed date must remain. Re-running setup preserves the same
 installation; it is not a reset command.
 
+## Delivery-alignment prerequisite
+
+Setup seeds the delivery-alignment singleton in `auto_align` mode even when an
+older installation already has its synthetic catalog. Rerunning setup preserves
+an existing mode choice. HTTP verification checks this prerequisite before both
+a new journey and restart proof: a missing singleton or a mode other than
+`auto_align` fails loudly. If the row is missing, rerun the owned setup; if its
+mode was deliberately changed, restore `auto_align` through the local operator
+configuration before verification. See the
+[known managed-baseline gap](DATA_AND_MIGRATIONS.md#known-managed-baseline-alignment-gap).
+This seed does not install a forward migration or demonstrate a late-delivery
+journey; those remain separate acceptance stages.
+
 ## Scoped operator read
 
 First sign in with a separate synthetic operator email through the same public
