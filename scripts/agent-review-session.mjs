@@ -125,9 +125,21 @@ function sensitivePath(path) {
     /(?:^|\/)(?:AGENTS|CLAUDE)(?:\.local)?\.(?:md|txt|rst)$/iu.test(path) ||
     /(?:^|\/)(?:CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY|AGENT_GUIDE)\.(?:md|txt|rst)$/iu.test(path) ||
     /^scripts\/(?:agent-review|check-|oss-|dco-|run-|packages\/)/iu.test(path) ||
-    /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration|payment|checkout|subscription|permission|access|credential|secret|token|release|publish|deploy|schema).*)$/iu.test(path) ||
-    /^(?:packages\/core|server\/(?:bff|adapters|runtime)|src\/integrations)(?:\/|$)/iu.test(path) ||
+    /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration|payment|checkout|subscription|permission|access|credential|secret|token|release|publish|deploy|schema|contract|account|login|otp|cardSetup|paymentCard|customer|invoice).*)$/iu.test(path) ||
+    /^(?:packages\/core|server\/(?:bff|adapters|runtime|domains\/(?:accounting|customers|shipping))|src\/(?:integrations|pages\/account|domains\/(?:customers|shipping)))(?:\/|$)/iu.test(path) ||
     /^docs\/platform\/plans\/autonomous-reviewed-delivery/iu.test(path);
+}
+async function routineModeChanged(cwd, candidate) {
+  const graph = await verifyReviewObjectGraph(cwd, { base: candidate.base, head: candidate.head, tree: candidate.tree });
+  const before = new Map(reviewTreeEntries(graph, graph.baseTree).map(entry => [entry.path, entry.mode]));
+  const after = new Map(reviewTreeEntries(graph, graph.headTree).map(entry => [entry.path, entry.mode]));
+  return candidate.changedPaths.some(path => {
+    const oldMode = before.get(path), newMode = after.get(path);
+    if (oldMode === '120000' || newMode === '120000') return true;
+    if (oldMode === undefined) return newMode !== '100644';
+    if (newMode === undefined) return oldMode !== '100644';
+    return oldMode !== newMode;
+  });
 }
 function requestRoles(intent, continuation) {
   if (continuation?.mode === 'closure') return ['closure'];
@@ -168,11 +180,13 @@ function validateRequest(request) {
   }
   if (request.intent.risk === 'routine') demand(request.candidate.changedPaths.every(path => !sensitivePath(path)), 'routine risk cannot cover control, trust-boundary or public-contract paths; prepare behavior reviews');
 }
-export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, base }) {
+export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, modeCheck = routineModeChanged, base }) {
   validateIntent(intent); text(authorSessionId, 'author session');
   const candidate = await snapshot(cwd, base); validateCandidate(candidate);
   const request = { version: 1, evidence: EVIDENCE, id: randomUUID(), authorSessionId, candidate, intent: structuredClone(intent), roles: requestRoles(intent), preparedAt: now() };
-  validateRequest(request); return request;
+  validateRequest(request);
+  if (intent.risk === 'routine') demand(!await modeCheck(cwd, candidate), 'routine risk cannot cover mode or symlink changes; prepare behavior reviews');
+  return request;
 }
 function validateReport(request, report) {
   const fields = ['requestId', 'requestDigest', 'reviewerId', 'sessionId', 'role', 'cold', 'completedAt', 'candidate', 'complete', 'coveredScope', 'coveredCriteria', 'simplicityChecked', 'verdict', 'materialFindings'];
@@ -304,13 +318,14 @@ export async function recordAgentReview({ cwd, request, reports = [], history, r
   return [...structuredClone(reports), structuredClone(report)];
 }
 /** Return actionable needs without asking a maintainer to approve a verdict. */
-export async function verifyAgentReview({ cwd, request, reports = [], history, snapshot = captureSessionCandidate, delta = captureAgentReviewDelta, now = Date.now, maxAgeMs = 86400000 }) {
+export async function verifyAgentReview({ cwd, request, reports = [], history, snapshot = captureSessionCandidate, delta = captureAgentReviewDelta, modeCheck = routineModeChanged, now = Date.now, maxAgeMs = 86400000 }) {
   try {
     demand(Number.isSafeInteger(maxAgeMs) && maxAgeMs > 0 && maxAgeMs <= 86400000, 'review freshness bound is invalid');
     const state = { request, reports, ...(history ? { history } : {}) }; validateLineage(state, now(), maxAgeMs);
     const observed = await snapshot(cwd, request.candidate.base);
     if (!equal(observed, request.candidate) && (history?.length ?? 0) >= MAX_REPAIRS) throw new NeedsRescope('Agent review needs rescope: two automatic repair cycles are exhausted; change execution approach');
     demand(equal(observed, request.candidate), 'candidate changed; prepare fresh independent reviews');
+    if (request.intent.risk === 'routine') demand(!await modeCheck(cwd, request.candidate), 'routine risk cannot cover mode or symlink changes; prepare behavior reviews');
     demand(request.candidate.clean, 'final review requires a clean committed candidate; commit and prepare fresh reviews'); await currentLineage(cwd, state, delta);
     reports.forEach(report => reportPasses(request, report));
     const missingRoles = request.roles.filter(role => !reports.some(report => report.role === role));
