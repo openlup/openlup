@@ -105,6 +105,25 @@ export function assertDraft(value: unknown, tag: string, note: string, receiptBy
   if (asset.name !== assetName || asset.digest !== digest(receiptBytes)) throw new Error("draft receipt asset differs from the attested bytes");
 }
 
+// GitHub's release lookup by tag returns only published releases, so the draft is found in
+// the release list, which includes drafts for a token with push access.
+export async function findDraft(tag: string, token?: string, fetcher: GithubFetch = fetch) {
+  const drafts: Record<string, unknown>[] = [];
+  for (let page = 1; ; page++) {
+    const releases = await (await read(`/releases?per_page=100&page=${page}`, token, fetcher)).json();
+    if (!Array.isArray(releases)) throw new Error("release inventory is malformed");
+    for (const release of releases.map(record)) if (release.tag_name === tag && release.draft === true) drafts.push(release);
+    if (releases.length < 100) break;
+  }
+  if (drafts.length !== 1) throw new Error(`expected exactly one draft release for ${tag}, found ${drafts.length}; maintainer recovery is required`);
+  return drafts[0];
+}
+
+/** The check-draft phase: the one draft carrying the tag must hold the exact note and attested receipt. */
+export async function checkDraft(tag: string, note: string, receiptBytes: Buffer, token?: string, fetcher: GithubFetch = fetch) {
+  assertDraft(await findDraft(tag, token, fetcher), tag, note, receiptBytes);
+}
+
 async function main() {
   const input = previewInputs(process.env.TARGET_COMMIT ?? "", process.env.PREVIEW_NUMBER ?? "", process.env.RELEASE_NOTES ?? "");
   const root = realpathSync(process.cwd()), out = realpathSync(process.env.RELEASE_OUTPUT_DIR ?? "");
@@ -119,8 +138,7 @@ async function main() {
     const state = JSON.parse(readFileSync(path("previous.json"), "utf8"));
     await writeDescendantSourceReleaseReceipt({ root, previous: { ...state.previous, receiptCodec: parseSourceReleaseReceiptEnvelope, token }, releaseTag: input.tag, tagMessage: input.message, releaseNote: readFileSync(path("notes.md")), outputPath: path(assetName) });
   } else if (phase === "check-draft") {
-    const release = await (await read(`/releases/tags/${encodeURIComponent(input.tag)}`, token, fetch)).json();
-    assertDraft(release, input.tag, readFileSync(path("notes.md"), "utf8"), readFileSync(path(assetName)));
+    await checkDraft(input.tag, readFileSync(path("notes.md"), "utf8"), readFileSync(path(assetName)), token, fetch);
   } else if (phase === "verify") {
     const state = JSON.parse(readFileSync(path("previous.json"), "utf8"));
     const candidate = await authenticateGithubSourceRelease({ repository, releaseTag: input.tag, assetName, receiptCodec: parseSourceReleaseReceiptEnvelope, previousRelease: state.identity, token });
