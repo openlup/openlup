@@ -177,3 +177,5 @@ its CLI refusal tests in required `test`. The complete root and managed pgTAP
 jobs retain raw diagnostic failures with named ownership; their addition does
 not change platform behavior, grant application privileges or declare complete
 compatibility evidence. Existing release context checks remain unchanged.
+
+<!-- openlup-doc-impact {"unit": "configuration", "digest": "sha256-0c5c84197f28df404bf583ce8991cfbb8cda7f383c093ad9d4ffc270c6e6d713", "reason": "Version-only delta. config/openlup-packages.json moves the lockstep version from 0.6.0 to 0.7.0 for openlup-source-preview/7, as the package preview channel requires before each cut. No contract, status, idempotency rule, provider extension or compatibility boundary described here changes, and this section names no package version."} -->
