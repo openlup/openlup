@@ -15,8 +15,9 @@ credentials, GitHub settings or ruleset changes, or migration of sibling tasks.
 
 Implementation order:
 
-1. Challenge the repair protocol before implementation. Keep the initial one
-   reviewer for ordinary prose and two parallel reviewers for behaviour/controls.
+1. Challenge the repair protocol before implementation. The later proportional
+   calibration retains one reviewer for ordinary prose, adds one for bounded
+   routine code, and keeps two for sensitive/material behaviour and controls.
    Define blocking findings by demonstrated effect on correctness or acceptance;
    optional advice cannot require another repair or prevent a terminal pass.
 2. Extend the existing session state with bounded prior-round evidence. A
@@ -92,14 +93,19 @@ run, a dashboard, service framework or permanent third reviewer.
    Run the existing mechanical verification as required. Collect the exact base,
    head, tree, complete changed-path inventory and approved criteria/scope.
 2. The initial candidate receives one short independent review for ordinary
-   prose. Behaviour, executable instructions, contracts and controls require two
-   independent parallel bounded reviews;
-   unknown risk uses that floor. The gate refuses a prose label for changed code,
+   prose or bounded routine code. Sensitive/material behaviour, executable
+   instructions, contracts and controls require two independent parallel bounded
+   reviews; unknown risk uses that floor. The gate refuses a prose label for changed code,
    configuration, workflows and known agent/control instructions; classify actual
    changed paths rather than a broader approved scope. Other document semantics
    remain the supervisor's responsibility. Classification also considers actual
    semantics; a known-path check cannot prove a repair is unrelated to security
-   or instructions. A specialist can fill one role. A third reviewer
+   or instructions. Routine code cannot touch known sensitive paths and its one
+   reviewer must explicitly confirm ordinary semantics. Mode changes, removed
+   test obligations and hidden trust-boundary effects do not become routine by
+   using an innocuous filename; uncertainty triggers two fresh full reviews on
+   the same candidate through the existing bounded full-refresh route. A
+   specialist can fill one role. A third reviewer
    is reserved for an uncovered concern or dispute. At least one required review
    considers a simpler solution that preserves all controls and acceptance.
 3. Launch each reviewer through the current platform's native subagent tools with
@@ -175,7 +181,8 @@ execution on GitHub, a new backend or transfer of subscription credentials.
 
 ## Acceptance and installed activation
 
-Prove valid one-role prose and two-role behavioural paths, then refusal of absent
+Prove valid one-role prose and routine paths, plus two-role sensitive/unknown paths,
+then refusal of an elevated path with a routine label, uncertain routine semantics, absent
 review, wrong candidate/base/tree, dirty or out-of-scope changes, expiry, duplicate
 execution identities, missing criteria/scope coverage, partial/failed executions,
 unresolved findings and bypass attempts. Exercise the actual installed verify
@@ -235,7 +242,13 @@ request and reports. A committed repair adds a bounded `history` round and a
 version-2 request with `continuation`: cycle, review mode, prior-round digest,
 actual delta paths, neutral finding cards and repair risk. The optional top-level `repairRisk`
 is `ordinary`, `security`, `control`, `schema`, `instructions` or `unknown`; its
-default is `unknown`. With complete prior coverage, `closure` uses one reviewer
+default is `unknown`. Initial `intent.risk` is `prose`, `routine`, `behavior`
+or `unknown`: routine selects one correctness reviewer after the changed-path
+floor; behavior and unknown select two. The initial routine report must include
+`routineSemantics: true` after an independent semantic assessment. False or
+missing assessment blocks admission; `fullRefresh: true` on the same committed
+candidate obtains two fresh full reviews and retains the earlier observation.
+With complete prior coverage, `closure` uses one reviewer
 for an eligible ordinary repair and `focused` uses two for sensitive or unknown
 repairs; both cover the actual delta, interactions and original criteria. `full`
 uses two reviewers covering the full approved scope when coverage is unavailable,

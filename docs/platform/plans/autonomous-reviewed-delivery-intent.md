@@ -36,15 +36,26 @@ than lines of code, document count or pull-request volume.
 
 ## Independent review and enforcement
 
-The initial candidate gets one short cold review for ordinary prose, or two
-independent parallel bounded reviews for behaviour, executable instructions,
-contracts, controls and unknown risk. A specialist can fill one role; a third
+The initial candidate gets one short cold review for ordinary prose or narrow
+routine code, and two independent parallel bounded reviews for sensitive or
+material behaviour, executable instructions, contracts, controls and unknown
+risk. A specialist can fill one role; a third
 reviewer is reserved for an uncovered concern or dispute. Reviewers receive
 approved criteria, the exact candidate and sufficient source context, without
 author history or other reviewers' verdicts. Blockers identify a mechanism,
 precondition, violated requirement and demonstrated effect on correctness or
 acceptance. There is no quota; optional advice cannot block, and evidence-backed
 no-findings is acceptable.
+
+The routine class applies only to a bounded internal change with understood
+behavior and tests. Known control, trust-boundary and public-contract paths are
+ineligible; semantic security, payment, durable-data, release, dependency,
+executable-instruction and unknown risks remain on the two-review route even
+when a filename looks ordinary. The one reviewer explicitly confirms ordinary
+semantics and simplicity. If uncertain, a full refresh obtains two fresh reviews
+of the same committed candidate within the existing continuation budget.
+Neither a self-declared low-risk label nor a small diff is proof of low risk.
+Changed-tree queue integration keeps two independent full reviews.
 
 Complete prior coverage and exact validated lineage allow one fresh cold closure
 review for a committed narrow repair within unchanged intent, scope and base.

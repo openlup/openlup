@@ -75,8 +75,11 @@ and [plan](plans/autonomous-reviewed-delivery.md) require the active supervisor 
 fresh-context native subagents in the same conversation under the existing
 subscription. Supply approved criteria and exact source without author history
 or other reviewers' verdicts. The initial candidate needs one bounded review for
-ordinary prose, or two independent parallel reviews for behaviour, executable
-instructions, contracts, controls and unknown risk. At least one review considers
+ordinary prose or narrow routine code, and two independent parallel reviews for
+sensitive or material behaviour, executable instructions, contracts, controls
+and unknown risk. Routine review refuses known control, trust-boundary and public
+contract paths; its reviewer confirms ordinary semantics, and uncertainty
+requires two fresh full reviews. At least one review considers
 a simpler solution preserving all controls. A blocker demonstrates a mechanism,
 precondition, violated requirement and effect on correctness or acceptance;
 optional advice cannot block. The maintainer does not read each diff or move

@@ -102,8 +102,9 @@ export async function captureCommittedReviewCandidate(cwd, base, head) {
 
 function validateIntent(intent) {
   exact(intent, ['risk', 'scope', 'criteria', 'requiredRoles'], 'approved intent');
-  demand(['prose', 'behavior', 'unknown'].includes(intent.risk), 'risk is invalid'); paths(intent.scope); text(intent.criteria, 'criteria', 64 * 1024);
-  demand(Array.isArray(intent.requiredRoles) && intent.requiredRoles.length <= (intent.risk === 'prose' ? 1 : 2) && new Set(intent.requiredRoles).size === intent.requiredRoles.length, 'required roles exceed proportional floor');
+  demand(['prose', 'routine', 'behavior', 'unknown'].includes(intent.risk), 'risk is invalid'); paths(intent.scope); text(intent.criteria, 'criteria', 64 * 1024);
+  demand(Array.isArray(intent.requiredRoles) && intent.requiredRoles.length <= (['prose', 'routine'].includes(intent.risk) ? 1 : 2) && new Set(intent.requiredRoles).size === intent.requiredRoles.length, 'required roles exceed proportional floor');
+  if (intent.risk === 'routine') demand(intent.requiredRoles.length === 0 || intent.requiredRoles[0] === 'correctness', 'routine review requires a correctness reviewer');
   intent.requiredRoles.forEach(role => text(role, 'role'));
 }
 export async function pristineAgentReviewBaseline(cwd) {
@@ -124,13 +125,14 @@ function sensitivePath(path) {
     /(?:^|\/)(?:AGENTS|CLAUDE)(?:\.local)?\.(?:md|txt|rst)$/iu.test(path) ||
     /(?:^|\/)(?:CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY|AGENT_GUIDE)\.(?:md|txt|rst)$/iu.test(path) ||
     /^scripts\/(?:agent-review|check-|oss-|dco-|run-|packages\/)/iu.test(path) ||
-    /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration).*)$/iu.test(path) ||
+    /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration|payment|checkout|subscription|permission|access|credential|secret|token|release|publish|deploy|schema).*)$/iu.test(path) ||
+    /^(?:packages\/core|server\/(?:bff|adapters|runtime)|src\/integrations)(?:\/|$)/iu.test(path) ||
     /^docs\/platform\/plans\/autonomous-reviewed-delivery/iu.test(path);
 }
 function requestRoles(intent, continuation) {
   if (continuation?.mode === 'closure') return ['closure'];
   const roles = [...intent.requiredRoles];
-  const count = continuation ? 2 : intent.risk === 'prose' ? 1 : 2;
+  const count = continuation ? 2 : ['prose', 'routine'].includes(intent.risk) ? 1 : 2;
   for (const role of ['correctness', 'security']) if (roles.length < count && !roles.includes(role)) roles.push(role);
   return roles;
 }
@@ -164,6 +166,7 @@ function validateRequest(request) {
     const ordinaryDocuments = request.candidate.changedPaths.every(path => /\.(?:md|txt|rst)$/iu.test(path) && !sensitivePath(path));
     demand(ordinaryDocuments, 'prose risk cannot cover code, workflow, or control-instruction changes; automatically prepare fresh behavior reviews');
   }
+  if (request.intent.risk === 'routine') demand(request.candidate.changedPaths.every(path => !sensitivePath(path)), 'routine risk cannot cover control, trust-boundary or public-contract paths; prepare behavior reviews');
 }
 export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, base }) {
   validateIntent(intent); text(authorSessionId, 'author session');
@@ -174,6 +177,7 @@ export async function prepareAgentReview({ cwd, intent, authorSessionId, now = D
 function validateReport(request, report) {
   const fields = ['requestId', 'requestDigest', 'reviewerId', 'sessionId', 'role', 'cold', 'completedAt', 'candidate', 'complete', 'coveredScope', 'coveredCriteria', 'simplicityChecked', 'verdict', 'materialFindings'];
   if (Object.hasOwn(report ?? {}, 'advisoryFindings')) fields.push('advisoryFindings');
+  if (request.version === 1 && request.intent.risk === 'routine') fields.push('routineSemantics');
   if (request.version === 2) fields.push('closure');
   exact(report, fields, 'native agent report');
   demand(report.requestId === request.id && report.requestDigest === digest(request) && equal(report.candidate, request.candidate), 'report covers a different request or candidate');
@@ -181,6 +185,7 @@ function validateReport(request, report) {
   demand(report.reviewerId !== request.authorSessionId && report.sessionId !== request.authorSessionId && report.cold === true && request.roles.includes(report.role), 'reviewer is author, not cold, or has an unrequested role');
   demand(Number.isSafeInteger(report.completedAt) && report.completedAt >= request.preparedAt, 'report predates request');
   demand(typeof report.complete === 'boolean' && typeof report.coveredCriteria === 'boolean' && typeof report.simplicityChecked === 'boolean' && ['pass', 'fail'].includes(report.verdict), 'report flags are invalid');
+  if (request.version === 1 && request.intent.risk === 'routine') demand(typeof report.routineSemantics === 'boolean', 'routine semantic assessment is missing');
   const coverage = request.version === 2 && request.continuation.mode !== 'full' ? request.continuation.deltaPaths : [...new Set([...request.intent.scope, ...(request.continuation?.deltaPaths ?? [])])];
   paths(report.coveredScope); demand(equal([...report.coveredScope].sort(), [...coverage].sort()), 'review coverage differs from required scope');
   demand(Array.isArray(report.materialFindings) && report.materialFindings.length <= 64, 'findings exceed bounds'); report.materialFindings.forEach(validateFinding);
@@ -194,6 +199,7 @@ function validateReport(request, report) {
 }
 function reportPasses(request, report) {
   demand(report.complete && report.coveredCriteria && report.verdict === 'pass' && report.materialFindings.length === 0, 'review has incomplete coverage or unresolved material findings');
+  if (request.version === 1 && request.intent.risk === 'routine') demand(report.routineSemantics, 'routine reviewer found elevated or uncertain semantics; prepare two full behavior reviews');
   if (request.version === 2) {
     demand(report.closure.interactionsChecked && equal([...report.closure.resolvedFindings].sort(), request.continuation.findings.map(card => card.id).sort()), 'repair interactions or material finding closure is incomplete');
     demand(request.continuation.mode !== 'closure' || report.closure.ordinarySemantics, 'closure reviewer found sensitive or unknown semantics; prepare full reviews');

@@ -11,7 +11,7 @@ const snapshot = async () => structuredClone(candidate);
 const now = () => 1000;
 async function request(risk = 'behavior') { return prepareAgentReview({ cwd: '.', base, intent: { ...intent, risk }, authorSessionId: 'author', snapshot, now }); }
 function report(req, index = 0) {
-  return { ...agentReviewReportBinding(req), reviewerId: `agent-${index}`, sessionId: `session-${index}`, role: req.roles[index], cold: true, completedAt: 1000, complete: true, coveredScope: ['source.txt'], coveredCriteria: true, simplicityChecked: index === 0, verdict: 'pass', materialFindings: [] };
+  return { ...agentReviewReportBinding(req), reviewerId: `agent-${index}`, sessionId: `session-${index}`, role: req.roles[index], cold: true, completedAt: 1000, complete: true, coveredScope: ['source.txt'], coveredCriteria: true, simplicityChecked: index === 0, verdict: 'pass', materialFindings: [], ...(req.version === 1 && req.intent.risk === 'routine' ? { routineSemantics: true } : {}) };
 }
 async function verify(req, reports, extra = {}) { return verifyAgentReview({ cwd: '.', request: req, reports, snapshot, now, ...extra }); }
 const directories: string[] = [];
@@ -26,7 +26,7 @@ async function fixture() {
 }
 
 describe('native session review process evidence', () => {
-  for (const [risk, count] of [['prose', 1], ['behavior', 2], ['unknown', 2]] as const) it(`requires ${count} independent ${risk} reviews`, async () => {
+  for (const [risk, count] of [['prose', 1], ['routine', 1], ['behavior', 2], ['unknown', 2]] as const) it(`requires ${count} independent ${risk} reviews`, async () => {
     const req = await request(risk); expect(req.roles).toHaveLength(count);
     expect((await verify(req, [])).status).toBe('needs_agent_review');
     const reports = Array.from({ length: count }, (_, index) => report(req, index));
@@ -75,6 +75,27 @@ describe('native session review process evidence', () => {
     const changed = { ...candidate, changedPaths: ['docs/overview.md', 'notes.rst', 'copy.txt'] };
     const req = await prepareAgentReview({ cwd: '.', base, intent: { ...intent, risk: 'prose', scope: [...changed.changedPaths, 'scripts/tool.mjs', 'package.json'] }, authorSessionId: 'author', snapshot: async () => changed, now });
     expect(req.roles).toEqual(['correctness']);
+  });
+  it.each(['.github/README.md', 'AGENTS.md', 'package.json', 'config/settings.json', 'db/example.sql', 'scripts/agent-review-session.mjs', 'scripts/source-preview-release.ts', 'packages/core/src/index.ts', 'server/bff/orders.ts', 'src/domains/payment/card.ts', 'src/domains/subscription/renewal.ts'])('refuses routine review on elevated path %s', async path => {
+    const scoped = { ...intent, risk: 'routine', scope: [path] }; const changed = { ...candidate, changedPaths: [path] };
+    await expect(prepareAgentReview({ cwd: '.', base, intent: scoped, authorSessionId: 'author', snapshot: async () => changed, now })).rejects.toThrow('routine risk cannot cover');
+    const req = await prepareAgentReview({ cwd: '.', base, intent: { ...scoped, risk: 'behavior' }, authorSessionId: 'author', snapshot: async () => changed, now });
+    req.intent.risk = 'routine'; req.roles = ['correctness'];
+    expect((await verify(req, [], { snapshot: async () => changed })).reason).toContain('routine risk cannot cover');
+  });
+  it('requires a correctness reviewer and independent ordinary-semantics assessment for routine code', async () => {
+    await expect(prepareAgentReview({ cwd: '.', base, intent: { ...intent, risk: 'routine', requiredRoles: ['security'] }, authorSessionId: 'author', snapshot, now })).rejects.toThrow('correctness reviewer');
+    const req = await request('routine');
+    expect((await verify(req, [{ ...report(req), routineSemantics: false }])).reason).toContain('elevated or uncertain semantics');
+    expect((await verify(req, [{ ...report(req), routineSemantics: 'yes' }])).reason).toContain('semantic assessment');
+    expect((await verify(req, [{ ...report(req), routineSemantics: undefined }])).reason).toContain('semantic assessment');
+  });
+  it('escalates an uncertain routine review on the same committed candidate to two full reviews', async () => {
+    const req = await request('routine'); const previous = { request: req, reports: [{ ...report(req), routineSemantics: false }] };
+    const state = await prepareAgentReviewState({ cwd: '.', base, intent: { ...intent, risk: 'routine' }, authorSessionId: 'author', snapshot, now, previous, fullRefresh: true, delta: async () => [] });
+    expect(state.request.continuation.mode).toBe('full'); expect(state.request.roles).toEqual(['correctness', 'security']); expect(state.history).toHaveLength(1);
+    state.reports = [0, 1].map(index => ({ ...report(state.request, index), reviewerId: `full-${index}`, sessionId: `full-session-${index}`, closure: { coveredDelta: [], interactionsChecked: true, ordinarySemantics: false, resolvedFindings: [] } }));
+    expect((await verifyAgentReview({ cwd: '.', ...state, snapshot, now, delta: async () => [] })).status).toBe('reviewed');
   });
   it('refuses over-scoped source before requesting reviewer execution', async () => {
     await expect(prepareAgentReview({ cwd: '.', base, intent, authorSessionId: 'author', snapshot: async () => ({ ...candidate, changedPaths: ['unexpected.txt'] }), now })).rejects.toThrow('exceeds approved scope');
