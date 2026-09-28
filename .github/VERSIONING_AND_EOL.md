@@ -320,7 +320,9 @@ contract and projection refusals are unchanged.
 
 The App creates a **draft prerelease**, uploads the attested receipt, and checks
 the draft's exact body and asset digest against the prepared bytes before
-publishing it. Both creation and publication use the same saved note file.
+publishing it. GitHub's release lookup by tag never returns a draft, so the check
+finds the draft in the release list and refuses unless exactly one draft carries
+the tag. Both creation and publication use the same saved note file.
 Publication makes the prerelease immutable. The App token emits the release
 event that starts `publish-packages.yml`; the default `GITHUB_TOKEN` would
 suppress that downstream workflow. The final step authenticates the completed

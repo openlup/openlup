@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { authenticateGithubSourceRelease, parseSourceReleaseReceiptEnvelope, renderSourceReleaseAllowlist, type GithubFetch, type GithubSourceTransportInput, type PreviousReleaseIdentity, type SourceReceiptCodec, type SourceReceiptEnvelope } from "./oss-consume-github-transport.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
 import { assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, writeDescendantSourceReleaseReceipt, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
-import { assertDraft, assertNextPreview, authenticatedIdentity, preparePreview, previewInputs, previousPreview } from "./source-preview-release.ts";
+import { assertDraft, assertNextPreview, authenticatedIdentity, checkDraft, preparePreview, previewInputs, previousPreview } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 
 const digest = (value: string | Buffer) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -226,6 +226,31 @@ describe("source preview workflow preparation", () => {
     expect(() => assertDraft(release, tag, "release note", sample.receiptBytes)).not.toThrow();
     for (const change of [{ body: "release note\n" }, { draft: false }, { prerelease: false }, { assets: [{ name: "openlup-source-receipt.json", digest: digest("changed") }] }, { assets: [...release.assets, ...release.assets] }]) expect(() => assertDraft({ ...release, ...change }, tag, "release note", sample.receiptBytes)).toThrow(/differs/);
     expect(() => assertDraft(release, tag, "other note", sample.receiptBytes)).toThrow(/bind/);
+  });
+
+  it("finds the draft in the release list, because the lookup by tag never returns a draft", async () => {
+    const sample = fixture({ descendant: true });
+    const draft = { tag_name: tag, draft: true, prerelease: true, body: "release note", assets: [{ name: "openlup-source-receipt.json", digest: digest(sample.receiptBytes) }] };
+    const published = { ...draft, draft: false, immutable: true };
+    const other = { ...draft, tag_name: oldTag };
+    // Models the GitHub API: the tag lookup answers only for a published release, and the list
+    // includes drafts in pages of 100.
+    const github = (releases: object[]): GithubFetch => async (url) => {
+      if (url === `${root}/releases/tags/${encodeURIComponent(tag)}`) {
+        const match = releases.find((release) => (release as typeof draft).tag_name === tag && (release as typeof draft).draft === false);
+        return match ? Response.json(match) : new Response(null, { status: 404 });
+      }
+      const page = /^.*\/releases\?per_page=100&page=([1-9][0-9]*)$/u.exec(url);
+      if (page) return Response.json(releases.slice((Number(page[1]) - 1) * 100, Number(page[1]) * 100));
+      return new Response(null, { status: 500 });
+    };
+    await expect(checkDraft(tag, "release note", sample.receiptBytes, undefined, github([other, draft]))).resolves.toBeUndefined();
+    await expect(checkDraft(tag, "release note", sample.receiptBytes, undefined, github([...Array.from({ length: 100 }, () => other), draft]))).resolves.toBeUndefined();
+    await expect(checkDraft(tag, "release note", sample.receiptBytes, undefined, github([draft, draft]))).rejects.toThrow(/exactly one draft release for openlup-source-preview\/2, found 2/);
+    await expect(checkDraft(tag, "release note", sample.receiptBytes, undefined, github([other]))).rejects.toThrow(/found 0/);
+    await expect(checkDraft(tag, "release note", sample.receiptBytes, undefined, github([published]))).rejects.toThrow(/found 0/);
+    await expect(checkDraft(tag, "other note", sample.receiptBytes, undefined, github([draft]))).rejects.toThrow(/bind/);
+    await expect(checkDraft(tag, "release note", sample.receiptBytes, undefined, github([{ ...draft, body: "changed" }]))).rejects.toThrow(/differs/);
   });
 });
 
