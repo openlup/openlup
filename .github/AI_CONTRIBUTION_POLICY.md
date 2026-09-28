@@ -72,15 +72,28 @@ is needed for an ambiguous or durable contract, not for every small task.
 Agents may refine execution notes without changing approved goals or guarantees.
 Programme or batch authority must be explicit; a generated plan cannot grant it.
 
-The initial candidate receives one short cold review for ordinary prose, or two
-independent parallel bounded reviews for behaviour, executable instructions,
-contracts, controls and unknown risk; a specialist can fill one role. A third
+The initial candidate receives one short cold review for ordinary prose or
+narrow routine code, and two independent parallel bounded reviews for sensitive
+or material behaviour, executable instructions, contracts, controls and unknown
+risk; a specialist can fill one role. A third
 reviewer is reserved for a distinct uncovered concern or dispute. Reviewers see
 criteria and sufficient source context, not the author's conversation or each
 other's verdicts. A blocker states the mechanism, precondition, violated
 requirement and demonstrated effect on correctness or acceptance. Optional advice
 and style preferences do not block; there is no findings quota and an
 evidence-backed no-findings verdict is acceptable.
+
+Routine means a narrow internal change whose behavior, tests and rollback are
+understood. It excludes authorization, security, payment, personal or durable
+data, migrations, public contracts, dependency or package publication, release
+and CI controls, executable agent instructions, and unknown interactions. A
+small diff or the author's risk label alone does not qualify. The native gate
+refuses known sensitive paths; the single correctness reviewer must also confirm
+ordinary semantics and the simplicity perspective. Uncertainty or a discovered
+higher-risk interaction blocks the single-review route. Two fresh full reviews
+of the same committed candidate can resolve that uncertainty without a
+gratuitous code edit; prior evidence and the two-cycle budget remain visible.
+The changed-tree merge-queue integration route still requires two full reviews.
 
 A committed narrow repair within unchanged approved intent, scope and base may
 use one fresh cold closure reviewer after the complete initial floor and prior

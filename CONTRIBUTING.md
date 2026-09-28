@@ -98,7 +98,12 @@ does not cover, so do not commit them.
 
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
-evidence expiry and the two-cycle repair/review budget. Run the focused
+evidence expiry and the two-cycle repair/review budget. A bounded routine code
+change gets one cold correctness review only when its actual paths avoid known
+control and trust boundaries and that reviewer confirms ordinary semantics.
+Sensitive, material or unknown changes still get two; a false routine assessment
+requires two full reviews of the same committed candidate within the existing
+budget. Run the focused
 `scripts/agent-review-session.test.ts` regressions while changing that contract;
 fixtures do not prove installed enforcement. Installed verification must refuse
 workflow drift before expensive checks or replacement of prior logs, and acquire
@@ -342,10 +347,11 @@ scope and delivery authority without reading every diff or transferring prompts,
 reports or authentication between sessions. The same contract applies to Codex,
 Claude Code and future agents; no model API, backend or new host is required.
 
-Use one initial bounded review for ordinary prose, or two independent parallel
-reviews for behaviour, executable instructions, contracts, controls and unknown
-risk. Review the exact committed candidate without author history or another
-reviewer's verdict. Record actual platform observations and complete findings;
+Use one initial bounded review for ordinary prose or narrow routine code,
+with two independent parallel reviews for sensitive or material behaviour,
+executable instructions, contracts, controls and unknown risk. Review the exact
+committed candidate without author history or another reviewer's verdict.
+Record actual platform observations and complete findings;
 blockers demonstrate an effect on correctness or acceptance, while optional
 advice cannot block or require another edit after acceptance is satisfied.
 

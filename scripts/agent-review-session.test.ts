@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
 
@@ -9,11 +9,11 @@ const candidate = { base, head: 'b'.repeat(40), tree: 'c'.repeat(40), clean: tru
 const intent = { risk: 'behavior', scope: ['source.txt'], criteria: 'Preserve required subscription behavior', requiredRoles: [] };
 const snapshot = async () => structuredClone(candidate);
 const now = () => 1000;
-async function request(risk = 'behavior') { return prepareAgentReview({ cwd: '.', base, intent: { ...intent, risk }, authorSessionId: 'author', snapshot, now }); }
+async function request(risk = 'behavior') { return prepareAgentReview({ cwd: '.', base, intent: { ...intent, risk }, authorSessionId: 'author', snapshot, modeCheck: async () => false, now }); }
 function report(req, index = 0) {
-  return { ...agentReviewReportBinding(req), reviewerId: `agent-${index}`, sessionId: `session-${index}`, role: req.roles[index], cold: true, completedAt: 1000, complete: true, coveredScope: ['source.txt'], coveredCriteria: true, simplicityChecked: index === 0, verdict: 'pass', materialFindings: [] };
+  return { ...agentReviewReportBinding(req), reviewerId: `agent-${index}`, sessionId: `session-${index}`, role: req.roles[index], cold: true, completedAt: 1000, complete: true, coveredScope: ['source.txt'], coveredCriteria: true, simplicityChecked: index === 0, verdict: 'pass', materialFindings: [], ...(req.version === 1 && req.intent.risk === 'routine' ? { routineSemantics: true } : {}) };
 }
-async function verify(req, reports, extra = {}) { return verifyAgentReview({ cwd: '.', request: req, reports, snapshot, now, ...extra }); }
+async function verify(req, reports, extra = {}) { return verifyAgentReview({ cwd: '.', request: req, reports, snapshot, modeCheck: async () => false, now, ...extra }); }
 const directories: string[] = [];
 afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
 async function fixture() {
@@ -26,7 +26,7 @@ async function fixture() {
 }
 
 describe('native session review process evidence', () => {
-  for (const [risk, count] of [['prose', 1], ['behavior', 2], ['unknown', 2]] as const) it(`requires ${count} independent ${risk} reviews`, async () => {
+  for (const [risk, count] of [['prose', 1], ['routine', 1], ['behavior', 2], ['unknown', 2]] as const) it(`requires ${count} independent ${risk} reviews`, async () => {
     const req = await request(risk); expect(req.roles).toHaveLength(count);
     expect((await verify(req, [])).status).toBe('needs_agent_review');
     const reports = Array.from({ length: count }, (_, index) => report(req, index));
@@ -75,6 +75,47 @@ describe('native session review process evidence', () => {
     const changed = { ...candidate, changedPaths: ['docs/overview.md', 'notes.rst', 'copy.txt'] };
     const req = await prepareAgentReview({ cwd: '.', base, intent: { ...intent, risk: 'prose', scope: [...changed.changedPaths, 'scripts/tool.mjs', 'package.json'] }, authorSessionId: 'author', snapshot: async () => changed, now });
     expect(req.roles).toEqual(['correctness']);
+  });
+  it.each(['.github/README.md', 'AGENTS.md', 'package.json', 'config/settings.json', 'db/example.sql', 'scripts/agent-review-session.mjs', 'scripts/source-preview-release.ts', 'packages/core/src/index.ts', 'server/bff/orders.ts', 'src/domains/payment/card.ts', 'src/domains/subscription/renewal.ts', 'src/pages/account/login/useOtpCodeFallback.ts', 'src/pages/account/cardSetupSupport.ts', 'src/domains/customers/customerMagicLinkClient.ts', 'src/domains/shipping/contracts.ts', 'server/domains/accounting/accountingInvoiceDeliveryJob.ts'])('refuses routine review on elevated path %s', async path => {
+    const scoped = { ...intent, risk: 'routine', scope: [path] }; const changed = { ...candidate, changedPaths: [path] };
+    await expect(prepareAgentReview({ cwd: '.', base, intent: scoped, authorSessionId: 'author', snapshot: async () => changed, modeCheck: async () => false, now })).rejects.toThrow('routine risk cannot cover');
+    const req = await prepareAgentReview({ cwd: '.', base, intent: { ...scoped, risk: 'behavior' }, authorSessionId: 'author', snapshot: async () => changed, now });
+    req.intent.risk = 'routine'; req.roles = ['correctness'];
+    expect((await verify(req, [], { snapshot: async () => changed })).reason).toContain('routine risk cannot cover');
+  });
+  it('requires a correctness reviewer and independent ordinary-semantics assessment for routine code', async () => {
+    await expect(prepareAgentReview({ cwd: '.', base, intent: { ...intent, risk: 'routine', requiredRoles: ['security'] }, authorSessionId: 'author', snapshot, modeCheck: async () => false, now })).rejects.toThrow('correctness reviewer');
+    const req = await request('routine');
+    expect((await verify(req, [{ ...report(req), routineSemantics: false }])).reason).toContain('elevated or uncertain semantics');
+    expect((await verify(req, [{ ...report(req), routineSemantics: 'yes' }])).reason).toContain('semantic assessment');
+    expect((await verify(req, [{ ...report(req), routineSemantics: undefined }])).reason).toContain('semantic assessment');
+  });
+  it('escalates an uncertain routine review on the same committed candidate to two full reviews', async () => {
+    const req = await request('routine'); const previous = { request: req, reports: [{ ...report(req), routineSemantics: false }] };
+    const state = await prepareAgentReviewState({ cwd: '.', base, intent: { ...intent, risk: 'routine' }, authorSessionId: 'author', snapshot, modeCheck: async () => false, now, previous, fullRefresh: true, delta: async () => [] });
+    expect(state.request.continuation.mode).toBe('full'); expect(state.request.roles).toEqual(['correctness', 'security']); expect(state.history).toHaveLength(1);
+    state.reports = [0, 1].map(index => ({ ...report(state.request, index), reviewerId: `full-${index}`, sessionId: `full-session-${index}`, closure: { coveredDelta: [], interactionsChecked: true, ordinarySemantics: false, resolvedFindings: [] } }));
+    expect((await verifyAgentReview({ cwd: '.', ...state, snapshot, modeCheck: async () => false, now, delta: async () => [] })).status).toBe('reviewed');
+  });
+  it('rejects a real mode-only change at preparation and verification, even after risk tampering', async () => {
+    const { cwd, base: realBase, git } = await fixture();
+    await chmod(join(cwd, 'source.txt'), 0o755); git('add', 'source.txt'); git('commit', '-qm', 'mode');
+    const scoped = { ...intent, risk: 'routine' };
+    await expect(prepareAgentReview({ cwd, base: realBase, intent: scoped, authorSessionId: 'author' })).rejects.toThrow('mode or symlink');
+    const req = await prepareAgentReview({ cwd, base: realBase, intent, authorSessionId: 'author' });
+    req.intent.risk = 'routine'; req.roles = ['correctness'];
+    expect((await verifyAgentReview({ cwd, request: req, reports: [] })).reason).toContain('mode or symlink');
+  });
+  it('rejects a new symlink from the routine route', async () => {
+    const { cwd, base: realBase, git } = await fixture();
+    await symlink('source.txt', join(cwd, 'link.txt')); git('add', 'link.txt'); git('commit', '-qm', 'symlink');
+    await expect(prepareAgentReview({ cwd, base: realBase, intent: { ...intent, risk: 'routine', scope: ['link.txt'] }, authorSessionId: 'author' })).rejects.toThrow('mode or symlink');
+  });
+  it('rejects a newly executable file from the routine route', async () => {
+    const { cwd, base: realBase, git } = await fixture();
+    await writeFile(join(cwd, 'utility.txt'), 'new\n'); await chmod(join(cwd, 'utility.txt'), 0o755);
+    git('add', 'utility.txt'); git('commit', '-qm', 'executable');
+    await expect(prepareAgentReview({ cwd, base: realBase, intent: { ...intent, risk: 'routine', scope: ['utility.txt'] }, authorSessionId: 'author' })).rejects.toThrow('mode or symlink');
   });
   it('refuses over-scoped source before requesting reviewer execution', async () => {
     await expect(prepareAgentReview({ cwd: '.', base, intent, authorSessionId: 'author', snapshot: async () => ({ ...candidate, changedPaths: ['unexpected.txt'] }), now })).rejects.toThrow('exceeds approved scope');

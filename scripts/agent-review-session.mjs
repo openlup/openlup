@@ -102,8 +102,9 @@ export async function captureCommittedReviewCandidate(cwd, base, head) {
 
 function validateIntent(intent) {
   exact(intent, ['risk', 'scope', 'criteria', 'requiredRoles'], 'approved intent');
-  demand(['prose', 'behavior', 'unknown'].includes(intent.risk), 'risk is invalid'); paths(intent.scope); text(intent.criteria, 'criteria', 64 * 1024);
-  demand(Array.isArray(intent.requiredRoles) && intent.requiredRoles.length <= (intent.risk === 'prose' ? 1 : 2) && new Set(intent.requiredRoles).size === intent.requiredRoles.length, 'required roles exceed proportional floor');
+  demand(['prose', 'routine', 'behavior', 'unknown'].includes(intent.risk), 'risk is invalid'); paths(intent.scope); text(intent.criteria, 'criteria', 64 * 1024);
+  demand(Array.isArray(intent.requiredRoles) && intent.requiredRoles.length <= (['prose', 'routine'].includes(intent.risk) ? 1 : 2) && new Set(intent.requiredRoles).size === intent.requiredRoles.length, 'required roles exceed proportional floor');
+  if (intent.risk === 'routine') demand(intent.requiredRoles.length === 0 || intent.requiredRoles[0] === 'correctness', 'routine review requires a correctness reviewer');
   intent.requiredRoles.forEach(role => text(role, 'role'));
 }
 export async function pristineAgentReviewBaseline(cwd) {
@@ -124,13 +125,26 @@ function sensitivePath(path) {
     /(?:^|\/)(?:AGENTS|CLAUDE)(?:\.local)?\.(?:md|txt|rst)$/iu.test(path) ||
     /(?:^|\/)(?:CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY|AGENT_GUIDE)\.(?:md|txt|rst)$/iu.test(path) ||
     /^scripts\/(?:agent-review|check-|oss-|dco-|run-|packages\/)/iu.test(path) ||
-    /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration).*)$/iu.test(path) ||
+    /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration|payment|checkout|subscription|permission|access|credential|secret|token|release|publish|deploy|schema|contract|account|login|otp|cardSetup|paymentCard|customer|invoice).*)$/iu.test(path) ||
+    /^(?:packages\/core|server\/(?:bff|adapters|runtime|domains\/(?:accounting|customers|shipping))|src\/(?:integrations|pages\/account|domains\/(?:customers|shipping)))(?:\/|$)/iu.test(path) ||
     /^docs\/platform\/plans\/autonomous-reviewed-delivery/iu.test(path);
+}
+async function routineModeChanged(cwd, candidate) {
+  const graph = await verifyReviewObjectGraph(cwd, { base: candidate.base, head: candidate.head, tree: candidate.tree });
+  const before = new Map(reviewTreeEntries(graph, graph.baseTree).map(entry => [entry.path, entry.mode]));
+  const after = new Map(reviewTreeEntries(graph, graph.headTree).map(entry => [entry.path, entry.mode]));
+  return candidate.changedPaths.some(path => {
+    const oldMode = before.get(path), newMode = after.get(path);
+    if (oldMode === '120000' || newMode === '120000') return true;
+    if (oldMode === undefined) return newMode !== '100644';
+    if (newMode === undefined) return oldMode !== '100644';
+    return oldMode !== newMode;
+  });
 }
 function requestRoles(intent, continuation) {
   if (continuation?.mode === 'closure') return ['closure'];
   const roles = [...intent.requiredRoles];
-  const count = continuation ? 2 : intent.risk === 'prose' ? 1 : 2;
+  const count = continuation ? 2 : ['prose', 'routine'].includes(intent.risk) ? 1 : 2;
   for (const role of ['correctness', 'security']) if (roles.length < count && !roles.includes(role)) roles.push(role);
   return roles;
 }
@@ -164,16 +178,20 @@ function validateRequest(request) {
     const ordinaryDocuments = request.candidate.changedPaths.every(path => /\.(?:md|txt|rst)$/iu.test(path) && !sensitivePath(path));
     demand(ordinaryDocuments, 'prose risk cannot cover code, workflow, or control-instruction changes; automatically prepare fresh behavior reviews');
   }
+  if (request.intent.risk === 'routine') demand(request.candidate.changedPaths.every(path => !sensitivePath(path)), 'routine risk cannot cover control, trust-boundary or public-contract paths; prepare behavior reviews');
 }
-export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, base }) {
+export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, modeCheck = routineModeChanged, base }) {
   validateIntent(intent); text(authorSessionId, 'author session');
   const candidate = await snapshot(cwd, base); validateCandidate(candidate);
   const request = { version: 1, evidence: EVIDENCE, id: randomUUID(), authorSessionId, candidate, intent: structuredClone(intent), roles: requestRoles(intent), preparedAt: now() };
-  validateRequest(request); return request;
+  validateRequest(request);
+  if (intent.risk === 'routine') demand(!await modeCheck(cwd, candidate), 'routine risk cannot cover mode or symlink changes; prepare behavior reviews');
+  return request;
 }
 function validateReport(request, report) {
   const fields = ['requestId', 'requestDigest', 'reviewerId', 'sessionId', 'role', 'cold', 'completedAt', 'candidate', 'complete', 'coveredScope', 'coveredCriteria', 'simplicityChecked', 'verdict', 'materialFindings'];
   if (Object.hasOwn(report ?? {}, 'advisoryFindings')) fields.push('advisoryFindings');
+  if (request.version === 1 && request.intent.risk === 'routine') fields.push('routineSemantics');
   if (request.version === 2) fields.push('closure');
   exact(report, fields, 'native agent report');
   demand(report.requestId === request.id && report.requestDigest === digest(request) && equal(report.candidate, request.candidate), 'report covers a different request or candidate');
@@ -181,6 +199,7 @@ function validateReport(request, report) {
   demand(report.reviewerId !== request.authorSessionId && report.sessionId !== request.authorSessionId && report.cold === true && request.roles.includes(report.role), 'reviewer is author, not cold, or has an unrequested role');
   demand(Number.isSafeInteger(report.completedAt) && report.completedAt >= request.preparedAt, 'report predates request');
   demand(typeof report.complete === 'boolean' && typeof report.coveredCriteria === 'boolean' && typeof report.simplicityChecked === 'boolean' && ['pass', 'fail'].includes(report.verdict), 'report flags are invalid');
+  if (request.version === 1 && request.intent.risk === 'routine') demand(typeof report.routineSemantics === 'boolean', 'routine semantic assessment is missing');
   const coverage = request.version === 2 && request.continuation.mode !== 'full' ? request.continuation.deltaPaths : [...new Set([...request.intent.scope, ...(request.continuation?.deltaPaths ?? [])])];
   paths(report.coveredScope); demand(equal([...report.coveredScope].sort(), [...coverage].sort()), 'review coverage differs from required scope');
   demand(Array.isArray(report.materialFindings) && report.materialFindings.length <= 64, 'findings exceed bounds'); report.materialFindings.forEach(validateFinding);
@@ -194,6 +213,7 @@ function validateReport(request, report) {
 }
 function reportPasses(request, report) {
   demand(report.complete && report.coveredCriteria && report.verdict === 'pass' && report.materialFindings.length === 0, 'review has incomplete coverage or unresolved material findings');
+  if (request.version === 1 && request.intent.risk === 'routine') demand(report.routineSemantics, 'routine reviewer found elevated or uncertain semantics; prepare two full behavior reviews');
   if (request.version === 2) {
     demand(report.closure.interactionsChecked && equal([...report.closure.resolvedFindings].sort(), request.continuation.findings.map(card => card.id).sort()), 'repair interactions or material finding closure is incomplete');
     demand(request.continuation.mode !== 'closure' || report.closure.ordinarySemantics, 'closure reviewer found sensitive or unknown semantics; prepare full reviews');
@@ -298,13 +318,14 @@ export async function recordAgentReview({ cwd, request, reports = [], history, r
   return [...structuredClone(reports), structuredClone(report)];
 }
 /** Return actionable needs without asking a maintainer to approve a verdict. */
-export async function verifyAgentReview({ cwd, request, reports = [], history, snapshot = captureSessionCandidate, delta = captureAgentReviewDelta, now = Date.now, maxAgeMs = 86400000 }) {
+export async function verifyAgentReview({ cwd, request, reports = [], history, snapshot = captureSessionCandidate, delta = captureAgentReviewDelta, modeCheck = routineModeChanged, now = Date.now, maxAgeMs = 86400000 }) {
   try {
     demand(Number.isSafeInteger(maxAgeMs) && maxAgeMs > 0 && maxAgeMs <= 86400000, 'review freshness bound is invalid');
     const state = { request, reports, ...(history ? { history } : {}) }; validateLineage(state, now(), maxAgeMs);
     const observed = await snapshot(cwd, request.candidate.base);
     if (!equal(observed, request.candidate) && (history?.length ?? 0) >= MAX_REPAIRS) throw new NeedsRescope('Agent review needs rescope: two automatic repair cycles are exhausted; change execution approach');
     demand(equal(observed, request.candidate), 'candidate changed; prepare fresh independent reviews');
+    if (request.intent.risk === 'routine') demand(!await modeCheck(cwd, request.candidate), 'routine risk cannot cover mode or symlink changes; prepare behavior reviews');
     demand(request.candidate.clean, 'final review requires a clean committed candidate; commit and prepare fresh reviews'); await currentLineage(cwd, state, delta);
     reports.forEach(report => reportPasses(request, report));
     const missingRoles = request.roles.filter(role => !reports.some(report => report.role === role));
