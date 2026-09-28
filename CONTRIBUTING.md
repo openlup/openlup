@@ -329,6 +329,8 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
+<!-- openlup-doc-impact {"unit": "tooling", "digest": "sha256-e61b323d3e050817c23ba306e8f10b2604889a029acf9d264fd6b678dfaf0282", "reason": "Two tooling changes, neither of which changes a command, job, check scope or refusal described here. First, a test-only delta: the gap-enumeration test pins the catalogue's guard rows and now expects ten withheld rows and no published row, because the documentation guard row is removed until every path it names has been released once; --policy still runs the documentation ownership and impact checks in the self-check job. Second, a behaviour-preserving split: the materialized-output helpers (output inventory, output bytes, projection drift and the materialized catalogue) move unchanged from scripts/oss-published-tree-check.ts to scripts/oss-published-tree-output.ts, which the entrypoint imports and re-exports, so every existing import keeps resolving; the entrypoint, its three modes, their options, messages and exit codes do not change."} -->
+
 ## Pull requests
 
 The [autonomous delivery plan](docs/platform/plans/autonomous-reviewed-delivery.md)

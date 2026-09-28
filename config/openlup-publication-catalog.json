@@ -2518,6 +2518,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/oss-published-tree-output.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/oss-readiness-base-measurement.ts",
       "class": "public-output"
     },
@@ -18920,24 +18924,6 @@
       "withheldCommands": [
         "guard:browser-role-execute"
       ]
-    },
-    {
-      "id": "documentation-maintenance",
-      "status": "published",
-      "path": "scripts/oss-published-tree-check.ts",
-      "command": "npm run oss:published-tree -- --policy",
-      "publicInputs": [
-        "config/doc-routing.json",
-        "config/openlup-publication-catalog.json",
-        "src/lib/coreDomains.ts"
-      ],
-      "publicDocs": [
-        "CONTRIBUTING.md",
-        "docs/platform/DOCUMENTATION.md",
-        "docs/platform/SOURCE_MAP.md"
-      ],
-      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
-      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
       "id": "env-defaults",

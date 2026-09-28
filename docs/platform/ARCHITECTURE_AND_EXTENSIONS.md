@@ -46,7 +46,7 @@ refuses to cut that preview while any still carries its removal marker line.
 Provider UI, such as the card payment form, lives with the adapters, while the
 words and outcomes it exchanges with its host stay in the domain's contracts.
 
-<!-- openlup-doc-impact {"unit": "browser", "digest": "sha256-0dcb0112302bf255f53f6f61dafdc3c6edcad02ae54fe81b527103e7e7253ecf", "reason": "Test-only delta. The wallet row test swaps its locale and currency fixtures for neutral values; the one assertion that checks the currency passed into the order request now expects the new fixture value, and the component is unchanged. That moves no responsibility between browser, server, infrastructure and adapter modules and changes nothing lint enforces, so this section stays correct."} -->
+<!-- openlup-doc-impact {"unit": "browser", "digest": "sha256-01796436b701e80c94262ff0043aa2078b34dc759dcd27e061702804376d4b58", "reason": "Test-only delta. The payment-control boundary test reports its pg_dump-form table pins as skipped in a tree without the frozen managed schema baseline; in this repository the baseline is present, so every pin still runs with the same strings. The browser-role, adapter and production-UI checks are unchanged, and no runtime boundary described here moves."} -->
 
 ## Extension seams
 
