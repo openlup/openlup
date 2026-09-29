@@ -15,7 +15,7 @@ export type {
 /**
  * @deprecated The subscription engine no longer defaults the timezone. First-party
  * composition roots must pass an explicit IANA zone — the deployment overlay
- * sources it from `DELIVERY_DISPATCH_POLICY.timeZone` in `src/data/deliveryPolicy.ts` — mirroring
+ * sources it from `DELIVERY_DISPATCH_POLICY.timeZone` in its delivery-policy module — mirroring
  * the required-`policy` seam in `deliveryEstimate.ts` (the engine "does not know
  * the country"). Retained only so any external importer keeps compiling; nothing
  * first-party reads it any more.

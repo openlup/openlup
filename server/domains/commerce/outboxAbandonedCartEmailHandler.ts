@@ -63,7 +63,7 @@ export function createOutboxAbandonedCartEmailHandler(deps: {
   /**
    * Builds the absolute, signed unsubscribe URL for the RODO footer. Injected by
    * the composition root so the handler never touches the HMAC secret or the
-   * functions-base origin (keeps it free of api/infra + communications imports).
+   * functions-base origin (keeps it free of infra + communications imports).
    */
   buildUnsubscribeUrl: UnsubscribeUrlBuilder;
   /** Which reminder event this handler claims (1h, 24h or 72h). */

@@ -4,7 +4,7 @@
 // gets the exact bytes re-exposed as an async-iterable (so readRawBody-based signature verification
 // works for ANY route, including ones outside `/webhooks/` like communications/integrations/events)
 // while still setting a parsed JSON req.body; stream-first standalone entrypoints keep their live
-// stream and NO req.body. Productionizes scripts/local-bff/nodeVercelAdapter.ts, fixing the dev
+// stream and NO req.body. Productionizes the deployment's local-BFF dev adapter, fixing the dev
 // shim's eager JSON-parse that destroyed webhook raw bodies.
 
 import type { IncomingMessage, ServerResponse } from "node:http";

@@ -24,7 +24,7 @@
  * Their non-production arm still uses the shared factory and live test override.
  *
  * These flags do NOT change semantics here: the preview-only gating (many of
- * these `VITE_*` keys live in `scripts/guard-hidden-sandbox-preview-env.mjs`
+ * these `VITE_*` keys live in a downstream preview-environment guard's
  * HIDDEN_ACTIVATION_FLAGS and fail-closed in production) is unchanged — only the
  * read mechanics are consolidated.
  */

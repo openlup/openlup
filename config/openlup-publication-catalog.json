@@ -58,10 +58,6 @@
       "class": "policy"
     },
     {
-      "path": ".github/actionlint.yaml",
-      "class": "public-output"
-    },
-    {
       "path": ".github/dependabot.yml",
       "class": "public-output"
     },
@@ -627,10 +623,6 @@
     },
     {
       "path": "config/backend-db-boundary-legacy-allowlist.json",
-      "class": "public-output"
-    },
-    {
-      "path": "config/bff-route-metadata.json",
       "class": "public-output"
     },
     {
@@ -2170,14 +2162,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/core-ci-scope.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-ci-scope.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/core-extraction-candidate.ts",
       "class": "public-output"
     },
@@ -2451,10 +2435,6 @@
     },
     {
       "path": "scripts/order-review-schema.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-neutralization-projection.ts",
       "class": "public-output"
     },
     {
@@ -5315,10 +5295,6 @@
     },
     {
       "path": "server/adapters/supabase/omnipackStockSyncPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/omnipackSyntheticStockSeedModel.ts",
       "class": "public-output"
     },
     {

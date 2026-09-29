@@ -1,7 +1,7 @@
 -- pgTAP: durable subscription petfood-surface ratchet.
 --
 -- Purpose: catch live-schema or ad-hoc SQL drift that migration-diff lint cannot see.
--- Run via: scripts/local-supabase-db-test.sh / npm run test:db:local
+-- Run via: node scripts/public-ci-pgtap.mjs
 
 BEGIN;
 SELECT plan(10);

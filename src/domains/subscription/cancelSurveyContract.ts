@@ -3,8 +3,8 @@ import { z } from "../../lib/validation/zod.js";
 // Cancel-survey contract, split out of `selfServiceContracts.ts` so the generic
 // self-service contract stays within its LOC budget. The subscription domain
 // validates the survey *shape*; the concrete reason-code set is owned by the
-// vertical layer (`src/data/cancelSurveyReasons.ts`) and injected at the BFF
-// composition root for membership validation (E10).
+// vertical layer and injected at the BFF composition root for membership
+// validation (E10).
 
 const cancelSurveyCommentSchema = z.string().trim().min(1).max(500).nullable().optional();
 const cancelSurveyAcceptedOfferSchema = z.string().trim().min(1).max(120).nullable().optional();

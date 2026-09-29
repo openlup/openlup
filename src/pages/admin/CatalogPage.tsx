@@ -30,7 +30,7 @@ import { CatalogDocumentPanel } from "@/components/admin/CatalogDocumentPanel";
  * ALL COPY IS TRANSLATED, AND THAT IS MEASURED. `src/pages/admin/**` sits in the
  * `storefront-admin-ui` OSS surface family, whose `country` counter has no slack
  * on this branch, so an inline sentence here is a gate failure rather than a
- * style question. Keys live in `src/i18n/locales/{pl,en}/admin.json`.
+ * style question. Keys live in the deployment's `admin` locale namespace.
  */
 
 /** The projection's source table, named in help copy through interpolation. */

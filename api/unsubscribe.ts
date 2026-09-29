@@ -2,7 +2,7 @@
  * Public one-click unsubscribe, served by the application runtime.
  *
  * This is the only unsubscribe implementation. It began as a faithful port of
- * `supabase/functions/unsubscribe` — the same two request shapes (a signed
+ * the `unsubscribe` Edge function — the same two request shapes (a signed
  * marketing token, and the legacy tester `id`+`email` link), the same
  * `communication_apply_unsubscribe` RPC contract with the same durability
  * preconditions, and the same rendered copy — and that Edge function was retired

@@ -5,7 +5,6 @@ import { extendTailwindMerge } from "tailwind-merge";
 // tailwind-merge treats them as font-size utilities. Without this, combining a
 // base `text-sm` (e.g. from the cva button base) with `text-base-plus` would
 // leave BOTH classes in the output, producing an unpredictable size.
-// See DESIGN.md §3.
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {

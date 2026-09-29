@@ -5,7 +5,7 @@
 // credential resolution, request construction, `fetch`, response and error mapping — and
 // mocks ONLY the wire, via an `undici` MockAgent resolved from the library's own directory.
 //
-// docs/TESTING.md, "Third-Party Transport Contract Tests", owns the full rationale: why the
+// The full rationale for this transport contract, in one place: why the
 // dispatcher must be bound to the library's own `undici` copy rather than a bare import, why
 // the OIDC token must always be stubbed (an unstubbed run reaches the local CLI credential
 // store, the keyring and the network), and the RE-BASELINE RULE — the endpoint, header names

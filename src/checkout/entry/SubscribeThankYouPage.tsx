@@ -9,7 +9,7 @@ import { useLocalizedPath } from "@/lib/i18nRoutes";
 
 /**
  * The platform's neutral checkout terminal — the last page of the subscribe
- * funnel `docs/plan/oss-subscription-axis-audit.md` §1.6 gap **a1** left open.
+ * funnel that gap **a1** of the subscription-axis audit left open.
  *
  * a1 published an entry and two payment terminals and routed the SUCCESS case to
  * a route key whose only component lives in a withheld tree. A published

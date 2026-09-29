@@ -20,7 +20,7 @@ import {
  *
  * The split follows the precedent that created the sibling module: when the
  * 300-line cap is reached, this tree extracts a cohesive detector group rather
- * than raising a shrink-only pin — see `docs/plan/payment-decline-terminal-signal.md`.
+ * than raising a shrink-only pin.
  */
 /**
  * One `commerce_orders` row still sitting in `pending_payment`, narrowed to the

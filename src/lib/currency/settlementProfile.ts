@@ -9,7 +9,7 @@
  * dependency runs one way: `platformCurrency.ts` imports from here and
  * re-exports every name, which is why no call site moved.
  *
- * `scripts/check-client-secret-boundary.test.ts` scans this file by name, along
+ * The client-secret boundary guard's test scans this file by name, along
  * with `platformCurrency.ts` and `fiscalProfile.ts`, and asserts that every
  * environment key spelled here matches a public bundle prefix. Moving the keys
  * without moving them under that scan would have quietly removed the assertion
@@ -29,11 +29,10 @@ export const PLATFORM_DEFAULT_CURRENCY = "PLN" as const;
  * The environment key that names the currency this deployment settles in.
  *
  * `COMMERCE_` rather than `PLATFORM_` on purpose: only the prefixes listed in
- * `scripts/complexity-governance-env-flag-discovery.ts` are governed, and
- * `PLATFORM_` is not among them. A `PLATFORM_`-named key would be invisible to
- * the registry guard — droppable, renameable and misspellable with nothing
- * failing. The prefix is a governance namespace, not a statement about which
- * domain owns the concept.
+ * the env/flag discovery guard are governed, and `PLATFORM_` is not among
+ * them. A `PLATFORM_`-named key would be invisible to the registry guard —
+ * droppable, renameable and misspellable with nothing failing. The prefix is a
+ * governance namespace, not a statement about which domain owns the concept.
  */
 const SETTLEMENT_CURRENCY_ENV_KEY = "COMMERCE_SETTLEMENT_CURRENCY";
 

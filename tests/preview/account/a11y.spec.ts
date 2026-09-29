@@ -7,7 +7,7 @@ import { appUrl, baseURL } from "./helpers/env.ts";
  * Accessibility + responsiveness sweep of the unauthenticated account +
  * client-facing surfaces.
  *
- * Sibling to `tests/preview/checkout/a11y.spec.ts`: same base-URL resolution,
+ * Sibling to the withheld checkout a11y spec: same base-URL resolution,
  * same clean skip when the preview is unreachable, same `AxeBuilder` tag set,
  * and the same serious/critical-only failing gate (moderate/minor are logged as
  * advisories, never fail the run). It walks the routes that render WITHOUT a

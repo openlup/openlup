@@ -13,7 +13,7 @@ import type { LifecycleMarker } from "./lifecycleRules.js";
  * human React head keeps `LIFECYCLE_ACTIVATE`. Adding a head never touches the
  * core or the rules.
  *
- * Neutral home: imports nothing from `src/domains/*` / `api/domains/*`.
+ * Neutral home: imports nothing from `src/domains/*` / `server/domains/*`.
  */
 
 /** Which feature flag gates a mutation. */

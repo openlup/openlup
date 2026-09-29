@@ -96,9 +96,9 @@ export function createFakturowniaClient(
     },
 
     // Delivers to the document's own buyer_email; a 2xx does not prove the
-    // provider dispatched anything (observed for kind=correction documents —
-    // see server/domains/accounting/README.md). The documented `email_to`
-    // parameter can override the recipient if that ever needs to change.
+    // provider dispatched anything (observed for kind=correction documents).
+    // The documented `email_to` parameter can override the recipient if that
+    // ever needs to change.
     async sendInvoiceEmail(invoiceId) {
       await requestJson(fetchImpl, config, `/invoices/${encodeURIComponent(invoiceId)}/send_by_email.json`, {
         method: "POST",

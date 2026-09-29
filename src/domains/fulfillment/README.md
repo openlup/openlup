@@ -58,7 +58,7 @@ is not part of the published tree.
   `server/adapters/omnipack/`
 - Direct-carrier provider glue: `server/infra/dhl/`; execution adapters:
   `server/adapters/dhl/`
-- BFF routes: `api/bff/admin/fulfillment/…`
+- BFF routes: `/api/bff/admin/fulfillment/…`
 
 Domain-boundary rules live in the maintainer canon `DOMAIN_ARCHITECTURE.md`,
 which belongs to the private overlay and is not part of the published tree.

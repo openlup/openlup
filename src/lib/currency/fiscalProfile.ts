@@ -168,8 +168,8 @@ export function readMinimumProductPayableMinor(
 }
 
 // An empty or all-whitespace value is treated as absent rather than as a
-// refusal, because that is exactly what an unset key looks like in
-// `.env.example` and in a shell that exports a blank - the same rule the
+// refusal, because that is exactly what an unset key looks like in a
+// sample env file and in a shell that exports a blank - the same rule the
 // settlement currency and region already follow. The category and the legal
 // basis have no malformed state beyond that: they are free text a jurisdiction
 // writes, and this platform is in no position to tell a valid citation from an

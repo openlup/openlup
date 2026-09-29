@@ -403,10 +403,8 @@ describe("catalog document proposal handler", () => {
  * and that receipt is a control-plane path - which would demand a hosted-canary
  * proof from a wave that changes no control. And a literal path is checked by
  * the publication closure, which is why the OVERLAY halves of this seam are
- * pinned from inside the overlay instead
- * (`server/bff/overlay/catalog-admin-document.test.ts`): this file is published,
- * the overlay roots are withheld, and a published file may not name a withheld
- * path.
+ * pinned from inside the overlay instead: this file is published, the overlay
+ * roots are withheld, and a published file may not name a withheld path.
  */
 const SEAM_SOURCES: Record<string, string> = {
   "src/domains/commerce/adminCatalogDocumentContracts.ts":
@@ -513,8 +511,8 @@ describe("the publication boundary this wave must not cross", () => {
   });
 
   // The mirror of this - that the overlay roots DO bind the deployment halves -
-  // is pinned in `server/bff/overlay/catalog-admin-document.test.ts`, which is
-  // withheld alongside the roots it reads.
+  // is pinned by a test inside the deployment overlay, which is withheld
+  // alongside the roots it reads.
 });
 
 describe("the neutral diff engine", () => {

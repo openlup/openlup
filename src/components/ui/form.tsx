@@ -135,7 +135,7 @@ const FormMessage = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<
 
     return (
       // role="alert" so the error is announced when it appears (not only read via
-      // aria-describedby when focus lands on the field). See DESIGN.md §8.
+      // aria-describedby when focus lands on the field).
       <p
         ref={ref}
         id={formMessageId}

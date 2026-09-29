@@ -1,5 +1,5 @@
 # Squawk — Postgres migration safety linter for the auto-apply rollout (step 2).
-# Pinned to prod's Postgres major (supabase/config.toml major_version = 17).
+# Pinned to prod's Postgres major (the deployment config's major_version = 17).
 # assume_in_transaction: Supabase wraps each migration file in a transaction, so
 # CONCURRENTLY-in-transaction and similar are correctly flagged.
 # Only lock/rewrite/destructive/rename/constraint/index safety rules are on; pure

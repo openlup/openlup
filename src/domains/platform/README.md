@@ -35,7 +35,7 @@ BFF monitor provisioning.
 - Shared/frontend: `src/domains/platform/`
 - Server: `server/domains/platform/` (admin auth/settings/pipeline handlers,
   watchdog service, alert ledger, observability evidence ports)
-- BFF routes: `api/bff/admin/platform/…`
+- BFF routes: `/api/bff/admin/platform/…`
 
 ## Public navigation and availability
 

@@ -130,8 +130,7 @@ export interface TpayTransactionCreated {
  * An over-long field is refused synchronously with HTTP 400 `not_valid`. On BLIK
  * the code then never reaches the bank and the buyer sees no prompt at all: the
  * Facebook iOS in-app WebView user agent is 271 characters, which cost four
- * orders and two cancelled subscriptions from 2026-08-28. Ledger:
- * `docs/archive/incidents/prod-tpay-payer-useragent-255-2026-08-28.md`.
+ * orders and two cancelled subscriptions from 2026-08-28.
  */
 const TPAY_PAYER_MAX_BYTES = {
   email: 255,

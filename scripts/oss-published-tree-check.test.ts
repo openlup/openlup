@@ -15,24 +15,22 @@ import "./documentation-bundle.test.ts";
 import "./documentation-cli.test.ts";
 
 import {
-  EXPLICIT_PUBLIC_PROJECTION_PATHS,
   PUBLIC_EXECUTION_ENTRYPOINTS,
   createPublicPublicationCatalog,
   createSourceReleaseContract,
   publicPublicationCatalogDigests,
+  validateSourceReleaseContract,
 } from "./oss-publication-contract.ts";
 import {
-  assertMaterializedOutputBytes,
   assertMaterializedOutputInventory,
   assertMaterializedPublicationCatalog,
-  materializePublicPublicationCatalog,
   materializedOutputPaths,
   policyVerdict,
   publicInventoryVerdict,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_REQUIRED_TEST_COMMAND, PUBLIC_REQUIRED_TEST_SCOPE, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
-import { carriesPrivateOperationalCoordinate, computeNeutralizations, NEUTRALIZATION_RULESET_DIGEST, parseRegistry, projectOperationalCoordinates } from "./oss-neutralization-projection.ts";
+import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 
 import { readManagedMigrationChain } from "./public-ci-pgtap.mjs";
 
@@ -402,6 +400,15 @@ describe("the public-only inventory check", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("refuses a contract that still carries the retired downstream sourceSeed field", () => {
+    const zero = `sha256-${"0".repeat(64)}`;
+    const contract = JSON.parse(createSourceReleaseContract({ inventoryDigest: zero, classDigest: zero, packageDigest: zero, rootLockDigest: zero, coreLockDigest: zero, migrationManifestDigest: zero, databaseTypesDigest: zero, policyRegistryDigest: zero, publicationCatalogDigest: zero }).contents) as Record<string, unknown>;
+    expect(() => validateSourceReleaseContract(JSON.stringify(contract))).not.toThrow();
+    for (const sourceSeed of [{ publicationCatalogInventoryDigest: zero, publicationCatalogClassDigest: zero }, {}, null]) {
+      expect(() => validateSourceReleaseContract(JSON.stringify({ ...contract, sourceSeed }))).toThrow(/sourceSeed is a retired downstream field/);
+    }
+  });
 });
 
 describe("the public-only typecheck contract", () => {
@@ -451,44 +458,6 @@ describe("the public-only typecheck contract", () => {
   });
 });
 
-describe("the exact neutralization registry", () => {
-  // The registry stopped being a file the branch carries; it is computed from the sources of one
-  // tree and published as an artifact. The fixture stays a hand-built registry document on purpose:
-  // what these cases measure is that the computation and the parser still describe the SAME
-  // document, which is the only reason the artifact is worth reading.
-  const source = `export const endpoint = '${["https://github.com/example", "app"].join("/")}';\n`;
-  const projected = projectOperationalCoordinates(source);
-  const digest = (contents: string) => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
-  const entry = { path: "runtime.ts", class: "framework-namespace", format: "text", rule: "private-operational-coordinate-v1", matches: projected.matches, sourceDigest: digest(source), outputDigest: digest(projected.contents) };
-  const registry = (entries: unknown[] = [entry]) => ({ schemaVersion: 1, ruleSetDigest: NEUTRALIZATION_RULESET_DIGEST, reason: "Exact fixture.", entries });
-
-  it("computes the exact path, source bytes, output bytes and match count from the sources alone", () => {
-    const result = computeNeutralizations(new Map([["runtime.ts", source]]));
-    expect(result.entries).toEqual([entry]);
-    expect(result.writes).toEqual([{ path: "runtime.ts", contents: projected.contents }]);
-    expect(result.registryDigest).toBe(digest(JSON.stringify([entry])));
-    expect(result.ruleSetDigest).toBe(NEUTRALIZATION_RULESET_DIGEST);
-  });
-
-  it("sees a new carrier appear and a vanished one disappear, with no declaration to consult", () => {
-    expect(computeNeutralizations(new Map([["runtime.ts", source], ["new.ts", source]])).entries.map(({ path }) => path)).toEqual(["new.ts", "runtime.ts"]);
-    expect(computeNeutralizations(new Map()).entries).toEqual([]);
-    expect(computeNeutralizations(new Map([["runtime.ts", "export const endpoint = undefined;\n"]])).entries).toEqual([]);
-  });
-
-  it("round-trips the published document through the parser, and refuses a mutated one", () => {
-    expect(parseRegistry(registry()).entries).toEqual([entry]);
-    for (const mutation of [
-      { ...entry, matches: 0 },
-      { ...entry, class: "something-else" },
-      { ...entry, sourceDigest: "sha256-not-a-digest" },
-      { ...entry, outputDigest: `sha256-${"0".repeat(63)}` },
-    ]) expect(() => parseRegistry(registry([mutation]))).toThrow(/invalid entry/);
-    expect(() => parseRegistry(registry([{ ...entry, path: "b.ts" }, { ...entry, path: "a.ts" }]))).toThrow(/sorted and unique/);
-    expect(() => parseRegistry({ ...registry(), ruleSetDigest: `sha256-${"0".repeat(64)}` })).toThrow(/rule-set digest/);
-  });
-});
-
 describe("the materialized output inventory", () => {
   it("reads filesystem writes and refuses added, deleted and swapped output paths", () => {
     const root = mkdtempSync(join(tmpdir(), "materialized-output-"));
@@ -512,57 +481,7 @@ describe("the materialized output inventory", () => {
   });
 });
 
-describe("the materialized output bytes", () => {
-  it("refuses a byte divergence after independently reading copied, flattened and projected outputs", () => {
-    const source = mkdtempSync(join(tmpdir(), "materialized-source-"));
-    const output = mkdtempSync(join(tmpdir(), "materialized-public-"));
-    const writes = EXPLICIT_PUBLIC_PROJECTION_PATHS.map((path) => ({ path, contents: `projection ${path}\n` }));
-    try {
-      writeFileSync(join(source, "README.md"), "copied\n");
-      for (const path of ["README.md", "history/0000_baseline.sql", ...EXPLICIT_PUBLIC_PROJECTION_PATHS]) {
-        mkdirSync(dirname(join(output, path)), { recursive: true });
-      }
-      writeFileSync(join(output, "README.md"), "copied\n");
-      writeFileSync(join(output, "history", "0000_baseline.sql"), "flattened\n");
-      for (const write of writes) writeFileSync(join(output, write.path), write.contents);
-      const input = {
-        sourceRoot: source,
-        publicRoot: output,
-        copiedSourcePaths: ["README.md"],
-        flattenedOutput: { path: "history/0000_baseline.sql", contents: "flattened\n" },
-        projectionWrites: writes,
-      };
-      expect(() => assertMaterializedOutputBytes(input)).not.toThrow();
-      writeFileSync(join(output, "README.md"), "tampered\n");
-      expect(() => assertMaterializedOutputBytes(input)).toThrow(/bytes diverge at README\.md/);
-    } finally {
-      rmSync(source, { recursive: true, force: true });
-      rmSync(output, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("the materialized public catalogue", () => {
-  it("expands the public seed to every output without importing private source paths", () => {
-    const seed = JSON.stringify({
-      schemaVersion: 1,
-      publicPaths: [{ path: "README.md", class: "entrypoint" }],
-      guardViability: [{
-        id: "example-withheld",
-        status: "withheld",
-        reason: "No public command is registered.",
-        withheldPaths: ["scripts/example-withheld-guard.ts"],
-        withheldCommands: ["guard:example-withheld"],
-      }],
-    });
-    const materialized = materializePublicPublicationCatalog(["README.md", "src/public.ts"], seed);
-    expect(JSON.parse(materialized.contents).publicPaths).toEqual([
-      { path: "README.md", class: "entrypoint" },
-      { path: "src/public.ts", class: "public-output" },
-    ]);
-    expect(() => materializePublicPublicationCatalog(["src/public.ts", "README.md"], seed)).toThrow(/sorted, unique/);
-  });
-
   it("binds every public command name and value to the materialized manifest", () => {
     const root = mkdtempSync(join(tmpdir(), "materialized-commands-"));
     const paths = [...new Set([".github/PUBLICATION_COMPLETENESS.md", ".github/workflows/published-tree-ci.yml", "CONTRIBUTING.md", "README.md", "packages/core/README.md", "packages/core/src/index.ts", "config/openlup-policy-registry.json", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS])].sort();
@@ -649,11 +568,11 @@ describe("the public-only policy check", () => {
       }));
       const policyPaths = [...new Set(["README.md", "config/openlup-policy-registry.json", "config/openlup-publication-catalog.json", "docs/platform/README.md", "docs/platform/AGENT_GUIDE.md", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS])].sort();
       writeFileSync(join(root, "config", "openlup-publication-catalog.json"), createPublicPublicationCatalog(policyPaths.map((path) => ({ path, class: "public-output" })), [{
-          id: "source-size-complexity",
+          id: "example-withheld",
           status: "withheld",
           reason: "No public invocation is registered.",
-          withheldPaths: ["scripts/check-source-size.ts"],
-          withheldCommands: ["guard:source-size"],
+          withheldPaths: ["scripts/example-withheld-guard.ts"],
+          withheldCommands: ["guard:example-withheld"],
         }]).contents);
       execFileSync("git", ["init", "-q"], { cwd: root });
       execFileSync("git", ["add", "."], { cwd: root });
@@ -669,7 +588,7 @@ describe("the public-only policy check", () => {
       writeFileSync(join(root, "docs", "platform", "README.md"), "`server/adapters/<provider>/`\n`DOMAIN_ARCHITECTURE.md`\n");
       expect(policyVerdict(root, () => undefined)).toBe(true);
       writeFileSync(join(root, "docs", "platform", "README.md"), "[Guide](AGENT_GUIDE.md)\n");
-      writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { ...Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])), "guard:source-size": "node scripts/check-source-size.ts" } }));
+      writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { ...Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])), "guard:example-withheld": "node scripts/example-withheld-guard.ts" } }));
       expect(() => policyVerdict(root, () => undefined)).toThrow(/packageCommands differ/);
       writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }));
       const forbiddenCoordinate = ["https://github.com/example", "app"].join("/"); const falseReliabilityClaim = ["An adopter conformance", "test"].join(" ");

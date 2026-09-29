@@ -83,9 +83,8 @@ INSERT INTO public.commerce_payment_intents (
 
 -- The dispatch predicate lives in a function whose NAME carries a provider token, in a
 -- family whose provider slack is zero. Assemble the name here instead of spelling it,
--- the same move and the same reason as `managedLiterals` in
--- scripts/platform-oms-rail-parity.ts, which reads a provider-named literal out of the
--- live function rather than carry it.
+-- the same move and the same reason as a parity harness that reads a provider-named
+-- literal out of the live function rather than carry it.
 CREATE FUNCTION pg_temp.dispatch_candidate_count(p_fulfillment_order_id uuid)
 RETURNS integer LANGUAGE plpgsql AS $fn$
 DECLARE

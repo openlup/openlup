@@ -39,11 +39,11 @@ export const CHECKOUT_CLIENT_EVENT_STAGES = [
 /**
  * What the browser saw. Every value has exactly one producer.
  *
- * ⛔ THE ORDER AND THE MEMBERS ARE PINNED against the server's copy by
- * `server/bff/commerce/checkout-client-event.test.ts`, in both directions. Drift
- * makes the browser POST something the route 400s, the client swallows the
- * refusal exactly as designed, and the report vanishes without a trace — the
- * same silence this whole module exists to end. Add to BOTH lists or neither.
+ * ⛔ THE ORDER AND THE MEMBERS ARE PINNED against the server's copy by the
+ * route's own test, in both directions. Drift makes the browser POST something
+ * the route 400s, the client swallows the refusal exactly as designed, and the
+ * report vanishes without a trace — the same silence this whole module exists
+ * to end. Add to BOTH lists or neither.
  *
  * `payment_step_abandoned` .. `psp_confirm_no_response` answer the question the
  * 2026-08-27 card dead-end report could not: the buyer reached the payment step

@@ -2,7 +2,7 @@
 // lifecycle runs on, the shared vocabulary its two bundles answer refusals in, and the seed and
 // teardown each bundle needs to reach a comparable starting point. It is split out of the harness
 // beside it so neither half has to grow past the repository's file limit to stay one story; the
-// story itself is told in scripts/platform-subscription-activation-parity.ts.
+// story itself is told in the parity harness.
 //
 // ⛔ No provider is named here: the settling channel is an opaque label, the currency is the code
 // reserved for testing, and the only email is an input the MANAGED schema demands and stores itself.

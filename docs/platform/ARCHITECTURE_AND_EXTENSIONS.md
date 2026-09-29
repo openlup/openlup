@@ -46,7 +46,9 @@ refuses to cut that preview while any still carries its removal marker line.
 Provider UI, such as the card payment form, lives with the adapters, while the
 words and outcomes it exchanges with its host stay in the domain's contracts.
 
-<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-242aae69322e7ea79768cd55297f04fbddb6e593ca9b44526adf12797f3445c2","reason":"Presentation-only delta. The account plan facts render the contract's next charge next to the regular package price, and the arrears selector falls back to it before the recurring price. Browser modules still own only portable types, validation and pure presentation; no runtime boundary described here moves."} -->
+<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-db25b027da84d267c6e19950462d6b3836f22df1d78e30160c1cf6e746cf53b5","reason":"Browser-side comment and test delta. Comments stop naming downstream files and design documents; the provider endpoint boundary test drops five exceptions for files this tree does not have, so its stale-exception check passes and its scan runs; the kit neutrality guard resolves this tree's server domains instead of an absent directory. No runtime boundary, browser contract or bundle behavior described here changes."} -->
+
+<!-- openlup-doc-impact {"unit":"server","digest":"sha256-677c8943f9ff430a5c5c104f7b6414a5f70c9cb0f35013a78e4b4b423776d8f1","reason":"Server-library comment delta. The admin-domain kit, feature flag, observability and service comments name downstream files by role or by their path in this tree, the rate limiter test title names its callers generically, and the payment adapter registry comment names an adapter folder generically. No server boundary described here changes."} -->
 
 ## Extension seams
 

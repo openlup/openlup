@@ -1,8 +1,8 @@
 /**
  * Smoke + gate-contract test for the generic admin-domain handler factories.
  *
- * This file exists as a companion test so the CI coverage guard
- * (scripts/assert-changed-runtime-coverage.ts) does not flag the handler kit
+ * This file exists as a companion test so the CI
+ * coverage guard does not flag the handler kit
  * as lacking coverage. The functional contract is exercised extensively via
  * domain-specific handler tests (e.g. adminCatalogReadHandler.test.ts,
  * adminCatalogHandler.test.ts). The cases below pin the OPTIONAL gate contract

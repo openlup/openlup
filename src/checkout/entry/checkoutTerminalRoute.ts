@@ -34,7 +34,7 @@ export const SUBSCRIBE_THANK_YOU_PATH = "/subscribe/thank-you";
  * WITHOUT the private deployment condition, so a seam behind `api/**` serves
  * production this default instead of the deployment's own value. Both consumers
  * are browser/SSR modules that the bundler resolves with the condition set;
- * `scripts/api-reachable-overlay-seams.test.ts` keeps that true by measuring the
+ * a deployment-side API-reachability test keeps that true by measuring the
  * closure rather than by asking a reader to remember it.
  *
  * Only the `en` member is declared, deliberately: the neutral funnel mounts one

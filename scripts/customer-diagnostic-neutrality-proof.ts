@@ -6,17 +6,16 @@
 // It brings up a disposable `postgres:16`, creates a disposable database inside it, applies the
 // MANIFEST-BOUND `db/platform/migrations` set through the shipped `createPostgresMigrationRunner`
 // (no bootstrap prelude, no Supabase history), runs the thirteen legs through the shipped ports, and
-// tears it all down. Precedents: `scripts/platform-job-run-ledger-parity.ts` for the disposable
-// database, `db/bootstrap/vanilla-pg/run-migration-replay.ts` for the set being the runner's.
+// tears it all down. Precedent: `db/bootstrap/vanilla-pg/run-migration-replay.ts` for the set being
+// the runner's.
 //
-// ⛔ A PURE LIBRARY, DELIBERATELY, AND THE RULE IS TEXTUAL. This file is RETAINED by the publication
-// delta, and `isDirectExecutionEntrypoint` (`scripts/oss-publication-contract.ts:104-108`) classifies
-// a retained file by a regex over its WHOLE contents, comments included: a shebang, an
-// argument-vector reference or an import-meta execution guard anywhere here would demand a row in
-// the frozen entrypoint catalogue. Argument parsing and the exit code live in the WITHHELD runner
-// named above; `readFlag` stays here, tested, taking the argument list as a parameter. The container
-// lifecycle is here too — a shell wrapper would be a Git executable with a shebang, and
-// PUBLIC_STANDALONE_EXECUTABLES is empty by design. Every import in this proof is retained.
+// ⛔ A PURE LIBRARY, DELIBERATELY, AND THE RULE IS TEXTUAL. This file is published, and
+// `isDirectExecutionEntrypoint` (`scripts/oss-publication-contract.ts`) classifies a published file
+// by a regex over its WHOLE contents, comments included: a shebang, an argument-vector reference or
+// an import-meta execution guard anywhere here would demand a row in the closed entrypoint list.
+// Argument parsing and the exit code live in the WITHHELD runner named above; `readFlag` stays here,
+// tested, taking the argument list as a parameter. The container lifecycle is here too — a shell
+// wrapper would be a Git executable with a shebang. Every import in this proof is published.
 //
 // ⚠ THE THROWAWAY INGRESS KEY IS NOT SECRET HANDLING: minted in-process for the container's
 // lifetime, it reaches no store, is never printed, and never enters the receipt. `fingerprint`
@@ -40,9 +39,9 @@ import { CUSTOMER_DIAGNOSTIC_PRUNE_JOB_NAME } from "../server/domains/observabil
 import { runNeutralityLegs, type LegOutcome, type NeutralityContext } from "./customer-diagnostic-neutrality-legs.ts";
 
 const exec = promisify(execFile);
-/** The redaction discipline of `scripts/edge-canary/receipt.ts`, reimplemented here because that is a
- *  withheld prefix and this proof is retained: importing it would drag a withheld module into the
- *  published closure for one hash. */
+/** The redaction discipline of the deployment canary receipt, reimplemented here because that module
+ *  is not part of the published tree: importing it would drag a withheld module into the published
+ *  closure for one hash. */
 export const fingerprint = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
 const PROBE = "customer_diagnostic_neutrality_probe";

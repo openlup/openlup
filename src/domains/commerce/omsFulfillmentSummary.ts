@@ -273,7 +273,7 @@ function toReleasedProviderExceptionHold(
 
 /**
  * Timeline label for one raw fulfillment operation / provider evidence token,
- * DERIVED from the canon (`statusMap.ts`, docs/FULFILLMENT_STATUS_CANON.md).
+ * DERIVED from the canon (`statusMap.ts`).
  * This must never become a second status->label dictionary: the OMS timeline and
  * the customer timeline read the same token the same way, so a label can no
  * longer drift from the step the customer is shown. A token the canon does not

@@ -25,8 +25,8 @@ import { readCommerceServiceDataGateway } from "../commerce/serviceDataGateway.j
 
 /**
  * `runSubscriptionRenewalBatch` deliberately keeps the platform-job lease in its
- * caller. This operator surface shares the *same* lease key as
- * `api/cron/subscription-renewal.ts` rather than minting a private one: a lease
+ * caller. This operator surface shares the *same* lease key as the deployment's
+ * scheduled renewal cron rather than minting a private one: a lease
  * only excludes work that shares its key, and both callers drive the identical
  * batch over the identical subscription rows. The two remain distinguishable in
  * `platform_job_runs` through `driver`, and `platform_claim_job_run` exempts

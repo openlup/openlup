@@ -2,12 +2,11 @@
  * The storefront item contract: the shape a detail page renders, independent of
  * which deployment supplies the rows.
  *
- * Two layers, on purpose (`docs/plan/oss-w3-seams-sizing.md` section 1.5, "the
- * vertical-fields cut"):
+ * Two layers, on purpose ("the vertical-fields cut"):
  *
  * - `StorefrontItem` — this module. Every field here is subject-neutral: an
  *   adopter selling coffee, supplements or paint fills the same slots.
- * - the deployment's own extension — `src/data/products.ts`, which adds the
+ * - the deployment's own extension — its product data module, which adds the
  *   fields that only make sense for this deployment's line and keeps supplying
  *   the rows.
  *

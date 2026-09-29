@@ -29,8 +29,7 @@ export const DORMANT_OUTBOX_EVENT_TYPES: readonly DormantOutboxEventType[] = [
     //
     // The stale half stays because this string is not prose: the DB-parity
     // guardrail asserts the migration text contains it character-for-character,
-    // so rewriting it here without a migration turns the guard red. The correct
-    // reading of the rail is in docs/SUBSCRIPTION_ORIENTATION.md.
+    // so rewriting it here without a migration turns the guard red.
     eventType: "commerce.subscription.resume_requested",
     owner: "commerce/recovery",
     reason:

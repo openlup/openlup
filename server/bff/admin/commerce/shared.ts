@@ -1,7 +1,7 @@
 /**
  * Back-compat surface for the commerce admin BFF routes. The admin auth spine
  * (bearer extraction, Supabase clients, the admin-role gate) was lifted into the
- * domain-neutral kit `api/_lib/admin-domain/auth.ts` in Wave 4.5; it is
+ * domain-neutral kit `server/_lib/admin-domain/auth.ts` in Wave 4.5; it is
  * re-exported here so the ~90 routes importing from this module do not churn.
  * The commerce mutation feature-flag readers stay here (commerce-specific).
  */

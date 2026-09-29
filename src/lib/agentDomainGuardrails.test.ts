@@ -14,7 +14,7 @@ import { dirname, join, relative, sep } from "node:path";
 
 const repoRoot = process.cwd();
 
-/** Domain-neutral kit homes: must never import from `src|api/domains`. */
+/** Domain-neutral kit homes: must never import from `src|server/domains`. */
 const KIT_ROOTS = ["server/_lib/admin-domain", "src/lib/agent-domain"];
 
 /** Catalog is the canonical reference vertical. */
@@ -59,13 +59,13 @@ function importSpecifiers(source: string): string[] {
   return [...specs];
 }
 
-/** Returns the `src|api/domains/<d>/...` path a specifier resolves to, or null. */
+/** Returns the `src|server/domains/<d>/...` path a specifier resolves to, or null. */
 function resolvesToDomain(importerRel: string, specifier: string): string | null {
   if (/^@\/domains\//.test(specifier)) return specifier;
   if (!specifier.startsWith(".")) return null;
   const absolute = join(dirname(join(repoRoot, importerRel)), specifier);
   const rel = relative(repoRoot, absolute).split(sep).join("/");
-  return /^(?:src|api)\/domains\//.test(rel) ? rel : null;
+  return /^(?:src|server)\/domains\//.test(rel) ? rel : null;
 }
 
 describe("agent-operable domain kit guardrails", () => {

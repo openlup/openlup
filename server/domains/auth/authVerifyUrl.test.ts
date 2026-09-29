@@ -10,7 +10,7 @@ describe("buildAuthVerifyUrl", () => {
     // The endpoint reads the hashed token from a RAW query separator, so the
     // leading byte is escaped rather than left literal. This is the rule the
     // module exists to keep in one place: the hook composes the link and
-    // scripts/customer-auth-get-verify.ts probes the real endpoint with the same
+    // a downstream operator script probes the real endpoint with the same
     // builder, which is the only reason that probe catches a token/token_hash
     // flip (#1032/#1034) instead of proving a URL it wrote itself.
     const url = buildAuthVerifyUrl(SERVICE, "recovery", "pkce_abc", REDIRECT);

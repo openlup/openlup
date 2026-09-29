@@ -372,11 +372,11 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
-<!-- openlup-doc-impact {"unit": "tooling", "digest": "sha256-04f053d7d93747f5c6c63be8c191d7dc5c912c1fe2d621857b2629d336f4bfb5", "reason": "Test-only delta. In scripts/agent-review-session.test.ts the concurrent prepare/record case pauses its recording process just before it publishes the new session state, through an import hook in that child process only, and releases it after both rivals were refused, instead of polling for the lock. The case no longer depends on process scheduling. The session script, its lock and refusal behaviour, the focused regression command and every command, job and check scope described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-c5ddbf2ebd1ff1a2ec65dcaf3702606c47b2a1989ef396995b60fa856748562f","reason":"Tooling delta. Dead scripts with no importer or command are deleted: the core CI scope and its test, and the neutralization projection. The publication contract keeps only its live exports, the coordinate detector keeps only its detection, and the published-tree output keeps its inventory helpers. Contract validation now refuses any contract that carries the retired downstream sourceSeed field, where it used to accept a well-formed one; the publication falsifier pins that refusal. The policy parser drops a refusal for a downstream plan directory that catalogued, tracked policy paths already exclude. The accounting parity test drops two cases that read absent metadata, the neutrality proof test drops probes for withheld modules this tree never had, the publication falsifier drops cases for the deleted helpers and uses a neutral withheld-guard fixture, and other script comments name things by role. The development preview checks and commands described here and the frozen required-test floor are unchanged."} -->
 
-<!-- openlup-doc-impact {"unit": "repository", "digest": "sha256-641d1b4889c10442428cf65b19fffeaa91c1fc9638073e69daf9a3ae2e7239d0", "reason": "Comment-only delta. Two vitest.config.ts comments describe the per-file duration manifest by role instead of by a file path this tree does not contain. Test selection, timeouts and every command and job described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-9d6dd859e0bfc53517090e495f8a552da3f42e8737ba60f1c9cc7b37904a3fd0","reason":"Repository configuration delta. The component generator configuration no longer names a Tailwind config file, the API TypeScript configuration drops an include entry for a file this tree does not have, the application TypeScript configuration drops a pointer to a planning document, and two comments name things by role. The tests TypeScript configuration is unchanged. The development preview checks and every required command described here are unchanged."} -->
 
-<!-- openlup-doc-impact {"unit": "tests", "digest": "sha256-a1a1fdd9b28e8f2ec70db1cc11fd97bb17db532eb08450a5b5a1b4cea0aac1dd", "reason": "Comment-only delta. A customer-diagnostic journey drive comment names the readiness catalogue by role instead of by a file path this tree does not contain. The drive and every command and job described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-911504d9cde1ff7490c75b1ae19b7ec0f7d4b4b5afc25d9b03bea63c88904119","reason":"Comment-only delta. Preview specs and helpers name withheld files by role instead of by path. The required test selectors, the frozen floor and the checks described here are unchanged."} -->
 
 ## Pull requests
 
@@ -440,6 +440,8 @@ changes, compatibility implications, and the checks you ran. Keep adopter-owned
 brand, content, catalogue, local policy, and business-specific integrations out
 of generic platform changes unless the proposal explicitly establishes a public
 extension seam and a compatibility owner.
+
+<!-- openlup-doc-impact {"unit":"public-policy","digest":"sha256-5bb2e80c19164bd0c6a922777d341fa2f84f2dcb09393efdc5124f5530f02c7c","reason":"Deletion delta. The actionlint configuration is deleted; its only entry suppressed an input warning for a workflow this tree does not have. The pull-request policy and checks described here are unchanged."} -->
 
 ## Developer Certificate of Origin
 

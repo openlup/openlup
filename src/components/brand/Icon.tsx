@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Brand icon wrapper around lucide-react. See DESIGN.md §10.
+ * Brand icon wrapper around lucide-react.
  *
  * - Standard size tokens (sm 16 / md 20 / lg 24 / xl 32) instead of ad-hoc
  *   `size={N}`.

@@ -253,8 +253,8 @@ export function parseCommerceOrderDraftCreatedOutboxEvent(
 }
 
 // commerce.order.paid — emitted by the commerce_emit_order_paid_outbox trigger
-// (supabase/migrations/20260613230000_order_paid_outbox_event.sql) when an order
-// transitions to paid. `mode` stays a free-form non-empty string (not an enum):
+// when an order transitions to paid.
+// `mode` stays a free-form non-empty string (not an enum):
 // a producer that adds a new order mode must never retro-DLQ in-flight events,
 // and the dispatch handler only forwards orderUuid to the fulfillment RPCs.
 export const commerceOrderPaidPayloadSchema = z

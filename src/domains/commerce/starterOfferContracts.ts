@@ -26,7 +26,7 @@ import {
  *
  * ⚠️ (3) is a deliberate DUPLICATE of `starterPackMarkerSchema` in
  * `server/domains/subscription/starterPackCycle.ts`. It cannot be imported:
- * `src/**` is browser-bundled and `src/lib/architectureGuardrails.test.ts`
+ * `src/**` is browser-bundled and an architecture guardrail test
  * blocks a commerce module from reaching into another domain's internals. The
  * two schemas are pinned to each other by `tests/starter-pack/markerParity.test.ts`,
  * which drives both over the same accept and reject fixtures. If you change one,

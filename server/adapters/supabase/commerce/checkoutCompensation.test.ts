@@ -39,7 +39,7 @@ describe("Supabase checkout compensation adapter", () => {
     })).rejects.toBeInstanceOf(CommerceRuntimePersistenceError);
   });
 
-  // Coverage kept from server/domains/commerce/supabaseInventoryReservationPort.test.ts,
+  // Coverage kept from the inventory reservation port's test,
   // which used to reach this mapping through the reservation port before the
   // compensation adapter moved here.
   it("reports cancelled=false without throwing when the order already reached a terminal state", async () => {

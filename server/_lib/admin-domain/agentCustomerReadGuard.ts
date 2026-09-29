@@ -1,5 +1,5 @@
 /**
- * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`api/_lib/admin-domain/`).
+ * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`server/_lib/admin-domain/`).
  *
  * Actor-kind-aware governance for agent-operable CUSTOMER reads (clients + OMS).
  * Wave 7a. The customer read BFF routes are consumed by BOTH the human admin UI
@@ -9,7 +9,7 @@
  * the machine/agent path is flag-gated, PII-masked on broad search surfaces, and
  * non-repudiably audited.
  *
- * Neutral home: imports nothing from `src/domains/*` / `api/domains/*`.
+ * Neutral home: imports nothing from `src/domains/*` / `server/domains/*`.
  */
 
 export const AGENT_CUSTOMER_READ_FLAG = "COMMERCE_AGENT_CUSTOMER_READ_ENABLED";

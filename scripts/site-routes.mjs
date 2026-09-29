@@ -166,9 +166,9 @@ export function validateSiteRouteManifest(manifest) {
       }
     }
   } else {
-    // Tripwire na przypadkowe zgubienie tras: 29 tras bazowych + hub /rasy
-    // + 49 stron ras (docs/SEO_CONTENT_PLAN.md §4.1). Podnoś świadomie razem
-    // z rejestrem, nigdy "żeby przeszło".
+    // Tripwire against accidentally losing routes: 29 base routes + the /rasy hub
+    // + 49 breed pages. Raise it deliberately together with the registry, never
+    // "just to make it pass".
     if (manifest.routes.length !== 79) {
       throw new Error(`Expected 79 public routes, found ${manifest.routes.length}`);
     }

@@ -16,9 +16,9 @@ top-level domain.
   and public survey submit orchestration.
 - `marketing/tools` - lead-generation utilities such as the pet personalizer,
   quizzes, calculators, and future acquisition tools. ⚠️ Withheld by the
-  deployment overlay: neither `src/domains/marketing/tools/` nor
-  `server/domains/marketing/tools/` is part of the published tree, so a
-  published tree carries no tool contracts, ports, or generation handler.
+  deployment overlay: neither the subdomain's shared module nor its server
+  module is part of the published tree, so a published tree carries no
+  tool contracts, ports, or generation handler.
 
 ## Boundaries
 

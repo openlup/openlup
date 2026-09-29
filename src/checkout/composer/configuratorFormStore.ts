@@ -200,9 +200,9 @@ function hydrateConfiguratorFormData(
     paymentMethod: null,
     // A resumed session restores the consents the customer already ticked, so a
     // returning customer is not asked to re-tick them (operator decision
-    // 2026-07-21, superseding the blanket "never persist consent data" rule in
-    // docs/plan/configurator-draft-reliability.md). Submitting the order is
-    // still the affirmative act that records them.
+    // 2026-07-21, superseding an earlier blanket "never persist consent data"
+    // rule). Submitting the order is still the affirmative act that records
+    // them.
     gdprConsent: draft?.form.gdprConsent === true,
     termsConsent: draft?.form.termsConsent === true,
     marketingConsent: draft?.form.marketingConsent === true,

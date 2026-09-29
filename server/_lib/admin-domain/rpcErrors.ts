@@ -3,14 +3,14 @@ import { sendBffError } from "../bff/response.js";
 import type { AgentReason } from "../../../src/lib/agent-domain/lifecycleRules.js";
 
 /**
- * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`api/_lib/admin-domain/`).
+ * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`server/_lib/admin-domain/`).
  *
  * The RPC-error → BFF-envelope map shared by every agent-operable domain. The
  * service-role write RPC is the rule authority; this only translates the
  * SQLSTATE it RAISEd into a stable BFF code + reason. Lifted from the catalog
  * reference's `sendCatalogError`/`CatalogRpcError`.
  *
- * Neutral home: imports nothing from `src/domains/*` / `api/domains/*`.
+ * Neutral home: imports nothing from `src/domains/*` / `server/domains/*`.
  */
 
 /**

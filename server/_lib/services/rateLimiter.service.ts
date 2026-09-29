@@ -2,7 +2,8 @@
 //
 // The decision logic + the pluggable in-memory / Postgres adapters now live in rateLimiterPort.ts.
 // This module keeps the ORIGINAL export shape (`rateLimiter.check(ip, now?) -> RateLimitDecision`,
-// synchronous) so every caller — notably api/process.ts and its golden-master — is byte-identical.
+// synchronous) so every caller — notably the deployment's `/api/process` route and its
+// golden-master — is byte-identical.
 // The default singleton is the in-memory adapter, preserving exact Vercel behavior.
 //
 // A node-* multi-instance bundle should construct `createPgRateLimiter(...)` from rateLimiterPort.ts

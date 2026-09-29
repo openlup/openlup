@@ -14,7 +14,7 @@ is runtime-only input and must not be embedded in a browser artifact. Hosts must
 provide their own storage, identity, delivery, and provider configuration where
 the selected capabilities require it.
 
-<!-- openlup-doc-impact {"unit": "bff", "digest": "sha256-20ee39def0ea30fbf69a059cf57f8b6f1003aae2b04e41bd0642b1cc8860b67b", "reason": "Test-only delta. Thirteen BFF tests drop their per-file regex assertions against the database client SDK, createClient calls and .from()/.rpc() calls, because the ast-grep rule bff-database-through-ports, run by the lint command, now enforces that boundary for every module under server/bff; their composition assertions stay. The runtime model here, in which requests reach the server boundary and durable writes use the canonical data contract, does not change."} -->
+<!-- openlup-doc-impact {"unit": "bff", "digest": "sha256-7ac53f0b6262a267984620c13a692a5fa7235f6d64a7392c8690975480165417", "reason": "Test-only delta. Thirteen BFF tests drop their per-file regex assertions against the database client SDK, createClient calls and .from()/.rpc() calls, because the ast-grep rule bff-database-through-ports, run by the lint command, now enforces that boundary for every module under server/bff; their composition assertions stay. The runtime model here, in which requests reach the server boundary and durable writes use the canonical data contract, does not change."} -->
 
 ## Self-host boundary
 
@@ -174,6 +174,8 @@ detect preview emails linking to production. An empty list admits no live Tpay
 callback and gives the email check no production domains to recognize. See the
 [pending preview upgrade notes](../../.github/VERSIONING_AND_EOL.md#pending-preview-upgrade-notes-public-coordinates)
 for the accompanying `OPENLUP_` configuration rename.
+
+<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-9dd9bfa8907390ca93422b31365d961d2da1804e69668df8009068b140134753","reason":"Comment-only delta. Five provider adapter comments stop naming downstream documents and guard files. No provider boundary, activation gate or host capability described here changes."} -->
 
 ## Preview posture
 
