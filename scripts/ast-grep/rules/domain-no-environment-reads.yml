@@ -5,10 +5,14 @@ message: Domain code does not read the environment; take the value through a por
 note: |
   Architecture rule (AGENTS.md): environment readers stay behind
   infrastructure and adapter boundaries. Read the variable in server/infra or
-  in the composition root and pass the value in. The files under `ignores`
-  predate this rule: delete an entry when its file is fixed and never add one.
-  A justified exception is an `ast-grep-ignore` comment naming this rule on
-  the line before the code, with the reason in a comment above it.
+  in the composition root and pass the value in. The rule refuses any `env`
+  read or destructuring from an expression that involves `process` or
+  `import.meta` (whatever wraps or asserts it), and any import, dynamic
+  import or re-export of `node:process`. It does not follow a value through an
+  intermediate variable. The files under `ignores` predate this rule: delete
+  an entry when its file is fixed and never add one. A justified exception is
+  an `ast-grep-ignore` comment naming this rule on the line before the code,
+  with the reason in a comment above it.
 files:
   - server/domains/**/*.ts
   - src/domains/**/*.ts
@@ -23,37 +27,34 @@ ignores:
   - server/domains/subscription/subscriptionCycleOrderTotals.ts
   - src/domains/shipping/inpostGeowidgetLoader.ts
 utils:
-  environment-owner:
+  involves-environment:
     any:
       - kind: meta_property
-      - regex: "^\\(?(globalThis\\.|global\\.)?process\\)?$"
-      - regex: "^globalThis\\[[\"'`]process[\"'`]\\]$"
-      - kind: parenthesized_expression
-        has: { stopBy: end, any: [ { kind: meta_property }, { kind: identifier, regex: "^process$" } ] }
-      - kind: non_null_expression
-        has: { stopBy: end, any: [ { kind: meta_property }, { kind: identifier, regex: "^process$" } ] }
+      - { kind: identifier, regex: "^process$" }
+      - { kind: property_identifier, regex: "^process$" }
+      - has: { stopBy: end, any: [ { kind: meta_property }, { kind: identifier, regex: "^process$" }, { kind: property_identifier, regex: "^process$" }, { kind: string_fragment, regex: "^process$" } ] }
 rule:
   any:
     - kind: member_expression
       all:
-        - has: { field: object, matches: environment-owner }
         - has: { field: property, regex: "^env$" }
+        - has: { field: object, matches: involves-environment }
     - kind: subscript_expression
       all:
-        - has: { field: object, matches: environment-owner }
         - has: { field: index, regex: "^[\"'`]env[\"'`]$" }
+        - has: { field: object, matches: involves-environment }
     - kind: variable_declarator
       all:
         - has: { field: name, kind: object_pattern, regex: "\\benv\\b" }
-        - has: { field: value, matches: environment-owner }
+        - has: { field: value, matches: involves-environment }
     - kind: import_statement
-      has: { field: source, regex: "^[\"'](node:)?process[\"']$" }
+      has: { field: source, regex: "^[\"'`](node:)?process[\"'`]$" }
     - kind: export_statement
-      has: { field: source, regex: "^[\"'](node:)?process[\"']$" }
+      has: { field: source, regex: "^[\"'`](node:)?process[\"'`]$" }
     - kind: call_expression
       all:
         - has: { field: function, regex: "^import$" }
-        - has: { field: arguments, regex: "^\\([\"'](node:)?process[\"']\\)$" }
+        - has: { field: arguments, regex: "^\\([\"'`](node:)?process[\"'`]\\)$" }
 ---
 id: domain-no-environment-reads-tsx
 language: Tsx
@@ -62,10 +63,14 @@ message: Domain code does not read the environment; take the value through a por
 note: |
   Architecture rule (AGENTS.md): environment readers stay behind
   infrastructure and adapter boundaries. Read the variable in server/infra or
-  in the composition root and pass the value in. The files under `ignores`
-  predate this rule: delete an entry when its file is fixed and never add one.
-  A justified exception is an `ast-grep-ignore` comment naming this rule on
-  the line before the code, with the reason in a comment above it.
+  in the composition root and pass the value in. The rule refuses any `env`
+  read or destructuring from an expression that involves `process` or
+  `import.meta` (whatever wraps or asserts it), and any import, dynamic
+  import or re-export of `node:process`. It does not follow a value through an
+  intermediate variable. The files under `ignores` predate this rule: delete
+  an entry when its file is fixed and never add one. A justified exception is
+  an `ast-grep-ignore` comment naming this rule on the line before the code,
+  with the reason in a comment above it.
 files:
   - server/domains/**/*.tsx
   - src/domains/**/*.tsx
@@ -73,34 +78,31 @@ files:
 ignores:
   - "**/*.test.tsx"
 utils:
-  environment-owner:
+  involves-environment:
     any:
       - kind: meta_property
-      - regex: "^\\(?(globalThis\\.|global\\.)?process\\)?$"
-      - regex: "^globalThis\\[[\"'`]process[\"'`]\\]$"
-      - kind: parenthesized_expression
-        has: { stopBy: end, any: [ { kind: meta_property }, { kind: identifier, regex: "^process$" } ] }
-      - kind: non_null_expression
-        has: { stopBy: end, any: [ { kind: meta_property }, { kind: identifier, regex: "^process$" } ] }
+      - { kind: identifier, regex: "^process$" }
+      - { kind: property_identifier, regex: "^process$" }
+      - has: { stopBy: end, any: [ { kind: meta_property }, { kind: identifier, regex: "^process$" }, { kind: property_identifier, regex: "^process$" }, { kind: string_fragment, regex: "^process$" } ] }
 rule:
   any:
     - kind: member_expression
       all:
-        - has: { field: object, matches: environment-owner }
         - has: { field: property, regex: "^env$" }
+        - has: { field: object, matches: involves-environment }
     - kind: subscript_expression
       all:
-        - has: { field: object, matches: environment-owner }
         - has: { field: index, regex: "^[\"'`]env[\"'`]$" }
+        - has: { field: object, matches: involves-environment }
     - kind: variable_declarator
       all:
         - has: { field: name, kind: object_pattern, regex: "\\benv\\b" }
-        - has: { field: value, matches: environment-owner }
+        - has: { field: value, matches: involves-environment }
     - kind: import_statement
-      has: { field: source, regex: "^[\"'](node:)?process[\"']$" }
+      has: { field: source, regex: "^[\"'`](node:)?process[\"'`]$" }
     - kind: export_statement
-      has: { field: source, regex: "^[\"'](node:)?process[\"']$" }
+      has: { field: source, regex: "^[\"'`](node:)?process[\"'`]$" }
     - kind: call_expression
       all:
         - has: { field: function, regex: "^import$" }
-        - has: { field: arguments, regex: "^\\([\"'](node:)?process[\"']\\)$" }
+        - has: { field: arguments, regex: "^\\([\"'`](node:)?process[\"'`]\\)$" }

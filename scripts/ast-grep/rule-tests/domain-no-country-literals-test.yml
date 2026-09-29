@@ -2,24 +2,20 @@ id: domain-no-country-literals
 valid:
   - 'const address = { country: input.country };'
   - 'const kind = z.literal("standard");'
+  - 'const code = "ABC";'
   - 'const zone = { region: "north" };'
   - 'if (address.country === settlement.country) accept();'
-  - 'const status = order.state === "OK" ? 1 : 0;'
-  - 'const schema = z.object({ note: z.string().default("NA") });'
 invalid:
   - 'const schema = z.object({ country: z.literal("DE") });'
-  - 'const address = { country: "FR" };'
-  - 'const row = { "region": ''DE'' };'
+  - 'const address = { country: "FR" as const };'
   - 'const origin = { countryCode: `AT` };'
-  - 'const origin = { shippingCountry: "AT" as const };'
-  - 'const origin = { region_code: "FR" satisfies string };'
-  - 'const DEFAULT_COUNTRY = "DE";'
   - 'type Address = { country: "FR" };'
-  - 'if (address.country === "DE") validate();'
-  - 'if ("AT" !== input.countryCode) reject();'
-  - 'const country = input.country ?? "FR";'
-  - 'const country = input.country || "DE";'
-  - 'const schema = z.object({ country: z.string().default("DE") });'
+  - 'type Supported = "DE" | "FR";'
+  - 'if (normalize(address.country) === "DE") validate();'
+  - 'address.country ??= "FR";'
+  - 'switch (address.country) { case "DE": break; }'
+  - 'const supported = z.enum(["DE", "FR"]);'
+  - 'if (["AT"].includes(country)) reject();'
 ---
 id: domain-no-country-literals-tsx
 valid:

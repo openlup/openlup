@@ -198,28 +198,28 @@ import paths; these rules check calls, reads and literals. A module under
 `server/bff` reaches the database only through a port or the actor data gateway:
 it neither imports the database client SDK nor calls `createClient` (directly or
 as a member), `.from()` or `.rpc()`. Domain code under `server/domains`,
-`src/domains` and `packages/core/src` reads no environment variable: it reads no
-`env` from `process`, `global.process`, `globalThis.process` or `import.meta`,
-whether directly, in parentheses, through a type assertion or by destructuring,
-and it has no static import, dynamic import or re-export of `node:process`. The
-same domain code fixes no two-letter country or region code: not in `z.literal`,
-not as the value of a country- or region-named key, property type, variable or
-JSX attribute (including through `as const`, `satisfies` or `.default()`), and
-not compared with a country- or region-named value or used as its `??` or `||`
-fallback. Test files are exempt, and so are fixtures and test helpers from the
-country rule. Files that predate a rule are listed in its `ignores`: delete an
-entry when its file is fixed and never add one. A justified exception is an `//
-ast-grep-ignore: <rule-id>` comment on the line before the code, with the reason
-in a comment above it. A new rule states the platform rule it enforces, blocks
-only at zero findings, and has at least one valid and one invalid case. The scan
-and the rule tests take about a second for the whole tree, and `npx --no --
-ast-grep scan <files>` checks named files in milliseconds, so run it after each
-change and before committing rather than waiting for the hosted job. Keep `--no
---`: without it npx can fetch an unrelated registry package of the same name
-when the local binary is missing. While iterating, `npx --no -- ast-grep run
---pattern '<code pattern>' --lang ts` lists every structural match, and
-`--rewrite '<replacement>' --update-all` applies a mechanical edit; call the
-binary `ast-grep`, because `sg` is also a system command on Linux.
+`src/domains` and `packages/core/src` reads no environment variable: it has no
+`env` read or destructuring from an expression that involves `process` or
+`import.meta`, however that expression is wrapped or asserted, and no import,
+dynamic import or re-export of `node:process`; the rule does not follow a value
+through an intermediate variable. The same domain code contains no two-letter
+uppercase string literal in any position, because in this codebase such a
+literal is a country or region code, which is adopter policy. Test files are
+exempt, and so are fixtures and test helpers from the country rule. Files that
+predate a rule are listed in its `ignores`: delete an entry when its file is
+fixed and never add one. A justified exception, such as a genuine non-country
+code, is an `// ast-grep-ignore: <rule-id>` comment on the line before the code,
+with the reason in a comment above it. A new rule states the platform rule it
+enforces, blocks only at zero findings, and has at least one valid and one
+invalid case. The scan and the rule tests take about a second for the whole
+tree, and `npx --no -- ast-grep scan <files>` checks named files in
+milliseconds, so run it after each change and before committing rather than
+waiting for the hosted job. Keep `--no --`: without it npx can fetch an
+unrelated registry package of the same name when the local binary is missing.
+While iterating, `npx --no -- ast-grep run --pattern '<code pattern>' --lang ts`
+lists every structural match, and `--rewrite '<replacement>' --update-all`
+applies a mechanical edit; call the binary `ast-grep`, because `sg` is also a
+system command on Linux.
 
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating

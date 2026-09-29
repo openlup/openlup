@@ -10,25 +10,24 @@ invalid:
       .env.PORT;
   - 'const key = process["env"].SERVICE_KEY;'
   - |
-    const profile = readSettlementProfile(process
-      .env);
-  - |
     const mode = import.meta
       .env.MODE;
   - 'const mode = import.meta["env"].MODE;'
   - 'const { env } = process;'
   - |
-    const key = globalThis.process
-      .env.KEY;
-  - 'import { env } from "node:process";'
-  - |
     const mode = (import.meta as unknown as { env?: Record<string, string> })
       .env?.MODE;
+  - 'const { env } = import.meta as unknown as { env: Record<string, string> };'
+  - 'const { env } = process as NodeJS.Process;'
   - |
-    const key = (process as NodeJS.Process)
+    const key = globalThis.process!
+      .env.KEY;
+  - |
+    const key = (globalThis.process as NodeJS.Process)
       .env.KEY;
   - |
     const key = globalThis["process"]
       .env.KEY;
+  - 'import { env } from "node:process";'
   - 'const runtime = await import("node:process");'
   - 'export { env } from "node:process";'
