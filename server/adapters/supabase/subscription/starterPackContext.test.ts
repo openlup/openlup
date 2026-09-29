@@ -138,7 +138,7 @@ describe("createStarterPackContextPort", () => {
 
   it("reports no line evidence rather than failing when the lines cannot be read", async () => {
     const { client: db } = client({
-      subscriptions: [{ starter_pack: MARKER, template_version: 1, cadence_days: 14, currency: "PLN" }],
+      subscriptions: [{ starter_pack: MARKER, template_version: 1, cadence_days: 14, currency: "EUR" }],
       cycles: [{ cycle_number: 1 }],
       lines: null,
     });

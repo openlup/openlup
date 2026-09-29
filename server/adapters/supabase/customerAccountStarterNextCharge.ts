@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CustomerAccountV2Response } from "../../../src/domains/customers/accountV2Contracts.js";
 import {
   quoteLinesListAnchorMinor,
@@ -9,6 +8,19 @@ import { starterPackMarkerSchema, type StarterPackMarker } from "../../domains/s
 import { storedQuoteLine } from "./subscription/starterPackCycle.js";
 
 type Row = Record<string, unknown>;
+type ReadResult = { data: unknown; error: unknown };
+
+/** The two `in`-filtered reads this module makes; any PostgREST-shaped client fits. */
+export interface StarterNextChargeClient {
+  from(table: string): {
+    select(columns: string): {
+      in(
+        column: string,
+        values: string[],
+      ): PromiseLike<ReadResult> & { order(column: string, options: { ascending: boolean }): PromiseLike<ReadResult> };
+    };
+  };
+}
 type Subscription = CustomerAccountV2Response["subscriptions"][number];
 type NextCharge = NonNullable<Subscription["nextCharge"]>;
 
@@ -25,7 +37,7 @@ type NextCharge = NonNullable<Subscription["nextCharge"]>;
  * not what the engine would charge for a starter cycle.
  */
 export async function readStarterNextCharges(
-  serviceClient: SupabaseClient,
+  serviceClient: StarterNextChargeClient,
   rows: Row[],
 ): Promise<Map<string, StarterNextChargeInput>> {
   const result = new Map<string, StarterNextChargeInput>();

@@ -1,6 +1,9 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { nextCharge, readStarterNextCharges } from "./customerAccountStarterNextCharge.js";
+import {
+  nextCharge,
+  readStarterNextCharges,
+  type StarterNextChargeClient,
+} from "./customerAccountStarterNextCharge.js";
 
 const SUB = "00000000-0000-4000-8000-0000000000a1";
 const NEXT = "2026-09-30T10:00:00+00:00";
@@ -47,7 +50,7 @@ function client(tables: Record<string, unknown[]>) {
       },
     }),
   }));
-  return { from, client: { from } as unknown as SupabaseClient };
+  return { from, client: { from } as unknown as StarterNextChargeClient };
 }
 
 const PAID_CYCLE_1 = { subscription_id: SUB, cycle_number: 1, status: "paid" };
@@ -109,7 +112,7 @@ describe("readStarterNextCharges + nextCharge", () => {
     const from = vi.fn(() => {
       throw new Error("boom");
     });
-    const map = await readStarterNextCharges({ from } as unknown as SupabaseClient, [row()]);
+    const map = await readStarterNextCharges({ from } as unknown as StarterNextChargeClient, [row()]);
     // Without the cycle and line evidence the engine's amount is unknown.
     expect(nextCharge(RECURRING, map.get(SUB))).toBeNull();
   });
@@ -153,7 +156,7 @@ describe("readStarterNextCharges + nextCharge", () => {
         },
       }),
     }));
-    const map = await readStarterNextCharges({ from } as unknown as SupabaseClient, [row()]);
+    const map = await readStarterNextCharges({ from } as unknown as StarterNextChargeClient, [row()]);
     // With both reads succeeding the same fixture would state 14 528 (delivery 2).
     expect(nextCharge(RECURRING, map.get(SUB))).toBeNull();
   });

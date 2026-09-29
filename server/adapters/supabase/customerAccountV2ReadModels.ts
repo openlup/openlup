@@ -19,7 +19,7 @@ import {
   readSubscriptionActionStates,
 } from "./customerAccountActionRequiredReadModel.js";
 import { readSubscriptionLines } from "./customerAccountSubscriptionLinesReadModel.js";
-import { nextCharge, readStarterNextCharges } from "./customerAccountStarterNextCharge.js";
+import { nextCharge, readStarterNextCharges, type StarterNextChargeClient } from "./customerAccountStarterNextCharge.js";
 import {
   readSubscriptionPaymentMethodEvidence,
   resolveCustomerSubscriptionPaymentMethodStatus,
@@ -141,7 +141,8 @@ async function assembleSubscriptions(
     readOpenPauseWindows(serviceClient, subscriptionIds),
     readSubscriptionPaymentMethodEvidence(serviceClient, subscriptionIds),
     readSubscriptionDeliveryAlignments(readDeliveryAlignmentRows, nextCycleAtBySubscription),
-    readStarterNextCharges(serviceClient, rows),
+    // Structural view of the same client; matching the full generic type is too deep for tsc.
+    readStarterNextCharges(serviceClient as unknown as StarterNextChargeClient, rows),
   ]);
   return rows.map((row) => {
     const editCutoffAt = editCutoff(nullableText(row.next_cycle_at), numberOrNull(row.edit_window_hours));
