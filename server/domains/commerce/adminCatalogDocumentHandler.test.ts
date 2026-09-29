@@ -399,7 +399,7 @@ describe("catalog document proposal handler", () => {
 /**
  * Every neutral seam module read once, by a LITERAL path. Two reasons, both
  * load-bearing. A `readFileSync` over a path built at runtime is recorded as an
- * opaque source-dependency edge in `config/oss-core-readiness-blockers.json`,
+ * opaque source-dependency edge in the readiness catalogue,
  * and that receipt is a control-plane path - which would demand a hosted-canary
  * proof from a wave that changes no control. And a literal path is checked by
  * the publication closure, which is why the OVERLAY halves of this seam are

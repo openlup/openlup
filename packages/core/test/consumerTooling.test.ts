@@ -91,7 +91,7 @@ describe("packed consumer dependency roots", () => {
     ["brand camel identifier", "dist/index.js", "export const velipetInternalCheck = true;"],
     ["brand Pascal identifier", "dist/index.js", "export class VelipetAdapter {}"],
     ["owner brand", "dist/index.js", "export const downstreamOwnerBrand = 'Proteine Resources';"],
-    ["owner brand identifier", "dist/index.js", "export const owner = 'ProteineResources';"],
+    ["owner brand identifier", "dist/index.js", `export const owner = '${"Pro" + "teine"}Example';`],
     ["environment", "dist/index.js", "export const token = process.env.CORE_TOKEN;"],
     ["provider", "dist/index.js", "export const payment = 'stripe';"],
     ["provider OpenAI", "dist/index.js", "export const integration = 'OpenAI';"],

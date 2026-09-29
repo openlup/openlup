@@ -43,7 +43,6 @@ describe("private core portability CI scope", () => {
     "scripts/core-release-identity.test.ts",
     ".github/workflows/pr-ci.yml",
     ".npmrc",
-    "config/oss-core-readiness-blockers.json",
     "scripts/control-plane-proof-paths.ts",
     "scripts/control-plane-proof-v2.test.ts",
     "scripts/oss-readiness-axes.ts",

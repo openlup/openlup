@@ -45,7 +45,7 @@ function scalar(config: string, section: string, key: string): string | undefine
   return values[0];
 }
 
-export function validateSubscriptionProfile(env: NodeJS.ProcessEnv) {
+export function validateSubscriptionProfile(env: NodeJS.ProcessEnv, baseline: URL | string = BASELINE) {
   if (!localReferenceDemoProfileEnabled(env) || env.LOCAL_BFF !== "1"
     || env.NODE_ENV === "production" || env.APP_ENVIRONMENT || env.OPENLUP_ENVIRONMENT
     || ["VERCEL", "VERCEL_ENV", "VERCEL_URL", "VERCEL_REGION", "RAILWAY_ENVIRONMENT"].some((key) => Boolean(env[key]))
@@ -76,7 +76,7 @@ export function validateSubscriptionProfile(env: NodeJS.ProcessEnv) {
     if (marker.version !== 2 || marker.phase !== "sealed" || marker.projectId !== project
       || !Number.isSafeInteger(marker.portBase) || Number(marker.portBase) + 1 !== Number(database.port)
       || Number(marker.portBase) + 10 !== Number(origin.port)
-      || marker.configSha256 !== sha256(config) || marker.baselineSha256 !== sha256(readFileSync(BASELINE))
+      || marker.configSha256 !== sha256(config) || marker.baselineSha256 !== sha256(readFileSync(baseline))
       || typeof marker.instanceId !== "string"
       || !/^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(marker.instanceId)
       || typeof marker.boundContainerId !== "string" || !/^[0-9a-f]{64}$/.test(marker.boundContainerId)) {

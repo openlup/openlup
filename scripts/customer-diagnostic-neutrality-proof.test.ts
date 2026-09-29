@@ -161,7 +161,7 @@ describe("customer diagnostic neutrality driver inputs", () => {
 //
 // ⛔ The withheld names below are literals on purpose. `assertRetainedSourceWithholdClosure` treats a
 // retained source that READS a withheld path as a violation in its own right, and
-// `config/oss-core-readiness-blockers.json` is itself withheld — so loading the catalogue here to
+// the readiness catalogue is itself withheld — so loading the catalogue here to
 // derive them would reintroduce exactly the defect this block exists to catch. The catalogue-wide
 // check is the generator's job; this is the local regression pin.
 const WITHHELD_MODULES = ["server/runtime/scheduledJobHandlers.ts"];

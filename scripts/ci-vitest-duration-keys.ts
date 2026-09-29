@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 
 /**
- * One key form, five readers. `config/ci-vitest-durations.json` is written by
- * `update-ci-vitest-durations.ts`, read by `ci-vitest-groups.ts` for both lanes,
- * by `src/test/setup.ts` for the per-file timeout budget and by
- * `ci-vitest-duration-reporter.ts` for budget pressure. A key minted in one place
- * and parsed in another is exactly the seam a digest key can silently break, so
- * every one of them goes through this module.
+ * One key form, five readers. The per-file duration manifest is written by its
+ * updater, read by the CI group planner for both lanes, by `src/test/setup.ts`
+ * for the per-file timeout budget and by the duration reporter for budget
+ * pressure. A key minted in one place and parsed in another is exactly the seam
+ * a digest key can silently break, so every one of them goes through this
+ * module.
  */
 
 /** `vitest.config.ts` flat ceilings; a derived budget can only raise them. */

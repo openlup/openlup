@@ -21,7 +21,7 @@ import {
  * `helpers/env.ts` (the preview base-URL and bypass-token chain) and `helpers/stripe.ts`
  * pulls `src/checkout/machine/checkoutNavigation`. `verify-closure`
  * (`scripts/generate-oss-neutralization-registry.test.ts`) fails on exactly that edge, and
- * the withhold list in `config/oss-core-readiness-blockers.json` is FROZEN, so the closure
+ * the withhold list in the readiness catalogue is FROZEN, so the closure
  * cannot be answered by adding an entry. `helpers/fixtures.ts` IS retained and is still
  * imported: nothing is copied that does not have to be.
  *

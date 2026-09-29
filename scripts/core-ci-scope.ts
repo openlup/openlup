@@ -13,7 +13,6 @@ const FULL_ROOT_CONTROLS = new Set([
   ".npmrc",
   "Dockerfile",
   "LICENSE",
-  "config/oss-core-readiness-blockers.json",
   "package-lock.json",
   "package.json",
   "scripts/ci-scope.mjs",

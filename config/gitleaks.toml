@@ -8,3 +8,42 @@ regexTarget = "match"
 regexes = [
   '''(?i)^(?:p_)?idempotency[_-]?key\s*[:=]''',
 ]
+
+# Personal-data backstop for contributors. Fixtures use the reserved example and
+# test domains (RFC 2606, RFC 6761), and phone numbers whose national part starts
+# with 0, which no Polish number does. Each exact value below is a fixture this
+# repository already published; do not add new ones.
+[[rules]]
+id = "non-synthetic-email"
+description = "E-mail address outside the reserved example and test domains"
+regex = '''[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'''
+keywords = ["@"]
+
+[[rules.allowlists]]
+description = "reserved domains, the project domain, one-character fixture domains, a provider test sink, URL userinfo placeholders and existing fixtures"
+regexTarget = "match"
+regexes = [
+  '''(?i)@(?:[a-z0-9-]+\.)*(?:example|invalid|test|localhost)$''',
+  '''(?i)@(?:[a-z0-9-]+\.)*example\.(?:com|net|org)$''',
+  '''(?i)@openlup\.com$''',
+  '''(?i)@[a-z0-9]\.[a-z]{2,3}$''',
+  '''(?i)^(?:delivered@[a-z]+\.dev|password@[a-z0-9.-]+|zzz999@xyz\.dev|jane@acmepets\.com|jane@yourcompany\.com|osoba@firma\.pl|ty@przyklad\.pl|jola\.kowalska@gmail\.com|maja\.kowalska@gmail\.com)$''',
+]
+
+[[rules]]
+id = "polish-phone-number"
+description = "Polish +48 phone number outside the fixture range"
+regex = '''\+48[ -]?(?:[0-9][ -]?){8}[0-9]\b'''
+keywords = ["+48"]
+
+[[rules.allowlists]]
+description = "national part starting with 0 and existing fixture numbers"
+regexTarget = "match"
+regexes = [
+  '''^\+48[ -]?0''',
+  '''^\+48[ -]?(?:123[ -]?(?:456[ -]?(?:789|788|123)|123[ -]?123)|987[ -]?654[ -]?321|512[ -]?345[ -]?678)$''',
+  '''^\+48[ -]?(?:111[ -]?(?:111[ -]?111|222[ -]?333|000[ -]?(?:000|111|016))|222[ -]?222[ -]?222|444[ -]?555[ -]?666)$''',
+  '''^\+48[ -]?(?:666[ -]?777[ -]?888|777[ -]?888[ -]?999|999[ -]?(?:999[ -]?999|888[ -]?777)|511[ -]?222[ -]?333)$''',
+  '''^\+48[ -]?(?:500[ -]?(?:100[ -]?(?:100|200)|600[ -]?700|999[ -]?999)|501[ -]?002[ -]?003|512[ -]?000[ -]?111|600[ -]?700[ -]?800)$''',
+  '''^\+48[ -]?(?:507[ -]?231[ -]?665|666[ -]?867[ -]?015)$''',
+]
