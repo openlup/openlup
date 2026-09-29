@@ -1,7 +1,7 @@
 /**
  * @agent-domain-reference
  * REFERENCE IMPLEMENTATION — the canonical agent-operable domain. New domains
- * copy this shape (see `mcp/PLAYBOOK.md`, Wave 5). Do NOT treat Promotions as
+ * copy this shape. Do NOT treat Promotions as
  * the reference — it is a back-compat harness (`@agent-domain-anti-reference`).
  *
  * Catalog write rules — the named, enforced business invariants of the

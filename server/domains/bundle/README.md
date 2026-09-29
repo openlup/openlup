@@ -18,8 +18,8 @@ target price.
   folds one batched answer through the pure kernel in
   `src/domains/bundle/availability.ts`.
 - **Does not own:** storage. No table name, routine name or data client appears in
-  this folder. Both live in `server/adapters/`, and the runtime binding in
-  `server/runtime/bundleCatalog/` decides which one answers.
+  this folder. Both live in `server/adapters/`, and the deployment's runtime
+  binding decides which one answers.
 - **Does not own:** the composition rules themselves. A non-empty
   `composition_constraint` is handed to the injected `CompositionRulesPort`; this
   domain stores and forwards the envelope and never interprets it.

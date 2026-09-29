@@ -94,8 +94,8 @@ describe("payment domain primitives", () => {
 });
 
 /**
- * The payment status canon. Prose about these statuses lives in
- * `docs/PAYMENT_STATUS_CANON.md`; this is the half a document cannot do.
+ * The payment status canon. Prose about these statuses lives in the payment
+ * status canon document; this is the half a document cannot do.
  *
  * Every constant above is a copy of a decision that is actually enforced in SQL:
  * a CHECK constraint decides which status values a row may hold, and one function
@@ -104,7 +104,7 @@ describe("payment domain primitives", () => {
  * database, and the disagreement shows up as a payer told the wrong thing about
  * their money. That is the shape of the 2026-08-27 checkout dead end: the verdict
  * and the reasoning behind it lived in different files, and neither could see the
- * other. `docs/PAYMENT_STATUS_CANON.md` carries the incident reference.
+ * other. The payment status canon document carries the incident reference.
  *
  * So these tests read the tracked SQL and compare. They never generate SQL: the
  * migrations stay the authority, and a mismatch is reported rather than papered

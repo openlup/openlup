@@ -7,7 +7,7 @@ export interface DogZone {
   h: number;
 }
 
-// Cocker spaniel bounding box on PL labels (measured against public/labels/lamb_front.png).
+// Cocker spaniel bounding box on PL labels (measured against the deployment's front label art).
 // Used as the editable region in mask-based generation.
 export const DOG_ZONE: DogZone = { x: 383, y: 920, w: 957, h: 580 };
 

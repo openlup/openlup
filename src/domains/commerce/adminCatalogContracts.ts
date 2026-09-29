@@ -16,7 +16,7 @@ import { adminModeFields, idempotencyKeyField } from "../../lib/agent-domain/rul
  * @agent-domain-reference
  * REFERENCE IMPLEMENTATION — the canonical agent-operable domain write contracts.
  * New domains derive their request contracts by spreading the same generic
- * `adminModeFields` + `idempotencyKeyField` (see `mcp/PLAYBOOK.md`, Wave 5).
+ * `adminModeFields` + `idempotencyKeyField`.
  *
  * Admin/agent catalog WRITE contracts — the single source of truth that
  * the BFF validates against and the MCP tool schemas will be derived from

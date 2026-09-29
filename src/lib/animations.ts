@@ -10,8 +10,8 @@ export const fadeUp: Variants = {
 };
 
 /**
- * Komplet propsów wejściowego fadeUp dla `motion.*`; przy `prefers-reduced-motion`
- * element startuje od stanu końcowego zamiast animować (DESIGN.md §7).
+ * The full set of entry fadeUp props for `motion.*`; under `prefers-reduced-motion`
+ * the element starts from its final state instead of animating.
  */
 export function useFadeUpProps() {
   const shouldReduceMotion = useReducedMotion();

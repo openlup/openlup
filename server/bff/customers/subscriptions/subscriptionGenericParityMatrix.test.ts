@@ -4,8 +4,7 @@
 // the generic update_bundle / resize_bundle protocol + composition levers. Every
 // row is either PROVEN (an exact generic equivalent is reachable and its money-
 // path equality is proven in pgTAP) or a KNOWN_GAP asserted here so a future
-// closure OR regression of the gap is loud. See the wave plan §6 for the full
-// matrix and docs/plan/oss/briefs/subscription-vertical-agnostic-faza-a.md E2.
+// closure OR regression of the gap is loud.
 //
 // OSS-readiness note: alias verb names are referenced through the exported
 // production constant SUBSCRIPTION_ACTIONS_REQUIRING_ACCEPTED_QUOTE instead of

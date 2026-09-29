@@ -6,7 +6,7 @@ import { type PaymentExecutionProvider } from "../../../src/domains/payment/type
  * Provider-neutral selection of a payment execution adapter (W11.0 seam).
  *
  * Today only no-op providers exist; real PSP adapters (stripe/tpay) plug in here
- * in W11.7 by mapping their `provider_kind` to a folder under `api/adapters/`.
+ * in W11.7 by mapping their `provider_kind` to an adapter folder.
  * Provider name strings stay confined to adapters + this registry, per the
  * repo's vendor-neutrality convention.
  */

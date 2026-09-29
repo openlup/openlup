@@ -30,7 +30,7 @@ describe("customer diagnostic neutrality receipt", () => {
     expect(Object.keys(built)).toEqual([
       "schemaVersion", "legs", "counts", "outcomes", "unknowns", "generatedAt",
     ]);
-    // `scripts/edge-canary/receipt.ts` requires these; this axis proves a database, not a deployment.
+    // A deployment canary receipt requires these; this axis proves a database, not a deployment.
     for (const foreign of ["sourceSha", "targetClasses", "rollback", "identifiers", "immutableDeploymentUrl"]) {
       expect(built).not.toHaveProperty(foreign);
     }
@@ -155,18 +155,9 @@ describe("customer diagnostic neutrality driver inputs", () => {
   });
 });
 
-// The Wave 5 rework: this proof is RETAINED by the publication delta, so its closure may not reach a
-// withheld module and it may not ship a Git executable. All three were violations once — the
-// scheduler-handler module, the edge-canary fingerprint, and a `.sh` wrapper carrying a shebang.
+// This proof is published, so it may not ship a Git executable, and the ports it drives must be the
+// published ones.
 //
-// ⛔ The withheld names below are literals on purpose. `assertRetainedSourceWithholdClosure` treats a
-// retained source that READS a withheld path as a violation in its own right, and
-// the readiness catalogue is itself withheld — so loading the catalogue here to
-// derive them would reintroduce exactly the defect this block exists to catch. The catalogue-wide
-// check is the generator's job; this is the local regression pin.
-const WITHHELD_MODULES = ["server/runtime/scheduledJobHandlers.ts"];
-const WITHHELD_PREFIXES = ["scripts/edge-canary/", "scripts/secrets/", "scripts/openlup/"];
-
 // ⛔ Both reads are LITERAL. A retained source whose filesystem path the closure checker cannot
 // resolve statically becomes an `opaqueSourceDependencyEdges` entry in the frozen publication
 // catalogue, and this file iterating a path array produced exactly that drift once.
@@ -193,18 +184,9 @@ describe("OSS publication closure", () => {
     expect(all).toContain("server/adapters/postgres/migrationRunner.ts");
   });
 
-  it("imports no module the publication withholds", () => {
-    for (const [name, contents] of SOURCES) {
-      const reached = repoImports(contents).filter((target) =>
-        WITHHELD_MODULES.includes(target) || WITHHELD_PREFIXES.some((prefix) => target.startsWith(prefix)));
-      expect(reached, name).toEqual([]);
-    }
-  });
-
-  it("drives the drain through the retained runtime, not the withheld scheduler module", () => {
+  it("drives the drain through the published prune runtime", () => {
     expect(LEGS).toContain("runCustomerDiagnosticPrune");
     expect(LEGS).toContain('invocationSource: "node_cron"');
-    expect(repoImports(LEGS)).not.toContain("server/runtime/scheduledJobHandlers.ts");
   });
 
   it("ships no shell executable beside the proof", () => {

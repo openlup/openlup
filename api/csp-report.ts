@@ -8,10 +8,10 @@
  * we can review the violation set and tighten the policy before promoting it to
  * enforcing mode.
  *
- * Deliberately NO Supabase write and NO Origin allowlist — same rationale as
- * api/feedback-event.ts (zero persistence, low attack surface), and CSP reports
- * legitimately arrive with no usable Origin header (sent by the user agent, not
- * by page JS). We size-cap and truncate everything to bound abuse / log spam.
+ * Deliberately NO Supabase write and NO Origin allowlist (zero persistence, low
+ * attack surface), and CSP reports legitimately arrive with no usable Origin
+ * header (sent by the user agent, not by page JS). We size-cap and truncate
+ * everything to bound abuse / log spam.
  *
  * Accepts both report formats:
  *   - Legacy:  content-type application/csp-report  -> { "csp-report": {...} }

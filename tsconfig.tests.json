@@ -14,7 +14,6 @@
   },
   "include": [
     "tests",
-    "src/overlays/*/tests/starterDisclosureNavigation.test.tsx",
     "src/test/setup.ts",
     "src/test/vitestProvidedContext.d.ts",
     "src/vite-env.d.ts"

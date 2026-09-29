@@ -5,9 +5,8 @@
  * trusting raw query params. Node marketing senders build the token to embed in
  * the email footer; `api/unsubscribe.ts` verifies it.
  *
- * This module is the only implementation. The former Deno mirror
- * (`supabase/functions/_shared/unsubscribe-token.ts`) was deleted with the
- * `unsubscribe` Edge function; nothing has to be kept in sync any more.
+ * This module is the only implementation. The former Deno mirror was deleted
+ * with the `unsubscribe` Edge function; nothing has to be kept in sync any more.
  *
  * WebCrypto only (global `crypto.subtle`/`btoa`/`atob`, Node 18+).
  */

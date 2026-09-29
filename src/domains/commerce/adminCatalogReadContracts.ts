@@ -19,7 +19,7 @@ import { COMMERCE_CONTRACT_VERSION } from "./types.js";
  * so they expose the full lifecycle the storefront read port hides. Every read is
  * paginated (`...paginationFields`) and carries no `mode`/idempotency — a read is
  * a pure load. New domains derive their read contracts by spreading the same
- * generic `paginationFields` (see `mcp/PLAYBOOK.md`).
+ * generic `paginationFields`.
  */
 
 const responseVersionField = {

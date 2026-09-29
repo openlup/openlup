@@ -10,7 +10,7 @@ import { resolveAdmin } from "./auth.js";
 import { mapRpcError } from "./rpcErrors.js";
 
 /**
- * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`api/_lib/admin-domain/`).
+ * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`server/_lib/admin-domain/`).
  *
  * The write/read handler factories every agent-operable admin domain reuses.
  * `createAdminMutationHandler` is lifted verbatim (behaviour-identical) from the
@@ -20,7 +20,7 @@ import { mapRpcError } from "./rpcErrors.js";
  * shape (`toResponse`), and the exact human-facing strings so behaviour parity
  * is preserved per domain.
  *
- * Neutral home: imports nothing from `src/domains/*` / `api/domains/*`.
+ * Neutral home: imports nothing from `src/domains/*` / `server/domains/*`.
  */
 
 export interface AdminMutationHandlerDeps<TReq, TResult> {

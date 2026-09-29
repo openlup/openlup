@@ -122,6 +122,8 @@ Code rollback must remain compatible with the expanded schema. A destructive
 down migration is not a rollback plan. Each stage needs a clear readback and
 failure boundary; a backfill that cannot be safely retried is incomplete.
 
+<!-- openlup-doc-impact {"unit":"data","digest":"sha256-d915406b81907bb044829233faec2bebfaf66b6176c4b4f7ec8c836d240d1c86","reason":"Comment-only delta in five pgTAP test files. Comments stop naming downstream scripts and documents and name the runner by its public command. No SQL statement, assertion, migration or compatibility rule described here changes."} -->
+
 ## Contract changes
 
 Schema constraints, stored-money representations, identifier formats, and

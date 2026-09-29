@@ -11,7 +11,7 @@ import {
  * Flavour identity for the account UI — resolves a subscription line to its
  * flavour slug, can image and accent colour, reusing the deployment's own pack
  * art through `#storefront-can-art` and the brand colour SoT from
- * `src/data/products.ts`.
+ * the deployment's product data module.
  *
  * Display-only: the editor still drives the mix through the catalog and
  * `subscriptionEditModel`. Resolution is by recipe name (PL or EN) so it works

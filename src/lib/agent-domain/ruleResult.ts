@@ -8,7 +8,7 @@ import { z } from "../validation/zod.js";
  * request-rule check returns. These are lifted verbatim from the catalog
  * reference (Wave 4) so a second domain reuses them instead of re-deriving them.
  *
- * Do NOT import anything from `src/domains/*` or `api/domains/*` here — the
+ * Do NOT import anything from `src/domains/*` or `server/domains/*` here — the
  * `kitIsDomainNeutral` guardrail fails the build if a neutral home does.
  */
 

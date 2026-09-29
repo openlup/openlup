@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 /**
  * The UI half of the subscription journey, seeded.
  *
- * `docs/plan/oss-subscription-axis-audit.md` §1.5 records that the axis has a port-level
+ * The subscription-axis audit records that the axis has a port-level
  * journey (reference skeleton B) and **no** journey at any level that drives a page. This
  * spec is that seed, scoped to the entry: it drives the neutral entry the way a customer
  * does — pick an offer, pick a recurrence, fill the details, subscribe — and asserts the

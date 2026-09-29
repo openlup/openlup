@@ -65,6 +65,8 @@ Useful falsifiers include malformed admission, replay without provider
 acknowledgement, a reservation block and a timeout after dispatch. See
 [evidence and limits](#evidence-and-limits) before choosing a runnable test scope.
 
+<!-- openlup-doc-impact {"unit":"subscription-renewal","digest":"sha256-7d363323ca6915ac1702096fe1de62888cc84dd10898aefdb6691ac7bcfe7968","reason":"Comment-only delta. The renewal tick route names the deployment's scheduled renewal cron by role instead of by a downstream path. The renewal workflow, its lease and every step described here are unchanged."} -->
+
 ## Recover payment
 
 [paymentRecoveryHandler.ts](../../server/domains/subscription/paymentRecoveryHandler.ts)

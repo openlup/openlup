@@ -31,10 +31,9 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   })(req, res);
 }
 
-// No `featureFlags` entry, and that is a decision rather than an omission: see
-// section 4 of docs/plan/oms-replacement-r2c-operator-surface.md. The command is
-// admin-authenticated, reachable only from one operator button, and refuses closed
-// eighteen ways before it mutates anything.
+// No `featureFlags` entry, and that is a decision rather than an omission. The
+// command is admin-authenticated, reachable only from one operator button, and
+// refuses closed eighteen ways before it mutates anything.
 export default withObservedRoute({
   route: "/api/bff/admin/commerce/orders/request-replacement-shipment",
   domain: "commerce",

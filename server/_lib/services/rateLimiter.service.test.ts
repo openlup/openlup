@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { rateLimiter } from "./rateLimiter.service.js";
 
 describe("rateLimiter shim (default in-memory singleton)", () => {
-  it("returns a SYNCHRONOUS decision (callers like api/process.ts depend on this)", () => {
+  it("returns a SYNCHRONOUS decision (synchronous callers depend on this)", () => {
     const decision = rateLimiter.check("shim-ip-sync", 0);
     expect(decision).not.toBeInstanceOf(Promise);
     expect(decision).toEqual({ allowed: true, retryAfterSec: 0 });

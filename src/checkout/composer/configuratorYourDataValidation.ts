@@ -31,7 +31,7 @@ export interface YourDataEvaluation {
  *
  * Returns the canonical phone alongside the errors because
  * `validatePhoneField` already computes the E.164 form to decide validity, and
- * `docs/CANONICAL_FORM_FIELDS.md` requires the caller to keep it: "After a
+ * the canonical form-field rules require the caller to keep it: "After a
  * successful parse, use `validatePhoneField(...).value`". This step used to
  * type the result as `{ success: boolean }`, which made `.value` structurally
  * unreachable, so a valid national number (`507231665`) passed validation and

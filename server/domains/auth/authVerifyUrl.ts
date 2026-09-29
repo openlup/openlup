@@ -1,15 +1,15 @@
 /**
  * The `/auth/v1/verify` GET link the Auth send-email hook puts in a message.
  *
- * A leaf module on purpose: `scripts/customer-auth-get-verify.ts` builds the same
+ * A leaf module on purpose: a downstream operator script builds the same
  * URL to probe the real endpoint, and that probe only catches a token/token_hash
  * flip (#1032/#1034) because it shares this code rather than reimplementing it.
  * The probe is loaded by `node --experimental-strip-types`, which does not
  * rewrite `.js` specifiers, so this file deliberately imports nothing - pulling
  * it out of `authSendEmailHook.ts` is what lets both callers reach it.
  *
- * It replaced `supabase/functions/_shared/auth-verify-url.ts`, which was the
- * shared copy until the Edge tree was retired on 2026-09-04.
+ * It replaced the Edge function tree's shared copy of this builder, which lived
+ * there until the Edge tree was retired on 2026-09-04.
  */
 
 function authVerifyType(actionType: string): string {

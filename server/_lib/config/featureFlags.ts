@@ -10,8 +10,8 @@
  * Combo helpers (checkoutPaymentExecutionEnabled, tpayPaymentExecutionModeEnabled,
  * checkoutPaymentExecutionMissingFlags, checkoutRiskBlockingEnabled,
  * stripeWebhookEnabled) are copied VERBATIM from their original call-sites
- * (server/bff/commerce/checkout.ts, server/bff/payment/webhooks/stripe.ts) to
- * guarantee byte-identical branch order and output tokens.
+ * (the deployment's checkout route and payment webhook route) to guarantee
+ * byte-identical branch order and output tokens.
  */
 import { FLAG, SECRET } from "./flagNames.js";
 

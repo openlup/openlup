@@ -15,7 +15,7 @@ const ToastViewport = React.forwardRef<
     ref={ref}
     className={cn(
       // From `sm` the viewport sits at the bottom edge, under the consent prompt
-      // (z-9998); the DESIGN.md "Fixed bottom layering" token lifts it above.
+      // (z-9998); the design system's fixed-bottom layering token lifts it above.
       "fixed top-0 z-100 flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-[var(--consent-prompt-height,0px)] sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
       className,
     )}

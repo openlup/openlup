@@ -4,16 +4,16 @@ import type { Database } from "../../../src/integrations/supabase/types.js";
 import { sendBffError } from "../bff/response.js";
 
 /**
- * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`api/_lib/admin-domain/`).
+ * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`server/_lib/admin-domain/`).
  *
  * Admin authorization spine shared by every agent-operable admin domain: bearer
  * extraction, the service-role + user-scoped Supabase clients, the admin-role
  * gate (re-derives the actor from `admin_users`), and the `resolveAdmin` handler
- * helper. Lifted verbatim from `api/bff/admin/commerce/shared.ts` and
+ * helper. Lifted verbatim from `server/bff/admin/commerce/shared.ts` and
  * `adminPromotionsHandler.ts`; those modules re-export from here for back-compat
  * so the ~90 existing BFF routes do not churn.
  *
- * Neutral home: imports nothing from `src/domains/*` / `api/domains/*`
+ * Neutral home: imports nothing from `src/domains/*` / `server/domains/*`
  * (`kitIsDomainNeutral` guardrail).
  */
 

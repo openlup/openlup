@@ -84,8 +84,7 @@ export function validateSourceReleaseContract(source: string): void {
   if (required.some((value) => !validDigest(value))) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: missing bound digest`);
   if (database?.path !== "src/integrations/supabase/types.ts" || database.binding !== "unbound" || database.replacement !== "adopter-generated-required") throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: database schema seam must remain explicitly unbound`);
   if (raw.compatibility !== undefined) readPublicTypecheckCompatibility(source);
-  const sourceSeed = raw.sourceSeed as JsonObject | undefined;
-  if (sourceSeed !== undefined && (!object(sourceSeed) || !validDigest(sourceSeed.publicationCatalogInventoryDigest) || !validDigest(sourceSeed.publicationCatalogClassDigest))) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: invalid source publication-catalog seed digest`);
+  if (Object.hasOwn(raw, "sourceSeed")) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: sourceSeed is a retired downstream field and is refused`);
 }
 
 export function sourceReleaseContractChangedFields(before: unknown, after: unknown, prefix = ""): string[] {

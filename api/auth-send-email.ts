@@ -1,7 +1,7 @@
 /**
  * The live target of the Supabase Auth Send Email hook in staging and production.
  *
- * The hooks were repointed here on 2026-09-04; `scripts/configure-auth-email-hook.ts`
+ * The hooks were repointed here on 2026-09-04; a deployment operator script
  * sets that target. This endpoint is intentionally public-but-signed: only an exact
  * Standard Webhooks signature can reach email rendering or side effects. Supabase
  * Auth only triggers it - the application owns rendering, transport and the delivery

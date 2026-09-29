@@ -2,7 +2,7 @@ import { isValidPolishNip, normalizePolishNip } from "../../../src/lib/schemas/f
 import { documentNotes, quantityUnit } from "../accounting/invoicePresentation.js";
 import { settlementFields } from "../accounting/invoiceSettlement.js";
 
-// Activation gating lives in ./activationGate.ts, re-exported for callers.
+// Activation gating lives behind the import alias below, re-exported for callers.
 export {
   readFakturowniaDemoPreviewGate,
   readFakturowniaReadinessConfig,

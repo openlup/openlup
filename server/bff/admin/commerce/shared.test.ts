@@ -1,10 +1,9 @@
 /**
  * Smoke test for the commerce admin BFF shared helpers.
  *
- * This file exists as a companion test so the CI coverage guard
- * (scripts/assert-changed-runtime-coverage.ts) does not flag the shared module
- * as lacking coverage. The flag readers are thin env-var wrappers; deeper
- * coverage flows through each route's own test.
+ * This file exists as a companion test so the CI coverage guard does not flag
+ * the shared module as lacking coverage. The flag readers are thin env-var
+ * wrappers; deeper coverage flows through each route's own test.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

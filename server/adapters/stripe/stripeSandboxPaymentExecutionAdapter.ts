@@ -208,12 +208,12 @@ function metadataFor(input: PaymentExecutionInput, flow: string): Record<string,
  *
  * `processing` claims money is moving, and a catch-all used to reach it — so a
  * never-confirmed intent was recorded as a charge in flight, and a payer was
- * told their payment was already processing when no issuer had been asked (that
- * incident is recorded in `docs/BACKEND.md`). `sent_to_provider` is the truth:
- * the request reached the provider, no outcome is known. It belongs to every
- * live-attempt set the platform keeps, so the correction costs no watchdog
- * coverage, and it is fail-closed at the provider-attempt admission gate exactly
- * as `processing` is — admission does not widen by one state.
+ * told their payment was already processing when no issuer had been asked.
+ * `sent_to_provider` is the truth: the request reached the provider, no outcome
+ * is known. It belongs to every live-attempt set the platform keeps, so the
+ * correction costs no watchdog coverage, and it is fail-closed at the
+ * provider-attempt admission gate exactly as `processing` is — admission does
+ * not widen by one state.
  *
  * The catch-all stays `processing` on purpose: an unrecognised provider status is
  * not evidence that nothing happened.

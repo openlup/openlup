@@ -133,11 +133,10 @@ function setFetch(value: typeof fetch | undefined): void {
   });
 }
 
-// The vocabulary is pinned member-for-member against the ROUTE's copy in
-// `server/bff/commerce/checkout-client-event.test.ts`, which is the falsifier
-// that matters. What that test cannot state is the property the closed contract
-// rests on: the codes are a vocabulary, not a schema, so widening the list must
-// never widen the payload.
+// The vocabulary is pinned member-for-member against the ROUTE's copy by the
+// route's own test, which is the falsifier that matters. What that test cannot
+// state is the property the closed contract rests on: the codes are a
+// vocabulary, not a schema, so widening the list must never widen the payload.
 describe("the widened vocabulary stays a vocabulary", () => {
   beforeEach(() => {
     resetCheckoutClientEventDedupForTests();

@@ -112,7 +112,7 @@ export class CommercePricingPolicyUnavailableError extends Error {
 /**
  * Every reason a caller-side refusal can carry. ⛔ Each one answers `400`, which
  * puts it outside every 5xx monitor, so each one owes a dedicated Axiom monitor
- * of its own - `scripts/axiom-bff-observability-lib.test.ts` reads this tuple and
+ * of its own - the deployment's observability test reads this tuple and
  * fails when a reason has none. Adding a member here without adding a monitor is
  * the exact regression this tuple exists to make impossible: `#3275` reclassified
  * `v2_capability_required` from `503` to `400` and silently took the only alert

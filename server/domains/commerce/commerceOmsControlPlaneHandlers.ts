@@ -6,8 +6,7 @@
  * customers and mask a field the strict contract forbids — and the portable
  * `node-postgres` branch of this same contract has neither an actor kind nor an
  * audit client to run it with. The exemption holds only while the projection stays
- * customer-free. Reasoning + precondition: docs/BFF_CONTRACTS.md, Admin Commerce;
- * pinned in `omsControlPlaneReadGovernance.test.ts`.
+ * customer-free, a precondition pinned in `omsControlPlaneReadGovernance.test.ts`.
  */
 import {
   omsControlPlaneDetailRequestSchema,

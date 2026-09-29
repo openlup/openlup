@@ -20,8 +20,7 @@ import {
  *
  * ⛔ Not a place for facts about THIS deployment's route manifest. That `/admin`, `/account` and
  * `/personalizer` are private is a claim about `config/site-routes.json`, and it is pinned where
- * the manifest's other deployment facts already are:
- * `src/lib/hiddenRouteDeploymentGuardrails.test.ts`.
+ * the manifest's other deployment facts already are: the deployment's route guardrail tests.
  */
 const { productionHosts, siteOrigin, crawlPolicy } = siteRoutesManifest;
 

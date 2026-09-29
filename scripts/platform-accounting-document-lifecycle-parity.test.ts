@@ -5,8 +5,6 @@ import { resolveCapturedDocumentDelivery } from "../server/adapters/captured/acc
 
 const EXPECTATION = "config/platform-accounting-document-lifecycle-parity-expectation.json";
 const MIGRATION = "db/platform/migrations/20260812130000_accounting_document_lifecycle_rail.sql";
-const COVERAGE = "config/oss-core-capability-coverage.json";
-const HARNESS = "platform-accounting-document-lifecycle-parity";
 const read = (path: string): string => readFileSync(path, "utf8");
 const expectation = () => JSON.parse(read(EXPECTATION)) as {
   transitions: number;
@@ -114,22 +112,5 @@ describe("the neutral forward", () => {
 
   it("carries no allow-marker of the counted kind", () => {
     expect(read(MIGRATION)).not.toMatch(/[a-z]+:allow-/);
-  });
-});
-
-/**
- * The owner deferred the counter move on 2026-08-12 (variant B'): the rail ships and no cell banks
- * its evidence. That is a claim about a committed file, so it is asserted rather than described -
- * a later wave that wires a cell up must delete this test deliberately.
- */
-describe("the deferred counter move", () => {
-  it("leaves no capability cell citing this harness", () => {
-    expect(read(COVERAGE)).not.toContain(HARNESS);
-  });
-
-  it("leaves the four decision numbers this wave recorded unconsumed", () => {
-    for (const decision of ["OD-089", "OD-090", "OD-091", "OD-092"]) {
-      expect(read(COVERAGE)).not.toContain(decision);
-    }
   });
 });

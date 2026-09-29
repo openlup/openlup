@@ -20,7 +20,7 @@ const RadioGroupItem = React.forwardRef<
     <RadioGroupPrimitive.Item
       ref={ref}
       className={cn(
-        // focus-visible (not bare focus:) per DESIGN.md §8; before:-inset-1 pseudo
+        // focus-visible (not bare focus:); before:-inset-1 pseudo
         // extends the 16px visual to a 24px touch target (WCAG 2.5.8).
         "relative aspect-square h-4 w-4 rounded-full border border-primary text-primary ring-offset-background before:absolute before:-inset-1 before:content-[''] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         className,

@@ -17,7 +17,7 @@
  *
  * Declared here as a structural port rather than imported from the account
  * contract on purpose: a domain module may not reach into another domain's
- * internals (`src/lib/architectureGuardrails.test.ts`), and this question does
+ * internals (the architecture-guardrails convention), and this question does
  * not need the account's full response shape — it needs an owner reference and
  * a status. Both predicates are generic over it, so a caller passing its own
  * richer subscription type gets that same type back and keeps every other field.

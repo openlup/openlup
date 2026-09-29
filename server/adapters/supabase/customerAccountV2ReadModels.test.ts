@@ -213,7 +213,7 @@ function subscription(
 
 // recurringPrice reads only `lineSubtotal.amountMinor`. The rest of the line
 // contract is asserted by the schema tests, and spelling it out here would add
-// neutrality-scanned vocabulary (scripts/oss-readiness.test.ts freezes those
+// neutrality-scanned vocabulary (the neutrality baseline freezes those
 // counts) for no proof value - hence the narrow fixture and the cast.
 /**
  * A subscription line whose frozen subtotal carries **its own** currency, because that

@@ -274,9 +274,9 @@ SELECT is(
 -- refusal holds for each, then prove the retryable half is complete.
 --
 -- `sent_to_provider` is the state a fresh, unconfirmed interactive card intent
--- now occupies (see docs/BACKEND.md — it used to be recorded as `processing`,
--- claiming a charge was in flight when no issuer had been asked). Naming it
--- truthfully must NOT make it admissible, which is what this block pins.
+-- now occupies (it used to be recorded as `processing`, claiming a charge was in
+-- flight when no issuer had been asked). Naming it truthfully must NOT make it
+-- admissible, which is what this block pins.
 
 CREATE TEMP TABLE _fenced_states (position int, status text, prepare_key text);
 INSERT INTO _fenced_states (position, status, prepare_key) VALUES

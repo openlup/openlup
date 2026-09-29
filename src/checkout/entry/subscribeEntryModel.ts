@@ -13,10 +13,10 @@ import type {
  * already publishes.
  *
  * This module is the platform's answer to the a1 gap
- * (`docs/plan/oss-subscription-axis-audit.md` §1.6): line γ published the checkout
+ * of the subscription-axis audit: line γ published the checkout
  * machine at `src/checkout/{machine,adapters,composer}` and left it with no reachable
- * front door, because the only entry that exists is the vertical's own composer under
- * `src/pages/skomponuj-pakiet/**`, which stays in the overlay by `D31`.
+ * front door, because the only entry that exists is the vertical's own composer page,
+ * which stays in the overlay by `D31`.
  *
  * ⛔ This is deliberately NOT a second composer. It reads no subject profile, no ration,
  * no recommendation and no vertical vocabulary. It composes exactly the two neutral

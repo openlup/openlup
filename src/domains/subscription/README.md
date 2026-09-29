@@ -157,3 +157,5 @@ for pure behavior; and the
 and refusal edges. The [reference profile](../../../docs/platform/SUBSCRIPTION_REFERENCE.md)
 owns its bounded evaluation instructions. Source guidance does not prove that a
 hosted installation is active.
+
+<!-- openlup-doc-impact {"unit":"domain-subscription","digest":"sha256-3a208f71d3eae82e01ab698c863ac305e61daa6e61189431ee5656f663c66eb3","reason":"Comment-only delta. Five subscription comments name architecture guardrails, the deployment's cancel-survey and delivery-policy modules and infrastructure adapters by role instead of by downstream path. No subscription contract, lifecycle rule or invariant described here changes."} -->

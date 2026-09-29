@@ -87,7 +87,7 @@ describe("commerce OMS fulfillment eligibility", () => {
  * is always `commerce_payment_intents.status`, whose CHECK constraint admits
  * exactly `PAYMENT_INTENT_STATUSES`, and that equivalence is pinned in
  * `src/domains/payment/payment.test.ts`. These tests state the rest of the
- * mapping and the shape of the hole the cast leaves; `docs/PAYMENT_STATUS_CANON.md`
+ * mapping and the shape of the hole the cast leaves; the payment status canon
  * carries the argument in prose.
  */
 describe("mapOmsPaymentStatus", () => {

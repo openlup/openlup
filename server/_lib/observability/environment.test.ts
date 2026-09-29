@@ -177,8 +177,8 @@ describe("origin-protection environment matrix", () => {
   });
 });
 
-// The admission seam behind the hidden-sandbox fence over customer mutations
-// (server/_lib/hiddenSandboxPreviewGuard.ts) and behind the reference store rail
+// The admission seam behind the deployment's hidden-sandbox fence over customer
+// mutations and behind the reference store rail
 // (server/adapters/localReferenceStoreAdapter.ts). Two keys, in this order: the
 // runtime must SAY it is production, and its operator must have BAKED the
 // confirmation. The row that gave this predicate its reason to exist is

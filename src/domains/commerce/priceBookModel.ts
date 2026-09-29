@@ -2,7 +2,7 @@
  * The static price-book contract.
  *
  * The prices themselves are a deployment's commercial data and stay with it
- * (`src/data/commercePriceBook.ts`); the shape a quote port reads is the same
+ * (in its price-book data module); the shape a quote port reads is the same
  * for every adopter, so it lives here and the data module re-exports it.
  */
 import type { CatalogProductSlug } from "../catalog/types.js";

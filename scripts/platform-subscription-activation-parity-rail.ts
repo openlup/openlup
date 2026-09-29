@@ -1,6 +1,6 @@
 // Verb half of the subscription-activation parity probe (wave C-D17): the one place where each
 // bundle's own routines and tables are named, behind identically-shaped lifecycle verbs. The
-// compared story lives in scripts/platform-subscription-activation-parity.ts and the fixtures it
+// compared story lives in the parity harness and the fixtures it
 // runs on in the -probe module beside this one.
 import {
   AT, CADENCE, CHANNEL, CLIENT, CONSENT_REF, CURRENCY, MAIL, ORDERS, SOURCE, TOTAL,

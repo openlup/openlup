@@ -16,7 +16,7 @@ export const CARD = "rounded-2xl border border-warm-sand bg-white p-5";
 export const CARD_TITLE = "font-display text-[16px] font-semibold text-teal-dark";
 /**
  * `focus-ring` rather than the `focus:border-… focus:outline-none` pair the older
- * admin forms carry: DESIGN.md §8 asks for a keyboard-only ring, and the bare
+ * admin forms carry: the design system asks for a keyboard-only ring, and the bare
  * `focus:` variants fire on mouse clicks too. The a11y surface ratchet counts that
  * pair as `bareFocus` — it does not scan `src/components/admin/`, so this is a
  * choice rather than a forced one, but writing the anti-pattern into a constant

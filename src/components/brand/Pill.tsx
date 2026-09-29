@@ -3,7 +3,7 @@ import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Brand pill/tag atom. See DESIGN.md §9.1.
+ * Brand pill/tag atom.
  *
  * Two tones matching the existing hand-rolled marketing pills:
  *   - body: recipe/flavor tags (font-body, semibold, tracking-wide)

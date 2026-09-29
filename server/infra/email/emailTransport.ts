@@ -188,9 +188,9 @@ export function createResendTransport(opts: {
  *   the production project → RESEND_API_KEY
  *   the staging project    → RESEND_SANDBOX_API_KEY
  *
- * The concrete project names are in docs/SECRETS.md, deliberately not repeated
- * here: this file is a publishable reference adapter and a product name in it is
- * counted vocabulary.
+ * The concrete project names live in the deployment's secrets documentation,
+ * deliberately not repeated here: this file is a publishable reference adapter
+ * and a product name in it is counted vocabulary.
  *
  * A composition root that reads only `RESEND_API_KEY` therefore starts with an
  * empty key on staging, and every send fails with the provider's "API key is

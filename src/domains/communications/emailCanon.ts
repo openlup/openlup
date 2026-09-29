@@ -8,7 +8,7 @@ export type EmailCanonOriginPolicy = "app_origin_required" | "db_template_origin
 export type EmailCanonStatus = "canonical" | "legacy_inline" | "admin_internal" | "db_template_harden_pending" | "external_provider" | "planned_send" | "planned_no_send";
 // The legend is the type. Every value carries the sentence that explains it, so
 // a new locale policy cannot be added without saying what it means, and
-// `docs/EMAIL_CATALOG.md` renders these notes instead of keeping a second copy
+// the email catalog renders these notes instead of keeping a second copy
 // that could drift. The values name this deployment's launch market; an adopter
 // maps them to their own (see the Part II note the catalog renders below them).
 export const EMAIL_CANON_LOCALE_POLICY_LEGEND = [

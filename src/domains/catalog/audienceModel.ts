@@ -5,8 +5,8 @@
  * A deployment supplies the segments themselves — their names, copy, questions
  * and the variants it steers each segment towards. The *shape* is the same for
  * every adopter, so it lives here and the deployment's data module narrows it
- * (see `src/data/breeds/types.ts`, which pins the variant slug to its own closed
- * set while reusing every field declared below).
+ * (its segment types pin the variant slug to their own closed set while reusing
+ * every field declared below).
  *
  * Design note: `slug` fields are an open value space here, exactly as
  * `CatalogProductSlug` is in `./types.ts`. A deployment that wants a closed set
