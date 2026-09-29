@@ -50,8 +50,13 @@ export interface SubscriptionStarterPackContext {
    * the frozen basis only when the template is still that basis.
    */
   currentLines: { subtotalMinor: number | null; listAnchorMinor: number | null };
-  /** Cycle number of the delivery this email is announcing (`upcomingCycleNumber`). */
+  /** Cycle number of the delivery this email is announcing (`upcomingCycle`). */
   upcomingCycleNumber: number;
+  /**
+   * For an open (re-driven) cycle, the delivery-2 discount its first attempt
+   * stored, which the engine keeps on retry; null or absent otherwise.
+   */
+  retriedCycleDiscountMinor?: number | null;
   /**
    * The subscription's own currency, read alongside the marker. Carried rather
    * than assumed: the amount below is money a customer will be charged, and a
@@ -102,7 +107,7 @@ export function starterRenewalEmailFields(
   moneyLabel: StarterMoneyLabelFormatter,
 ): StarterPackEmailFields {
   if (!context) return EMPTY;
-  const charge = upcomingCharge(context, context.upcomingCycleNumber);
+  const charge = upcomingCharge(context, context.upcomingCycleNumber, context.retriedCycleDiscountMinor ?? null);
   if (!charge) return EMPTY;
   if (charge.stage === "delivery2") {
     return {
@@ -148,7 +153,11 @@ export function starterWelcomeEmailFields(
  * email only speaks when the template is still the frozen basis, whose subtotal
  * the marker itself records; otherwise it omits the amount rather than guess.
  */
-function upcomingCharge(context: SubscriptionStarterPackContext, cycleNumber: number) {
+function upcomingCharge(
+  context: SubscriptionStarterPackContext,
+  cycleNumber: number,
+  retriedCycleDiscountMinor: number | null = null,
+) {
   const { marker, templateVersion } = context;
   const subtotalMinor =
     context.currentLines.subtotalMinor ??
@@ -160,5 +169,6 @@ function upcomingCharge(context: SubscriptionStarterPackContext, cycleNumber: nu
     cadenceDays: context.cadenceDays,
     cycleNumber,
     currentLines: { subtotalMinor, listAnchorMinor: context.currentLines.listAnchorMinor },
+    retriedCycleDiscountMinor,
   });
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   quoteLinesListAnchorMinor,
   retriedStarterDiscountMinor,
+  upcomingCycle,
   upcomingCycleNumber,
   resolveStarterDelivery2Discount,
   resolveStarterUpcomingCharge,
@@ -156,6 +157,33 @@ describe("retried cycles", () => {
         retriedCycleDiscountMinor: 7035,
       }),
     ).toEqual({ discountMinor: 7035, basis: "retried_cycle" });
+  });
+
+  it("reads the open cycle's stored discount together with its number", () => {
+    expect(
+      upcomingCycle([
+        { cycleNumber: 1, status: "paid" },
+        { cycleNumber: 2, status: "retry_scheduled", pricingSnapshot: stored(7035) },
+      ]),
+    ).toEqual({ cycleNumber: 2, retriedCycleDiscountMinor: 7035 });
+    expect(upcomingCycle([{ cycleNumber: 1, status: "paid", pricingSnapshot: stored(7035) }])).toEqual({
+      cycleNumber: 2,
+      retriedCycleDiscountMinor: null,
+    });
+  });
+
+  it("states a re-driven delivery 2 at the amount its retry will charge", () => {
+    // Stored 7 035 under the earlier rule; today's rule alone would state 14 528.
+    expect(
+      resolveStarterUpcomingCharge({
+        marker: WORKED_EXAMPLE,
+        templateVersion: BASIS + 1,
+        cadenceDays: 7,
+        cycleNumber: 2,
+        currentLines: { subtotalMinor: 20100, listAnchorMinor: 22350 },
+        retriedCycleDiscountMinor: 7035,
+      })?.totalMinor,
+    ).toBe(20100 - 7035);
   });
 
   it("still clamps a stored discount to leave the minimum payable", () => {

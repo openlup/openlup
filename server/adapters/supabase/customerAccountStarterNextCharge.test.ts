@@ -114,6 +114,27 @@ describe("readStarterNextCharges + nextCharge", () => {
     expect(nextCharge(RECURRING, map.get(SUB))).toBeNull();
   });
 
+  it("states a declined delivery 2 at the discount its retry keeps", async () => {
+    // The first attempt stored 7 035 under an earlier rule; the retry charges 13 065.
+    const cycles = [
+      PAID_CYCLE_1,
+      {
+        subscription_id: SUB,
+        cycle_number: 2,
+        status: "retry_scheduled",
+        pricing_snapshot: {
+          provenance: { starterPack: { reasonCode: "starter_pack_delivery_2", discountMinor: 7035, basisTemplateVersion: 1 } },
+        },
+      },
+    ];
+    const { client: db } = client({ subscription_cycles: cycles, subscription_lines: [LINE] });
+    const map = await readStarterNextCharges(db, [row({ template_version: 2 })]);
+    expect(nextCharge(RECURRING, map.get(SUB))).toEqual({
+      totalGross: { amountMinor: 13065, currency: "EUR" },
+      starterStage: "delivery2",
+    });
+  });
+
   it("states no starter charge for a cancelled subscription", async () => {
     const { client: db, from } = client({ subscription_cycles: [PAID_CYCLE_1], subscription_lines: [LINE] });
     const map = await readStarterNextCharges(db, [row({ status: "cancelled" })]);

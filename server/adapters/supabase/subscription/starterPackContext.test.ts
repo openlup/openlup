@@ -100,6 +100,7 @@ describe("createStarterPackContextPort", () => {
       cadenceDays: 14,
       currentLines: { subtotalMinor: 16_800, listAnchorMinor: 18_700 },
       upcomingCycleNumber: 2,
+      retriedCycleDiscountMinor: null,
       currency: "PLN",
     });
     expect(calls).toEqual(["subscriptions", "subscription_cycles", "subscription_lines"]);
@@ -113,6 +114,26 @@ describe("createStarterPackContextPort", () => {
     });
     const context = await createStarterPackContextPort(db).read("sub-1", new AbortController().signal);
     expect(context?.upcomingCycleNumber).toBe(2);
+    expect(context?.retriedCycleDiscountMinor).toBeNull();
+  });
+
+  it("carries the discount a declined delivery 2 stored, so the reminder states the retry's amount", async () => {
+    const { client: db } = client({
+      subscriptions: [{ starter_pack: MARKER, template_version: 2, cadence_days: 14, currency: "EUR" }],
+      cycles: [
+        { cycle_number: 1, status: "paid" },
+        {
+          cycle_number: 2,
+          status: "retry_scheduled",
+          pricing_snapshot: {
+            provenance: { starterPack: { reasonCode: "starter_pack_delivery_2", discountMinor: 5880, basisTemplateVersion: 1 } },
+          },
+        },
+      ],
+      lines: [{ line_metadata: { productSnapshot: { quoteLine: storedLine(16_800, 18_700) } } }],
+    });
+    const context = await createStarterPackContextPort(db).read("sub-1", new AbortController().signal);
+    expect(context?.retriedCycleDiscountMinor).toBe(5880);
   });
 
   it("reports no line evidence rather than failing when the lines cannot be read", async () => {

@@ -3,7 +3,7 @@ import type { CustomerAccountV2Response } from "../../../src/domains/customers/a
 import {
   quoteLinesListAnchorMinor,
   resolveStarterUpcomingCharge,
-  upcomingCycleNumber,
+  upcomingCycle,
 } from "../../domains/subscription/starterPackCharge.js";
 import { starterPackMarkerSchema, type StarterPackMarker } from "../../domains/subscription/starterPackCycle.js";
 import { storedQuoteLine } from "./subscription/starterPackCycle.js";
@@ -50,7 +50,7 @@ export async function readStarterNextCharges(
     const [cycles, lines] = await Promise.all([
       serviceClient
         .from("subscription_cycles")
-        .select("subscription_id, cycle_number, status")
+        .select("subscription_id, cycle_number, status, pricing_snapshot")
         .in("subscription_id", ids)
         .order("cycle_number", { ascending: true }),
       serviceClient.from("subscription_lines").select("subscription_id, line_metadata").in("subscription_id", ids),
@@ -60,7 +60,11 @@ export async function readStarterNextCharges(
       for (const cycle of (cycles.data ?? []) as Row[]) {
         const entry = result.get(String(cycle.subscription_id));
         if (entry && typeof cycle.cycle_number === "number") {
-          entry.cycles.push({ cycleNumber: cycle.cycle_number, status: String(cycle.status ?? "") });
+          entry.cycles.push({
+            cycleNumber: cycle.cycle_number,
+            status: String(cycle.status ?? ""),
+            pricingSnapshot: cycle.pricing_snapshot,
+          });
         }
       }
     }
@@ -87,7 +91,7 @@ export interface StarterNextChargeInput {
   marker: StarterPackMarker;
   templateVersion: number;
   cadenceDays: number;
-  cycles: Array<{ cycleNumber: number; status: string }>;
+  cycles: Array<{ cycleNumber: number; status: string; pricingSnapshot?: unknown }>;
   listAnchorMinor: number | null;
   /** False when a read failed: the cycle number or list evidence would be a guess. */
   linesRead: boolean;
@@ -96,7 +100,7 @@ export interface StarterNextChargeInput {
 
 /**
  * The next charge shown to the customer, for the cycle number the engine will
- * use (`upcomingCycleNumber`). A starter subscription whose cycles or lines
+ * use (`upcomingCycle`), with the discount an open cycle's retry will keep. A starter subscription whose cycles or lines
  * could not be read states nothing (null) rather than an amount priced off half
  * the evidence; the panel then shows only the regular package price.
  */
@@ -108,11 +112,13 @@ export function nextCharge(
   const regular: NextCharge = { totalGross: recurringPrice.totalGross, starterStage: null };
   if (!starter) return regular;
   if (!starter.linesRead || !starter.cyclesRead) return null;
+  const upcoming = upcomingCycle(starter.cycles);
   const charge = resolveStarterUpcomingCharge({
     marker: starter.marker,
     templateVersion: starter.templateVersion,
     cadenceDays: starter.cadenceDays,
-    cycleNumber: upcomingCycleNumber(starter.cycles),
+    cycleNumber: upcoming.cycleNumber,
+    retriedCycleDiscountMinor: upcoming.retriedCycleDiscountMinor,
     currentLines: {
       subtotalMinor: recurringPrice.subtotalGross.amountMinor,
       listAnchorMinor: starter.listAnchorMinor,

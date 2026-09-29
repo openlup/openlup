@@ -98,6 +98,15 @@ describe("starterRenewalEmailFields", () => {
     });
   });
 
+  it("announces a declined delivery 2 at the discount its retry keeps", () => {
+    // The first attempt stored 5 880 under an earlier rule; 16 800 - 5 880 = 10 920.
+    const retried = context({ templateVersion: 2, retriedCycleDiscountMinor: 5880 });
+    expect(starterRenewalEmailFields(retried, createStarterPackMoneyLabel("pl"))).toEqual({
+      starterStage: "delivery2",
+      starterAmountLabel: expect.stringContaining("109,20"),
+    });
+  });
+
   it("says nothing when the version moved and the lines on file cannot be read", () => {
     const unreadable = context({ templateVersion: 2, currentLines: { subtotalMinor: null, listAnchorMinor: null } });
     expect(starterRenewalEmailFields(unreadable, createStarterPackMoneyLabel("pl"))).toEqual({});

@@ -160,16 +160,30 @@ const OPEN_CYCLE_STATUSES = new Set(["planned", "payment_pending", "payment_fail
  * in), else the highest existing number + 1.
  */
 export function upcomingCycleNumber(cycles: ReadonlyArray<{ cycleNumber: number; status: string }>): number {
-  let open: number | null = null;
+  return upcomingCycle(cycles).cycleNumber;
+}
+
+/**
+ * The upcoming cycle as the renewal engine will build it: its number, and for
+ * an open (re-driven) cycle the delivery-2 discount its first attempt stored,
+ * which the engine keeps on retry. Surfaces that state the amount pass that
+ * discount on, so they state what the retry will charge.
+ */
+export function upcomingCycle(
+  cycles: ReadonlyArray<{ cycleNumber: number; status: string; pricingSnapshot?: unknown }>,
+): { cycleNumber: number; retriedCycleDiscountMinor: number | null } {
+  let open: (typeof cycles)[number] | null = null;
   let highest = 0;
   for (const cycle of cycles) {
     if (!Number.isFinite(cycle.cycleNumber)) continue;
     if (cycle.cycleNumber > highest) highest = cycle.cycleNumber;
-    if (OPEN_CYCLE_STATUSES.has(cycle.status) && (open === null || cycle.cycleNumber < open)) {
-      open = cycle.cycleNumber;
+    if (OPEN_CYCLE_STATUSES.has(cycle.status) && (open === null || cycle.cycleNumber < open.cycleNumber)) {
+      open = cycle;
     }
   }
-  return open ?? highest + 1;
+  return open
+    ? { cycleNumber: open.cycleNumber, retriedCycleDiscountMinor: retriedStarterDiscountMinor(open.pricingSnapshot) }
+    : { cycleNumber: highest + 1, retriedCycleDiscountMinor: null };
 }
 
 export interface StarterUpcomingCharge {
@@ -195,6 +209,8 @@ export function resolveStarterUpcomingCharge(input: {
   cadenceDays: number;
   cycleNumber: number;
   currentLines: { subtotalMinor: number; listAnchorMinor: number | null };
+  /** The open cycle's stored delivery-2 discount (`upcomingCycle`); null for a new cycle. */
+  retriedCycleDiscountMinor?: number | null;
 }): StarterUpcomingCharge | null {
   const { marker, currentLines } = input;
   const phase = deriveStarterPhase({
@@ -209,6 +225,7 @@ export function resolveStarterUpcomingCharge(input: {
       marker,
       subtotalMinor: currentLines.subtotalMinor,
       listAnchorMinor: currentLines.listAnchorMinor,
+      retriedCycleDiscountMinor: input.retriedCycleDiscountMinor ?? null,
     });
     return {
       stage: "delivery2",

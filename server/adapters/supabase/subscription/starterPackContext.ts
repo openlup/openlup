@@ -1,7 +1,7 @@
 import { formatCurrencyMinor } from "../../../../src/lib/currency/formatMinor.js";
 import type { Locale } from "../../../../src/lib/i18n/resolveLocale.js";
 import { starterPackMarkerSchema } from "../../../domains/subscription/starterPackCycle.js";
-import { upcomingCycleNumber } from "../../../domains/subscription/starterPackCharge.js";
+import { upcomingCycle } from "../../../domains/subscription/starterPackCharge.js";
 import type {
   StarterMoneyLabelFormatter,
   SubscriptionStarterPackPort,
@@ -60,20 +60,30 @@ export function createStarterPackContextPort(
       // its number, so a reminder for a declined delivery 2 still says delivery 2.
       const cycles = await client
         .from("subscription_cycles")
-        .select("cycle_number, status")
+        .select("cycle_number, status, pricing_snapshot")
         .eq("subscription_id", subscriptionId)
         .order("cycle_number", { ascending: true });
       if (cycles.error) return null;
-      const rows = (Array.isArray(cycles.data) ? cycles.data : []) as Array<{ cycle_number?: unknown; status?: unknown }>;
+      const rows = (Array.isArray(cycles.data) ? cycles.data : []) as Array<{
+        cycle_number?: unknown;
+        status?: unknown;
+        pricing_snapshot?: unknown;
+      }>;
+      const upcoming = upcomingCycle(
+        rows.map((cycle) => ({
+          cycleNumber: Number(cycle.cycle_number ?? 0),
+          status: String(cycle.status ?? ""),
+          pricingSnapshot: cycle.pricing_snapshot,
+        })),
+      );
       const currentLines = await readStarterLinePricing(client, subscriptionId);
       return {
         marker: marker.data,
         templateVersion: Number(row.template_version ?? 0),
         cadenceDays: Number(row.cadence_days ?? 0),
         currentLines,
-        upcomingCycleNumber: upcomingCycleNumber(
-          rows.map((cycle) => ({ cycleNumber: Number(cycle.cycle_number ?? 0), status: String(cycle.status ?? "") })),
-        ),
+        upcomingCycleNumber: upcoming.cycleNumber,
+        retriedCycleDiscountMinor: upcoming.retriedCycleDiscountMinor,
         currency: typeof row.currency === "string" && row.currency.trim() ? row.currency.trim() : null,
       };
     },

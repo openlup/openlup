@@ -133,7 +133,9 @@ export async function buildSubscriptionCycleSnapshots(
       starterStatePromise,
     ]);
   let templateSnapshot = settledValue(templateSnapshotResult);
-  let { lines, listAnchorMinor } = settledValue(linesResult);
+  const firstLineRead = settledValue(linesResult);
+  let lines = firstLineRead.lines;
+  const listAnchorMinor = firstLineRead.listAnchorMinor;
   const { cycleNumber, retryAttempt, providerAttemptSequence, pricingSnapshot: retriedPricing } =
     settledValue(identityResult);
   const starterState = settledValue(starterStateResult);
