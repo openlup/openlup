@@ -55,6 +55,8 @@ const optionalPolishNipSchema = z
   });
 const moneySchema = z.object({ amountMinor: z.number().int().nonnegative(), currency: platformCurrencySchema });
 const subscriptionRecurringPriceSchema = z.object({ subtotalGross: moneySchema, totalGross: moneySchema, currency: platformCurrencySchema, source: z.enum(["frozen_quote_line", "missing"]) }).strict();
+// The amount the renewal engine will charge next (starter-pack delivery 2 / graduation included).
+const subscriptionNextChargeSchema = z.object({ totalGross: moneySchema, starterStage: z.enum(["delivery2", "graduation"]).nullable() }).strict();
 // Customer-safe read fact for the delivery-aware renewal boundary. It is absent
 // while the rollout is off/shadowed and for legacy subscriptions; money,
 // provider-attempt, and operator-review details deliberately stay server-only.
@@ -101,6 +103,7 @@ export const customerAccountV2SubscriptionSchema = z
     sizeConstraint: z.record(z.string(), z.unknown()).nullable(),
     packageSummary: z.string().max(240).nullable(),
     recurringPrice: subscriptionRecurringPriceSchema.nullable(),
+    nextCharge: subscriptionNextChargeSchema.nullable().optional(),
     lines: z.array(customerAccountV2SubscriptionLineSchema),
   })
   .strict();

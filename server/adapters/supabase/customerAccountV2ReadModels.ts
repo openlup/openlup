@@ -19,6 +19,7 @@ import {
   readSubscriptionActionStates,
 } from "./customerAccountActionRequiredReadModel.js";
 import { readSubscriptionLines } from "./customerAccountSubscriptionLinesReadModel.js";
+import { nextCharge, readStarterNextCharges } from "./customerAccountStarterNextCharge.js";
 import {
   readSubscriptionPaymentMethodEvidence,
   resolveCustomerSubscriptionPaymentMethodStatus,
@@ -94,7 +95,7 @@ export async function readCustomerAccountV2(
 async function readSubscriptionRows(customerClient: SupabaseClient, clientId: string): Promise<Row[]> {
   const { data, error } = await customerClient
     .from("subscriptions")
-    .select("id, pet_id, shipping_address_id, status, cancellation_source, cadence_days, next_cycle_at, edit_window_hours, payment_method_kind, payment_method_ref, template_version, size_constraint")
+    .select("id, pet_id, shipping_address_id, status, cancellation_source, cadence_days, next_cycle_at, edit_window_hours, payment_method_kind, payment_method_ref, template_version, size_constraint, starter_pack")
     .eq("client_id", clientId)
     .order("created_at", { ascending: false })
     // Defensive bound: every per-subscription read fans out over this list. 50 is far
@@ -134,12 +135,13 @@ async function assembleSubscriptions(
   const nextCycleAtBySubscription = new Map(
     rows.map((row) => [text(row.id), nullableText(row.next_cycle_at)] as const),
   );
-  const [lineMap, blockerMap, pauseWindowMap, paymentMethodMap, deliveryAlignmentMap] = await Promise.all([
+  const [lineMap, blockerMap, pauseWindowMap, paymentMethodMap, deliveryAlignmentMap, starterMap] = await Promise.all([
     readSubscriptionLines(serviceClient, subscriptionIds),
     readSubscriptionBlockers(serviceClient, subscriptionIds, nextCycleAtBySubscription),
     readOpenPauseWindows(serviceClient, subscriptionIds),
     readSubscriptionPaymentMethodEvidence(serviceClient, subscriptionIds),
     readSubscriptionDeliveryAlignments(readDeliveryAlignmentRows, nextCycleAtBySubscription),
+    readStarterNextCharges(serviceClient, rows),
   ]);
   return rows.map((row) => {
     const editCutoffAt = editCutoff(nullableText(row.next_cycle_at), numberOrNull(row.edit_window_hours));
@@ -187,6 +189,7 @@ async function assembleSubscriptions(
       sizeConstraint: isRecord(row.size_constraint) ? row.size_constraint : null,
       packageSummary: packageSummary(lines, row.size_constraint),
       recurringPrice: recurringPrice(lines),
+      nextCharge: nextCharge(recurringPrice(lines), starterMap.get(subscriptionId)),
       lines,
     };
   });

@@ -79,6 +79,24 @@ current obligation, so it must never be passed to
 the fact "Parcel delivered". Host adapters supply delivery evidence without
 moving this physical-delivery decision into the browser-shareable engine.
 
+## Starter-pack charges
+
+A starter-pack subscription (marker `subscriptions.starter_pack`) prices its
+first cycles from the offer frozen at checkout.
+[`starterPackCharge.ts`](../../../server/domains/subscription/starterPackCharge.ts)
+is the one computation for every amount a customer is charged or shown for an
+upcoming starter cycle: the renewal engine charges with it, the account read
+model states it as `nextCharge`, and the lifecycle emails announce it.
+
+- Delivery 2 keeps the frozen checkout amount while the line subtotal equals the
+  checkout basis. A reactivation that only bumps `template_version` does not
+  reprice it.
+- A changed composition is priced at 65% of the catalog list total of the lines
+  on file, rounded up, never as a rate taken off the already discounted band
+  subtotal. The list total comes from the same line read as the subtotal.
+- The upcoming cycle number is shared as well: an open cycle keeps its own
+  number, so a declined delivery 2 is still announced and shown as delivery 2.
+
 ## Public surface (import cross-domain ONLY these)
 - `contracts.ts`, `runtimeContracts.ts`, `paymentRecoveryContracts.ts` —
   activation, runtime, dunning, recovery, and cycle contracts.

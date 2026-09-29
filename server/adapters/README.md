@@ -57,3 +57,5 @@ bounded public-source inventory. A repository path establishes source existence
 at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
+
+<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-e8b596e22030e9d7ba391f143dc00356e30b77751ac3595a5a36efcfaf5638f5","reason":"Adapter-internal delta. The managed renewal snapshot builder moves its subscription-line loader into a sibling module that also returns the list total of the same lines; the starter-pack cycle adapter prices delivery 2 from that total; the Supabase customer account read model adds a next-charge field computed by the subscription domain. No capability, provider, rule, ownership row or first-docs link in this document changes."} -->

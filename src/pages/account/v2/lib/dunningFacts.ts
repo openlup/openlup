@@ -97,7 +97,7 @@ export function hasOpenRecoveryCase(
  */
 export function selectSubscriptionArrears(
   account: Pick<CustomerAccountV2Response, "actionRequired" | "recentOrders">,
-  subscription: Pick<CustomerAccountV2Response["subscriptions"][number], "subscriptionId" | "recurringPrice">,
+  subscription: Pick<CustomerAccountV2Response["subscriptions"][number], "subscriptionId" | "recurringPrice" | "nextCharge">,
 ): SubscriptionArrears | null {
   return arrearsOf(account, subscription, selectOpenRecoveryCase(account.actionRequired, subscription.subscriptionId));
 }
@@ -160,24 +160,26 @@ export function expiredRecoveryRoute(
 /** The same figures as `selectSubscriptionArrears`, for the expired case. */
 export function selectExpiredArrears(
   account: Pick<CustomerAccountV2Response, "actionRequired" | "recentOrders">,
-  subscription: Pick<CustomerAccountV2Response["subscriptions"][number], "subscriptionId" | "recurringPrice">,
+  subscription: Pick<CustomerAccountV2Response["subscriptions"][number], "subscriptionId" | "recurringPrice" | "nextCharge">,
 ): SubscriptionArrears | null {
   return arrearsOf(account, subscription, selectExpiredRecoveryCase(account.actionRequired, subscription.subscriptionId));
 }
 
 function arrearsOf(
   account: Pick<CustomerAccountV2Response, "recentOrders">,
-  subscription: Pick<CustomerAccountV2Response["subscriptions"][number], "recurringPrice">,
+  subscription: Pick<CustomerAccountV2Response["subscriptions"][number], "recurringPrice" | "nextCharge">,
   entry: CustomerAccountActionRequired | null,
 ): SubscriptionArrears | null {
   if (!entry) return null;
   const order = entry.orderId
     ? account.recentOrders.find((candidate) => candidate.orderId === entry.orderId) ?? null
     : null;
-  // The order's total wins over the frozen recurring price, and the currency is read
-  // from whichever object won - never combined across the two, which is why this is one
-  // `money` selection rather than two independent `??` chains.
-  const money = order?.total ?? subscription.recurringPrice?.totalGross ?? null;
+  // The order's total wins, then the engine's next charge (a starter-pack delivery is
+  // charged less than the regular price), then the frozen recurring price. The currency
+  // is read from whichever object won - never combined across them, which is why this
+  // is one `money` selection rather than independent `??` chains.
+  const money =
+    order?.total ?? subscription.nextCharge?.totalGross ?? subscription.recurringPrice?.totalGross ?? null;
   return {
     orderId: entry.orderId,
     recoveryEligible: entry.recoveryEligible,

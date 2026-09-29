@@ -3558,6 +3558,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/managed/subscription/subscriptionCycleLines.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/managed/subscription/subscriptionRenewalDuePort.test.ts",
       "class": "public-output"
     },
@@ -5079,6 +5083,14 @@
     },
     {
       "path": "server/adapters/supabase/customerAccountReadStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/customerAccountStarterNextCharge.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/customerAccountStarterNextCharge.ts",
       "class": "public-output"
     },
     {
@@ -10535,6 +10547,14 @@
     },
     {
       "path": "server/domains/subscription/runSubscriptionRenewalBatch.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/subscription/starterPackCharge.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/subscription/starterPackCharge.ts",
       "class": "public-output"
     },
     {
