@@ -1,6 +1,3 @@
-# Package names are shortened to "supabase-js": the rule matches the name
-# inside any scoped source, and the shortened form keeps vendor tokens out of
-# the neutrality count.
 id: bff-database-through-ports
 valid:
   - 'const ids = Array.from(rows, (row) => row.id);'
@@ -14,5 +11,7 @@ invalid:
   - 'const sdk = await import("supabase-js");'
   - 'const db = createClient(url, key);'
   - 'const db = createClient<Database>(url, key);'
+  - 'const db = deps.createClient();'
+  - 'const db = infra?.createClient(url, key);'
   - 'const { data } = await db.from("orders").select("*");'
   - 'await client.rpc("subscription_pause", { id });'

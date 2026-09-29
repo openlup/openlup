@@ -1,10 +1,9 @@
-# Environment reads are written across two lines or in bracket form, which the
-# rule matches and the neutrality count does not.
 id: domain-no-environment-reads
 valid:
   - 'export const currency = (profile: SettlementProfile) => profile.currency;'
   - 'const mode = input.env.mode;'
   - 'const env = { mode: "test" }; export const current = env.mode;'
+  - 'const { env } = settings;'
 invalid:
   - |
     const port = process
@@ -16,3 +15,9 @@ invalid:
   - |
     const mode = import.meta
       .env.MODE;
+  - 'const mode = import.meta["env"].MODE;'
+  - 'const { env } = process;'
+  - |
+    const key = globalThis.process
+      .env.KEY;
+  - 'import { env } from "node:process";'

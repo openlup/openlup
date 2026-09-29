@@ -4,11 +4,14 @@ severity: error
 message: A country or region is adopter policy; read it from the settlement profile or a port, not a literal.
 note: |
   Architecture rule (AGENTS.md): an adopter's local rules stay outside generic
-  platform code. A two-letter country or region code fixed in a domain
-  contract or port makes the platform serve one market. Take it from the
-  settlement profile, configuration or the caller. Fixtures and tests are
-  exempt. The files under `ignores` predate this rule: delete an entry when its
-  file is fixed and never add one.
+  platform code. A two-letter country or region code fixed in domain code makes
+  the platform serve one market. The rule matches such a code in `z.literal`,
+  as the value of a country- or region-named key, property type, variable or
+  JSX attribute (also through `as const` and `satisfies`), and compared with or
+  defaulted onto a country- or region-named value (`===`, `!==`, `??`). Take the
+  code from the settlement profile, configuration or the caller. Tests and
+  fixtures are exempt. The files under `ignores` predate this rule: delete an
+  entry when its file is fixed and never add one.
 files:
   - server/domains/**/*.ts
   - src/domains/**/*.ts
@@ -18,10 +21,12 @@ ignores:
   - "**/*.fixtures.ts"
   - "**/*.testFixtures.ts"
   - "**/*TestKit.ts"
+  - "**/*TestHelpers.ts"
   # An example presentation whose placeholder code is not a real country.
   - src/domains/communications/email/exampleEmailPresentation.ts
   - server/domains/accounting/staticInvoiceDataLookupPort.ts
   - server/domains/commerce/orderRecapMapping.ts
+  - server/domains/company-identity/companyIdentityService.ts
   - server/domains/shipping/dictionaryDeliverySelectionPort.ts
   - server/domains/shipping/staticDeliverySelectionPort.ts
   - src/domains/accounting/accountingControlContracts.ts
@@ -29,14 +34,113 @@ ignores:
   - src/domains/commerce/checkoutContracts.ts
   - src/domains/commerce/configuratorIntentContracts.ts
   - src/domains/commerce/orderRecapContracts.ts
+  - src/domains/company-identity/companyIdentityContracts.ts
+  - src/domains/customers/addressCanonical.ts
+  - src/domains/customers/customerAddressSelfServiceContracts.ts
   - src/domains/shipping/deliverySelectionContracts.ts
   - src/domains/shipping/inpostGeowidgetPoint.ts
+utils:
+  two-letter-code:
+    any:
+      - { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }
+      - { kind: template_string, regex: "^`[A-Z]{2}`$" }
+      - kind: as_expression
+        has: { any: [ { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }, { kind: template_string, regex: "^`[A-Z]{2}`$" } ] }
+      - kind: satisfies_expression
+        has: { any: [ { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }, { kind: template_string, regex: "^`[A-Z]{2}`$" } ] }
+  country-named:
+    any: [ { kind: identifier }, { kind: property_identifier }, { kind: member_expression }, { kind: subscript_expression }, { kind: string } ]
+    regex: "(?i)(country|region)"
 rule:
   any:
-    - pattern: z.literal($CODE)
+    - kind: call_expression
+      all:
+        - has: { field: function, regex: "^z\\.literal$" }
+        - has: { field: arguments, has: { matches: two-letter-code } }
     - kind: pair
       all:
-        - has: { field: key, regex: "^[\"']?(country|countryCode|region)[\"']?$" }
-        - has: { field: value, pattern: $CODE }
-constraints:
-  CODE: { regex: "^[\"'`][A-Z]{2}[\"'`]$" }
+        - has: { field: key, matches: country-named }
+        - has: { field: value, matches: two-letter-code }
+    - kind: variable_declarator
+      all:
+        - has: { field: name, regex: "(?i)(country|region)" }
+        - has: { field: value, matches: two-letter-code }
+    - kind: property_signature
+      all:
+        - has: { field: name, regex: "(?i)(country|region)" }
+        - has: { field: type, has: { stopBy: end, kind: string, regex: "^[\"'][A-Z]{2}[\"']$" } }
+    - kind: call_expression
+      all:
+        - has: { field: function, regex: "\\.default$" }
+        - has: { field: arguments, has: { matches: two-letter-code } }
+        - inside: { stopBy: end, kind: pair, has: { field: key, matches: country-named } }
+    - kind: binary_expression
+      all:
+        - has: { field: operator, regex: "^(===|!==|==|!=|\\?\\?)$" }
+        - has: { matches: two-letter-code }
+        - has: { matches: country-named }
+---
+id: domain-no-country-literals-tsx
+language: Tsx
+severity: error
+message: A country or region is adopter policy; read it from the settlement profile or a port, not a literal.
+note: |
+  Architecture rule (AGENTS.md): an adopter's local rules stay outside generic
+  platform code. A two-letter country or region code fixed in domain code makes
+  the platform serve one market. The rule matches such a code in `z.literal`,
+  as the value of a country- or region-named key, property type, variable or
+  JSX attribute (also through `as const` and `satisfies`), and compared with or
+  defaulted onto a country- or region-named value (`===`, `!==`, `??`). Take the
+  code from the settlement profile, configuration or the caller. Tests and
+  fixtures are exempt. The files under `ignores` predate this rule: delete an
+  entry when its file is fixed and never add one.
+files:
+  - server/domains/**/*.tsx
+  - src/domains/**/*.tsx
+  - packages/core/src/**/*.tsx
+ignores:
+  - "**/*.test.tsx"
+utils:
+  two-letter-code:
+    any:
+      - { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }
+      - { kind: template_string, regex: "^`[A-Z]{2}`$" }
+      - kind: as_expression
+        has: { any: [ { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }, { kind: template_string, regex: "^`[A-Z]{2}`$" } ] }
+      - kind: satisfies_expression
+        has: { any: [ { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }, { kind: template_string, regex: "^`[A-Z]{2}`$" } ] }
+  country-named:
+    any: [ { kind: identifier }, { kind: property_identifier }, { kind: member_expression }, { kind: subscript_expression }, { kind: string } ]
+    regex: "(?i)(country|region)"
+rule:
+  any:
+    - kind: call_expression
+      all:
+        - has: { field: function, regex: "^z\\.literal$" }
+        - has: { field: arguments, has: { matches: two-letter-code } }
+    - kind: pair
+      all:
+        - has: { field: key, matches: country-named }
+        - has: { field: value, matches: two-letter-code }
+    - kind: variable_declarator
+      all:
+        - has: { field: name, regex: "(?i)(country|region)" }
+        - has: { field: value, matches: two-letter-code }
+    - kind: property_signature
+      all:
+        - has: { field: name, regex: "(?i)(country|region)" }
+        - has: { field: type, has: { stopBy: end, kind: string, regex: "^[\"'][A-Z]{2}[\"']$" } }
+    - kind: call_expression
+      all:
+        - has: { field: function, regex: "\\.default$" }
+        - has: { field: arguments, has: { matches: two-letter-code } }
+        - inside: { stopBy: end, kind: pair, has: { field: key, matches: country-named } }
+    - kind: binary_expression
+      all:
+        - has: { field: operator, regex: "^(===|!==|==|!=|\\?\\?)$" }
+        - has: { matches: two-letter-code }
+        - has: { matches: country-named }
+    - kind: jsx_attribute
+      all:
+        - has: { kind: property_identifier, regex: "(?i)(country|region)" }
+        - has: { matches: two-letter-code }

@@ -23,7 +23,7 @@ rule:
         - has: { field: function, regex: "^(import|require)$" }
         - has: { field: arguments, regex: "supabase-js" }
     - kind: call_expression
-      has: { field: function, regex: "^createClient$" }
+      has: { field: function, regex: "(^|\\.)createClient$" }
     - kind: call_expression
       has:
         field: function

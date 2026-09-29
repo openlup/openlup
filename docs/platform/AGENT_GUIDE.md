@@ -139,17 +139,21 @@ Keep changes small, test the affected public contract, and make failures actiona
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.
 
 `npm run lint` runs the ast-grep structural rules in `scripts/ast-grep/rules`
-first and ESLint after them. Run `npx ast-grep scan` after each change and
-before every commit: it applies exactly the rules of the required `typecheck`
-job, in about a second for the tree or milliseconds for named files, so a
-refusal is fixed before CI instead of in it. A refusal names the rule, the
-platform rule behind it and the fix: change the code, not the rule, and never
-add a file to a rule's `ignores`. A new rule cites the platform rule it enforces and ships valid and
-invalid cases in `scripts/ast-grep/rule-tests`. Use
-`npx ast-grep run --pattern '<code pattern>'` to find every structural
-occurrence before and after a change, and add `--rewrite` for a mechanical edit
-across the tree; [contribution checks](../../CONTRIBUTING.md#development-preview-checks)
-describe the rules and their exceptions.
+first and ESLint after them. Run `npx --no -- ast-grep scan` after each change
+and before every commit: it applies exactly the rules of the required
+`typecheck` job, in about a second for the tree or milliseconds for named files,
+so a refusal is fixed before CI instead of in it. Keep `--no --`: without it,
+npx can fetch an unrelated package of the same name when the local binary is
+missing. A refusal names the rule, the platform rule behind it and the fix:
+change the code, not the rule, and never add a file to a rule's `ignores`. A
+justified exception is an `ast-grep-ignore` comment naming the rule on the line
+before the code, with the reason in a comment above it. A new rule cites the
+platform rule it enforces and ships valid and invalid cases in
+`scripts/ast-grep/rule-tests`. Use `npx --no -- ast-grep run --pattern '<code
+pattern>'` to find every structural occurrence before and after a change, and
+add `--rewrite` for a mechanical edit across the tree;
+[contribution checks](../../CONTRIBUTING.md#development-preview-checks) describe the rules and
+their exceptions.
 
 Use only the configuration and test fixtures supplied for the selected development profile. Do not place sensitive values in source, fixtures, logs, or documentation.
 Follow [SECURITY.md](../../SECURITY.md) for reporting and handling a suspected vulnerability; this guide intentionally supplies no reporting address of its own.

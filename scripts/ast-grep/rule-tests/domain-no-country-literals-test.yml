@@ -3,8 +3,26 @@ valid:
   - 'const address = { country: input.country };'
   - 'const kind = z.literal("standard");'
   - 'const zone = { region: "north" };'
+  - 'if (address.country === settlement.country) accept();'
+  - 'const status = order.state === "OK" ? 1 : 0;'
+  - 'const schema = z.object({ note: z.string().default("NA") });'
 invalid:
   - 'const schema = z.object({ country: z.literal("DE") });'
   - 'const address = { country: "FR" };'
   - 'const row = { "region": ''DE'' };'
   - 'const origin = { countryCode: `AT` };'
+  - 'const origin = { shippingCountry: "AT" as const };'
+  - 'const origin = { region_code: "FR" satisfies string };'
+  - 'const DEFAULT_COUNTRY = "DE";'
+  - 'type Address = { country: "FR" };'
+  - 'if (address.country === "DE") validate();'
+  - 'if ("AT" !== input.countryCode) reject();'
+  - 'const country = input.country ?? "FR";'
+  - 'const schema = z.object({ country: z.string().default("DE") });'
+---
+id: domain-no-country-literals-tsx
+valid:
+  - 'export const Field = ({ country }: { country: string }) => <AddressField country={country} />;'
+invalid:
+  - 'export const Field = () => <AddressField country="DE" />;'
+  - 'export const isHome = (country: string) => country === "FR";'
