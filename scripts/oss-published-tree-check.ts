@@ -17,7 +17,7 @@ import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-n
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
-export { assertMaterializedOutputBytes, assertMaterializedOutputInventory, materializePublicPublicationCatalog, materializedOutputPaths, sourceReleaseProjectionDrift, type MaterializedOutputBytesInput, type ProjectionDriftRow } from "./oss-published-tree-output.ts";
+export { assertMaterializedOutputBytes, assertMaterializedOutputInventory, materializePublicPublicationCatalog, materializedOutputPaths, type MaterializedOutputBytesInput } from "./oss-published-tree-output.ts";
 
 const MANIFEST = "package.json";
 

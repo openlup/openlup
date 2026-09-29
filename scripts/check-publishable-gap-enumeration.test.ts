@@ -53,23 +53,10 @@ describe("the public README delegates preview truth to machine contracts", () =>
     expect(policy.contracts.every(({ owners }) => owners.length === 1 && published.has(owners[0]))).toBe(true);
   });
 
-  it("carries the complete B1 guard disposition vocabulary", () => {
-    expect(catalogue.guardViability.map(({ id }) => id)).toEqual([
-      "browser-role",
-      "env-defaults",
-      "migration-header",
-      "order-money",
-      "pii",
-      "publication-bridge-hold",
-      "route-rpc-bff",
-      "seam-default",
-      "source-size-complexity",
-      "vercel-specifiers",
-    ]);
-    // A published guard row names only paths an earlier preview already published, so an adopter
-    // can carry the identical row before it adopts the preview that adds it. The documentation
-    // guard names paths first published in this preview; its row returns after the release.
-    expect(catalogue.guardViability.every((guard) => guard.status === "withheld" && guard.reason.trim() !== "")).toBe(true);
+  it("carries an empty guard disposition vocabulary", () => {
+    // The ten withheld rows named only guards of a downstream checkout and were removed. Adding a
+    // row, withheld or published, changes this expectation deliberately.
+    expect(catalogue.guardViability).toEqual([]);
   });
 
   it("keeps the computed pre-act contract non-activating and non-circular", () => {

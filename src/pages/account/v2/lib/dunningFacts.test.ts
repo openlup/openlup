@@ -106,6 +106,14 @@ describe("selectSubscriptionArrears", () => {
     expect(arrears?.currency).toBe(RECORD_CURRENCY);
   });
 
+  it("prefers the engine's next charge (a starter-pack delivery) over the regular price", () => {
+    const starter = {
+      ...subscription,
+      nextCharge: { totalGross: { amountMinor: 14528, currency: RECORD_CURRENCY }, starterStage: "delivery2" },
+    } as unknown as CustomerAccountV2Response["subscriptions"][number];
+    expect(selectSubscriptionArrears(account([openCase]), starter)?.amountMinor).toBe(14528);
+  });
+
   it("reports no amount rather than inventing one", () => {
     const arrears = selectSubscriptionArrears(account([{ ...openCase, orderId: null }]), {
       subscriptionId: "s1",

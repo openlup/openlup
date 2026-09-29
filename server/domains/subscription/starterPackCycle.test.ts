@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveStarterPhase,
-  resolveDelivery2DiscountMinor,
   starterPackMarkerSchema,
   type StarterPackMarker,
 } from "./starterPackCycle.js";
@@ -151,65 +150,5 @@ describe("deriveStarterPhase", () => {
         cadenceDays: 19,
       }),
     ).toBe("none");
-  });
-});
-
-describe("resolveDelivery2DiscountMinor", () => {
-  it("uses the exact frozen amount when template and subtotal both still match", () => {
-    expect(
-      resolveDelivery2DiscountMinor({ marker: marker(), templateVersion: BASIS, subtotalMinor: 9800 }),
-    ).toBe(3430);
-  });
-
-  it("recomputes from bps when the subtotal moved", () => {
-    // 12000 * 3500 / 10000 = 4200
-    expect(
-      resolveDelivery2DiscountMinor({
-        marker: marker(),
-        templateVersion: BASIS,
-        subtotalMinor: 12_000,
-      }),
-    ).toBe(4200);
-  });
-
-  it("recomputes from bps when the template moved even at the frozen subtotal", () => {
-    // 9800 * 3500 / 10000 = 3430 by arithmetic, but via the bps branch.
-    expect(
-      resolveDelivery2DiscountMinor({
-        marker: marker({ delivery2: { discountBps: 3500, discountMinor: 9999, basisSubtotalMinor: 9800 } }),
-        templateVersion: BASIS + 1,
-        subtotalMinor: 9800,
-      }),
-    ).toBe(3430);
-  });
-
-  it("clamps so at least 100 minor units remain payable", () => {
-    expect(
-      resolveDelivery2DiscountMinor({
-        marker: marker({ delivery2: { discountBps: 10_000, discountMinor: 0, basisSubtotalMinor: 1 } }),
-        templateVersion: BASIS + 1,
-        subtotalMinor: 500,
-      }),
-    ).toBe(400);
-  });
-
-  it("clamps to zero rather than negative when the subtotal is below the floor", () => {
-    expect(
-      resolveDelivery2DiscountMinor({
-        marker: marker({ delivery2: { discountBps: 5000, discountMinor: 0, basisSubtotalMinor: 1 } }),
-        templateVersion: BASIS + 1,
-        subtotalMinor: 50,
-      }),
-    ).toBe(0);
-  });
-
-  it("returns an integer for a rate that does not divide evenly", () => {
-    const value = resolveDelivery2DiscountMinor({
-      marker: marker({ delivery2: { discountBps: 3333, discountMinor: 0, basisSubtotalMinor: 1 } }),
-      templateVersion: BASIS + 1,
-      subtotalMinor: 9801,
-    });
-    expect(Number.isInteger(value)).toBe(true);
-    expect(value).toBe(Math.round((9801 * 3333) / 10_000));
   });
 });

@@ -1,8 +1,6 @@
 import type { Locale } from "../../../src/lib/i18n/resolveLocale.js";
-import {
-  resolveDelivery2DiscountMinor,
-  type StarterPackMarker,
-} from "./starterPackCycle.js";
+import type { StarterPackMarker } from "./starterPackCycle.js";
+import { resolveStarterUpcomingCharge, starterGraduationTotals } from "./starterPackCharge.js";
 
 /**
  * What the lifecycle emails need to know about a starter-pack acquisition.
@@ -15,11 +13,10 @@ import {
  * modules, and the money label arrives through an injected formatter.
  *
  * ⛔ Best-effort by design, unlike the renewal ENGINE's read of the same marker.
- * An email that cannot prove an amount omits it; it never guesses. Whenever
- * `template_version` has moved away from the marker's basis, the frozen numbers
- * no longer describe the template the customer will actually be charged for, so
- * every field is dropped and the email renders exactly as it did before this
- * wave.
+ * An email that cannot prove an amount omits it; it never guesses. Every amount
+ * is the renewal engine's own (`./starterPackCharge.ts`), priced on the lines on
+ * file, so a moved `template_version` changes the amount rather than silencing
+ * it; only an unreadable line subtotal on a moved template drops the fields.
  */
 
 /** Additive optional block mixed into the renewal and welcome email inputs. */
@@ -45,8 +42,21 @@ export type StarterMoneyLabelFormatter = (amountMinor: number, currency: string 
 export interface SubscriptionStarterPackContext {
   marker: StarterPackMarker;
   templateVersion: number;
-  /** Cycle number of the delivery this email is announcing (`max + 1`). */
+  /** Current cadence; the graduation phase depends on it. */
+  cadenceDays: number;
+  /**
+   * Band subtotal and catalog list total of the lines on file; either is null
+   * when it could not be read, and the amount is then omitted or taken from
+   * the frozen basis only when the template is still that basis.
+   */
+  currentLines: { subtotalMinor: number | null; listAnchorMinor: number | null };
+  /** Cycle number of the delivery this email is announcing (`upcomingCycle`). */
   upcomingCycleNumber: number;
+  /**
+   * For an open (re-driven) cycle, the delivery-2 discount its first attempt
+   * stored, which the engine keeps on retry; null or absent otherwise.
+   */
+  retriedCycleDiscountMinor?: number | null;
   /**
    * The subscription's own currency, read alongside the marker. Carried rather
    * than assumed: the amount below is money a customer will be charged, and a
@@ -86,103 +96,79 @@ const EMPTY: StarterPackEmailFields = {};
 /**
  * Facts for the "your renewal is coming up" reminder.
  *
- * Cycle 2 is the discounted repeat of the acquisition template, so the amount is
- * the frozen basis minus the frozen delivery-2 discount — resolved through the
- * SAME function the renewal engine charges with, so the email and the charge
- * cannot disagree.
- *
- * Cycle 3 is the graduation: the subscription is about to switch to the steady
- * package, so the amount and the unit count come from the frozen graduation
- * lines rather than from the current (still-acquisition) template.
+ * The amount comes from `resolveStarterUpcomingCharge`, the SAME computation the
+ * renewal engine charges with, so the email and the charge cannot disagree:
+ * delivery 2 is priced on the lines actually on file (a reactivation or an edit
+ * no longer silences the amount), and the graduation states the frozen steady
+ * package. A cycle the starter pack does not price says nothing.
  */
 export function starterRenewalEmailFields(
   context: SubscriptionStarterPackContext | null,
   moneyLabel: StarterMoneyLabelFormatter,
 ): StarterPackEmailFields {
   if (!context) return EMPTY;
-  const { marker, templateVersion, upcomingCycleNumber } = context;
-  // A moved template means a customer edit landed; the frozen numbers describe a
-  // basket that no longer exists, so say nothing rather than something wrong.
-  if (templateVersion !== marker.basisTemplateVersion) return EMPTY;
-
-  if (upcomingCycleNumber === 2) {
-    const subtotalMinor = marker.delivery2.basisSubtotalMinor;
-    const discountMinor = resolveDelivery2DiscountMinor({
-      marker,
-      templateVersion,
-      subtotalMinor,
-    });
+  const charge = upcomingCharge(context, context.upcomingCycleNumber, context.retriedCycleDiscountMinor ?? null);
+  if (!charge) return EMPTY;
+  if (charge.stage === "delivery2") {
     return {
       starterStage: "delivery2",
-      starterAmountLabel: moneyLabel(subtotalMinor - discountMinor, context.currency),
+      starterAmountLabel: moneyLabel(charge.totalMinor, context.currency),
     };
   }
-
-  if (upcomingCycleNumber === 3) {
-    const totals = graduationTotals(marker);
-    if (totals === null) return EMPTY;
-    return {
-      starterStage: "graduation",
-      starterAmountLabel: moneyLabel(totals.subtotalMinor, context.currency),
-      starterSteadyUnitCount: totals.units,
-      starterSteadyCadenceDays: marker.graduation.cadenceDays,
-    };
-  }
-
-  return EMPTY;
+  const totals = starterGraduationTotals(context.marker);
+  if (totals === null) return EMPTY;
+  return {
+    starterStage: "graduation",
+    starterAmountLabel: moneyLabel(charge.totalMinor, context.currency),
+    starterSteadyUnitCount: totals.units,
+    starterSteadyCadenceDays: context.marker.graduation.cadenceDays,
+  };
 }
 
 /**
  * Facts for the welcome email, sent the moment the acquisition subscription goes
  * active. The payload's `nextCycleAt` is already the delivery-2 date (paid + I,
  * written by the creation RPC), so only the amount and the steady plan are
- * missing.
- *
- * Takes the whole context, not just the marker: an outbox row can be delayed or
- * retried, so the send can land AFTER a customer edit. When `template_version`
- * has moved off the frozen basis, every frozen number describes a package that
- * no longer exists, and this degrades to the ordinary welcome e-mail rather than
- * quoting an amount the customer will never be charged. Same guard the renewal
- * reminder next door applies, for the same reason.
+ * missing. An outbox row can be delayed past a customer edit; the amount is
+ * therefore priced on the lines on file, exactly as the engine will charge it.
  */
 export function starterWelcomeEmailFields(
   context: SubscriptionStarterPackContext | null,
   moneyLabel: StarterMoneyLabelFormatter,
 ): StarterPackEmailFields {
   if (!context) return EMPTY;
-  const { marker, templateVersion } = context;
-  if (templateVersion !== marker.basisTemplateVersion) return EMPTY;
-  const totals = graduationTotals(marker);
-  const discountMinor = resolveDelivery2DiscountMinor({
-    marker,
-    templateVersion: marker.basisTemplateVersion,
-    subtotalMinor: marker.delivery2.basisSubtotalMinor,
-  });
+  const charge = upcomingCharge(context, 2);
+  if (!charge) return EMPTY;
+  const totals = starterGraduationTotals(context.marker);
   return {
     starterStage: "delivery2",
-    starterAmountLabel: moneyLabel(marker.delivery2.basisSubtotalMinor - discountMinor, context.currency),
+    starterAmountLabel: moneyLabel(charge.totalMinor, context.currency),
     starterSteadyUnitCount: totals?.units ?? null,
-    starterSteadyCadenceDays: marker.graduation.cadenceDays,
+    starterSteadyCadenceDays: context.marker.graduation.cadenceDays,
   };
 }
 
-function graduationTotals(
-  marker: StarterPackMarker,
-): { units: number; subtotalMinor: number } | null {
-  let units = 0;
-  let subtotalMinor = 0;
-  for (const line of marker.graduation.lines) {
-    units += line.qty;
-    const amount = lineSubtotalMinor(line.quoteLine);
-    if (amount === null) return null;
-    subtotalMinor += amount;
-  }
-  return { units, subtotalMinor };
-}
-
-function lineSubtotalMinor(quoteLine: Record<string, unknown>): number | null {
-  const subtotal = quoteLine.lineSubtotalGross;
-  if (!subtotal || typeof subtotal !== "object") return null;
-  const amount = (subtotal as Record<string, unknown>).amountMinor;
-  return typeof amount === "number" && Number.isFinite(amount) ? amount : null;
+/**
+ * The engine's amount for `cycleNumber`. Without a readable line subtotal the
+ * email only speaks when the template is still the frozen basis, whose subtotal
+ * the marker itself records; otherwise it omits the amount rather than guess.
+ */
+function upcomingCharge(
+  context: SubscriptionStarterPackContext,
+  cycleNumber: number,
+  retriedCycleDiscountMinor: number | null = null,
+) {
+  const { marker, templateVersion } = context;
+  const subtotalMinor =
+    context.currentLines.subtotalMinor ??
+    (templateVersion === marker.basisTemplateVersion ? marker.delivery2.basisSubtotalMinor : null);
+  if (subtotalMinor === null) return null;
+  return resolveStarterUpcomingCharge({
+    marker,
+    templateVersion,
+    cadenceDays: context.cadenceDays,
+    cycleNumber,
+    currentLines: { subtotalMinor, listAnchorMinor: context.currentLines.listAnchorMinor },
+    retriedCycleDiscountMinor,
+  });
 }

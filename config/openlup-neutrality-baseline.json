@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "sourceCommit": "56761fffbbd66e99b053d1f0ddaf5033d418045f",
+  "sourceCommit": "39d9c9e2b39077c7be530969b5d52de55637f7b3",
   "scannerPins": {
     "packages/core/scripts/neutrality-source-scanner.ts": "ed0158a9149f9bdb53b70f9698e17ceff5f1181c",
     "packages/core/scripts/neutrality-shell-fold.ts": "8821a4797bf2988cf2904bc094ef2658ecbcd5ad",
@@ -1019,10 +1019,6 @@
     "2a736208dec7de4454aa39ffe1f44aa60e5c3ebee8b9bdc140d7a82d80a48544": {
       "ui-6": 2
     },
-    "2a816789c020a0b4676aa5934cd84ac01929e8ccf20dc9389117f0702234a1c6": {
-      "ui-0": 1,
-      "brand": 1
-    },
     "2ab97824a2192fc9aa4b3a1660e6955223b3d30fc4805988454a0869bbb19305": {
       "ui-12": 1,
       "ui-13": 2,
@@ -1491,9 +1487,6 @@
     },
     "409623ae5b659dda06792fab41c900b542d12d36bda251b7477705cd57c01ddc": {
       "ui-6": 1
-    },
-    "40e2fefb6800352ff4712dc45e16b920f30bdbb362f0ca7f1bbdc1b32d511af7": {
-      "ui-15": 3
     },
     "40fa3c0ca8e9ead59edcdb2d95809720651d3fe162bfc43bcc6038c4546abda5": {
       "ui-17": 5
@@ -4336,9 +4329,6 @@
     "cbd5daa1acf6212fb306d8ae0fc191f55525df94acf97242cfa3e995a98d2861": {
       "ui-15": 1
     },
-    "cbeb715f72752f3086d85323073400dfdd5b84f59c3680576c3c4377a8d398df": {
-      "ui-9": 1
-    },
     "cc1534540ff20d35f0d1dafbc947052b6ccd4cc8f7b665f5e08ea3b6939dd7b3": {
       "ui-15": 39
     },
@@ -4377,9 +4367,6 @@
     "cf55fce4029d3d85ebbb0aad54838af2b7ebbf24c417afd679190aefc0fba6ba": {
       "ui-13": 7,
       "ui-14": 11
-    },
-    "cfbdc6b5f5e6ec056dfd3251cfbe26993c05a3af4d395b671fcce03e76a61f8a": {
-      "ui-9": 3
     },
     "cfdce091a6847a637834a9518a5299724b2563792523ed6108a9df08515f7e03": {
       "ui-5": 1,
@@ -4780,9 +4767,6 @@
     "e3f0c1b030c1da13f91ba1ab8059be8c8f6cb3d22ae43db63681fc82e267c6bc": {
       "ui-12": 1,
       "ui-15": 3
-    },
-    "e3f6f38b23a206859938155ddd0c78865bc63f549247fdf38a486a90804a3b20": {
-      "ui-9": 2
     },
     "e4286acf35c825f10a72db4cf8c4c77f2a692da5f620c8970648a63c3b8594be": {
       "ui-5": 4

@@ -80,6 +80,9 @@ describe("loadStarterPackState", () => {
   });
 });
 
+/** A frozen amount that is NOT 35% of the band subtotal (7 035), so the frozen path is observable. */
+const FROZEN = marker({ delivery2: { discountBps: 3500, discountMinor: 5572, basisSubtotalMinor: 20100 } });
+
 describe("prepareStarterPackCycle", () => {
   const state = (over: Partial<{ marker: StarterPackMarker | null; templateVersion: number; cadenceDays: number }> = {}) => ({
     marker: marker(),
@@ -96,6 +99,7 @@ describe("prepareStarterPackCycle", () => {
         cycleNumber: 3,
         state: state({ marker: null }),
         subtotalMinor: 9800,
+        listAnchorMinor: null,
       }),
     ).resolves.toEqual({
       phase: "none",
@@ -111,22 +115,65 @@ describe("prepareStarterPackCycle", () => {
     const result = await prepareStarterPackCycle(client, {
       subscriptionId: SUB_ID,
       cycleNumber: 2,
-      state: state(),
-      subtotalMinor: 9800,
+      state: state({ marker: FROZEN }),
+      subtotalMinor: 20_100,
+      listAnchorMinor: 22_350,
     });
     expect(result).toEqual({
       phase: "delivery2",
-      discountTotalGrossMinor: 3430,
+      discountTotalGrossMinor: 5572,
       reload: false,
       provenance: {
         starterPack: {
           reasonCode: "starter_pack_delivery_2",
-          discountMinor: 3430,
+          discountMinor: 5572,
           basisTemplateVersion: BASIS,
         },
       },
     });
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("keeps the frozen amount after a reactivation bumped the version, reading nothing", async () => {
+    // 35% of the band subtotal would be 7 035; the frozen amount is 5 572, so
+    // this fails against the pre-wave formula instead of agreeing with it.
+    const { client, from } = makeClient();
+    const result = await prepareStarterPackCycle(client, {
+      subscriptionId: SUB_ID,
+      cycleNumber: 2,
+      state: state({ marker: FROZEN, templateVersion: BASIS + 1 }),
+      subtotalMinor: 20_100,
+      listAnchorMinor: 22_350,
+    });
+    expect(result.discountTotalGrossMinor).toBe(5572);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("prices an edited delivery 2 at 65% of the list the builder read with the subtotal", async () => {
+    // Band 26 800, list 29 800 -> ceil(0.65 x 29 800) = 19 370 -> discount 7 430,
+    // where 35% of the band subtotal would have been 9 380.
+    const { client, from } = makeClient();
+    const result = await prepareStarterPackCycle(client, {
+      subscriptionId: SUB_ID,
+      cycleNumber: 2,
+      state: state({ marker: FROZEN, templateVersion: BASIS + 1 }),
+      subtotalMinor: 26_800,
+      listAnchorMinor: 29_800,
+    });
+    expect(result.discountTotalGrossMinor).toBe(26_800 - 19_370);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("uses the band-rate fallback for legacy lines without list evidence", async () => {
+    const { client } = makeClient();
+    const result = await prepareStarterPackCycle(client, {
+      subscriptionId: SUB_ID,
+      cycleNumber: 2,
+      state: state({ marker: FROZEN, templateVersion: BASIS + 1 }),
+      subtotalMinor: 26_800,
+      listAnchorMinor: null,
+    });
+    expect(result.discountTotalGrossMinor).toBe(Math.round((26_800 * 3500) / 10_000));
   });
 
   it("invokes the graduation RPC once with a deterministic key and asks for a reload", async () => {
@@ -136,6 +183,7 @@ describe("prepareStarterPackCycle", () => {
       cycleNumber: 3,
       state: state(),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
     expect(result).toEqual({
       phase: "graduate_full",
@@ -159,6 +207,7 @@ describe("prepareStarterPackCycle", () => {
       cycleNumber: 3,
       state: state({ templateVersion: BASIS + 1, cadenceDays: 28 }),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
     expect(result.phase).toBe("none");
     expect(result.reload).toBe(false);
@@ -172,6 +221,7 @@ describe("prepareStarterPackCycle", () => {
       cycleNumber: 4,
       state: state({ templateVersion: BASIS + 1, cadenceDays: 17 }),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
     expect(result.phase).toBe("graduate_cadence_only");
     expect(result.reload).toBe(true);
@@ -191,6 +241,7 @@ describe("prepareStarterPackCycle", () => {
         cycleNumber: 3,
         state: state(),
         subtotalMinor: 9800,
+        listAnchorMinor: null,
       }),
     ).rejects.toThrow(/subscription_apply_starter_graduation failed: open_cycle/);
   });
@@ -240,6 +291,7 @@ describe("prepareStarterPackCycle - graduation TOCTOU recovery", () => {
       cycleNumber: 3,
       state: state(),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
 
     expect(rpc).toHaveBeenCalledTimes(2);
@@ -270,6 +322,7 @@ describe("prepareStarterPackCycle - graduation TOCTOU recovery", () => {
       cycleNumber: 3,
       state: state(),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
 
     expect(rpc).toHaveBeenCalledTimes(1);
@@ -287,6 +340,7 @@ describe("prepareStarterPackCycle - graduation TOCTOU recovery", () => {
       cycleNumber: 3,
       state: state(),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
 
     expect(rpc).toHaveBeenCalledTimes(1);
@@ -304,6 +358,7 @@ describe("prepareStarterPackCycle - graduation TOCTOU recovery", () => {
       cycleNumber: 3,
       state: state(),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
 
     expect(rpc).toHaveBeenCalledTimes(1);
@@ -320,6 +375,7 @@ describe("prepareStarterPackCycle - graduation TOCTOU recovery", () => {
       cycleNumber: 3,
       state: state(),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
 
     expect(rpc).toHaveBeenCalledTimes(1);
@@ -338,6 +394,7 @@ describe("prepareStarterPackCycle - graduation TOCTOU recovery", () => {
       // Already on the cadence_only arm: a declined result must not recurse.
       state: state({ templateVersion: BASIS + 1, cadenceDays: 17 }),
       subtotalMinor: 9800,
+      listAnchorMinor: null,
     });
 
     expect(rpc).toHaveBeenCalledTimes(1);
@@ -347,7 +404,7 @@ describe("prepareStarterPackCycle - graduation TOCTOU recovery", () => {
     const { client, rpc, from } = makeClient();
     rpc.mockResolvedValueOnce({ data: null, error: null });
     await prepareStarterPackCycle(client, {
-      subscriptionId: SUB_ID, cycleNumber: 3, state: state(), subtotalMinor: 9800,
+      subscriptionId: SUB_ID, cycleNumber: 3, state: state(), subtotalMinor: 9800, listAnchorMinor: null,
     });
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(from).not.toHaveBeenCalled();
@@ -358,7 +415,7 @@ describe("prepareStarterPackCycle - graduation TOCTOU recovery", () => {
       error: null,
     });
     await prepareStarterPackCycle(applied.client, {
-      subscriptionId: SUB_ID, cycleNumber: 3, state: state(), subtotalMinor: 9800,
+      subscriptionId: SUB_ID, cycleNumber: 3, state: state(), subtotalMinor: 9800, listAnchorMinor: null,
     });
     expect(applied.rpc).toHaveBeenCalledTimes(1);
     expect(applied.from).not.toHaveBeenCalled();
@@ -385,6 +442,7 @@ describe("createStarterPackCyclePort", () => {
         cycleNumber: 2,
         state: { marker: marker(), templateVersion: BASIS, cadenceDays: 17 },
         subtotalMinor: 9800,
+        listAnchorMinor: null,
       }),
     ).resolves.toMatchObject({ phase: "delivery2", discountTotalGrossMinor: 3430 });
     expect(rpc).not.toHaveBeenCalled();

@@ -1,5 +1,6 @@
-import { quoteLineSchema } from "../../../../src/domains/commerce/contracts.js";
 import { resolveSubscriptionCycleIdentity } from "./resolveSubscriptionCycleIdentity.js";
+import { loadSubscriptionCycleLines, type QuoteLine } from "./subscriptionCycleLines.js";
+import { retriedStarterDiscountMinor } from "../../../domains/subscription/starterPackCharge.js";
 import {
   starterGraduationFailureMessage,
   type StarterPackCyclePort, type StarterPackCyclePreparation,
@@ -117,7 +118,7 @@ export async function buildSubscriptionCycleSnapshots(
   // Start independent snapshot inputs together, then preserve the old
   // template → lines → cycle-identity error precedence while consuming them.
   const templateSnapshotPromise = loadTemplateSnapshot(client, input.subscriptionId);
-  const linesPromise = loadSubscriptionLineQuoteLines(client, input.subscriptionId);
+  const linesPromise = loadSubscriptionCycleLines(client, input.subscriptionId);
   const identityPromise = resolveSubscriptionCycleIdentity(
     client,
     input.subscriptionId,
@@ -132,8 +133,11 @@ export async function buildSubscriptionCycleSnapshots(
       starterStatePromise,
     ]);
   let templateSnapshot = settledValue(templateSnapshotResult);
-  let lines = settledValue(linesResult);
-  const { cycleNumber, retryAttempt, providerAttemptSequence } = settledValue(identityResult);
+  const firstLineRead = settledValue(linesResult);
+  let lines = firstLineRead.lines;
+  const listAnchorMinor = firstLineRead.listAnchorMinor;
+  const { cycleNumber, retryAttempt, providerAttemptSequence, pricingSnapshot: retriedPricing } =
+    settledValue(identityResult);
   const starterState = settledValue(starterStateResult);
 
   let starter: StarterPackCyclePreparation;
@@ -141,6 +145,8 @@ export async function buildSubscriptionCycleSnapshots(
     starter = await client.prepareStarterPackCycle({
       subscriptionId: input.subscriptionId, cycleNumber, state: starterState,
       subtotalMinor: subtotalGrossMinor(lines),
+      listAnchorMinor,
+      retriedCycleDiscountMinor: retriedStarterDiscountMinor(retriedPricing),
     });
   } catch (error) {
     // Rethrow, never swallow: fail-closed is the point. All this adds is the
@@ -153,10 +159,13 @@ export async function buildSubscriptionCycleSnapshots(
   if (starter.reload) {
     // Graduation rewrote cadence and the non-addon template lines; the values
     // read above describe the package that no longer exists.
-    [templateSnapshot, lines] = await Promise.all([
+    // Graduation rewrote the lines; the list anchor of the old ones is spent.
+    const [reloadedTemplate, reloaded] = await Promise.all([
       loadTemplateSnapshot(client, input.subscriptionId),
-      loadSubscriptionLineQuoteLines(client, input.subscriptionId),
+      loadSubscriptionCycleLines(client, input.subscriptionId),
     ]);
+    templateSnapshot = reloadedTemplate;
+    lines = reloaded.lines;
   }
   const currency = readString(templateSnapshot, "currency");
 
@@ -183,7 +192,7 @@ export async function buildSubscriptionCycleSnapshots(
   };
 }
 
-function subtotalGrossMinor(lines: Array<ReturnType<typeof quoteLineSchema.parse>>): number {
+function subtotalGrossMinor(lines: QuoteLine[]): number {
   return lines.reduce((sum, line) => sum + line.lineSubtotalGross.amountMinor, 0);
 }
 
@@ -208,82 +217,6 @@ async function loadTemplateSnapshot(
     );
   }
   return data as Record<string, unknown>;
-}
-
-interface SubscriptionLineRow {
-  variant_id: string;
-  qty: number;
-  sort_order: number;
-  line_metadata: unknown;
-}
-
-async function loadSubscriptionLineQuoteLines(
-  client: SnapshotSupabaseClient,
-  subscriptionId: string,
-): Promise<Array<ReturnType<typeof quoteLineSchema.parse>>> {
-  const { data, error } = await client
-    .from("subscription_lines")
-    .select("variant_id, qty, sort_order, line_metadata")
-    .eq("subscription_id", subscriptionId)
-    .order("sort_order", { ascending: true })
-    .order("variant_id", { ascending: true });
-  if (error) {
-    throw new SubscriptionCycleSnapshotError(
-      `subscription_lines read failed: ${error.message ?? "unknown"}`,
-      subscriptionId,
-      { cause: error },
-    );
-  }
-  const rows = Array.isArray(data) ? (data as SubscriptionLineRow[]) : [];
-  if (rows.length === 0) {
-    throw new SubscriptionCycleSnapshotError(
-      "subscription has no subscription_lines rows",
-      subscriptionId,
-    );
-  }
-
-  return rows.map((row, index) => extractQuoteLine(row, index, subscriptionId));
-}
-
-function extractQuoteLine(
-  row: SubscriptionLineRow,
-  index: number,
-  subscriptionId: string,
-): ReturnType<typeof quoteLineSchema.parse> {
-  const metadata = row.line_metadata;
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    throw new SubscriptionCycleSnapshotError(
-      `subscription_lines[${index}].line_metadata is not an object`,
-      subscriptionId,
-    );
-  }
-  const productSnapshot = (metadata as Record<string, unknown>).productSnapshot;
-  if (!productSnapshot || typeof productSnapshot !== "object" || Array.isArray(productSnapshot)) {
-    throw new SubscriptionCycleSnapshotError(
-      `subscription_lines[${index}].line_metadata.productSnapshot missing`,
-      subscriptionId,
-    );
-  }
-  const quoteLine = (productSnapshot as Record<string, unknown>).quoteLine;
-  if (!quoteLine || typeof quoteLine !== "object" || Array.isArray(quoteLine)) {
-    throw new SubscriptionCycleSnapshotError(
-      `subscription_lines[${index}].line_metadata.productSnapshot.quoteLine missing`,
-      subscriptionId,
-    );
-  }
-
-  const candidate: Record<string, unknown> = { ...(quoteLine as Record<string, unknown>) };
-  if (typeof candidate.quantity !== "number") candidate.quantity = row.qty;
-  delete candidate.pricingComponents;
-
-  const parsed = quoteLineSchema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new SubscriptionCycleSnapshotError(
-      `subscription_lines[${index}] quoteLine failed schema validation: ${parsed.error.message}`,
-      subscriptionId,
-    );
-  }
-  return parsed.data;
 }
 
 function readString(record: Record<string, unknown>, key: string): string {
