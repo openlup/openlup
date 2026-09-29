@@ -41,7 +41,7 @@
     "check:dco-signoff": "node --experimental-strip-types scripts/dco-signoff-check.ts",
     "guard:client-secret-boundary": "node --experimental-strip-types scripts/check-client-secret-boundary.ts",
     "guard:public-reference-site-routes": "node scripts/site-routes.mjs --public-reference",
-    "lint": "eslint . && ast-grep scan && ast-grep test --skip-snapshot-tests",
+    "lint": "ast-grep scan && ast-grep test --skip-snapshot-tests && eslint .",
     "oss:published-tree": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
     "packages:check": "node --experimental-strip-types scripts/packages/packages-check.ts",
     "test": "node scripts/run-vitest.mjs run",
