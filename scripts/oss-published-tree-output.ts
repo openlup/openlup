@@ -1,40 +1,13 @@
-// Materialized output helpers for the published-tree self-checks: the output inventory, its bytes,
-// the projection drift between a source and a public tree, and the materialized catalogue.
+// Materialized output helpers for the published-tree self-checks: the output inventory, its bytes
+// and the materialized catalogue.
 // `scripts/oss-published-tree-check.ts` re-exports every export of this module.
 
-import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { EXPLICIT_PUBLIC_PROJECTION_PATHS, assertExplicitPublicProjectionWrites, publicProjectionSource, type ProjectionWrite } from "./oss-publication-contract.ts";
+import { assertExplicitPublicProjectionWrites, type ProjectionWrite } from "./oss-publication-contract.ts";
 import { createPublicPublicationCatalog, parsePublicPublicationCatalog } from "./oss-publication-policy.ts";
 
-export type ProjectionDriftRow = { selector: string; sourceSelector: string | null; source: { disposition: "present" | "absent"; digest: string | null }; public: { disposition: "projected" | "absent"; digest: string | null } };
-
 export type MaterializedOutputBytesInput = { sourceRoot: string; publicRoot: string; copiedSourcePaths: Iterable<string>; flattenedOutput: { path: string; contents: string | Buffer }; projectionWrites: Iterable<ProjectionWrite>; additionalProjectionPaths?: Iterable<string> };
-
-const fileDigest = (path: string): string => `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;
-function sourceState(root: string, selector: string | null): ProjectionDriftRow["source"] {
-  if (selector === null || !existsSync(join(root, selector))) return { disposition: "absent", digest: null };
-  return { disposition: "present", digest: fileDigest(join(root, selector)) };
-}
-
-function publicState(root: string, selector: string): ProjectionDriftRow["public"] {
-  if (!existsSync(join(root, selector))) return { disposition: "absent", digest: null };
-  return { disposition: "projected", digest: fileDigest(join(root, selector)) };
-}
-
-export function sourceReleaseProjectionDrift(sourceRoot: string, publicRoot: string): ProjectionDriftRow[] {
-  const explicit = EXPLICIT_PUBLIC_PROJECTION_PATHS.map((selector) => ({
-    selector,
-    sourceSelector: publicProjectionSource(selector),
-    source: sourceState(sourceRoot, publicProjectionSource(selector)),
-    public: publicState(publicRoot, selector),
-  }));
-  const named = new Set<string>(EXPLICIT_PUBLIC_PROJECTION_PATHS);
-  const dynamic = materializedOutputPaths(publicRoot).filter((path) => !named.has(path) && existsSync(join(sourceRoot, path)) && fileDigest(join(sourceRoot, path)) !== fileDigest(join(publicRoot, path)))
-    .map((selector) => ({ selector, sourceSelector: selector, source: sourceState(sourceRoot, selector), public: publicState(publicRoot, selector) }));
-  return [...explicit, ...dynamic].sort((left, right) => left.selector.localeCompare(right.selector));
-}
 
 export function materializedOutputPaths(root: string, prefix = ""): string[] {
   return readdirSync(join(root, prefix), { withFileTypes: true }).flatMap((entry) => {

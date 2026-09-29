@@ -30,20 +30,18 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/agent-review-gate.mjs", "scripts/agent-review-gate.test.ts", "scripts/agent-review-hook.mjs",
   "scripts/agent-review-hosted.mjs", "scripts/agent-review-hosted.test.ts",
   "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
-  "scripts/oss-consume-engine.test.ts", "scripts/oss-consume-github-transport.test.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",
   "scripts/packages/packages-check.ts",
   "scripts/public-reference/grant-operator.mjs", "scripts/public-reference/setup-subscription.mjs",
   "scripts/public-reference/verify-subscription.mjs",
   "scripts/public-ci-neutrality.mjs", "scripts/public-ci-pgtap.mjs",
-  "scripts/run-vitest.mjs", "scripts/site-routes.mjs", "scripts/source-preview-release.ts",
+  "scripts/run-vitest.mjs", "scripts/site-routes.mjs", "scripts/source-preview-release.test.ts", "scripts/source-preview-release.ts",
   "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts",
   "server/runtime/public-reference/serve.ts",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
   "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",
   "vitest.config.ts",
 ] as const;
-export const PUBLIC_WITHHELD_ABSENCE_PROBES = ["scripts/oss-published-tree-check.test.ts -> config/oss-core-readiness-blockers.json", "scripts/oss-published-tree-check.test.ts -> config/oss-split-rehearsal-baseline.json"] as const;
 export const PUBLIC_PROJECTED_OPAQUE_DEPENDENCY_EDGES = { "packages/core/scripts/core-package-consumer-audit.ts": ["unresolved filesystem path: join(packageRoot, path)"] } as const;
 export const PUBLIC_UNBOUND_DATABASE_TYPE_IMPORTERS = ["server/_lib/admin-domain/auth.ts", "server/adapters/dhl/cleanupAdapter.ts", "server/adapters/supabase/adminAuthVerifier.test.ts", "server/adapters/supabase/adminAuthVerifier.ts", "server/adapters/supabase/adminEmailSendsPort.ts", "server/adapters/supabase/adminTesterEmailSendsPort.ts", "server/adapters/supabase/communications/notificationRecipients.ts", "server/adapters/supabase/platform/adminPipelinePort.ts", "server/adapters/supabase/platform/adminPlatformPort.ts", "server/adapters/supabase/platform/adminSettingsPort.ts", "src/integrations/supabase/client.ts", "src/integrations/supabase/customerClient.ts"] as const;
 

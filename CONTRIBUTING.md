@@ -205,9 +205,10 @@ packed-consumer checks. A green root suite alone still does not prove those chec
 CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
-The root test command also includes the source release transport/producer
-falsifiers and, under `scripts/packages`, the package release-shape checks and
-the test that loads the lint configuration with a conditional `imports` map.
+The required test command also includes the source preview release falsifiers
+(`scripts/source-preview-release.test.ts`) and, under `scripts/packages`, the
+package release-shape checks and the test that loads the lint configuration
+with a conditional `imports` map.
 The public test job separately runs the materialized command-contract
 falsifiers, which also run in the complete root scope.
 
@@ -286,23 +287,22 @@ uses Node built-ins and repository code without installing dependencies.
 A change can be released as the next source preview when the required checks of
 Published Tree CI pass and its tree describes itself: the publication catalogue
 lists every tracked path, and `config/openlup-source-release-contract.json`
-matches the tree's bytes. Adding, removing or renaming a file, changing a mode, a
-dependency or a file pinned as projected is releasable on those terms. The release
-producer (`scripts/oss-source-release-contract.ts`) admits additive forwards under
+matches the tree's bytes. Adding, removing or renaming a file, or changing a mode
+or a dependency, is releasable on those terms. Before it tags, the release
+workflow checks the target against the previous preview with
+`assertDescendantSourceRelease` (`scripts/oss-source-release-contract.ts`). That
+check admits additive forwards under
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#additive-forward-release-path).
 It refuses edits or deletions of migration history, non-expand-only SQL, a
 non-prefix portable manifest, bootstrap SQL changes, database schema types
-(`src/integrations/supabase/types.ts`), policy registry changes
-(`config/openlup-policy-registry.json`), or a public path at a
-local-measurement selector of the latest preview's `openlup-source-receipt.json`
-release asset. Such a change can be merged, but say so in the pull request. To list
-those selectors, run
-`jq -r '.drift[] | select(.class == "local-measurement") | .selector' openlup-source-receipt.json`
-on that asset. [Versioning and EOL](.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
-states the complete rule.
+(`src/integrations/supabase/types.ts`) and policy registry changes
+(`config/openlup-policy-registry.json`). Such a change can be merged, but say so
+in the pull request. [Versioning and EOL](.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
+states the complete rule. A preview carries no release asset; GitHub's release
+attestation of the immutable release covers its annotated tag.
 
-The producer, and the workflow's prepare step before it tags, also refuse a
-preview while a tracked code file carries a removal marker
+The workflow's prepare step also refuses, before it tags, a preview while a
+tracked code file carries a removal marker
 (`// openlup-remove-before: openlup-source-preview/<m>`) naming that preview or
 an earlier one, or a comment line starting `// openlup-remove-before:` that does
 not parse. Temporary compatibility files use such a marker so that a preview
@@ -324,8 +324,8 @@ NODE
 
 The snippet keeps the contract's identity and `compatibility` and rewrites its
 digest fields; on an unchanged tree it rewrites the same bytes. The release
-producer enforces the complete self-consistency, byte for byte, when a preview is
-cut. CI checks only part of it: `npm run oss:published-tree -- --inventory`
+workflow's descendant check enforces the complete self-consistency, byte for byte,
+before a preview is tagged. CI checks only part of it: `npm run oss:published-tree -- --inventory`
 compares several digest values with the tree, but not `inventory.classDigest`
 and not the contract's bytes.
 

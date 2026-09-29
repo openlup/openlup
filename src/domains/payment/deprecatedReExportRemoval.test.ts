@@ -12,8 +12,8 @@ import { describe, expect, it } from "vitest";
 // openlup-source-preview/<n>, but a commit sets it only before a preview that
 // stages packages, so this test fails on the CI of a commit that sets 0.9.0 (or
 // a 0.9.0 prerelease) while any re-export remains. The release itself does not
-// depend on that bump: the source preview prepare step and the receipt producer
-// refuse preview 9 while any shim still carries its removal marker line.
+// depend on that bump: the source preview prepare step refuses preview 9 while
+// any shim still carries its removal marker line.
 //
 // The removal PR, in one change: deletes the five shims, and with them their
 // removal markers; deletes this test,
