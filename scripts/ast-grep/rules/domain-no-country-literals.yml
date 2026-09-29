@@ -22,9 +22,11 @@ ignores:
   - "**/*.testFixtures.ts"
   - "**/*TestKit.ts"
   - "**/*TestHelpers.ts"
-  # Placeholder and carrier status codes, not countries.
+  # Not debt: files whose two-letter codes are not countries (an example
+  # placeholder and the carrier status table).
   - src/domains/communications/email/exampleEmailPresentation.ts
   - src/domains/fulfillment/status.ts
+  # Debt: pre-existing country literals; delete an entry when its file is fixed.
   - server/domains/accounting/staticInvoiceDataLookupPort.ts
   - server/domains/commerce/orderRecapMapping.ts
   - server/domains/company-identity/companyIdentityService.ts
@@ -65,6 +67,10 @@ files:
   - packages/core/src/**/*.tsx
 ignores:
   - "**/*.test.tsx"
+  - "**/*.fixtures.tsx"
+  - "**/*.testFixtures.tsx"
+  - "**/*TestKit.tsx"
+  - "**/*TestHelpers.tsx"
 rule:
   any:
     - { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }

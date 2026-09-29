@@ -1,5 +1,7 @@
 id: domain-no-environment-reads
 valid:
+  - 'export function readMode({ env } = settings) { return env; }'
+  - 'const mod = await import("node:path");'
   - 'export const currency = (profile: SettlementProfile) => profile.currency;'
   - 'const mode = input.env.mode;'
   - 'const env = { mode: "test" }; export const current = env.mode;'
@@ -31,3 +33,11 @@ invalid:
   - 'import { env } from "node:process";'
   - 'const runtime = await import("node:process");'
   - 'export { env } from "node:process";'
+  - 'export function readMode({ env } = process) { return env; }'
+  - 'export const readMode = ({ env } = import.meta) => env;'
+  - 'let env; ({ env } = process);'
+  - 'export const load = async () => import(/* webpackIgnore: true */ "node:process");'
+  - 'const runtime = await import( "node:process" , { with: {} });'
+  - 'for (const { env } of [process]) use(env);'
+  - 'import runtime = require("node:process");'
+  - 'const runtime = require("node:process");'

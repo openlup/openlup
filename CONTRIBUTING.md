@@ -196,24 +196,27 @@ for the statement that re-exports the moved module and is removed in
 about a second rather than after the ESLint pass. ESLint's boundary rules check
 import paths; these rules check calls, reads and literals. A module under
 `server/bff` reaches the database only through a port or the actor data gateway:
-it neither imports the database client SDK nor calls `createClient` (directly or
-as a member), `.from()` or `.rpc()`. Domain code under `server/domains`,
-`src/domains` and `packages/core/src` reads no environment variable: it has no
-`env` read or destructuring from an expression that involves `process` or
-`import.meta`, however that expression is wrapped or asserted, and no import,
-dynamic import or re-export of `node:process`; the rule does not follow a value
-through an intermediate variable. The same domain code contains no two-letter
-uppercase string literal in any position, because in this codebase such a
-literal is a country or region code, which is adopter policy. Test files are
-exempt, and so are fixtures and test helpers from the country rule. Files that
-predate a rule are listed in its `ignores`: delete an entry when its file is
-fixed and never add one. A justified exception, such as a genuine non-country
-code, is an `// ast-grep-ignore: <rule-id>` comment on the line before the code,
-with the reason in a comment above it. A new rule states the platform rule it
-enforces, blocks only at zero findings, and has at least one valid and one
-invalid case. The scan and the rule tests take about a second for the whole
-tree, and `npx --no -- ast-grep scan <files>` checks named files in
-milliseconds, so run it after each change and before committing rather than
+it does not load the database client SDK in any form, and does not call
+`createClient`, `.from()` or `.rpc()`, whether by name, as a member, through a
+string index, or behind parentheses or an assertion (static `Array`, `Buffer`,
+`Object`, `Promise` and `Uint8Array` `.from()` excepted). Domain code under
+`server/domains`, `src/domains` and `packages/core/src` reads no environment
+variable: it has no `env` read, and no destructuring of `env` in a declaration,
+parameter default, assignment or loop head, from an expression that involves
+`process` or `import.meta`, however that expression is wrapped or asserted, and
+no import, require, dynamic import or re-export of `node:process`; the rule does
+not follow a value through an intermediate variable. The same domain code
+contains no two-letter uppercase string literal in any position, because in this
+codebase such a literal is a country or region code, which is adopter policy.
+Test files are exempt, and so are fixtures and test helpers from the country
+rule. Files that predate a rule are listed in its `ignores`: delete an entry
+when its file is fixed and never add one. A justified exception, such as a
+genuine non-country code, is an `// ast-grep-ignore: <rule-id>` comment on the
+line before the code, with the reason in a comment above it. A new rule states
+the platform rule it enforces, blocks only at zero findings, and has at least
+one valid and one invalid case. The scan and the rule tests take about a second
+for the whole tree, and `npx --no -- ast-grep scan <files>` checks named files
+in milliseconds, so run it after each change and before committing rather than
 waiting for the hosted job. Keep `--no --`: without it npx can fetch an
 unrelated registry package of the same name when the local binary is missing.
 While iterating, `npx --no -- ast-grep run --pattern '<code pattern>' --lang ts`

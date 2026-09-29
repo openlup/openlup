@@ -5,29 +5,33 @@ message: BFF code reaches the database only through a port or the actor data gat
 note: |
   Architecture rule (AGENTS.md): provider SDKs and database clients stay behind
   adapter and infrastructure boundaries. A BFF module composes a use case; it
-  does not construct a database client, import the client SDK, or call
-  `.from()` / `.rpc()` itself. Inject the port, or use the actor data gateway
+  does not load the client SDK in any form, and does not call `createClient`,
+  `.from()` or `.rpc()`, by name, as a member, through a string index, or
+  behind parentheses or an assertion (static `Array`, `Buffer`, `Object`,
+  `Promise` and `Uint8Array` `.from()` excepted). Inject the port, or use the actor data gateway
   (`createPlatformActorDataGateway`), and move the query into server/adapters.
 files:
   - server/bff/**/*.ts
 ignores:
   - "**/*.test.ts"
+utils:
+  database-callee:
+    any:
+      - { kind: identifier, regex: "^createClient$" }
+      - kind: member_expression
+        has: { field: property, regex: "^(createClient|from|rpc)$" }
+        not: { has: { field: object, regex: "^(Array|Buffer|Object|Promise|Uint8Array)$" } }
+      - kind: subscript_expression
+        has: { field: index, has: { kind: string_fragment, regex: "^(createClient|from|rpc)$" } }
+      - any: [ { kind: parenthesized_expression }, { kind: non_null_expression }, { kind: as_expression }, { kind: satisfies_expression } ]
+        has: { matches: database-callee }
 rule:
   any:
     - kind: import_statement
-      has: { field: source, regex: "supabase-js" }
+      has: { stopBy: end, kind: string_fragment, regex: "supabase-js" }
     - kind: export_statement
-      has: { field: source, regex: "supabase-js" }
+      has: { field: source, has: { kind: string_fragment, regex: "supabase-js" } }
     - kind: call_expression
-      all:
-        - has: { field: function, regex: "^(import|require)$" }
-        - has: { field: arguments, regex: "supabase-js" }
+      has: { field: arguments, has: { kind: string, has: { kind: string_fragment, regex: "supabase-js" } } }
     - kind: call_expression
-      has: { field: function, regex: "(^|\\.)createClient$" }
-    - kind: call_expression
-      has:
-        field: function
-        kind: member_expression
-        all:
-          - has: { field: property, regex: "^(from|rpc)$" }
-          - not: { has: { field: object, regex: "^(Array|Buffer|Object|Promise|Uint8Array)$" } }
+      has: { field: function, matches: database-callee }
