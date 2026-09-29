@@ -5,12 +5,12 @@ message: Domain code does not read the environment; take the value through a por
 note: |
   Architecture rule (AGENTS.md): environment readers stay behind
   infrastructure and adapter boundaries. Read the variable in server/infra or
-  in the composition root and pass the value in. The rule refuses any `env`
-  read, and any destructuring of `env` (declaration, parameter default,
-  assignment or loop head), from an expression that involves `process` or
-  `import.meta`, whatever wraps or asserts it, and any import, require,
-  dynamic import or re-export of `node:process`. It does not follow a value
-  through an intermediate variable. The files under `ignores` predate this rule: delete
+  in the composition root and pass the value in. The rule refuses any `.env`
+  or `["env"]` access, and any destructuring of `env` (declaration, parameter
+  default, assignment or loop head), on an expression that involves `process`
+  or `import.meta`, whatever wraps or asserts it, and any import, `require()`,
+  `createRequire()(...)`, dynamic import or re-export of `node:process`. It
+  does not follow a value through an intermediate variable. The files under `ignores` predate this rule: delete
   an entry when its file is fixed and never add one. A justified exception is
   an `ast-grep-ignore` comment naming this rule on the line before the code,
   with the reason in a comment above it.
@@ -28,6 +28,9 @@ ignores:
   - server/domains/subscription/subscriptionCycleOrderTotals.ts
   - src/domains/shipping/inpostGeowidgetLoader.ts
 utils:
+  env-binding:
+    any: [ { kind: object_pattern }, { kind: array_pattern } ]
+    regex: "\\benv\\b"
   involves-environment:
     any:
       - kind: meta_property
@@ -44,16 +47,27 @@ rule:
       all:
         - has: { field: index, regex: "^[\"'`]env[\"'`]$" }
         - has: { field: object, matches: involves-environment }
-    - kind: object_pattern
-      regex: "\\benv\\b"
-      precedes: { stopBy: end, matches: involves-environment }
+    - any:
+        - { kind: variable_declarator, has: { field: name, matches: env-binding } }
+        - { kind: required_parameter, has: { field: pattern, matches: env-binding } }
+        - { kind: optional_parameter, has: { field: pattern, matches: env-binding } }
+      has: { field: value, matches: involves-environment }
+    - any:
+        - { kind: assignment_expression, has: { field: left, matches: env-binding } }
+        - { kind: assignment_pattern, has: { field: left, matches: env-binding } }
+        - { kind: for_in_statement, has: { field: left, matches: env-binding } }
+      has: { field: right, matches: involves-environment }
     - kind: import_statement
       has: { stopBy: end, kind: string_fragment, regex: "^(node:)?process$" }
     - kind: export_statement
       has: { field: source, has: { kind: string_fragment, regex: "^(node:)?process$" } }
     - kind: call_expression
       all:
-        - has: { field: function, regex: "^(import|require)$" }
+        - has:
+            field: function
+            any:
+              - regex: "^(import|require)$"
+              - { kind: call_expression, has: { field: function, regex: "(^|\\.)createRequire$" } }
         - has: { field: arguments, has: { stopBy: end, kind: string_fragment, regex: "^(node:)?process$" } }
 ---
 id: domain-no-environment-reads-tsx
@@ -63,12 +77,12 @@ message: Domain code does not read the environment; take the value through a por
 note: |
   Architecture rule (AGENTS.md): environment readers stay behind
   infrastructure and adapter boundaries. Read the variable in server/infra or
-  in the composition root and pass the value in. The rule refuses any `env`
-  read, and any destructuring of `env` (declaration, parameter default,
-  assignment or loop head), from an expression that involves `process` or
-  `import.meta`, whatever wraps or asserts it, and any import, require,
-  dynamic import or re-export of `node:process`. It does not follow a value
-  through an intermediate variable. The files under `ignores` predate this rule: delete
+  in the composition root and pass the value in. The rule refuses any `.env`
+  or `["env"]` access, and any destructuring of `env` (declaration, parameter
+  default, assignment or loop head), on an expression that involves `process`
+  or `import.meta`, whatever wraps or asserts it, and any import, `require()`,
+  `createRequire()(...)`, dynamic import or re-export of `node:process`. It
+  does not follow a value through an intermediate variable. The files under `ignores` predate this rule: delete
   an entry when its file is fixed and never add one. A justified exception is
   an `ast-grep-ignore` comment naming this rule on the line before the code,
   with the reason in a comment above it.
@@ -79,6 +93,9 @@ files:
 ignores:
   - "**/*.test.tsx"
 utils:
+  env-binding:
+    any: [ { kind: object_pattern }, { kind: array_pattern } ]
+    regex: "\\benv\\b"
   involves-environment:
     any:
       - kind: meta_property
@@ -95,14 +112,25 @@ rule:
       all:
         - has: { field: index, regex: "^[\"'`]env[\"'`]$" }
         - has: { field: object, matches: involves-environment }
-    - kind: object_pattern
-      regex: "\\benv\\b"
-      precedes: { stopBy: end, matches: involves-environment }
+    - any:
+        - { kind: variable_declarator, has: { field: name, matches: env-binding } }
+        - { kind: required_parameter, has: { field: pattern, matches: env-binding } }
+        - { kind: optional_parameter, has: { field: pattern, matches: env-binding } }
+      has: { field: value, matches: involves-environment }
+    - any:
+        - { kind: assignment_expression, has: { field: left, matches: env-binding } }
+        - { kind: assignment_pattern, has: { field: left, matches: env-binding } }
+        - { kind: for_in_statement, has: { field: left, matches: env-binding } }
+      has: { field: right, matches: involves-environment }
     - kind: import_statement
       has: { stopBy: end, kind: string_fragment, regex: "^(node:)?process$" }
     - kind: export_statement
       has: { field: source, has: { kind: string_fragment, regex: "^(node:)?process$" } }
     - kind: call_expression
       all:
-        - has: { field: function, regex: "^(import|require)$" }
+        - has:
+            field: function
+            any:
+              - regex: "^(import|require)$"
+              - { kind: call_expression, has: { field: function, regex: "(^|\\.)createRequire$" } }
         - has: { field: arguments, has: { stopBy: end, kind: string_fragment, regex: "^(node:)?process$" } }

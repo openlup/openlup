@@ -6,6 +6,7 @@ valid:
   - 'const mode = input.env.mode;'
   - 'const env = { mode: "test" }; export const current = env.mode;'
   - 'const { env } = settings;'
+  - 'for (const { env, job } of queue) { await job.process(); }'
 invalid:
   - |
     const port = process
@@ -41,3 +42,8 @@ invalid:
   - 'for (const { env } of [process]) use(env);'
   - 'import runtime = require("node:process");'
   - 'const runtime = require("node:process");'
+  - 'const [{ env }] = [process];'
+  - 'export function readMode([{ env }] = [process]) { return env; }'
+  - 'let env; [{ env }] = [process];'
+  - 'for (const [{ env }] of [[process]]) use(env);'
+  - 'const runtime = createRequire(import.meta.url)("node:process");'

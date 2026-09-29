@@ -46,6 +46,7 @@ rule:
   any:
     - { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }
     - { kind: template_string, regex: "^`[A-Z]{2}`$" }
+    - { kind: template_literal_type, regex: "^`[A-Z]{2}`$" }
 ---
 id: domain-no-country-literals-tsx
 language: Tsx
@@ -75,3 +76,4 @@ rule:
   any:
     - { kind: string, regex: "^[\"'][A-Z]{2}[\"']$" }
     - { kind: template_string, regex: "^`[A-Z]{2}`$" }
+    - { kind: template_literal_type, regex: "^`[A-Z]{2}`$" }

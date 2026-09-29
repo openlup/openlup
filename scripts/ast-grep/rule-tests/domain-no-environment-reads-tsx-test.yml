@@ -8,3 +8,5 @@ invalid:
   - |
     export const Badge = () => <span>{(import.meta as unknown as { env: Record<string, string> })
       .env.MODE}</span>;
+  - 'export const Mode = ({ env } = import.meta) => <span>{env.MODE}</span>;'
+  - 'export const load = () => import("node:process");'

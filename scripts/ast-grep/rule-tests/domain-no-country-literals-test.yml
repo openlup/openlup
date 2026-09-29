@@ -16,6 +16,7 @@ invalid:
   - 'switch (address.country) { case "DE": break; }'
   - 'const supported = z.enum(["DE", "FR"]);'
   - 'if (["AT"].includes(country)) reject();'
+  - 'type Home = `DE`;'
 ---
 id: domain-no-country-literals-tsx
 valid:
