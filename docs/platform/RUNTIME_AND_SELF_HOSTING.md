@@ -55,7 +55,7 @@ supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
 
-<!-- openlup-doc-impact {"unit": "reference", "digest": "sha256-909e61289de47c5343aa5c4eeeccf2f4280cad68f352f1f72df2a5ce3a6f3b35", "reason": "Test-only delta. The alignment setup test reads the managed forward through the helper that falls back to a platform companion, adds cases for that helper, and skips its byte comparison where the platform file is absent. The profile still replays the managed baseline and seeds the delivery-alignment control row as described; the companion convention is documented in Data and migrations."} -->
+<!-- openlup-doc-impact {"unit": "reference", "digest": "sha256-6d10c65b4b6cc9671df8319935d333b80952deb2bd82c91553db802d46de22f7", "reason": "Test seam delta. validateSubscriptionProfile takes an optional baseline path whose default is the managed baseline, so the marker still binds the generated configuration and that baseline hash as described. The test writes its own baseline fixture and builds each setup outside the refusal assertion, so a missing file can no longer satisfy an expected refusal."} -->
 
 ## Customer diagnostic history preview
 

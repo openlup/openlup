@@ -19,7 +19,7 @@ const buildOutDir = process.env.OPENLUP_BUILD_OUT_DIR ?? "dist";
 // Two constraints shape this. A setup file cannot read the manifest itself: under
 // the coverage lane its `import.meta.url` is not a file: URL, so a filesystem read
 // from there throws for every test file in the run. And this config file is a
-// RETAINED (published) source while `config/ci-vitest-durations.json` is a
+// RETAINED (published) source while the per-file duration manifest is a
 // WITHHELD one, so naming that path here would put a read of a file the published
 // tree does not have into the published tree - `oss-split-rehearsal` refuses it,
 // and it is right to.
@@ -125,7 +125,7 @@ export default defineConfig({
     setupFiles: ["./tests/setup/scrub-git-env.ts", "./src/test/setup.ts"],
     // RR-L4: this is the FLOOR, not the ceiling. `src/test/setup.ts` runs once per
     // test file and raises it to `1.5 x` that file's pinned cost in
-    // `config/ci-vitest-durations.json`; a file the manifest does not weigh keeps
+    // the duration manifest; a file the manifest does not weigh keeps
     // exactly these values. The constants moved to the module both readers share so
     // the floor a budget is computed against cannot drift from the one set here.
     testTimeout: flatTestTimeoutMs(isCoverageRun),

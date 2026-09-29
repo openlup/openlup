@@ -18,15 +18,19 @@ enable_confirmations = true
 [inbucket]
 enabled = true
 `;
+// A stand-in for the flattened baseline, so admission is tested without the public tree's 2.8 MB artifact.
+const BASELINE_FIXTURE = "-- baseline fixture\n";
+const validate = (env: NodeJS.ProcessEnv) => validateSubscriptionProfile(env, join(env.OPENLUP_REFERENCE_SUPABASE_DIR!, "baseline.sql"));
 function setup(text = config): NodeJS.ProcessEnv {
   const directory = mkdtempSync(join(tmpdir(), "reference-profile-test-"));
   scratch.push(directory);
   mkdirSync(join(directory, "supabase"));
   writeFileSync(join(directory, ...OWNED_SUPABASE_CONFIG), text);
+  writeFileSync(join(directory, "baseline.sql"), BASELINE_FIXTURE);
   writeFileSync(join(directory, "subscription-owner.json"), JSON.stringify({
     version: 2, projectId: "openlup-reference-test", portBase: 56420, phase: "sealed",
     boundContainerId: "a".repeat(64), instanceId, configSha256: sha256(text),
-    baselineSha256: sha256(readFileSync(new URL("../../../supabase/migrations/00000000000000_platform_schema_baseline.sql", import.meta.url))),
+    baselineSha256: sha256(BASELINE_FIXTURE),
   }));
   return {
     LOCAL_BFF: "1", OSS_REFERENCE_STORE_PROFILE: "local-supabase-demo-v1",
@@ -46,7 +50,8 @@ describe("disposable subscription admission", () => {
     { OSS_REFERENCE_PAYMENT_OUTCOME: "succeeded" },
   ])("refuses unsuitable environment before a network or write", (change) => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
-    expect(() => validateSubscriptionProfile({ ...setup(), ...change })).toThrow();
+    const env = setup();
+    expect(() => validate({ ...env, ...change })).toThrow();
     expect(fetcher).not.toHaveBeenCalled();
   });
   it.each([
@@ -55,10 +60,11 @@ describe("disposable subscription admission", () => {
     config + "[auth.external.github]\nenabled = true\n",
     config.replace("port = 56421", "port = 54321"),
   ])("refuses unsafe captured configuration", (text) => {
-    expect(() => validateSubscriptionProfile(setup(text))).toThrow();
+    const env = setup(text);
+    expect(() => validate(env)).toThrow();
   });
   it("requires live Auth confirmation, including after a configuration change", async () => {
-    const checked = validateSubscriptionProfile(setup());
+    const checked = validate(setup());
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ mailer_autoconfirm: false, external: { email: true, github: false } })));
     vi.stubGlobal("fetch", fetcher);
     await expect(checked.assertDisposable(async () => instanceId)).resolves.toBeUndefined();
@@ -66,7 +72,7 @@ describe("disposable subscription admission", () => {
     await expect(checked.assertDisposable(async () => instanceId)).rejects.toThrow("captured email confirmation");
   });
   it("refuses a different live database at the same loopback port before Auth or a mutation", async () => {
-    const checked = validateSubscriptionProfile(setup());
+    const checked = validate(setup());
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     await expect(checked.assertDisposable(async () => "31f357fc-909c-4512-a34f-a263514cd91e"))
       .rejects.toThrow("Live database does not match");
@@ -74,7 +80,7 @@ describe("disposable subscription admission", () => {
   });
   it("refuses a changed marker after startup", async () => {
     const env = setup();
-    const checked = validateSubscriptionProfile(env);
+    const checked = validate(env);
     const path = join(env.OPENLUP_REFERENCE_SUPABASE_DIR!, "subscription-owner.json");
     const marker = JSON.parse(readFileSync(path, "utf8"));
     writeFileSync(path, JSON.stringify({ ...marker, instanceId: "31f357fc-909c-4512-a34f-a263514cd91e" }));
@@ -85,7 +91,7 @@ describe("disposable subscription admission", () => {
     const env = setup();
     const path = join(env.OPENLUP_REFERENCE_SUPABASE_DIR!, ...OWNED_SUPABASE_CONFIG);
     rmSync(path);
-    expect(() => validateSubscriptionProfile(env)).toThrow(path);
+    expect(() => validate(env)).toThrow(path);
   });
   it("refuses an unsealed or wrong-port setup marker before a network call", () => {
     for (const change of [{ phase: "bound" }, { portBase: 56440 }, { configSha256: "0".repeat(64) }]) {
@@ -93,7 +99,7 @@ describe("disposable subscription admission", () => {
       const path = join(env.OPENLUP_REFERENCE_SUPABASE_DIR!, "subscription-owner.json");
       const marker = JSON.parse(readFileSync(path, "utf8"));
       writeFileSync(path, JSON.stringify({ ...marker, ...change }));
-      expect(() => validateSubscriptionProfile(env)).toThrow("marker does not identify");
+      expect(() => validate(env)).toThrow("marker does not identify");
     }
   });
 });

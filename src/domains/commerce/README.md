@@ -75,3 +75,5 @@ offer-policy rollout is still a separate control and is not implied here.
 Domain-boundary rules, including the Domain Map and the feature trace, live in
 the maintainer canon `DOMAIN_ARCHITECTURE.md`, which belongs to the private
 overlay and is not part of the published tree.
+
+<!-- openlup-doc-impact {"unit": "domain-commerce", "digest": "sha256-6f0232cb5017625bbd68b66d88a4c951e0c4292030050ffb79ab7a10a8a8b6c5", "reason": "Comment-only delta. A catalog document handler test comment names the readiness catalogue by role instead of by a file path this tree does not contain. No assertion, handler, public surface or code location described here changes."} -->

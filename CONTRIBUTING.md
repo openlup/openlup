@@ -334,9 +334,11 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
-<!-- openlup-doc-impact {"unit": "tooling", "digest": "sha256-3055959d4031d83680d92ecff907419b57fc57a03ca2cbe21238d35e97b9f4fd", "reason": "Release-script fix. The check-draft phase of scripts/source-preview-release.ts finds the draft in the release list, because GitHub's release lookup by tag never returns a draft, and refuses unless exactly one draft carries the tag; the draft body and asset check itself is unchanged, and a unit test covers the lookup. No command, job, check scope or refusal described here changes."} -->
+<!-- openlup-doc-impact {"unit": "tooling", "digest": "sha256-80a663d0fbe1d2cdc197aafae716bd81b577b10957390e853f93e4e3a2b25239", "reason": "Private-path delta. scripts/core-ci-scope.ts and its test drop a full-scope control entry for a readiness file this tree never contains, so no path in this tree changes its classification. Comments in scripts/ci-vitest-duration-keys.ts and scripts/customer-diagnostic-neutrality-proof.test.ts name the duration manifest and the readiness catalogue by role. Every command, job and check scope described here is unchanged."} -->
 
-<!-- openlup-doc-impact {"unit": "repository", "digest": "sha256-0cc29ca1ce324d9c72efecbf9db7764d28ed3ed5a1ad12f0add150f7a5295051", "reason": "Version-only delta. The root lockfile records the core workspace at 0.7.0 instead of 0.6.0; no dependency, resolved version or integrity changes, and npm install --package-lock-only leaves both lockfiles byte-identical. The commands, jobs and checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit": "repository", "digest": "sha256-641d1b4889c10442428cf65b19fffeaa91c1fc9638073e69daf9a3ae2e7239d0", "reason": "Comment-only delta. Two vitest.config.ts comments describe the per-file duration manifest by role instead of by a file path this tree does not contain. Test selection, timeouts and every command and job described here are unchanged."} -->
+
+<!-- openlup-doc-impact {"unit": "tests", "digest": "sha256-a1a1fdd9b28e8f2ec70db1cc11fd97bb17db532eb08450a5b5a1b4cea0aac1dd", "reason": "Comment-only delta. A customer-diagnostic journey drive comment names the readiness catalogue by role instead of by a file path this tree does not contain. The drive and every command and job described here are unchanged."} -->
 
 ## Pull requests
 
