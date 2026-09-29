@@ -7,14 +7,6 @@ export type NeutralizationEntry = { path: string; class: "framework-namespace"; 
 export type NeutralizationProjection = { entries: NeutralizationEntry[]; writes: NeutralizationWrite[]; registryDigest: string; ruleSetDigest: string };
 export type NeutralizationRegistry = { schemaVersion: 1; ruleSetDigest: string; reason: string; entries: NeutralizationEntry[] };
 export type PublicCoordinateProfile = { repository: string; securityRoute: string };
-/**
- * The path the registry occupied while it was carried by every branch.
- *
- * Nothing reads it any more: it is kept so the artifact writer can refuse to put the cache back,
- * which is the one destination `--registry-out` must never accept.
- */
-export const NEUTRALIZATION_REGISTRY_PATH = "config/oss-operational-coordinate-projections.json";
-
 const digest = (contents: string): string => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
 
 /**

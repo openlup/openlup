@@ -235,8 +235,8 @@ export function parseAffinityGroups(value: unknown, isolatedFiles: readonly stri
 }
 
 /**
- * Wave 4's placement rule. Four coverage files share one process-wide scan cache
- * (`tests/setup/oss-readiness-run-cache.ts`): the first to ask pays for the scan and every
+ * Wave 4's placement rule. Test files can share one process-wide cache, such as a
+ * repository scan: the first to ask pays for the scan and every
  * later member in the SAME Vitest main process reads the stored result. LPT weighs files
  * one at a time, so it spreads them over shards and each shard holding one pays again.
  *
