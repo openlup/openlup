@@ -18,7 +18,6 @@ describe("commerce fulfillment admin shared auth", () => {
   });
 
   it("does not own Supabase client construction in the BFF helper", () => {
-    expect(source).not.toContain("@supabase/supabase-js");
     expect(source).not.toContain("createClient");
     expect(source).not.toContain("Database");
     expect(source).toContain("readSupabaseAdminServiceEnv");

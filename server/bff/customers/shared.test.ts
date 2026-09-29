@@ -75,7 +75,6 @@ describe("customer shared DB boundary", () => {
   it("does not own Supabase SDK imports or local client construction", () => {
     const source = readFileSync("server/bff/customers/shared.ts", "utf8");
 
-    expect(source).not.toContain("@supabase/supabase-js");
     expect(source).not.toContain("createClient");
     expect(source).not.toContain("createSupabaseIdentityVerifier");
   });

@@ -10,9 +10,6 @@ describe("admin platform role BFF composition", () => {
       "utf8",
     );
 
-    expect(source).not.toContain("@supabase/supabase-js");
-    expect(source).not.toMatch(/\bcreateClient(?:\s*<[^>]+>)?\s*\(/);
-    expect(source).not.toMatch(/\.(?:from|rpc)\s*\(/);
     expect(source).toContain("createPlatformActorDataGateway");
     expect(source).toContain("createSupabaseAdminSettingsPort");
   });

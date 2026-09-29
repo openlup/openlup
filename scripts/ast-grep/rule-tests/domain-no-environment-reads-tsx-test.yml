@@ -1,0 +1,7 @@
+id: domain-no-environment-reads-tsx
+valid:
+  - 'export const Badge = ({ mode }: { mode: string }) => <span>{mode}</span>;'
+invalid:
+  - |
+    export const Badge = () => <span>{import.meta
+      .env.MODE}</span>;

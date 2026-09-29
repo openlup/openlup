@@ -1,0 +1,70 @@
+id: domain-no-environment-reads
+language: TypeScript
+severity: error
+message: Domain code does not read the environment; take the value through a port or a parameter.
+note: |
+  Architecture rule (AGENTS.md): environment readers stay behind
+  infrastructure and adapter boundaries. Read the variable in server/infra or
+  in the composition root and pass the value in. The files under `ignores`
+  predate this rule: delete an entry when its file is fixed and never add one.
+  A justified exception is an `ast-grep-ignore` comment for this rule on the
+  line above, with the reason in a comment next to it.
+files:
+  - server/domains/**/*.ts
+  - src/domains/**/*.ts
+  - packages/core/src/**/*.ts
+ignores:
+  - "**/*.test.ts"
+  - server/domains/catalog/catalogPricingJoin.ts
+  - server/domains/commerce/commerceDiagnostics.ts
+  - server/domains/commerce/dbBackedCommerceQuotePort.ts
+  - server/domains/commerce/offerPolicyReadiness.ts
+  - server/domains/commerce/promotionCodePreview.ts
+  - server/domains/subscription/subscriptionCycleOrderTotals.ts
+  - src/domains/shipping/inpostGeowidgetLoader.ts
+rule:
+  any:
+    - kind: member_expression
+      all:
+        - has: { field: object, regex: "^process$" }
+        - has: { field: property, regex: "^env$" }
+    - kind: subscript_expression
+      all:
+        - has: { field: object, regex: "^process$" }
+        - has: { field: index, regex: "^[\"'`]env[\"'`]$" }
+    - kind: member_expression
+      all:
+        - has: { field: object, kind: meta_property }
+        - has: { field: property, regex: "^env$" }
+---
+id: domain-no-environment-reads-tsx
+language: Tsx
+severity: error
+message: Domain code does not read the environment; take the value through a port or a parameter.
+note: |
+  Architecture rule (AGENTS.md): environment readers stay behind
+  infrastructure and adapter boundaries. Read the variable in server/infra or
+  in the composition root and pass the value in. The files under `ignores`
+  predate this rule: delete an entry when its file is fixed and never add one.
+  A justified exception is an `ast-grep-ignore` comment for this rule on the
+  line above, with the reason in a comment next to it.
+files:
+  - server/domains/**/*.tsx
+  - src/domains/**/*.tsx
+  - packages/core/src/**/*.tsx
+ignores:
+  - "**/*.test.tsx"
+rule:
+  any:
+    - kind: member_expression
+      all:
+        - has: { field: object, regex: "^process$" }
+        - has: { field: property, regex: "^env$" }
+    - kind: subscript_expression
+      all:
+        - has: { field: object, regex: "^process$" }
+        - has: { field: index, regex: "^[\"'`]env[\"'`]$" }
+    - kind: member_expression
+      all:
+        - has: { field: object, kind: meta_property }
+        - has: { field: property, regex: "^env$" }

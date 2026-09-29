@@ -1,0 +1,10 @@
+id: domain-no-country-literals
+valid:
+  - 'const address = { country: input.country };'
+  - 'const kind = z.literal("standard");'
+  - 'const zone = { region: "north" };'
+invalid:
+  - 'const schema = z.object({ country: z.literal("DE") });'
+  - 'const address = { country: "FR" };'
+  - 'const row = { "region": ''DE'' };'
+  - 'const origin = { countryCode: `AT` };'

@@ -1,0 +1,18 @@
+# Environment reads are written across two lines or in bracket form, which the
+# rule matches and the neutrality count does not.
+id: domain-no-environment-reads
+valid:
+  - 'export const currency = (profile: SettlementProfile) => profile.currency;'
+  - 'const mode = input.env.mode;'
+  - 'const env = { mode: "test" }; export const current = env.mode;'
+invalid:
+  - |
+    const port = process
+      .env.PORT;
+  - 'const key = process["env"].SERVICE_KEY;'
+  - |
+    const profile = readSettlementProfile(process
+      .env);
+  - |
+    const mode = import.meta
+      .env.MODE;

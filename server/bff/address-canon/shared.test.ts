@@ -43,7 +43,6 @@ describe("hidden address canon BFF route gate", () => {
 
   it("keeps the shared BFF route behind the data gateway", () => {
     const source = readFileSync("server/bff/address-canon/shared.ts", "utf8");
-    expect(source).not.toContain("@supabase/supabase-js");
     expect(source).not.toContain("createClient(");
     expect(source).not.toContain(".rpc(");
     expect(source).not.toContain(".from(");

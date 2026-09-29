@@ -41,7 +41,7 @@
     "check:dco-signoff": "node --experimental-strip-types scripts/dco-signoff-check.ts",
     "guard:client-secret-boundary": "node --experimental-strip-types scripts/check-client-secret-boundary.ts",
     "guard:public-reference-site-routes": "node scripts/site-routes.mjs --public-reference",
-    "lint": "eslint .",
+    "lint": "eslint . && ast-grep scan && ast-grep test --skip-snapshot-tests",
     "oss:published-tree": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
     "packages:check": "node --experimental-strip-types scripts/packages/packages-check.ts",
     "test": "node scripts/run-vitest.mjs run",
@@ -125,6 +125,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@ast-grep/cli": "^0.45.3",
     "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.62.0",

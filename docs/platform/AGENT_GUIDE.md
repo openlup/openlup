@@ -138,6 +138,16 @@ an agent-specific hook or private repository.
 Keep changes small, test the affected public contract, and make failures actionable. An adapter must demonstrate its declared capabilities and refusal behaviour without relying on live provider access.
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.
 
+`npm run lint` runs ESLint and then the ast-grep structural rules in
+`scripts/ast-grep/rules`. A refusal names the rule, the platform rule behind it
+and the fix: change the code, not the rule, and never add a file to a rule's
+`ignores`. A new rule cites the platform rule it enforces and ships valid and
+invalid cases in `scripts/ast-grep/rule-tests`. Use
+`npx ast-grep run --pattern '<code pattern>'` to find every structural
+occurrence before and after a change, and add `--rewrite` for a mechanical edit
+across the tree; [contribution checks](../../CONTRIBUTING.md#development-preview-checks)
+describe the rules and their exceptions.
+
 Use only the configuration and test fixtures supplied for the selected development profile. Do not place sensitive values in source, fixtures, logs, or documentation.
 Follow [SECURITY.md](../../SECURITY.md) for reporting and handling a suspected vulnerability; this guide intentionally supplies no reporting address of its own.
 

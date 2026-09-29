@@ -14,6 +14,8 @@ is runtime-only input and must not be embedded in a browser artifact. Hosts must
 provide their own storage, identity, delivery, and provider configuration where
 the selected capabilities require it.
 
+<!-- openlup-doc-impact {"unit": "bff", "digest": "sha256-3d62c44439b3e53227f63194d6f3376afd56158f461fc83ba9470911b8b47995", "reason": "Test-only delta. Thirteen BFF tests drop their per-file regex assertions against the database client SDK, createClient calls and .from()/.rpc() calls, because the ast-grep rule bff-database-through-ports, run by the lint command, now enforces that boundary for every module under server/bff; their composition assertions stay. The runtime model here, in which requests reach the server boundary and durable writes use the canonical data contract, does not change."} -->
+
 ## Self-host boundary
 
 The platform target is portable PostgreSQL with a reproducible baseline and

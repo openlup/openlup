@@ -1,0 +1,18 @@
+# Package names are shortened to "supabase-js": the rule matches the name
+# inside any scoped source, and the shortened form keeps vendor tokens out of
+# the neutrality count.
+id: bff-database-through-ports
+valid:
+  - 'const ids = Array.from(rows, (row) => row.id);'
+  - 'const bytes = Buffer.from(payload, "base64");'
+  - 'const gateway = createPlatformActorDataGateway(actor); await gateway.settings.read();'
+  - '// createClient() and .from() in a comment are not code'
+  - 'const hint = "call .rpc() from an adapter";'
+invalid:
+  - 'import { createClient } from "supabase-js";'
+  - 'export { createClient } from "supabase-js";'
+  - 'const sdk = await import("supabase-js");'
+  - 'const db = createClient(url, key);'
+  - 'const db = createClient<Database>(url, key);'
+  - 'const { data } = await db.from("orders").select("*");'
+  - 'await client.rpc("subscription_pause", { id });'

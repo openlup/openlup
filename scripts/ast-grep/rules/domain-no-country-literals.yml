@@ -1,0 +1,42 @@
+id: domain-no-country-literals
+language: TypeScript
+severity: error
+message: A country or region is adopter policy; read it from the settlement profile or a port, not a literal.
+note: |
+  Architecture rule (AGENTS.md): an adopter's local rules stay outside generic
+  platform code. A two-letter country or region code fixed in a domain
+  contract or port makes the platform serve one market. Take it from the
+  settlement profile, configuration or the caller. Fixtures and tests are
+  exempt. The files under `ignores` predate this rule: delete an entry when its
+  file is fixed and never add one.
+files:
+  - server/domains/**/*.ts
+  - src/domains/**/*.ts
+  - packages/core/src/**/*.ts
+ignores:
+  - "**/*.test.ts"
+  - "**/*.fixtures.ts"
+  - "**/*.testFixtures.ts"
+  - "**/*TestKit.ts"
+  # An example presentation whose placeholder code is not a real country.
+  - src/domains/communications/email/exampleEmailPresentation.ts
+  - server/domains/accounting/staticInvoiceDataLookupPort.ts
+  - server/domains/commerce/orderRecapMapping.ts
+  - server/domains/shipping/dictionaryDeliverySelectionPort.ts
+  - server/domains/shipping/staticDeliverySelectionPort.ts
+  - src/domains/accounting/accountingControlContracts.ts
+  - src/domains/address-canon/contracts.ts
+  - src/domains/commerce/checkoutContracts.ts
+  - src/domains/commerce/configuratorIntentContracts.ts
+  - src/domains/commerce/orderRecapContracts.ts
+  - src/domains/shipping/deliverySelectionContracts.ts
+  - src/domains/shipping/inpostGeowidgetPoint.ts
+rule:
+  any:
+    - pattern: z.literal($CODE)
+    - kind: pair
+      all:
+        - has: { field: key, regex: "^[\"']?(country|countryCode|region)[\"']?$" }
+        - has: { field: value, pattern: $CODE }
+constraints:
+  CODE: { regex: "^[\"'`][A-Z]{2}[\"'`]$" }

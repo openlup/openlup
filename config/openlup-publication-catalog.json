@@ -2070,6 +2070,34 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ast-grep/rule-tests/bff-database-through-ports-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/domain-no-country-literals-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/domain-no-environment-reads-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/domain-no-environment-reads-tsx-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rules/bff-database-through-ports.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rules/domain-no-country-literals.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rules/domain-no-environment-reads.yml",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/audit-orientation-docs.ts",
       "class": "public-output"
     },
@@ -11498,6 +11526,10 @@
       "class": "public-output"
     },
     {
+      "path": "sgconfig.yml",
+      "class": "public-output"
+    },
+    {
       "path": "src/App.css",
       "class": "public-output"
     },
@@ -18849,7 +18881,7 @@
     },
     {
       "name": "lint",
-      "command": "eslint .",
+      "command": "eslint . && ast-grep scan && ast-grep test --skip-snapshot-tests",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18901,7 +18933,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-48db9f9763b4969c5e475f42ffd78a236fdf93d1d55e715a04147633680b0f8d"
+      "digest": "sha256-a836e691a6d899e3116ee241db4f4de2568ba423b3fd56e3b9a1e26a0a8fd79c"
     },
     {
       "path": "packages/core/package.json",

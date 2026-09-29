@@ -190,6 +190,26 @@ boundary: `PaymentForm.tsx`, `RecoveryPaymentSetupForm.tsx`,
 for the statement that re-exports the moved module and is removed in
 `openlup-source-preview/9`. Published Tree CI runs lint in the `typecheck` job.
 
+After ESLint, `npm run lint` runs ast-grep with the structural rules in
+`scripts/ast-grep/rules` (configured by `sgconfig.yml`), then the rule tests in
+`scripts/ast-grep/rule-tests`. ESLint sees imports; these rules see calls and
+reads. A module under `server/bff` reaches the database only through a port or
+the actor data gateway: it neither imports the database client SDK nor calls
+`createClient`, `.from()` or `.rpc()`. Domain code under `server/domains`,
+`src/domains` and `packages/core/src` reads no environment variable and fixes
+no two-letter country or region code in a literal; test files are exempt,
+and so are fixtures from the country rule. Files that predate a rule are
+listed in its `ignores`: delete an entry when its file is fixed and never add
+one. A justified exception is an
+`// ast-grep-ignore: <rule-id>` comment on the line before the code, with the
+reason in a comment above it. A new rule states the platform rule it enforces,
+blocks only at zero findings, and has at least one valid and one invalid case.
+The scan and the rule tests take about a second for the whole tree. While
+iterating, `npx ast-grep run --pattern '<code pattern>' --lang ts` lists every
+structural match, and `--rewrite '<replacement>' --update-all` applies a
+mechanical edit; call the binary `ast-grep`, because `sg` is also a system
+command on Linux.
+
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating
 the directories and preserves its raw failure result. The required `test` job
