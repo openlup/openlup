@@ -46,7 +46,7 @@ refuses to cut that preview while any still carries its removal marker line.
 Provider UI, such as the card payment form, lives with the adapters, while the
 words and outcomes it exchanges with its host stay in the domain's contracts.
 
-<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-cd32f2ff96e1fd2b9ddac2e9788fecf3090cc2377b1c5907cbe6ec72fe79e81e","reason":"Presentation-only delta. The account plan facts render the contract's next charge next to the regular package price, and the arrears selector falls back to it before the recurring price. Browser modules still own only portable types, validation and pure presentation; no runtime boundary described here moves."} -->
+<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-242aae69322e7ea79768cd55297f04fbddb6e593ca9b44526adf12797f3445c2","reason":"Presentation-only delta. The account plan facts render the contract's next charge next to the regular package price, and the arrears selector falls back to it before the recurring price. Browser modules still own only portable types, validation and pure presentation; no runtime boundary described here moves."} -->
 
 ## Extension seams
 
