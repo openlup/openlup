@@ -108,8 +108,8 @@ export interface StarterLinePricingClient {
  * The current lines' band subtotal and list anchor, read from the frozen quote
  * lines (the renewal snapshot builder strips `pricingComponents`, so the list
  * price is read here). Never throws: a failed read yields nulls, which the panel
- * and the emails treat as "no evidence". The renewal engine must not degrade
- * that way, see `readEngineListAnchor`.
+ * and the emails treat as "no evidence". The renewal engine never uses it: its
+ * list total comes out of the snapshot builder's own line read.
  */
 export async function readStarterLinePricing(
   client: StarterLinePricingClient,
@@ -174,6 +174,7 @@ export async function prepareStarterPackCycle(
       // Same read as the subtotal (see subscriptionCycleLines.ts): a second read
       // could pair one composition's subtotal with another's list price.
       listAnchorMinor: input.listAnchorMinor,
+      retriedCycleDiscountMinor: input.retriedCycleDiscountMinor ?? null,
     });
     if (basis !== "frozen") {
       // Logged, never stored: a snapshot field would change the order fingerprint.

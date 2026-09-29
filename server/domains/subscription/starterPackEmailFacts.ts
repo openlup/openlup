@@ -50,7 +50,7 @@ export interface SubscriptionStarterPackContext {
    * the frozen basis only when the template is still that basis.
    */
   currentLines: { subtotalMinor: number | null; listAnchorMinor: number | null };
-  /** Cycle number of the delivery this email is announcing (`max + 1`). */
+  /** Cycle number of the delivery this email is announcing (`upcomingCycleNumber`). */
   upcomingCycleNumber: number;
   /**
    * The subscription's own currency, read alongside the marker. Carried rather

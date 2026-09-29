@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   quoteLinesListAnchorMinor,
+  retriedStarterDiscountMinor,
   upcomingCycleNumber,
   resolveStarterDelivery2Discount,
   resolveStarterUpcomingCharge,
@@ -122,6 +123,50 @@ describe("resolveStarterDelivery2Discount", () => {
       listAnchorMinor: null,
     });
     expect(discountMinor).toBe(Math.round((9801 * 3333) / 10_000));
+  });
+});
+
+describe("retried cycles", () => {
+  const stored = (discountMinor: unknown, reasonCode = "starter_pack_delivery_2") => ({
+    provenance: { starterPack: { reasonCode, discountMinor, basisTemplateVersion: BASIS } },
+  });
+
+  it("reads the delivery-2 discount a cycle was first priced with", () => {
+    expect(retriedStarterDiscountMinor(stored(7035))).toBe(7035);
+    expect(retriedStarterDiscountMinor(stored(0))).toBe(0);
+  });
+
+  it("is null for a snapshot without delivery-2 provenance or with a malformed amount", () => {
+    expect(retriedStarterDiscountMinor(undefined)).toBeNull();
+    expect(retriedStarterDiscountMinor({})).toBeNull();
+    expect(retriedStarterDiscountMinor(stored(7035, "something_else"))).toBeNull();
+    expect(retriedStarterDiscountMinor(stored(-1))).toBeNull();
+    expect(retriedStarterDiscountMinor(stored(12.5))).toBeNull();
+    expect(retriedStarterDiscountMinor(stored("7035"))).toBeNull();
+  });
+
+  it("keeps the stored discount over every current rule, so the retry's snapshot is unchanged", () => {
+    // An earlier rule stored 7 035 (35% of the band subtotal) on an unchanged package;
+    // today's rule would say 5 572, and a different amount would fail the retry.
+    expect(
+      resolveStarterDelivery2Discount({
+        marker: WORKED_EXAMPLE,
+        subtotalMinor: 20100,
+        listAnchorMinor: 22350,
+        retriedCycleDiscountMinor: 7035,
+      }),
+    ).toEqual({ discountMinor: 7035, basis: "retried_cycle" });
+  });
+
+  it("still clamps a stored discount to leave the minimum payable", () => {
+    expect(
+      resolveStarterDelivery2Discount({
+        marker: marker(),
+        subtotalMinor: 500,
+        listAnchorMinor: null,
+        retriedCycleDiscountMinor: 9999,
+      }).discountMinor,
+    ).toBe(400);
   });
 });
 

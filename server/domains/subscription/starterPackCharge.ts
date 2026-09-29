@@ -25,7 +25,7 @@ import { deriveStarterPhase, type StarterPackMarker } from "./starterPackCycle.j
  * Which basis produced a delivery-2 discount. The engine logs a non-frozen one;
  * it is never stored, because a snapshot field would change the order fingerprint.
  */
-export type StarterDelivery2Basis = "frozen" | "list_anchor" | "band_rate_fallback";
+export type StarterDelivery2Basis = "frozen" | "list_anchor" | "band_rate_fallback" | "retried_cycle";
 
 export interface StarterDelivery2Discount {
   discountMinor: number;
@@ -49,14 +49,20 @@ export function resolveStarterDelivery2Discount({
   marker,
   subtotalMinor,
   listAnchorMinor,
+  retriedCycleDiscountMinor = null,
 }: {
   marker: StarterPackMarker;
   subtotalMinor: number;
   listAnchorMinor: number | null;
+  /** A re-driven cycle keeps the discount its first attempt was priced with. */
+  retriedCycleDiscountMinor?: number | null;
 }): StarterDelivery2Discount {
   let raw: number;
   let basis: StarterDelivery2Basis;
-  if (subtotalMinor === marker.delivery2.basisSubtotalMinor) {
+  if (retriedCycleDiscountMinor !== null) {
+    raw = retriedCycleDiscountMinor;
+    basis = "retried_cycle";
+  } else if (subtotalMinor === marker.delivery2.basisSubtotalMinor) {
     raw = marker.delivery2.discountMinor;
     basis = "frozen";
   } else if (listAnchorMinor !== null && listAnchorMinor > 0) {
@@ -68,6 +74,24 @@ export function resolveStarterDelivery2Discount({
   }
   const ceiling = Math.max(0, subtotalMinor - STARTER_MIN_PAYABLE_MINOR);
   return { discountMinor: Math.min(Math.max(0, Math.trunc(raw)), ceiling), basis };
+}
+
+/**
+ * The delivery-2 discount a cycle was first priced with, read from the pricing
+ * snapshot stored on the cycle (`provenance.starterPack.discountMinor`). A
+ * retried cycle must rebuild its snapshots byte for byte: the cycle-order RPC
+ * fingerprints them and refuses a retry whose snapshots differ, so a cycle
+ * priced under an earlier rule keeps that rule's amount. Null when the snapshot
+ * carries no delivery-2 provenance.
+ */
+export function retriedStarterDiscountMinor(pricingSnapshot: unknown): number | null {
+  const provenance = (pricingSnapshot as { provenance?: unknown } | null | undefined)?.provenance;
+  const starter = (provenance as { starterPack?: unknown } | null | undefined)?.starterPack;
+  if (!starter || typeof starter !== "object") return null;
+  const record = starter as Record<string, unknown>;
+  if (record.reasonCode !== "starter_pack_delivery_2") return null;
+  const amount = record.discountMinor;
+  return typeof amount === "number" && Number.isSafeInteger(amount) && amount >= 0 ? amount : null;
 }
 
 /**

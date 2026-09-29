@@ -490,9 +490,6 @@ describe("buildSubscriptionCycleSnapshots", () => {
     expect(rowErrorReasonKey(message).length).toBeLessThanOrEqual(80);
   });
 
-  // SR-1 REQ-3. Pins existing behaviour, and does not change it: the builder
-  // throws BEFORE it can hand snapshots to `createCycleOrder`, which is the
-  // only writer of the cycle row — and `next_cycle_at` moves only when a
   // A composition the customer edited is no longer the one checkout priced, so
   // delivery 2 is re-derived as 65% of the CATALOG LIST total of the lines on
   // file. Subtotal and list price come out of the same read, so no edit landing
@@ -533,6 +530,46 @@ describe("buildSubscriptionCycleSnapshots", () => {
     expect(totals.totalGross.amountMinor).toBeGreaterThan(17_420);
   });
 
+  // A declined delivery 2 is re-driven with the same idempotency key, and the
+  // cycle-order RPC refuses a retry whose snapshots differ from the first
+  // attempt's. A cycle first priced under an earlier rule therefore keeps the
+  // discount stored in its own pricing snapshot, whatever the rule says now.
+  it("re-drives a delivery-2 retry with the discount its first attempt stored", async () => {
+    const client = makeClient({
+      subscriptionsData: [{ starter_pack: starterMarker(), template_version: 2, cadence_days: 17 }],
+      subscriptionCyclesData: [
+        {
+          cycle_number: 2,
+          scheduled_at: SCHEDULED_AT,
+          retry_attempt: 1,
+          pricing_snapshot: {
+            provenance: {
+              starterPack: { reasonCode: "starter_pack_delivery_2", discountMinor: 4000, basisTemplateVersion: 1 },
+            },
+          },
+        },
+        { cycle_number: 1 },
+      ],
+    });
+
+    const result = await buildSubscriptionCycleSnapshots(client, {
+      subscriptionId: SUB_ID,
+      scheduledAt: SCHEDULED_AT,
+    });
+
+    expect(result.cycleNumber).toBe(2);
+    expect(result.retryAttempt).toBe(1);
+    const totals = (result.orderSnapshot as Record<string, unknown>).totals as Record<string, { amountMinor: number }>;
+    // The current rule would give the frozen 3 430; the stored 4 000 wins.
+    expect(totals.discountTotalGross.amountMinor).toBe(4000);
+    expect(result.pricingSnapshot.provenance).toEqual({
+      starterPack: { reasonCode: "starter_pack_delivery_2", discountMinor: 4000, basisTemplateVersion: 1 },
+    });
+  });
+
+  // SR-1 REQ-3. Pins existing behaviour, and does not change it: the builder
+  // throws BEFORE it can hand snapshots to `createCycleOrder`, which is the
+  // only writer of the cycle row — and `next_cycle_at` moves only when a
   // payment reaches its paid terminal
   // (`commerce_payment_control_apply_before_sub_lock`). So a failed graduation
   // consumes nothing: the subscription is still due on the next tick, and the

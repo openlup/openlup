@@ -33,12 +33,19 @@ interface CycleIdentityRow {
   scheduled_at?: unknown;
   retry_attempt?: unknown;
   provider_attempt_sequence?: unknown;
+  pricing_snapshot?: unknown;
 }
 
 export interface SubscriptionCycleIdentity {
   cycleNumber: number;
   retryAttempt: number;
   providerAttemptSequence: number;
+  /**
+   * The pricing snapshot a re-driven cycle was first priced with; absent for a
+   * new cycle. A retry must rebuild that snapshot byte for byte, so a price
+   * rule that changed since the first attempt reads it instead of recomputing.
+   */
+  pricingSnapshot?: Record<string, unknown>;
 }
 
 export async function resolveSubscriptionCycleIdentity(
@@ -48,7 +55,7 @@ export async function resolveSubscriptionCycleIdentity(
 ): Promise<SubscriptionCycleIdentity> {
   const { data, error } = await client
     .from("subscription_cycles")
-    .select("cycle_number, scheduled_at, retry_attempt, provider_attempt_sequence")
+    .select("cycle_number, scheduled_at, retry_attempt, provider_attempt_sequence, pricing_snapshot")
     .eq("subscription_id", subscriptionId)
     .order("cycle_number", { ascending: false });
   if (error) {
@@ -73,6 +80,7 @@ export async function resolveSubscriptionCycleIdentity(
       providerAttemptSequence: typeof match.provider_attempt_sequence === "number"
         ? match.provider_attempt_sequence
         : 0,
+      ...(isRecord(match.pricing_snapshot) ? { pricingSnapshot: match.pricing_snapshot } : {}),
     };
   }
   const top = rows[0]?.cycle_number;
@@ -81,6 +89,10 @@ export async function resolveSubscriptionCycleIdentity(
     retryAttempt: 0,
     providerAttemptSequence: 0,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function toEpochMs(value: unknown): number | null {

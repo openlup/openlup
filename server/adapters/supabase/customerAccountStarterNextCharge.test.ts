@@ -105,13 +105,13 @@ describe("readStarterNextCharges + nextCharge", () => {
     expect(nextCharge(RECURRING, map.get(SUB))?.starterStage).toBe("delivery2");
   });
 
-  it("shows the regular price when the reads fail, never breaking the page", async () => {
+  it("states no next charge when the reads fail, never breaking the page", async () => {
     const from = vi.fn(() => {
       throw new Error("boom");
     });
     const map = await readStarterNextCharges({ from } as unknown as SupabaseClient, [row()]);
-    // No cycles read: highest = 0 -> cycle 1, which the starter pack does not price.
-    expect(nextCharge(RECURRING, map.get(SUB))).toEqual({ totalGross: RECURRING.totalGross, starterStage: null });
+    // Without the cycle and line evidence the engine's amount is unknown.
+    expect(nextCharge(RECURRING, map.get(SUB))).toBeNull();
   });
 
   it("states no starter charge for a cancelled subscription", async () => {
@@ -121,7 +121,7 @@ describe("readStarterNextCharges + nextCharge", () => {
     expect(from).not.toHaveBeenCalled();
   });
 
-  it("shows the regular price when the lines read fails, instead of guessing a fallback", async () => {
+  it("states no next charge when the lines read fails, instead of the regular price", async () => {
     const from = vi.fn((table: string) => ({
       select: () => ({
         in: () => {
@@ -133,7 +133,8 @@ describe("readStarterNextCharges + nextCharge", () => {
       }),
     }));
     const map = await readStarterNextCharges({ from } as unknown as SupabaseClient, [row()]);
-    expect(nextCharge(RECURRING, map.get(SUB))).toEqual({ totalGross: RECURRING.totalGross, starterStage: null });
+    // With both reads succeeding the same fixture would state 14 528 (delivery 2).
+    expect(nextCharge(RECURRING, map.get(SUB))).toBeNull();
   });
 
   it("is null when the lines are unpriced", () => {

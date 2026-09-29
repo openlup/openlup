@@ -1,5 +1,6 @@
 import { resolveSubscriptionCycleIdentity } from "./resolveSubscriptionCycleIdentity.js";
 import { loadSubscriptionCycleLines, type QuoteLine } from "./subscriptionCycleLines.js";
+import { retriedStarterDiscountMinor } from "../../../domains/subscription/starterPackCharge.js";
 import {
   starterGraduationFailureMessage,
   type StarterPackCyclePort, type StarterPackCyclePreparation,
@@ -133,7 +134,8 @@ export async function buildSubscriptionCycleSnapshots(
     ]);
   let templateSnapshot = settledValue(templateSnapshotResult);
   let { lines, listAnchorMinor } = settledValue(linesResult);
-  const { cycleNumber, retryAttempt, providerAttemptSequence } = settledValue(identityResult);
+  const { cycleNumber, retryAttempt, providerAttemptSequence, pricingSnapshot: retriedPricing } =
+    settledValue(identityResult);
   const starterState = settledValue(starterStateResult);
 
   let starter: StarterPackCyclePreparation;
@@ -142,6 +144,7 @@ export async function buildSubscriptionCycleSnapshots(
       subscriptionId: input.subscriptionId, cycleNumber, state: starterState,
       subtotalMinor: subtotalGrossMinor(lines),
       listAnchorMinor,
+      retriedCycleDiscountMinor: retriedStarterDiscountMinor(retriedPricing),
     });
   } catch (error) {
     // Rethrow, never swallow: fail-closed is the point. All this adds is the

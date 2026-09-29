@@ -20,8 +20,9 @@ type NextCharge = NonNullable<Subscription["nextCharge"]>;
  * a read (cycles + raw line pricing, two queries for the whole account);
  * everyone else's next charge IS the recurring price.
  *
- * Never throws: a failed read shows the regular price with no starter stage,
- * exactly what the panel showed before, rather than breaking the account page.
+ * Never throws. A starter subscription whose cycles or lines could not be read
+ * states no next charge at all (null) rather than the regular price, which is
+ * not what the engine would charge for a starter cycle.
  */
 export async function readStarterNextCharges(
   serviceClient: SupabaseClient,
@@ -40,6 +41,7 @@ export async function readStarterNextCharges(
       cycles: [],
       listAnchorMinor: null,
       linesRead: false,
+      cyclesRead: false,
     });
   }
   const ids = [...result.keys()];
@@ -54,6 +56,7 @@ export async function readStarterNextCharges(
       serviceClient.from("subscription_lines").select("subscription_id, line_metadata").in("subscription_id", ids),
     ]);
     if (!cycles.error) {
+      for (const entry of result.values()) entry.cyclesRead = true;
       for (const cycle of (cycles.data ?? []) as Row[]) {
         const entry = result.get(String(cycle.subscription_id));
         if (entry && typeof cycle.cycle_number === "number") {
@@ -75,7 +78,7 @@ export async function readStarterNextCharges(
       }
     }
   } catch {
-    // Keep what was read; without cycles the panel shows the regular price, as before.
+    // Keep what was read; an entry missing either read states no next charge.
   }
   return result;
 }
@@ -86,14 +89,16 @@ export interface StarterNextChargeInput {
   cadenceDays: number;
   cycles: Array<{ cycleNumber: number; status: string }>;
   listAnchorMinor: number | null;
-  /** False when the line read failed: "no list evidence" would be a guess. */
+  /** False when a read failed: the cycle number or list evidence would be a guess. */
   linesRead: boolean;
+  cyclesRead: boolean;
 }
 
 /**
  * The next charge shown to the customer, for the cycle number the engine will
- * use (`upcomingCycleNumber`). A subscription whose lines could not be read
- * shows its regular price rather than an amount priced off half the evidence.
+ * use (`upcomingCycleNumber`). A starter subscription whose cycles or lines
+ * could not be read states nothing (null) rather than an amount priced off half
+ * the evidence; the panel then shows only the regular package price.
  */
 export function nextCharge(
   recurringPrice: Subscription["recurringPrice"],
@@ -102,7 +107,7 @@ export function nextCharge(
   if (!recurringPrice) return null;
   const regular: NextCharge = { totalGross: recurringPrice.totalGross, starterStage: null };
   if (!starter) return regular;
-  if (!starter.linesRead) return regular;
+  if (!starter.linesRead || !starter.cyclesRead) return null;
   const charge = resolveStarterUpcomingCharge({
     marker: starter.marker,
     templateVersion: starter.templateVersion,

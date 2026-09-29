@@ -153,6 +153,11 @@ export interface StarterPackCyclePreparationInput {
   subtotalMinor: number;
   /** Catalog list total of the SAME lines the subtotal came from; null when unknown. */
   listAnchorMinor: number | null;
+  /**
+   * The delivery-2 discount this cycle was first priced with, when it is being
+   * re-driven; null or absent for a new cycle. See `retriedStarterDiscountMinor`.
+   */
+  retriedCycleDiscountMinor?: number | null;
 }
 
 /**

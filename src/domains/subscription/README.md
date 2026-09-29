@@ -93,7 +93,10 @@ model states it as `nextCharge`, and the lifecycle emails announce it.
   reprice it.
 - A changed composition is priced at 65% of the catalog list total of the lines
   on file, rounded up, never as a rate taken off the already discounted band
-  subtotal. The list total comes from the same line read as the subtotal.
+  subtotal. In the renewal engine the list total comes from the same line read
+  as the subtotal.
+- A re-driven cycle keeps the delivery-2 discount stored in its own pricing
+  snapshot, so a retry rebuilds the snapshots its first attempt was priced with.
 - The upcoming cycle number is shared as well: an open cycle keeps its own
   number, so a declined delivery 2 is still announced and shown as delivery 2.
 
