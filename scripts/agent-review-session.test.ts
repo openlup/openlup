@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
@@ -329,21 +330,26 @@ describe('actual source snapshot without candidate execution', () => {
     const findings = [{ mechanism: 'lost clamp', precondition: 'late parcel', requirement: 'no early cycle', effect: 'early renewal' }];
     await writeFile(failedPath, JSON.stringify({ ...report(state.request), completedAt: Date.now(), verdict: 'fail', materialFindings: findings }));
     await writeFile(passPath, JSON.stringify({ ...report(state.request, 1), completedAt: Date.now() }));
-    const child = spawn(process.execPath, [script, 'record', failedPath], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    // The recording owner pauses just before it publishes its new state, inside its transaction,
+    // until the test ends its stdin, so both rivals meet a live lock however the runner schedules them.
+    const holdPublish = "import { once } from 'node:events'; import { writeSync } from 'node:fs'; import promises from 'node:fs/promises'; import { syncBuiltinESMExports } from 'node:module'; const { rename } = promises;" +
+      " promises.rename = async (from, to) => { if (String(to).endsWith('session.json')) { writeSync(3, 'held'); await once(process.stdin.resume(), 'end'); } return rename(from, to); }; syncBuiltinESMExports();";
+    const child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(holdPublish)}`, script, 'record', failedPath], { cwd, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
     let stdout = ''; let stderr = ''; child.stdout.on('data', bytes => { stdout += bytes; }); child.stderr.on('data', bytes => { stderr += bytes; });
     const completed = new Promise<number | null>((resolve, reject) => { child.on('error', reject); child.on('close', resolve); });
-    for (let attempt = 0; ; attempt += 1) {
-      try { await stat(join(directory, '.session.lock')); break; } catch { if (attempt >= 500) throw new Error('transaction lock was not observed'); await new Promise(resolve => setTimeout(resolve, 2)); }
-    }
-    const contenders = ['record', 'prepare'].map(verb => {
-      const args = verb === 'record' ? [verb, passPath] : [verb];
-      return new Promise<string>((resolve, reject) => {
-        const rival = spawn(process.execPath, [script, ...args], { cwd, stdio: ['ignore', 'ignore', 'pipe'] }); let diagnostics = '';
-        rival.stderr.on('data', bytes => { diagnostics += bytes; }); rival.on('error', reject); rival.on('close', code => code === 1 ? resolve(diagnostics) : reject(new Error(`concurrent ${verb} unexpectedly completed`)));
+    await Promise.race([once(child.stdio[3], 'data'), completed.then(code => { throw new Error(`record exited ${code} before publishing its state: ${stderr}`); })]);
+    try {
+      expect((await stat(join(directory, '.session.lock'))).isFile()).toBe(true);
+      const contenders = ['record', 'prepare'].map(verb => {
+        const args = verb === 'record' ? [verb, passPath] : [verb];
+        return new Promise<string>((resolve, reject) => {
+          const rival = spawn(process.execPath, [script, ...args], { cwd, stdio: ['ignore', 'ignore', 'pipe'] }); let diagnostics = '';
+          rival.stderr.on('data', bytes => { diagnostics += bytes; }); rival.on('error', reject); rival.on('close', code => code === 1 ? resolve(diagnostics) : reject(new Error(`concurrent ${verb} unexpectedly completed`)));
+        });
       });
-    });
+      for (const diagnostics of await Promise.all(contenders)) expect(diagnostics).toContain('session transaction is busy');
+    } finally { child.stdin.end(); }
     expect(await completed).toBe(0); expect(stderr).toBe(''); expect(JSON.parse(stdout).status).toBe('needs_agent_review');
-    for (const diagnostics of await Promise.all(contenders)) expect(diagnostics).toContain('session transaction is busy');
     expect(invoke('record', passPath).status).toBe('needs_agent_review');
     const recorded = JSON.parse(await readFile(statePath, 'utf8')); expect(recorded.request.id).toBe(state.request.id); expect(recorded.reports).toHaveLength(2); expect(recorded.reports[0].materialFindings).toEqual(findings);
     expect(invoke('prepare').status).toBe('needs_agent_review'); expect(JSON.parse(await readFile(statePath, 'utf8'))).toEqual(recorded);
