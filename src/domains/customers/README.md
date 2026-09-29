@@ -23,7 +23,10 @@ token-authenticated abandoned-checkout recovery.
   including customer-safe order tracking numbers, current invoice selection,
   fiscal `invoiceDocuments[]` history, and timeline events sourced from
   fulfillment/provider evidence. Email delivery copy distinguishes provider
-  acceptance from independently proven inbox delivery.
+  acceptance from independently proven inbox delivery. Each subscription's
+  optional `nextCharge` states the amount the renewal engine will charge next,
+  including a starter-pack delivery 2 or graduation, next to the regular
+  `recurringPrice`; the adopter supplies its `facts.nextCharge` copy.
 - `selfServiceContracts.ts` (src) — hidden account read model and profile/pet/address mutation schemas.
 - `subscriptionFacadeContracts.ts` (src) — customer-authenticated facade over
   subscription-owned self-service preview/action contracts.

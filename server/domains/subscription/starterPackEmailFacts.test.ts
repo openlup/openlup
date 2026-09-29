@@ -47,6 +47,12 @@ function context(overrides?: Partial<Parameters<typeof starterRenewalEmailFields
   return {
     marker: MARKER,
     templateVersion: 1,
+    cadenceDays: 14,
+    // The lines on file: the unchanged acquisition template (list anchor unknown).
+    currentLines: { subtotalMinor: 16_800, listAnchorMinor: null as number | null } as {
+      subtotalMinor: number | null;
+      listAnchorMinor: number | null;
+    },
     upcomingCycleNumber: 2,
     // The subscription's own currency travels with the context; the module
     // formats what the row says rather than naming one merchant's currency.
@@ -76,15 +82,46 @@ describe("starterRenewalEmailFields", () => {
     expect(starterRenewalEmailFields(null, createStarterPackMoneyLabel("pl"))).toEqual({});
   });
 
-  it("says nothing once the template has moved away from the frozen basis", () => {
-    expect(starterRenewalEmailFields(context({ templateVersion: 2 }), createStarterPackMoneyLabel("pl"))).toEqual({});
+  it("keeps the frozen delivery-2 amount when only the version moved (a reactivation)", () => {
+    expect(starterRenewalEmailFields(context({ templateVersion: 2 }), createStarterPackMoneyLabel("pl"))).toEqual({
+      starterStage: "delivery2",
+      starterAmountLabel: expect.stringContaining("136,50"),
+    });
+  });
+
+  it("prices an edited delivery 2 at 65% of the list, exactly as the engine charges it", () => {
+    // Edited lines: band 18 000, list 20 000 -> ceil(0.65 x 20 000) = 13 000.
+    const edited = context({ templateVersion: 2, currentLines: { subtotalMinor: 18_000, listAnchorMinor: 20_000 } });
+    expect(starterRenewalEmailFields(edited, createStarterPackMoneyLabel("pl"))).toEqual({
+      starterStage: "delivery2",
+      starterAmountLabel: expect.stringContaining("130,00"),
+    });
+  });
+
+  it("announces a declined delivery 2 at the discount its retry keeps", () => {
+    // The first attempt stored 5 880 under an earlier rule; 16 800 - 5 880 = 10 920.
+    const retried = context({ templateVersion: 2, retriedCycleDiscountMinor: 5880 });
+    expect(starterRenewalEmailFields(retried, createStarterPackMoneyLabel("pl"))).toEqual({
+      starterStage: "delivery2",
+      starterAmountLabel: expect.stringContaining("109,20"),
+    });
+  });
+
+  it("says nothing when the version moved and the lines on file cannot be read", () => {
+    const unreadable = context({ templateVersion: 2, currentLines: { subtotalMinor: null, listAnchorMinor: null } });
+    expect(starterRenewalEmailFields(unreadable, createStarterPackMoneyLabel("pl"))).toEqual({});
+  });
+
+  it("says nothing about a graduation that keeps the customer's own lines", () => {
     expect(
       starterRenewalEmailFields(context({ templateVersion: 2, upcomingCycleNumber: 3 }), createStarterPackMoneyLabel("pl")),
     ).toEqual({});
   });
 
   it("says nothing from delivery 4 on — the subscription is an ordinary one by then", () => {
-    expect(starterRenewalEmailFields(context({ upcomingCycleNumber: 4 }), createStarterPackMoneyLabel("pl"))).toEqual({});
+    // Graduation rewrote the template (version 2) and the cadence (28 days).
+    const graduated = context({ upcomingCycleNumber: 4, templateVersion: 2, cadenceDays: 28 });
+    expect(starterRenewalEmailFields(graduated, createStarterPackMoneyLabel("pl"))).toEqual({});
     expect(starterRenewalEmailFields(context({ upcomingCycleNumber: 1 }), createStarterPackMoneyLabel("pl"))).toEqual({});
   });
 
@@ -123,14 +160,17 @@ describe("starterWelcomeEmailFields", () => {
 
   /**
    * P1-3: an outbox row can be delayed or retried, so the welcome send can land
-   * after a customer edit. Every frozen number then describes a package that no
-   * longer exists, and the e-mail must say nothing rather than quote an amount
-   * the customer will never be charged.
+   * after a customer edit. The amount is then the one the engine will charge for
+   * the lines on file; with those unreadable it says nothing rather than guess.
    */
-  it("says nothing once the template has moved off the frozen basis", () => {
+  it("states the edited amount, or nothing when the edited lines cannot be read", () => {
     // Locale from the shared resolver, not a bare language tag: this surface
     // family's country-token ratchet is at its ceiling and a literal spends it.
-    expect(starterWelcomeEmailFields(context({ templateVersion: 2 }), createStarterPackMoneyLabel(DEFAULT_LOCALE))).toEqual({});
+    const label = createStarterPackMoneyLabel(DEFAULT_LOCALE);
+    const edited = context({ templateVersion: 2, currentLines: { subtotalMinor: 18_000, listAnchorMinor: 20_000 } });
+    expect(starterWelcomeEmailFields(edited, label).starterAmountLabel).toBe(label(13_000, edited.currency));
+    const unreadable = context({ templateVersion: 2, currentLines: { subtotalMinor: null, listAnchorMinor: null } });
+    expect(starterWelcomeEmailFields(unreadable, label)).toEqual({});
   });
 
   it("is unaffected by the upcoming cycle number", () => {

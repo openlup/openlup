@@ -1,10 +1,12 @@
 import { formatCurrencyMinor } from "../../../../src/lib/currency/formatMinor.js";
 import type { Locale } from "../../../../src/lib/i18n/resolveLocale.js";
 import { starterPackMarkerSchema } from "../../../domains/subscription/starterPackCycle.js";
+import { upcomingCycle } from "../../../domains/subscription/starterPackCharge.js";
 import type {
   StarterMoneyLabelFormatter,
   SubscriptionStarterPackPort,
 } from "../../../domains/subscription/starterPackEmailFacts.js";
+import { readStarterLinePricing } from "./starterPackCycle.js";
 
 /**
  * Managed composition for the starter-pack lifecycle emails: the two Supabase
@@ -18,6 +20,7 @@ import type {
 interface StarterStateRow {
   starter_pack?: unknown;
   template_version?: unknown;
+  cadence_days?: unknown;
   currency?: unknown;
 }
 
@@ -33,9 +36,9 @@ export interface StarterPackEmailDbClient {
 }
 
 /**
- * Reads the marker for an email send. Two queries at most, and the second only
- * fires for a subscription that actually carries a marker — every ordinary
- * subscription costs exactly one extra `subscriptions` read per lifecycle email.
+ * Reads the marker for an email send. Three queries at most, and the cycle and
+ * line reads only fire for a subscription that actually carries a marker — every
+ * ordinary subscription costs exactly one extra `subscriptions` read per email.
  */
 export function createStarterPackContextPort(
   client: StarterPackEmailDbClient,
@@ -44,7 +47,7 @@ export function createStarterPackContextPort(
     async read(subscriptionId) {
       const state = await client
         .from("subscriptions")
-        .select("starter_pack, template_version, currency")
+        .select("starter_pack, template_version, cadence_days, currency")
         .eq("id", subscriptionId)
         .limit(1);
       if (state.error) return null;
@@ -53,19 +56,34 @@ export function createStarterPackContextPort(
       const marker = starterPackMarkerSchema.safeParse(row.starter_pack);
       if (!marker.success) return null;
 
+      // The same rule the engine and the account panel use: an open cycle keeps
+      // its number, so a reminder for a declined delivery 2 still says delivery 2.
       const cycles = await client
         .from("subscription_cycles")
-        .select("cycle_number")
+        .select("cycle_number, status, pricing_snapshot")
         .eq("subscription_id", subscriptionId)
-        .order("cycle_number", { ascending: false })
-        .limit(1);
+        .order("cycle_number", { ascending: true });
       if (cycles.error) return null;
-      const latest = firstRow(cycles.data) as { cycle_number?: unknown } | null;
-      const highest = Number(latest?.cycle_number ?? 0);
+      const rows = (Array.isArray(cycles.data) ? cycles.data : []) as Array<{
+        cycle_number?: unknown;
+        status?: unknown;
+        pricing_snapshot?: unknown;
+      }>;
+      const upcoming = upcomingCycle(
+        rows.map((cycle) => ({
+          cycleNumber: Number(cycle.cycle_number ?? 0),
+          status: String(cycle.status ?? ""),
+          pricingSnapshot: cycle.pricing_snapshot,
+        })),
+      );
+      const currentLines = await readStarterLinePricing(client, subscriptionId);
       return {
         marker: marker.data,
         templateVersion: Number(row.template_version ?? 0),
-        upcomingCycleNumber: (Number.isFinite(highest) ? highest : 0) + 1,
+        cadenceDays: Number(row.cadence_days ?? 0),
+        currentLines,
+        upcomingCycleNumber: upcoming.cycleNumber,
+        retriedCycleDiscountMinor: upcoming.retriedCycleDiscountMinor,
         currency: typeof row.currency === "string" && row.currency.trim() ? row.currency.trim() : null,
       };
     },

@@ -91,30 +91,8 @@ export function deriveStarterPhase({
   return "none";
 }
 
-/**
- * Delivery 2's discount. The exact minor amount frozen at checkout is used only
- * when the basis it was computed against still holds; otherwise the agreed rate
- * is re-applied to the actual subtotal. Clamped so the order stays chargeable.
- */
-export function resolveDelivery2DiscountMinor({
-  marker,
-  templateVersion,
-  subtotalMinor,
-}: {
-  marker: StarterPackMarker;
-  templateVersion: number;
-  subtotalMinor: number;
-}): number {
-  const exact =
-    templateVersion === marker.basisTemplateVersion &&
-    subtotalMinor === marker.delivery2.basisSubtotalMinor;
-  const raw = exact
-    ? marker.delivery2.discountMinor
-    : Math.round((subtotalMinor * marker.delivery2.discountBps) / 10_000);
-  const ceiling = Math.max(0, subtotalMinor - 100);
-  return Math.min(Math.max(0, raw), ceiling);
-}
-
+// Delivery 2's discount and every other upcoming-charge amount live in
+// `./starterPackCharge.ts`: one computation for the engine, panel and emails.
 
 /** Every condition `subscription_apply_starter_graduation` RAISEs on. */
 const RAISED_CONDITIONS = [
@@ -173,6 +151,13 @@ export interface StarterPackCyclePreparationInput {
   cycleNumber: number;
   state: StarterPackState;
   subtotalMinor: number;
+  /** Catalog list total of the SAME lines the subtotal came from; null when unknown. */
+  listAnchorMinor: number | null;
+  /**
+   * The delivery-2 discount this cycle was first priced with, when it is being
+   * re-driven; null or absent for a new cycle. See `retriedStarterDiscountMinor`.
+   */
+  retriedCycleDiscountMinor?: number | null;
 }
 
 /**

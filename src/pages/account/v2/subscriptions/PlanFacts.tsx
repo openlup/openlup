@@ -125,6 +125,19 @@ export function PlanFacts({
       label: t("account:dashboard.subscriptionV2.facts.editCutoff"),
       value: formatShortWeekdayDayMonth(subscription.editCutoffAt, lang),
     },
+    // A starter-pack delivery is charged a different amount than the package's
+    // regular price, so that exact next charge gets its own row above it.
+    ...(subscription.nextCharge?.starterStage
+      ? [
+          {
+            icon: ReceiptText,
+            label: t("account:dashboard.subscriptionV2.facts.nextCharge"),
+            value: t(`account:dashboard.subscriptionV2.facts.nextChargeValue.${subscription.nextCharge.starterStage}`, {
+              price: money(subscription.nextCharge.totalGross, lang),
+            }),
+          },
+        ]
+      : []),
     {
       icon: ReceiptText,
       label: t("account:dashboard.subscriptionV2.facts.price"),

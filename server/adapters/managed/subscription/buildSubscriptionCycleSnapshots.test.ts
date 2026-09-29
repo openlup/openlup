@@ -490,6 +490,83 @@ describe("buildSubscriptionCycleSnapshots", () => {
     expect(rowErrorReasonKey(message).length).toBeLessThanOrEqual(80);
   });
 
+  // A composition the customer edited is no longer the one checkout priced, so
+  // delivery 2 is re-derived as 65% of the CATALOG LIST total of the lines on
+  // file. Subtotal and list price come out of the same read, so no edit landing
+  // mid-run can pair one composition's subtotal with another's list price.
+  it("prices an edited delivery 2 off the list total of the same lines it charges", async () => {
+    const edited = (variantId: string, sortOrder: number, sku: string) => ({
+      variant_id: variantId,
+      qty: 10,
+      sort_order: sortOrder,
+      line_metadata: {
+        productSnapshot: {
+          sku,
+          productSlug: sku.toLowerCase(),
+          quoteLine: {
+            ...quoteLine({ sku, quantity: 10, unitPriceMinor: 1340 }),
+            // Band 13 400 per line, list 14 900 per line.
+            pricingComponents: [{ componentType: "base_unit", amountMinor: 14_900, reasonCode: "variant_unit_price" }],
+          },
+        },
+      },
+    });
+    const client = makeClient({
+      subscriptionsData: [{ starter_pack: starterMarker(), template_version: 2, cadence_days: 17 }],
+      subscriptionCyclesData: [{ cycle_number: 1 }],
+      subscriptionLinesData: [edited("v-1", 0, "VEL-BEEF-01"), edited("v-2", 1, "VEL-LAMB-01")],
+    });
+
+    const result = await buildSubscriptionCycleSnapshots(client, {
+      subscriptionId: SUB_ID,
+      scheduledAt: SCHEDULED_AT,
+    });
+
+    const totals = (result.orderSnapshot as Record<string, unknown>).totals as Record<string, { amountMinor: number }>;
+    // Band 26 800, list 29 800 -> ceil(0.65 x 29 800) = 19 370.
+    expect(totals.subtotalGross.amountMinor).toBe(26_800);
+    expect(totals.totalGross.amountMinor).toBe(19_370);
+    // The pre-wave formula took 35% off the band subtotal and charged 17 420.
+    expect(totals.totalGross.amountMinor).toBeGreaterThan(17_420);
+  });
+
+  // A declined delivery 2 is re-driven with the same idempotency key, and the
+  // cycle-order RPC refuses a retry whose snapshots differ from the first
+  // attempt's. A cycle first priced under an earlier rule therefore keeps the
+  // discount stored in its own pricing snapshot, whatever the rule says now.
+  it("re-drives a delivery-2 retry with the discount its first attempt stored", async () => {
+    const client = makeClient({
+      subscriptionsData: [{ starter_pack: starterMarker(), template_version: 2, cadence_days: 17 }],
+      subscriptionCyclesData: [
+        {
+          cycle_number: 2,
+          scheduled_at: SCHEDULED_AT,
+          retry_attempt: 1,
+          pricing_snapshot: {
+            provenance: {
+              starterPack: { reasonCode: "starter_pack_delivery_2", discountMinor: 4000, basisTemplateVersion: 1 },
+            },
+          },
+        },
+        { cycle_number: 1 },
+      ],
+    });
+
+    const result = await buildSubscriptionCycleSnapshots(client, {
+      subscriptionId: SUB_ID,
+      scheduledAt: SCHEDULED_AT,
+    });
+
+    expect(result.cycleNumber).toBe(2);
+    expect(result.retryAttempt).toBe(1);
+    const totals = (result.orderSnapshot as Record<string, unknown>).totals as Record<string, { amountMinor: number }>;
+    // The current rule would give the frozen 3 430; the stored 4 000 wins.
+    expect(totals.discountTotalGross.amountMinor).toBe(4000);
+    expect(result.pricingSnapshot.provenance).toEqual({
+      starterPack: { reasonCode: "starter_pack_delivery_2", discountMinor: 4000, basisTemplateVersion: 1 },
+    });
+  });
+
   // SR-1 REQ-3. Pins existing behaviour, and does not change it: the builder
   // throws BEFORE it can hand snapshots to `createCycleOrder`, which is the
   // only writer of the cycle row — and `next_cycle_at` moves only when a

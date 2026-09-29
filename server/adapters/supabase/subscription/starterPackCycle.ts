@@ -1,6 +1,5 @@
 import {
   deriveStarterPhase,
-  resolveDelivery2DiscountMinor,
   starterPackMarkerSchema,
   StarterPackMarkerError,
   type StarterPackCyclePort,
@@ -9,6 +8,10 @@ import {
   type StarterPackMarker,
   type StarterPackState,
 } from "../../../domains/subscription/starterPackCycle.js";
+import {
+  quoteLinesListAnchorMinor,
+  resolveStarterDelivery2Discount,
+} from "../../../domains/subscription/starterPackCharge.js";
 
 /**
  * Managed (Supabase) half of the starter-pack acquisition cycle.
@@ -84,6 +87,66 @@ function parseStoredMarker(raw: unknown, subscriptionId: string): StarterPackMar
   return parsed.data;
 }
 
+/** Band subtotal and catalog list total of the current lines. */
+export interface StarterLinePricing {
+  subtotalMinor: number | null;
+  listAnchorMinor: number | null;
+}
+
+const NO_LINE_PRICING: StarterLinePricing = { subtotalMinor: null, listAnchorMinor: null };
+
+/** The one read `readStarterLinePricing` needs; the engine, email and account clients all fit. */
+export interface StarterLinePricingClient {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: unknown): PromiseLike<{ data: unknown; error: unknown }>;
+    };
+  };
+}
+
+/**
+ * The current lines' band subtotal and list anchor, read from the frozen quote
+ * lines (the renewal snapshot builder strips `pricingComponents`, so the list
+ * price is read here). Never throws: a failed read yields nulls, which the panel
+ * and the emails treat as "no evidence". The renewal engine never uses it: its
+ * list total comes out of the snapshot builder's own line read.
+ */
+export async function readStarterLinePricing(
+  client: StarterLinePricingClient,
+  subscriptionId: string,
+): Promise<StarterLinePricing> {
+  try {
+    const { data, error } = await client
+      .from("subscription_lines")
+      .select("line_metadata")
+      .eq("subscription_id", subscriptionId);
+    if (error || !Array.isArray(data) || data.length === 0) return NO_LINE_PRICING;
+    return linePricing(data);
+  } catch {
+    return NO_LINE_PRICING;
+  }
+}
+
+function linePricing(data: unknown[]): StarterLinePricing {
+  const quoteLines = data.map((row) => storedQuoteLine((row as { line_metadata?: unknown } | null)?.line_metadata));
+  let subtotalMinor: number | null = 0;
+  for (const line of quoteLines) {
+    const amount = (line?.lineSubtotalGross as { amountMinor?: unknown } | undefined)?.amountMinor;
+    subtotalMinor =
+      subtotalMinor !== null && typeof amount === "number" && Number.isFinite(amount)
+        ? subtotalMinor + amount
+        : null;
+  }
+  return { subtotalMinor, listAnchorMinor: quoteLinesListAnchorMinor(quoteLines) };
+}
+
+/** The frozen quote line inside a `subscription_lines.line_metadata` value. */
+export function storedQuoteLine(metadata: unknown): Record<string, unknown> | null {
+  const snapshot = (metadata as { productSnapshot?: unknown } | null)?.productSnapshot;
+  const quoteLine = (snapshot as { quoteLine?: unknown } | null)?.quoteLine;
+  return quoteLine && typeof quoteLine === "object" ? (quoteLine as Record<string, unknown>) : null;
+}
+
 const INERT: StarterPackCyclePreparation = {
   phase: "none",
   discountTotalGrossMinor: null,
@@ -105,11 +168,23 @@ export async function prepareStarterPackCycle(
   if (!marker || phase === "none") return INERT;
 
   if (phase === "delivery2") {
-    const discountTotalGrossMinor = resolveDelivery2DiscountMinor({
+    const { discountMinor: discountTotalGrossMinor, basis } = resolveStarterDelivery2Discount({
       marker,
-      templateVersion,
       subtotalMinor: input.subtotalMinor,
+      // Same read as the subtotal (see subscriptionCycleLines.ts): a second read
+      // could pair one composition's subtotal with another's list price.
+      listAnchorMinor: input.listAnchorMinor,
+      retriedCycleDiscountMinor: input.retriedCycleDiscountMinor ?? null,
     });
+    if (basis !== "frozen") {
+      // Logged, never stored: a snapshot field would change the order fingerprint.
+      console.warn("[subscription-renewal] starter delivery-2 priced off the frozen basis", {
+        subscriptionId: input.subscriptionId,
+        basis,
+        subtotalMinor: input.subtotalMinor,
+        discountMinor: discountTotalGrossMinor,
+      });
+    }
     return {
       phase,
       discountTotalGrossMinor,
