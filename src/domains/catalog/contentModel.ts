@@ -2,11 +2,10 @@
  * Catalog content shapes that belong to the platform contract rather than to a
  * deployment's rows.
  *
- * `src/data/catalogContent.ts` holds this deployment's authored content; the
+ * The deployment's catalog content module holds its authored content; the
  * *shape* of an ingredient card is the same for every adopter, so it lives here
  * and the content module re-exports it. Seam precedent: the line-gamma
- * declaration move (`docs/plan/oss-line-gamma-checkout-move.md`), sized for this
- * wave in `docs/plan/oss-w3-seams-sizing.md` section 1.3 (a).
+ * declaration move.
  */
 import type { CatalogAllergenSlug } from "./types.js";
 

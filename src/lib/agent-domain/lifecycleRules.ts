@@ -11,7 +11,7 @@ import type { AgentActorKind, RuleResult } from "./ruleResult.js";
  * never duplicates their decision, it only names their codes and surfaces the
  * RPC's RAISE via `mapRpcError`.
  *
- * Neutral home: do NOT import from `src/domains/*` / `api/domains/*`.
+ * Neutral home: do NOT import from `src/domains/*` / `server/domains/*`.
  */
 
 /** Lifecycle markers a head may need to drop. The MCP generator drops every tool

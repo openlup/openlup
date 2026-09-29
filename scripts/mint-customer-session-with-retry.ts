@@ -136,7 +136,7 @@ export function isConsumedOrExpiredLinkError(error: unknown): boolean {
 }
 
 // GoTrue's own transient fetch/5xx signal, mirroring the classifier already used
-// by scripts/smoke-customer-subscription-auth-retry.ts.
+// by the subscription auth-retry smoke script.
 export function isTransientFetchError(error: unknown): boolean {
   const { status, name } = readAuthError(error);
   return /AuthRetryableFetchError|Retryable|FetchError/i.test(name) || (status !== null && status >= 500);

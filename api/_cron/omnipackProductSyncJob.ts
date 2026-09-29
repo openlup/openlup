@@ -26,7 +26,7 @@ export const OMNIPACK_PRODUCT_SYNC_JOB_NAME = "omnipack-product-sync";
 // PRODUCT SYNC IS PULL-ONLY ON THE CRON. The scheduled job only pulls (provider→us): it is
 // read-only toward the provider (getStock + getProduct) and writes solely to our catalog_sku_eans +
 // reconciliation evidence. It NEVER writes back — registering products/packs (the push) is
-// a deliberate, operator-run action via scripts/omnipack-e2e/seedCatalog.ts (--execute --confirm).
+// a deliberate, operator-run action via the operator's catalog seed script (--execute --confirm).
 // This keeps the provider the undisputed stock/owner oracle: no automated write ever leaves our side.
 
 export async function runOmnipackProductSyncCron(

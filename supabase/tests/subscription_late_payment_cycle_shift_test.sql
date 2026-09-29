@@ -23,7 +23,7 @@
 -- expected values are fixed constants rather than clock arithmetic. The clamp
 -- itself gets its own cell (L2) with a settlement dated a century out.
 --
--- Run via: bash scripts/local-supabase-db-test.sh supabase/tests/subscription_late_payment_cycle_shift_test.sql
+-- Run via: node scripts/public-ci-pgtap.mjs
 
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;

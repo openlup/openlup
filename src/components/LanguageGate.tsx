@@ -15,7 +15,7 @@ interface Props {
 // every page carried two <link rel=canonical> — contradicting on /legacy, where this
 // file said `/legacy` while Seo said `/`. It could not see page-level context like
 // Index.tsx's isLegacy branch, so it could never get that right. `Seo` now owns the
-// whole head and derives hreflang from the canonical. See docs/SEO_CONTENT_PLAN.md.
+// whole head and derives hreflang from the canonical.
 const LanguageGate = ({ lang, forceLocale, children }: Props) => {
   const effectiveLang: Lang = forceLocale ?? lang ?? "pl";
   const { i18n } = useTranslation("common");

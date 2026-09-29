@@ -1,5 +1,5 @@
 // Ports for the subscription dunning dispatch worker (hexagonal: the domain
-// declares the ports, api/infra adapters implement them). Pure types only.
+// declares the ports, infrastructure adapters implement them). Pure types only.
 
 import type { PaymentFailureCustomerCause } from "@openlup/core/payment";
 

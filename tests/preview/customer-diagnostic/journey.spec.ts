@@ -6,7 +6,7 @@ import { expect, test, type Page, type Response as PlaywrightResponse, type Rout
 
 import { mintCustomerSessionWithRetry } from "../../../scripts/mint-customer-session-with-retry.ts";
 // ⛔ RETAINED, and it must stay that way: `verify-closure` fails a retained source that
-// names a withheld one, and both `tests/preview/checkout/helpers/configuratorFlow.ts` and
+// names a withheld one, and both the checkout suite's `configuratorFlow.ts` and
 // `helpers/stripe.ts` are withheld through their own imports. `journeyDrive.ts` beside this
 // file is the adapted copy of exactly the subset these legs use - see its header for why.
 // `helpers/fixtures.ts` IS retained and is still imported directly.
@@ -62,7 +62,7 @@ import {
  * This file is RETAINED for publication, so it imports no withheld module. Two decisions it
  * cannot make on its own - whether the recipient is an approved test address, and whether
  * the Supabase project is the staging one - live on the withheld side, so
- * `scripts/staging-customer-diagnostic-journey.ts` makes them and hands the answer down as
+ * the deployment's journey runner script makes them and hands the answer down as
  * `CUSTOMER_DIAGNOSTIC_JOURNEY_APPROVED=1`. Without that flag the authenticated legs record
  * `unknown` and never reach for a credential.
  */
@@ -89,7 +89,7 @@ const SUBMIT_TESTID = "configurator-submit";
 /**
  * The account dashboard's card-replacement CTA. There is no testid on it, so it is matched
  * by its shipped Polish label (`account:dashboard.sectionsV2.payments.card.replaceCta` in
- * `src/i18n/locales/pl/account.json`); the journey drives the `pl` surface throughout.
+ * the deployment's `pl` locale); the journey drives the `pl` surface throughout.
  */
 const CARD_SETUP_CTA = "Zmień kartę";
 /** How many flavors the pack takes - the checkout helper's own default, kept explicit here
@@ -99,7 +99,7 @@ const READY_MS = 15_000;
 /** How long a leg waits for the observation it needs, and how often it looks. */
 const OBSERVATION_MS = 10_000;
 /**
- * The gate is the one leg whose producer is lazy: `src/pages/skomponuj-pakiet/index.tsx`
+ * The gate is the one leg whose producer is lazy: the deployment's configurator page
  * emits `configurator_enter` on mount through the lazily loaded reporter, and on two of
  * three runs on 2026-09-15 that chunk had not landed inside 10 s. Only the WAIT widens;
  * the accepted-observation bar does not, so a candidate that never emits stays `unknown`
@@ -334,7 +334,7 @@ test("the shipped producers emit across an anonymous -> authenticated -> account
     // receipt, the packet and the readiness history for no gain. NOTHING is seeded here
     // any more. The previous shape seeded a Tpay-simulator decline server-side and opened
     // its payment-status URL, which cannot work: `/skomponuj-pakiet/platnosc`
-    // (`src/checkout/adapters/PlatnoscPage.tsx`) mounts no customer-diagnostic producer at
+    // (the deployment's payment-status page) mounts no customer-diagnostic producer at
     // all, so a decline the browser did not perform is not observable from that route.
     //
     // What it does instead is the thing the invariant is actually about: drive the SHIPPED
@@ -408,7 +408,7 @@ test("the shipped producers emit across an anonymous -> authenticated -> account
   await leg("payment-card-setup-retry", async () => {
     if (session.status !== "pass") return unknown("no customer session, so the card-setup retry was never reached");
     // ⛔ The route was WRONG until 2026-09-15 19:58Z, and no wait would have fixed it.
-    // `/konto/platnosc/napraw` (`src/pages/account/RecoverPaymentPage.tsx`) reported NOTHING
+    // `/konto/platnosc/napraw` (the payment-recovery page) reported NOTHING
     // then; since 2026-09-16 it reports `account_card_setup` too
     // (`src/pages/account/cardSetupSupport.ts`), but this leg drives
     // `src/pages/account/v2/sections/PaymentCardSetup.tsx`, which the
@@ -507,7 +507,7 @@ async function driveToPaymentStep(page: Page): Promise<string | null> {
         + " flavor SKU, which cannot reserve against this candidate's provider stock";
     }
     packPath = "purchase-mode";
-    // ONE-TIME, like `tests/preview/checkout/checkout-stripe.spec.ts`, which is the proof
+    // ONE-TIME, like the withheld checkout card-payment spec, which is the proof
     // that this exact shape reaches a mounted Payment Element on this candidate. A
     // subscription_initial adds a reusable-method mandate that neither of these two legs
     // observes, and the seeding this replaced was a one-time BLIK checkout too.
@@ -727,7 +727,7 @@ async function reopenAfterDecline(page: Page): Promise<string | null> {
  *
  * ⛔ The single retry click is not a flake tolerance. The Payment Element finishes settling
  * AFTER the confirm button reports enabled, and when it does the button JUMPS - measured
- * 224 px on staging, 3/3 runs (`tests/preview/checkout/helpers/stripe.ts`) - so a first
+ * 224 px on staging, 3/3 runs (the withheld checkout card helper) - so a first
  * click can be dispatched where the button no longer is and land on nothing. A retry cannot
  * double-charge: the shipped `handleSubmit` returns early while `isSubmitting` is true.
  * `confirmAndPoll` is the helper that owns this and is deliberately NOT reused: its
@@ -873,7 +873,7 @@ function rejectionsSince(mark: number): string {
  * Wait until this tab has admission headroom again, WITHOUT touching the page.
  *
  * ⛔ The ingest admits at most 20 events per SEGMENT per rolling minute
- * (`supabase/migrations/20260914120000_customer_diagnostic_ingress_identity.sql`, the
+ * (`db/platform/migrations/20260914120000_customer_diagnostic_ingress_identity.sql`, the
  * `rate_limited` outcome). That is a RAIL INVARIANT, not a defect: it is what stops a
  * runaway tab filling the table. A seven-step configurator walk spends the whole budget on
  * its own - on 2026-09-15 19:45Z the anonymous segment held exactly 20 events and every

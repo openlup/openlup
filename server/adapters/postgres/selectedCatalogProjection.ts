@@ -2,8 +2,7 @@
 // migration runner.
 //
 // WHERE THIS CAME FROM: it was the one live fragment of the parked
-// `scripts/oss-phase2-schema-*` receipt axis (W0 of
-// docs/plan/oss/platform-80-20-execution.md). The bytes below are a verbatim move,
+// `scripts/oss-phase2-schema-*` receipt axis. The bytes below are a verbatim move,
 // not a rewrite: `config/platform-migration-manifest.json` stores sha256 of the
 // payload this file emits, and `migrationRunner.assertObjectInventory` refuses to
 // serve a database whose live projection serializes to anything else. The exact

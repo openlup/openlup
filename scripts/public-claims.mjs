@@ -160,7 +160,7 @@ export function auditPublicHtmlClaims(html, route, registry, now = new Date()) {
  * the prebuild chain, where a package-import condition is not available.
  *
  * Selection is by PHYSICAL PRESENCE, not by env var, flag or JSON switch: the
- * published artifact ships with `src/overlays/**` absent, so it cannot resolve
+ * published artifact ships with no deployment overlay, so it cannot resolve
  * anything but the neutral file, and no build command has to remember to say so.
  * Exactly one overlay may claim the slot; two would make the answer depend on
  * directory order, so that is an error rather than a coin toss.

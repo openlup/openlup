@@ -23,7 +23,7 @@ export function getOrCreateCheckoutAttemptKey(
   // key minted a fresh pet + order + subscription per edit (the duplicate cascade).
   // The server now treats a same-key / changed-payload submit as an idempotent
   // update-in-place, so a stable key means one journey => exactly one pet + order +
-  // subscription. See docs/plan/fix-checkout-idempotency-journey-key.md.
+  // subscription.
   const stored = readStoredAttempt();
   if (stored && isCheckoutAttemptKey(stored.key)) {
     return stored.key;

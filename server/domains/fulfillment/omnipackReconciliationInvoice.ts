@@ -14,9 +14,8 @@ import type {
   OmnipackReconciliationResult,
 } from "./omnipackReconciliationContracts.js";
 
-// Read off the RPC's own RAISE list
-// (supabase/migrations/20260716110002_accounting_handoff_operation_idempotency.sql
-// :50, :58, :61, :66, :71, :76, :104): seven guards, every one
+// Read off the RPC's own RAISE list, in the migration that made accounting
+// handoff operations idempotent: seven guards, every one
 // `USING ERRCODE = '22023'`, every one permanent for the calling fulfilment. The
 // outbox twin (server/domains/accounting/fulfillmentHandoffInvoiceHandler.ts:36)
 // treats 23514 as permanent too; this rail deliberately does NOT. 23514 is the

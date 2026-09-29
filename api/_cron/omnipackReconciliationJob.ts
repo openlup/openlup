@@ -172,7 +172,7 @@ export function omnipackReconciliationPaginationMetadata(
   // still returns 502 and still writes ledger `failed`; it just stops rewriting
   // the checkpoint to its own page, which is what starved two of three pages for
   // 21+ hours on 2026-09-09 (and, through the acceptance ack, on 2026-07-17).
-  // This is already the canon scripts/checkpoint2-fulfillment-evidence.ts:126-129
+  // This is already the canon that the downstream fulfillment-evidence check
   // computes and compares against, with no reference to `ok`. Every write in the
   // rail is idempotent by key, so a genuinely transient item-level failure is
   // retried a cycle later instead of immediately.

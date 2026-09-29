@@ -12,7 +12,7 @@ export const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        // Brand marketing CTAs — see DESIGN.md §2. Colors come from the semantic
+        // Brand marketing CTAs. Colors come from the semantic
         // --cta* tokens (Signal Teal primary / Lilac secondary), NOT a raw hue,
         // so the action color is re-themable in one place.
         // transition-all (not base transition-colors) so scale/brightness animate.
@@ -31,7 +31,7 @@ export const buttonVariants = cva(
         sm: "h-9 rounded-md px-3",
         lg: "h-11 rounded-md px-8",
         icon: "h-10 w-10",
-        // Brand CTA sizes (see DESIGN.md §3 type scale).
+        // Brand CTA sizes (from the design system's type scale).
         hero: "text-base-plus px-12 py-[18px]",
         section: "text-sm-plus px-8 py-[14px]",
       },

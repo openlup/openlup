@@ -25,7 +25,7 @@ import type { CatalogSkuEnvelopeSupabaseClient } from "./catalogSkuEnvelope.js";
  *
  * NO AGGREGATE STATE DIGEST, deliberately. `catalog_publication_candidates`,
  * `_decisions` and `_events` are `REVOKE ALL ... FROM ... service_role`
- * (`supabase/migrations/20260828220001_catalog_document_publication_control.sql`),
+ * (the migration that introduced catalog document publication control),
  * and `catalog_publication_current_state()` is NOT `SECURITY DEFINER`, so it
  * would execute with the caller's privileges and hit the same revoke. Reading
  * either from this role is unreachable code, and mirroring the resolver here

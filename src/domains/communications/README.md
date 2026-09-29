@@ -134,8 +134,8 @@ there because it is consent-gated and makes no false-urgency/price promise.
   history handlers, consent sync workers, webhook handlers, service-role ports);
   provider execution adapters such as admin send-email and packaging digest dry
   runs live under `server/adapters/resend/`.
-- BFF routes: `api/bff/admin/communications/` for admin surfaces,
-  `api/bff/communications/` for public preferences and provider webhooks, plus
+- BFF routes: `/api/bff/admin/communications/` for admin surfaces,
+  `/api/bff/communications/` for public preferences and provider webhooks, plus
   a deployment-owned handler for authenticated customer
   self-service newsletter preference updates.
 - Cron routes: `api/cron/communication-sync-*` disabled by default through env

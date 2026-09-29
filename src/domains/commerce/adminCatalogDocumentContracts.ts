@@ -8,8 +8,8 @@ import { COMMERCE_CONTRACT_VERSION } from "./types.js";
  * Admin/agent CATALOG DOCUMENT contracts — the deployment-neutral half of the
  * document-authority seam.
  *
- * BOUNDARY (load-bearing, see `docs/plan/catalog-wave3f-a-document-backend.md`
- * section 1): the concrete product document is a DEPLOYMENT concern. Its schema,
+ * BOUNDARY (load-bearing):
+ * the concrete product document is a DEPLOYMENT concern. Its schema,
  * its field vocabulary and the exact scope a proposal may carry all live in the
  * deployment overlay. This module therefore describes a candidate as OPAQUE
  * canonical JSON: the exact bytes the submission RPC will receive, the caller's

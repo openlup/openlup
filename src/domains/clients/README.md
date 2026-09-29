@@ -54,7 +54,7 @@ plus the admin identity reads.
   identity clients, `legacyAdapters.ts`)
 - Server: `server/domains/clients/` (acquisition case handlers/ports, admin
   client search/detail/summary handlers, agent customer read governance)
-- BFF routes: `api/bff/clients/…`, `api/bff/admin/clients/…`
+- BFF routes: `/api/bff/clients/…`, `/api/bff/admin/clients/…`
 
 ## Public navigation and availability
 

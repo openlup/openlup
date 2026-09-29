@@ -32,7 +32,7 @@ import {
 
 /**
  * The platform's neutral subscribe entry — the front door line γ left off the published
- * checkout machine (`docs/plan/oss-subscription-axis-audit.md` §1.6, gap **a1**).
+ * checkout machine (gap **a1** of the subscription-axis audit).
  *
  * ⛔ Scaffolding on purpose. This is the twenty per cent an adopter replaces: one page
  * that lists what the deployment permits subscribing to, takes a quantity, a recurrence

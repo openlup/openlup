@@ -11,7 +11,7 @@ import { starterPackMarkerSchema } from "./starterPackCycle.js";
  *  - `starterPackMarkerSchema` (`server/domains/subscription`) is what the
  *    renewal engine reads back out of `subscriptions.starter_pack`.
  *
- * Neither can import the other: `src/lib/architectureGuardrails.test.ts` blocks a
+ * Neither can import the other: an architecture guardrail blocks a
  * cross-domain reach into another domain's internals, and the browser bundle can
  * never hold a server module. The plan schema is therefore re-exported on
  * commerce's PUBLIC `contracts.ts` surface — the same sanctioned route wave 1

@@ -4,7 +4,7 @@
 // were retired on 2026-09-04; every sender is Node now, including the Auth hook
 // at server/domains/auth/authSendEmailHook.ts, and they all render here, so
 // every transactional email looks identical. Reproduces the canonical
-// light-theme from supabase/migrations/20260406000000_email_redesign.sql.
+// light-theme from the migration that introduced the email redesign.
 
 import type { Locale } from "../../../lib/i18n/resolveLocale.js";
 import type { EmailBlock } from "./blocks.js";

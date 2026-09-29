@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The artifact this run hydrates; `tests/preview/ssg-hydration.spec.ts` reads the
+// The artifact this run hydrates; the SSG hydration spec reads the
 // same variable for the documents it fulfills. `vite.config.ts` derives
 // `build.outDir` from `OPENLUP_BUILD_OUT_DIR`, and `vite preview` serves that same
 // `build.outDir` — so forwarding it is what keeps the served chunks and the read

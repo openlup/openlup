@@ -32,7 +32,7 @@ describe("/api/ops/platform-watchdog", () => {
 
   // The 2026-08-14 staging RED HOLD: at 30s the persisting tick sat on this
   // ceiling and returned a deterministic 504 that no retry could beat. The
-  // cron-convention comparison lives in src/lib/platformWatchdogGuardrails.test.ts.
+  // cron-convention comparison lives in the deployment's watchdog guardrail test.
   it("declares the 60s function budget the persisting tick needs", () => {
     expect(config).toEqual({ maxDuration: 60 });
   });

@@ -8,8 +8,7 @@
     // dev server, build and Vitest resolve; without it a component would be checked
     // against the platform example while it runs on this deployment's data. Inert in
     // the published tree: publication projects `imports` to bare default strings, so
-    // no condition survives for this to select. Owner ruling of 2026-08-13 amending
-    // section 1.4 of `docs/plan/oss-neutral-email-templates.md`.
+    // no condition survives for this to select. Owner ruling of 2026-08-13.
     "customConditions": ["core-source", "deployment-overlay"],
     "allowImportingTsExtensions": true,
     "esModuleInterop": true,
@@ -23,5 +22,5 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["node"]
   },
-  "include": ["api/**/*.ts", "server/**/*.ts", "src/types/pet-personalizer.ts"]
+  "include": ["api/**/*.ts", "server/**/*.ts"]
 }

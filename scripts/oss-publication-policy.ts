@@ -67,7 +67,6 @@ export function parsePublicPolicyRegistry(source: string): PublicPolicyRegistry 
   const raw = parseObject(source, PUBLIC_POLICY_REGISTRY_PATH);
   if (raw.schemaVersion !== 1) throw new Error(`${PUBLIC_POLICY_REGISTRY_PATH}: unsupported schemaVersion`);
   const activePaths = publicRegistryPaths(raw.activePaths, `${PUBLIC_POLICY_REGISTRY_PATH}: activePaths`);
-  if (activePaths.some((path) => path.startsWith("docs/plan/"))) throw new Error(`${PUBLIC_POLICY_REGISTRY_PATH}: private programme path leaked into public policy registry`);
   return { schemaVersion: 1, activePaths, contracts: publicRegistryOwners(raw.contracts, `${PUBLIC_POLICY_REGISTRY_PATH}: contracts`, new Set(activePaths)) };
 }
 function parsePackageCommands(value: unknown): PublicPackageCommand[] {

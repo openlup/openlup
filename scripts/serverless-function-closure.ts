@@ -6,8 +6,8 @@
 // In the last two the platform's file tracer never sees the target, so the lambda
 // ships without it: incident `staging-run-31686579103-attempt-1`.
 //
-// WHY NOT a hand-written list of affected entrypoints (the shape
-// `src/lib/providerInvariantGuardrails.test.ts` still carries): a list cannot know
+// WHY NOT a hand-written list of affected entrypoints (the shape the
+// deployment's provider-invariant guardrail test still carries): a list cannot know
 // a fourth entrypoint started importing the adapter — how #3 was missed once.
 //
 // SO: this module owns the DERIVED analysis — one reachability graph rooted at

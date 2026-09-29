@@ -1,13 +1,13 @@
 /**
  * Smoke test for the BFF routing aggregator.
  *
- * This file exists as a companion test so the CI coverage guard
- * (scripts/assert-changed-runtime-coverage.ts) does not flag the aggregator as
+ * This file exists as a companion test so the CI changed-runtime coverage
+ * guard does not flag the aggregator as
  * lacking coverage. The aggregator is auto-generated and cannot be
  * meaningfully unit-tested by importing the whole route graph; doing so pulls
  * every BFF handler into local V8 coverage and has repeatedly produced 120s
  * weak-machine hangs for a near-zero-signal assertion. The functional dispatch
- * contract is exercised by tests/golden-master/dispatchGoldenMaster.test.ts;
+ * contract is exercised by the dispatch golden-master test;
  * this companion stays static and pins only the generated entrypoint shape.
  */
 import { readFileSync } from "node:fs";

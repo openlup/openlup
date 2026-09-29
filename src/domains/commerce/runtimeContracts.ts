@@ -55,7 +55,7 @@ export const startHiddenCheckoutRuntimeRequestSchema = z
      * one always emits `:attempt:<N>` (here omitted at 0 to keep the historic
      * key byte-identical) and adds a second `:provider-seq:<N>` for an
      * operator-only repair counter. Positionally this is its `retryAttempt`,
-     * never its `providerAttemptSequence`. Both: `docs/PAYMENT_IDEMPOTENCY.md`.
+     * never its `providerAttemptSequence`.
      */
     paymentAttemptSequence: z.number().int().min(0).max(50).optional(),
     /**

@@ -12,7 +12,7 @@
 // `config/fulfillment-status-map.json` (regenerate with
 // `scripts/generate-fulfillment-status-map.ts`); `statusMap.test.ts` locks the
 // two together and verifies full cross-layer coverage (FSM enum, Layer B,
-// provider dictionaries, i18n). See docs/FULFILLMENT_STATUS_CANON.md.
+// provider dictionaries, i18n).
 
 export type CustomerFulfillmentStep =
   | "paid"

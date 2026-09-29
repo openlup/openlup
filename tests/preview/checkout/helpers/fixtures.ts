@@ -107,10 +107,9 @@ export const OWNERS = {
 /**
  * The tag every mailbox this suite types carries, in the local part.
  *
- * It is the cleanup handle: `isPreviewTestEmail` in
- * `scripts/cleanup-hidden-preview-commerce-state.ts` keys on this exact
- * substring, so the per-test client rows below are sweepable. Change it in both
- * places or `fixtures.test.ts` fails.
+ * It is the cleanup handle: `isPreviewTestEmail` in a downstream preview-state
+ * cleanup script keys on this exact substring, so the per-test client rows below
+ * are sweepable. Change it in both places or `fixtures.test.ts` fails.
  */
 export const CHECKOUT_E2E_MAILBOX_TAG = "checkout-e2e";
 

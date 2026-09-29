@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 
-// Re-delivery / idempotency regression for the live Model B awaiting-mandate defect
-// (PR #396, docs/evidence/subscription-model-b-20260611/awaiting-mandate-DEFECT/): a
+// Re-delivery / idempotency regression for the live Model B awaiting-mandate defect: a
 // re-delivered subscription_cycle payment.succeeded used to 500 because the simulator
 // re-applied the result (apply_result raises 23505 on the drifted fingerprint) with no
 // try/catch. It must now absorb the conflict, still bind the alias mandate, never 500.

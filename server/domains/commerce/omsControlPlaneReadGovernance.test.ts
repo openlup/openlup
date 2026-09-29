@@ -9,8 +9,7 @@
  * no customer identity at all, because the gate's audit would then record a
  * customer read of zero customers, and because the portable `node-postgres`
  * branch of the same contract has neither an actor kind nor an audit client to
- * run it with. Reasoning and its precondition: docs/BFF_CONTRACTS.md, Admin
- * Commerce.
+ * run it with.
  *
  * That exemption is conditional, so the condition is pinned here too: if the
  * projection ever gains a customer fact, these tests fail in the same change

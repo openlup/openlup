@@ -34,7 +34,7 @@ export const BUDGET_BAND_MIN_BYTES = 512;
  * passes, so growth is visible before it is blocking, and a wave whose real cost to a visitor is a
  * few hundred bytes does not have to spend a re-pin and a written justification on it.
  *
- * The band is computed from the pin in `config/performance-budgets.json`, never from the previous
+ * The band is computed from the committed budget pin, never from the previous
  * measurement, so it cannot ratchet: two consecutive sub-band waves are measured against the same
  * static pin and the second one fails. Total drift is capped at one band until a human re-pins.
  */

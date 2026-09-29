@@ -827,10 +827,9 @@ SELECT is(
 --   renewal cron records its own decline classification
 --   ('provider_declined', 'blik_recurring_unsupported_bank',
 --   'off_session_sca_required'), the payment webhook applies a generic
---   'provider_failed' (server/domains/payment/paymentWebhookHandler.ts:95-103),
---   and reconciliation writes 'provider_reconciliation_*'. A guard that also
---   required the REASON to match would let every one of those through and
---   absorb only the case that barely occurs, so one decline would still bump the
+--   'provider_failed', and reconciliation writes 'provider_reconciliation_*'.
+--   A guard that also required the REASON to match would let every one of those
+--   through and absorb only the case that barely occurs, so one decline would still bump the
 --   ladder twice. Status equality is what makes the guard do its job.
 SELECT is(
   (public.commerce_payment_control_apply_result(

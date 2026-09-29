@@ -69,8 +69,7 @@ export interface AppliedPaymentResult {
  * clock read. The `commerce.payment_result.apply` fingerprint hashes
  * `p_occurred_at::text`, so a clock-derived value makes re-presenting the same
  * `idempotencyKey` unable to replay — it can only raise 23505. That shape caused
- * the 2026-08-04 production renewal poison pill; see
- * `docs/PAYMENT_IDEMPOTENCY.md` §4.
+ * the 2026-08-04 production renewal poison pill.
  */
 export interface PaymentWebhookPort {
   ingestEvent(input: {

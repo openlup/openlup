@@ -13,7 +13,7 @@ import type {
  * deliberately declared here rather than in `commerceSettingsPort.ts`.
  *
  * `CommerceSettingsPort` is implemented structurally by the quote/checkout money
- * path (`server/bff/commerce/quote-batch.ts` memoizes it, two suites fake it
+ * path (the deployment's quote-batch BFF route memoizes it, two suites fake it
  * inline), so widening that interface would drag an unrelated read into pricing.
  * Keeping the new capability beside its only implementation leaves that contract
  * untouched; a consumer asks for exactly the lane it reads.

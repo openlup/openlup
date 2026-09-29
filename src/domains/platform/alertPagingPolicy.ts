@@ -7,13 +7,12 @@ import { ALERT_SEVERITIES, type AlertSeverity } from "./observabilityContracts.j
  * should page an on-call channel (e.g. ntfy). Lower-severity alerts stay
  * ledger-only so real incidents are not buried under routine noise.
  *
- * The tiering is settled in
- * `.agents/intent/pager-says-money-path-down-everything-else-has-a-queue.md`
- * section 4: **p0 pages** (customers cannot buy, renewals cannot charge, the
- * platform or database is down); **p1 is panel-urgent** and turns the admin
- * health pill `degraded` without waking anyone; **p2/p3** are the panel list and
- * the ledger. An unknown severity still pages: the fail-open rule is unchanged,
- * because silence must never be the result of a classification error.
+ * The tiering is settled: **p0 pages** (customers cannot buy, renewals cannot
+ * charge, the platform or database is down); **p1 is panel-urgent** and turns
+ * the admin health pill `degraded` without waking anyone; **p2/p3** are the
+ * panel list and the ledger. An unknown severity still pages: the fail-open
+ * rule is unchanged, because silence must never be the result of a
+ * classification error.
  *
  * Lower rank == more severe.
  */

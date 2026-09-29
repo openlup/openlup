@@ -39,7 +39,7 @@ one-time/subscription-initial checkout lives here.
 - Pure policy helpers: pricing breakdown, recommendation engine/variant
   selection, recommendation policy contracts, offer availability derivation, and OMS fulfillment
   eligibility/summary (`pricingBreakdown.ts`, `omsFulfillment*`).
-- Petfood policy implementations live downstream in `src/domains/petfood`,
+- Petfood policy implementations live downstream in a deployment-owned module,
   which is withheld by the deployment overlay and is not part of the published
   tree. `energyPolicy.ts` keeps only compatibility type exports and
   `packageQuantityPolicy.ts` keeps the package policy contract/version exports;

@@ -14,6 +14,8 @@ is runtime-only input and must not be embedded in a browser artifact. Hosts must
 provide their own storage, identity, delivery, and provider configuration where
 the selected capabilities require it.
 
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-2349404e8b49a1f9b80fedfc4da44e064f0c29ddb03bed69921b7c7a642fb502","reason":"Comment-only delta in BFF and cron entrypoints and their tests. Comments stop naming files of a downstream deployment and name them by role or by their URL route. No route, cron, gate flag, runtime composition or hosting behavior described here changes."} -->
+
 ## Self-host boundary
 
 The platform target is portable PostgreSQL with a reproducible baseline and
@@ -172,6 +174,8 @@ detect preview emails linking to production. An empty list admits no live Tpay
 callback and gives the email check no production domains to recognize. See the
 [pending preview upgrade notes](../../.github/VERSIONING_AND_EOL.md#pending-preview-upgrade-notes-public-coordinates)
 for the accompanying `OPENLUP_` configuration rename.
+
+<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-9dd9bfa8907390ca93422b31365d961d2da1804e69668df8009068b140134753","reason":"Comment-only delta. Five provider adapter comments stop naming downstream documents and guard files. No provider boundary, activation gate or host capability described here changes."} -->
 
 ## Preview posture
 
