@@ -18,6 +18,7 @@ invalid:
   - 'if (address.country === "DE") validate();'
   - 'if ("AT" !== input.countryCode) reject();'
   - 'const country = input.country ?? "FR";'
+  - 'const country = input.country || "DE";'
   - 'const schema = z.object({ country: z.string().default("DE") });'
 ---
 id: domain-no-country-literals-tsx

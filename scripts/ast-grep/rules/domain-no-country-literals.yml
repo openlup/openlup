@@ -7,8 +7,8 @@ note: |
   platform code. A two-letter country or region code fixed in domain code makes
   the platform serve one market. The rule matches such a code in `z.literal`,
   as the value of a country- or region-named key, property type, variable or
-  JSX attribute (also through `as const` and `satisfies`), and compared with or
-  defaulted onto a country- or region-named value (`===`, `!==`, `??`). Take the
+  JSX attribute (also through `as const` and `satisfies`), and compared with a
+  country- or region-named value or used as its `??` or `||` fallback. Take the
   code from the settlement profile, configuration or the caller. Tests and
   fixtures are exempt. The files under `ignores` predate this rule: delete an
   entry when its file is fixed and never add one.
@@ -76,7 +76,7 @@ rule:
         - inside: { stopBy: end, kind: pair, has: { field: key, matches: country-named } }
     - kind: binary_expression
       all:
-        - has: { field: operator, regex: "^(===|!==|==|!=|\\?\\?)$" }
+        - has: { field: operator, regex: "^(===|!==|==|!=|\\?\\?|\\|\\|)$" }
         - has: { matches: two-letter-code }
         - has: { matches: country-named }
 ---
@@ -89,8 +89,8 @@ note: |
   platform code. A two-letter country or region code fixed in domain code makes
   the platform serve one market. The rule matches such a code in `z.literal`,
   as the value of a country- or region-named key, property type, variable or
-  JSX attribute (also through `as const` and `satisfies`), and compared with or
-  defaulted onto a country- or region-named value (`===`, `!==`, `??`). Take the
+  JSX attribute (also through `as const` and `satisfies`), and compared with a
+  country- or region-named value or used as its `??` or `||` fallback. Take the
   code from the settlement profile, configuration or the caller. Tests and
   fixtures are exempt. The files under `ignores` predate this rule: delete an
   entry when its file is fixed and never add one.
@@ -137,7 +137,7 @@ rule:
         - inside: { stopBy: end, kind: pair, has: { field: key, matches: country-named } }
     - kind: binary_expression
       all:
-        - has: { field: operator, regex: "^(===|!==|==|!=|\\?\\?)$" }
+        - has: { field: operator, regex: "^(===|!==|==|!=|\\?\\?|\\|\\|)$" }
         - has: { matches: two-letter-code }
         - has: { matches: country-named }
     - kind: jsx_attribute

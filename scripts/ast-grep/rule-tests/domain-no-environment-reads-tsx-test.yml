@@ -5,3 +5,6 @@ invalid:
   - |
     export const Badge = () => <span>{import.meta
       .env.MODE}</span>;
+  - |
+    export const Badge = () => <span>{(import.meta as unknown as { env: Record<string, string> })
+      .env.MODE}</span>;
