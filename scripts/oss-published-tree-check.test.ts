@@ -29,7 +29,6 @@ import {
   materializedOutputPaths,
   policyVerdict,
   publicInventoryVerdict,
-  sourceReleaseProjectionDrift,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_REQUIRED_TEST_COMMAND, PUBLIC_REQUIRED_TEST_SCOPE, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
@@ -41,10 +40,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW = ".github/workflows/published-tree-ci.yml";
 const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");
-// Frozen protected-main test command at d0b7e4d9a7ef1653bd0ecaa30d621b6fa72957e7.
+// Frozen protected-main test command from d0b7e4d9a7ef1653bd0ecaa30d621b6fa72957e7, changed
+// deliberately once since: the retired consume engine and consume transport tests left it with
+// their modules, and the source preview release test took their place.
 // Keep this independent of the policy's derived command: deleting a selector in
 // both the package and policy must still fail the required coverage falsifier.
-const requiredTestFloor = "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/" + ["str", "ipe"].join("");
+const requiredTestFloor = "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/" + ["str", "ipe"].join("");
 const workflowJob = (name: string, source = workflow) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
 const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run: (?!\|)(.+)$/gmu)].map((match) => match[1]);
 
@@ -72,23 +73,22 @@ describe("maintainer-controlled source preview workflow", () => {
 
   it("pins actions and uses an environment App token for tag and release writes", () => {
     const uses = [...sourcePreviewWorkflow.matchAll(/uses: [^@\n]+@([^\s#]+)/gu)].map((match) => match[1]);
-    expect(uses).toHaveLength(4);
+    expect(uses).toHaveLength(3);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
     expect(sourcePreviewWorkflow).toContain("secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY");
     expect(sourcePreviewWorkflow).toContain("vars.OPENLUP_RELEASE_APP_CLIENT_ID");
     expect(sourcePreviewWorkflow).toContain("repositories: openlup\n          permission-contents: write\n          permission-administration: read");
-    for (const name of ["Create the exact annotated tag with the release identity", "Create a draft prerelease and attach the receipt", "Publish the immutable prerelease with the release identity"]) {
+    for (const name of ["Create the exact annotated tag with the release identity", "Create the draft prerelease", "Publish the immutable prerelease with the release identity"]) {
       const step = sourcePreviewWorkflow.split(`      - name: ${name}\n`)[1]?.split("      - name:")[0];
       expect(step).toContain("GH_TOKEN: ${{ steps.release-identity.outputs.token }}");
     }
-    expect(sourcePreviewWorkflow).toContain("id-token: write\n      attestations: write");
-    expect(sourcePreviewWorkflow).toContain("actions/attest-build-provenance@");
-    expect(sourcePreviewWorkflow).toContain("subject-path: ${{ env.RELEASE_OUTPUT_DIR }}/openlup-source-receipt.json");
+    expect(sourcePreviewWorkflow).toContain("contents: read\n      checks: read\n      attestations: read\n");
+    expect(sourcePreviewWorkflow).not.toMatch(/id-token: write|attestations: write|attest-build-provenance|gh release upload|openlup-source-receipt/u);
     expect(sourcePreviewWorkflow).not.toMatch(/--clobber|git push.*--force|--method DELETE/u);
   });
 
-  it("attests before uploading, checks the draft before publishing and authenticates afterward", () => {
-    const steps = ["source-preview-release.ts prepare", "Create the exact annotated tag", "source-preview-release.ts produce", "Attest the exact receipt", "gh release create", "gh release upload", "source-preview-release.ts check-draft", "gh release edit", "source-preview-release.ts verify"];
+  it("verifies the previous attestation, checks the draft before publishing and verifies the attested release afterward", () => {
+    const steps = ['gh release verify "openlup-source-preview/$((PREVIEW_NUMBER - 1))"', "source-preview-release.ts prepare", "Create the exact annotated tag", "gh release create", "source-preview-release.ts check-draft", "gh release edit", "source-preview-release.ts verify", 'gh release verify "openlup-source-preview/$PREVIEW_NUMBER"'];
     const positions = steps.map((step) => sourcePreviewWorkflow.indexOf(step));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -124,7 +124,7 @@ describe("complete public CI", () => {
   });
   it("preserves every required selector and the subsequent existing steps with fatal neutrality", () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
-    expect(createHash("sha256").update(requiredTestFloor).digest("hex")).toBe("f73185244cd05d61e322018d7304594e67b837acbabedc59ee4f938a7e1d1527");
+    expect(createHash("sha256").update(requiredTestFloor).digest("hex")).toBe("51484fa2f1ef215691d86a1e08f18446147e7ebf7271a621925bb82cd162fe64");
     expect(PUBLIC_REQUIRED_TEST_COMMAND).toBe(requiredTestFloor);
     expect(manifest.scripts["test:required"]).toBe(requiredTestFloor);
     expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(requiredTestFloor.split(" ").slice(3));
@@ -391,7 +391,6 @@ describe("the public-only inventory check", () => {
       const lines: string[] = [];
       expect(publicInventoryVerdict(root, (line) => lines.push(line))).toBe(true);
       expect(lines.join("\n")).toContain(`tracked public paths: ${paths.length}`);
-      expect(() => readFileSync(join(root, "config", "oss-core-readiness-blockers.json"))).toThrow();
       writeFileSync(join(root, baselinePath), `${baseline}SELECT 1;\n`);
       const mismatched: string[] = [];
       expect(publicInventoryVerdict(root, (line) => mismatched.push(line))).toBe(false);
@@ -428,7 +427,6 @@ describe("the public-only typecheck contract", () => {
       symlinkSync(join(ROOT, "node_modules"), join(root, "node_modules"), "dir");
       writeFileSync(join(root, "index.ts"), "export const publicValue: string = 'ok';\n");
       writeFileSync(join(root, "tsconfig.public.json"), JSON.stringify({ compilerOptions: { strict: true }, files: ["index.ts"] }));
-      expect(() => readFileSync(join(root, "config", "oss-split-rehearsal-baseline.json"))).toThrow();
       const lines: string[] = [];
       expect(typecheckVerdict(root, releaseContract(), (line) => lines.push(line))).toBe(true);
       expect(lines.join("\n")).toContain("projects: tsconfig.public.json");
@@ -544,34 +542,17 @@ describe("the materialized output bytes", () => {
   });
 });
 
-describe("projection drift", () => {
-  it("records every non-static output whose materialized bytes differ from its source", () => {
-    const source = mkdtempSync(join(tmpdir(), "projection-source-"));
-    const output = mkdtempSync(join(tmpdir(), "projection-output-"));
-    try {
-      writeFileSync(join(source, "runtime.ts"), "const endpoint = 'private';\n");
-      writeFileSync(join(output, "runtime.ts"), "const endpoint = 'neutral';\n");
-      const row = sourceReleaseProjectionDrift(source, output).find(({ selector }) => selector === "runtime.ts");
-      expect(row).toMatchObject({ selector: "runtime.ts", sourceSelector: "runtime.ts", source: { disposition: "present" }, public: { disposition: "projected" } });
-      expect(row?.source.digest).not.toBe(row?.public.digest);
-    } finally {
-      rmSync(source, { recursive: true, force: true });
-      rmSync(output, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("the materialized public catalogue", () => {
   it("expands the public seed to every output without importing private source paths", () => {
     const seed = JSON.stringify({
       schemaVersion: 1,
       publicPaths: [{ path: "README.md", class: "entrypoint" }],
       guardViability: [{
-        id: "source-size-complexity",
+        id: "example-withheld",
         status: "withheld",
         reason: "No public command is registered.",
-        withheldPaths: ["scripts/check-source-size.ts"],
-        withheldCommands: ["guard:source-size"],
+        withheldPaths: ["scripts/example-withheld-guard.ts"],
+        withheldCommands: ["guard:example-withheld"],
       }],
     });
     const materialized = materializePublicPublicationCatalog(["README.md", "src/public.ts"], seed);

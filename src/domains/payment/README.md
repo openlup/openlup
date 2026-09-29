@@ -83,3 +83,5 @@ These keep the old paths of moved modules resolving until
 
 Domain-boundary rules live in the maintainer canon `DOMAIN_ARCHITECTURE.md`,
 which belongs to the private overlay and is not part of the published tree.
+
+<!-- openlup-doc-impact {"unit": "domain-payment", "digest": "sha256-d2066ebb351718c28f239c3f817d09be73f66f3ca9832a8b854f7ad1fc0ea79c", "reason": "Comment-only delta. The deprecated re-export removal test comment now says that the source preview prepare step refuses preview 9 while a shim keeps its removal marker, because the separate receipt producer that repeated the check was retired. The test, the five shims, their removal markers and every payment path, re-export and upgrade note described here are unchanged."} -->

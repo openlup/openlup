@@ -2114,10 +2114,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/check-publishable-gap-enumeration.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/checkout-recovery-lifecycle-schema.test.ts",
       "class": "public-output"
     },
@@ -2286,10 +2282,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/durable-petfood-sql-scan.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/fixtures/20260824074601_marketing_lead_backfill_residual_boundary.sql",
       "class": "public-output"
     },
@@ -2430,38 +2422,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/oss-carrier-detection.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-carrier-detection.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-consume-engine.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-consume-engine.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-consume-github-transport.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-consume-github-transport.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-consumer-state.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-consumer-state.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/oss-neutralization-projection.ts",
       "class": "public-output"
     },
@@ -2470,27 +2430,7 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/oss-platform-migration-projection.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-platform-migration-projection.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-public-config-projection.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-public-config-projection.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/oss-public-coordinate-detector.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-public-tree-projection.ts",
       "class": "public-output"
     },
     {
@@ -2499,10 +2439,6 @@
     },
     {
       "path": "scripts/oss-publication-contract.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-publication-delta.ts",
       "class": "public-output"
     },
     {
@@ -2522,22 +2458,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/oss-readiness-base-measurement.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-readiness-family-path.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-readiness-policy-events.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-readiness-run-cache.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/oss-reference-prerender.test.ts",
       "class": "public-output"
     },
@@ -2547,26 +2467,6 @@
     },
     {
       "path": "scripts/oss-source-release-contract.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-split-rehearsal-assets.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-split-rehearsal-assets.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-split-rehearsal-sql-edge.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-split-rehearsal-sql-edge.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/oss-split-rehearsal-sql-provenance.ts",
       "class": "public-output"
     },
     {
@@ -2654,10 +2554,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/public-reference-railway-lifecycle.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/public-reference/grant-operator.mjs",
       "class": "public-output"
     },
@@ -2731,6 +2627,10 @@
     },
     {
       "path": "scripts/site-routes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/source-preview-release.test.ts",
       "class": "public-output"
     },
     {
@@ -18714,10 +18614,6 @@
       "class": "public-output"
     },
     {
-      "path": "tests/setup/oss-readiness-run-cache.ts",
-      "class": "public-output"
-    },
-    {
       "path": "tests/setup/scrub-git-env.ts",
       "class": "public-output"
     },
@@ -18889,7 +18785,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/oss-consume-engine.test.ts scripts/oss-consume-github-transport.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18901,7 +18797,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-48db9f9763b4969c5e475f42ffd78a236fdf93d1d55e715a04147633680b0f8d"
+      "digest": "sha256-421063ceeeb1a1a27b85ba8579b099818a921ee90d4fade95de9afa2561ca5a3"
     },
     {
       "path": "packages/core/package.json",
@@ -18912,142 +18808,5 @@
       "digest": "sha256-e57b14ab2c433bd03ae8e71aebf8c3b4eedafcc3177bf373230d45f84bccdb0b"
     }
   ],
-  "guardViability": [
-    {
-      "id": "browser-role",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "scripts/check-browser-role-execute.test.ts",
-        "scripts/check-browser-role-execute.ts"
-      ],
-      "withheldCommands": [
-        "guard:browser-role-execute"
-      ]
-    },
-    {
-      "id": "env-defaults",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "scripts/check-env-conditional-defaults.test.ts",
-        "scripts/check-env-conditional-defaults.ts"
-      ],
-      "withheldCommands": [
-        "guard:env-conditional-defaults"
-      ]
-    },
-    {
-      "id": "migration-header",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "scripts/check-migration-header-truth.test.ts",
-        "scripts/check-migration-header-truth.ts"
-      ],
-      "withheldCommands": [
-        "guard:migration-header-truth"
-      ]
-    },
-    {
-      "id": "order-money",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "scripts/check-order-money-reads.adversarial.test.ts",
-        "scripts/check-order-money-reads.test.ts",
-        "scripts/check-order-money-reads.ts"
-      ],
-      "withheldCommands": [
-        "guard:order-money"
-      ]
-    },
-    {
-      "id": "pii",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "scripts/check-oss-pii-perimeter.test.ts",
-        "scripts/check-oss-pii-perimeter.ts",
-        "scripts/check-oss-pii-surface.test.ts",
-        "scripts/check-oss-pii-surface.ts"
-      ],
-      "withheldCommands": [
-        "guard:oss-pii-perimeter",
-        "guard:oss-pii-surface"
-      ]
-    },
-    {
-      "id": "publication-bridge-hold",
-      "status": "withheld",
-      "reason": "The temporary two-sided publication bridge hold is consumer-only source-authority control state, not a public runtime or adopter command.",
-      "withheldPaths": [
-        "config/oss-publication-bridge-hold.json",
-        "scripts/oss-consume-boundary.test.ts",
-        "scripts/oss-consume-boundary.ts"
-      ],
-      "withheldCommands": [
-        "guard:oss-consume-boundary"
-      ]
-    },
-    {
-      "id": "route-rpc-bff",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "scripts/check-bff-route-inventory.test.ts",
-        "scripts/check-bff-route-inventory.ts",
-        "scripts/check-route-rpc-registry.test.ts",
-        "scripts/check-route-rpc-registry.ts"
-      ],
-      "withheldCommands": [
-        "guard:bff-route-inventory",
-        "guard:route-rpc-registry"
-      ]
-    },
-    {
-      "id": "seam-default",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "config/tsconfig.seam-default.api.json",
-        "config/tsconfig.seam-default.app.json",
-        "tests/seam-parity/seamDefaultParity.test.ts",
-        "tests/seam-parity/vitest.config.ts"
-      ],
-      "withheldCommands": [
-        "guard:seam-default-parity",
-        "test:seam-parity",
-        "typecheck:seam-default"
-      ]
-    },
-    {
-      "id": "source-size-complexity",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "scripts/check-complexity-governance.test.ts",
-        "scripts/check-complexity-governance.ts",
-        "scripts/check-source-size-cap-policy.ts",
-        "scripts/check-source-size.test.ts",
-        "scripts/check-source-size.ts"
-      ],
-      "withheldCommands": [
-        "guard:complexity-governance",
-        "guard:source-size"
-      ]
-    },
-    {
-      "id": "vercel-specifiers",
-      "status": "withheld",
-      "reason": "No public executable, command or falsifier is registered.",
-      "withheldPaths": [
-        "scripts/check-vercel-ts-import-specifiers.test.ts",
-        "scripts/check-vercel-ts-import-specifiers.ts"
-      ],
-      "withheldCommands": [
-        "guard:vercel-ts-specifiers"
-      ]
-    }
-  ]
+  "guardViability": []
 }
