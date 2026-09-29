@@ -2114,6 +2114,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/check-publishable-gap-enumeration.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/checkout-recovery-lifecycle-schema.test.ts",
       "class": "public-output"
     },
