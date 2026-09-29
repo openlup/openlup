@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   nextCharge,
   readStarterNextCharges,
+  withNextCharge,
   type StarterNextChargeClient,
 } from "./customerAccountStarterNextCharge.js";
 
@@ -159,6 +160,14 @@ describe("readStarterNextCharges + nextCharge", () => {
     const map = await readStarterNextCharges({ from } as unknown as StarterNextChargeClient, [row()]);
     // With both reads succeeding the same fixture would state 14 528 (delivery 2).
     expect(nextCharge(RECURRING, map.get(SUB))).toBeNull();
+  });
+
+  it("pairs the regular recurring price with the next charge", () => {
+    expect(withNextCharge(RECURRING, undefined)).toEqual({
+      recurringPrice: RECURRING,
+      nextCharge: { totalGross: RECURRING.totalGross, starterStage: null },
+    });
+    expect(withNextCharge(null, undefined)).toEqual({ recurringPrice: null, nextCharge: null });
   });
 
   it("is null when the lines are unpriced", () => {

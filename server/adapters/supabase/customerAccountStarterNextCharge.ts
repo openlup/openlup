@@ -10,7 +10,12 @@ import { storedQuoteLine } from "./subscription/starterPackCycle.js";
 type Row = Record<string, unknown>;
 type ReadResult = { data: unknown; error: unknown };
 
-/** The two `in`-filtered reads this module makes; any PostgREST-shaped client fits. */
+/**
+ * The two `in`-filtered reads this module makes; any PostgREST-shaped client
+ * fits. The account read model passes its service client through this view
+ * with a cast, because matching the client's full generic type is too deep for
+ * the compiler.
+ */
 export interface StarterNextChargeClient {
   from(table: string): {
     select(columns: string): {
@@ -108,6 +113,14 @@ export interface StarterNextChargeInput {
   /** False when a read failed: the cycle number or list evidence would be a guess. */
   linesRead: boolean;
   cyclesRead: boolean;
+}
+
+/** A subscription's regular recurring price together with its next charge. */
+export function withNextCharge(
+  recurringPrice: Subscription["recurringPrice"],
+  starter: StarterNextChargeInput | undefined,
+): Pick<Subscription, "recurringPrice" | "nextCharge"> {
+  return { recurringPrice, nextCharge: nextCharge(recurringPrice, starter) };
 }
 
 /**

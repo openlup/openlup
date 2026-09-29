@@ -19,7 +19,7 @@ import {
   readSubscriptionActionStates,
 } from "./customerAccountActionRequiredReadModel.js";
 import { readSubscriptionLines } from "./customerAccountSubscriptionLinesReadModel.js";
-import { nextCharge, readStarterNextCharges, type StarterNextChargeClient } from "./customerAccountStarterNextCharge.js";
+import { readStarterNextCharges, withNextCharge, type StarterNextChargeClient } from "./customerAccountStarterNextCharge.js";
 import {
   readSubscriptionPaymentMethodEvidence,
   resolveCustomerSubscriptionPaymentMethodStatus,
@@ -132,16 +132,13 @@ async function assembleSubscriptions(
   readDeliveryAlignmentRows?: DeliveryAlignmentRowsReader,
 ): Promise<Subscription[]> {
   const subscriptionIds = rows.map((row) => text(row.id));
-  const nextCycleAtBySubscription = new Map(
-    rows.map((row) => [text(row.id), nullableText(row.next_cycle_at)] as const),
-  );
+  const nextCycleAtBySubscription = new Map(rows.map((row) => [text(row.id), nullableText(row.next_cycle_at)] as const));
   const [lineMap, blockerMap, pauseWindowMap, paymentMethodMap, deliveryAlignmentMap, starterMap] = await Promise.all([
     readSubscriptionLines(serviceClient, subscriptionIds),
     readSubscriptionBlockers(serviceClient, subscriptionIds, nextCycleAtBySubscription),
     readOpenPauseWindows(serviceClient, subscriptionIds),
     readSubscriptionPaymentMethodEvidence(serviceClient, subscriptionIds),
     readSubscriptionDeliveryAlignments(readDeliveryAlignmentRows, nextCycleAtBySubscription),
-    // Structural view of the same client; matching the full generic type is too deep for tsc.
     readStarterNextCharges(serviceClient as unknown as StarterNextChargeClient, rows),
   ]);
   return rows.map((row) => {
@@ -189,8 +186,7 @@ async function assembleSubscriptions(
       templateVersion: Number(row.template_version),
       sizeConstraint: isRecord(row.size_constraint) ? row.size_constraint : null,
       packageSummary: packageSummary(lines, row.size_constraint),
-      recurringPrice: recurringPrice(lines),
-      nextCharge: nextCharge(recurringPrice(lines), starterMap.get(subscriptionId)),
+      ...withNextCharge(recurringPrice(lines), starterMap.get(subscriptionId)),
       lines,
     };
   });
