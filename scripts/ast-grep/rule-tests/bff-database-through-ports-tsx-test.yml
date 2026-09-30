@@ -13,6 +13,8 @@ valid:
   - 'const { from: copy } = (Array as typeof Array); export const View = () => <span>{copy(rows).length}</span>;'
   - 'const { from = fallback } = Buffer;'
   - '({ "from": copy } = Uint8Array!);'
+  - 'const { createClientHint: hint } = deps;'
+  - 'const { clientFactory } = deps;'
 invalid:
   - 'export const View = () => <span>{createClient(url, key)}</span>;'
   - 'export const View = () => <span>{db[("from")]("orders")}</span>;'
@@ -31,3 +33,9 @@ invalid:
   - '({ from: select } = (client satisfies typeof Buffer));'
   - 'export const View = () => <span>{(db as typeof Array).from("orders")}</span>;'
   - 'export const View = () => <span>{(db satisfies typeof Buffer)["from"]("orders")}</span>;'
+  - 'const { createClient } = deps;'
+  - 'const { createClient = fallback } = deps;'
+  - '({ createClient } = deps);'
+  - '({ createClient = fallback } = deps);'
+  - 'export const { createClient } = deps;'
+  - 'export const { createClient: connect } = deps;'

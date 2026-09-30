@@ -77,7 +77,7 @@ rule:
       all:
         - has: { field: index, matches: static-from-index }
         - not: { has: { field: object, matches: standard-from-receiver } }
-    - { kind: shorthand_property_identifier_pattern, regex: "^rpc$" }
+    - { kind: shorthand_property_identifier_pattern, regex: "^(createClient|rpc)$" }
     - kind: pair_pattern
       has:
         field: key
@@ -186,7 +186,7 @@ rule:
       all:
         - has: { field: index, matches: static-from-index }
         - not: { has: { field: object, matches: standard-from-receiver } }
-    - { kind: shorthand_property_identifier_pattern, regex: "^rpc$" }
+    - { kind: shorthand_property_identifier_pattern, regex: "^(createClient|rpc)$" }
     - kind: pair_pattern
       has:
         field: key

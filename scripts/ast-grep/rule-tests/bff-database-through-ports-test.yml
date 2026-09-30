@@ -35,6 +35,8 @@ valid:
   - 'const { "from": copy = fallback } = Uint8Array;'
   - '({ from: copy } = (Buffer));'
   - 'const { [`from`]: copy } = globalThis.Int16Array;'
+  - 'const { createClientHint: hint } = deps;'
+  - 'const { clientFactory } = deps;'
 invalid:
   - 'import { createClient } from "supabase-js";'
   - 'export { createClient } from "supabase-js";'
@@ -104,3 +106,9 @@ invalid:
   - 'const rows = (db as typeof Array).from("orders");'
   - 'const rows = (db satisfies typeof Buffer)["from"]("orders");'
   - 'const rows = (<typeof Uint8Array>db).from("orders");'
+  - 'const { createClient } = deps;'
+  - 'const { createClient = fallback } = deps;'
+  - '({ createClient } = deps);'
+  - '({ createClient = fallback } = deps);'
+  - 'export const { createClient } = deps;'
+  - 'export const { createClient: connect } = deps;'
