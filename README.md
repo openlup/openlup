@@ -90,16 +90,14 @@ Run `npm run oss:published-tree -- --policy` from the public repository root.
 The contract is an activation-candidate source contract, not an immutable
 preview receipt or a support promise.
 
-The projected root manifest exposes a closed command inventory: `build`,
-`build:public-reference`, `build:public-reference:client`,
-`build:public-reference:prerender`, `build:public-reference:ssr`,
-`check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `lint`, `oss:published-tree`, `packages:check`,
-and `test`. The public workflow is the execution owner for that inventory;
-source-only deploy, secret-management, smoke, and environment-specific operator
-commands are not exported.
-The root `npm test` command runs the same selected public suite as Published
-Tree CI. The standalone `packages/core` package tests are not collected by
+The projected root manifest exposes a closed command inventory. The
+[contribution checks](CONTRIBUTING.md#development-preview-checks) list it and
+explain which commands Published Tree CI runs. Its npm pre-scripts build core
+before lint and root tests. Source-only deploy, secret-management, smoke, and
+environment-specific operator commands are not exported.
+The root `npm test` command runs the complete root Vitest diagnostics in
+Published Tree CI; `npm run test:required` runs its required root suite. The
+standalone `packages/core` package tests are not collected by
 that root Vitest configuration; see [CONTRIBUTING.md](CONTRIBUTING.md#development-preview-checks)
 for the separate package command and its explicit public CI execution.
 

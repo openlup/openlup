@@ -52,9 +52,12 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("guard:client-secret-boundary", "node --experimental-strip-types scripts/check-client-secret-boundary.ts"),
   publicCommand("guard:public-reference-site-routes", "node scripts/site-routes.mjs --public-reference"),
   publicCommand("lint", "eslint ."),
+  publicCommand("prelint", "npm --workspace @openlup/core run build"),
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
   publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),
   publicCommand("release:bump", "node --experimental-strip-types scripts/packages/release-bump.ts"),
+  publicCommand("pretest", "npm --workspace @openlup/core run build"),
+  publicCommand("pretest:required", "npm --workspace @openlup/core run build"),
   publicCommand("test", PUBLIC_TEST_COMMAND),
   publicCommand("test:required", PUBLIC_REQUIRED_TEST_COMMAND),
 ];
