@@ -29,11 +29,12 @@ describe("direct npm package producer", () => {
     chmodSync(gh, 0o755);
     const event = { action: "published", repository: { full_name: "openlup/openlup" }, sender: { type: "Bot", id: 42 }, release: { id: 123, tag_name: "openlup-source-preview/9", prerelease: true, draft: false, assets: [] } };
     const live = { id: 123, tag_name: "openlup-source-preview/9", prerelease: true, draft: false, immutable: true, published_at: "2026-09-30T00:00:00Z", assets: [] };
+    const inheritedEnv = Reflect.get(process, "env") as NodeJS.ProcessEnv;
     const check = (changedEvent = event, changedLive = live, bot = "42") => {
       writeFileSync(eventFile, JSON.stringify(changedEvent));
       writeFileSync(liveFile, JSON.stringify(changedLive));
       return spawnSync("bash", ["-e", "-o", "pipefail", "-c", run!], {
-        env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, LIVE_RELEASE: liveFile, GITHUB_EVENT_PATH: eventFile, GITHUB_REPOSITORY: "openlup/openlup", RELEASE_TAG: "openlup-source-preview/9", EXPECTED_RELEASE_APP_BOT_ID: bot },
+        env: { ...inheritedEnv, PATH: `${directory}:${inheritedEnv.PATH}`, LIVE_RELEASE: liveFile, GITHUB_EVENT_PATH: eventFile, GITHUB_REPOSITORY: "openlup/openlup", RELEASE_TAG: "openlup-source-preview/9", EXPECTED_RELEASE_APP_BOT_ID: bot },
         encoding: "utf8", timeout: 5000,
       }).status;
     };
