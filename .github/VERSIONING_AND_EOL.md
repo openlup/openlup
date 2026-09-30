@@ -292,6 +292,17 @@ different preview numbers cannot publish simultaneously. The manual procedure
 below remains available for exceptional recovery; it carries the same authority
 and refusal rules.
 
+For the interrupted preview 9 run, the one-off
+[`recover-source-preview-9.yml`](workflows/recover-source-preview-9.yml) uses the
+same protected `release` environment and concurrency group. It accepts no
+coordinates: before the App publishes the existing draft, it checks the fixed
+tag, target commit, release ID, reviewed body digest, bot author, empty assets,
+repository immutability and six required contexts. It changes only the draft
+flag on that release ID, then checks the immutable release and GitHub tag
+attestation. Dispatch and protected approval remain maintainer decisions.
+Never rerun this recovery after a partial publication; inspect the release and
+package state and correct forward instead.
+
 ### Prepare from public inputs
 
 Use Node 24, dependencies from `CONTRIBUTING.md` and a checkout of the reviewed

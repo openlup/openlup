@@ -52,6 +52,8 @@ run; each comment names its job. The inherited `native-review` job additionally
 checks exact-candidate admission when the maintainer enables `OPENLUP_NATIVE_QUEUE`;
 its six required dependencies and merge-group metadata controls remain unchanged:
 
+<!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-163bc45102f9ec556620eac205f0af8756d01d92b188cf59a1f92c6288989c68","reason":"The fixed preview 9 recovery workflow checks the existing source commit and six required contexts before publishing its existing draft; it changes no contributor command, required CI context, or admission rule described in this section."} -->
+
 ```bash
 npm ci
 # Root typecheck consumes the built core package; build it after install and source edits.
