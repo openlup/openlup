@@ -8,9 +8,9 @@ export function hasFilewideIgnore(source) {
   const firstEnd = source.indexOf("\n");
   if (firstEnd < 0) return false;
   const secondEnd = source.indexOf("\n", firstEnd + 1);
-  const first = source.slice(0, firstEnd).replace(/\r$/u, "");
-  const second = source.slice(firstEnd + 1, secondEnd < 0 ? source.length : secondEnd).replace(/\r$/u, "");
-  return /^[ \t]*(?:\/\/|\/\*+)[ \t]*ast-grep-ignore\b/u.test(first) && /^[ \t]*$/u.test(second);
+  const first = source.slice(0, firstEnd).trimStart();
+  const second = source.slice(firstEnd + 1, secondEnd < 0 ? source.length : secondEnd);
+  return /^(?:\/\/+|\/\*+)\s*ast-grep-ignore\b/u.test(first) && second.trim() === "";
 }
 
 export function checkFilewideIgnores(cwd = process.cwd()) {

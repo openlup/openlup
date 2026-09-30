@@ -37,7 +37,7 @@ const forbiddenPackagedContent = [
   { description: "runtime environment access", pattern: /\b(?:process\.env|import\.meta\.env)\b/ },
   {
     description: "downstream provider dependency",
-    pattern: /@supabase\/|\b(?:resend|stripe|tpay|omnipack|dhl|fakturownia|openai|gtm|googletagmanager|axiom|svix|calendly)\b|@gmail\b/i,
+    pattern: /@(?:supabase|vercel)\/|\b(?:resend|stripe|tpay|omnipack|dhl|fakturownia|openai|gtm|googletagmanager|axiom|svix|calendly)\b|@gmail\b/i,
   },
   { description: "downstream phone country code", pattern: /\+48\b/ },
   { description: "owner-local path", pattern: /\/(?:Users|private\/tmp)\// },

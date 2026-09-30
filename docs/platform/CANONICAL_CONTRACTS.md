@@ -190,4 +190,4 @@ jobs retain raw diagnostic failures with named ownership; their addition does
 not change platform behavior, grant application privileges or declare complete
 compatibility evidence. Existing release context checks remain unchanged.
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-13b86e2b9de741630c6f05fdcd17841340d4500d9557c5dad211e6a251c328e6","reason":"The package configuration changes only the lockstep preview version from 0.7.0 to 0.9.0. The rule that each source preview carries a matching 0.<n>.0 package, and its compatibility posture, remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-069afaae799003c5b57aec071b3bad0376cb288926132c27beb59b491569c4c1","reason":"A1 lowers the neutrality baseline after thirteen BFF tests transfer database-SDK and direct-query assertions to structural lint, and removes already-absent finding allowances. No count or path gains an allowance. The existing shrink-only ratchet semantics, runtime contracts and compatibility posture described here are unchanged."} -->

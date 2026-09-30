@@ -191,8 +191,17 @@ source command-name inventory before a new preview can be materialized.
 [eslint.config.js](eslint.config.js): a package under `packages/` imports
 nothing outside its own directory, other code reaches a package only through
 the subpaths its `exports` declare, and domain code under `src/domains` and
-`server/domains` imports no provider SDK and no adapter, infrastructure,
-runtime or route code; the config exempts domain tests. An exact alias in the
+`server/domains` imports no configured provider SDK and no adapter,
+infrastructure, runtime or route code; the config exempts domain tests.
+Non-test production source under `packages/core/src` and `packages/ui/src`
+also imports none of the provider SDKs listed in the config. Package tests
+retain their package isolation even when composing with a provider.
+Provider composition exemptions use `*.test.<extension>` and
+`*.testFixtures.ts`, matching the existing test convention.
+The boundaries cover static imports and re-exports, literal or plain-template
+`import()`, type imports, and literal or plain-template `require()` and
+`module.require()` calls; they do not resolve aliases or stored specifiers.
+An exact alias in the
 root `package.json` `imports` map counts as such code when any path it can
 resolve to lies in one of those directories, including a path selected by a
 condition, since Node allows a condition object as a target. A subpath pattern
@@ -211,7 +220,8 @@ the database only through a port or the actor data gateway:
 it does not load the database client SDK through an import or re-export, `import
 = require`, or an `import()`, `require()` or `createRequire()(...)` call whose
 argument names it, and does not reference `createClient`, `.from` or `.rpc`,
-whether by name, as a member, through a string index, through `.call`, `.apply`
+whether by name, as a member, through a string index, through direct object
+destructuring (including aliases and defaults), through `.call`, `.apply`
 or `.bind`, or behind parentheses, a comma operator, a type or non-null
 assertion or a prefix `await`, `void`, `!` or `typeof` (standard static
 `Array`, `Buffer` and typed-array `.from` methods excepted). Direct
@@ -225,18 +235,20 @@ assignment or loop head, on an expression that involves `process` or
 `require()`, `createRequire()(...)`, dynamic import or re-export of
 `node:process`; the rule does not follow a value through an intermediate
 variable. The same domain code contains no two-letter uppercase string, template
-or template-type literal in any position, because in this codebase such a
-literal is a country or region code, which is adopter policy. Test files are
+or template-type literal in any position. Such literals can introduce country
+or region policy; syntax alone does not establish their meaning. Test files are
 exempt, and so are fixtures and test helpers from the country rule. Files that
 predate a rule are listed in its `ignores`: delete an entry when its file is
 fixed and never add one. A justified exception, such as a genuine non-country
-code, is an `// ast-grep-ignore: <rule-id>` comment on the line before the code,
+code or a genuine non-database `from` member or destructuring key, is an
+`// ast-grep-ignore: <rule-id>` comment on the line before the code,
 with the reason in a comment above it. The comment names the exact rule id,
 which in a `.tsx` file is the `-tsx` variant, such as
 `domain-no-country-literals-tsx`. A new rule states the platform rule it
 enforces, blocks only at zero findings, and has at least one valid and one
 invalid case. A first-line `ast-grep-ignore` followed by a blank line is
-file-wide and is rejected, even when it names a rule. A line exception must
+file-wide and is rejected, including BOM-prefixed or triple-slash comments,
+even when it names a rule. A line exception must
 sit directly above its target; an unused exception is rejected. The scan and
 the rule tests are fast for the whole tree, and
 `npx --no -- ast-grep scan <files>` checks named files in milliseconds. Run it
@@ -247,6 +259,20 @@ While iterating, `npx --no -- ast-grep run --pattern '<code pattern>' --lang ts`
 lists every structural match, and `--rewrite '<replacement>' --update-all`
 applies a mechanical edit; call the binary `ast-grep`, because `sg` is also a
 system command on Linux.
+
+`portable-no-industry-contracts` and its TSX variant guard the clean portable
+source in `packages/core/src` and `packages/ui/src`. Explicit `pet`, `pets`,
+`dog`, `dogs`, `cat` or `cats` components in identifiers, property/type names,
+static declaration/access keys and literal types belong in adopter code, not generic
+contracts. For example, `petId`, `dogWeightKg`, `CatProfile` and
+`Record<"petId", string>` fail. `watchdog`, `dogfoodEvidence`, comments and
+ordinary runtime string values pass, as does forwarding opaque
+`Record<string, unknown>` extension data. Tests and fixtures are exempt. The
+rule covers TS/TSX syntax; it does not infer types, track aliases, inspect
+arbitrary payload values, or classify legacy application schemas. Provider
+isolation remains an ESLint responsibility. The existing packed-core audit
+also refuses the configured provider content, including the Vercel SDK
+namespace, in actual package artifacts. These checks add no command or CI job.
 
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating

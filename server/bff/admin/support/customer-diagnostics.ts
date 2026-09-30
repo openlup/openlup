@@ -49,10 +49,14 @@ export function createCustomerDiagnosticsRoute(options: {
         // in the same transaction as the read; no best-effort audit fallback.
         const result = await history.run(async (diagnostics) => {
           if (query.data.mode === "search") {
+            // `from` is the validated date-range boundary, not a database method.
+            // ast-grep-ignore: bff-database-through-ports
             const { from, to, ...filters } = query.data;
             return diagnostics.search({ ...filters, contractVersion: contractVersion.data, windowStart: from, windowEnd: to, operatorId: actor.principalId });
           }
           if (query.data.mode === "overview") {
+            // `from` is the validated date-range boundary, not a database method.
+            // ast-grep-ignore: bff-database-through-ports
             const { from, to, mode: _mode, ...filters } = query.data;
             return diagnostics.overview({ ...filters, contractVersion: CUSTOMER_DIAGNOSTIC_HISTORY_CONTRACT_VERSION_V2, windowStart: from, windowEnd: to, operatorId: actor.principalId });
           }

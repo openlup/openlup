@@ -10,20 +10,23 @@ import path from "node:path";
 const tsconfigRootDir = path.dirname(fileURLToPath(import.meta.url));
 
 // Import boundaries. They use ESLint core rules only: `no-restricted-imports`
-// for static imports and re-exports, `no-restricted-syntax` for `import()`.
+// for static imports and re-exports, `no-restricted-syntax` for literal loads.
 // Both rules replace, not merge, their options when two config objects match a
 // file, so each file set below gets one complete list:
 //   1. outside packages/: a package is reached only through its declared exports;
 //   2. domain code: additionally no provider SDK and no adapter, infra, runtime
 //      or route-composition code (tests may compose a domain with an adapter);
-//   3. packages/<name>/: nothing outside the package's own directory.
+//   3. packages/<name>/: nothing outside the package's own directory;
+//   4. portable package production source: additionally no provider SDK.
 const SOURCE_EXTENSIONS = "{ts,tsx,js,mjs,cjs}";
 const MAX_PACKAGE_DEPTH = 12;
+const PORTABLE_PACKAGE_DIRECTORIES = ["core", "ui"];
 const DOMAIN_ROOTS = ["src/domains", "server/domains"];
-const DOMAIN_TEST_FILES = DOMAIN_ROOTS.flatMap((root) => [
-  `${root}/**/*.test.${SOURCE_EXTENSIONS}`,
-  `${root}/**/*.testFixtures.ts`,
-]);
+const testFiles = (prefix) => [
+  `${prefix}**/*.test.${SOURCE_EXTENSIONS}`,
+  `${prefix}**/*.testFixtures.ts`,
+];
+const DOMAIN_TEST_FILES = DOMAIN_ROOTS.flatMap((root) => testFiles(`${root}/`));
 // Directories that hold adapter, infra, composition-root or route code.
 const INFRA_DIRECTORIES = ["api", "server/adapters", "server/bff", "server/infra", "server/runtime", "src/checkout/adapters", "src/integrations"];
 
@@ -64,11 +67,18 @@ const packageExports = {
   ],
 };
 
-const domainIsolation = {
-  message: "Domain code must not import provider SDKs or adapter, infra, runtime or route code; inject a port instead.",
+const providerIsolation = {
+  message: "Portable package source must not import provider SDKs; inject a port instead.",
   regexes: [
     "^(?:stripe|pg|openai)(?:/|$)",
     "^@(?:stripe|supabase|vercel|modelcontextprotocol)/",
+  ],
+};
+
+const domainIsolation = {
+  message: "Domain code must not import provider SDKs or adapter, infra, runtime or route code; inject a port instead.",
+  regexes: [
+    ...providerIsolation.regexes,
     // Reached only by climbing out of the domain tree, so shared helpers such as
     // server/_lib/bff or src/lib/bff stay importable.
     `^(?:\\./)?(?:\\.\\./)+(?:server/)?(?:adapters|infra|runtime|bff|api)(?:/|$)`,
@@ -98,14 +108,19 @@ function boundaryRules(boundaries) {
     "no-restricted-imports": ["error", {
       patterns: entries.map(({ regex, message }) => ({ regex, message, caseSensitive: true })),
     }],
-    // `import()` with a string or a plain template, and `import("…")` in a type
-    // position. esquery's regex literal cannot contain "/", so it is \x2F.
+    // Literal `import()`, `require()` and `module.require()` loads, plain
+    // templates, and `import("…")` in a type position. No alias/dataflow analysis.
+    // esquery's regex literal cannot contain "/", so it is \x2F.
     "no-restricted-syntax": ["error", ...entries.flatMap(({ regex, message }) => {
       const value = `/${regex.replaceAll("/", "\\x2F")}/`;
       return [
         `ImportExpression > Literal.source[value=${value}]`,
         `ImportExpression > TemplateLiteral.source[expressions.length=0] > TemplateElement[value.cooked=${value}]`,
         `TSImportType Literal[value=${value}]`,
+        `CallExpression[callee.type='Identifier'][callee.name='require'] > Literal.arguments[value=${value}]`,
+        `CallExpression[callee.type='Identifier'][callee.name='require'] > TemplateLiteral.arguments[expressions.length=0] > TemplateElement[value.cooked=${value}]`,
+        `CallExpression[callee.type='MemberExpression'][callee.object.name='module'][callee.property.name='require'][callee.computed=false] > Literal.arguments[value=${value}]`,
+        `CallExpression[callee.type='MemberExpression'][callee.object.name='module'][callee.property.name='require'][callee.computed=false] > TemplateLiteral.arguments[expressions.length=0] > TemplateElement[value.cooked=${value}]`,
       ].map((selector) => ({ selector, message }));
     })],
   };
@@ -156,11 +171,21 @@ export default tseslint.config(
     ignores: DOMAIN_TEST_FILES,
     rules: boundaryRules([packageExports, domainIsolation]),
   },
-  ...workspacePackages.flatMap((pkg) => [
-    { files: sourceFiles(`packages/${pkg.directory}/`), rules: boundaryRules([packageIsolation(pkg, null)]) },
-    ...Array.from({ length: MAX_PACKAGE_DEPTH + 1 }, (_, depth) => ({
-      files: [`packages/${pkg.directory}/${"*/".repeat(depth)}*.${SOURCE_EXTENSIONS}`],
-      rules: boundaryRules([packageIsolation(pkg, depth)]),
+  ...workspacePackages.flatMap((pkg) => [null, ...Array.from({ length: MAX_PACKAGE_DEPTH + 1 }, (_, depth) => depth)]
+    .flatMap((depth) => {
+      const files = depth === null
+        ? sourceFiles(`packages/${pkg.directory}/`)
+        : [`packages/${pkg.directory}/${"*/".repeat(depth)}*.${SOURCE_EXTENSIONS}`];
+      const isolation = packageIsolation(pkg, depth);
+      const sourcePrefix = `packages/${pkg.directory}/src/`;
+      return [
+        { files, rules: boundaryRules([isolation]) },
+        ...(PORTABLE_PACKAGE_DIRECTORIES.includes(pkg.directory) ? [{
+          // AND selectors preserve the same depth-specific package boundary.
+          files: files.map((file) => [file, ...sourceFiles(sourcePrefix)]),
+          ignores: testFiles(sourcePrefix),
+          rules: boundaryRules([isolation, providerIsolation]),
+        }] : []),
+      ];
     })),
-  ]),
 );

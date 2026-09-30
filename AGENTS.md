@@ -140,7 +140,10 @@ A migration, status mapping, or idempotency rule needs a regression test for its
 
 `npm run lint` checks first-line file-wide ignores before running the ast-grep
 structural rules in `scripts/ast-grep/rules`, rejects bare and unused
-suppressions, runs the rule tests, then ESLint.
+suppressions, runs the rule tests, then ESLint. Portable core/UI production
+source has provider import boundaries and industry-neutral contract-name
+checks; opaque adopter data remains generic. The industry rule covers TS/TSX
+syntax, not arbitrary values or semantic analysis.
 Run `npx --no -- ast-grep scan --error=no-suppress-all
 --error=unused-suppression` after each change for focused feedback, and run
 `npm run lint` before committing: it also checks first-line file-wide ignores
@@ -152,7 +155,8 @@ change the code, not the rule, and never add a file to a rule's `ignores`. A
 justified exception is an `ast-grep-ignore` comment naming the rule on the line
 immediately before the code, with the reason in a comment above it. Do not put
 a blank line after a first-line ignore: that makes it file-wide and lint rejects
-it. Lint also rejects unused suppressions. A new rule cites the
+it, including BOM-prefixed and triple-slash comments. Lint also rejects unused
+suppressions. A new rule cites the
 platform rule it enforces and ships valid and invalid cases in
 `scripts/ast-grep/rule-tests`. Use `npx --no -- ast-grep run --pattern '<code
 pattern>'` to find every structural occurrence before and after a change, and

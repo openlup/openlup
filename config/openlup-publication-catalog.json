@@ -2094,6 +2094,18 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ast-grep/rule-tests/portable-no-industry-contracts-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/portable-no-industry-contracts-tsx-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ast-grep/rules/bff-database-through-ports.yml",
       "class": "public-output"
     },
@@ -2103,6 +2115,10 @@
     },
     {
       "path": "scripts/ast-grep/rules/domain-no-environment-reads.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rules/portable-no-industry-contracts.yml",
       "class": "public-output"
     },
     {

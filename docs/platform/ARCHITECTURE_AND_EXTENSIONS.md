@@ -33,9 +33,21 @@ only through a subpath its `package.json` `exports` declares, never through a
 relative path into `packages/` or an undeclared subpath such as `src` or
 `dist`. Domain code under `src/domains` and `server/domains` imports none of
 the provider SDKs the config names and no adapter, infrastructure, runtime or
-route code; its tests may compose a domain with an adapter, and there are no
-exceptions. Provider UI, such as the card payment form, lives with the adapters, while the
+route code; its tests may compose a domain with an adapter. The same provider
+SDK restriction applies to non-test production source in `packages/core/src`
+and `packages/ui/src`; their tests retain package isolation. The checks cover
+literal import and re-export specifiers, plain-template dynamic imports,
+type imports, and literal/plain-template `require` and `module.require`
+loads. A specifier held in a variable or reached through an alias still needs
+review. Provider UI, such as the card payment form, lives with the adapters, while the
 words and outcomes it exchanges with its host stay in the domain's contracts.
+
+Portable package contract names also stay industry-neutral. The structural
+industry rule rejects explicit pet/dog/cat name components and literal types
+in those two production source trees. Ordinary runtime values and opaque
+extension-data forwarding remain available to adopters. The rule has no claim
+of semantic or dataflow analysis; see the precise scope and exceptions in
+[contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
 <!-- openlup-doc-impact {"unit":"browser","digest":"sha256-db25b027da84d267c6e19950462d6b3836f22df1d78e30160c1cf6e746cf53b5","reason":"Browser-side comment and test delta. Comments stop naming downstream files and design documents; the provider endpoint boundary test drops five exceptions for files this tree does not have, so its stale-exception check passes and its scan runs; the kit neutrality guard resolves this tree's server domains instead of an absent directory. No runtime boundary, browser contract or bundle behavior described here changes."} -->
 

@@ -100,6 +100,8 @@ describe("packed consumer dependency roots", () => {
     ["provider Axiom", "dist/index.js", "export const integration = 'Axiom';"],
     ["provider Svix", "dist/index.js", "export const integration = 'Svix';"],
     ["provider Calendly", "dist/index.js", "export const integration = 'Calendly';"],
+    ["provider Vercel", "dist/index.js", 'export { put } from "@vercel/blob";'],
+    ["provider Vercel concatenation", "dist/index.js", 'export const integration = "@ver" + "cel/blob";'],
     ["owner path", "dist/index.js", "export const path = '/Users/owner/project';"],
     ["brand concatenation", "dist/index.js", "export const downstreamBrand = 've' + 'lipet';"],
     ["brand array join", "dist/index.js", "export const downstreamBrand = ['vel', 'ipet'].join('');"],
