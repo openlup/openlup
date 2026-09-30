@@ -157,6 +157,13 @@ Stable status, idempotency, and provider-extension commitments wait for `P1-SF`.
 Before then, changes must still preserve the contracts above and state their
 preview compatibility boundary explicitly.
 
+Future source preview cuts require a publishable npm package at the matching
+lockstep `0.<n>.0` version. Before such a cut, `release:bump` prepares that
+version in the package manifests and lockfiles; release preparation refuses a
+missing or mismatched publishable package. Historical previews retain their
+recorded package versions. This is release identity, not a stable compatibility
+promise.
+
 The repository's
 [`neutrality baseline`](../../config/openlup-neutrality-baseline.json) records
 existing source findings rather than declaring the tree free of them. Its full

@@ -482,8 +482,17 @@ adopter; no preview is a supported upgrade channel.
 `openlup-source-preview/<n>`: `0.6.0` rides on preview 6. Before each later cut,
 a commit sets the next version in that file, in each listed `package.json` and
 in both lockfiles, and regenerates the source release contract; otherwise the
-pack job refuses and that preview carries no package. The channel is inert until
-the repository variable `OPENLUP_NPM_STAGE` is set to `enabled`.
+pack job refuses and that preview carries no package. Use `npm run release:bump -- <n>` in an ordinary PR to set the next version;
+after this gate merges, future cuts refuse a different lockstep version and run
+an unprivileged package preflight before requesting the `release` environment
+approval. The current `0.7.0` remains until the later bump and removal of files
+marked for deletion by preview 9. The
+preflight checks main ancestry and required contexts before installing without scripts,
+then packs the package once and scans the exact unpacked tarball with checksum-verified
+gitleaks 8.30.1. A failed scan refuses the cut before a tag exists.
+The source preview still requires its existing descendant and removal-marker
+checks, and npm still stages the tarball for separate 2FA approval. The channel
+is inert until the repository variable `OPENLUP_NPM_STAGE` is set to `enabled`.
 
 When a source preview `openlup-source-preview/<n>` is published,
 [`.github/workflows/publish-packages.yml`](workflows/publish-packages.yml) works

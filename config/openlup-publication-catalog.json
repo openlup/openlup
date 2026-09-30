@@ -2482,6 +2482,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/release-bump.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-bump.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/partner-acquisition-schema.test.ts",
       "class": "public-output"
     },
@@ -18774,6 +18782,16 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
+      "name": "release:bump",
+      "command": "node --experimental-strip-types scripts/packages/release-bump.ts",
+      "publicDocs": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ],
+      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
+      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
+    },
+    {
       "name": "test",
       "command": "node scripts/run-vitest.mjs run",
       "publicDocs": [
@@ -18797,7 +18815,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-421063ceeeb1a1a27b85ba8579b099818a921ee90d4fade95de9afa2561ca5a3"
+      "digest": "sha256-355c3666bc13ec3fe48090faa0d1f30a8acd0292e98a80025474cca1d9a6aef2"
     },
     {
       "path": "packages/core/package.json",

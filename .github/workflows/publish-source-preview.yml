@@ -1,5 +1,8 @@
 # Inert until the maintainer protects release, installs the release App and enables
-# OPENLUP_SOURCE_RELEASE. No PAT and no default-token release event suppression.
+# OPENLUP_SOURCE_RELEASE and OPENLUP_NPM_STAGE. The unprivileged preflight proves the
+# target packs and scans its lockstep package before the release environment asks for approval.
+# The npm channel still stages its tarball for maintainer 2FA approval. No PAT and no
+# default-token release event suppression.
 name: Publish Source Preview
 
 on:
@@ -25,8 +28,81 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  package-preflight:
+    name: package preflight
+    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_SOURCE_RELEASE == 'enabled' && vars.OPENLUP_NPM_STAGE == 'enabled' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      checks: read
+    env:
+      TARGET_COMMIT: ${{ inputs.target_commit }}
+      PREVIEW_NUMBER: ${{ inputs.preview_number }}
+      RELEASE_NOTES: ${{ inputs.release_notes }}
+    steps:
+      - name: Validate dispatch coordinates before checkout
+        run: |
+          [[ "$TARGET_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$PREVIEW_NUMBER" =~ ^[1-9][0-9]*$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.target_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check main ancestry before running target code
+        run: |
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+          git fetch --no-tags --quiet origin main
+          git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD
+      - name: Check required contexts before running target code
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for context in dco typecheck install-proof test self-check gitleaks; do
+            verdict="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_COMMIT/check-runs?check_name=$context&filter=latest&per_page=100" \
+              --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
+            if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $TARGET_COMMIT"; exit 1; fi
+          done
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Assert Node and npm contract
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      - run: npm ci --ignore-scripts --no-audit --fund=false
+      - name: Pack the target package for this preview
+        run: node --experimental-strip-types scripts/source-preview-release.ts packages "$RUNNER_TEMP/source-preview-packs"
+      - name: Install checksum-verified gitleaks 8.30.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz"
+          install_dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$install_dir"
+          gh api -H "Accept: application/octet-stream" \
+            repos/gitleaks/gitleaks/releases/assets/378332058 > "$archive"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$install_dir" gitleaks
+          echo "$install_dir" >> "$GITHUB_PATH"
+          "$install_dir/gitleaks" version
+      - name: Scan the unpacked tarballs before creating a tag
+        run: |
+          for tarball in "$RUNNER_TEMP"/source-preview-packs/*.tgz; do
+            test -f "$tarball"
+            target="$RUNNER_TEMP/scan/$(basename "$tarball" .tgz)"
+            mkdir -p "$target"
+            tar -xzf "$tarball" -C "$target"
+          done
+          gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner
+
   release:
-    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_SOURCE_RELEASE == 'enabled' }}
+    needs: package-preflight
+    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_SOURCE_RELEASE == 'enabled' && vars.OPENLUP_NPM_STAGE == 'enabled' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: release

@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { resolve, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
+import { PACKAGES_CONFIG_PATH, parsePackagesConfig } from "./packages/package-manifest-policy.ts";
+import { runPackagesCheck } from "./packages/packages-check.ts";
 import { pathToFileURL } from "node:url";
 import { assertDescendantSourceRelease, assertNoOverdueRemovals } from "./oss-source-release-contract.ts";
 
@@ -71,18 +73,30 @@ export async function assertNextPreview(number: number, token?: string, fetcher:
   if (ref.status !== 404) throw new Error(`preview tag is present or unavailable (HTTP ${ref.status}); never retag or overwrite`);
 }
 
+/** Refuse an unpublishable or mismatched release before notes or an App token exist. */
+export function assertReleasablePackages(root: string, target: string, tag: string, pack: boolean | string = false): void {
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: root, encoding: "utf8" });
+  if (head !== target || dirty !== "") throw new Error("the checkout must be the target commit without tracked changes");
+  const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
+  if (!config.packages.some(({ publish }) => publish)) throw new Error(`${PACKAGES_CONFIG_PATH} lists no publishable package; a source preview carries its package`);
+  const args = ["--release-tag", tag, ...(typeof pack === "string" ? ["--out", pack] : pack ? ["--pack"] : [])];
+  if (runPackagesCheck(root, args) !== 0) throw new Error(`packages:check ${args.join(" ")} refused the target; a source preview carries its lockstep package`);
+}
+
 /**
  * The prepare phase, before any tag exists: the next ordinal, removal markers, the previous
  * release, ancestry and the descendant check that the target describes itself. It writes the
  * exact note bytes that creation and publication use.
  */
-export async function preparePreview(input: ReturnType<typeof previewInputs>, root: string, out: string, token?: string, fetcher: GithubFetch = fetch) {
+export async function preparePreview(input: ReturnType<typeof previewInputs>, root: string, out: string, token?: string, fetcher: GithubFetch = fetch, packageCheck: typeof assertReleasablePackages = assertReleasablePackages) {
   await assertNextPreview(input.number, token, fetcher);
   assertNoOverdueRemovals(input.number, input.target, root);
   const previous = await previousPreview(input.number, token, fetcher);
   if (previous.commit === input.target) throw new Error("target must advance the previous preview");
   execFileSync("git", ["merge-base", "--is-ancestor", previous.commit, input.target], { cwd: root });
   assertDescendantSourceRelease(root, previous.commit, input.target);
+  packageCheck(root, input.target, input.tag);
   writeFileSync(resolve(out, "notes.md"), input.note, { flag: "wx" });
 }
 
@@ -128,12 +142,19 @@ export async function verifyPublished(input: ReturnType<typeof previewInputs>, n
 
 async function main() {
   const input = previewInputs(process.env.TARGET_COMMIT ?? "", process.env.PREVIEW_NUMBER ?? "", process.env.RELEASE_NOTES ?? "");
-  const root = realpathSync(process.cwd()), out = realpathSync(process.env.RELEASE_OUTPUT_DIR ?? "");
+  const root = realpathSync(process.cwd());
+  const phase = process.argv[2];
+  if (phase === "packages") {
+    if (process.argv.length !== 4) throw new Error("packages phase needs exactly one output directory");
+    assertReleasablePackages(root, input.target, input.tag, process.argv[3]);
+    console.log(`${input.target} packs a publishable package for ${input.tag}`);
+    return;
+  }
+  const out = realpathSync(process.env.RELEASE_OUTPUT_DIR ?? "");
   if (out === root || out.startsWith(`${root}${sep}`)) throw new Error("release outputs must stay outside the checkout");
   if (execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() !== input.target) throw new Error("checkout differs from target_commit");
   const token = process.env.GITHUB_TOKEN;
   const notes = () => readFileSync(resolve(out, "notes.md"), "utf8");
-  const phase = process.argv[2];
   if (phase === "prepare") {
     await preparePreview(input, root, out, token);
   } else if (phase === "check-draft") {
@@ -141,7 +162,7 @@ async function main() {
   } else if (phase === "verify") {
     await verifyPublished(input, notes(), token);
     console.log(`Verified immutable ${input.tag} at ${input.target}`);
-  } else throw new Error("expected prepare, check-draft or verify");
+  } else throw new Error("expected packages, prepare, check-draft or verify");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
