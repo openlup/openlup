@@ -185,4 +185,4 @@ jobs retain raw diagnostic failures with named ownership; their addition does
 not change platform behavior, grant application privileges or declare complete
 compatibility evidence. Existing release context checks remain unchanged.
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-29b86c25deeebe2ec0a12484b998089cc70fa23c2bbd849a4ef1a0cd60d45253","reason":"Configuration delta. An unread route metadata file is deleted, one dictionary comment stops naming absent files, and the neutrality baseline drops the row of a deleted path and lowers counts of edited paths without raising any. No contract, status vocabulary, idempotency rule or compatibility boundary described here changes."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-13b86e2b9de741630c6f05fdcd17841340d4500d9557c5dad211e6a251c328e6","reason":"The package configuration changes only the lockstep preview version from 0.7.0 to 0.9.0. The rule that each source preview carries a matching 0.<n>.0 package, and its compatibility posture, remain unchanged."} -->
