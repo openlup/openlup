@@ -49,7 +49,7 @@ describe("root built-core resolution", () => {
     expect(existsSync(runtime), "Build @openlup/core before root tests").toBe(true);
     const resolved = execFileSync(process.execPath, ["--input-type=module", "--eval",
       `console.log(import.meta.resolve(${JSON.stringify(specifier)})); await import(${JSON.stringify(specifier)});`],
-    { cwd: root, encoding: "utf8", env: { ...process.env, NODE_OPTIONS: "" } });
+    { cwd: root, encoding: "utf8", env: { NODE_OPTIONS: "" } });
     expect(resolved.trim()).toBe(pathToFileURL(realpathSync(runtime)).href);
   });
 
