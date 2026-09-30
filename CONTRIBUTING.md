@@ -54,6 +54,7 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 ```bash
 npm ci
+# npm run lint, npm run test:required and npm test build core through npm pre-scripts
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
 # typecheck
@@ -82,6 +83,11 @@ node scripts/public-ci-pgtap.mjs
 # gitleaks 8.30.1, as CI pins it, over the checkout's history
 gitleaks git . --config config/gitleaks.toml --redact --no-banner
 ```
+
+The `prelint`, `pretest:required` and `pretest` npm scripts build `@openlup/core`
+before their respective root commands. When running
+`npm run oss:published-tree -- --typecheck` directly after editing core source,
+first run `npm --workspace @openlup/core run build`.
 
 The three `oss:published-tree` modes are distinct checks. `--policy` verifies
 the public policy, catalogue, documentation ownership, generated navigation and
