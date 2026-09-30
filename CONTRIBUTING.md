@@ -170,8 +170,9 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `lint`, `oss:published-tree`,
-`packages:check`, `test`, and `test:required`.
+`guard:public-reference-site-routes`, `lint`, `prelint`,
+`oss:published-tree`, `packages:check`, `release:bump`, `pretest`,
+`pretest:required`, `test`, and `test:required`.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
 build, required root coverage, complete diagnostics, DCO check, and publication checks from this inventory.
