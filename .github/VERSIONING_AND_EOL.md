@@ -432,9 +432,10 @@ in both lockfiles, and regenerates the source release contract; otherwise the
 pack job refuses and that preview carries no package. Use `npm run release:bump -- <n>` in an ordinary PR to set the next version;
 after this gate merges, future cuts refuse a different lockstep version and run
 an unprivileged package preflight before requesting the `release` environment
-approval. The current `0.7.0` remains until the later bump and removal of files
-marked for deletion by preview 9. The
-preflight checks main ancestry and required contexts before installing without scripts,
+approval. This tree now carries the `0.9.0` bump and has removed the files
+marked for deletion by preview 9; neither the source preview nor the package
+has been published by this change. The preflight checks main ancestry and
+required contexts before installing without scripts,
 then packs the package once and scans the exact unpacked tarball with checksum-verified
 gitleaks 8.30.1. A failed scan refuses the cut before a tag exists.
 The source preview still requires its existing descendant and removal-marker
