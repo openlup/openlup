@@ -280,6 +280,11 @@ edits, deletions and mode changes to existing managed or portable migrations,
 backdated versions, unbound portable forwards and non-expand-only new SQL.
 The portable manifest must preserve its prior baseline and forward prefix.
 The CLI returns a failing exit when this comparison refuses a candidate.
+This database-free comparison does not derive the live object inventory digest.
+The source contract continues to bind the manifest bytes, and the portable
+runner compares `objectInventorySha256` with the selected database catalogue
+after applying migrations (falsified by
+`server/adapters/postgres/migrationRunner.test.ts`).
 
 The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
 measured failing or aborted files, reasons, incomplete obligations and triage

@@ -476,6 +476,16 @@ describe("descendant source release check", () => {
     try { expect(() => sample.release(change)).not.toThrow(); } finally { sample.cleanup(); }
   });
 
+  it("keeps an appended portable manifest bound to the source contract", () => {
+    const sample = syntheticRelease();
+    const path = "db/platform/migrations/20260927000000_added.sql", sql = "CREATE TABLE public.added (id int);\n";
+    const manifest = JSON.parse(sample.read("config/platform-migration-manifest.json")!.toString());
+    manifest.forward.push({ file: path, sha256: createHash("sha256").update(sql).digest("hex") });
+    try {
+      expect(() => sample.release({ [path]: sql, "config/platform-migration-manifest.json": json(manifest) }, { regenerate: false })).toThrow(/source contract does not describe its tree/u);
+    } finally { sample.cleanup(); }
+  });
+
 
   it.each([
     ["editing history", { "db/platform/migrations/00000000000000_platform_baseline.sql": "select 2;\n" }, /schema-bearing/u],
