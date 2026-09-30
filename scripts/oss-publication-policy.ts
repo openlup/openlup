@@ -54,6 +54,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("lint", "eslint ."),
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
   publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),
+  publicCommand("release:bump", "node --experimental-strip-types scripts/packages/release-bump.ts"),
   publicCommand("test", PUBLIC_TEST_COMMAND),
   publicCommand("test:required", PUBLIC_REQUIRED_TEST_COMMAND),
 ];

@@ -308,6 +308,12 @@ an earlier one, or a comment line starting `// openlup-remove-before:` that does
 not parse. Temporary compatibility files use such a marker so that a preview
 cannot ship them past their announced removal.
 
+The maintainer prepares the next npm preview version with `npm run release:bump -- <n>`
+before the cut of `openlup-source-preview/<n>`. The command updates only the
+lockstep package version carriers and the publishable package changelog. The
+release workflow checks and packs that exact version before asking for release
+approval; npm still stages the package for separate maintainer 2FA approval.
+
 A new or renamed path also needs its row in
 `config/openlup-publication-catalog.json`. After changing that catalogue, a
 `package.json` or a `package-lock.json`, regenerate the contract from the
