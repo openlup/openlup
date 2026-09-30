@@ -164,13 +164,20 @@ The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
-`guard:public-reference-site-routes`, `lint`, `oss:published-tree`,
-`packages:check`, `test`, and `test:required`.
+`guard:public-reference-site-routes`, `lint`, `prelint`,
+`oss:published-tree`, `packages:check`, `pretest`, `pretest:required`,
+`test`, and `test:required`.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
 build, required root coverage, complete diagnostics, DCO check, and publication checks from this inventory.
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
+
+`npm run lint`, `npm test`, and `npm run test:required` each run their npm
+`pre*` hook first to build `@openlup/core` from the workspace before root
+imports need its `dist`. The hooks invoke only the core workspace build; they
+do not invoke the root `build` or each other. Direct `node scripts/run-vitest.mjs`
+and `eslint` calls do not use npm lifecycle hooks and require a prior core build.
 
 `npm run lint` runs ESLint over the tree, including the import boundaries in
 [eslint.config.js](eslint.config.js): a package under `packages/` imports

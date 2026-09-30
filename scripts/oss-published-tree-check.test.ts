@@ -29,7 +29,7 @@ import {
   publicInventoryVerdict,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
-import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_REQUIRED_TEST_COMMAND, PUBLIC_REQUIRED_TEST_SCOPE, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
+import { PUBLIC_CORE_BUILD_COMMAND, PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_REQUIRED_TEST_COMMAND, PUBLIC_REQUIRED_TEST_SCOPE, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 
 import { readManagedMigrationChain } from "./public-ci-pgtap.mjs";
@@ -152,6 +152,11 @@ describe("complete public CI", () => {
     expect(manifest.scripts["test:required"]).toBe(requiredTestFloor);
     expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(requiredTestFloor.split(" ").slice(3));
     expect(manifest.scripts.test).toBe(PUBLIC_TEST_COMMAND);
+    for (const hook of ["prelint", "pretest", "pretest:required"]) {
+      expect(manifest.scripts[hook]).toBe(PUBLIC_CORE_BUILD_COMMAND);
+    }
+    expect(PUBLIC_CORE_BUILD_COMMAND).toBe("npm --workspace @openlup/core run build");
+    expect(manifest.scripts.build).not.toBe(PUBLIC_CORE_BUILD_COMMAND);
     expect(manifest.scripts).not.toHaveProperty("test:full");
     expect(workflowCommands(workflowJob("test"))).toEqual([
       "npm ci",
