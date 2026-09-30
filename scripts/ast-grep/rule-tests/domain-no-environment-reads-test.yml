@@ -1,0 +1,58 @@
+id: domain-no-environment-reads
+valid:
+  - 'export function readMode({ env } = settings) { return env; }'
+  - 'const mod = await import("node:path");'
+  - 'export const currency = (profile: SettlementProfile) => profile.currency;'
+  - 'const mode = input.env.mode;'
+  - 'const env = { mode: "test" }; export const current = env.mode;'
+  - 'const { env } = settings;'
+  - 'for (const { env, job } of queue) { await job.process(); }'
+  - 'const key = process[resolve("env")].KEY;'
+  - 'const key = process[name as "env"].KEY;'
+  - 'const key = process[flag ? "env" : "other"].KEY;'
+  - 'const key = process[`env${suffix}`].KEY;'
+invalid:
+  - |
+    const port = process
+      .env.PORT;
+  - 'const key = process["env"].SERVICE_KEY;'
+  - 'const key = process[("env")].SERVICE_KEY;'
+  - 'const key = process["env" as keyof NodeJS.Process].SERVICE_KEY;'
+  - 'const key = process[<keyof NodeJS.Process>"env"].SERVICE_KEY;'
+  - 'const key = globalThis.process[("env")].SERVICE_KEY;'
+  - |
+    const mode = import.meta
+      .env.MODE;
+  - 'const mode = import.meta["env"].MODE;'
+  - 'const mode = import.meta[("env")].MODE;'
+  - 'const { env } = process;'
+  - |
+    const mode = (import.meta as unknown as { env?: Record<string, string> })
+      .env?.MODE;
+  - 'const { env } = import.meta as unknown as { env: Record<string, string> };'
+  - 'const { env } = process as NodeJS.Process;'
+  - |
+    const key = globalThis.process!
+      .env.KEY;
+  - |
+    const key = (globalThis.process as NodeJS.Process)
+      .env.KEY;
+  - |
+    const key = globalThis["process"]
+      .env.KEY;
+  - 'import { env } from "node:process";'
+  - 'const runtime = await import("node:process");'
+  - 'export { env } from "node:process";'
+  - 'export function readMode({ env } = process) { return env; }'
+  - 'export const readMode = ({ env } = import.meta) => env;'
+  - 'let env; ({ env } = process);'
+  - 'export const load = async () => import(/* webpackIgnore: true */ "node:process");'
+  - 'const runtime = await import( "node:process" , { with: {} });'
+  - 'for (const { env } of [process]) use(env);'
+  - 'import runtime = require("node:process");'
+  - 'const runtime = require("node:process");'
+  - 'const [{ env }] = [process];'
+  - 'export function readMode([{ env }] = [process]) { return env; }'
+  - 'let env; [{ env }] = [process];'
+  - 'for (const [{ env }] of [[process]]) use(env);'
+  - 'const runtime = createRequire(import.meta.url)("node:process");'

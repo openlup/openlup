@@ -1,0 +1,12 @@
+id: bff-database-through-ports-tsx
+valid:
+  - 'export const View = () => <span>{Array.from(rows).length}</span>;'
+  - 'export const View = () => <span>{globalThis.Uint8Array["from"](bytes).length}</span>;'
+  - 'logger.warn("@example/supabase-js");'
+  - 'export const View = () => <span>{db[parse("from")]("orders")}</span>;'
+invalid:
+  - 'export const View = () => <span>{createClient(url, key)}</span>;'
+  - 'export const View = () => <span>{db[("from")]("orders")}</span>;'
+  - 'export const View = () => <span>{db["rpc" as keyof Db]("fn")}</span>;'
+  - 'const sdkName = "@example/supabase-js"; export const View = () => <span>{sdkName}</span>;'
+  - 'logger.warn(await import("@example/supabase-js"));'

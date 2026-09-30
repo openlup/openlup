@@ -2066,6 +2066,46 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ast-grep/check-filewide-ignore.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/check-filewide-ignore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/bff-database-through-ports-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/bff-database-through-ports-tsx-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/domain-no-country-literals-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/domain-no-environment-reads-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rule-tests/domain-no-environment-reads-tsx-test.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rules/bff-database-through-ports.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rules/domain-no-country-literals.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ast-grep/rules/domain-no-environment-reads.yml",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/audit-orientation-docs.ts",
       "class": "public-output"
     },
@@ -11402,6 +11442,10 @@
       "class": "public-output"
     },
     {
+      "path": "sgconfig.yml",
+      "class": "public-output"
+    },
+    {
       "path": "src/App.css",
       "class": "public-output"
     },
@@ -18725,7 +18769,7 @@
     },
     {
       "name": "lint",
-      "command": "eslint .",
+      "command": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint .",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18817,7 +18861,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-75ff10dea35ffd962cbe5318db900828189523e366f17755a36dd3e460131d61"
+      "digest": "sha256-5f04db3987cb2a28c45b7adce444afaa5b166b9456968693b5efa68de8ce7e6f"
     },
     {
       "path": "packages/core/package.json",

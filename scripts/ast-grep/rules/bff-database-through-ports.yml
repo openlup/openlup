@@ -1,0 +1,127 @@
+id: bff-database-through-ports
+language: TypeScript
+severity: error
+message: BFF code reaches the database only through a port or the actor data gateway.
+note: |
+  Architecture rule (AGENTS.md): provider SDKs and database clients stay behind
+  adapter and infrastructure boundaries. A BFF module composes a use case; it
+  must not reference createClient, a .from or .rpc member, or the SDK package
+  path. This catches wrapped calls and SDK paths held in a variable. Direct
+  logger or console diagnostics may print the package name; a stored path
+  remains blocked because it can be used for a module load. The standard
+  Array, Buffer and typed-array .from methods are allowed. A non-database .from
+  member is a named false positive; give its line a reasoned ast-grep-ignore
+  naming this rule. Inject a port, or use createPlatformActorDataGateway, and
+  move database queries into server/adapters.
+files:
+  - server/bff/**/*.ts
+ignores:
+  - "**/*.test.ts"
+utils:
+  static-client-index:
+    any:
+      - kind: string
+        has: { kind: string_fragment, regex: "^(createClient|rpc)$" }
+      - kind: template_string
+        all:
+          - has: { kind: string_fragment, regex: "^(createClient|rpc)$" }
+          - not: { has: { kind: template_substitution } }
+      - any: [ { kind: parenthesized_expression }, { kind: as_expression }, { kind: satisfies_expression }, { kind: type_assertion }, { kind: non_null_expression } ]
+        has: { matches: static-client-index }
+  static-from-index:
+    any:
+      - kind: string
+        has: { kind: string_fragment, regex: "^from$" }
+      - kind: template_string
+        all:
+          - has: { kind: string_fragment, regex: "^from$" }
+          - not: { has: { kind: template_substitution } }
+      - any: [ { kind: parenthesized_expression }, { kind: as_expression }, { kind: satisfies_expression }, { kind: type_assertion }, { kind: non_null_expression } ]
+        has: { matches: static-from-index }
+rule:
+  any:
+    - { kind: identifier, regex: "^createClient$" }
+    - { kind: property_identifier, regex: "^createClient$" }
+    - kind: member_expression
+      has: { field: property, regex: "^rpc$" }
+    - kind: member_expression
+      all:
+        - has: { field: property, regex: "^from$" }
+        - not: { has: { field: object, regex: "^(?:globalThis\\.)?(?:Array|Buffer|(?:Uint8Clamped|(?:Uint|Int)(?:8|16|32)|Float(?:16|32|64)|Big(?:Uint|Int)64)Array)$" } }
+    - kind: subscript_expression
+      has: { field: index, matches: static-client-index }
+    - kind: subscript_expression
+      all:
+        - has: { field: index, matches: static-from-index }
+        - not: { has: { field: object, regex: "^(?:globalThis\\.)?(?:Array|Buffer|(?:Uint8Clamped|(?:Uint|Int)(?:8|16|32)|Float(?:16|32|64)|Big(?:Uint|Int)64)Array)$" } }
+    - kind: string_fragment
+      regex: "^(?:@[^/\\s]+/)?supabase-js(?:/[^\\s]*)?$"
+      not:
+        inside:
+          kind: call_expression
+          has: { field: function, regex: "^(?:logger|console)\\.(?:debug|error|info|log|trace|warn)$" }
+          stopBy: { kind: call_expression }
+---
+id: bff-database-through-ports-tsx
+language: Tsx
+severity: error
+message: BFF code reaches the database only through a port or the actor data gateway.
+note: |
+  Architecture rule (AGENTS.md): provider SDKs and database clients stay behind
+  adapter and infrastructure boundaries. A BFF module composes a use case; it
+  must not reference createClient, a .from or .rpc member, or the SDK package
+  path. This catches wrapped calls and SDK paths held in a variable. Direct
+  logger or console diagnostics may print the package name; a stored path
+  remains blocked because it can be used for a module load. The standard
+  Array, Buffer and typed-array .from methods are allowed. A non-database .from
+  member is a named false positive; give its line a reasoned ast-grep-ignore
+  naming this rule. Inject a port, or use createPlatformActorDataGateway, and
+  move database queries into server/adapters.
+files:
+  - server/bff/**/*.tsx
+ignores:
+  - "**/*.test.tsx"
+utils:
+  static-client-index:
+    any:
+      - kind: string
+        has: { kind: string_fragment, regex: "^(createClient|rpc)$" }
+      - kind: template_string
+        all:
+          - has: { kind: string_fragment, regex: "^(createClient|rpc)$" }
+          - not: { has: { kind: template_substitution } }
+      - any: [ { kind: parenthesized_expression }, { kind: as_expression }, { kind: satisfies_expression }, { kind: non_null_expression } ]
+        has: { matches: static-client-index }
+  static-from-index:
+    any:
+      - kind: string
+        has: { kind: string_fragment, regex: "^from$" }
+      - kind: template_string
+        all:
+          - has: { kind: string_fragment, regex: "^from$" }
+          - not: { has: { kind: template_substitution } }
+      - any: [ { kind: parenthesized_expression }, { kind: as_expression }, { kind: satisfies_expression }, { kind: non_null_expression } ]
+        has: { matches: static-from-index }
+rule:
+  any:
+    - { kind: identifier, regex: "^createClient$" }
+    - { kind: property_identifier, regex: "^createClient$" }
+    - kind: member_expression
+      has: { field: property, regex: "^rpc$" }
+    - kind: member_expression
+      all:
+        - has: { field: property, regex: "^from$" }
+        - not: { has: { field: object, regex: "^(?:globalThis\\.)?(?:Array|Buffer|(?:Uint8Clamped|(?:Uint|Int)(?:8|16|32)|Float(?:16|32|64)|Big(?:Uint|Int)64)Array)$" } }
+    - kind: subscript_expression
+      has: { field: index, matches: static-client-index }
+    - kind: subscript_expression
+      all:
+        - has: { field: index, matches: static-from-index }
+        - not: { has: { field: object, regex: "^(?:globalThis\\.)?(?:Array|Buffer|(?:Uint8Clamped|(?:Uint|Int)(?:8|16|32)|Float(?:16|32|64)|Big(?:Uint|Int)64)Array)$" } }
+    - kind: string_fragment
+      regex: "^(?:@[^/\\s]+/)?supabase-js(?:/[^\\s]*)?$"
+      not:
+        inside:
+          kind: call_expression
+          has: { field: function, regex: "^(?:logger|console)\\.(?:debug|error|info|log|trace|warn)$" }
+          stopBy: { kind: call_expression }

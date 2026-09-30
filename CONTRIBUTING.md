@@ -199,6 +199,55 @@ condition, since Node allows a condition object as a target. A subpath pattern
 alias such as `#name/*` is not matched as a pattern. Published Tree CI runs lint
 in the `typecheck` job.
 
+`npm run lint` first checks file-leading blank-line suppressions with
+`scripts/ast-grep/check-filewide-ignore.mjs`; this check cannot be suppressed
+by an ast-grep directive. It then scans with the structural rules in
+`scripts/ast-grep/rules` (configured by `sgconfig.yml`), refuses bare or unused
+suppressions, runs the cases in `scripts/ast-grep/rule-tests`, then runs ESLint.
+These rules catch ordinary mistakes; review handles deliberate evasion.
+ESLint's boundary rules check import paths; the structural rules check calls,
+reads and literals. A non-test `.ts` or `.tsx` module under `server/bff` reaches
+the database only through a port or the actor data gateway:
+it does not load the database client SDK through an import or re-export, `import
+= require`, or an `import()`, `require()` or `createRequire()(...)` call whose
+argument names it, and does not reference `createClient`, `.from` or `.rpc`,
+whether by name, as a member, through a string index, through `.call`, `.apply`
+or `.bind`, or behind parentheses, a comma operator, a type or non-null
+assertion or a prefix `await`, `void`, `!` or `typeof` (standard static
+`Array`, `Buffer` and typed-array `.from` methods excepted). Direct
+`logger` or `console` diagnostics may print the SDK package name; a stored
+path remains blocked because it can be used for a module load. Domain code under
+`server/domains`, `src/domains` and `packages/core/src` reads no environment
+variable: it has no `.env` or `["env"]`
+access, and no destructuring of `env` in a declaration, parameter default,
+assignment or loop head, on an expression that involves `process` or
+`import.meta`, however that expression is wrapped or asserted, and no import,
+`require()`, `createRequire()(...)`, dynamic import or re-export of
+`node:process`; the rule does not follow a value through an intermediate
+variable. The same domain code contains no two-letter uppercase string, template
+or template-type literal in any position, because in this codebase such a
+literal is a country or region code, which is adopter policy. Test files are
+exempt, and so are fixtures and test helpers from the country rule. Files that
+predate a rule are listed in its `ignores`: delete an entry when its file is
+fixed and never add one. A justified exception, such as a genuine non-country
+code, is an `// ast-grep-ignore: <rule-id>` comment on the line before the code,
+with the reason in a comment above it. The comment names the exact rule id,
+which in a `.tsx` file is the `-tsx` variant, such as
+`domain-no-country-literals-tsx`. A new rule states the platform rule it
+enforces, blocks only at zero findings, and has at least one valid and one
+invalid case. A first-line `ast-grep-ignore` followed by a blank line is
+file-wide and is rejected, even when it names a rule. A line exception must
+sit directly above its target; an unused exception is rejected. The scan and
+the rule tests are fast for the whole tree, and
+`npx --no -- ast-grep scan <files>` checks named files in milliseconds. Run it
+after each change and before committing rather than
+waiting for the hosted job. Keep `--no --`: without it npx can fetch an
+unrelated registry package of the same name when the local binary is missing.
+While iterating, `npx --no -- ast-grep run --pattern '<code pattern>' --lang ts`
+lists every structural match, and `--rewrite '<replacement>' --update-all`
+applies a mechanical edit; call the binary `ast-grep`, because `sg` is also a
+system command on Linux.
+
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating
 the directories and preserves its raw failure result. The required `test` job

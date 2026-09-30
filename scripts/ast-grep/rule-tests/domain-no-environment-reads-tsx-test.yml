@@ -1,0 +1,16 @@
+id: domain-no-environment-reads-tsx
+valid:
+  - 'export const Badge = ({ mode }: { mode: string }) => <span>{mode}</span>;'
+  - 'export const Badge = () => <span>{process[resolve("env")].KEY}</span>;'
+  - 'export const Badge = () => <span>{process[name as "env"].KEY}</span>;'
+invalid:
+  - |
+    export const Badge = () => <span>{import.meta
+      .env.MODE}</span>;
+  - |
+    export const Badge = () => <span>{(import.meta as unknown as { env: Record<string, string> })
+      .env.MODE}</span>;
+  - 'export const Mode = ({ env } = import.meta) => <span>{env.MODE}</span>;'
+  - 'export const load = () => import("node:process");'
+  - 'export const Badge = () => <span>{process[("env")].KEY}</span>;'
+  - 'export const Badge = () => <span>{import.meta["env" as keyof ImportMeta].MODE}</span>;'
