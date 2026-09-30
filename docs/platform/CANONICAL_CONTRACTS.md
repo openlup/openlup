@@ -190,4 +190,4 @@ jobs retain raw diagnostic failures with named ownership; their addition does
 not change platform behavior, grant application privileges or declare complete
 compatibility evidence. Existing release context checks remain unchanged.
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-13b86e2b9de741630c6f05fdcd17841340d4500d9557c5dad211e6a251c328e6","reason":"The package configuration changes only the lockstep preview version from 0.7.0 to 0.9.0. The rule that each source preview carries a matching 0.<n>.0 package, and its compatibility posture, remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-e0be1f7b2ab7135a87f7349c1a22244d91a1937cde1da9c3a54ffd308903f3bd","reason":"The package configuration advances the lockstep version from 0.9.0 to 0.10.0 after preview 9. Matching package and source preview numbering, the development-preview compatibility posture, and release preparation rules described here remain unchanged."} -->
