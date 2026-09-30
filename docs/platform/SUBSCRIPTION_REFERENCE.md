@@ -38,7 +38,7 @@ node scripts/public-reference/setup-subscription.mjs \
   --port-base 56820
 OPENLUP_REFERENCE_PROFILE=subscription npm run build
 node --env-file=/tmp/openlup-reference-evaluation/subscription.env \
-  --conditions=core-source --import tsx server/runtime/public-reference/serve.ts
+  --import tsx server/runtime/public-reference/serve.ts
 ```
 
 The generated mode-0600 environment contains only this disposable installation's
@@ -83,7 +83,7 @@ account route and confirm its captured email. Then explicitly grant that already
 confirmed identity a human operator membership in this local installation:
 
 ```sh
-node --conditions=core-source --import tsx scripts/public-reference/grant-operator.mjs \
+node --import tsx scripts/public-reference/grant-operator.mjs \
   --env-file /tmp/openlup-reference-evaluation/subscription.env \
   --email operator@example.test
 ```

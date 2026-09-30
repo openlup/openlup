@@ -87,7 +87,7 @@ describe("a plain server process can be told what it settles in", () => {
 
     const stdout = execFileSync(
       process.execPath,
-      ["--conditions=core-source", "--import", "tsx", probe],
+      ["--import", "tsx", probe],
       {
         cwd: REPO_ROOT,
         encoding: "utf8",
