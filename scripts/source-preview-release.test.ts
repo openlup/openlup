@@ -11,6 +11,7 @@ import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, a
 import { annotatedTag, assertDraft, assertNextPreview, assertReleasablePackages, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { PUBLIC_REPOSITORY_URL } from "./packages/package-manifest-policy.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
+import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 
 const target = "a".repeat(40), previousCommit = "d".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
 const previousTagObject = "6".repeat(40), targetTagObject = "c".repeat(40);
@@ -364,6 +365,45 @@ function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer
   return { repo, run, read, apply, commit, rootCommit, release, cleanup: () => rmSync(repo, { recursive: true, force: true }) };
 }
 const editContract = (edit: (contract: { compatibility?: unknown; repository: { owner: { name: string } } }) => void) => (repo: string) => { const contract = JSON.parse(readFileSync(join(repo, CONTRACT), "utf8")); edit(contract); writeFileSync(join(repo, CONTRACT), json(contract)); };
+
+describe("PR-base migration history", () => {
+  const managed = "supabase/migrations/20260926000000_existing.sql";
+  const old = { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n", [managed]: "CREATE TABLE public.existing (id int);\n" };
+  const check = (change: TreeChange, extra: Record<string, string> = old) => {
+    const sample = syntheticRelease({ extraFiles: extra });
+    try { sample.apply(change); const head = sample.commit("Candidate"); assertAppendOnlyMigrationHistory(sample.repo, sample.rootCommit, head); }
+    finally { sample.cleanup(); }
+  };
+
+  it("accepts an expand-only managed append and a manifest-bound portable append", () => {
+    check({ "supabase/migrations/20260927000000_added.sql": "CREATE TABLE public.added (id int);\n" });
+    const path = "db/platform/migrations/20260927000000_added.sql", sql = "CREATE TABLE public.added (id int);\n";
+    const manifest = JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!);
+    manifest.forward.push({ file: path, sha256: createHash("sha256").update(sql).digest("hex") });
+    check({ [path]: sql, "config/platform-migration-manifest.json": json(manifest) });
+  });
+
+  it.each([
+    ["editing a prior forward", { [managed]: "CREATE TABLE public.changed (id int);\n" }, /edit, deletion/u],
+    ["deleting a prior forward", { [managed]: null }, /edit, deletion/u],
+    ["backdating", { "supabase/migrations/20260925000000_earlier.sql": "CREATE TABLE public.earlier (id int);" }, /non-increasing/u],
+    ["duplicate version", { "supabase/migrations/20260926000000_other.sql": "CREATE TABLE public.other (id int);" }, /non-increasing/u],
+    ["destructive SQL", { "supabase/migrations/20260927000000_bad.sql": "DROP TABLE public.existing;" }, /non-expand-only/u],
+    ["manifest tampering", { "config/platform-migration-manifest.json": json({ ...JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!), objectInventorySha256: "1".repeat(64) }) }, /cannot change without/u],
+  ] as const)("refuses %s", (_label, change, expected) => expect(() => check(change)).toThrow(expected));
+
+  it("freezes a prior portable forward and its manifest prefix", () => {
+    const path = "db/platform/migrations/20260926000000_existing.sql", sql = "CREATE TABLE public.existing (id int);\n";
+    const manifest = JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!);
+    manifest.forward.push({ file: path, sha256: createHash("sha256").update(sql).digest("hex") });
+    const extra = { ...old, [path]: sql, "config/platform-migration-manifest.json": json(manifest) };
+    expect(() => check({ [path]: "CREATE TABLE public.changed (id int);\n" }, extra)).toThrow(/edit, deletion/u);
+    expect(() => check({ [path]: null }, extra)).toThrow(/edit, deletion/u);
+    const changed = { ...manifest, forward: [{ ...manifest.forward[0], sha256: "1".repeat(64) }] };
+    expect(() => check({ "config/platform-migration-manifest.json": json(changed) }, extra)).toThrow(/SHA-256 mismatch|previous prefix/u);
+  });
+
+});
 
 describe("descendant source release check", () => {
   it("builds its synthetic workspace manifests with the pinned public execution surfaces", () => {

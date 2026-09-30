@@ -13,11 +13,75 @@ import { comparePublicTypecheck, readPublicTypecheckCompatibility, runPublicType
 import { assertDocumentationNavigation, readDocumentationState } from "./documentation-routing.ts";
 import { documentationGit, resolveDocumentationBase } from "./documentation-git.ts";
 import { checkDocumentationImpact, renderDocumentationImpact } from "./documentation-impact.ts";
+import { evaluatePlatformMigrationManifest, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
+import { isExpandOnlyPlatformForward } from "./oss-source-release-contract.ts";
 import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
 export { assertMaterializedOutputInventory, materializedOutputPaths } from "./oss-published-tree-output.ts";
+
+/** Append-only migration history at the PR or merge-group boundary. */
+const MIGRATION_SHA = /^[a-f0-9]{40}$/u;
+const MIGRATION_MANIFEST = "config/platform-migration-manifest.json";
+const RAILS = ["db/platform/migrations/", "supabase/migrations/"] as const;
+const FORWARD = /^(?:db\/platform|supabase)\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u;
+const BASELINES = new Set(["db/platform/migrations/00000000000000_platform_baseline.sql", "supabase/migrations/00000000000000_platform_schema_baseline.sql"]);
+type MigrationEntry = { path: string; mode: string; oid: string };
+
+function migrationSnapshot(root: string, revision: string): Map<string, MigrationEntry> {
+  const rows = documentationGit(root, ["ls-tree", "-r", "-z", "--full-tree", revision, "--", MIGRATION_MANIFEST, ...RAILS]).toString("utf8").split("\0").filter(Boolean);
+  const entries = rows.map((row) => {
+    const match = /^(100644|100755) blob ([a-f0-9]{40})\t([^\0]+)$/u.exec(row);
+    if (!match) throw new Error(`migration history: unsupported Git entry at ${revision}`);
+    return { path: match[3]!, mode: match[1]!, oid: match[2]! };
+  });
+  return new Map(entries.map((entry) => [entry.path, entry]));
+}
+
+function readMigrationBlob(root: string, entry: MigrationEntry): string {
+  return documentationGit(root, ["cat-file", "blob", entry.oid]).toString("utf8");
+}
+
+export function assertAppendOnlyMigrationHistory(root: string, base: string, head: string): void {
+  if (!MIGRATION_SHA.test(base) || !MIGRATION_SHA.test(head) || base === head) throw new Error("migration history requires distinct full base and head commit SHAs");
+  const actualHead = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
+  if (actualHead !== head) throw new Error("migration history head differs from the checkout");
+  documentationGit(root, ["merge-base", "--is-ancestor", base, head]);
+  const before = migrationSnapshot(root, base), after = migrationSnapshot(root, head);
+  const additions: string[] = [];
+  for (const path of new Set([...before.keys(), ...after.keys()])) {
+    if (path === MIGRATION_MANIFEST) continue;
+    const old = before.get(path), next = after.get(path);
+    if (old?.oid === next?.oid && old?.mode === next?.mode) continue;
+    if (old || !next || next.mode !== "100644" || BASELINES.has(path) || !FORWARD.test(path))
+      throw new Error(`migration history refuses an edit, deletion, mode change or unsupported addition: ${path}`);
+    if (!isExpandOnlyPlatformForward(readMigrationBlob(root, next))) throw new Error(`migration history refuses a non-expand-only forward: ${path}`);
+    additions.push(path);
+  }
+  for (const rail of RAILS) {
+    let version = [...before.keys()].filter((path) => path.startsWith(rail)).map((path) => /^\d{14}/u.exec(path.slice(rail.length))?.[0] ?? "").sort().at(-1) ?? "";
+    for (const path of additions.filter((item) => item.startsWith(rail)).sort()) {
+      const next = path.slice(rail.length, rail.length + 14);
+      if (next <= version) throw new Error(`migration history refuses a non-increasing version: ${path}`);
+      version = next;
+    }
+  }
+  if (additions.some((path) => path.startsWith(RAILS[1])) && !before.has("supabase/migrations/00000000000000_platform_schema_baseline.sql"))
+    throw new Error("migration history requires the frozen managed baseline");
+  const priorEntry = before.get(MIGRATION_MANIFEST), currentEntry = after.get(MIGRATION_MANIFEST);
+  if (!priorEntry || !currentEntry || priorEntry.mode !== "100644" || currentEntry.mode !== "100644") throw new Error("migration history requires both regular portable manifests");
+  const prior = JSON.parse(readMigrationBlob(root, priorEntry)) as PlatformMigrationManifest;
+  const current = JSON.parse(readMigrationBlob(root, currentEntry)) as PlatformMigrationManifest;
+  const migrations = [...after.values()].filter(({ path }) => path.startsWith(RAILS[0])).map((entry) => ({ file: entry.path, content: readMigrationBlob(root, entry) }));
+  const errors = evaluatePlatformMigrationManifest({ manifest: current, migrations });
+  if (errors.length) throw new Error(`migration history manifest refuses: ${errors.join("; ")}`);
+  if (prior.schemaVersion !== current.schemaVersion || JSON.stringify(prior.baseline) !== JSON.stringify(current.baseline) || !Array.isArray(prior.forward) || !Array.isArray(current.forward) || JSON.stringify(current.forward.slice(0, prior.forward.length)) !== JSON.stringify(prior.forward))
+    throw new Error("migration history manifest must preserve the previous prefix");
+  const appended = current.forward.slice(prior.forward.length).map(({ file }) => file).sort();
+  if (JSON.stringify(appended) !== JSON.stringify(additions.filter((path) => path.startsWith(RAILS[0])).sort())) throw new Error("migration history manifest must bind exactly the appended portable forwards");
+  if (appended.length === 0 && priorEntry.oid !== currentEntry.oid) throw new Error("migration history manifest cannot change without a portable forward");
+}
 
 const MANIFEST = "package.json";
 
@@ -262,6 +326,11 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
   policyVerdict(root, log);
   const base = resolveDocumentationBase(root, { base: options.get("--docs-base") });
   log(`- documentation comparison: ${base.base} (${base.provenance})`);
+  if (base.provenance === "pull-request" || base.provenance === "merge-group") {
+    const head = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
+    assertAppendOnlyMigrationHistory(root, base.base, head);
+    log(`- append-only migration history: ${base.base}..${head}`);
+  }
   const result = checkDocumentationImpact(root, state, base.base);
   for (const line of renderDocumentationImpact(result)) log(line);
   if (result.failures.length > 0) return 1;
