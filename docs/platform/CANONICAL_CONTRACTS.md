@@ -153,6 +153,11 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+Root source tools resolve `@openlup/core` through its declared package subpaths
+and built `dist/` output, as an installed consumer does. The subscription
+reference import inventory follows those built paths. This changes module
+resolution, not the subscription or provider contracts above.
+
 Stable status, idempotency, and provider-extension commitments wait for `P1-SF`.
 Before then, changes must still preserve the contracts above and state their
 preview compatibility boundary explicitly.

@@ -10,5 +10,9 @@ coverage
 .vercel
 .vite
 supabase/migrations
+# The image needs only the platform migrations and the bootstrap under db/; a deployment's own
+# db/ directories stay out of the build context.
+db/*
+!db/platform
+!db/bootstrap
 db/bootstrap/vanilla-pg
-db/private/import-bridge

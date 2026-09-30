@@ -88,6 +88,12 @@ The `prelint`, `pretest:required` and `pretest` npm scripts build `@openlup/core
 before their respective root commands. When running
 `npm run oss:published-tree -- --typecheck` directly after editing core source,
 first run `npm --workspace @openlup/core run build`.
+The four root TypeScript projects, Vitest and the disposable public-reference
+build resolve core through its package exports to built `dist/` files. The
+subscription import inventory lists those built files, and its local verifier
+uses the same default Node resolution for the operator helper. The Docker build
+context retains `db/platform` and `db/bootstrap` under `db/`; other local `db/`
+directories are excluded.
 
 The three `oss:published-tree` modes are distinct checks. `--policy` verifies
 the public policy, catalogue, documentation ownership, generated navigation and

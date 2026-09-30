@@ -37,6 +37,8 @@ to exercise one synthetic recurring purchase, captured payment settlement,
 confirmed local sign-in, own account readback and a renewal-date action. The
 profile uses a closed route set and loopback origin; it does not start a worker,
 external payment provider, external mail service or full self-hosted platform.
+Its browser build imports the built core package through declared exports, and
+the closed import inventory names the resulting `dist/` modules.
 See [Evaluate a subscription account](SUBSCRIPTION_REFERENCE.md) for the exact
 setup, server command, operator setup and verification boundary.
 

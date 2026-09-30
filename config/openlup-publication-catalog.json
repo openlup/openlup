@@ -2454,6 +2454,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/built-core-resolution.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/eslint-import-map.test.ts",
       "class": "public-output"
     },

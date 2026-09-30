@@ -245,31 +245,12 @@ export default defineConfig({
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
-    // WITH `deployment-overlay`, deliberately. This checkout IS a deployment, and its
-    // test tree is non-hosted openlup tooling, so it must resolve the owners that
-    // `dev` and `build:*` resolve. A test tree that read the neutral example while the
-    // build read the overlay would be exercising code that never ships.
-    //
-    // W6a first set this, `scripts/oss-core-scaffold.test.ts` refused it, and W6a removed
-    // it in finalization - so its "deliberately WITHOUT" was a response to that pin, not
-    // an independent ruling. The owner's option-A ruling settled it the other way and
-    // authorized moving exactly that one expectation; the pin now states the condition is
-    // a contract member and says why.
-    //
-    // It CANNOT be carried at the command level the way `dev`/`build:*` carry it: those
-    // pass `--conditions` to a NATIVE config load, which is what lets `#email-presentation`
-    // resolve and propagate through `emailPresentation.resolverConditions` in
-    // `vite.config.ts`. Vitest resolves `#` specifiers through Vite's resolver off THIS
-    // array, so `NODE_OPTIONS=--conditions=...` is inert for it - measured, not assumed.
-    //
-    // Publication is unaffected: the projected manifest carries no condition at all, so
-    // this array cannot select an overlay in a published checkout.
-    conditions: ["core-source", "deployment-overlay", ...defaultClientConditions],
+    conditions: [...defaultClientConditions],
   },
   ssr: {
     noExternal: ["@openlup/core"],
     resolve: {
-      conditions: ["core-source", "deployment-overlay", ...defaultServerConditions],
+      conditions: [...defaultServerConditions],
     },
   },
 });
