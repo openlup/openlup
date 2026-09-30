@@ -1,0 +1,97 @@
+# One-off maintainer recovery of the existing preview/9 tag and App-authored draft.
+# Dispatch only after reviewing the fixed coordinates. Never rerun after a partial success.
+name: Recover Source Preview 9
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: publish-source-preview
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_SOURCE_RELEASE == 'enabled' && vars.OPENLUP_NPM_STAGE == 'enabled' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+      checks: read
+      attestations: read
+    env:
+      TARGET_COMMIT: 7d0f0917bf5d1397f431336134e8df30c90f5d08
+      RELEASE_TAG: openlup-source-preview/9
+      RELEASE_ID: '400399682'
+      NOTES_SHA256: 9d0778b03e10b39b745d46e81382c0f365f659782f9450f7e4c978721b471d7d
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 7d0f0917bf5d1397f431336134e8df30c90f5d08
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the original source, required checks and existing annotated tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
+          git fetch --no-tags --quiet origin main
+          git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD
+          for context in dco typecheck install-proof test self-check gitleaks; do
+            verdict="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_COMMIT/check-runs?check_name=$context&filter=latest&per_page=100" \
+              --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
+            test "$verdict" = passed || { echo "::error::$context has not passed at $TARGET_COMMIT"; exit 1; }
+          done
+          git fetch --no-tags --quiet origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          tag_ref="refs/tags/$RELEASE_TAG"
+          test "$(git cat-file -t "$tag_ref")" = tag
+          tag_headers="$(git cat-file -p "$tag_ref" | sed -n '1,/^$/p')"
+          printf '%s\n' "$tag_headers" | grep -Fxq "object $TARGET_COMMIT"
+          printf '%s\n' "$tag_headers" | grep -Fxq 'type commit'
+          printf '%s\n' "$tag_headers" | grep -Fxq "tag $RELEASE_TAG"
+          test "$(git for-each-ref --format='%(contents)' "$tag_ref")" = 'OpenLup source preview 9.'
+      - name: Obtain the existing release App identity
+        id: release-identity
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.OPENLUP_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: openlup
+          permission-contents: write
+          permission-administration: read
+      - name: Check the exact App-authored draft and publish that release ID
+        env:
+          GH_TOKEN: ${{ steps.release-identity.outputs.token }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
+          draft="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
+          printf '%s' "$draft" | jq -e --arg tag "$RELEASE_TAG" --argjson id "$RELEASE_ID" '
+            .id == $id and .tag_name == $tag and .draft == true and
+            .prerelease == true and .immutable == false and .published_at == null and
+            .author.type == "Bot" and .author.id == 334697227 and
+            .author.login == "openlup-release[bot]" and
+            (.assets | type) == "array" and (.assets | length) == 0
+          ' > /dev/null
+          actual_notes_sha="$(printf '%s' "$draft" | jq -j .body | sha256sum | cut -d ' ' -f 1)"
+          test "$actual_notes_sha" = "$NOTES_SHA256" || { echo '::error::Draft body differs from the reviewed notes'; exit 1; }
+          # The App is the event sender required by Publish Packages. Change only the draft flag.
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false \
+            --jq '{id,tag_name,draft,prerelease,immutable,published_at,author:.author.login}'
+      - name: Verify the immutable release and GitHub tag attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
+          printf '%s' "$release" | jq -e --arg tag "$RELEASE_TAG" --argjson id "$RELEASE_ID" '
+            .id == $id and .tag_name == $tag and .draft == false and
+            .prerelease == true and .immutable == true and .published_at != null and
+            .author.id == 334697227 and .author.login == "openlup-release[bot]" and
+            (.assets | type) == "array" and (.assets | length) == 0
+          ' > /dev/null
+          actual_notes_sha="$(printf '%s' "$release" | jq -j .body | sha256sum | cut -d ' ' -f 1)"
+          test "$actual_notes_sha" = "$NOTES_SHA256"
+          gh release verify "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
