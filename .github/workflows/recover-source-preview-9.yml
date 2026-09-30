@@ -48,6 +48,7 @@ jobs:
           git fetch --no-tags --quiet origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           tag_ref="refs/tags/$RELEASE_TAG"
           test "$(git cat-file -t "$tag_ref")" = tag
+          test "$(git rev-parse "$tag_ref")" = a5c89b6c3774fa14b4b90b85f1694f3c2d627fa7
           tag_headers="$(git cat-file -p "$tag_ref" | sed -n '1,/^$/p')"
           printf '%s\n' "$tag_headers" | grep -Fxq "object $TARGET_COMMIT"
           printf '%s\n' "$tag_headers" | grep -Fxq 'type commit'
