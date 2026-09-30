@@ -7,6 +7,7 @@ import {
   renderShipmentException,
 } from "./transactionalFulfillmentEmailRenderers.js";
 import { APP_ORDER_REF_PREFIX } from "../../../src/lib/brand/appBrand.js";
+import { emailPresentation as exampleEmailPresentation } from "../../../src/domains/communications/email/exampleEmailPresentation.js";
 
 const signal = new AbortController().signal;
 const BASE = "https://staging.example.test";
@@ -27,7 +28,7 @@ function expectCustomerOrderReference(out: {
 }
 
 function expectStagingAssets(out: { html: string }, contentImages = 0): void {
-  // The neutral default presentation emits no chrome image (logo or banner), so
+  // The explicitly injected neutral presentation emits no chrome image (logo or banner), so
   // every <img> is a content illustration the caller counts (a guide cover).
   expect(out.html.match(/<img\b/g) ?? []).toHaveLength(contentImages);
 }
@@ -45,6 +46,7 @@ describe("transactionalFulfillmentEmailRenderers", () => {
         signal,
       },
       BASE,
+      exampleEmailPresentation,
     );
 
     expect(out.html).toContain("Paczka w drodze");
@@ -67,6 +69,7 @@ describe("transactionalFulfillmentEmailRenderers", () => {
         signal,
       },
       BASE,
+      exampleEmailPresentation,
     );
 
     expect(out.subject).toContain("dotarła");
@@ -88,6 +91,7 @@ describe("transactionalFulfillmentEmailRenderers", () => {
         signal,
       },
       BASE,
+      exampleEmailPresentation,
     );
 
     expect(out.html).toContain("Potrzebujemy chwili dłużej");
@@ -107,6 +111,7 @@ describe("transactionalFulfillmentEmailRenderers", () => {
         signal,
       },
       BASE,
+      exampleEmailPresentation,
     );
     const rejected = renderReturnRejected(
       {
@@ -117,6 +122,7 @@ describe("transactionalFulfillmentEmailRenderers", () => {
         signal,
       },
       BASE,
+      exampleEmailPresentation,
     );
 
     expect(approved.html).toContain("Zwrot zaakceptowany");
