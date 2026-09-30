@@ -21,7 +21,7 @@ import { checkoutExpiredEmailContent } from "../../../src/domains/commerce/email
 import { orderCanceledEmailContent } from "../../../src/domains/commerce/emails/orderCanceled.js";
 import { orderRefundedEmailContent } from "../../../src/domains/commerce/emails/orderRefunded.js";
 import { renderEmail } from "../../../src/domains/communications/email/render.js";
-import { emailPresentation as defaultEmailPresentation } from "../../../src/domains/communications/email/exampleEmailPresentation.js";
+import { emailPresentation as defaultEmailPresentation } from "#email-presentation";
 import {
   emailCopyBrandName,
   type EmailPresentation,

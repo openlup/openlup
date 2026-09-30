@@ -9,7 +9,7 @@ import {
   BFF_DOMAINS,
   bffHealthDataSchema,
 } from "../../src/lib/bff/health.js";
-import { emailPresentation } from "../../src/domains/communications/email/deploymentEmailPresentation.js";
+import { emailPresentation } from "#email-presentation";
 import {
   readRuntimeProvenance,
   type RuntimeProvenanceEnv,

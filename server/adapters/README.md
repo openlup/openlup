@@ -32,6 +32,10 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
   This source directory does not select a provider or activate a capability;
   [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md)
   owns the public seam.
+- The transactional send port and the admin role notification adapter
+  read the selected `#email-presentation` import from the root `package.json`.
+  The public map selects the neutral example; an adopter can select its own
+  presentation in its application manifest without changing these adapters.
 
 ## Capability Map
 

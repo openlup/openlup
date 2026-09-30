@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   renderCheckoutRecovery,
   renderCheckoutExpired,
@@ -36,6 +36,45 @@ function expectPreviewAssets(out: { html: string }, locale: "en" = "en", content
 }
 
 describe("transactionalEmailRenderers", () => {
+  it("uses the selected import-map presentation for default commerce and fulfillment renders", async () => {
+    vi.doMock("#email-presentation", () => ({
+      emailPresentation: {
+        ...exampleEmailPresentation,
+        emailTeamSignoff: { pl: "Selected Team", en: "Selected Team" },
+      },
+    }));
+    vi.resetModules();
+    try {
+      const selected = await import("./transactionalEmailRenderers.js");
+      const order = selected.renderOrderConfirmation({
+        to: "a@example.com",
+        firstName: "Anna",
+        petName: null,
+        orderId: ORDER_ID,
+        outboxEventId: "selected-order",
+        items: [],
+        totals: null,
+        signal,
+      }, BASE);
+      const shipment = selected.renderShipmentDispatched({
+        to: "a@example.com",
+        firstName: "Anna",
+        petName: null,
+        orderId: ORDER_ID,
+        trackingNumber: "JD0123456789",
+        trackingUrl: "https://track.example/JD0123456789",
+        outboxEventId: "selected-shipment",
+        signal,
+      }, BASE);
+
+      expect(order.text).toContain("Selected Team");
+      expect(shipment.text).toContain("Selected Team");
+    } finally {
+      vi.doUnmock("#email-presentation");
+      vi.resetModules();
+    }
+  });
+
   it("renders through an explicitly injected presentation", () => {
     const presentation = {
       ...exampleEmailPresentation,
