@@ -31,7 +31,7 @@ import {
   type TransactionalEmailPort,
   type TransactionalEmailSendOutcome,
 } from "../../domains/commerce/outboxOrderDraftEmailPorts.js";
-import { emailPresentation } from "../../../src/domains/communications/email/deploymentEmailPresentation.js";
+import { emailPresentation } from "#email-presentation";
 import {
   renderCheckoutRecovery,
   renderCheckoutExpired,

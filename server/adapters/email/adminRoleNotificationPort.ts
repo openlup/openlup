@@ -1,5 +1,5 @@
 import { button, heading, paragraph } from "../../../src/domains/communications/email/blocks.js";
-import { emailPresentation } from "../../../src/domains/communications/email/deploymentEmailPresentation.js";
+import { emailPresentation } from "#email-presentation";
 import { renderEmail } from "../../../src/domains/communications/email/render.js";
 import type { AdminRoleNotificationPort, AdminRoleNotificationSkipReason } from "../../domains/platform/inviteAdminUserUseCase.js";
 import {

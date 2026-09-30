@@ -12,7 +12,7 @@ import {
   returnRejectedEmailContent,
 } from "../../../src/domains/commerce/emails/returnEmails.js";
 import { renderEmail } from "../../../src/domains/communications/email/render.js";
-import { emailPresentation as defaultEmailPresentation } from "../../../src/domains/communications/email/exampleEmailPresentation.js";
+import { emailPresentation as defaultEmailPresentation } from "#email-presentation";
 import type { EmailPresentation } from "../../../src/domains/communications/email/presentation.js";
 import { emailRouteUrl } from "../../../src/domains/communications/email/links.js";
 import type { RenderedEmail } from "./transactionalEmailRenderers.js";

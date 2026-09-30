@@ -14,6 +14,12 @@ is runtime-only input and must not be embedded in a browser artifact. Hosts must
 provide their own storage, identity, delivery, and provider configuration where
 the selected capabilities require it.
 
+The server health composition reads the root manifest's
+`#email-presentation` selection and reports that presentation's id. The public
+selection is the neutral example. A host selecting another presentation must
+make its import-map target available to its runtime; source-level selection
+alone does not establish function packaging or deployment behavior.
+
 <!-- openlup-doc-impact {"unit":"bff","digest":"sha256-2349404e8b49a1f9b80fedfc4da44e064f0c29ddb03bed69921b7c7a642fb502","reason":"Comment-only delta in BFF and cron entrypoints and their tests. Comments stop naming files of a downstream deployment and name them by role or by their URL route. No route, cron, gate flag, runtime composition or hosting behavior described here changes."} -->
 
 ## Self-host boundary
@@ -165,6 +171,12 @@ provider evidence, but a provider response is not itself the platform's durable
 truth. Hosts can add adapters only through the contracts in
 [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) and
 [Canonical contracts](CANONICAL_CONTRACTS.md).
+
+The transactional commerce and fulfillment renderers use the root
+`#email-presentation` import as their default while retaining an explicit
+presentation argument for callers. A host that changes the selection must
+verify its server module resolution and rendered output. The public source
+does not declare a managed serverless packaging rule for this alias.
 
 Canonical production hostnames come from
 `config/site-routes.json.productionHosts`. Configure this list for an adopting
