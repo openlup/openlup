@@ -1,8 +1,8 @@
 # Inert until the maintainer protects release, installs the release App and enables
 # OPENLUP_SOURCE_RELEASE and OPENLUP_NPM_STAGE. The unprivileged preflight proves the
 # target packs and scans its lockstep package before the release environment asks for approval.
-# The npm channel still stages its tarball for maintainer 2FA approval. No PAT and no
-# default-token release event suppression.
+# The separate npm channel publishes the checked tarball through OIDC after the
+# release App emits the event. No PAT and no default-token release event suppression.
 name: Publish Source Preview
 
 on:

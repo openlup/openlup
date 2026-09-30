@@ -14,7 +14,63 @@ import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-referenc
 
 const target = "a".repeat(40), previousCommit = "d".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
 const previousTagObject = "6".repeat(40), targetTagObject = "c".repeat(40);
+const packageProducer = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", ".github/workflows/publish-packages.yml"), "utf8");
 type Overrides = { releases?: object[]; previous?: Record<string, unknown>; published?: Record<string, unknown>; previousRef?: Record<string, unknown>; previousTag?: Record<string, unknown>; targetRef?: Record<string, unknown> | null; targetTag?: Record<string, unknown> };
+
+describe("direct npm package producer", () => {
+  it("rejects forged release events and a changed live release before checkout", () => {
+    const step = packageProducer.split("      - name: Require the release App event and the live immutable prerelease\n")[1]?.split("      - uses:")[0];
+    const run = step?.split("        run: |\n")[1]?.replace(/^ {10}/gmu, "");
+    expect(run).toBeTruthy();
+    const directory = mkdtempSync(join(tmpdir(), "openlup-release-event-"));
+    const eventFile = join(directory, "event.json"), liveFile = join(directory, "live.json");
+    const gh = join(directory, "gh");
+    writeFileSync(gh, "#!/bin/sh\n[ \"$1\" = api ] || exit 1\ncat \"$LIVE_RELEASE\"\n");
+    chmodSync(gh, 0o755);
+    const event = { action: "published", repository: { full_name: "openlup/openlup" }, sender: { type: "Bot", id: 42 }, release: { id: 123, tag_name: "openlup-source-preview/9", prerelease: true, draft: false, assets: [] } };
+    const live = { id: 123, tag_name: "openlup-source-preview/9", prerelease: true, draft: false, immutable: true, published_at: "2026-09-30T00:00:00Z", assets: [] };
+    const check = (changedEvent = event, changedLive = live, bot = "42") => {
+      writeFileSync(eventFile, JSON.stringify(changedEvent));
+      writeFileSync(liveFile, JSON.stringify(changedLive));
+      return spawnSync("bash", ["-e", "-o", "pipefail", "-c", run!], {
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, LIVE_RELEASE: liveFile, GITHUB_EVENT_PATH: eventFile, GITHUB_REPOSITORY: "openlup/openlup", RELEASE_TAG: "openlup-source-preview/9", EXPECTED_RELEASE_APP_BOT_ID: bot },
+        encoding: "utf8", timeout: 5000,
+      }).status;
+    };
+    try {
+      expect(check()).toBe(0);
+      expect(check(event, live, "")).not.toBe(0);
+      for (const changed of [
+        { sender: { type: "Bot", id: 43 } }, { sender: { type: "User", id: 42 } },
+        { action: "edited" }, { repository: { full_name: "someone/else" } },
+        { release: { ...event.release, draft: true } }, { release: { ...event.release, assets: [{ id: 1 }] } },
+      ]) expect(check({ ...event, ...changed })).not.toBe(0);
+      for (const changed of [{ immutable: false }, { prerelease: false }, { id: 124 }, { tag_name: "openlup-source-preview/8" }, { assets: [{ id: 1 }] }]) {
+        expect(check(event, { ...live, ...changed })).not.toBe(0);
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("verifies release provenance before packing and publishes only checked tarballs through OIDC", () => {
+    const pack = packageProducer.split("  pack:\n")[1]?.split("\n  publish:\n")[0] ?? "";
+    const publish = packageProducer.split("\n  publish:\n")[1] ?? "";
+    const ordered = [
+      "Require the release App event", "actions/checkout@", "Verify the annotated tag and GitHub release attestation",
+      "gh release verify", "The release commit is on main", "npm run packages:check", "Scan the unpacked tarballs", "actions/upload-artifact@",
+    ];
+    const positions = ordered.map((item) => pack.indexOf(item));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(pack).toContain("attestations: read");
+    expect(pack).not.toContain("id-token: write");
+    expect(publish).toContain("needs: pack");
+    expect(publish).toContain("environment: npm-stage");
+    expect(publish).toContain("id-token: write");
+    expect(publish).toContain("if (actual !== sha256)");
+    expect(publish).toContain('npm publish "./packs/$filename" --tag preview --provenance --access public --ignore-scripts');
+    expect(publish).not.toMatch(/npm stage publish|npm stage approve|actions\/checkout@|npm ci/u);
+  });
+});
 
 /** Models the read-only GitHub API for a published preview/1 and, once tagged, preview/2. */
 function github(options: Overrides & { previousTarget?: string; releaseTarget?: string } = {}): GithubFetch {

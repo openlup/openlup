@@ -201,9 +201,10 @@ not make this a stable API.
 Maintainers can cut an adjacent development preview with
 [`publish-source-preview.yml`](workflows/publish-source-preview.yml). This
 workflow is inert until the repository variable `OPENLUP_SOURCE_RELEASE` is
-`enabled`. It runs only when dispatched from `main`, and its sole job waits for
-the maintainer's approval in the `release` environment. Dispatching a run is
-not publication authorization: the environment approval is the publication gate.
+`enabled`. It runs only when dispatched from `main`. Its unprivileged package
+preflight runs before the maintainer approves the `release` environment. That
+approval authorizes the source preview and its checked npm package; dispatching
+a run alone is not publication authorization.
 
 Before enabling it, the maintainer configures every item below:
 
@@ -236,9 +237,9 @@ Before enabling it, the maintainer configures every item below:
    GitHub's release attestations; it cannot create a release or an attestation.
 7. Finally set the **repository variable** `OPENLUP_SOURCE_RELEASE` to
    **`enabled`**. Removing it or using another value disables future runs.
-   `OPENLUP_NPM_STAGE`, the `npm-stage` environment and npm trusted-publisher
-   setup remain separate; follow [Package preview channel](#package-preview-channel)
-   to enable package staging after a source release.
+   `OPENLUP_NPM_STAGE`, the `npm-stage` environment, exact release App bot ID and
+   npm trusted-publisher setup remain separate; follow
+   [Package preview channel](#package-preview-channel) before the first cut.
 
 In Actions, choose **Publish Source Preview → Run workflow**, select **main**,
 and enter the reviewed full lowercase **target commit SHA**, immediately next
@@ -248,7 +249,7 @@ preview's upgrade actions and any applicable pending notes from this document.
 If a future release policy defines a release-semantics block, include that block
 in these same note bytes; this document currently defines no such block.
 Confirm the package version `0.<n>.0` and its pack proof before approving a
-preview that should stage packages.
+preview that should publish packages.
 
 The job repeats the package workflow's main-ancestry and six required-context
 check at the target, and verifies GitHub's release attestation of preview N-1
@@ -277,8 +278,10 @@ tag object. The App token emits the release event that starts
 downstream workflow. The final steps check that the completed immutable release
 carries the exact body and no asset and that its annotated tag names the target
 with the exact message, then verify GitHub's release attestation with
-`gh release verify`. Package staging still needs its own enabled variable and
-human approval; a source release changes no deployment.
+`gh release verify`. The separate package workflow independently checks the
+release event's exact App bot user ID, the live immutable prerelease, annotated
+tag and attestation before packing. Its protected OIDC job publishes the checked
+tarball without another approval. A source release changes no deployment.
 
 A failed run never automatically deletes a tag or draft or edits a published
 release. An abandoned tag/draft blocks the next attempt.
@@ -439,32 +442,34 @@ required contexts before installing without scripts,
 then packs the package once and scans the exact unpacked tarball with checksum-verified
 gitleaks 8.30.1. A failed scan refuses the cut before a tag exists.
 The source preview still requires its existing descendant and removal-marker
-checks, and npm still stages the tarball for separate 2FA approval. The channel
-is inert until the repository variable `OPENLUP_NPM_STAGE` is set to `enabled`.
+checks. The package workflow publishes the tarball directly after the protected
+`release` approval. It is inert until the repository variable
+`OPENLUP_NPM_STAGE` is set to `enabled` and the exact App bot ID is configured.
 
 When a source preview `openlup-source-preview/<n>` is published,
 [`.github/workflows/publish-packages.yml`](workflows/publish-packages.yml) works
 in two jobs:
 
-1. **pack** checks two things: that the release commit is on `main`, and that the
-   six required GitHub Actions contexts passed there. It also requires the
-   lockstep version to be `0.<n>.0`. It then runs
+1. **pack** accepts only a `published` event from the configured release App bot
+   user ID. It reads the live release and refuses anything other than the same
+   immutable, published prerelease with no assets. It checks the exact annotated
+   tag and verifies GitHub's release attestation, then checks that the release
+   commit is on `main` and that the six required GitHub Actions contexts passed
+   there. It also requires the lockstep version to be `0.<n>.0`. It then runs
    `npm run packages:check -- --out packs --release-tag <tag>`, scans the unpacked
    tarballs with gitleaks, and records each tarball's sha256 and integrity.
-2. **stage** runs in the `npm-stage` environment with no checkout. It verifies the
-   commit, the version and those digests, then stages each tarball with
-   `npm stage publish ./packs/<file> --tag preview --provenance --access public`.
-   It authenticates with GitHub's OIDC token as a trusted publisher and uses no
+2. **publish** runs in the `npm-stage` environment with no checkout. It verifies
+   the commit, the version and those digests, then publishes each tarball with
+   `npm publish ./packs/<file> --tag preview --provenance --access public`.
+   GitHub's OIDC token is the npm trusted-publisher credential; there is no
    stored npm token.
 
-A staged version is not public. A maintainer inspects it (`npm stage download`)
-and publishes it with 2FA (`npm stage approve`), or rejects it. Every channel
-version carries the `preview` dist-tag. The registry gives a new package's first
+Every channel version carries the `preview` dist-tag. The registry gives a new package's first
 version the `latest` tag, whatever tag that publish names, and keeps a `latest`
 tag on every package, so `latest` points at the first, inert version (setup
 step 5) and no channel version moves it before a stable channel exists. A
 tarball publish does not take its tag from `publishConfig`, so every manual
-publish passes `--tag preview` explicitly, as the stage job does. A package's
+publish passes `--tag preview` explicitly, as the publish job does. A package's
 `prepublishOnly` refuses `npm publish` from its directory: only a checked
 tarball is published. A compromised version is deprecated and fixed forward,
 never unpublished.
@@ -472,10 +477,9 @@ never unpublished.
 A release runs the workflow file of its tagged commit, so whoever can create a
 preview-named tag on a commit can also change every check in that workflow. The
 tag ruleset therefore restricts who may create `openlup-source-preview/*` tags,
-besides updating and deleting them. The environment's tag rule limits only
-which refs may deploy to it. The gates that hold whatever the tagged workflow
-says are the required reviewer of the `npm-stage` environment and the 2FA
-`npm stage approve`.
+besides updating and deleting them. The `release` environment protects the App
+credential that makes those tags and events. The `npm-stage` tag rule limits
+which refs may deploy to its OIDC identity; it does not replace source approval.
 
 The maintainer sets the channel up in this order, before the variable is
 enabled:
@@ -485,10 +489,12 @@ enabled:
 2. The maintainer's npm account requires 2FA for authorization and writes
    (`npm profile enable-2fa auth-and-writes`), and holds no token that bypasses
    2FA.
-3. The GitHub environment `npm-stage` exists, with the maintainer as required
-   reviewer, no administrator bypass, deployments limited to
-   `openlup-source-preview/*` tags, and no secrets or variables. It must exist
-   before the variable: a first run would otherwise create it unprotected.
+3. The GitHub environment `npm-stage` exists with **no required reviewer**, no
+   administrator bypass, deployments limited to `openlup-source-preview/*`
+   tags, and no secrets or variables. Keep its environment name: npm binds OIDC
+   to it. It must exist before the variable: a first run would otherwise create
+   it without the intended tag restriction. The sole human approval remains
+   the protected `release` environment.
 4. The preview tag ruleset restricts tag creation to repository administrators.
 5. A trusted publisher can be bound only to an existing package name. For each
    new name the maintainer publishes a placeholder version `0.0.0` by hand with
@@ -496,11 +502,19 @@ enabled:
    (`npm deprecate`).
 6. Package access requires 2FA and disallows tokens
    (`npm access set mfa=publish @openlup/core`).
-7. The trusted publisher allows staged publication only, without direct
-   publish:
-   `npm trust github @openlup/core --file publish-packages.yml --repository openlup/openlup --environment npm-stage --allow-stage-publish`
-   (npm 11.15 or later; check with `npm trust list @openlup/core`).
-8. The repository variable, not an environment variable, `OPENLUP_NPM_STAGE` is
+7. For each publishable `@openlup/*` package, replace any stage-only trusted
+   publisher with one bound to `openlup/openlup`, the exact
+   `publish-packages.yml` file and `npm-stage` environment, permitting direct
+   `npm publish`: inspect its ID with `npm trust list @openlup/core`, revoke that
+   ID with `npm trust revoke @openlup/core --id=<id>`, then run
+   `npm trust github @openlup/core --file publish-packages.yml --repository openlup/openlup --environment npm-stage --allow-publish`.
+   Verify the resulting scope with `npm trust list @openlup/core` before the
+   next cut. npm trust changes require the maintainer's interactive 2FA.
+8. Set repository variable `OPENLUP_RELEASE_APP_BOT_ID` to the **numeric GitHub
+   user ID** of the exact installed release App's `[bot]` account. Verify the
+   account identity with the GitHub API before pinning it; the App client ID and
+   bot user ID are different. An empty or mismatched ID refuses packing.
+9. The repository variable, not an environment variable, `OPENLUP_NPM_STAGE` is
    `enabled`: the pack job reads it before any environment applies.
 
 Before cutting a preview that carries a package, run
@@ -508,5 +522,10 @@ Before cutting a preview that carries a package, run
 on the exact commit to be tagged: the pack job first runs after the preview is
 published, when a refusal can no longer be corrected in that preview.
 
-If staging stops partway, reject the versions already staged before re-running
-the stage job.
+If GitHub publishes the immutable source release but npm fails, the source
+release remains published. Inspect the package job and npm registry versions
+before recovery. If no package version was published, repair the missing
+prerequisite and rerun that release's failed package workflow; do not recut or
+move its tag. If any package version was published, do not rerun the whole job
+blindly: reconcile the partial state and correct forward with a new preview and
+version. Never overwrite or unpublish a published version automatically.

@@ -207,9 +207,11 @@ CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
 The required test command also includes the source preview release falsifiers
-(`scripts/source-preview-release.test.ts`) and, under `scripts/packages`, the
-package release-shape checks and the test that loads the lint configuration
-with a conditional `imports` map.
+(`scripts/source-preview-release.test.ts`). They exercise the package producer's
+release-event identity and live immutable-release refusals before checkout,
+and pin tag-attestation, pack and OIDC publish ordering. Under `scripts/packages`,
+the command includes package release-shape checks and the test that loads the
+lint configuration with a conditional `imports` map.
 The public test job separately runs the materialized command-contract
 falsifiers, which also run in the complete root scope.
 
@@ -234,7 +236,7 @@ package's tarball in an empty directory, with a `packages-manifest.json` of
 their digests. `-- --release-tag openlup-source-preview/<n>` requires the lockstep
 version to be `0.<n>.0`. The command publishes nothing; the package preview
 channel in [`.github/VERSIONING_AND_EOL.md`](.github/VERSIONING_AND_EOL.md)
-describes how a publication is staged.
+describes how the protected release approval leads to direct OIDC publication.
 
 The root test command has no directory or file filters. It collects the shipped
 Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
@@ -313,7 +315,10 @@ The maintainer prepares the next npm preview version with `npm run release:bump 
 before the cut of `openlup-source-preview/<n>`. The command updates only the
 lockstep package version carriers and the publishable package changelog. The
 release workflow checks and packs that exact version before asking for release
-approval; npm still stages the package for separate maintainer 2FA approval.
+approval. The package workflow independently verifies the App-published immutable
+release, tag and attestation, then publishes the checked tarball through npm OIDC
+without another approval. The maintainer configures the exact App bot ID,
+protected `npm-stage` environment and direct-publish trust before enabling it.
 
 A new or renamed path also needs its row in
 `config/openlup-publication-catalog.json`. After changing that catalogue, a

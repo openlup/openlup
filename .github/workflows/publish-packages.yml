@@ -1,10 +1,10 @@
-# Stages provenance-backed @openlup/* tarballs for a published source preview.
+# Publishes provenance-backed @openlup/* tarballs for a published source preview.
 #
 # Inert by default: nothing runs unless the repository variable OPENLUP_NPM_STAGE is
-# "enabled". Even then nothing reaches the registry by itself. The stage job hands each
-# tarball to npm as a staged version, and a maintainer approves it with 2FA
-# (`npm stage approve`) after checking the tarball locally. Publishing is trusted
-# publishing: GitHub's OIDC token for the `npm-stage` environment, never a stored npm token.
+# "enabled". The release event must come from the pinned release App bot, and the
+# release, annotated tag and GitHub attestation must agree before any package is packed.
+# The publish job uses GitHub's OIDC token for the `npm-stage` environment, never a
+# stored npm token. The protected `release` approval authorizes the source and package cut.
 # The maintainer setup this relies on is in .github/VERSIONING_AND_EOL.md.
 #
 # The pack job is unprivileged. It checks that:
@@ -12,7 +12,7 @@
 # - the six required GitHub Actions contexts passed there;
 # - the lockstep version is 0.<n>.0 for tag openlup-source-preview/<n>;
 # - every packed file passes `npm run packages:check -- --out`.
-# It then runs a gitleaks scan over the unpacked tarballs. The stage job gets only the
+# It then runs a gitleaks scan over the unpacked tarballs. The publish job gets only the
 # tarballs and their digests: no checkout and no install.
 
 name: Publish Packages
@@ -36,14 +36,53 @@ jobs:
     permissions:
       contents: read
       checks: read
+      attestations: read
     outputs:
       node-version: ${{ steps.node.outputs.version }}
     steps:
+      - name: Require the release App event and the live immutable prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          EXPECTED_RELEASE_APP_BOT_ID: ${{ vars.OPENLUP_RELEASE_APP_BOT_ID }}
+        run: |
+          [[ "$EXPECTED_RELEASE_APP_BOT_ID" =~ ^[1-9][0-9]*$ ]] || { echo '::error::Set the exact release App bot user ID before enabling package publication'; exit 1; }
+          [[ "$RELEASE_TAG" =~ ^openlup-source-preview/[1-9][0-9]*$ ]] || exit 1
+          release_id="$(jq -er --arg repo "$GITHUB_REPOSITORY" --arg tag "$RELEASE_TAG" --arg bot "$EXPECTED_RELEASE_APP_BOT_ID" '
+            select(.action == "published" and .repository.full_name == $repo and
+              .sender.type == "Bot" and (.sender.id | tostring) == $bot and
+              .release.tag_name == $tag and .release.prerelease == true and
+              .release.draft == false and
+              (.release.assets | type) == "array" and (.release.assets | length) == 0 and
+              (.release.id | type) == "number") | .release.id
+          ' "$GITHUB_EVENT_PATH")" || { echo '::error::Release event identity or immutable prerelease is invalid'; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" |
+            jq -e --arg tag "$RELEASE_TAG" --argjson id "$release_id" '
+              .id == $id and .tag_name == $tag and .prerelease == true and
+              .draft == false and .immutable == true and .published_at != null and
+              (.assets | type) == "array" and (.assets | length) == 0
+            ' >/dev/null || { echo '::error::Live release is not the exact immutable prerelease'; exit 1; }
       # A release event checks out refs/tags/<tag> at GITHUB_SHA; no ref is passed, so a
       # branch with the tag's name cannot stand in for it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - name: Verify the annotated tag and GitHub release attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          tag_ref="refs/tags/$RELEASE_TAG"
+          test "$(git cat-file -t "$tag_ref")" = tag
+          tag_headers="$(git cat-file -p "$tag_ref" | sed -n '1,/^$/p')"
+          printf '%s\n' "$tag_headers" | grep -Fxq "object $GITHUB_SHA"
+          printf '%s\n' "$tag_headers" | grep -Fxq 'type commit'
+          printf '%s\n' "$tag_headers" | grep -Fxq "tag $RELEASE_TAG"
+          number="${RELEASE_TAG#openlup-source-preview/}"
+          test "$(git for-each-ref --format='%(contents)' "$tag_ref")" = "OpenLup source preview $number."
+          gh release verify "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -99,7 +138,7 @@ jobs:
       - name: Summary
         run: |
           {
-            echo '### Packed for staging'
+            echo '### Packed for direct publishing'
             echo '```json'
             cat packs/packages-manifest.json
             echo '```'
@@ -111,8 +150,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  stage:
-    name: stage
+  publish:
+    name: publish
     needs: pack
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -152,10 +191,10 @@ jobs:
             }
           '
       # "./" makes npm read a local file; a bare "packs/<file>" is GitHub shorthand for a remote repository.
-      # If staging stops partway, reject the versions already staged before re-running this job.
-      - name: Stage each tarball for maintainer approval
+      # A partial publish is corrected forward; never overwrite or unpublish a version.
+      - name: Publish each verified tarball with OIDC provenance
         run: |
           node -e 'for (const { filename } of require("./packs/packages-manifest.json").packages) console.log(filename)' |
             while read -r filename; do
-              npm stage publish "./packs/$filename" --tag preview --provenance --access public --ignore-scripts
+              npm publish "./packs/$filename" --tag preview --provenance --access public --ignore-scripts
             done
