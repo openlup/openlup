@@ -147,84 +147,31 @@ Company identity extensions reuse the neutral core input schema and the public
 optional registry fields remain in the extension layer. The core helper is an
 additive development-preview API, not a stable contract.
 
-## Pending preview upgrade notes: moved payment and communications modules
+## Preview 9 upgrade note: moved payment and communications modules
 
-Status: unreleased source change; include these notes in the preview that
-first carries it. PR #42 moved the payment adapter registry and the newsletter
-provider registry from `server/domains/` to `server/runtime/`, and PR #43 moved
-the Stripe payment UI from `src/domains/payment/components/` to
-`src/checkout/adapters/stripe/`. Each module's tests moved with it. Import the
-new paths:
+The old payment paths no longer resolve in `openlup-source-preview/9`. Import
+from their new owners instead:
 
 | Old path | New path |
 | --- | --- |
-| `src/domains/payment/components/PaymentForm.tsx` | `src/checkout/adapters/stripe/PaymentForm.tsx` |
-| `src/domains/payment/components/RecoveryPaymentSetupForm.tsx` | `src/checkout/adapters/stripe/RecoveryPaymentSetupForm.tsx` |
-| `src/domains/payment/components/StripePaymentStep.tsx` | `src/checkout/adapters/stripe/StripePaymentStep.tsx` |
-| `src/domains/payment/components/useStripePromise.ts` | `src/checkout/adapters/stripe/useStripePromise.ts` |
-| `server/domains/payment/paymentAdapterRegistry.ts` | `server/runtime/payment/paymentAdapterRegistry.ts` |
-| `server/domains/communications/newsletterProviderRegistry` (no re-export) | `server/runtime/communications/newsletterProviderRegistry.ts` |
+| `src/domains/payment/components/PaymentForm` | `src/checkout/adapters/stripe/PaymentForm` |
+| `src/domains/payment/components/RecoveryPaymentSetupForm` | `src/checkout/adapters/stripe/RecoveryPaymentSetupForm` |
+| `src/domains/payment/components/StripePaymentStep` | `src/checkout/adapters/stripe/StripePaymentStep` |
+| `src/domains/payment/components/useStripePromise` | `src/checkout/adapters/stripe/useStripePromise` |
+| `server/domains/payment/paymentAdapterRegistry` | `server/runtime/payment/paymentAdapterRegistry` |
+| `server/domains/communications/newsletterProviderRegistry` | `server/runtime/communications/newsletterProviderRegistry` |
 
-The neutral types `PaymentFormCopy`, `PaymentFormSettlement` and
-`RecoveryPaymentSetupFormCopy` are exported from
-`src/domains/payment/paymentFormContracts.ts`. Every old path in the table
-except the newsletter provider registry keeps a deprecated re-export of exactly
-its previous public bindings, so existing imports still resolve. The re-exports
-are removed in `openlup-source-preview/9`; move imports before adopting it.
-`server/domains/payment/paymentAdapterRegistry.test.ts` covers only the
-re-export; the registry's own tests are in `server/runtime/payment/`. The
-newsletter provider registry has no re-export because the preview 6
-communications README told adopters to register a provider adapter by editing
-that file, and a plain rename lets git carry those edits to the new path.
+The neutral `PaymentFormCopy`, `PaymentFormSettlement` and
+`RecoveryPaymentSetupFormCopy` types live in
+`src/domains/payment/paymentFormContracts.ts`.
 
-Forks with local edits: without the re-exports these moves would be renames that
-git follows. With them, the old file counts as modified and the new file as
-added, so a fork's local edits to an old file no longer follow the move. Port
-those edits to the new path. Resolving the conflict with "keep mine" on the old
-path silently drops them from the running code, because every caller in this
-tree imports the new path. A fork that keeps its own copy of an old file instead
-of the re-export also fails the re-export tests, and a kept copy of
-`useStripePromise.ts` holds a second Stripe loader cache beside the one the
-moved callers use. A fork that appended its own tests to preview 6's
-`server/domains/payment/paymentAdapterRegistry.test.ts` merges without a
-conflict, and those tests then land in the re-export's test; move them to
-`server/runtime/payment/`. In a fork's own code files, a comment line that
-starts with `// openlup-remove-before:` is read as a release marker, so do not
-use that text for anything else.
-
-Each re-exported name carries a `@deprecated` tag, so an editor marks a named
-import from an old path, and each use of an imported value, as deprecated. These
-marks are TypeScript language service suggestions only: `tsc`, CI and this
-repository's ESLint config do not report them. They do not reach a namespace
-import line such as `import * as M from …` or a type reached through it such as
-`M.PaymentFormProps`, an `import("…").PaymentFormProps` type query, `export *`
-or `export * as` from an old path, or a re-export statement in consumer code.
-
-A `vi.mock` (or any other module mock) of an old path replaces only the imports
-that go through that old path. Every caller in this tree, including each
-re-export, imports the moved modules at their new paths, so mock a moved module
-under `src/checkout/adapters/stripe/` or `server/runtime/` to intercept it. This
-applies to every module in the table, not only the one without a re-export, and
-a new-path mock also reaches code that still imports through a re-export.
-
-The pull request that removes the re-exports makes these changes together. It
-deletes the five re-exports, and with them their removal marker lines, and their
-three tests: `src/domains/payment/deprecatedReExportRemoval.test.ts`,
-`src/domains/payment/components/deprecatedReExportBindings.test.ts` and
-`server/domains/payment/paymentAdapterRegistry.test.ts`. It removes the
-publication catalogue rows of those eight files and re-derives the source
-release contract. It removes the sentences that name the re-exports, including
-the one that begins "Each disables the rule only", from the import-boundary
-paragraphs of `docs/platform/ARCHITECTURE_AND_EXTENSIONS.md` and
-`CONTRIBUTING.md`, restores "and there are no exceptions" to the architecture
-guide's paragraph, and removes the deprecated re-export section of the payment
-domain README. It replaces this section with a short upgrade note for
-`openlup-source-preview/9`: the old paths no longer resolve, so import the new
-paths. That note may keep the move table and the mock guidance, but it names
-each old path without a file extension or outside inline code, because the old
-files are no longer in the tree. The removal-marker check in the release
-tooling, and its description under Maintaining source previews, stay. Until that
-change lands, the release refuses to cut `openlup-source-preview/9`.
+Forks with local edits to an old path must port those edits to the new owner.
+Keeping a fork's old file does not change callers that import the new path. In
+particular, keeping the old Stripe loader creates a second cache. Move any
+registry tests appended to the old payment registry test to
+`server/runtime/payment/paymentAdapterRegistry.test.ts`. A module mock of an old
+path intercepts only imports through that path; mock the new path to intercept
+current callers. The newsletter provider registry had no compatibility re-export.
 
 ## Maintaining source previews
 

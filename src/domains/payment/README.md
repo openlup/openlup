@@ -60,18 +60,6 @@ the snapshot-aware resume RPC has no runtime caller.
   evidence subset before later waves commit real `docs/evidence/stripe-sandbox-*`
   artifacts.
 
-## Deprecated re-exports (do not use in new code; removed in preview 9)
-
-These keep the old paths of moved modules resolving until
-`openlup-source-preview/9`. Import the new paths instead.
-
-- `components/PaymentForm.tsx`, `components/RecoveryPaymentSetupForm.tsx`,
-  `components/StripePaymentStep.tsx`, `components/useStripePromise.ts` — moved
-  to `src/checkout/adapters/stripe/`; the neutral copy and settlement types
-  are in `paymentFormContracts.ts`.
-- `server/domains/payment/paymentAdapterRegistry.ts` — moved to
-  `server/runtime/payment/paymentAdapterRegistry.ts`.
-
 ## Where the code lives
 - Shared/frontend: `src/domains/payment/`
 - Server (payment-control runtime ports, webhook/recovery handlers):

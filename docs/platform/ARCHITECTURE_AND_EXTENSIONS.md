@@ -33,17 +33,8 @@ only through a subpath its `package.json` `exports` declares, never through a
 relative path into `packages/` or an undeclared subpath such as `src` or
 `dist`. Domain code under `src/domains` and `server/domains` imports none of
 the provider SDKs the config names and no adapter, infrastructure, runtime or
-route code; its tests may compose a domain with an adapter. In this repository,
-five temporary deprecated re-exports at the old paths of modules that moved out
-of the payment domain also cross that boundary: `PaymentForm.tsx`,
-`RecoveryPaymentSetupForm.tsx`, `StripePaymentStep.tsx` and
-`useStripePromise.ts` in `src/domains/payment/components/`, and
-`server/domains/payment/paymentAdapterRegistry.ts`. Each disables the rule only
-for the statement that re-exports the moved module and is removed in
-`openlup-source-preview/9`: a test fails once the lockstep package version
-reaches that preview while any of them remains, and the source preview release
-refuses to cut that preview while any still carries its removal marker line.
-Provider UI, such as the card payment form, lives with the adapters, while the
+route code; its tests may compose a domain with an adapter, and there are no
+exceptions. Provider UI, such as the card payment form, lives with the adapters, while the
 words and outcomes it exchanges with its host stay in the domain's contracts.
 
 <!-- openlup-doc-impact {"unit":"browser","digest":"sha256-db25b027da84d267c6e19950462d6b3836f22df1d78e30160c1cf6e746cf53b5","reason":"Browser-side comment and test delta. Comments stop naming downstream files and design documents; the provider endpoint boundary test drops five exceptions for files this tree does not have, so its stale-exception check passes and its scan runs; the kit neutrality guard resolves this tree's server domains instead of an absent directory. No runtime boundary, browser contract or bundle behavior described here changes."} -->

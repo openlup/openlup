@@ -181,14 +181,8 @@ runtime or route code; the config exempts domain tests. An exact alias in the
 root `package.json` `imports` map counts as such code when any path it can
 resolve to lies in one of those directories, including a path selected by a
 condition, since Node allows a condition object as a target. A subpath pattern
-alias such as `#name/*` is not matched as a pattern. In this repository,
-five deprecated re-exports at the old payment module paths also cross that
-boundary: `PaymentForm.tsx`, `RecoveryPaymentSetupForm.tsx`,
-`StripePaymentStep.tsx` and `useStripePromise.ts` in
-`src/domains/payment/components/`, and
-`server/domains/payment/paymentAdapterRegistry.ts`. Each disables the rule only
-for the statement that re-exports the moved module and is removed in
-`openlup-source-preview/9`. Published Tree CI runs lint in the `typecheck` job.
+alias such as `#name/*` is not matched as a pattern. Published Tree CI runs lint
+in the `typecheck` job.
 
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating

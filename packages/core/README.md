@@ -84,4 +84,4 @@ neutrality evidence, not package activation or consumer compatibility evidence.
   late-payment cycle-shift rule and its monotonic clamp, and how a host
   application consumes it.
 
-<!-- openlup-doc-impact {"unit": "core", "digest": "sha256-a5195b2f4812205814cbe47fac14e2e16eebe42af14483f2244d50bcc4aa1231", "reason": "Test-fixture delta. The owner brand identifier case in the consumer audit test builds a neutral Pascal-case identifier from fragments; the packed fixture still contains the audited term, so the same packed-brand refusal is exercised. Exports, kernels, maturity, publication settings and the audit policy are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"core","digest":"sha256-c190852df0084211fd02f2d72c4abeaacfa238d45e0a86eaa30ae456cb8bb830","reason":"The core manifest and its lockfile change only the lockstep version from 0.7.0 to 0.9.0. Exports, package smoke, publication settings and the development-preview maturity described here are unchanged."} -->

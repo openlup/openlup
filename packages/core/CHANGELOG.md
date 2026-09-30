@@ -36,6 +36,8 @@ SemVer promise.
   `dunning_not_exhausted`. An exhaustive `switch` over the union must handle
   both.
 
+- Publishable on the npm `preview` dist-tag as `0.9.0`, for source preview
+  `openlup-source-preview/9`.
 - Publishable on the npm `preview` dist-tag as `0.7.0`, for source preview
   `openlup-source-preview/7`.
 - Publishable on the npm `preview` dist-tag as `0.6.0`, for source preview
