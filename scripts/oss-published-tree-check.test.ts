@@ -76,7 +76,7 @@ describe("maintainer-controlled source preview workflow", () => {
       'git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD',
       'for context in dco typecheck install-proof test self-check gitleaks; do',
       'npm ci --ignore-scripts --no-audit --fund=false',
-      'scripts/source-preview-release.ts packages \"$RUNNER_TEMP/source-preview-packs\"',
+      'scripts/source-preview-release.ts packages',
       'repos/gitleaks/gitleaks/releases/assets/378332058',
       '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb',
       'tar -xzf "$tarball" -C "$target"',
