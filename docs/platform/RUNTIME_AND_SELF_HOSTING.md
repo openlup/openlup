@@ -40,6 +40,12 @@ external payment provider, external mail service or full self-hosted platform.
 See [Evaluate a subscription account](SUBSCRIPTION_REFERENCE.md) for the exact
 setup, server command, operator setup and verification boundary.
 
+The profile build resolves `@openlup/core` through its built package exports.
+Its closed browser import list admits the corresponding `packages/core/dist`
+modules; a missing core build or an undeclared first-party import refuses the
+build. The setup command builds core before the profile, and the local Node
+commands use the same default package resolution.
+
 The setup requires a new owned directory, unique project id and free ports. It
 replays the managed baseline with its two explicit local prerequisites and
 seeds synthetic catalog, price, inventory, settlement settings and the

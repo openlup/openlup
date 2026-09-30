@@ -51,10 +51,10 @@ export function publicReferenceViteConfig(): UserConfig {
     envPrefix: [],
     plugins: [publicReferenceGraphGuard(), ...(publicReferenceSsrBuild ? [] : [publicReferenceDocumentPlugin()]), react()],
     resolve: {
-      conditions: ["core-source", ...(publicReferenceSsrBuild ? defaultServerConditions : defaultClientConditions)],
+      conditions: [...(publicReferenceSsrBuild ? defaultServerConditions : defaultClientConditions)],
       alias: { "@": path.resolve(configDir, "./src") },
     },
-    ssr: { resolve: { conditions: ["core-source", ...defaultServerConditions] } },
+    ssr: { resolve: { conditions: [...defaultServerConditions] } },
     build: publicReferenceSsrBuild ? {
       outDir: process.env.OPENLUP_SSR_OUT_DIR ?? "dist-public-reference-ssr",
       emptyOutDir: true,

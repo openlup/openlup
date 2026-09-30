@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import { PACKAGES_CONFIG_PATH, PUBLIC_REPOSITORY_URL, checkPackageDirectories, checkPackageManifest, checkUnreleasedManifest, isRegistryRange, parsePackagesConfig, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
 
 const config: PackagesConfig = { schemaVersion: 1, version: "0.6.0", packages: [{ name: "@openlup/core", directory: "packages/core", publish: false }, { name: "@openlup/server", directory: "packages/server", publish: true }, { name: "@openlup/db", directory: "packages/db", publish: true }], unreleased: [{ directory: "packages/ui", reason: "scaffold" }] };
@@ -90,5 +93,27 @@ describe("the committed packages", () => {
     const read = (directory: string) => JSON.parse(readFileSync(`${directory}/package.json`, "utf8"));
     const findings = [...checkPackageDirectories(parsed, tracked), ...parsed.packages.flatMap((entry) => checkPackageManifest(entry, read(entry.directory), parsed)), ...parsed.unreleased.flatMap((entry) => checkUnreleasedManifest(entry, read(entry.directory)))];
     expect(findings).toEqual([]);
+  });
+});
+
+describe("root consumption of built core", () => {
+  it("resolves runtime exports to built JavaScript without a source condition", () => {
+    const output = execFileSync(process.execPath, ["--input-type=module", "--eval",
+      "const specifier = '@openlup/core/subscription'; const mod = await import(specifier); console.log(JSON.stringify({ url: import.meta.resolve(specifier), exports: Object.keys(mod).length }));",
+    ], { encoding: "utf8" });
+    const result = JSON.parse(output.trim()) as { url: string; exports: number };
+    expect(fileURLToPath(result.url)).toBe(join(process.cwd(), "packages/core/dist/subscription/index.js"));
+    expect(result.exports).toBeGreaterThan(0);
+  });
+
+  it.each(["app", "api", "node", "mcp"])("resolves root %s types from built declarations", (project) => {
+    const root = process.cwd();
+    const config = ts.readConfigFile(join(root, `tsconfig.${project}.json`), ts.sys.readFile);
+    expect(config.error).toBeUndefined();
+    const parsed = ts.convertCompilerOptionsFromJson(config.config.compilerOptions, root);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.options.customConditions).toBeUndefined();
+    const resolved = ts.resolveModuleName("@openlup/core/subscription", resolve(root, "src/core-resolution-probe.ts"), parsed.options, ts.sys).resolvedModule;
+    expect(resolved?.resolvedFileName).toBe(join(root, "packages/core/dist/subscription/index.d.ts"));
   });
 });

@@ -1,6 +1,6 @@
 // Neutrality-axis driver for the customer diagnostic rail (Wave 5, items 1-2).
 //
-//   node --conditions=core-source --import tsx scripts/openlup/proof-customer-diagnostic-neutrality.ts \
+//   node --import tsx scripts/openlup/proof-customer-diagnostic-neutrality.ts \
 //     [--out <file>] [--falsifier browser-role-grant|ledger-inactive-driver]
 //
 // It brings up a disposable `postgres:16`, creates a disposable database inside it, applies the

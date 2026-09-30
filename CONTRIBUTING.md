@@ -54,7 +54,9 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 ```bash
 npm ci
-# npm run lint, npm run test:required and npm test build core through npm pre-scripts
+# Root typecheck consumes the built core package; build it after install and source edits.
+npm --workspace @openlup/core run build
+# npm run lint, npm run test:required and npm test also build core through npm pre-scripts
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
 # typecheck
@@ -88,6 +90,10 @@ The `prelint`, `pretest:required` and `pretest` npm scripts build `@openlup/core
 before their respective root commands. When running
 `npm run oss:published-tree -- --typecheck` directly after editing core source,
 first run `npm --workspace @openlup/core run build`.
+The root TypeScript projects and tests resolve core through its `dist/` exports,
+as a package consumer does. Rebuild core after editing `packages/core/src`, or
+those checks read the previous build. Published Tree CI runs `lint` after install
+and before `--typecheck`; its `prelint` script builds core in that same job.
 
 The three `oss:published-tree` modes are distinct checks. `--policy` verifies
 the public policy, catalogue, documentation ownership, generated navigation and

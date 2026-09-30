@@ -245,7 +245,7 @@ async function main() {
   const readback = `/api/bff/reference-journey/operator/subscription-readback?orderId=${encodeURIComponent(first.orderId)}`;
   denied(await bff(origin, readback), "anonymous operator readback", [401, 403]);
   denied(await bff(origin, readback, { bearer: buyerToken }), "buyer operator readback", [401, 403]);
-  execFileSync(process.execPath, ["--conditions=core-source", "--import", "tsx",
+  execFileSync(process.execPath, ["--import", "tsx",
     "scripts/public-reference/grant-operator.mjs", "--env-file", setupData.file, "--email", operator],
   { cwd: repo, stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 });
   const proof = accepted(await bff(origin, readback, { bearer: outsiderToken }), "operator readback");

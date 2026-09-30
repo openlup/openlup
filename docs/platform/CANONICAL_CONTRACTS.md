@@ -164,6 +164,11 @@ missing or mismatched publishable package. Historical previews retain their
 recorded package versions. This is release identity, not a stable compatibility
 promise.
 
+The subscription browser profile's closed import list follows the package
+exports selected by its build. Core entries therefore name built `dist/*.js`
+modules; source paths are not an alternative runtime route. The core workspace
+must be built before checking that profile's import closure.
+
 The repository's
 [`neutrality baseline`](../../config/openlup-neutrality-baseline.json) records
 existing source findings rather than declaring the tree free of them. Its full

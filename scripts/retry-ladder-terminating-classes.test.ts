@@ -75,10 +75,9 @@ function retryCallSites(): Array<{ file: string; line: number; failureClassArg: 
   // full-repository typecheck inside an already large impacted-test process.
   const files = roots.flatMap(productionTypeScriptFiles)
     .filter((file) => /\bnextRetryAttemptAt\b/u.test(readFileSync(file, "utf8")));
-  // Use the same `core-source` export condition as the application build. The
-  // root solution config has no module-resolution settings of its own; against
-  // a fresh checkout with no ignored packages/core/dist output that makes the
-  // facade imports below unresolved and silently hides their server call sites.
+  // Use the root application's default package resolution, which reads built
+  // core declarations. Building core first keeps facade imports resolvable in
+  // a fresh checkout; otherwise the program could silently miss server calls.
   const configPath = ts.findConfigFile(".", ts.sys.fileExists, "tsconfig.app.json");
   if (!configPath) throw new Error("cannot find the repository TypeScript configuration");
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
