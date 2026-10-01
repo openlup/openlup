@@ -157,6 +157,15 @@ Stable status, idempotency, and provider-extension commitments wait for `P1-SF`.
 Before then, changes must still preserve the contracts above and state their
 preview compatibility boundary explicitly.
 
+The [reviewed function-forward approval data](../../config/reviewed-platform-forwards.json)
+binds exact managed SQL files and old/new function definitions. Its replacement
+list contains exactly three existing signatures in two files; a distinct creation
+list requires the two price-setup signatures to be absent before their forward.
+Required self-check and release preparation share the same admission check.
+This is a separately reviewed preview admission class, not expand-only or a live
+database compatibility proof; see
+[Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
+
 Future source preview cuts require a publishable npm package at the matching
 lockstep `0.<n>.0` version. Before such a cut, `release:bump` prepares that
 version in the package manifests and lockfiles; release preparation refuses a
