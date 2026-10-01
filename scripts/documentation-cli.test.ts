@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve } from "node:path";
@@ -42,8 +43,12 @@ function seed(root: string): string {
   write(root, "src/lib/coreDomains.ts", 'export const CORE_DOMAINS = Object.freeze(["demo"] as const);\n');
   write(root, "src/domains/demo/main.ts", "export const value = 1;\n");
   write(root, "src/domains/demo/README.md", "# Demo\n");
+  const portable = "db/platform/migrations/00000000000000_platform_baseline.sql", sql = "select 1;\n";
+  write(root, portable, sql);
+  write(root, "supabase/migrations/00000000000000_platform_schema_baseline.sql", sql);
+  write(root, "config/platform-migration-manifest.json", JSON.stringify({ schemaVersion: 1, baseline: { file: portable, sha256: createHash("sha256").update(sql).digest("hex") }, forward: [], objectInventorySha256: "0".repeat(64) }));
   const surfaces = [
-    { id: "repository", when: "Public fixture contract", paths: ["*", "scripts/**", "config/**", "packages/**", "src/**", "server/**", "docs/**"], doc: "README.md", anchor: "#contract" },
+    { id: "repository", when: "Public fixture contract", paths: ["*", "scripts/**", "config/**", "packages/**", "src/**", "server/**", "docs/**", "db/**", "supabase/**"], doc: "README.md", anchor: "#contract" },
     { id: "domain-demo", when: "Demo replay contract", paths: ["src/domains/demo/**"], doc: "README.md", anchor: "#contract" },
   ];
   write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));
@@ -75,6 +80,13 @@ describe("documentation CLI on the bare public runtime", () => {
       const valid = execute(); expect(valid.status).toBe(0); expect(valid.stderr).toBe(""); expect(valid.stdout).toContain(`${base} (merge-group)`);
       const stale = execute({ GITHUB_REF: "refs/heads/gh-readonly-queue/main/pr-2-fixture" });
       expect(stale.status).toBe(1); expect(stale.stderr).toContain("merge-group checkout");
+      write(checkout, "supabase/migrations/00000000000000_platform_schema_baseline.sql", "select 2;\n");
+      const changed = commit(checkout);
+      writeFileSync(event, JSON.stringify({ repository: { full_name: "openlup/openlup", private: false }, action: "checks_requested",
+        merge_group: { base_sha: base, base_ref: "refs/heads/main", head_sha: changed, head_ref: ref,
+          head_commit: { id: changed, tree_id: git(checkout, ["rev-parse", "HEAD^{tree}"]) } } }));
+      const rejected = execute({ GITHUB_SHA: changed });
+      expect(rejected.status).toBe(1); expect(rejected.stderr).toContain("migration history refuses an edit");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   });
   it("runs in a shallow checkout without node_modules, enforces source impact and trusts hosted attribution", () => {

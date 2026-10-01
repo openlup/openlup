@@ -20,7 +20,7 @@ selection is the neutral example. A host selecting another presentation must
 make its import-map target available to its runtime; source-level selection
 alone does not establish function packaging or deployment behavior.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-6fd6a72fea4d93cd199f5492ab0bc577c61e4b64e191d8e13962cdc38644ad1e","reason":"Thirteen BFF tests replace repeated SDK and database-reference regex assertions with the structural rule in required lint, retaining their distinct composition and authorization assertions. Customer diagnostics gains two reasoned line suppressions for validated from/to date-range destructuring, with no executable change. Request handling, durable-write contracts, runtime composition and hosting behavior described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-d39e61e4ed325cfba327ccc69cc2be29cfe8b629feff42459774deeabeaf45ef","reason":"Thirteen BFF tests replace repeated SDK and database-reference regex assertions with the structural rule in required lint, retaining their distinct composition and authorization assertions. Customer diagnostics gains two reasoned line suppressions for validated from/to date-range destructuring, with no executable change. Request handling, durable-write contracts, runtime composition and hosting behavior described here are unchanged."} -->
 
 ## Self-host boundary
 
