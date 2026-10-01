@@ -155,14 +155,14 @@ async function main() {
   const out = realpathSync(process.env.RELEASE_OUTPUT_DIR ?? "");
   if (out === root || out.startsWith(`${root}${sep}`)) throw new Error("release outputs must stay outside the checkout");
   if (execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() !== input.target) throw new Error("checkout differs from target_commit");
-  const token = process.env.GITHUB_TOKEN;
+  const { GITHUB_TOKEN: token, RELEASE_ID: idText } = process.env;
   const notes = () => readFileSync(resolve(out, "notes.md"), "utf8");
   if (phase === "prepare") {
     await preparePreview(input, root, out, token);
   } else if (phase === "check-draft") {
-    await checkDraft(process.env.RELEASE_ID ?? "", input.tag, notes(), token);
+    await checkDraft(idText ?? "", input.tag, notes(), token);
   } else if (phase === "verify") {
-    await verifyPublished(input, notes(), process.env.RELEASE_ID ?? "", token);
+    await verifyPublished(input, notes(), idText ?? "", token);
     console.log(`Verified immutable ${input.tag} at ${input.target}`);
   } else throw new Error("expected packages, prepare, check-draft or verify");
 }
