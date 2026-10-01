@@ -112,6 +112,9 @@ describe("portable catalog document boundary", () => {
     const files = perimeterSources();
 
     expect(files).not.toHaveLength(0);
+    expect(files.some((file) =>
+      file.path.startsWith("node_modules/@openlup/core/src/catalog/") && /\.tsx?$/.test(file.path),
+    )).toBe(true);
     expect(files.every((file) => PERIMETERS.some((perimeter) => file.path.startsWith(`${perimeter}/`)))).toBe(true);
     expect(files.some((file) => file.path === PORTABLE_MIGRATION)).toBe(true);
     expect(files.some((file) => file.path === PORTABLE_ADAPTER)).toBe(true);
