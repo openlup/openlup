@@ -21,6 +21,28 @@ The separate default-off storefront-product readback is DB-only behind
 - `staticProductAdapter.ts` — reference/fixture adapter; it is not a mounted
   customer-runtime fallback.
 
+## Isolated product drafts
+
+`catalogDraftContracts.ts`, `catalogProductTypeContracts.ts` and
+`server/domains/catalog/catalogDraftValidation.ts` are a dark,
+development-preview draft seam. Product types are installed by composition,
+never supplied as draft data, and absent facts stay readiness issues.
+
+- A quantity dimension may declare `role: "net_content"`; a type has at most
+  one, and all of its units must be net-content units. A SKU option on it must
+  state the same quantity as the SKU's `netContent`
+  (`net_content_option_mismatch`): decimal spellings compare equal and units
+  are never converted.
+- `gs1:gtin` is the only accepted `gs1:` scheme
+  (`trade_identifier_scheme_unsupported`), and its value needs a valid check
+  digit (`trade_identifier_invalid`). One GTIN is one identity whatever its 8-,
+  12-, 13- or 14-digit spelling or issuer text, so it appears once per draft
+  (`duplicate_trade_identifier`).
+- A `case` identifier states how many units it holds (`quantity` of at least
+  2); a `unit` identifier states none or 1 (`trade_identifier_quantity_invalid`).
+- A SKU without a unit-level `gs1:gtin` reports `unit_trade_identifier_missing`
+  in commercial readiness.
+
 ## Where the code lives
 - Engine: `packages/core/src/catalog/identifiers.ts`, exposed as
   `@openlup/core/catalog` — the slug, SKU, product-id and variant-id primitives.

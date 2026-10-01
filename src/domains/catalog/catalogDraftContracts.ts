@@ -27,7 +27,7 @@ export const catalogDraftPayloadSchema = z.object({
     netContent: catalogQuantitySchema.optional(),
     identifiers: z.array(z.object({
       scheme: catalogNamespacedKeySchema, issuer: reference, value: z.string().min(1).max(128),
-      packagingLevel: z.enum(["unit", "case"]),
+      packagingLevel: z.enum(["unit", "case"]), quantity: z.number().int().min(1).max(2_147_483_647).optional(),
     }).strict()).max(32).optional(),
     assetRefs: z.array(reference).max(32).optional(), grossMass: catalogQuantitySchema.optional(),
     priceRef: reference.optional(), logisticsRef: reference.optional(),

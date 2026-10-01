@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogDraftPayloadSchema, type CatalogDraftPayload } from "../../../src/domains/catalog/catalogDraftContracts.js";
-import { createCatalogProductTypeRegistry } from "../../../src/domains/catalog/catalogProductTypeContracts.js";
+import { createCatalogProductTypeRegistry, type CatalogQuantity } from "../../../src/domains/catalog/catalogProductTypeContracts.js";
 import { validateCatalogDraft } from "./catalogDraftValidation.js";
 
 const productId = "10000000-0000-4000-8000-000000000001";
@@ -70,5 +70,78 @@ describe("draft validity and readiness", () => {
     const value = payload(); Object.assign(value.product, { slug: "article", primarySkuId: skuId });
     Object.assign(value.skus[0], { code: "A", options: { finish: { kind: "choice", value: "matte" }, size }, netContent: size.value, priceRef: "price:1", logisticsRef: "shipping:1" });
     expect(validateCatalogDraft(value, registry)).toMatchObject({ valid: true, readiness: { publication: { status: "not_assessed", issues: [] }, commercial: { status: "inactive", issues: expect.arrayContaining([{ path: "skus", code: "commercial_activation_not_assessed" }]) } } });
+  });
+});
+
+const packRegistry = createCatalogProductTypeRegistry([{
+  key: "example:article", version: 2,
+  units: [{ code: "item:piece", dimension: "count", integral: true }, { code: "item:dozen", dimension: "count", integral: true }],
+  netContentUnits: ["item:piece", "item:dozen"],
+  dimensions: [{ key: "pack", kind: "quantity", dimension: "count", units: ["item:piece", "item:dozen"], role: "net_content" }],
+  validateContent: () => [],
+}]);
+const count = (unscaled: string, scale = 0, unit = "item:piece"): CatalogQuantity => ({ dimension: "count", unit, unscaled, scale });
+function packed(option: CatalogQuantity, netContent: CatalogQuantity): CatalogDraftPayload {
+  return catalogDraftPayloadSchema.parse({ schemaVersion: 1,
+    product: { id: productId, type: { key: "example:article", version: 2 }, dimensions: ["pack"] },
+    skus: [{ id: skuId, productId, options: { pack: { kind: "quantity", value: option } }, netContent }],
+  });
+}
+type TradeIdentifier = NonNullable<CatalogDraftPayload["skus"][number]["identifiers"]>[number];
+const unitGtin: TradeIdentifier = { scheme: "gs1:gtin", issuer: "gs1", value: "0012345678905", packagingLevel: "unit" };
+const caseGtin: TradeIdentifier = { scheme: "gs1:gtin", issuer: "gs1", value: "10012345678902", packagingLevel: "case" };
+function identified(...identifiers: TradeIdentifier[]): CatalogDraftPayload {
+  const value = payload(); value.skus[0].identifiers = identifiers;
+  return value;
+}
+function issues(value: CatalogDraftPayload, types = registry) {
+  const result = validateCatalogDraft(value, types);
+  return result.valid ? [] : result.issues;
+}
+function readiness(value: CatalogDraftPayload) {
+  const result = validateCatalogDraft(value, registry);
+  if (!result.valid) throw new Error(`unexpected issues: ${JSON.stringify(result.issues)}`);
+  return result.readiness;
+}
+
+describe("net content and trade identifiers", () => {
+  it("compares a net-content option with the SKU's net content, without converting units", () => {
+    const mismatch = [{ path: "skus.0.options.pack", code: "net_content_option_mismatch" }];
+    expect(issues(packed(count("6"), count("12")), packRegistry)).toEqual(mismatch);
+    expect(issues(packed(count("12"), count("1", 0, "item:dozen")), packRegistry)).toEqual(mismatch);
+    expect(issues(packed(count("6"), count("600", 2)), packRegistry)).toEqual([]);
+  });
+  it("leaves a type without the role unaffected", () => {
+    const value = payload();
+    Object.assign(value.skus[0], { options: { finish: { kind: "choice", value: "matte" }, size }, netContent: count("2") });
+    expect(issues(value)).toEqual([]);
+  });
+  it("accepts gs1:gtin as the only gs1 scheme", () => {
+    expect(issues(identified({ ...unitGtin, scheme: "gs1:upc" }))).toEqual([{ path: "skus.0.identifiers.0", code: "trade_identifier_scheme_unsupported" }]);
+    expect(issues(identified(unitGtin, { scheme: "example:catalog", issuer: "example", value: "A-1", packagingLevel: "unit" }))).toEqual([]);
+  });
+  it("treats every spelling and issuer text of one GTIN as one identity", () => {
+    for (const spelling of ["012345678905", "00012345678905"]) {
+      for (const issuer of ["gs1", "another issuer"]) {
+        expect(issues(identified(unitGtin, { ...unitGtin, value: spelling, issuer }))).toEqual([{ path: "skus.0.identifiers.1", code: "duplicate_trade_identifier" }]);
+      }
+    }
+  });
+  it("needs a case identifier to state at least 2 units and a unit identifier none or 1", () => {
+    const invalid = (index: number) => [{ path: `skus.0.identifiers.${index}.quantity`, code: "trade_identifier_quantity_invalid" }];
+    expect(issues(identified(unitGtin, caseGtin))).toEqual(invalid(1));
+    expect(issues(identified(unitGtin, { ...caseGtin, quantity: 1 }))).toEqual(invalid(1));
+    expect(issues(identified(unitGtin, { ...caseGtin, quantity: 2 }))).toEqual([]);
+    expect(issues(identified({ ...unitGtin, quantity: 2 }))).toEqual(invalid(0));
+    expect(issues(identified({ ...unitGtin, quantity: 1 }))).toEqual([]);
+    expect(issues(identified(unitGtin))).toEqual([]);
+  });
+  it("reports a SKU without a unit GTIN in commercial readiness only", () => {
+    const missing = { path: "skus.0.identifiers", code: "unit_trade_identifier_missing" };
+    const caseOnly = readiness(identified({ ...caseGtin, quantity: 6 }));
+    expect(caseOnly.commercial.issues).toContainEqual(missing);
+    expect(caseOnly.publication.issues).not.toContainEqual(missing);
+    expect(readiness(identified(unitGtin, { ...caseGtin, quantity: 6 })).commercial.issues).not.toContainEqual(missing);
+    expect(readiness(payload()).commercial.issues).toEqual(expect.arrayContaining([{ path: "skus.0.identifiers", code: "channel_identity_not_assessed" }, missing]));
   });
 });
