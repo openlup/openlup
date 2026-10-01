@@ -129,6 +129,7 @@ export function renderOrderPaidConfirmation(
       mode: input.mode,
       items: input.items,
       totals: input.totals,
+      parcelNote: input.parcelNote ?? null,
       ctaUrl: emailRouteUrl(baseUrl, "customerDashboard", locale, { sekcja: "orders" }),
       termsUrl: emailRouteUrl(baseUrl, "terms", locale),
     },

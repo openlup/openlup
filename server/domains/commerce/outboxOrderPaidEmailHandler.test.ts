@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { COMMERCE_ORDER_PAID_EMAIL_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
+import { orderPaidEmailContent } from "../../../src/domains/commerce/emails/orderPaid.js";
+import { paragraph } from "../../../src/domains/communications/email/blocks.js";
+import type { Locale } from "../../../src/lib/i18n/resolveLocale.js";
 import type { OutboxEventRow } from "./outboxDispatchContracts.js";
 import type {
   OrderPaidConfirmationEmailInput,
@@ -13,6 +16,7 @@ import type {
 import {
   createOutboxOrderPaidEmailHandler,
   OUTBOX_ORDER_PAID_TEMPLATE_SLUG,
+  type OrderPaidParcelNoteReader,
 } from "./outboxOrderPaidEmailHandler.js";
 
 const ORDER_UUID = "0f8c5b1e-7a2d-4c3b-9e6f-1a2b3c4d5e6f";
@@ -55,6 +59,7 @@ function makeDeps(options?: {
   outcome?: TransactionalEmailSendOutcome;
   data?: OrderPaidRawData | null;
   readThrows?: boolean;
+  describeParcel?: OrderPaidParcelNoteReader;
 }) {
   const sendCalls: OrderPaidConfirmationEmailInput[] = [];
   const emailPort: TransactionalEmailPort = {
@@ -123,6 +128,7 @@ function makeDeps(options?: {
     emailPort,
     recipientPort,
     linesPort,
+    describeParcel: options?.describeParcel,
   });
   return { handler, sendCalls };
 }
@@ -267,6 +273,84 @@ describe("outboxOrderPaidEmailHandler", () => {
     expect(await discard.handler.handle(makeRow(paidPayload), signal())).toEqual({
       kind: "discard",
       reason: "resend_rejected",
+    });
+  });
+});
+
+describe("outboxOrderPaidEmailHandler adopter parcel note", () => {
+  const NOTE = "Adopter parcel note";
+  const LOCALES: Locale[] = ["pl", "en"];
+
+  it("sends no parcelNote key without a reader", async () => {
+    const { handler, sendCalls } = makeDeps();
+    await handler.handle(makeRow(paidPayload), signal());
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0]).not.toHaveProperty("parcelNote");
+  });
+
+  it("reads the note with the order id, the recipient's locale and the handler signal, and sends it", async () => {
+    const describeParcel = vi.fn<OrderPaidParcelNoteReader>(async () => NOTE);
+    const { handler, sendCalls } = makeDeps({ describeParcel });
+    const abortSignal = signal();
+    const outcome = await handler.handle(makeRow(paidPayload), abortSignal);
+    expect(outcome).toEqual({ kind: "processed", detail: { resendId: "re_paid_1" } });
+    expect(describeParcel.mock.calls).toEqual([[ORDER_UUID, "pl", abortSignal]]);
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0]?.parcelNote).toBe(NOTE);
+  });
+
+  it.each([null, ""])("sends no parcelNote key when the reader answers %j", async (answer) => {
+    const { handler, sendCalls } = makeDeps({ describeParcel: async () => answer });
+    await handler.handle(makeRow(paidPayload), signal());
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0]).not.toHaveProperty("parcelNote");
+  });
+
+  it("logs a failed reader once with the event id and still sends the receipt without the note", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { handler, sendCalls } = makeDeps({
+        describeParcel: async () => {
+          throw new Error("note source down");
+        },
+      });
+      const outcome = await handler.handle(makeRow(paidPayload), signal());
+      expect(outcome).toEqual({ kind: "processed", detail: { resendId: "re_paid_1" } });
+      expect(warn.mock.calls).toEqual([["[outbox-dispatch] order_paid_parcel_note_unavailable", EVENT_ID]]);
+      expect(sendCalls).toHaveLength(1);
+      expect(sendCalls[0]).not.toHaveProperty("parcelNote");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it.each([
+    { path: "an already-sent event", options: { existing: true } },
+    { path: "an unresolved recipient", options: { recipient: null } },
+    { path: "order data that is not readable yet", options: { data: null } },
+  ])("never reads the note for $path", async ({ options }) => {
+    const describeParcel = vi.fn<OrderPaidParcelNoteReader>(async () => NOTE);
+    const { handler, sendCalls } = makeDeps({ ...options, describeParcel });
+    await handler.handle(makeRow(paidPayload), signal());
+    expect(describeParcel).not.toHaveBeenCalled();
+    expect(sendCalls).toHaveLength(0);
+  });
+
+  it.each(LOCALES)("renders the note as one paragraph right after the item list, and no note as today (%s)", (locale) => {
+    const vars = {
+      firstName: "Ola",
+      orderId: `order_${ORDER_UUID}`,
+      mode: "one_time",
+      items: [{ name: "Item A", quantity: 1, lineTotalLabel: "10.00 EUR" }],
+      totals: null,
+    };
+    const today = orderPaidEmailContent(locale, vars, "Example Team");
+    expect(orderPaidEmailContent(locale, { ...vars, parcelNote: null }, "Example Team")).toEqual(today);
+    const afterList = today.blocks.findIndex((block) => block.kind === "list") + 1;
+    expect(afterList).toBeGreaterThan(0);
+    expect(orderPaidEmailContent(locale, { ...vars, parcelNote: NOTE }, "Example Team")).toEqual({
+      ...today,
+      blocks: [...today.blocks.slice(0, afterList), paragraph(NOTE), ...today.blocks.slice(afterList)],
     });
   });
 });

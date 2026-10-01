@@ -15534,6 +15534,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/subscription/emails/subscriptionStarterDetail.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/subscription/emails/subscriptionWelcome.ts",
       "class": "public-output"
     },

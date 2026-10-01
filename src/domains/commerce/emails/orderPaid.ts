@@ -55,6 +55,8 @@ export interface OrderPaidEmailVars {
   termsUrl?: string | null;
   /** Optional context name for the selected post-receipt note. */
   petName?: string | null;
+  /** Adopter-formatted, already-localized note about the parcel; null or absent renders nothing. */
+  parcelNote?: string | null;
 }
 
 export interface OrderPaidEmailContent {
@@ -89,6 +91,7 @@ export function orderPaidEmailContent(
   blocks.push(
     vars.items.length > 0 ? list(vars.items.map(itemLine)) : paragraph(copy.noItems),
   );
+  if (vars.parcelNote) blocks.push(paragraph(vars.parcelNote));
 
   if (vars.totals) {
     const rows: Array<{ label: string; value: string }> = [];

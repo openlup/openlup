@@ -100,6 +100,15 @@ model states it as `nextCharge`, and the lifecycle emails announce it.
 - The upcoming cycle number is shared as well: an open cycle keeps its own
   number, so a declined delivery 2 is still announced and shown as delivery 2.
 
+The lifecycle emails state these facts, and a deployment may add one of its
+own. `StarterPackEmailFields.starterSteadyDetail` is an optional,
+already-localized description of the steady package, formatted by the
+deployment and never by this domain. The welcome and renewal-reminder content
+pass it to the copy as the optional third argument of `starterSteadyLine` and
+`starterGraduationLine`, and only beside the steady unit count and cadence. The
+fact builders never set it: the deployment's handler reads what it needs at
+send time and adds it. Absent or null, both emails render exactly as before.
+
 ## Public surface (import cross-domain ONLY these)
 - `contracts.ts`, `runtimeContracts.ts`, `paymentRecoveryContracts.ts` —
   activation, runtime, dunning, recovery, and cycle contracts.

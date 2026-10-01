@@ -157,6 +157,8 @@ export interface OrderPaidConfirmationEmailInput {
   outboxEventId: string;
   items: OrderEmailLineItem[];
   totals: OrderEmailTotals | null;
+  // Adopter-formatted, already-localized note about the parcel; absent renders today's receipt.
+  parcelNote?: string | null;
   locale?: Locale;
   signal: AbortSignal;
 }
