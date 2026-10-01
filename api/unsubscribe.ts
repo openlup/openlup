@@ -25,7 +25,7 @@ import type { VercelRequest, VercelResponse } from "../server/_lib/types/vercel.
 import { createServiceRoleClient } from "../server/_lib/admin-domain/auth.js";
 import { verifyUnsubscribeToken } from "../src/domains/communications/unsubscribeToken.js";
 import type { CommunicationPurpose } from "../src/domains/communications/types.js";
-import { emailPresentation } from "../src/domains/communications/email/deploymentEmailPresentation.js";
+import { emailPresentation } from "#email-presentation";
 
 /** Purposes a recipient may switch off through an unsubscribe link. */
 const UNSUBSCRIBE_PURPOSES = new Set<CommunicationPurpose>([

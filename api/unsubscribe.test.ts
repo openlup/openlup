@@ -5,6 +5,7 @@
  * legacy tester links that carry no token and never expire.
  */
 import { describe, expect, it, vi } from "vitest";
+import { emailPresentation as selectedEmailPresentation } from "#email-presentation";
 import {
   UNSUBSCRIBE_LINK_TTL_SECONDS,
   buildUnsubscribeToken,
@@ -171,7 +172,7 @@ describe("unsubscribe route - transport", () => {
     expect(headers["referrer-policy"]).toBe("no-referrer");
     expect(headers["cache-control"]).toBe("no-store");
     expect(headers["x-robots-tag"]).toBe("noindex, nofollow");
-    expect(headers["x-email-presentation"]).toBeTruthy();
+    expect(headers["x-email-presentation"]).toBe(selectedEmailPresentation.id);
   });
 
   it("reads the parameters the platform already parsed onto the request", async () => {

@@ -14,11 +14,12 @@ is runtime-only input and must not be embedded in a browser artifact. Hosts must
 provide their own storage, identity, delivery, and provider configuration where
 the selected capabilities require it.
 
-The server health composition reads the root manifest's
-`#email-presentation` selection and reports that presentation's id. The public
-selection is the neutral example. A host selecting another presentation must
-make its import-map target available to its runtime; source-level selection
-alone does not establish function packaging or deployment behavior.
+The server health composition and public unsubscribe route read the root
+manifest's `#email-presentation` selection and report that presentation's id
+(the unsubscribe route uses the `x-email-presentation` response header). The
+public selection is the neutral example. A host selecting another presentation
+must make its import-map target available to its runtime; source-level
+selection alone does not establish function packaging or deployment behavior.
 
 <!-- openlup-doc-impact {"unit":"bff","digest":"sha256-d39e61e4ed325cfba327ccc69cc2be29cfe8b629feff42459774deeabeaf45ef","reason":"Thirteen BFF tests replace repeated SDK and database-reference regex assertions with the structural rule in required lint, retaining their distinct composition and authorization assertions. Customer diagnostics gains two reasoned line suppressions for validated from/to date-range destructuring, with no executable change. Request handling, durable-write contracts, runtime composition and hosting behavior described here are unchanged."} -->
 
