@@ -62,6 +62,12 @@ one-time/subscription-initial checkout lives here.
 
 Everything else (handlers, orchestration, `dbBacked*`/`supabase*` ports) is internal.
 
+The catalog-backed quote and recommendation readers take each SKU's stored
+one-time and subscription sellability from the catalog read port: a quote
+refuses a line in a mode its SKU is not sellable in, and a recommendation leaves
+such a SKU out of that mode. A catalog source that states no sellability counts
+as sellable in both modes.
+
 ## Where the code lives
 - Shared/frontend: `src/domains/commerce/`
 - Server (handlers, orchestration, Supabase ports, runtime saga): `server/domains/commerce/`

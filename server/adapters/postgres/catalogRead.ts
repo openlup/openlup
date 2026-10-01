@@ -32,7 +32,7 @@ export interface PostgresCatalogReadOptions {
 }
 
 const PRODUCT_SQL = `
-  SELECT id, slug, status, name, description, ingredients, marketing_content
+  SELECT id, slug, status, name, description, ingredients, marketing_content, primary_sku_id
   FROM public.catalog_products
   WHERE ($1::boolean OR status = 'active')
     AND ($2::text IS NULL OR slug = $2)
@@ -59,6 +59,7 @@ export function createPostgresCatalogReadPort(
   const pinnedExactListPriceAtTime = exactListPriceReader
     ? exactListPriceAtTime ?? new Date().toISOString()
     : null;
+  const unresolvedPrimary = includeArchived ? "placeholder" : "refuse";
 
   async function withPricing(products: CatalogProduct[]): Promise<CatalogProduct[]> {
     if (exactListPriceReader && pinnedExactListPriceAtTime) {
@@ -90,7 +91,7 @@ export function createPostgresCatalogReadPort(
 
   async function assembleAll(): Promise<CatalogProduct[]> {
     const [productRows, skusByProduct] = await Promise.all([products(), skus()]);
-    return productRows.map((row) => assembleProduct(row, skusByProduct.get(row.id) ?? []));
+    return productRows.map((row) => assembleProduct(row, skusByProduct.get(row.id) ?? [], { unresolvedPrimary }));
   }
 
   return {
@@ -103,7 +104,7 @@ export function createPostgresCatalogReadPort(
       if (!product) return null;
       const variants = await skus(product.id);
       const [resolved] = await withPricing([
-        assembleProduct(product, variants.get(product.id) ?? []),
+        assembleProduct(product, variants.get(product.id) ?? [], { unresolvedPrimary }),
       ]);
       return resolved ?? null;
     },

@@ -41,6 +41,17 @@ product slug's declared `primary_sku_id`; the UUID lookup remains available for
 compatibility. Slug lookup never guesses a primary SKU from weight, order or
 sellability.
 
+The row-assembled `CatalogReadPort` applies the same rule. It orders a
+product's variants by SKU id and takes the primary SKU only from
+`primary_sku_id`. On the default active-only read, an active product with SKU
+rows whose declared primary is empty or not among them refuses the read with
+`CatalogPrimarySkuUnresolvedError`: a list read refuses as a whole, a slug read
+for that product. A product without SKU rows keeps the neutral placeholder, and
+the historical `includeArchived` read keeps the placeholder instead of refusing.
+Each variant carries its stored one-time and subscription sellability as
+`sellability`, which the public product contract does not include; the static
+reference adapter states both as true.
+
 ## Public navigation and availability
 
 Use [Architecture and extension boundaries](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md)

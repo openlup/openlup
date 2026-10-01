@@ -161,11 +161,12 @@ async function joinProductPricing(
   );
 
   // primarySku is the same logical SKU as one of the variants; re-point it at the
-  // re-priced instance (match by variantId, falling back to the first variant) so
-  // the displayed price is consistent between the product and its primary SKU.
+  // re-priced instance (matched by variantId only) so the displayed price is
+  // consistent between the product and its primary SKU. A primary that matches no
+  // variant, such as the neutral placeholder, stays as it is: the first variant is
+  // never a fallback.
   const primarySku =
     variants.find((variant) => variant.variantId === product.primarySku.variantId) ??
-    variants[0] ??
     product.primarySku;
 
   return { ...product, primarySku, variants };
@@ -199,7 +200,6 @@ function applyResolvedCatalogPricing(
       return applyResolvedSkuPricing(variant, resolvedByVariant.get(variant.variantId) ?? null, region);
     });
     const primarySku = variants.find((variant) => variant.variantId === product.primarySku.variantId)
-      ?? variants[0]
       ?? product.primarySku;
     return { ...product, primarySku, variants };
   });
