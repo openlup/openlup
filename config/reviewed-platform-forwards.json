@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "baselineSha256": "fb4de62d4ccf30dca83075b41ea2769ddf74165ecd47d21875790ed5f397ccbe",
+  "replacementForwards": [
+    {
+      "path": "supabase/migrations/20260930100000_offer_policy_readiness_validates_price_shape.sql",
+      "sha256": "33cafe08f76c4208160fa3a2e68bfe76cd11f2013ca6063c651096da9bc45d76",
+      "functions": [
+        {
+          "signature": "public.commerce_offer_policy_v2_readiness()",
+          "beforeSha256": "a6db4e0c3e6ce473083c7f4aa8b9da5f8089fc17b0e408add679468f208c9d8f",
+          "afterSha256": "85000af19776157d7228ff6d64ef397522386d242e8a006d1a9a3895a6af3f0a"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260930100200_starter_graduation_cadence_set.sql",
+      "sha256": "52f44a582262f5ca2cde328a8838c16bca68e961ae717ed6b01da30690bd4ee9",
+      "functions": [
+        {
+          "signature": "public.subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)",
+          "beforeSha256": "6cddedb4d0baadcff8535980742f477060eff1f8e312b63b3cf985bdb332485f",
+          "afterSha256": "1c57900d42a3b8c010d420c7ccca763f97b0995cc69d31bd21e17b0127268a94"
+        },
+        {
+          "signature": "public.subscription_apply_starter_graduation(uuid,text,text)",
+          "beforeSha256": "f393de104e8e169e82fa047f0f867192d8355a5c404c56ca57096395bdcfb089",
+          "afterSha256": "79bee903d6a6c236fcf7d2d640da3a49416b4241ec1dfc4f44b4d56d9bb4cb9b"
+        }
+      ]
+    }
+  ],
+  "creationForwards": [
+    {
+      "path": "supabase/migrations/20260930100100_catalog_price_setup.sql",
+      "sha256": "dd8bb26d3924afcca007cdb955915d908822c446275d4c200d7b23639cdd88c1",
+      "functions": [
+        {
+          "signature": "public.catalog_price_setup_preview(uuid,uuid,integer)",
+          "beforeSha256": null,
+          "afterSha256": "aa0be6178253ae5e57d0b3be3ea3a2010b8a3f00bf837d2dcf45460346245b3e"
+        },
+        {
+          "signature": "public.catalog_price_setup_apply(text,text)",
+          "beforeSha256": null,
+          "afterSha256": "40fed799dbc6f4e76d2c118a4cbe8210f819497be27a837dd4b3be643d81afef"
+        }
+      ]
+    }
+  ]
+}

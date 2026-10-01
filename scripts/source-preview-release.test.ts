@@ -12,6 +12,7 @@ import { annotatedTag, assertDraft, assertNextPreview, assertReleasablePackages,
 import { PUBLIC_REPOSITORY_URL } from "./packages/package-manifest-policy.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
+import { MANAGED_BASELINE, REVIEWED_FORWARD_PATH, reviewedFunctionDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const target = "a".repeat(40), previousCommit = "d".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
 const previousTagObject = "6".repeat(40), targetTagObject = "c".repeat(40);
@@ -365,6 +366,96 @@ function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer
   return { repo, run, read, apply, commit, rootCommit, release, cleanup: () => rmSync(repo, { recursive: true, force: true }) };
 }
 const editContract = (edit: (contract: { compatibility?: unknown; repository: { owner: { name: string } } }) => void) => (repo: string) => { const contract = JSON.parse(readFileSync(join(repo, CONTRACT), "utf8")); edit(contract); writeFileSync(join(repo, CONTRACT), json(contract)); };
+
+describe("exact reviewed replacement admission in both gates", () => {
+  const functions = [
+    "public.commerce_offer_policy_v2_readiness()",
+    "public.subscription_create_provisional_for_checkout(p_order_id uuid, p_client_id uuid, p_pet_id uuid, p_shipping_address_id uuid, p_quote_snapshot jsonb)",
+    "public.subscription_apply_starter_graduation(p_subscription_id uuid, p_idempotency_key text, p_mode text DEFAULT 'full'::text)",
+  ];
+  const definition = (signature: string, value: number, replace = false) => `CREATE ${replace ? "OR REPLACE " : ""}FUNCTION ${signature} RETURNS jsonb LANGUAGE sql AS $$ SELECT '${value}'::jsonb; $$;`;
+  const baseline = functions.map((signature) => definition(signature, 1)).join("\n");
+  const paths = ["supabase/migrations/20261001000001_readiness.sql", "supabase/migrations/20261001000002_price_setup.sql", "supabase/migrations/20261001000003_starter.sql"];
+  const sql = [definition(functions[0]!, 2, true), definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 2) + "\n" + definition("public.catalog_price_setup_apply(p_command text, p_fingerprint text)", 2), functions.slice(1).map((signature) => definition(signature, 2, true)).join("\n")];
+  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null) {
+    const existing = definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 1);
+    const selectedBaseline = history === "baseline" ? `${baseline}\n${existing}` : baseline;
+    const sample = syntheticRelease({ extraFiles: { [MANAGED_BASELINE]: selectedBaseline, ...(history === "forward" ? { "supabase/migrations/20261001000000_existing_function.sql": existing } : {}) } });
+    const prior = reviewedFunctionDefinitions(Buffer.from(baseline)), bytes = [...sql];
+    const forwards = paths.map((path, index) => ({ path, sha256: sqlSha256(bytes[index]!), functions: [...reviewedFunctionDefinitions(Buffer.from(bytes[index]!))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: prior.get(signature) ?? null })) }));
+    const registry: ReviewedForwardRegistry = { schemaVersion: 1, baselineSha256: sqlSha256(selectedBaseline), replacementForwards: [forwards[0]!, forwards[2]!], creationForwards: [forwards[1]!] };
+    edit?.(registry, bytes);
+    sample.apply({ [REVIEWED_FORWARD_PATH]: json(registry) });
+    const approval = sample.commit("Separate reviewed control");
+    const change = Object.fromEntries(paths.map((path, index) => [path, bytes[index]!]));
+    return { ...sample, approval, registry, change };
+  }
+  const gates = (sample: ReturnType<typeof fixture>, head: string) => [
+    () => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head),
+    () => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head),
+  ];
+  it("admits exact bytes after a separate control commit, including new signatures in the pinned file", () => {
+    const sample = fixture();
+    try {
+      sample.apply(sample.change); const head = sample.commit("Feature");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      for (const bytes of sql) expect(isExpandOnlyPlatformForward(bytes)).toBe(false);
+    } finally { sample.cleanup(); }
+  });
+  it.each(["one byte", "another path", "additional SQL", "old definition", "missing signature", "duplicate signature", "same feature approval"])("refuses %s in required CI and release prepare", (probe) => {
+    const sample = fixture((registry, bytes) => {
+      if (probe === "old definition") registry.replacementForwards[0]!.functions[0]!.beforeSha256 = "0".repeat(64);
+      if (probe === "missing signature" || probe === "duplicate signature") {
+        bytes[2] = probe === "missing signature" ? definition(functions[1]!, 2, true) : `${bytes[2]}\n${definition(functions[1]!, 2, true)}`;
+        registry.replacementForwards[1]!.sha256 = sqlSha256(bytes[2]!);
+      }
+    });
+    try {
+      if (probe === "one byte") sample.change[paths[0]!] += "\n";
+      if (probe === "additional SQL") sample.change[paths[0]!] += "\nDROP TABLE public.existing;";
+      if (probe === "another path") { sample.change["supabase/migrations/20261001000004_other.sql"] = sample.change[paths[0]!]!; delete sample.change[paths[0]!]; }
+      if (probe === "same feature approval") {
+        sample.registry.replacementForwards[0]!.sha256 = sqlSha256(sample.change[paths[0]!]! + "\n");
+        sample.change[paths[0]!] += "\n";
+        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
+      }
+      sample.apply(sample.change); const head = sample.commit("Refused feature");
+      for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
+    } finally { sample.cleanup(); }
+  });
+  it("refuses a control introduced with its SQL even when release spans multiple later commits", () => {
+    const sample = fixture();
+    try {
+      sample.run(["reset", "--hard", sample.rootCommit]);
+      sample.apply({ ...sample.change, [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.commit("Self-authorized feature"); const head = sample.commit("Later unrelated commit");
+      expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+      expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+    } finally { sample.cleanup(); }
+  });
+  it.each([
+    "SELECT 1;",
+    "DO $$ BEGIN NULL; END; $$;",
+    "GRANT ALL ON FUNCTION public.commerce_offer_policy_v2_readiness() TO PUBLIC;",
+    "GRANT EXECUTE ON FUNCTION public.commerce_offer_policy_v2_readiness() TO anon;",
+    "GRANT EXECUTE ON FUNCTION public.unrelated() TO authenticated;",
+    "CREATE FUNCTION app.unrelated() RETURNS jsonb LANGUAGE sql AS $$ SELECT '1'::jsonb; $$;",
+    "CREATE FUNCTION public.unrelated() RETURNS jsonb LANGUAGE sql AS $open$ SELECT '1'::jsonb;",
+  ])("refuses unsupported SQL even with a separately pinned whole-file hash: %s", (addition) => {
+    const sample = fixture((registry, bytes) => { bytes[0] += `\n${addition}`; registry.replacementForwards[0]!.sha256 = sqlSha256(bytes[0]!); });
+    try {
+      sample.apply(sample.change); const head = sample.commit("Unsupported statement");
+      for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
+    } finally { sample.cleanup(); }
+  });
+  it.each(["baseline", "forward"] as const)("refuses creation when its signature exists in the preceding %s", (history) => {
+    const sample = fixture(undefined, history);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Creation collides with history");
+      for (const gate of gates(sample, head)) expect(gate).toThrow(/definition drifted/u);
+    } finally { sample.cleanup(); }
+  });
+});
 
 describe("PR-base migration history", () => {
   const managed = "supabase/migrations/20260926000000_existing.sql";

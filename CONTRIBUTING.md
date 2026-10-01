@@ -400,9 +400,15 @@ matches the tree's bytes. Adding, removing or renaming a file, or changing a mod
 or a dependency, is releasable on those terms. Before it tags, the release
 workflow checks the target against the previous preview with
 `assertDescendantSourceRelease` (`scripts/oss-source-release-contract.ts`). That
-check admits additive forwards under
+check admits additive forwards and the separate exact reviewed function class under
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#additive-forward-release-path).
-It refuses edits or deletions of migration history, non-expand-only SQL, a
+Reviewed function forwards use the same checker in required self-check and release
+prepare. Their whole-file bytes, signatures and old/new definitions are pinned in
+`config/reviewed-platform-forwards.json`; the feature PR cannot change its own
+approval. The three replacements are not expand-only. See
+[the exact class](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
+and its refusal tests in `scripts/source-preview-release.test.ts`.
+It refuses edits or deletions of migration history, unapproved non-expand-only SQL, a
 non-prefix portable manifest, bootstrap SQL changes, database schema types
 (`src/integrations/supabase/types.ts`) and policy registry changes
 (`config/openlup-policy-registry.json`). Nonmigration schema or policy changes
