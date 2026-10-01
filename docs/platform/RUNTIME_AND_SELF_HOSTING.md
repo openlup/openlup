@@ -184,7 +184,7 @@ presentation argument for callers. A host that changes the selection must
 verify its server module resolution and rendered output. The public source
 does not declare a managed serverless packaging rule for this alias.
 
-<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-84ef36065210de8793d129aa43bf1e9f5668c4958764b2284b913abe1bda7289","reason":"Test-only delta. Neutral asset assertions now inject the example presentation explicitly; the separate default-selection test still renders through the import-map alias. The renderer default, caller argument and host verification boundary described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-cbbb976427c25716b2f9211b20c473107824a8f5ac314e44ac562e433edb9627","reason":"The paid-order renderer forwards an optional adopter-formatted parcel note to the existing commerce content module; the new regression checks that absent and null notes render equally and a supplied note reaches both output formats. The import-map presentation selection, provider activation and host boundaries described here remain unchanged."} -->
 
 Canonical production hostnames come from
 `config/site-routes.json.productionHosts`. Configure this list for an adopting

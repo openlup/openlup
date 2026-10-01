@@ -307,4 +307,22 @@ describe("transactionalEmailRenderers", () => {
     expect(out.html).not.toContain("fulfillment_exception");
     expectPreviewAssets(out);
   });
+
+  it("forwards an adopter parcel note to the paid receipt once, and renders a null note as no note", () => {
+    const input = {
+      to: "a@example.com",
+      firstName: "Anna",
+      petName: null,
+      orderId: ORDER_ID,
+      mode: "one_time",
+      outboxEventId: "e8",
+      items: [{ name: "Item A", quantity: 1, lineTotalLabel: "10.00 EUR" }],
+      totals: null,
+      signal,
+    };
+    expect(renderOrderPaidConfirmation({ ...input, parcelNote: null }, BASE)).toEqual(renderOrderPaidConfirmation(input, BASE));
+    const out = renderOrderPaidConfirmation({ ...input, parcelNote: "Adopter parcel note" }, BASE);
+    expect(out.text.split("Adopter parcel note")).toHaveLength(2);
+    expect(out.html.split("Adopter parcel note")).toHaveLength(2);
+  });
 });

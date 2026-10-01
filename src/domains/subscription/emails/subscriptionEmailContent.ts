@@ -75,7 +75,7 @@ export interface SubscriptionRenewalUpcomingCopy extends SubscriptionBaseCopy {
   editCutoffLine: (label: string) => string;
   noDateLine: string;
   amountLine: (label: string) => string;
-  starterGraduationLine: (units: number, cadenceDays: number) => string;
+  starterGraduationLine: (units: number, cadenceDays: number, detail?: string | null) => string;
   detailsLabel: string;
   manageLine: string;
   cta: string;
@@ -95,7 +95,7 @@ export interface SubscriptionWelcomeCopy extends SubscriptionBaseCopy {
   editCutoffLine: (label: string) => string;
   fallbackLine: string;
   starterDelivery2Line: (amount: string) => string;
-  starterSteadyLine: (units: number, cadenceDays: number) => string;
+  starterSteadyLine: (units: number, cadenceDays: number, detail?: string | null) => string;
   detailsLabel: string;
   manageLine: string;
   cta: string;

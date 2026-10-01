@@ -11,6 +11,7 @@
 
 import type { Locale } from "../../../lib/i18n/resolveLocale.js";
 import { subscriptionEmailContent } from "#subscription-email-content";
+import type { SubscriptionWelcomeCopy } from "./subscriptionEmailContent.js";
 import {
   accentBox,
   button,
@@ -46,6 +47,8 @@ export interface SubscriptionWelcomeEmailVars {
   starterAmountLabel?: string | null;
   starterSteadyUnitCount?: number | null;
   starterSteadyCadenceDays?: number | null;
+  /** Adopter-formatted steady package, already localized; the steady line's third argument. */
+  starterSteadyDetail?: string | null;
 }
 
 export interface SubscriptionWelcomeEmailContent {
@@ -59,7 +62,7 @@ export function subscriptionWelcomeEmailContent(
   vars: SubscriptionWelcomeEmailVars,
   signoff: string,
 ): SubscriptionWelcomeEmailContent {
-  const copy = subscriptionEmailContent.welcome[locale];
+  const copy: SubscriptionWelcomeCopy = subscriptionEmailContent.welcome[locale];
   const details: string[] = [];
   if (vars.cadenceDays && vars.cadenceDays > 0) details.push(copy.cadenceLine(vars.cadenceDays));
   // Both labels are derived from the same `next_cycle_at`, so they are present or
@@ -74,7 +77,7 @@ export function subscriptionWelcomeEmailContent(
   // the only moment the customer is actually reading about their plan.
   if (vars.starterAmountLabel) details.push(copy.starterDelivery2Line(vars.starterAmountLabel));
   if (vars.starterSteadyUnitCount && vars.starterSteadyCadenceDays) {
-    details.push(copy.starterSteadyLine(vars.starterSteadyUnitCount, vars.starterSteadyCadenceDays));
+    details.push(copy.starterSteadyLine(vars.starterSteadyUnitCount, vars.starterSteadyCadenceDays, vars.starterSteadyDetail));
   }
   if (vars.editCutoffLabel) details.push(copy.editCutoffLine(vars.editCutoffLabel));
 
