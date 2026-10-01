@@ -169,6 +169,8 @@ exports selected by its build. Core entries therefore name built `dist/*.js`
 modules; source paths are not an alternative runtime route. The core workspace
 must be built before checking that profile's import closure.
 
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-ef655506487482e7548afec93e5f6f494f04b12ebea5e3774c18792c8a41cd1b","reason":"The delta adds three exact commerce module paths to the opt-in subscription browser profile's allowlist. It does not change core dist selection, load any module by itself, or change a stable compatibility commitment. The existing paragraph's rule that the observed build determines the closed import list remains accurate."} -->
+
 The repository's
 [`neutrality baseline`](../../config/openlup-neutrality-baseline.json) records
 existing source findings rather than declaring the tree free of them. Its full
@@ -189,5 +191,3 @@ its CLI refusal tests in required `test`. The complete root and managed pgTAP
 jobs retain raw diagnostic failures with named ownership; their addition does
 not change platform behavior, grant application privileges or declare complete
 compatibility evidence. Existing release context checks remain unchanged.
-
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-e1356c2282e6bc3c56d98e7a36b1f778f37ce42ddc8ebbd196cd2212469f2937","reason":"A1 lowers the neutrality baseline after thirteen BFF tests transfer database-SDK and direct-query assertions to structural lint, and removes already-absent finding allowances. No count or path gains an allowance. The existing shrink-only ratchet semantics, runtime contracts and compatibility posture described here are unchanged."} -->
