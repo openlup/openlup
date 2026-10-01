@@ -173,6 +173,38 @@ registry tests appended to the old payment registry test to
 path intercepts only imports through that path; mock the new path to intercept
 current callers. The newsletter provider registry had no compatibility re-export.
 
+## Pending preview upgrade notes: catalog draft validation
+
+Status: unreleased source change; include these notes in the preview that
+first carries it. The dark catalog draft command now refuses trade identifiers
+that the previous preview accepted. Correct a refused draft and send it again
+under a new command key:
+
+- A `gs1:` scheme other than `gs1:gtin` refuses with
+  `trade_identifier_scheme_unsupported`. Record GTIN-8, GTIN-12, GTIN-13 and
+  GTIN-14 values under `gs1:gtin`, with their digits unchanged.
+- One GTIN in two spellings, such as its 13- and 14-digit forms, or with
+  different issuer text, is one identity and refuses with
+  `duplicate_trade_identifier`. Keep one identifier per GTIN in a draft.
+- A `case` identifier without a `quantity` of at least 2, or a `unit`
+  identifier with a `quantity` other than 1, refuses with
+  `trade_identifier_quantity_invalid`. State how many units each case holds;
+  a unit identifier may omit its quantity.
+
+Identifiers gain the optional integer `quantity` for that purpose. Stored draft
+revisions are not rewritten: a revision recorded without a quantity still reads
+back, and a committed command key still replays its original receipt. The rules
+apply to new create and revise commands only. Each SKU without a unit-level
+`gs1:gtin` identifier now reports `unit_trade_identifier_missing` in commercial
+readiness; it is advisory, and validity and readiness statuses do not change.
+
+A product type may declare one quantity dimension with `role: "net_content"`,
+whose units must all be net-content units; otherwise installing the type throws
+`invalid_catalog_type_definition`. A SKU option on that dimension must state
+the same quantity as the SKU's `netContent`, or the draft refuses with
+`net_content_option_mismatch`; units are never converted. Types without the
+role validate as before. No database schema change accompanies these notes.
+
 ## Pending preview upgrade notes: declared primary SKU and stored sellability
 
 Status: unreleased source change; include these notes in the preview that
