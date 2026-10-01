@@ -464,7 +464,7 @@ The prepare step and its descendant check refuse:
 - a portable manifest that does not preserve its baseline and previous forward
   entries as an exact prefix, or does not bind exactly the portable files by
   SHA-256;
-- non-expand-only SQL: destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`, `TYPE`
+- unapproved non-expand-only SQL: destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`, `TYPE`
   or `COLUMN`, and `TRUNCATE`), `RENAME`, `SET SCHEMA`, or `OWNER TO`;
 - a tracked code file with a removal marker naming the new preview or an
   earlier one, or with a comment line starting `// openlup-remove-before:` that
@@ -483,7 +483,15 @@ The admission predicate accepts a bounded SQL subset: additive `CREATE TABLE`,
 boundaries, and literal `INSERT ... VALUES ... ON CONFLICT ... DO NOTHING` seeds.
 It refuses other statements, procedural/dynamic SQL, ambiguous escapes and
 unterminated comments or quotations. A new form needs its own reviewed predicate
-and regression coverage. Admission checks syntax, not live database compatibility;
+and regression coverage. A separate
+[exact reviewed function class](../docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
+pins three managed forwards, exactly three existing-function replacements and
+two new price-setup functions. Both required self-check and release prepare call
+the same checker; replacement remains outside the expand-only predicate.
+Approval must predate the feature comparison base and each release forward's
+introduction commit. Exact path, whole-file bytes, old/new definition hashes and
+signature cardinality must match. Admission checks syntax and pinned evidence,
+not live database compatibility;
 review constraints, defaults and replay behaviour on the selected installation.
 Rows required by platform behaviour belong in idempotent forward statements.
 The adopter owns extension objects and migrations in `app`; platform forwards

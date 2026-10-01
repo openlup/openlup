@@ -794,6 +794,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/reviewed-platform-forwards.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/site-routes.json",
       "class": "public-output"
     },
@@ -2655,6 +2659,10 @@
     },
     {
       "path": "scripts/retry-ladder-terminating-classes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-platform-forward.ts",
       "class": "public-output"
     },
     {

@@ -15,6 +15,7 @@ import { documentationGit, resolveDocumentationBase } from "./documentation-git.
 import { checkDocumentationImpact, renderDocumentationImpact } from "./documentation-impact.ts";
 import { evaluatePlatformMigrationManifest, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
 import { isExpandOnlyPlatformForward } from "./oss-source-release-contract.ts";
+import { assertReviewedPlatformForward } from "./reviewed-platform-forward.ts";
 import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
@@ -56,7 +57,8 @@ export function assertAppendOnlyMigrationHistory(root: string, base: string, hea
     if (old?.oid === next?.oid && old?.mode === next?.mode) continue;
     if (old || !next || next.mode !== "100644" || BASELINES.has(path) || !FORWARD.test(path))
       throw new Error(`migration history refuses an edit, deletion, mode change or unsupported addition: ${path}`);
-    if (!isExpandOnlyPlatformForward(readMigrationBlob(root, next))) throw new Error(`migration history refuses a non-expand-only forward: ${path}`);
+    const bytes = documentationGit(root, ["cat-file", "blob", next.oid]);
+    if (!isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, base, head, path, bytes);
     additions.push(path);
   }
   for (const rail of RAILS) {

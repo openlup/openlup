@@ -54,6 +54,42 @@ Rows that platform behaviour depends on must ship as idempotent statements in a
 forward, rather than relying on a reference fixture or process startup. A missing
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
+## Exact reviewed function forwards
+
+Reviewed replacement is a separate admission class, not expand-only. The fixed
+[allowlist](../../config/reviewed-platform-forwards.json) pins three managed
+forward paths and their whole-file SHA-256 hashes in separate replacement and
+creation lists. The replacement list contains only two files and permits replacement of
+exactly `commerce_offer_policy_v2_readiness()`,
+`subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)` and
+`subscription_apply_starter_graduation(uuid,text,text)` in `public`. The price
+setup forward also binds its two new function signatures, which must be absent
+from the preceding chain. This control change installs approval data only; it
+does not ship or execute those forwards.
+
+[The shared checker](../../scripts/reviewed-platform-forward.ts) verifies the
+immutable managed baseline hash, each old definition and each new definition.
+A definition hash covers the raw `CREATE` statement through its terminating
+semicolon; names and defaults remain in those bytes, while signature identity
+uses argument types. Whole-file hashes additionally bind comments, grants and
+all other SQL. Earlier forwards are considered when checking the old definition.
+Missing or duplicate signatures, another path, and any changed byte refuse.
+Outside the pinned function bodies, only function definitions, transaction
+boundaries, privileges and comments on functions defined in that same file are
+accepted. Grants may target only `authenticated` or `service_role`; grants to
+`PUBLIC` or `anon`, other schemas, unrelated statements and unterminated dollar
+bodies refuse even if the whole-file hash was separately repinned.
+
+Required PR/merge-group self-check requires the allowlist bytes to predate the
+feature comparison base. Release prepare uses the same checker and requires
+the identical allowlist in the parent of each forward's introduction commit.
+Thus a release can include a prior control PR followed by feature PRs without
+allowing a feature to approve itself. Missing history refuses. Existing history,
+version and manifest rules still apply, and the expand-only predicate is unchanged.
+Admission is process evidence of exact reviewed bytes, not proof of live schema
+compatibility or authorization to release. Independent control review and the
+affected database behavior tests remain required.
+
 An adopter's hosted chain may already carry a managed forward under its own
 migration name. Such a file is a platform companion: its leading comment block
 names the forward in the line
