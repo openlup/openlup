@@ -8,8 +8,9 @@ interface Props {
   productName: string;
 }
 
-/* Render the images supplied by the product, using its optional hero image for
-   the first slide. A fixed image height keeps the gallery steady while switching. */
+/* Render the images supplied by the product. The first slide uses heroImageLcp
+   when present, then heroImage, then the first gallery image. A fixed image
+   height keeps the gallery steady while switching. */
 const ProductGallery = ({ product, productName }: Props) => {
   const [activeIdx, setActiveIdx] = useState(0);
   const { t } = useTranslation("catalog");

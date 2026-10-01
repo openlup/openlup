@@ -49,7 +49,7 @@ extension-data forwarding remain available to adopters. The rule has no claim
 of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
-<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-f9c9b1bb23f56d9a4b53ad953c0cc61bf59d62d370a7753f29e01ce974d4c43c","reason":"Comment-only correction: the gallery now describes images supplied by the product, and the migration test header no longer cites a machine-local plan or a missing companion test. Imports, runtime boundaries, browser contracts and bundle behavior are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-6eefb056ab1bbfb257fd85fb8a3fbee22d10d251af84121cf3ae704634fa92df","reason":"Comment-only correction: the gallery now describes supplied images and the exact first-slide preference order, and the migration test header no longer cites a machine-local plan or a missing companion test. Imports, runtime boundaries, browser contracts and bundle behavior are unchanged."} -->
 
 <!-- openlup-doc-impact {"unit":"server","digest":"sha256-677c8943f9ff430a5c5c104f7b6414a5f70c9cb0f35013a78e4b4b423776d8f1","reason":"Server-library comment delta. The admin-domain kit, feature flag, observability and service comments name downstream files by role or by their path in this tree, the rate limiter test title names its callers generically, and the payment adapter registry comment names an adapter folder generically. No server boundary described here changes."} -->
 
