@@ -200,4 +200,4 @@ jobs retain raw diagnostic failures with named ownership; their addition does
 not change platform behavior, grant application privileges or declare complete
 compatibility evidence. Existing release context checks remain unchanged.
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-2e24b606b08f217be53403e073db6056a8baace48ebbe9bb0c47d12ff868bd70","reason":"The structural slice assigns the new checkout offer-policy port to its existing checkout-runtime owner. This is ownership metadata only; it changes no compatibility lifecycle, runtime configuration, or neutrality allowance described in this section."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-43c963dd0f86523644a4c4050abc6ef0fca43d25300819d380fd3255f6ad170a","reason":"The structural slice assigns the new checkout offer-policy port to its existing checkout-runtime owner. This is ownership metadata only; it changes no compatibility lifecycle, runtime configuration, or neutrality allowance described in this section."} -->
