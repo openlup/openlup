@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
@@ -47,8 +48,11 @@ function parseArrayLiteral(literal: string): string[] {
 const sqlSide = declaringMigration();
 const kernelSide = [...(DEFAULT_CYCLE_RETRY_CADENCE.terminatingFailureClasses ?? [])];
 
+// npm keeps the same source tree in both a workspace symlink and an install.
+const CORE_REAL = realpathSync("node_modules/@openlup/core").replaceAll("\\", "/");
+const CORE = relative(".", CORE_REAL).replaceAll("\\", "/");
 const REQUIRED_CLASS_AWARE_CALLS = [
-  "packages/core/src/subscription/subscriptionEnginePayment.ts",
+  `${CORE}/src/subscription/subscriptionEnginePayment.ts`,
   "server/domains/subscription/automaticRenewalExecution.ts",
   "server/domains/subscription/propagateSubscriptionCycleChargeFailure.ts",
 ] as const;
@@ -67,13 +71,13 @@ function productionTypeScriptFiles(directory: string): string[] {
 
 function retryCallSites(): Array<{ file: string; line: number; failureClassArg: string | null }> {
   const calls: Array<{ file: string; line: number; failureClassArg: string | null }> = [];
-  const roots = ["packages", "server", "src", "api", "vercel", "mcp"]
+  const roots = [...new Set([`${CORE}/src`, "packages", "server", "src", "api", "vercel", "mcp"])]
     .filter(existsSync);
   // Every direct, aliased-import, or property-access call site still spells the
   // exported name somewhere in its own source file. Restricting the semantic
   // program to those candidates preserves symbol resolution while avoiding a
   // full-repository typecheck inside an already large impacted-test process.
-  const files = roots.flatMap(productionTypeScriptFiles)
+  const files = [...new Set(roots.flatMap(productionTypeScriptFiles))]
     .filter((file) => /\bnextRetryAttemptAt\b/u.test(readFileSync(file, "utf8")));
   // Use the root application's default package resolution, which reads built
   // core declarations. Building core first keeps facade imports resolvable in
@@ -102,12 +106,14 @@ function retryCallSites(): Array<{ file: string; line: number; failureClassArg: 
   const isCanonicalRetrySymbol = (symbol: ts.Symbol | undefined): boolean =>
     symbol?.getName() === "nextRetryAttemptAt"
     && (symbol.declarations?.some((declaration) =>
-      /packages\/core\/(?:src|dist)\/subscription\/cycleHardening\.(?:ts|d\.ts)$/u
+      resolve(declaration.getSourceFile().fileName).replaceAll("\\", "/")
+        .startsWith(`${CORE_REAL}/`)
+      && /\/(?:src|dist)\/subscription\/cycleHardening\.(?:ts|d\.ts)$/u
         .test(declaration.getSourceFile().fileName.replaceAll("\\", "/")),
     ) ?? false);
 
   for (const file of files) {
-    if (file === "packages/core/src/subscription/cycleHardening.ts") continue;
+    if (file === `${CORE}/src/subscription/cycleHardening.ts`) continue;
     const sourceFile = program.getSourceFile(file);
     if (!sourceFile) throw new Error(`cannot load production TypeScript source ${file}`);
     const visit = (node: ts.Node): void => {

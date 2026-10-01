@@ -110,7 +110,7 @@ describe("eslint import-map boundary", () => {
 
   it("still applies the committed import map", async () => {
     const config = await loadConfig();
-    expect(restrictedImports(config, "#acquisition-case-routes")).toEqual([expect.stringContaining("Domain code must not import")]);
+    expect(restrictedImports(config, "#tester-program-email-binding")).toEqual([expect.stringContaining("Domain code must not import")]);
     expect(restrictedImports(config, "#deployment-analytics")).toEqual([]);
   });
 });
