@@ -8,10 +8,8 @@ interface Props {
   productName: string;
 }
 
-/* Galeria PDP (wzorzec kohapet): 3 zdjęcia puszki (front + 2 boki) + 3 grafiki
-   USP (brandowe, generowane per smak — src/assets/promo, wpięte w products.ts).
-   Wszystkie slajdy renderują się identycznym <img> o stałej wysokości, żeby
-   przełączanie NICZEGO nie przesuwało na stronie. */
+/* Render the images supplied by the product, using its optional hero image for
+   the first slide. A fixed image height keeps the gallery steady while switching. */
 const ProductGallery = ({ product, productName }: Props) => {
   const [activeIdx, setActiveIdx] = useState(0);
   const { t } = useTranslation("catalog");
@@ -25,9 +23,7 @@ const ProductGallery = ({ product, productName }: Props) => {
   }));
   const activeItem = items[activeIdx] ?? items[0];
 
-  // Prefetch pozostałych slajdów w czasie bezczynności, żeby kliknięcie
-  // miniatury nie czekało na sieć (webp ~25 kB; wcześniej pełne PNG ~2,4 MB
-  // ładowane dopiero na klik — stąd wolne przełączanie).
+  // Prefetch the remaining images while idle so thumbnail navigation can reuse them.
   useEffect(() => {
     const prefetch = () => {
       for (const { src } of galleryImages.slice(1)) {
@@ -67,7 +63,7 @@ const ProductGallery = ({ product, productName }: Props) => {
         />
       </div>
 
-      {/* Thumbnails — miniaturki zamiast tekstowych pigułek (wzorzec kohapet) */}
+      {/* Thumbnail controls for the supplied gallery images. */}
       <div className="flex gap-2.5 mt-4 justify-center flex-wrap">
         {items.map((item, i) => {
           const isActive = activeIdx === i;
