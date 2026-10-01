@@ -49,7 +49,7 @@ extension-data forwarding remain available to adopters. The rule has no claim
 of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
-<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-db25b027da84d267c6e19950462d6b3836f22df1d78e30160c1cf6e746cf53b5","reason":"Browser-side comment and test delta. Comments stop naming downstream files and design documents; the provider endpoint boundary test drops five exceptions for files this tree does not have, so its stale-exception check passes and its scan runs; the kit neutrality guard resolves this tree's server domains instead of an absent directory. No runtime boundary, browser contract or bundle behavior described here changes."} -->
+<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-800c31dac7624aa9edcb48ad3ce5d35755539954c87a59a46f82cababd21e700","reason":"The runtime boundary test now scans the installed core source in either a workspace link or an npm installation and explicitly requires core files. It changes no production imports, runtime boundary, or browser contract described here."} -->
 
 <!-- openlup-doc-impact {"unit":"server","digest":"sha256-677c8943f9ff430a5c5c104f7b6414a5f70c9cb0f35013a78e4b4b423776d8f1","reason":"Server-library comment delta. The admin-domain kit, feature flag, observability and service comments name downstream files by role or by their path in this tree, the rate limiter test title names its callers generically, and the payment adapter registry comment names an adapter folder generically. No server boundary described here changes."} -->
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const PERIMETERS = [
-  "packages/core",
+  "node_modules/@openlup/core",
   "db/platform",
   "src/domains/catalog",
   "server/domains/catalog",

@@ -2,13 +2,14 @@
 // Capability waves put real adapters under server/adapters/* + server/infra/* — the kernel, ports,
 // contracts, and composition root must NEVER import infra SDKs directly.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+const CORE_RUNTIME_ROOT = join(realpathSync("node_modules/@openlup/core"), "src/platform-runtime");
 const ROOTS = [
-  "packages/core/src/platform-runtime",
+  CORE_RUNTIME_ROOT,
   "src/domains/platform-runtime",
   "server/domains/platform-runtime",
   "server/runtime",
@@ -49,6 +50,7 @@ describe("platform-runtime boundary", () => {
   });
 
   it("actually scanned the platform-runtime source tree", () => {
+    expect(collectSourceFiles(CORE_RUNTIME_ROOT).length).toBeGreaterThan(0);
     const total = ROOTS.reduce((n, root) => n + collectSourceFiles(root).length, 0);
     expect(total).toBeGreaterThanOrEqual(5);
   });
