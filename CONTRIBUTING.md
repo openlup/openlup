@@ -274,6 +274,17 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+For pull requests and merge groups, the required `--policy` self-check also
+compares the exact hosted event base with the checkout's Git objects. It refuses
+edits, deletions and mode changes to existing managed or portable migrations,
+backdated versions, unbound portable forwards and non-expand-only new SQL.
+The portable manifest must preserve its prior baseline and forward prefix.
+The CLI returns a failing exit when this comparison refuses a candidate.
+This database-free comparison does not derive the live object inventory digest.
+The source contract continues to bind the manifest bytes, and the portable
+runner compares `objectInventorySha256` with the selected database catalogue
+after applying migrations (falsified by
+`server/adapters/postgres/migrationRunner.test.ts`).
 
 The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
 measured failing or aborted files, reasons, incomplete obligations and triage
@@ -307,8 +318,9 @@ check admits additive forwards under
 It refuses edits or deletions of migration history, non-expand-only SQL, a
 non-prefix portable manifest, bootstrap SQL changes, database schema types
 (`src/integrations/supabase/types.ts`) and policy registry changes
-(`config/openlup-policy-registry.json`). Such a change can be merged, but say so
-in the pull request. [Versioning and EOL](.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
+(`config/openlup-policy-registry.json`). Nonmigration schema or policy changes
+may still merge after their ordinary checks, but must be called out in the pull
+request because the release-time check refuses them. [Versioning and EOL](.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
 states the complete rule. A preview carries no release asset; GitHub's release
 attestation of the immutable release covers its annotated tag.
 

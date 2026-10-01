@@ -33,6 +33,13 @@ Each new version must exceed every preceding version in its own chain. Existing
 migration bytes and modes are immutable. The schema-5 release inventory binds
 forward bytes; the source contract binds the extended portable manifest digest.
 Database types, policy registry and bootstrap SQL remain frozen for this path.
+Required pull-request and merge-group self-check compares the exact event base
+with the candidate commit for this append-only migration rule. The preview
+producer separately compares the selected release commit with the prior preview;
+the earlier check does not replace that release-time comparison.
+The self-check validates the manifest's shape and history, while the portable
+runner checks `objectInventorySha256` against its live selected catalogue after
+applying the chain. That runtime check remains required for database acceptance.
 
 The release producer refuses destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`,
 `TYPE` or `COLUMN`, and `TRUNCATE`), renames, schema moves, ownership transfers
