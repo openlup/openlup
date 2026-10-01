@@ -14,6 +14,7 @@ import type {
   CatalogRecommendationVariant,
   CatalogRecommendationVariantReadPort,
 } from "./catalogRecommendationVariants.js";
+import { createCatalogRecommendationVariantReadPort } from "./catalogRecommendationVariants.js";
 import { TEST_RECOMMENDATION_POLICIES } from "../../../src/lib/testSupport/recommendationPolicyTestSupport.js";
 import type { BuildCartRecommendationPolicies } from "../../../src/domains/commerce/recommendationPolicyDeps.js";
 
@@ -366,3 +367,40 @@ function availability(
     source: "test",
   };
 }
+
+describe("catalog recommendation variants", () => {
+  it("derives each variant's purchase modes from its SKU's stored sellability", async () => {
+    const flags: Record<string, CatalogProduct["primarySku"]["sellability"]> = {
+      both: { oneTime: true, subscription: true },
+      "one-time": { oneTime: true, subscription: false },
+      subscription: { oneTime: false, subscription: true },
+      neither: { oneTime: false, subscription: false },
+      absent: undefined,
+    };
+    const [base] = await catalogPort().listProducts();
+    const products: CatalogProduct[] = Object.entries(flags).map(([name, sellability]) => {
+      const variant = {
+        ...base!.primarySku,
+        sku: `SKU-${name}`,
+        productSlug: name,
+        variantId: `variant-${name}`,
+        ...(sellability ? { sellability } : {}),
+      };
+      return { ...base!, id: `product-${name}`, slug: name, primarySku: variant, variants: [variant] };
+    });
+
+    const variants = await createCatalogRecommendationVariantReadPort({
+      async listProducts() { return products; },
+      async getProductBySlug() { return null; },
+      async listAllergens() { return []; },
+    }).listRecommendationVariants();
+
+    expect(Object.fromEntries(variants.map((variant) => [variant.slug, variant.permittedPurchaseModes]))).toEqual({
+      both: ["one_time", "subscription"],
+      "one-time": ["one_time"],
+      subscription: ["subscription"],
+      neither: [],
+      absent: ["one_time", "subscription"],
+    });
+  });
+});

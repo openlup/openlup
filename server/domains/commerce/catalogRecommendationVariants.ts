@@ -1,5 +1,5 @@
 import type { CatalogReadPort } from "../../../src/domains/catalog/ports.js";
-import type { CatalogProduct } from "../../../src/domains/catalog/types.js";
+import type { CatalogProduct, CatalogSku } from "../../../src/domains/catalog/types.js";
 import type { RecommendationVariant } from "../../../src/domains/commerce/recommendationEngine.js";
 import type { CommerceOfferAvailabilityRequestItem } from "../../../src/domains/commerce/offerAvailabilityContracts.js";
 
@@ -31,10 +31,12 @@ export function createCatalogRecommendationVariantReadPort(
 ): CatalogRecommendationVariantReadPort {
   return {
     async listRecommendationVariants() {
-      return catalogProductsToRecommendationVariants(await catalogReadPort.listProducts()).map((variant) => ({
+      const products = await catalogReadPort.listProducts();
+      const skuByVariantId = new Map<string, CatalogSku>(products.flatMap((product) =>
+        product.variants.map((sku) => [sku.variantId, sku] as const)));
+      return catalogProductsToRecommendationVariants(products).map((variant) => ({
         ...variant,
-        // Legacy published variants historically served both purchase modes.
-        permittedPurchaseModes: ["one_time", "subscription"] as const,
+        permittedPurchaseModes: permittedPurchaseModes(skuByVariantId.get(variant.variantId)?.sellability),
       }));
     },
   };
@@ -64,4 +66,15 @@ export function catalogProductsToRecommendationVariants(
   }
 
   return variants;
+}
+
+/** The purchase modes a SKU's stored sellability allows. A catalog source that
+ *  states no sellability keeps the historical answer: both modes. */
+function permittedPurchaseModes(
+  sellability: CatalogSku["sellability"],
+): CatalogRecommendationVariant["permittedPurchaseModes"] {
+  const modes: CommerceOfferAvailabilityRequestItem["checkoutMode"][] = [];
+  if (sellability?.oneTime ?? true) modes.push("one_time");
+  if (sellability?.subscription ?? true) modes.push("subscription");
+  return modes;
 }

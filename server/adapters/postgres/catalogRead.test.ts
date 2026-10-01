@@ -8,7 +8,7 @@ const PRODUCT_ID = "4f1c0e10-0001-4000-8000-000000000001";
 const SMALL_SKU_ID = "4f1c0e10-0002-4000-8000-000000000001";
 const LARGE_SKU_ID = "4f1c0e10-0002-4000-8000-000000000002";
 
-function executor(): { sql: string[]; client: PgQueryExecutor } {
+function executor(primarySkuId: string | null = SMALL_SKU_ID): { sql: string[]; client: PgQueryExecutor } {
   const sql: string[] = [];
   return {
     sql,
@@ -24,6 +24,7 @@ function executor(): { sql: string[]; client: PgQueryExecutor } {
             description: null,
             ingredients: ["Barley 40%"],
             marketing_content: { line_name: "Reference", format_marketing_copy: "Box" },
+            primary_sku_id: primarySkuId,
           }] };
         }
         return { rows: [
@@ -112,5 +113,43 @@ describe("Postgres catalog read adapter", () => {
       { variantIds: [SMALL_SKU_ID, LARGE_SKU_ID], atTime: "2026-08-31T12:00:00.000Z", ...DEFAULT_CATALOG_PRICING_REGION },
       { variantIds: [SMALL_SKU_ID, LARGE_SKU_ID], atTime: "2026-08-31T12:00:00.000Z", ...DEFAULT_CATALOG_PRICING_REGION },
     ]);
+  });
+
+  it("selects the declared primary and carries each SKU's stored flags", async () => {
+    const probe = executor();
+    const [product] = await createPostgresCatalogReadPort(probe.client).listProducts();
+
+    expect(probe.sql[0]).toContain("primary_sku_id");
+    expect(product?.variants[0]?.sellability).toEqual({ oneTime: true, subscription: false });
+    expect(product?.variants[1]?.sellability).toEqual({ oneTime: true, subscription: true });
+  });
+
+  it("takes the declared primary, not the lowest SKU id", async () => {
+    const [product] = await createPostgresCatalogReadPort(executor(LARGE_SKU_ID).client).listProducts();
+
+    expect(product?.primarySku.sku).toBe("REFERENCE-ALPHA-L");
+    expect(product?.variants.map((variant) => variant.variantId)).toEqual([SMALL_SKU_ID, LARGE_SKU_ID]);
+  });
+
+  it("refuses an active product without a declared primary on every sellable read", async () => {
+    const port = createPostgresCatalogReadPort(executor(null).client);
+    const refusal = {
+      name: "CatalogPrimarySkuUnresolvedError",
+      code: "catalog_primary_sku_unresolved",
+      productSlug: "reference-alpha",
+      reason: "primary_sku_missing",
+    };
+
+    await expect(port.listProducts()).rejects.toMatchObject(refusal);
+    await expect(port.getProductBySlug("reference-alpha")).rejects.toMatchObject(refusal);
+    await expect(port.listAllergens()).rejects.toMatchObject(refusal);
+  });
+
+  it("keeps the placeholder on the historical read", async () => {
+    const [product] = await createPostgresCatalogReadPort(executor(null).client, { includeArchived: true })
+      .listProducts();
+
+    expect(product?.primarySku).toMatchObject({ variantId: "", publicationStatus: "coming_soon" });
+    expect(product?.variants).toHaveLength(2);
   });
 });

@@ -24,6 +24,7 @@ export function validateCatalogDraft(payload: CatalogDraftPayload, registry: Cat
   const definition = registry.resolve(product.type);
   if (!definition) return { valid: false, issues: [{ path: "product.type", code: "type_not_installed" }] };
   const dimensions = new Map(definition.dimensions.map((dimension) => [dimension.key, dimension]));
+  const netContentKey = definition.dimensions.find((dimension) => dimension.kind === "quantity" && dimension.role === "net_content")?.key;
   if (new Set(product.dimensions).size !== product.dimensions.length) add("product.dimensions", "duplicate_dimension");
   product.dimensions.forEach((key) => { if (!dimensions.has(key)) add(`product.dimensions.${key}`, "dimension_not_installed"); });
   if (product.sharedContent !== undefined) {
@@ -68,14 +69,24 @@ export function validateCatalogDraft(payload: CatalogDraftPayload, registry: Cat
     if (sku.netContent) {
       if (!validateCatalogQuantity(sku.netContent, definition) || !definition.netContentUnits.includes(sku.netContent.unit)) add(`${path}.netContent`, "net_content_invalid");
     } else missing(`${path}.netContent`, "net_content_missing");
+    const netContentOption = netContentKey === undefined ? undefined : sku.options[netContentKey];
+    if (netContentOption?.kind === "quantity" && sku.netContent
+      && canonicalCatalogOption(netContentOption) !== canonicalCatalogOption({ kind: "quantity", value: sku.netContent })) add(`${path}.options.${netContentKey}`, "net_content_option_mismatch");
     if (sku.grossMass && (sku.grossMass.dimension !== "mass" || !validateCatalogQuantity(sku.grossMass, definition))) add(`${path}.grossMass`, "gross_mass_invalid");
     (sku.identifiers ?? []).forEach((identifier, identifierIndex) => {
-      const identity = JSON.stringify([identifier.scheme, identifier.issuer, identifier.value]);
-      if (identifiers.has(identity)) add(`${path}.identifiers.${identifierIndex}`, "duplicate_trade_identifier");
+      const at = `${path}.identifiers.${identifierIndex}`;
+      // One GTIN is one identity in any 8-, 12-, 13- or 14-digit spelling, whatever its issuer text.
+      const gtin = identifier.scheme === "gs1:gtin" && isValidGtin(identifier.value) ? identifier.value.padStart(14, "0") : null;
+      const identity = JSON.stringify(gtin === null ? [identifier.scheme, identifier.issuer, identifier.value] : [identifier.scheme, gtin]);
+      if (identifiers.has(identity)) add(at, "duplicate_trade_identifier");
       identifiers.add(identity);
-      if (identifier.scheme === "gs1:gtin" && !isValidGtin(identifier.value)) add(`${path}.identifiers.${identifierIndex}`, "trade_identifier_invalid");
+      if (identifier.scheme === "gs1:gtin" && gtin === null) add(at, "trade_identifier_invalid");
+      if (identifier.scheme !== "gs1:gtin" && identifier.scheme.startsWith("gs1:")) add(at, "trade_identifier_scheme_unsupported");
+      // Checked here, not in the wire schema, so a stored revision without a quantity stays readable.
+      if (identifier.packagingLevel === "case" ? (identifier.quantity ?? 0) < 2 : (identifier.quantity ?? 1) !== 1) add(`${at}.quantity`, "trade_identifier_quantity_invalid");
     });
     if (!sku.identifiers?.length) commercial.push({ path: `${path}.identifiers`, code: "channel_identity_not_assessed" });
+    if (!sku.identifiers?.some((identifier) => identifier.scheme === "gs1:gtin" && identifier.packagingLevel === "unit")) commercial.push({ path: `${path}.identifiers`, code: "unit_trade_identifier_missing" });
     if (!sku.priceRef) commercial.push({ path: `${path}.priceRef`, code: "price_reference_missing" });
     if (!sku.logisticsRef) commercial.push({ path: `${path}.logisticsRef`, code: "logistics_reference_missing" });
   });

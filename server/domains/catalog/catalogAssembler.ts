@@ -7,6 +7,7 @@ import type {
   CatalogSku,
 } from "../../../src/domains/catalog/types.js";
 import { CATALOG_ALLERGEN_SLUGS } from "../../../src/domains/catalog/types.js";
+import { CatalogPrimarySkuUnresolvedError } from "../../../src/domains/catalog/ports.js";
 import { readCatalogMarketingContent } from "../../../src/domains/catalog/catalogContentSerialization.js";
 
 /**
@@ -20,6 +21,9 @@ import { readCatalogMarketingContent } from "../../../src/domains/catalog/catalo
  * projection does not ask for it at all, and a row shape that insisted on it
  * would make the read unrunnable on an adopter's schema rather than merely
  * poorer.
+ *
+ * `primary_sku_id` is declared on both schemas and both projections ask for it.
+ * It is optional for the same hand-assembly reason, and absent reads as null.
  */
 export interface CatalogProductRow {
   id: string;
@@ -30,6 +34,7 @@ export interface CatalogProductRow {
   ingredients?: string[];
   allergens?: string[];
   marketing_content?: Record<string, unknown>;
+  primary_sku_id?: string | null;
 }
 
 /** Same rule as {@link CatalogProductRow}: declared columns required, overlay
@@ -52,8 +57,20 @@ export interface CatalogSkuRow {
   requires_pet_profile?: boolean;
 }
 
+/** How {@link assembleProduct} answers a declared primary SKU that does not resolve. */
+export interface AssembleProductOptions {
+  /** "refuse" (default): the sellable-catalog read. "placeholder": the historical includeArchived read. */
+  unresolvedPrimary?: "refuse" | "placeholder";
+}
+
 /**
  * Build a CatalogProduct from a product row + its SKU rows.
+ *
+ * Variants are ordered by SKU id, and the primary SKU is the variant that
+ * `primary_sku_id` names, never a row position. When it names none of the rows,
+ * a product without SKU rows, a product that is not active and the historical
+ * read keep the neutral placeholder; the sellable read refuses the product with
+ * {@link CatalogPrimarySkuUnresolvedError}.
  *
  * When the row carries rich Wave-2 `marketing_content.content`, the product's
  * content fields (displayName / lineName / species / route / composition /
@@ -65,9 +82,10 @@ export interface CatalogSkuRow {
 export function assembleProduct(
   row: CatalogProductRow,
   skuRows: CatalogSkuRow[],
+  options: AssembleProductOptions = {},
 ): CatalogProduct {
-  const variants = skuRows.map((skuRow) => mapSku(skuRow, row.slug));
-  const primarySku = variants[0] ?? makeEmptySku(row.slug);
+  const variants = [...skuRows].sort(bySkuId).map((skuRow) => mapSku(skuRow, row.slug));
+  const primarySku = resolvePrimarySku(row, variants, options);
   const publicationStatus = mapPublicationStatus(row.status);
   const content = readCatalogMarketingContent(row.marketing_content);
 
@@ -143,6 +161,11 @@ function mapSku(row: CatalogSkuRow, productSlug: CatalogProductSlug): CatalogSku
     unit: row.unit_form_code === "jar" ? "jar" : "can",
     netWeightGrams: row.net_weight_g ?? 0,
     isAddon: row.is_addon === true,
+    // The stored flags. `=== true`, like is_addon: a null column fails closed.
+    sellability: {
+      oneTime: row.sellable_standalone === true,
+      subscription: row.sellable_in_subscription === true,
+    },
     pricing: {
       status: "not_configured",
       listPrice: null,
@@ -153,6 +176,33 @@ function mapSku(row: CatalogSkuRow, productSlug: CatalogProductSlug): CatalogSku
       },
     },
   };
+}
+
+function resolvePrimarySku(
+  row: CatalogProductRow,
+  variants: CatalogSku[],
+  options: AssembleProductOptions,
+): CatalogSku {
+  const declared = row.primary_sku_id
+    ? variants.find((variant) => variant.variantId === row.primary_sku_id)
+    : undefined;
+  if (declared) return declared;
+  // Nothing is sellable without SKU rows or on a product that is not active, and
+  // the historical read resolves what a customer already committed to, so these
+  // keep the placeholder. It carries no sellability and is never quoted.
+  if (variants.length === 0 || row.status !== "active" || options.unresolvedPrimary === "placeholder") {
+    return makeEmptySku(row.slug);
+  }
+  throw new CatalogPrimarySkuUnresolvedError(
+    row.slug,
+    row.primary_sku_id ? "primary_sku_not_in_rows" : "primary_sku_missing",
+  );
+}
+
+/** Code-unit order, never localeCompare: for canonical lowercase UUIDs it is the
+ *  order of Postgres `ORDER BY id`. */
+function bySkuId(left: CatalogSkuRow, right: CatalogSkuRow): number {
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
 function mapPublicationStatus(dbStatus: string): CatalogPublicationStatus {
