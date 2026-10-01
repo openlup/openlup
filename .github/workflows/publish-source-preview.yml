@@ -187,8 +187,14 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: |
-          gh release create "openlup-source-preview/$PREVIEW_NUMBER" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --prerelease \
-            --title "OpenLup source preview $PREVIEW_NUMBER" --notes-file "$RELEASE_OUTPUT_DIR/notes.md"
+          tag="openlup-source-preview/$PREVIEW_NUMBER"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)" = "$(git rev-parse "refs/tags/$tag")"
+          draft_id="$(jq -n --arg tag "$tag" --arg name "OpenLup source preview $PREVIEW_NUMBER" \
+            --rawfile body "$RELEASE_OUTPUT_DIR/notes.md" \
+            '{tag_name:$tag,name:$name,body:$body,draft:true,prerelease:true}' | \
+            gh api --method POST "repos/$GITHUB_REPOSITORY/releases" --input - --jq .id)"
+          [[ "$draft_id" =~ ^[1-9][0-9]*$ ]]
+          echo "RELEASE_ID=$draft_id" >> "$GITHUB_ENV"
       - name: Refuse publication if the draft differs
         env:
           GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}
@@ -199,8 +205,8 @@ jobs:
           GH_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: |
           test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
-          gh release edit "openlup-source-preview/$PREVIEW_NUMBER" --repo "$GITHUB_REPOSITORY" \
-            --draft=false --prerelease --notes-file "$RELEASE_OUTPUT_DIR/notes.md"
+          printf '{"draft":false}' | gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --input - \
+            --jq '{id,tag_name,draft,prerelease,immutable,published_at}'
       - name: Verify the completed immutable release and its tag
         env:
           GITHUB_TOKEN: ${{ github.token }}

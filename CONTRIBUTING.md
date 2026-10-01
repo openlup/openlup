@@ -301,7 +301,9 @@ journey has its own evidence; a build or mocked test does not stand in for it.
 The required test command also includes the source preview release falsifiers
 (`scripts/source-preview-release.test.ts`). They exercise the package producer's
 release-event identity and live immutable-release refusals before checkout,
-and pin tag-attestation, pack and OIDC publish ordering. Under `scripts/packages`,
+and pin tag-attestation, pack and OIDC publish ordering. The source preview
+falsifiers also check bounded 404 reads of the exact draft ID returned by
+creation and refusal of a changed draft before publication. Under `scripts/packages`,
 the command includes package release-shape checks and the test that loads the
 lint configuration with a conditional `imports` map.
 The public test job separately runs the materialized command-contract
@@ -416,6 +418,9 @@ may still merge after their ordinary checks, but must be called out in the pull
 request because the release-time check refuses them. [Versioning and EOL](.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
 states the complete rule. A preview carries no release asset; GitHub's release
 attestation of the immutable release covers its annotated tag.
+The protected release job creates the draft with the saved note bytes, checks
+that same release ID and publishes by ID, changing only its draft flag. It never
+discovers a draft through a paginated release list.
 
 The workflow's prepare step also refuses, before it tags, a preview while a
 tracked code file carries a removal marker
