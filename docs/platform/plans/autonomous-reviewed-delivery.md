@@ -92,6 +92,10 @@ run, a dashboard, service framework or permanent third reviewer.
 1. The supervisor implements within authorized scope and commits the candidate.
    Run the existing mechanical verification as required. Collect the exact base,
    head, tree, complete changed-path inventory and approved criteria/scope.
+   Carry the programme outcome, exclusions, sufficient completion evidence and
+   delivery boundary in existing criteria and task context, following the
+   [agent guide](../AGENT_GUIDE.md#change-and-verification-rules). Review and
+   discoveries do not create new programme obligations.
 2. The initial candidate receives one short independent review for ordinary
    prose or bounded routine code. Sensitive/material behaviour, executable
    instructions, contracts and controls require two independent parallel bounded
@@ -137,7 +141,10 @@ run, a dashboard, service framework or permanent third reviewer.
    At most two automatic continuation cycles are allowed across repair and
    full-review escalation. On exhaustion preserve blocked evidence and regroup
    the execution approach within actual authority; never silently reset the
-   counter or auto-admit. Changed intent requires explicit regrouping. An
+   counter or auto-admit. Agent or session changes carry unresolved finding
+   cards, failed attempts, consumed budgets and evidence expiry in existing
+   task state; changing context cannot restart admission or erase history.
+   Changed intent requires explicit regrouping. An
    ancestor-preserving base integration requires fresh full-scope review,
    preserving history and budget.
    The supervisor needs no repeat owner approval for unchanged authorized goals.

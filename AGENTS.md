@@ -57,17 +57,42 @@ worktree and continue there; do not create another for the same task. Keep the
 coordination checkout clean and leave other tasks' worktrees, branches and
 processes alone. Read-only reviewers do not need their own worktree.
 
-Keep one compact task record of outcome, scope, authority, acceptance, risk and
-execution/proof plan. A small task needs no separate planning ceremony; a
-separate specification is justified by an ambiguous or durable contract.
-Execution notes may evolve, but approved goals, guarantees and authority cannot
-silently change. Ask whether removing the cause, using an existing seam or a
-direct change delivers the result faster with less maintenance and stronger
-evidence before adding an abstraction, dependency or gate. Explain a concrete
-benefit over the nearest simpler alternative when one exists; do not invent an
-alternatives essay for obvious work. Complexity findings need a concrete cost
-or unnecessary behaviour; style preferences do not block. Existing controls
-and acceptance evidence remain required.
+Keep one compact task record of a finite observable outcome, smallest complete
+scope, exclusions, authority and delivery boundary, acceptance and sufficient
+completion evidence, risk and execution/proof plan. A small task needs no
+separate planning ceremony; a separate specification is justified by an
+ambiguous or durable contract. Plans, implementation, review, delegation and
+handoffs inherit the approved programme boundary. Execution notes may evolve;
+discoveries, review advice and new waves cannot silently add goals, acceptance
+obligations or authority. Material changes use the applicable owner decision.
+
+Necessary in-scope recovery proceeds autonomously: it closes approved acceptance
+or prevents this change or its necessary delivery route from violating an
+applicable contract or invariant. Missing mandatory evidence still blocks
+delivery. An unrelated pre-existing defect or optional improvement does not
+become a new acceptance obligation. Briefly report consequential discoveries in
+existing task evidence; do not automatically repair them, open issues or create
+successor waves. A failing mandatory gate remains binding even when its cause is
+out of scope: diagnose safely and report the blocker if recovery exceeds authority.
+
+Prefer removing the cause, an existing seam or a direct change before adding a
+material abstraction, dependency, fallback, control or persistent process. Name
+the current requirement or reachable failure it protects and explain its benefit
+over the smallest adequate alternative, considering implementation, verification,
+operation and future comprehension/change cost. Hypothetical reuse and tests
+introduced only for the new mechanism do not independently justify it. Obvious
+small tasks need no alternatives essay, scorecard or new artifact. Complexity
+findings need a concrete cost or unnecessary behaviour; style preferences do not
+block. Simplicity preserves correctness, safety, required compatibility and proof.
+
+Handoffs and context/session changes carry the approved outcome, scope,
+exclusions and delivery boundary, sufficient evidence, remaining work, unresolved
+blockers, failed attempts and consumed retry budgets in existing task state.
+A new agent, session or renamed symptom does not reset limits or evidence expiry.
+Once acceptance, required review and checks are complete, perform only the
+remaining authorized delivery steps and finish. Do not start cosmetic polish,
+reassurance review or an automatic successor. Budget exhaustion or missing proof
+is a blocker, not completion. Existing controls and authority remain binding.
 
 Follow the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) for accountability,
 DCO and delivery authority. The [autonomous delivery intent](docs/platform/plans/autonomous-reviewed-delivery-intent.md)

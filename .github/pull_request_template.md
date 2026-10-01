@@ -13,7 +13,7 @@ one-time public-root projection is not an ongoing authoring route. -->
 ## Scope
 
 - One concern per pull request. If this carries more than one, say why here.
-- Task record (outcome, scope, authority, acceptance, risk and proof plan):
+- Task record (finite outcome, scope and exclusions, authority and delivery boundary, acceptance and sufficient completion evidence, risk and proof plan):
 - Tests added or updated for the behaviour this changes:
 - Affected documentation owner sections and meaningful updates:
 - Scoped no-impact explanations, if any, and why the existing text remains correct:
