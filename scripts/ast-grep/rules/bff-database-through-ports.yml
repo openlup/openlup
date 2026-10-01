@@ -65,6 +65,11 @@ rule:
   any:
     - { kind: identifier, regex: "^createClient$" }
     - { kind: property_identifier, regex: "^createClient$" }
+    - { kind: shorthand_property_identifier, regex: "^createClient$" }
+    - all:
+        - any: [ { kind: class_declaration }, { kind: class }, { kind: abstract_class_declaration } ]
+        - has: { field: name, kind: type_identifier, regex: "^createClient$" }
+        - not: { inside: { kind: ambient_declaration, stopBy: end } }
     - kind: member_expression
       has: { field: property, regex: "^rpc$" }
     - kind: member_expression
@@ -174,6 +179,11 @@ rule:
   any:
     - { kind: identifier, regex: "^createClient$" }
     - { kind: property_identifier, regex: "^createClient$" }
+    - { kind: shorthand_property_identifier, regex: "^createClient$" }
+    - all:
+        - any: [ { kind: class_declaration }, { kind: class }, { kind: abstract_class_declaration } ]
+        - has: { field: name, kind: type_identifier, regex: "^createClient$" }
+        - not: { inside: { kind: ambient_declaration, stopBy: end } }
     - kind: member_expression
       has: { field: property, regex: "^rpc$" }
     - kind: member_expression

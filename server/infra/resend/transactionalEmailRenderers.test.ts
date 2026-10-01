@@ -30,7 +30,7 @@ function expectCustomerOrderReference(out: { subject: string; html: string; text
 
 function expectPreviewAssets(out: { html: string }, locale: "en" = "en", contentImages = 0) {
   expect(locale).toBe("en");
-  // The neutral default presentation emits no chrome image (logo or banner), so
+  // The explicitly injected neutral presentation emits no chrome image (logo or banner), so
   // every <img> is a content illustration the caller counts (a guide cover).
   expect(out.html.match(/<img\b/g) ?? []).toHaveLength(contentImages);
 }
@@ -105,7 +105,7 @@ describe("transactionalEmailRenderers", () => {
       items: [],
       totals: null,
       signal,
-    }, BASE);
+    }, BASE, exampleEmailPresentation);
     const recovery = renderCheckoutRecovery({
       to: "a@example.com",
       firstName: "Anna",
@@ -116,7 +116,7 @@ describe("transactionalEmailRenderers", () => {
       reminderHours: 1,
       outboxEventId: "e0-recovery",
       signal,
-    }, BASE);
+    }, BASE, exampleEmailPresentation);
 
     expect(draft.text).toContain("Fistaszek");
     expect(recovery.text).toContain("Fistaszek");
@@ -165,6 +165,7 @@ describe("transactionalEmailRenderers", () => {
         signal,
       },
       BASE,
+      exampleEmailPresentation,
     );
     expect(out.subject).toContain("Mamy Wasze zamówienie");
     expectCustomerOrderReference(out);
@@ -181,6 +182,7 @@ describe("transactionalEmailRenderers", () => {
     const out = renderPaymentFailed(
       { to: "a@example.com", firstName: "Anna", orderId: ORDER_ID, amountLabel: "129,99 zł", recoveryToken: "rcv_123", mode: "subscription_cycle", outboxEventId: "e2", signal },
       BASE,
+      exampleEmailPresentation,
     );
     expect(out.subject).toContain("nie przeszła");
     expect(out.subject).toContain("nie przeszła");
@@ -196,6 +198,7 @@ describe("transactionalEmailRenderers", () => {
     const out = renderCheckoutExpired(
       { to: "a@example.com", firstName: "Anna", orderId: ORDER_ID, amountLabel: "129,99 zł", recoveryToken: "rcv_expired_123", outboxEventId: "e2-expired", signal },
       BASE,
+      exampleEmailPresentation,
     );
     expect(out.subject).toContain("Dokończ płatność");
     expectCustomerOrderReference(out);
@@ -210,6 +213,7 @@ describe("transactionalEmailRenderers", () => {
     const out = renderCheckoutExpired(
       { to: "a@example.com", firstName: "Anna", orderId: ORDER_ID, amountLabel: "129,99 zł", outboxEventId: "e2-expired", signal },
       BASE,
+      exampleEmailPresentation,
     );
     expect(out.subject).toContain("Rezerwacja zamówienia");
     expect(out.subject).toContain("wygasła");
@@ -225,6 +229,7 @@ describe("transactionalEmailRenderers", () => {
     const out = renderOrderCanceled(
       { to: "a@example.com", firstName: "Anna", orderId: ORDER_ID, amountLabel: "129,99 zł", outboxEventId: "e3", locale: "en", signal },
       BASE,
+      exampleEmailPresentation,
     );
     expect(out.subject).toContain("has been canceled");
     expectCustomerOrderReference(out);
@@ -239,6 +244,7 @@ describe("transactionalEmailRenderers", () => {
     const out = renderOrderRefunded(
       { to: "a@example.com", firstName: "Anna", orderId: ORDER_ID, amountLabel: "129,99 zł", outboxEventId: "e4", signal },
       BASE,
+      exampleEmailPresentation,
     );
     expect(out.subject).toContain("został zrealizowany");
     expectCustomerOrderReference(out);
@@ -258,7 +264,7 @@ describe("transactionalEmailRenderers", () => {
       trackingUrl: "https://track.example/JD0123456789",
       outboxEventId: "e5",
       signal,
-    }, BASE);
+    }, BASE, exampleEmailPresentation);
     expect(out.subject).toContain("ruszyła w drogę");
     expectCustomerOrderReference(out);
     expect(out.html).toContain("Paczka w drodze");
@@ -276,6 +282,7 @@ describe("transactionalEmailRenderers", () => {
     const out = renderShipmentDelivered(
       { to: "a@example.com", firstName: "Anna", petName: "Fistaszek", orderId: ORDER_ID, outboxEventId: "e6", signal },
       BASE,
+      exampleEmailPresentation,
     );
     expect(out.subject).toContain("dotarła");
     expectCustomerOrderReference(out);
@@ -291,6 +298,7 @@ describe("transactionalEmailRenderers", () => {
     const out = renderShipmentException(
       { to: "a@example.com", firstName: "Anna", orderId: ORDER_ID, outboxEventId: "e7", signal },
       BASE,
+      exampleEmailPresentation,
     );
     expectCustomerOrderReference(out);
     expect(out.html).toContain("Potrzebujemy chwili dłużej");

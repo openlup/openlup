@@ -184,6 +184,8 @@ presentation argument for callers. A host that changes the selection must
 verify its server module resolution and rendered output. The public source
 does not declare a managed serverless packaging rule for this alias.
 
+<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-84ef36065210de8793d129aa43bf1e9f5668c4958764b2284b913abe1bda7289","reason":"Test-only delta. Neutral asset assertions now inject the example presentation explicitly; the separate default-selection test still renders through the import-map alias. The renderer default, caller argument and host verification boundary described here are unchanged."} -->
+
 Canonical production hostnames come from
 `config/site-routes.json.productionHosts`. Configure this list for an adopting
 deployment before enabling live Tpay settlement: every callback must use HTTPS
@@ -192,8 +194,6 @@ detect preview emails linking to production. An empty list admits no live Tpay
 callback and gives the email check no production domains to recognize. See the
 [pending preview upgrade notes](../../.github/VERSIONING_AND_EOL.md#pending-preview-upgrade-notes-public-coordinates)
 for the accompanying `OPENLUP_` configuration rename.
-
-<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-9dd9bfa8907390ca93422b31365d961d2da1804e69668df8009068b140134753","reason":"Comment-only delta. Five provider adapter comments stop naming downstream documents and guard files. No provider boundary, activation gate or host capability described here changes."} -->
 
 ## Preview posture
 

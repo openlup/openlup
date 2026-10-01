@@ -224,7 +224,10 @@ whether by name, as a member, through a string index, through direct object
 destructuring (including aliases and defaults), through `.call`, `.apply`
 or `.bind`, or behind parentheses, a comma operator, a type or non-null
 assertion or a prefix `await`, `void`, `!` or `typeof` (standard static
-`Array`, `Buffer` and typed-array `.from` methods excepted). Direct
+`Array`, `Buffer` and typed-array `.from` methods excepted). Client-factory
+references include shorthand object values and runtime class names. A pure
+alias/interface name by itself, or ordinary string data, is not a client-factory
+value. Direct
 `logger` or `console` diagnostics may print the SDK package name; a stored
 path remains blocked because it can be used for a module load. Domain code under
 `server/domains`, `src/domains` and `packages/core/src` reads no environment
