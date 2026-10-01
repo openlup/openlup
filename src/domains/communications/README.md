@@ -46,6 +46,11 @@ single boundary for transactional/marketing email side effects.
   every Node sender renders through the same code; that portability was
   originally for the Deno edge senders, retired 2026-09-05. `EmailRenderPort` in
   `ports.ts` lets a fork swap the renderer.
+- Email presentation selection: the root `package.json` import map owns
+  `#email-presentation`; public source selects
+  `email/exampleEmailPresentation.ts`. The unsubscribe route and server
+  renderers use that same alias. There is no separate deployment presentation
+  selector in this domain.
 - Email canon registry: `emailCanon.ts` exports `EMAIL_CANON_REGISTRY`,
   `EMAIL_CANON_DYNAMIC_PATTERNS`, `EMAIL_CANON_LIFECYCLE_DECISIONS`, and
   `findEmailCanonEntry()`. Every runtime sender slug or dynamic slug family must

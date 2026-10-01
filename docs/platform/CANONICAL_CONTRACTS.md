@@ -166,7 +166,7 @@ This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see
 [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-2ac5809c2578cbed2a2eb26abfc2bebfd8b992396ff921304da227c4d840c74a","reason":"The two changed pins bind the existing price-setup creation forward and its preview definition to SQL that compares policy validity at UTC millisecond precision. The allowlist still covers the same path and two signatures, with null creation predecessors and the apply definition unchanged. The separate-review and exact-byte admission contract stated here remains accurate."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-e22ae8fa0b2c6a3837b88e4778023484b26464be7670f5ba823be5a268f3459b","reason":"The two changed pins bind the existing price-setup creation forward and its preview definition to SQL that compares policy validity at UTC millisecond precision. The allowlist still covers the same path and two signatures, with null creation predecessors and the apply definition unchanged. The separate-review and exact-byte admission contract stated here remains accurate."} -->
 
 Future source preview cuts require a publishable npm package at the matching
 lockstep `0.<n>.0` version. Before such a cut, `release:bump` prepares that
