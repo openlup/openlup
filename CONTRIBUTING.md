@@ -252,12 +252,18 @@ enforces, blocks only at zero findings, and has at least one valid and one
 invalid case. A first-line `ast-grep-ignore` followed by a blank line is
 file-wide and is rejected, including BOM-prefixed or triple-slash comments,
 even when it names a rule. A line exception must
-sit directly above its target; an unused exception is rejected. The scan and
-the rule tests are fast for the whole tree, and
-`npx --no -- ast-grep scan <files>` checks named files in milliseconds. Run it
-after each change and before committing rather than
-waiting for the hosted job. Keep `--no --`: without it npx can fetch an
-unrelated registry package of the same name when the local binary is missing.
+sit directly above its target; an unused exception is rejected. After each edit,
+run a focused scan with both suppression checks; replace the example path with
+your changed files:
+
+```sh
+npx --no -- ast-grep scan --error=no-suppress-all \
+  --error=unused-suppression server/bff/admin/platform/me.ts
+```
+
+Before committing, run `npm run lint` for the independent file-wide-ignore
+check, whole-tree scan, rule tests and ESLint. Keep `--no --`: without it npx can
+fetch an unrelated registry package of the same name when the local binary is missing.
 While iterating, `npx --no -- ast-grep run --pattern '<code pattern>' --lang ts`
 lists every structural match, and `--rewrite '<replacement>' --update-all`
 applies a mechanical edit; call the binary `ast-grep`, because `sg` is also a
@@ -366,7 +372,10 @@ after applying migrations (falsified by
 
 The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
 measured failing or aborted files, reasons, incomplete obligations and triage
-ownership. `test-full` and `pgtap` expose raw failures in separate diagnostic
+ownership. It is a dated measurement. When triaging a change, compare fresh
+Vitest failure identities and per-file assertion counts, and pgTAP file summaries,
+with the exact PR base, normalizing log timestamps and ANSI formatting first.
+`test-full` and `pgtap` expose raw failures in separate diagnostic
 jobs. They do not suppress tests or normalize exits. Installation, database
 start/replay/cleanup and unexplained new failures block delivery; naming those
 failures does not waive broken CI. The six existing required contexts retain
