@@ -50,3 +50,41 @@ function catalogFixture(composition?: { kcalPer100g: number | null }): CatalogRe
     async listAllergens() { return []; },
   };
 }
+
+describe("legacy commerce quote catalog adapter: stored sellability and the declared primary", () => {
+  async function quoteFacts() {
+    const products = [{
+      slug: "neutral",
+      species: CATALOG_SPECIES[0],
+      primarySku: { variantId: "variant-b" },
+      variants: [
+        { sku: "SKU-A", variantId: "variant-a", sellability: { oneTime: true, subscription: false } },
+        { sku: "SKU-B", variantId: "variant-b", sellability: { oneTime: false, subscription: true } },
+        { sku: "SKU-C", variantId: "variant-c" },
+      ],
+    }] as unknown as Awaited<ReturnType<CatalogReadPort["listProducts"]>>;
+    const items = await createLegacyCommerceQuoteCatalogReadPort({
+      async listProducts() { return products; },
+      async getProductBySlug() { return null; },
+      async listAllergens() { return []; },
+    }).listQuoteCatalogItems();
+    return new Map(items.map((item) => [item.skuCode, item]));
+  }
+
+  it("passes each SKU's stored flags", async () => {
+    const items = await quoteFacts();
+
+    expect(items.get("SKU-A")?.sellability).toEqual({ oneTime: true, subscription: false });
+    expect(items.get("SKU-B")?.sellability).toEqual({ oneTime: false, subscription: true });
+  });
+
+  it("treats a SKU without stored flags as sellable in both modes", async () => {
+    expect((await quoteFacts()).get("SKU-C")?.sellability).toEqual({ oneTime: true, subscription: true });
+  });
+
+  it("marks only the declared primary as the primary SKU", async () => {
+    const items = await quoteFacts();
+
+    expect([...items.values()].filter((item) => item.isPrimarySku).map((item) => item.skuCode)).toEqual(["SKU-B"]);
+  });
+});

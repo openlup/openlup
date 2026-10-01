@@ -173,6 +173,58 @@ registry tests appended to the old payment registry test to
 path intercepts only imports through that path; mock the new path to intercept
 current callers. The newsletter provider registry had no compatibility re-export.
 
+## Pending preview upgrade notes: declared primary SKU and stored sellability
+
+Status: unreleased source change; include these notes in the preview that
+first carries it. It changes the row-assembled catalog read ports
+(`createSupabaseCatalogReadPort` and `createPostgresCatalogReadPort`, through the
+`assembleProduct` they share), the catalog pricing joins
+(`joinCatalogPricing`, `joinCatalogListPricing`), and the readers built on the
+catalog read port: `createLegacyCommerceQuoteCatalogReadPort` and
+`createCatalogRecommendationVariantReadPort`, which
+`createCatalogBackedRecommendationPort` uses. No database schema change
+accompanies it.
+
+A product's primary SKU now comes only from `catalog_products.primary_sku_id`,
+never from the order in which SKU rows arrive, and each product's variants are
+listed in SKU id order by both adapters; the direct Postgres adapter already
+read them in that order. On the default active-only read, an active product
+that has active SKU rows but whose `primary_sku_id` is null, or names none of
+those rows, refuses the read with `CatalogPrimarySkuUnresolvedError` (code
+`catalog_primary_sku_unresolved`, exported from `src/domains/catalog/ports.ts`).
+A product with a single SKU is no exception: an empty pointer is refused, not
+completed. A list read (`listProducts`, `listAllergens`) refuses as a whole and
+a slug read refuses for that product; the quote, recommendation and product
+compatibility routes built on the port answer the generic
+`503 UPSTREAM_UNAVAILABLE`, without the product slug. A product without SKU rows
+keeps the neutral placeholder, and the historical `includeArchived: true` read
+keeps the declared primary or the placeholder and never refuses. The pricing
+joins no longer replace a primary SKU that matches no variant, such as that
+placeholder, with the first variant.
+
+Before upgrading, list the active products the default read would refuse: every
+active product that has at least one active SKU and whose `primary_sku_id` does
+not name an active SKU of that product. Where such a product has exactly one
+active SKU, set `primary_sku_id` to it; choose the primary of a product with
+several yourself. Neither the managed chain (`supabase/migrations`) nor the
+portable PostgreSQL chain (`db/platform/migrations`) backfills the pointer. Its
+foreign key `(id, primary_sku_id)` references `catalog_skus (product_id, id)` and
+is not deferrable, so insert a new product's SKUs first and set the pointer in
+the same transaction, so that no read sees the active product without it.
+
+The quote and recommendation readers named above now honour each SKU's stored
+`sellable_standalone` and `sellable_in_subscription` flags: a quote refuses a
+line in a mode its SKU is not sellable in, and a recommendation leaves such a
+SKU out of that mode. The managed chain defaults both flags to `true`. The
+portable chain defaults `sellable_standalone` to `true` but
+`sellable_in_subscription` to `false`, so a SKU inserted there without both flags
+is now sellable one-time only; set both flags explicitly. A catalog read port of
+an adopter's own that returns no `sellability` on its SKUs keeps today's
+behaviour, both modes. The row-assembled read ports and the static reference
+adapter now set `sellability` on every variant they return, so a test that
+compares such a variant with a literal by deep equality needs the field. Public
+catalog responses do not change: the response schema strips `sellability`.
+
 ## Maintaining source previews
 
 Contributors propose generic changes through public PRs and the DCO/checks in

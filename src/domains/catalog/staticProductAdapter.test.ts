@@ -53,7 +53,10 @@ describe("static product catalog adapter", () => {
   it("maps a published legacy product into a catalog product", () => {
     const product = mapStaticProductToCatalogProduct(lamb, routes, config);
 
-    expect(catalogProductSchema.parse(product)).toEqual(product);
+    // The static SKU states both stored flags, and the wire schema strips them.
+    const { sellability, ...wireSku } = product.primarySku;
+    expect(sellability).toEqual({ oneTime: true, subscription: true });
+    expect(catalogProductSchema.parse(product)).toEqual({ ...product, primarySku: wireSku, variants: [wireSku] });
     expect(product).toMatchObject({
       id: "catalog_product_lamb",
       slug: "lamb",
