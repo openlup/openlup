@@ -44,6 +44,57 @@ handling.
 
 ## Development-preview checks
 
+### Optional SonarQube Cloud diagnostics
+
+The SonarQube Cloud OSS pilot uses one public project and automatic analysis of
+pull requests and `main`. Its source and test scope is defined in
+[`.sonarcloud.properties`](.sonarcloud.properties). Activation requires a GitHub
+App installation and project import by an authorized organization owner; the
+file alone does not activate scanning. Keep automatic repository import off.
+The pilot adds no required check, scanner job, coverage run or package dependency.
+Do not enable automatic and CI-based analysis on the same project.
+
+Use custom JavaScript and TypeScript quality profiles focused on security
+vulnerabilities, security hotspots and reliability rules that add a signal beyond
+the current ESLint configuration. A hotspot is a request for contextual review,
+not a confirmed vulnerability. Retain supported GitHub Actions and Docker security
+rules. Keep existing import, port, neutrality, type, secret, migration, API and
+publication checks authoritative; do not reproduce them as new Sonar obligations.
+Compare individual overlapping rules before deactivating them in the Sonar
+profile. Never disable existing repository controls to accommodate a finding.
+Duplication and cognitive complexity are advisory; coverage is not imported in
+automatic analysis and must not be a pilot gate condition. Keep the project gate
+informational in GitHub, including for merge groups.
+
+The scope retains entrypoints, domains, adapters, browser code, package source,
+MCP and executable tooling together. Tests and fixtures are classified separately;
+generated types, build output and PostgreSQL SQL are excluded from production
+analysis. Check the first analysis for the expected source/test classification,
+language coverage and unresolved TypeScript context. Incomplete analysis is not
+a clean security result. Record the analyzed commit and active profiles when
+assessing findings; a PR result needs a current target-branch analysis.
+
+The PR author resolves confirmed new defects in that PR and checks the next
+analysis. Triage existing `main` findings once, then select small regression-tested
+repairs by demonstrated impact. Do not create issues automatically for every
+finding or combine unrelated cleanup. Deduplicate findings by mechanism and
+location, including Gitleaks findings. Record false positives or accepted cases
+with a reason in Sonar; do not add blanket source suppressions. Follow
+[SECURITY.md](SECURITY.md) for sensitive vulnerability details.
+
+After 30 PRs or four to six weeks, whichever is later, assess additional confirmed
+defects, false/duplicate findings, analysis latency and triage time. The pilot
+targets at most 30 minutes of weekly triage after calibration. Runtime and useful
+finding counts are measured outcomes, not promises. Required merge admission,
+coverage import, multiple Sonar projects and automated remediation require a
+separate decision after this evidence.
+
+Configuration references: [automatic analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/automatic-analysis),
+[quality profiles](https://docs.sonarsource.com/sonarqube-cloud/standards/managing-quality-profiles/understanding-quality-profiles),
+and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/pull-request-analysis).
+
+### Required and raw checks
+
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 `packageManager` field of `package.json`), and the committed npm lockfile. From
 the root of a materialized development-preview tree, these are the commands the
