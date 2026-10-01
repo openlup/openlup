@@ -24,8 +24,12 @@ checkout stays clean. Claude and Codex create that isolation automatically with
 the configured repository helper before task edits, installs or tests. Continue
 in an already assigned task worktree and leave other tasks' checkouts alone.
 
-Record the outcome, scope, authority, acceptance, risk and execution/proof plan
-compactly. Small tasks need no separate planning ceremony or specification.
+Record the finite observable outcome, smallest complete scope and exclusions,
+authority and delivery boundary, acceptance and sufficient completion evidence,
+risk and execution/proof plan compactly. Plans and handoffs inherit these boundaries
+under the [agent guide](docs/platform/AGENT_GUIDE.md#change-and-verification-rules);
+discoveries do not automatically add obligations. Small tasks need no separate
+planning ceremony or specification.
 Consider removing the cause or reusing an existing seam before adding a new
 abstraction; explain a concrete benefit over a simpler alternative when needed.
 Keep the accepted goal and guarantees fixed while execution notes evolve.
