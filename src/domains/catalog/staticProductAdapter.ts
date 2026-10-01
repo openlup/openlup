@@ -76,6 +76,7 @@ export function mapStaticProductToCatalogProduct(
     unit,
     netWeightGrams,
     isAddon: false,
+    sellability: { oneTime: true, subscription: true },
     pricing: {
       status: "not_configured" as const,
       listPrice: null,

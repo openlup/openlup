@@ -50,8 +50,23 @@ one-time/subscription-initial checkout lives here.
   in `communications` + `server/infra/resend`): `emails/*` — e.g.
   `emails/orderDraft.ts` builds the localized order-draft resume nudge as
   blocks. Consumed by the outbox dispatch adapter, not imported cross-domain.
+- The paid-order receipt takes one optional, already-localized `parcelNote`,
+  rendered as a single paragraph right after the item list. It is plain text
+  in which the paragraph block's inline bold and link markers still apply, so
+  a note should avoid them. Commerce never composes it: a composition may give
+  the registry `transactionalEmail.orderPaidParcelNote`, which the order-paid
+  handler receives as `describeParcel` and calls at send time, within its
+  timeout, with the order id and the recipient's locale. A null or empty
+  answer, or a failure, sends the receipt without the note; a failure is
+  logged. Without the reader the receipt is unchanged.
 
 Everything else (handlers, orchestration, `dbBacked*`/`supabase*` ports) is internal.
+
+The catalog-backed quote and recommendation readers take each SKU's stored
+one-time and subscription sellability from the catalog read port: a quote
+refuses a line in a mode its SKU is not sellable in, and a recommendation leaves
+such a SKU out of that mode. A catalog source that states no sellability counts
+as sellable in both modes.
 
 ## Where the code lives
 - Shared/frontend: `src/domains/commerce/`

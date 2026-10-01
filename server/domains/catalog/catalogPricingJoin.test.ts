@@ -233,4 +233,20 @@ describe("joinCatalogPricing", () => {
     expect(joined).toHaveLength(500);
     expect(joined.flatMap((catalogProduct) => catalogProduct.variants)).toHaveLength(5_000);
   });
+
+  it("never falls back to the first variant when the primary SKU matches none", async () => {
+    // The assembler's placeholder primary has no variant id, so no variant matches it.
+    const placeholder = sku({ variantId: "", sku: "SKU-PLACEHOLDER" });
+    const unresolved = { ...product([sku({ variantId: "var-1" }), sku({ variantId: "var-2" })]), primarySku: placeholder };
+    const { port } = resolverReturning({ "var-1": 2490, "var-2": 1990 });
+    const reader: CatalogExactOneTimeBasePriceReadPort = {
+      async listExactOneTimeBasePrices() { return new Map(); },
+    };
+
+    const [joined] = await joinCatalogPricing([unresolved], port);
+    const [listed] = await joinCatalogListPricing([unresolved], reader, undefined, "2026-08-12T00:00:00.000Z");
+
+    expect(joined!.primarySku).toBe(placeholder);
+    expect(listed!.primarySku).toBe(placeholder);
+  });
 });

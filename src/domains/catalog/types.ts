@@ -89,6 +89,10 @@ export interface CatalogSku {
    *  Optional so existing fixtures default to a line (undefined = not an addon);
    *  the live read port always sets it. */
   isAddon?: boolean;
+  /** The SKU's stored one-time and subscription sellability. Absent means
+   *  sellable in both modes. Not part of the public product contract: its
+   *  schema strips the field, so it never reaches a catalog response. */
+  sellability?: { oneTime: boolean; subscription: boolean };
   pricing: CatalogPricingMetadata;
 }
 

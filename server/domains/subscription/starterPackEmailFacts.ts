@@ -29,6 +29,8 @@ export interface StarterPackEmailFields {
   starterSteadyUnitCount?: number | null;
   /** Days between deliveries from the graduation on (14 or 28). */
   starterSteadyCadenceDays?: number | null;
+  /** Adopter-formatted detail of the steady plan, already localized. */
+  starterSteadyDetail?: string | null;
 }
 
 /**

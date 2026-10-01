@@ -47,13 +47,15 @@ import {
  * way: the discovery harness serves BOTH bundles through this projection, so a
  * column only one schema has would fail half the proof on contact. That is why
  * the attribute forward reused three names the managed chain already carried
- * rather than inventing better ones.
+ * rather than inventing better ones. Both sets ask for `primary_sku_id`, which
+ * both schemas declare; the assembler orders the variants and resolves the
+ * primary SKU from it, so the read sets no row order.
  */
 export type CatalogReadProjection = "full" | "neutral";
 
 const PRODUCT_COLUMNS: Record<CatalogReadProjection, string> = {
-  full: "id, slug, status, name, description, ingredients, allergens, marketing_content",
-  neutral: "id, slug, status, name, description, ingredients, marketing_content",
+  full: "id, slug, status, name, description, ingredients, allergens, marketing_content, primary_sku_id",
+  neutral: "id, slug, status, name, description, ingredients, marketing_content, primary_sku_id",
 };
 
 /**
@@ -90,6 +92,8 @@ export interface SupabaseCatalogReadPortDeps {
    *     resolved).
    * Today every catalog row is `active`, so this flag is behaviour-neutral; it
    * exists so those paths do not break once Wave 4 introduces non-active rows.
+   * It also never refuses a product whose declared primary SKU does not resolve:
+   * that product keeps the neutral placeholder, where the default read refuses.
    */
   includeArchived?: boolean;
   /**
@@ -112,6 +116,8 @@ export function createSupabaseCatalogReadPort({
   pricingRegion,
   projection = "full",
 }: SupabaseCatalogReadPortDeps): CatalogReadPort {
+  const unresolvedPrimary = includeArchived ? "placeholder" : "refuse";
+
   async function withPricing(products: CatalogProduct[]): Promise<CatalogProduct[]> {
     if (!pricingResolver) return products;
     return joinCatalogPricing(products, pricingResolver, pricingRegion);
@@ -125,7 +131,7 @@ export function createSupabaseCatalogReadPort({
       fetchProducts(client, undefined, includeArchived, projection),
       fetchSkusByProductId(client, undefined, includeArchived, projection),
     ]);
-    return products.map((row) => assembleProduct(row, skusByProductId.get(row.id) ?? []));
+    return products.map((row) => assembleProduct(row, skusByProductId.get(row.id) ?? [], { unresolvedPrimary }));
   }
 
   return {
@@ -138,7 +144,7 @@ export function createSupabaseCatalogReadPort({
       const product = products[0];
       if (!product) return null;
       const skusByProductId = await fetchSkusByProductId(client, product.id, includeArchived, projection);
-      const assembled = assembleProduct(product, skusByProductId.get(product.id) ?? []);
+      const assembled = assembleProduct(product, skusByProductId.get(product.id) ?? [], { unresolvedPrimary });
       const [withPrice] = await withPricing([assembled]);
       return withPrice;
     },

@@ -10,7 +10,10 @@ import type {
 } from "./outboxOrderDraftEmailPorts.js";
 import { createOutboxOrderDraftEmailHandler } from "./outboxOrderDraftEmailHandler.js";
 import { createOutboxCheckoutRecoveryEmailHandler } from "./outboxCheckoutRecoveryEmailHandler.js";
-import { createOutboxOrderPaidEmailHandler } from "./outboxOrderPaidEmailHandler.js";
+import {
+  createOutboxOrderPaidEmailHandler,
+  type OrderPaidParcelNoteReader,
+} from "./outboxOrderPaidEmailHandler.js";
 import { createOutboxPaymentFailedEmailHandler } from "./outboxPaymentFailedEmailHandler.js";
 import { createOutboxCheckoutExpiredEmailHandler } from "./outboxCheckoutExpiredEmailHandler.js";
 import { createOutboxOrderRefundedEmailHandler } from "./outboxOrderRefundedEmailHandler.js";
@@ -52,6 +55,8 @@ type TransactionalEmailRegistryDeps = {
   recipientPort: OrderRecipientPort;
   lifecyclePort: OrderPaymentLifecyclePort;
   orderPaidLinesPort: OrderPaidLinesPort;
+  // Optional adopter note for the paid receipt; absent keeps today's receipt.
+  orderPaidParcelNote?: OrderPaidParcelNoteReader;
   // The delivered-email handler suppresses OUR delivered email for providers whose
   // capability profile owns the notice (none today). Absent only in
   // tests/non-transactional composition.
@@ -168,6 +173,7 @@ export function createOutboxDispatchRegistry(deps: {
             emailPort: deps.transactionalEmail.emailPort,
             recipientPort: deps.transactionalEmail.recipientPort,
             linesPort: deps.transactionalEmail.orderPaidLinesPort,
+            describeParcel: deps.transactionalEmail.orderPaidParcelNote,
           })),
           createOutboxPaymentFailedEmailHandler({
             emailPort: deps.transactionalEmail.emailPort,
