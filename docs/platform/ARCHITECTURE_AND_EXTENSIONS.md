@@ -49,7 +49,7 @@ extension-data forwarding remain available to adopters. The rule has no claim
 of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
-<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-d0eb76eac67cb8e9c88a3b95eadbc1cfedfc5e5b16342edc4ab4becd19c591ab","reason":"The runtime boundary test now scans the installed core source in either a workspace link or an npm installation and explicitly requires core files. It changes no production imports, runtime boundary, or browser contract described here."} -->
+<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-7a28b9b91c7bbd9b5e732f2cde5d81fe5bb0520649d0958df826981366b0df30","reason":"The runtime boundary test now scans the installed core source in either a workspace link or an npm installation and explicitly requires core files. It changes no production imports, runtime boundary, or browser contract described here."} -->
 
 <!-- openlup-doc-impact {"unit":"server","digest":"sha256-677c8943f9ff430a5c5c104f7b6414a5f70c9cb0f35013a78e4b4b423776d8f1","reason":"Server-library comment delta. The admin-domain kit, feature flag, observability and service comments name downstream files by role or by their path in this tree, the rate limiter test title names its callers generically, and the payment adapter registry comment names an adapter folder generically. No server boundary described here changes."} -->
 

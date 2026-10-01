@@ -459,7 +459,7 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-1da36d7f6b9802bdb85515f69fe6b760054d53652d69d920870f03a8c587bd4d","reason":"Three tests inspect installed core source in workspace and registry consumer layouts; the catalog test explicitly requires a catalog TypeScript source file. The import-map test uses an alias that resolves to infrastructure in both. Lint rules, contributor commands, and required CI checks described here retain their behavior."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-e3785a271ce60729c282daa390a86c86f471a058591f58d1240a8a3480fba847","reason":"Three tests inspect installed core source in workspace and registry consumer layouts; the catalog test explicitly requires a catalog TypeScript source file. The import-map test uses an alias that resolves to infrastructure in both. Lint rules, contributor commands, and required CI checks described here retain their behavior."} -->
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-97f7dcba22cf18c7100bcd552c84d48248950ec5f97d72aa30114f5a0530b876","reason":"Against the integrated main base, the root lockfile still changes only the core workspace version from 0.9.0 to 0.10.0. Dependency resolution, development-preview checks, and required contributor commands remain unchanged."} -->
 
