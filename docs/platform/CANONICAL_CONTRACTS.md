@@ -166,6 +166,8 @@ This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see
 [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-e22ae8fa0b2c6a3837b88e4778023484b26464be7670f5ba823be5a268f3459b","reason":"The two changed pins bind the existing price-setup creation forward and its preview definition to SQL that compares policy validity at UTC millisecond precision. The allowlist still covers the same path and two signatures, with null creation predecessors and the apply definition unchanged. The separate-review and exact-byte admission contract stated here remains accurate."} -->
+
 Future source preview cuts require a publishable npm package at the matching
 lockstep `0.<n>.0` version. Before such a cut, `release:bump` prepares that
 version in the package manifests and lockfiles; release preparation refuses a
@@ -177,8 +179,6 @@ The subscription browser profile's closed import list follows the package
 exports selected by its build. Core entries therefore name built `dist/*.js`
 modules; source paths are not an alternative runtime route. The core workspace
 must be built before checking that profile's import closure.
-
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-ef655506487482e7548afec93e5f6f494f04b12ebea5e3774c18792c8a41cd1b","reason":"The delta adds three exact commerce module paths to the opt-in subscription browser profile's allowlist. It does not change core dist selection, load any module by itself, or change a stable compatibility commitment. The existing paragraph's rule that the observed build determines the closed import list remains accurate."} -->
 
 The repository's
 [`neutrality baseline`](../../config/openlup-neutrality-baseline.json) records
