@@ -1,0 +1,26 @@
+id: domain-no-country-literals
+valid:
+  - 'const address = { country: input.country };'
+  - 'const kind = z.literal("standard");'
+  - 'const code = "ABC";'
+  - 'const zone = { region: "north" };'
+  - 'if (address.country === settlement.country) accept();'
+invalid:
+  - 'const schema = z.object({ country: z.literal("DE") });'
+  - 'const address = { country: "FR" as const };'
+  - 'const origin = { countryCode: `AT` };'
+  - 'type Address = { country: "FR" };'
+  - 'type Supported = "DE" | "FR";'
+  - 'if (normalize(address.country) === "DE") validate();'
+  - 'address.country ??= "FR";'
+  - 'switch (address.country) { case "DE": break; }'
+  - 'const supported = z.enum(["DE", "FR"]);'
+  - 'if (["AT"].includes(country)) reject();'
+  - 'type Home = `DE`;'
+---
+id: domain-no-country-literals-tsx
+valid:
+  - 'export const Field = ({ country }: { country: string }) => <AddressField country={country} />;'
+invalid:
+  - 'export const Field = () => <AddressField country="DE" />;'
+  - 'export const isHome = (country: string) => country === "FR";'

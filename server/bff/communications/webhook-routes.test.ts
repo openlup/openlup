@@ -27,8 +27,6 @@ describe("communications webhook BFF routes", () => {
     (route) => {
       const source = readFileSync(join(process.cwd(), route.path), "utf8");
 
-      expect(source).not.toContain("@supabase/supabase-js");
-      expect(source).not.toMatch(/\bcreateClient(?:\s*<[^>]+>)?\s*\(/);
       expect(source).toContain("createSupabaseDataGateway");
       expect(source).toContain("readSupabaseDataGatewayEnv");
       expect(source).toContain("gateway.asService");

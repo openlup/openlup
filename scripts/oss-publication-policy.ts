@@ -51,7 +51,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("check:dco-signoff", "node --experimental-strip-types scripts/dco-signoff-check.ts"),
   publicCommand("guard:client-secret-boundary", "node --experimental-strip-types scripts/check-client-secret-boundary.ts"),
   publicCommand("guard:public-reference-site-routes", "node scripts/site-routes.mjs --public-reference"),
-  publicCommand("lint", "eslint ."),
+  publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint ."),
   publicCommand("prelint", "npm --workspace @openlup/core run build"),
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
   publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),

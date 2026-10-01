@@ -10,9 +10,6 @@ describe("admin platform invite user BFF composition", () => {
       "utf8",
     );
 
-    expect(source).not.toContain("@supabase/supabase-js");
-    expect(source).not.toMatch(/\bcreateClient(?:\s*<[^>]+>)?\s*\(/);
-    expect(source).not.toMatch(/\.(?:from|rpc)\s*\(/);
     expect(source).not.toContain("functions.invoke");
     expect(source).toContain("createAdminAuthClient");
     expect(source).toContain("authorizePlatformAdmin");

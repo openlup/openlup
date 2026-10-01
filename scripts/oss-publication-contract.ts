@@ -10,6 +10,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/agent-review-controller.mjs", "scripts/agent-review-controller.test.ts",
   "scripts/agent-review-gate.mjs", "scripts/agent-review-gate.test.ts", "scripts/agent-review-hook.mjs",
   "scripts/agent-review-hosted.mjs", "scripts/agent-review-hosted.test.ts",
+  "scripts/ast-grep/check-filewide-ignore.mjs",
   "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",
   "scripts/packages/packages-check.ts", "scripts/packages/release-bump.ts",

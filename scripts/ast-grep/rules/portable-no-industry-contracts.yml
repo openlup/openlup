@@ -1,0 +1,103 @@
+id: portable-no-industry-contracts
+language: TypeScript
+severity: error
+message: Portable platform source must keep industry-specific names in adopter extensions.
+note: |
+  Architecture rule (AGENTS.md): an adopter owns its industry, content and local
+  policy. Portable core and UI contracts stay generic. This rule catches explicit
+  pet/pets, dog/dogs and cat/cats components in identifiers, property and type
+  names, quoted declared keys, static property indexes and literal types. It
+  covers ordinary camel/Pascal/snake names, including internal components.
+  Technical words such as watchdog and dogfoodEvidence are not these components.
+  Ordinary runtime string values and opaque extension-data forwarding are allowed.
+  Keep industry contracts in an adopter extension and pass opaque data through a
+  generic port. This is a TS/TSX structural check, not semantic or dataflow analysis.
+files:
+  - packages/core/src/**/*.ts
+  - packages/ui/src/**/*.ts
+ignores:
+  - "**/*.{test,spec,fixture,fixtures}.ts"
+  - "**/{__tests__,test,tests,__fixtures__,fixtures}/**"
+utils:
+  industry-component:
+    regex: '(?:^|[_$])(?:pets?|dogs?|cats?)(?:$|[_$]|[A-Z0-9])|(?:Pets?|Dogs?|Cats?)(?:$|[_$]|[A-Z0-9])|(?:^|[_$])(?:PETS?|DOGS?|CATS?)(?:$|[_$0-9])'
+  static-industry-key:
+    any:
+      - kind: string
+        has: { kind: string_fragment, matches: industry-component }
+      - kind: template_string
+        all:
+          - has: { kind: string_fragment, matches: industry-component }
+          - not: { has: { kind: template_substitution } }
+      - kind: computed_property_name
+        has: { matches: static-industry-key }
+      # Only direct value-expression children qualify; types and comments do not.
+      - any: [ { kind: parenthesized_expression }, { kind: as_expression }, { kind: satisfies_expression }, { kind: type_assertion }, { kind: non_null_expression } ]
+        has: { matches: static-industry-key }
+rule:
+  any:
+    - any: [ { kind: identifier }, { kind: property_identifier }, { kind: type_identifier }, { kind: shorthand_property_identifier }, { kind: shorthand_property_identifier_pattern } ]
+      matches: industry-component
+    # Structural name/key fields keep runtime string values out of this policy.
+    - any: [ { kind: property_signature }, { kind: public_field_definition }, { kind: method_signature }, { kind: method_definition }, { kind: enum_assignment } ]
+      has: { field: name, matches: static-industry-key }
+    - any: [ { kind: pair }, { kind: pair_pattern } ]
+      has: { field: key, matches: static-industry-key }
+    - kind: subscript_expression
+      has: { field: index, matches: static-industry-key }
+    - kind: literal_type
+      has: { matches: static-industry-key }
+    - kind: template_literal_type
+      has: { kind: string_fragment, matches: industry-component }
+---
+id: portable-no-industry-contracts-tsx
+language: Tsx
+severity: error
+message: Portable platform source must keep industry-specific names in adopter extensions.
+note: |
+  Architecture rule (AGENTS.md): an adopter owns its industry, content and local
+  policy. Portable core and UI contracts stay generic. This rule catches explicit
+  pet/pets, dog/dogs and cat/cats components in identifiers, property and type
+  names, quoted declared keys, static property indexes and literal types. It
+  covers ordinary camel/Pascal/snake names, including internal components.
+  Technical words such as watchdog and dogfoodEvidence are not these components.
+  Ordinary runtime string values and opaque extension-data forwarding are allowed.
+  Keep industry contracts in an adopter extension and pass opaque data through a
+  generic port. This is a TS/TSX structural check, not semantic or dataflow analysis.
+files:
+  - packages/core/src/**/*.tsx
+  - packages/ui/src/**/*.tsx
+ignores:
+  - "**/*.{test,spec,fixture,fixtures}.tsx"
+  - "**/{__tests__,test,tests,__fixtures__,fixtures}/**"
+utils:
+  industry-component:
+    regex: '(?:^|[_$])(?:pets?|dogs?|cats?)(?:$|[_$]|[A-Z0-9])|(?:Pets?|Dogs?|Cats?)(?:$|[_$]|[A-Z0-9])|(?:^|[_$])(?:PETS?|DOGS?|CATS?)(?:$|[_$0-9])'
+  static-industry-key:
+    any:
+      - kind: string
+        has: { kind: string_fragment, matches: industry-component }
+      - kind: template_string
+        all:
+          - has: { kind: string_fragment, matches: industry-component }
+          - not: { has: { kind: template_substitution } }
+      - kind: computed_property_name
+        has: { matches: static-industry-key }
+      # Only direct value-expression children qualify; types and comments do not.
+      - any: [ { kind: parenthesized_expression }, { kind: as_expression }, { kind: satisfies_expression }, { kind: non_null_expression } ]
+        has: { matches: static-industry-key }
+rule:
+  any:
+    - any: [ { kind: identifier }, { kind: property_identifier }, { kind: type_identifier }, { kind: shorthand_property_identifier }, { kind: shorthand_property_identifier_pattern } ]
+      matches: industry-component
+    # Structural name/key fields keep runtime string values out of this policy.
+    - any: [ { kind: property_signature }, { kind: public_field_definition }, { kind: method_signature }, { kind: method_definition }, { kind: enum_assignment } ]
+      has: { field: name, matches: static-industry-key }
+    - any: [ { kind: pair }, { kind: pair_pattern } ]
+      has: { field: key, matches: static-industry-key }
+    - kind: subscript_expression
+      has: { field: index, matches: static-industry-key }
+    - kind: literal_type
+      has: { matches: static-industry-key }
+    - kind: template_literal_type
+      has: { kind: string_fragment, matches: industry-component }

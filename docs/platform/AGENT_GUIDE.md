@@ -138,6 +138,33 @@ an agent-specific hook or private repository.
 Keep changes small, test the affected public contract, and make failures actionable. An adapter must demonstrate its declared capabilities and refusal behaviour without relying on live provider access.
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.
 
+`npm run lint` checks first-line file-wide ignores before running the ast-grep
+structural rules in `scripts/ast-grep/rules`, rejects bare and unused
+suppressions, runs the rule tests, then ESLint. Portable core/UI production
+source has provider import boundaries and industry-neutral contract-name
+checks; opaque adopter data remains generic. The industry rule covers TS/TSX
+syntax, not arbitrary values or semantic analysis.
+Run `npx --no -- ast-grep scan --error=no-suppress-all
+--error=unused-suppression` after each change for focused feedback, and run
+`npm run lint` before committing: it also checks first-line file-wide ignores
+and is the required `typecheck` job's command. These rules catch ordinary
+mistakes; review handles deliberate evasion. Keep `--no --`: without it,
+npx can fetch an unrelated package of the same name when the local binary is
+missing. A refusal names the rule, the platform rule behind it and the fix:
+change the code, not the rule, and never add a file to a rule's `ignores`. A
+justified exception is an `ast-grep-ignore` comment naming the rule on the line
+immediately before the code, with the reason in a comment above it. Do not put
+a blank line after a first-line ignore: that makes it file-wide and lint rejects
+it, including BOM-prefixed and triple-slash comments. Lint also rejects unused
+suppressions. A new rule cites the
+platform rule it enforces and ships valid and invalid cases in
+`scripts/ast-grep/rule-tests`. Use `npx --no -- ast-grep run --pattern '<code
+pattern>'` to find every structural occurrence before and after a change, and
+add `--rewrite '<replacement>' --update-all` for a mechanical edit across the
+tree;
+[contribution checks](../../CONTRIBUTING.md#development-preview-checks) describe the rules and
+their exceptions.
+
 Use only the configuration and test fixtures supplied for the selected development profile. Do not place sensitive values in source, fixtures, logs, or documentation.
 Follow [SECURITY.md](../../SECURITY.md) for reporting and handling a suspected vulnerability; this guide intentionally supplies no reporting address of its own.
 

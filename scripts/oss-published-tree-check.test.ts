@@ -13,6 +13,8 @@ import { describe, expect, it } from "vitest";
 import "./documentation-impact.test.ts";
 import "./documentation-bundle.test.ts";
 import "./documentation-cli.test.ts";
+import "./ast-grep/check-filewide-ignore.test.ts";
+import "./ast-grep/rule-tests/portable-no-industry-contracts.test.ts";
 
 import {
   PUBLIC_EXECUTION_ENTRYPOINTS,

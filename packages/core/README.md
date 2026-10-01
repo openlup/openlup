@@ -65,6 +65,11 @@ from standard input, then emits finding counts for each path. Shell sources
 retain the scanner's existing shell handling. The interface adds no package
 export and changes no matcher or kernel behavior.
 
+Repository lint keeps this package's production source independent of configured
+provider SDKs and explicit industry contract names. Adopter adapters compose
+providers; generic ports can forward opaque extension data. See the
+[syntax scope and exceptions](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
+
 The repository checker also calls the UI neutrality counting process with
 `--counts-json` to count its existing patterns over the supplied sources. Running that checker without
 arguments still scans the UI source directory and refuses any forbidden hit.

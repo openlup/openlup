@@ -1,0 +1,9 @@
+# Structural rules that `npm run lint` runs before ESLint. ESLint's boundary
+# rules check import paths; these rules check calls, reads and literals inside
+# code. Each rule names the platform rule it enforces and the fix. A new rule
+# needs a test in scripts/ast-grep/rule-tests with at least one valid and one
+# invalid case. See CONTRIBUTING.md, "Development preview checks".
+ruleDirs:
+  - scripts/ast-grep/rules
+testConfigs:
+  - testDir: scripts/ast-grep/rule-tests
