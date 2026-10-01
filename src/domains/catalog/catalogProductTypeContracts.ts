@@ -26,7 +26,8 @@ const unitSchema = z.object({
 }).strict();
 const dimensionSchema = z.discriminatedUnion("kind", [
   z.object({ key: catalogDimensionKeySchema, kind: z.literal("choice"), values: z.array(z.string().min(1).max(120)).min(1).max(1000) }).strict(),
-  z.object({ key: catalogDimensionKeySchema, kind: z.literal("quantity"), dimension: catalogQuantityDimensionSchema, units: z.array(catalogNamespacedKeySchema).min(1).max(32) }).strict(),
+  z.object({ key: catalogDimensionKeySchema, kind: z.literal("quantity"), dimension: catalogQuantityDimensionSchema,
+    units: z.array(catalogNamespacedKeySchema).min(1).max(32), role: z.literal("net_content").optional() }).strict(),
   z.object({ key: catalogDimensionKeySchema, kind: z.literal("boolean") }).strict(),
 ]);
 const definitionSchema = catalogProductTypeRefSchema.extend({
@@ -60,8 +61,10 @@ export function createCatalogProductTypeRegistry(definitions: readonly CatalogPr
     for (const dimension of parsed.dimensions) {
       if (dimension.kind === "choice" && new Set(dimension.values).size !== dimension.values.length) throw new Error("invalid_catalog_type_definition");
       if (dimension.kind === "quantity" && (new Set(dimension.units).size !== dimension.units.length
-        || dimension.units.some((code) => units.get(code)?.dimension !== dimension.dimension))) throw new Error("invalid_catalog_type_definition");
+        || dimension.units.some((code) => units.get(code)?.dimension !== dimension.dimension)
+        || (dimension.role === "net_content" && dimension.units.some((code) => !parsed.netContentUnits.includes(code))))) throw new Error("invalid_catalog_type_definition");
     }
+    if (parsed.dimensions.filter((dimension) => dimension.kind === "quantity" && dimension.role === "net_content").length > 1) throw new Error("invalid_catalog_type_definition");
     function freeze(value: object): void {
       for (const child of Object.values(value)) if (child && typeof child === "object") freeze(child);
       Object.freeze(value);

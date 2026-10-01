@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalCatalogDraftJson, catalogDraftCommandSchema, catalogDraftGetQuerySchema,
-  catalogDraftListQuerySchema, catalogDraftPageSchema, catalogDraftPayloadSchema,
+  catalogDraftListQuerySchema, catalogDraftPageSchema, catalogDraftPayloadSchema, catalogDraftRecordSchema,
 } from "./catalogDraftContracts.js";
 
 const id = "10000000-0000-4000-8000-000000000001";
@@ -54,5 +54,16 @@ describe("catalog draft wire", () => {
     expect(catalogDraftListQuerySchema.safeParse({ limit: 100 }).success).toBe(true);
     expect(catalogDraftListQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
     expect(catalogDraftPageSchema.safeParse({ items: [], nextCursor: id }).success).toBe(false);
+  });
+  it("carries an optional positive integer identifier quantity; stored revisions without it still read back", () => {
+    const identifier = { scheme: "gs1:gtin", issuer: "gs1", value: "10012345678902", packagingLevel: "case" };
+    const counted = { ...payload, skus: [{ id, productId: id, options: {}, identifiers: [{ ...identifier, quantity: 6 }] }] };
+    expect(catalogDraftPayloadSchema.parse(counted)).toEqual(counted);
+    for (const quantity of [0, -1, 1.5, "6", 2_147_483_648]) {
+      expect(catalogDraftPayloadSchema.safeParse({ ...payload, skus: [{ ...counted.skus[0], identifiers: [{ ...identifier, quantity }] }] }).success).toBe(false);
+    }
+    const stored = { draftId: id, productId: id, revision: 1, status: "open", commandKey: "create:1", fingerprint: "a".repeat(64),
+      actorId: "operator:one", createdAt: "2026-09-08T00:00:00Z", payload: { ...payload, skus: [{ ...counted.skus[0], identifiers: [identifier] }] } };
+    expect(catalogDraftRecordSchema.parse(stored)).toEqual(stored);
   });
 });

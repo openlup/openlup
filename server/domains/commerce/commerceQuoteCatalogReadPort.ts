@@ -66,7 +66,10 @@ export function createLegacyCommerceQuoteCatalogReadPort(
         species: product.species,
         isPrimarySku: sku.variantId === product.primarySku.variantId,
         isAddon: sku.isAddon ?? false,
-        sellability: { oneTime: true, subscription: true },
+        sellability: {
+          oneTime: sku.sellability?.oneTime ?? true,
+          subscription: sku.sellability?.subscription ?? true,
+        },
         documentRevision: { id: null, digest: null },
       })));
     },

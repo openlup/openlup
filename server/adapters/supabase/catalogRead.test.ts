@@ -14,6 +14,7 @@ interface ProductRow {
   ingredients: string[];
   allergens: string[];
   marketing_content: Record<string, unknown>;
+  primary_sku_id: string | null;
 }
 
 interface SkuRow {
@@ -42,6 +43,7 @@ function makeProductRow(overrides: Partial<ProductRow> = {}): ProductRow {
     id: "00000000-0000-0000-0000-000000000001",
     slug: "lamb",
     status: "active",
+    primary_sku_id: "10000000-0000-0000-0000-000000000001",
     name: "Lamb + EntoPro™ Recipe",
     description: "Complete wet pet food for adult dogs",
     ingredients: ["Jagnięcina", "EntoPro™"],
@@ -163,7 +165,7 @@ describe("managed catalog read adapter", () => {
     expect(skuColumns).not.toContain("feeding_grams_per_unit");
   });
 
-  it("hydrates the primary SKU from the first variant row", async () => {
+  it("hydrates the declared primary SKU", async () => {
     const client = makeFakeClient({
       catalog_products: [makeProductRow()],
       catalog_skus: [makeSkuRow()],
@@ -215,7 +217,7 @@ describe("managed catalog read adapter", () => {
   it("default (active-only) path excludes non-active products and SKUs", async () => {
     const client = makeFakeClient({
       catalog_products: [
-        makeProductRow({ id: "p-active", slug: "lamb", status: "active" }),
+        makeProductRow({ id: "p-active", slug: "lamb", status: "active", primary_sku_id: "s-active" }),
         makeProductRow({ id: "p-draft", slug: "venison", status: "draft" }),
         makeProductRow({ id: "p-arch", slug: "beef", status: "archived" }),
       ],
@@ -391,7 +393,7 @@ describe("read projection", () => {
     await build({ client, projection: "neutral" }).listProducts();
 
     expect(columns.catalog_products).toBe(
-      "id, slug, status, name, description, ingredients, marketing_content");
+      "id, slug, status, name, description, ingredients, marketing_content, primary_sku_id");
     expect(columns.catalog_skus).toBe(NEUTRAL_UNIT_COLUMNS);
   });
 
@@ -449,6 +451,7 @@ describe("read projection", () => {
             status: "active",
             name: "Reference Item",
             description: "A neutral row",
+            primary_sku_id: "10000000-0000-4000-8000-000000000002",
           }]
         : [{
             id: "10000000-0000-4000-8000-000000000002",
@@ -489,6 +492,7 @@ describe("read projection", () => {
             description: null,
             ingredients: ["Barley 40%", "Sunflower oil"],
             marketing_content: { line_name: "Reference Line", format_marketing_copy: "Boxed" },
+            primary_sku_id: "10000000-0000-4000-8000-000000000002",
           }]
         : [{
             id: "10000000-0000-4000-8000-000000000002",
@@ -515,5 +519,71 @@ describe("read projection", () => {
       { name: "Sunflower oil", pctText: "Sunflower oil", percentage: 0, role: "", body: "", allergenSlugs: [] },
     ]);
     expect(catalogProductSchema.safeParse(product).success).toBe(true);
+  });
+});
+
+describe("declared primary and stored sellability", () => {
+  const item = (id: string, sku: string, overrides: Partial<SkuRow> = {}): SkuRow =>
+    makeSkuRow({ id, product_id: "p-item", sku, ...overrides });
+  const itemProduct = (primarySkuId: string): ProductRow =>
+    makeProductRow({ id: "p-item", slug: "reference-item", primary_sku_id: primarySkuId });
+
+  it("asks the full projection for the declared primary", async () => {
+    await createSupabaseCatalogReadPort({
+      client: makeFakeClient({ catalog_products: [], catalog_skus: [] }),
+    }).listProducts();
+
+    expect(selectedColumns.get("catalog_products")?.split(", ")).toContain("primary_sku_id");
+  });
+
+  it("resolves the declared primary whatever order the rows arrive in", async () => {
+    const client = makeFakeClient({
+      catalog_products: [itemProduct("sku-b")],
+      catalog_skus: [item("sku-c", "ITEM-C"), item("sku-a", "ITEM-A"), item("sku-b", "ITEM-B")],
+    });
+
+    const [product] = await createSupabaseCatalogReadPort({ client }).listProducts();
+
+    expect(product.primarySku.sku).toBe("ITEM-B");
+    expect(product.variants.map((variant) => variant.sku)).toEqual(["ITEM-A", "ITEM-B", "ITEM-C"]);
+  });
+
+  it("refuses a declared primary that is not active on the default read and resolves it on the historical read", async () => {
+    const stubs = {
+      catalog_products: [itemProduct("sku-b")],
+      catalog_skus: [item("sku-a", "ITEM-A"), item("sku-b", "ITEM-B", { status: "archived" })],
+    };
+    const refusal = {
+      name: "CatalogPrimarySkuUnresolvedError",
+      code: "catalog_primary_sku_unresolved",
+      productSlug: "reference-item",
+      reason: "primary_sku_not_in_rows",
+    };
+
+    await expect(createSupabaseCatalogReadPort({ client: makeFakeClient(stubs) }).listProducts())
+      .rejects.toMatchObject(refusal);
+    await expect(createSupabaseCatalogReadPort({ client: makeFakeClient(stubs) }).getProductBySlug("reference-item"))
+      .rejects.toMatchObject(refusal);
+
+    const [historical] = await createSupabaseCatalogReadPort({ client: makeFakeClient(stubs), includeArchived: true })
+      .listProducts();
+    expect(historical.primarySku.sku).toBe("ITEM-B");
+  });
+
+  it("maps each SKU's stored sellability", async () => {
+    const client = makeFakeClient({
+      catalog_products: [itemProduct("sku-a")],
+      catalog_skus: [
+        item("sku-a", "ITEM-A", { sellable_standalone: true, sellable_in_subscription: false }),
+        item("sku-b", "ITEM-B", { sellable_standalone: false, sellable_in_subscription: true }),
+      ],
+    });
+
+    const [product] = await createSupabaseCatalogReadPort({ client }).listProducts();
+
+    expect(product.variants.map((variant) => variant.sellability)).toEqual([
+      { oneTime: true, subscription: false },
+      { oneTime: false, subscription: true },
+    ]);
   });
 });

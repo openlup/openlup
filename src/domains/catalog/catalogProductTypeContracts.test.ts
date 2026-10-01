@@ -12,6 +12,7 @@ const definition: CatalogProductTypeDefinition = {
   ], netContentUnits: ["si:gram", "si:millilitre", "item:piece"],
   dimensions: [{ key: "finish", kind: "choice", values: ["matte", "gloss"] }], validateContent: () => [],
 };
+type QuantityDimension = Extract<CatalogProductTypeDefinition["dimensions"][number], { kind: "quantity" }>;
 
 describe("installed catalog types", () => {
   it("resolves only installed immutable namespace/version definitions", () => {
@@ -45,5 +46,17 @@ describe("installed catalog types", () => {
     const option = { kind: "quantity" as const, value: { dimension: "mass" as const, unit: "si:gram", unscaled: "1200", scale: 2 } };
     expect(canonicalCatalogOption(option)).toBe(canonicalCatalogOption({ ...option, value: { ...option.value, unscaled: "12", scale: 0 } }));
     expect(canonicalCatalogOption(option)).not.toBe(canonicalCatalogOption({ ...option, value: { ...option.value, unit: "si:kilogram" } }));
+  });
+  it("a quantity dimension may carry the net-content role once", () => {
+    const pack: QuantityDimension = { key: "pack", kind: "quantity", dimension: "count", units: ["item:piece"], role: "net_content" };
+    const plain: QuantityDimension = { key: "plain", kind: "quantity", dimension: "volume", units: ["si:millilitre"] };
+    expect(createCatalogProductTypeRegistry([{ ...definition, dimensions: [pack, plain] }]).resolve(definition)?.dimensions).toEqual([pack, plain]);
+    expect(() => createCatalogProductTypeRegistry([{ ...definition, dimensions: [pack, { ...plain, role: "net_content" }] }])).toThrow("invalid_catalog_type_definition");
+    expect(() => createCatalogProductTypeRegistry([{ ...definition, dimensions: [{ key: "finish", kind: "choice", values: ["matte"], role: "net_content" } as never] }])).toThrow();
+  });
+  it("its units must be net-content units", () => {
+    const pack: QuantityDimension = { key: "pack", kind: "quantity", dimension: "volume", units: ["si:millilitre"] };
+    expect(createCatalogProductTypeRegistry([{ ...definition, netContentUnits: ["item:piece"], dimensions: [pack] }]).resolve(definition)).toBeDefined();
+    expect(() => createCatalogProductTypeRegistry([{ ...definition, netContentUnits: ["item:piece"], dimensions: [{ ...pack, role: "net_content" }] }])).toThrow("invalid_catalog_type_definition");
   });
 });
