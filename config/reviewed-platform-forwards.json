@@ -33,12 +33,12 @@
   "creationForwards": [
     {
       "path": "supabase/migrations/20260930100100_catalog_price_setup.sql",
-      "sha256": "dd8bb26d3924afcca007cdb955915d908822c446275d4c200d7b23639cdd88c1",
+      "sha256": "14c695889fe239bff64150f15f0a924c8479e3e9edcbe5586742b957be0b3343",
       "functions": [
         {
           "signature": "public.catalog_price_setup_preview(uuid,uuid,integer)",
           "beforeSha256": null,
-          "afterSha256": "aa0be6178253ae5e57d0b3be3ea3a2010b8a3f00bf837d2dcf45460346245b3e"
+          "afterSha256": "d00412a7d2abecf085c8bc9d69049f5e1b2f05dd96bd3bfbd1b05fd620b9aa2c"
         },
         {
           "signature": "public.catalog_price_setup_apply(text,text)",
