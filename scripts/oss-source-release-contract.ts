@@ -5,6 +5,7 @@ import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecution
 import { PUBLIC_EXECUTION_ENTRYPOINTS, isDirectExecutionEntrypoint } from "./oss-publication-contract.ts";
 import { readPublicTypecheckCompatibility, type PublicTypecheckCompatibility } from "./oss-public-typecheck.ts";
 import { documentationGit } from "./documentation-routing.ts";
+import { assertReviewedPlatformForward } from "./reviewed-platform-forward.ts";
 
 export const SOURCE_RELEASE_CONTRACT_PATH = "config/openlup-source-release-contract.json";
 export const SOURCE_RELEASE_EVIDENCE_CLASS = "local-fixture";
@@ -217,7 +218,7 @@ export function isExpandOnlyPlatformForward(sql: string): boolean {
   });
 }
 
-function assertPlatformSchemaForwards(old: GitInventoryEntry[], target: GitInventoryEntry[], readOld: SourceReleaseBlobReader, readTarget: SourceReleaseBlobReader): void {
+function assertPlatformSchemaForwards(root: string, previousCommit: string, targetCommit: string, old: GitInventoryEntry[], target: GitInventoryEntry[], readOld: SourceReleaseBlobReader, readTarget: SourceReleaseBlobReader): void {
   const oldByPath = new Map(old.map((entry) => [entry.path, entry]));
   const targetByPath = new Map(target.map((entry) => [entry.path, entry]));
   const added: string[] = [];
@@ -227,7 +228,9 @@ function assertPlatformSchemaForwards(old: GitInventoryEntry[], target: GitInven
     if (path === MIGRATION_MANIFEST_PATH && before && after && before.mode === after.mode) continue;
     const rail = /^(db\/platform|supabase)\/migrations\/[0-9]{14}_[A-Za-z0-9_-]+\.sql$/u.test(path);
     if (before || !after || after.mode !== "100644" || !rail || path.endsWith("/00000000000000_platform_schema_baseline.sql") || path.endsWith("/00000000000000_platform_baseline.sql")) throw new Error(`descendant release refuses a schema-bearing edit, delete, mode change or unsupported addition: ${path}`);
-    if (!isExpandOnlyPlatformForward(readTarget(path)!.toString())) throw new Error(`descendant release refuses a non-expand-only platform forward: ${path}`);
+    const contents = readTarget(path)!;
+    const bytes = typeof contents === "string" ? Buffer.from(contents, "utf8") : contents;
+    if (!isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, previousCommit, targetCommit, path, bytes, true);
     added.push(path);
   }
   if (added.some((path) => path.startsWith("supabase/migrations/")) && !oldByPath.has("supabase/migrations/00000000000000_platform_schema_baseline.sql")) throw new Error("descendant managed forwards require the previous frozen managed baseline");
@@ -265,7 +268,7 @@ export function assertDescendantSourceRelease(root: string, previousCommit: stri
   const blob = (entry: GitInventoryEntry | undefined) => entry ? gitBytes(root, ["cat-file", "blob", entry.gitBlobSha]) : undefined;
   const readTarget = (path: string) => blob(targetByPath.get(path)), readOld = (path: string) => blob(oldByPath.get(path));
   const requireTarget = (path: string) => { const bytes = readTarget(path); if (bytes === undefined) throw new Error(`descendant tree is missing ${path}`); return bytes; };
-  assertPlatformSchemaForwards(old, target, readOld, readTarget);
+  assertPlatformSchemaForwards(root, previousCommit, targetCommit, old, target, readOld, readTarget);
   const catalog = parsePublicPublicationCatalog(requireTarget(PUBLICATION_CATALOG_PATH).toString());
   if (JSON.stringify(catalog.publicPaths.map(({ path }) => path)) !== JSON.stringify(target.map(({ path }) => path))) throw new Error("descendant publication catalogue differs from the Git inventory");
   const allowedEntrypoints = new Set<string>(PUBLIC_EXECUTION_ENTRYPOINTS);
