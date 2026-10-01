@@ -6,18 +6,14 @@ import { join } from "node:path";
  * Architecture lint guards for the commerce-v2 migration sequence.
  *
  * Parses every `supabase/migrations/*_commerce_v2_*.sql` file at test time and asserts the
- * invariants the commerce v2 plan (§13 lint guard registry) requires for the migration
- * surface:
+ * following invariants for the migration surface:
  *   - Every new table gains RLS via `ENABLE ROW LEVEL SECURITY` + at least one policy
  *     matching the existing `admin_all_<table>` pattern from the ecommerce schema shell.
  *   - Axis columns reference their registry tables (FK only, never free-form text + CHECK).
  *   - No `bundle_id` / `offer_id` / `plan_id` / `subscription_box_id` columns ever appear
- *     (§1.3 invariant: bundles/subscriptions/offers are roles, not entities).
+ *     (bundles/subscriptions/offers are roles, not entities).
  *
- * These checks read the migration source — they do not require a live database. The
- * complementary DB-side checks live in `commerceV2InvariantsLive.test.ts`.
- *
- * See: ~/.claude/plans/users-bartroszkowski-downloads-openlup-com-shiny-cray.md §13, §17.1
+ * These checks read the migration source; they do not require a live database.
  */
 
 const repoRoot = process.cwd();

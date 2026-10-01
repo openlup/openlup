@@ -84,4 +84,4 @@ at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
 
-<!-- openlup-doc-impact {"unit":"domain-catalog","digest":"sha256-75f0d8ff251f0c5af56c946347f27eb67b03fbbd5932a54828d5d0a9dd8db1cf","reason":"Comment-only delta. Three catalog model comments name the deployment's data modules by role and drop pointers to planning documents. No catalog model, contract or seam described here changes."} -->
+<!-- openlup-doc-impact {"unit":"domain-catalog","digest":"sha256-11dbef4589ed0873fc4872667205bd9ffe9f99e43e7e92424247822b44958c75","reason":"The FAQ model comment now describes deployment-owned copy by role instead of naming one deployment file. ProductFaq fields, catalog behavior and the public ownership seam are unchanged."} -->
