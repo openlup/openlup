@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { mapResendOutcome, truncateReason } from "../../shared/mapResendOutcome.js";
 import { COMMERCE_ORDER_PAID_EMAIL_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
-import { resolveLocale } from "../../../src/lib/i18n/resolveLocale.js";
+import { resolveLocale, type Locale } from "../../../src/lib/i18n/resolveLocale.js";
 import type {
   OutboxEventRow,
   OutboxHandler,
@@ -20,6 +20,17 @@ import type { FirstSubscriptionPricePresentation } from "../../../src/domains/co
 export { OUTBOX_ORDER_PAID_TEMPLATE_SLUG };
 
 const HANDLER_TIMEOUT_MS = 10_000;
+
+/**
+ * An adopter's note about the paid order's parcel, already localized, or null
+ * for none. Best-effort and inside this handler's timeout: a failure is logged
+ * and the receipt is sent without the note.
+ */
+export type OrderPaidParcelNoteReader = (
+  orderUuid: string,
+  locale: Locale,
+  signal: AbortSignal,
+) => Promise<string | null>;
 
 // Frozen minimal parse (mirror the order-draft handler): validate ONLY what this
 // handler consumes; a producer schema change must never retro-DLQ in-flight rows.
@@ -70,6 +81,7 @@ export function createOutboxOrderPaidEmailHandler(deps: {
   emailPort: TransactionalEmailPort;
   recipientPort: OrderRecipientPort;
   linesPort: OrderPaidLinesPort;
+  describeParcel?: OrderPaidParcelNoteReader;
 }): OutboxHandler {
   return {
     eventType: COMMERCE_ORDER_PAID_EMAIL_EVENT_TYPE,
@@ -114,6 +126,7 @@ export function createOutboxOrderPaidEmailHandler(deps: {
         currency: data.currency,
       }));
       const locale = resolveLocale(recipient.country ?? null);
+      const parcelNote = await readParcelNote(deps.describeParcel, parsed.data.orderUuid, locale, signal, row.id);
 
       const outcome = await deps.emailPort.sendOrderPaidConfirmation({
         to: recipient.email,
@@ -126,6 +139,7 @@ export function createOutboxOrderPaidEmailHandler(deps: {
         totals: firstSubscriptionPricePresentation
           ? totalsFromFirstSubscription({ ...data, firstSubscriptionPricePresentation })
           : totalsFrom(data),
+        ...(parcelNote ? { parcelNote } : {}),
         locale,
         signal,
       });
@@ -133,4 +147,25 @@ export function createOutboxOrderPaidEmailHandler(deps: {
       return mapResendOutcome(outcome);
     },
   };
+}
+
+/**
+ * Asks the composed reader, if any, for the receipt's parcel note. A missing
+ * reader, an empty answer or a failure all mean no note: a failure is logged
+ * with the event id only, and the receipt is sent without the note.
+ */
+async function readParcelNote(
+  describeParcel: OrderPaidParcelNoteReader | undefined,
+  orderUuid: string,
+  locale: Locale,
+  signal: AbortSignal,
+  eventId: string,
+): Promise<string | null> {
+  if (!describeParcel) return null;
+  try {
+    return (await describeParcel(orderUuid, locale, signal)) || null;
+  } catch {
+    console.warn("[outbox-dispatch] order_paid_parcel_note_unavailable", eventId);
+    return null;
+  }
 }

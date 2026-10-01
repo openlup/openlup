@@ -13,6 +13,7 @@
 
 import type { Locale } from "../../../lib/i18n/resolveLocale.js";
 import { subscriptionEmailContent } from "#subscription-email-content";
+import type { SubscriptionRenewalUpcomingCopy } from "./subscriptionEmailContent.js";
 import {
   accentBox,
   button,
@@ -49,6 +50,8 @@ export interface SubscriptionRenewalUpcomingEmailVars {
   starterSteadyUnitCount?: number | null;
   /** Days between deliveries from the graduation on; renders only with `"graduation"`. */
   starterSteadyCadenceDays?: number | null;
+  /** Adopter-formatted steady package, already localized; renders only with `"graduation"`. */
+  starterSteadyDetail?: string | null;
   /** Absolute "manage subscription" URL; null/absent → no button. */
   ctaUrl?: string | null;
   /** Optional consumer context label; absent/null uses the selected pack's fallback. */
@@ -66,7 +69,7 @@ export function subscriptionRenewalUpcomingEmailContent(
   vars: SubscriptionRenewalUpcomingEmailVars,
   signoff: string,
 ): SubscriptionRenewalUpcomingEmailContent {
-  const copy = subscriptionEmailContent.renewalUpcoming[locale];
+  const copy: SubscriptionRenewalUpcomingCopy = subscriptionEmailContent.renewalUpcoming[locale];
   const details: string[] = [
     vars.renewalDateLabel ? copy.dateLine(vars.renewalDateLabel) : copy.noDateLine,
   ];
@@ -87,7 +90,7 @@ export function subscriptionRenewalUpcomingEmailContent(
   // surprised by, so it gets its own paragraph ABOVE the generic self-service
   // line, and it names moving the delivery first.
   if (vars.starterStage === "graduation" && vars.starterSteadyUnitCount && vars.starterSteadyCadenceDays) {
-    blocks.push(paragraph(copy.starterGraduationLine(vars.starterSteadyUnitCount, vars.starterSteadyCadenceDays)));
+    blocks.push(paragraph(copy.starterGraduationLine(vars.starterSteadyUnitCount, vars.starterSteadyCadenceDays, vars.starterSteadyDetail)));
   }
   blocks.push(paragraph(copy.manageLine));
 

@@ -17,12 +17,14 @@ import {
   COMMERCE_RETURN_REJECTED_EVENT_TYPE,
 } from "../../../src/domains/commerce/outboxEventContracts.js";
 import type {
+  OrderPaidConfirmationEmailInput,
   OrderPaymentLifecyclePort,
   OrderPaidLinesPort,
   OrderRecipientPort,
   TransactionalEmailPort,
 } from "./outboxOrderDraftEmailPorts.js";
 import type { OrderPaidFulfillmentPort } from "./outboxOrderPaidFulfillmentPorts.js";
+import type { OrderPaidParcelNoteReader } from "./outboxOrderPaidEmailHandler.js";
 import { claimAllowlist, createOutboxDispatchRegistry } from "./outboxDispatchRegistry.js";
 
 const fulfillmentPort: OrderPaidFulfillmentPort = {
@@ -365,6 +367,69 @@ describe("outboxDispatchRegistry channel buyer-comms suppression (wave B6)", () 
       .handle(rowFor(COMMERCE_ORDER_PAID_EMAIL_EVENT_TYPE), new AbortController().signal);
     expect((outcome as { detail?: { skipped?: string } }).detail?.skipped)
       .not.toBe("channel_owns_buyer_comms");
+  });
+});
+
+describe("outboxDispatchRegistry order-paid parcel note", () => {
+  const ORDER_UUID = "22222222-3333-4444-8555-666666666666";
+  const row = {
+    id: "evt-note",
+    created_at: "",
+    available_at: "",
+    processed_at: null,
+    aggregate_type: "commerce_order",
+    aggregate_id: ORDER_UUID,
+    event_type: COMMERCE_ORDER_PAID_EMAIL_EVENT_TYPE,
+    idempotency_key: `order_paid_email:${ORDER_UUID}`,
+    status: "processing",
+    attempts: 1,
+    payload: { orderUuid: ORDER_UUID, orderId: `order_${ORDER_UUID}` },
+    error: null,
+    metadata: {},
+  };
+
+  // A recording paid-receipt send, a resolving recipient and an empty basket, so
+  // the composed order-paid handler reaches its send.
+  function composed(orderPaidParcelNote?: OrderPaidParcelNoteReader) {
+    const sent: OrderPaidConfirmationEmailInput[] = [];
+    const registry = createOutboxDispatchRegistry({
+      ...fakes,
+      transactionalEmail: {
+        ...fakes.transactionalEmail,
+        emailPort: {
+          ...fakes.transactionalEmail.emailPort,
+          sendOrderPaidConfirmation: async (input) => {
+            sent.push(input);
+            return sendOk();
+          },
+        },
+        recipientPort: { resolve: async () => ({ email: "buyer@example.invalid", firstName: null }) },
+        orderPaidLinesPort: {
+          read: async () => ({ currency: "EUR", subtotalMinor: 0, discountMinor: 0, totalMinor: 0, lines: [] }),
+        },
+        ...(orderPaidParcelNote ? { orderPaidParcelNote } : {}),
+      },
+    });
+    return { registry, sent };
+  }
+
+  it("hands transactionalEmail.orderPaidParcelNote to the order-paid handler", async () => {
+    const reader = vi.fn<OrderPaidParcelNoteReader>(async () => "Adopter parcel note");
+    const { registry, sent } = composed(reader);
+    const signal = new AbortController().signal;
+
+    await expect(registry.get(COMMERCE_ORDER_PAID_EMAIL_EVENT_TYPE)?.handle(row, signal))
+      .resolves.toEqual({ kind: "processed", detail: { resendId: "re_fake" } });
+    expect(reader.mock.calls).toEqual([[ORDER_UUID, "pl", signal]]);
+    expect(sent.map((input) => input.parcelNote)).toEqual(["Adopter parcel note"]);
+  });
+
+  it("sends no parcelNote without a composed reader", async () => {
+    const { registry, sent } = composed();
+
+    await registry.get(COMMERCE_ORDER_PAID_EMAIL_EVENT_TYPE)?.handle(row, new AbortController().signal);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty("parcelNote");
   });
 });
 
