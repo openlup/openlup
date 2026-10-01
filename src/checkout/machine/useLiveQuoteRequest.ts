@@ -38,6 +38,8 @@ export function buildQuoteRequest(input: LiveQuoteInput): PublicCreateQuoteReque
     sizeConstraint: {
       kind: "unit_count",
       value: snapshot.lines.reduce((sum, line) => sum + line.qty, 0),
+      // Mirrors the checkout intent, so a promotion acceptance binds the same request.
+      ...(snapshot.offerVersion !== undefined ? { dailyKcalOverride: snapshot.dailyKcal } : {}),
     },
     petProfileContext: { dailyKcalOverride: snapshot.dailyKcal },
     promoCodes,

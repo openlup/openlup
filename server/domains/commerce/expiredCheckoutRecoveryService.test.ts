@@ -313,6 +313,55 @@ describe("expired checkout recovery service", () => {
       reason: "expired_checkout_recovery_failed",
     });
   });
+
+  const OFFER_EVIDENCE = { tier: "b", units: 2 };
+
+  function boundQuote(): CreateQuoteResponse {
+    const unbound = quote();
+    return {
+      ...unbound,
+      quote: {
+        ...unbound.quote,
+        context: { ...unbound.quote.context!, offerVersion: "offer.v2", offerEvidence: OFFER_EVIDENCE },
+      },
+    };
+  }
+
+  it("re-quotes a bound order with its frozen offer version and carries the binding into the draft", async () => {
+    const deps = depsFor({ paymentProvider: "hidden_rehearsal" });
+
+    await expect(createExpiredCheckoutRecoveryService(deps).recreate({
+      order: order({ quoteSnapshot: boundQuote() }),
+      clientId: CLIENT_ID,
+      paymentProvider: "hidden_rehearsal",
+    })).resolves.toMatchObject({ status: "paid" });
+
+    expect(deps.quotePort.createQuote).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "one_time" }),
+      { clientId: CLIENT_ID, offerVersion: "offer.v2" },
+    );
+    const recreated = vi.mocked(deps.orderDraftPort.createOrderDraft).mock.calls[0]?.[0].quoteSnapshot;
+    expect(recreated?.quote.context).toEqual({
+      ...quote().quote.context,
+      offerVersion: "offer.v2",
+      offerEvidence: OFFER_EVIDENCE,
+    });
+    expect(deps.runtimePort.startRuntime).toHaveBeenCalledWith(expect.objectContaining({
+      orderDraft: expect.objectContaining({ quoteSnapshot: recreated }),
+    }));
+  });
+
+  it("still refuses a bound order whose commercial terms drifted", async () => {
+    const deps = depsFor({ freshQuote: quote({ totalGross: money(5_000), netTotal: money(4_630) }) });
+
+    await expect(createExpiredCheckoutRecoveryService(deps).recreate({
+      order: order({ quoteSnapshot: boundQuote() }),
+      clientId: CLIENT_ID,
+      paymentProvider: "hidden_rehearsal",
+    })).rejects.toMatchObject({ reason: "order_changed" });
+
+    expect(deps.orderDraftPort.createOrderDraft).not.toHaveBeenCalled();
+  });
 });
 
 function depsFor(input: {

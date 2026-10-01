@@ -218,7 +218,56 @@ describe("configuratorIntentSchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("adds no offer key to an intent without offer fields and keeps the default minimum message", () => {
+    const parsed = configuratorIntentSchema.parse(makeIntent());
+    const belowDefault = configuratorIntentSchema.safeParse(makeIntent(twelveUnits()));
+
+    expect(parsed).not.toHaveProperty("offerVersion");
+    expect(parsed).not.toHaveProperty("minimumUnits");
+    expect(belowDefault.error?.issues).toContainEqual(expect.objectContaining({
+      message: `selected variants require at least ${COMMERCE_MIN_ORDER_UNITS} total units`,
+      path: ["selectedVariants"],
+    }));
+  });
+
+  it("accepts 12 units with an offer version and a carried minimum of 12", () => {
+    const parsed = configuratorIntentSchema.parse(
+      makeIntent({ ...twelveUnits(), offerVersion: "offer.v2", minimumUnits: 12 }),
+    );
+
+    expect(parsed).toMatchObject({ offerVersion: "offer.v2", minimumUnits: 12 });
+    expect(configuratorIntentSchema.safeParse(
+      makeIntent({ ...twelveUnits(), offerVersion: "offer.v2", minimumUnits: 13 }),
+    ).error?.issues).toContainEqual(expect.objectContaining({
+      message: "selected variants require at least 13 total units",
+    }));
+  });
+
+  it("lets a minimum alone lower the schema minimum; the checkout guard refuses it without an offer policy", () => {
+    // Deliberately no both-or-neither rule here: the adopter's offer policy judges the pair.
+    expect(configuratorIntentSchema.safeParse(makeIntent({ ...twelveUnits(), minimumUnits: 12 })).success).toBe(true);
+    expect(configuratorIntentSchema.safeParse(makeIntent({ offerVersion: "offer.v2" })).success).toBe(true);
+  });
+
+  it("refuses a malformed offer version and a minimum of 0 or 100", () => {
+    for (const overrides of [
+      { offerVersion: "Offer V2", minimumUnits: 12 },
+      { offerVersion: "offer.v2", minimumUnits: 0 },
+      { offerVersion: "offer.v2", minimumUnits: 100 },
+    ]) {
+      expect(configuratorIntentSchema.safeParse(makeIntent(overrides)).success, JSON.stringify(overrides))
+        .toBe(false);
+    }
+  });
 });
+
+function twelveUnits() {
+  return {
+    selectedFlavorSlugs: ["lamb", "venison"],
+    selectedVariants: [variant("lamb", 6), variant("venison", 6)],
+  };
+}
 
 function makeIntent(overrides: Record<string, unknown> = {}) {
   return {

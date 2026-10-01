@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ConfiguratorIntentPersistenceResponse } from "../../../src/domains/commerce/configuratorIntentPersistenceContracts.js";
-import type { CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
+import type { ConfiguratorIntent } from "../../../src/domains/commerce/configuratorIntentContracts.js";
+import { createQuoteResponseSchema, type CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
+import {
+  STARTER_DELIVERY2_DISCOUNT_BPS,
+  STARTER_OFFER_CAPABILITY,
+  starterTermsFromCoverage,
+} from "../../../src/domains/commerce/starterOfferPolicy.js";
+import type { CheckoutOfferPolicyPort, CheckoutOfferResolution } from "./checkoutOfferPolicyPort.js";
 import { resolveCheckoutQuoteGuard } from "./commerceCheckoutQuoteGuard.js";
 import { CLIENT_ID, PET_ID, intent, quoteSnapshot } from "./commerceCheckoutHandler.testFixtures.js";
 
@@ -201,6 +208,154 @@ describe("resolveCheckoutQuoteGuard", () => {
       expect(JSON.stringify(result.response)).not.toContain("opaque.");
     }
   });
+
+  it("never consults an offer policy for an intent without offer fields", async () => {
+    const snapshot = quoteSnapshot();
+    const createQuote = vi.fn().mockResolvedValue(snapshot);
+    const offerPolicy = offerPort();
+
+    await expect(resolveCheckoutQuoteGuard({
+      quotePort: { createQuote },
+      intent: intent(),
+      provisioned,
+      checkoutKind: "one_time",
+      offerPolicy,
+      recordQuoteStage: async <T>(operation: () => Promise<T>) => operation(),
+    })).resolves.toEqual({ kind: "accepted", quoteSnapshot: snapshot });
+    expect(createQuote).toHaveBeenCalledWith(expect.any(Object), { clientId: CLIENT_ID });
+    expect(offerPolicy.resolve).not.toHaveBeenCalled();
+    expect(offerPolicy.evidence).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an offer version", { offerVersion: "offer.v2" }],
+    ["a minimum alone", { minimumUnits: 12 }],
+  ])("refuses %s without an offer policy before any quote or policy read", async (_case, fields) => {
+    const createQuote = vi.fn();
+    const resolvePricingPolicy = vi.fn();
+
+    await expect(resolveCheckoutQuoteGuard({
+      quotePort: { createQuote },
+      intent: { ...intent(), ...fields },
+      provisioned,
+      checkoutKind: "one_time",
+      resolvePricingPolicy,
+      recordQuoteStage: async <T>(operation: () => Promise<T>) => operation(),
+    })).rejects.toMatchObject({ name: "CheckoutOfferRefusedError", reason: "offer_version_unsupported" });
+    expect(createQuote).not.toHaveBeenCalled();
+    expect(resolvePricingPolicy).not.toHaveBeenCalled();
+  });
+
+  it("never quotes after the offer policy refuses", async () => {
+    const createQuote = vi.fn();
+    const offerPolicy = offerPort({ kind: "refused", reason: "offer_not_available" });
+
+    await expect(resolveCheckoutQuoteGuard({
+      quotePort: { createQuote },
+      intent: offerIntent(),
+      provisioned,
+      checkoutKind: "one_time",
+      offerPolicy,
+      recordQuoteStage: async <T>(operation: () => Promise<T>) => operation(),
+    })).rejects.toMatchObject({ name: "CheckoutOfferRefusedError", reason: "offer_not_available" });
+    expect(createQuote).not.toHaveBeenCalled();
+    expect(offerPolicy.evidence).not.toHaveBeenCalled();
+  });
+
+  it.each(["createServerAuthoritativeQuote", "createQuote"])(
+    "quotes a bound version through %s and writes it with valid evidence into the context",
+    async (method) => {
+      const snapshot = contextSnapshot();
+      const quote = vi.fn().mockResolvedValue(snapshot);
+      const quotePort = method === "createQuote"
+        ? { createQuote: quote }
+        : { createQuote: vi.fn(), createServerAuthoritativeQuote: quote };
+      const offerPolicy = offerPort();
+      const asked = offerIntent();
+
+      const result = await resolveCheckoutQuoteGuard({
+        quotePort,
+        intent: asked,
+        provisioned,
+        checkoutKind: "one_time",
+        offerPolicy,
+        recordQuoteStage: async <T>(operation: () => Promise<T>) => operation(),
+      });
+
+      expect(offerPolicy.resolve).toHaveBeenCalledWith({ intent: asked, checkoutKind: "one_time" });
+      expect(quote).toHaveBeenCalledWith(expect.any(Object), { clientId: CLIENT_ID, offerVersion: "offer.v2" });
+      expect(result).toEqual({
+        kind: "accepted",
+        quoteSnapshot: {
+          ...snapshot,
+          quote: {
+            ...snapshot.quote,
+            context: { ...snapshot.quote.context, offerVersion: "offer.v2", offerEvidence: OFFER_EVIDENCE },
+          },
+        },
+      });
+      if (result.kind === "accepted") {
+        expect(createQuoteResponseSchema.safeParse(result.quoteSnapshot).success).toBe(true);
+      }
+    },
+  );
+
+  it("answers price_changed for a bound offer whose total moved, without asking for evidence", async () => {
+    const snapshot = contextSnapshot();
+    const offerPolicy = offerPort();
+
+    const result = await resolveCheckoutQuoteGuard({
+      quotePort: { createQuote: vi.fn().mockResolvedValue(snapshot) },
+      intent: offerIntent(),
+      provisioned,
+      checkoutKind: "one_time",
+      expectedQuote: {
+        totalGross: { ...snapshot.quote.totalGross, amountMinor: snapshot.quote.totalGross.amountMinor + 1 },
+      },
+      offerPolicy,
+      recordQuoteStage: async <T>(operation: () => Promise<T>) => operation(),
+    });
+
+    expect(result.kind).toBe("price_changed");
+    expect(offerPolicy.evidence).not.toHaveBeenCalled();
+  });
+
+  it("carries a minted starter plan and both offer fields together", async () => {
+    const terms = starterTermsFromCoverage(14, 14)!;
+    const { checkout, steady } = starterQuotes(terms.steadyCans);
+    const createQuote = vi.fn().mockResolvedValueOnce(checkout).mockResolvedValueOnce(steady);
+    const offerPolicy = offerPort();
+
+    const result = await resolveCheckoutQuoteGuard({
+      quotePort: { createQuote },
+      intent: {
+        ...intent("subscription"),
+        starterOffer: {
+          capability: STARTER_OFFER_CAPABILITY,
+          intervalDays: terms.intervalDays,
+          delivery2DiscountBps: STARTER_DELIVERY2_DISCOUNT_BPS,
+          steady: { cadenceDays: terms.cadenceDays, cans: terms.steadyCans },
+        },
+        offerVersion: "offer.v2",
+        minimumUnits: 14,
+      },
+      provisioned,
+      checkoutKind: "subscription_initial",
+      offerPolicy,
+      starterPackEnabled: () => true,
+      isFirstOrderEligible: async () => true,
+      recordQuoteStage: async <T>(operation: () => Promise<T>) => operation(),
+    });
+
+    expect(result.kind).toBe("accepted");
+    const context = result.kind === "accepted" ? result.quoteSnapshot.quote.context : undefined;
+    expect(context?.starterPack?.graduation.cadenceDays).toBe(terms.cadenceDays);
+    expect(context).toMatchObject({ offerVersion: "offer.v2", offerEvidence: OFFER_EVIDENCE });
+    expect(createQuote).toHaveBeenNthCalledWith(1, expect.any(Object), { clientId: CLIENT_ID, offerVersion: "offer.v2" });
+    expect(offerPolicy.evidence).toHaveBeenCalledWith(expect.objectContaining({
+      quote: expect.objectContaining({ context: expect.objectContaining({ starterPack: context?.starterPack }) }),
+    }));
+  });
 });
 
 function v2Snapshot(): CreateQuoteResponse {
@@ -262,4 +417,54 @@ function catalogFacts(currency: CreateQuoteResponse["quote"]["currency"]) {
     resolvedLineAmountMinor: 25460,
     baseUnitAmountMinor: 1490,
   };
+}
+
+const OFFER_EVIDENCE = { tier: "b", units: 14 };
+
+function offerIntent(): ConfiguratorIntent {
+  return { ...intent(), offerVersion: "offer.v2", minimumUnits: 14 };
+}
+
+function offerPort(resolution: CheckoutOfferResolution = { kind: "bound", offerVersion: "offer.v2" }) {
+  return {
+    resolve: vi.fn(async () => resolution),
+    evidence: vi.fn(async () => OFFER_EVIDENCE),
+  } satisfies CheckoutOfferPolicyPort;
+}
+
+function contextSnapshot(): CreateQuoteResponse {
+  const snapshot = quoteSnapshot();
+  return {
+    ...snapshot,
+    quote: { ...snapshot.quote, context: { mode: "one_time", cadenceDays: null, promoCodes: [] } },
+  };
+}
+
+/** A subscription quote the starter lane mints a plan from, then its steady re-quote. */
+function starterQuotes(steadyUnits: number): { checkout: CreateQuoteResponse; steady: CreateQuoteResponse } {
+  const base = quoteSnapshot({ amountMinor: 16_800, currency: quoteSnapshot().quote.currency });
+  const money = (amountMinor: number) => ({ amountMinor, currency: base.quote.currency });
+  const checkout: CreateQuoteResponse = {
+    ...base,
+    quote: {
+      ...base.quote,
+      lines: [{ ...base.quote.lines[0]!, quantity: 14, unitPriceGross: money(1_200) }],
+      pricingComponents: [{
+        scope: "order",
+        componentType: "base_unit",
+        amountMinor: 21_000,
+        reasonCode: "variant_unit_price",
+        reasonPayload: {},
+      }],
+      context: { mode: "subscription", cadenceDays: 21, feedingCoverageDays: 14, promoCodes: [] },
+    },
+  };
+  const steady: CreateQuoteResponse = {
+    ...checkout,
+    quote: {
+      ...checkout.quote,
+      lines: [{ ...checkout.quote.lines[0]!, quantity: steadyUnits, lineSubtotalGross: money(1_200 * steadyUnits) }],
+    },
+  };
+  return { checkout, steady };
 }

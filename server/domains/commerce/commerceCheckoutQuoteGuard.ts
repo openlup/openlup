@@ -11,6 +11,7 @@ import type { CommerceQuotePort } from "../../../src/domains/commerce/ports.js";
 import { projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
 import { buildQuoteRequest } from "./commerceCheckoutOrchestrationHelpers.js";
 import type { PricingPolicySnapshot } from "../../../src/domains/commerce/offerPolicyContracts.js";
+import { resolveCheckoutOffer, withCheckoutOfferContext, type CheckoutOfferPolicyPort } from "./checkoutOfferPolicyPort.js";
 import {
   resolveStarterOfferGuard,
   withStarterPackContext,
@@ -51,6 +52,11 @@ export async function resolveCheckoutQuoteGuard(input: {
   }) => boolean;
   promotionAcceptanceToken?: string;
   /**
+   * The adopter's offer policy. Consulted only for an intent that carries
+   * `offerVersion` or `minimumUnits`; such an intent is refused without it.
+   */
+  offerPolicy?: CheckoutOfferPolicyPort;
+  /**
    * Starter-pack acquisition lane. Omitted (or flag off with nothing declared)
    * leaves this guard's output byte-identical to the pre-starter contract.
    */
@@ -58,6 +64,7 @@ export async function resolveCheckoutQuoteGuard(input: {
   isFirstOrderEligible?: () => Promise<boolean>;
 }): Promise<CheckoutQuoteGuardResult> {
   const { quotePort, intent, provisioned, checkoutKind, expectedQuote, recordQuoteStage } = input;
+  const offer = await resolveCheckoutOffer(input.offerPolicy, intent, checkoutKind);
   const quoteRequest = buildQuoteRequest(intent, provisioned, expectedQuote?.pricingPolicy);
   const pricingPolicy = await input.resolvePricingPolicy?.(quoteRequest);
   const pricingClientId = input.pricingEligibilityClientId ?? provisioned.clientId;
@@ -66,10 +73,12 @@ export async function resolveCheckoutQuoteGuard(input: {
       ? quotePort.createServerAuthoritativeQuote(quoteRequest, {
         clientId: pricingClientId,
         ...(pricingPolicy ? { pricingPolicy } : {}),
+        ...(offer ? { offerVersion: offer.offerVersion } : {}),
       })
       : quotePort.createQuote(quoteRequest, {
         clientId: pricingClientId,
         ...(pricingPolicy ? { pricingPolicy } : {}),
+        ...(offer ? { offerVersion: offer.offerVersion } : {}),
       }),
   );
   console.info(
@@ -100,16 +109,17 @@ export async function resolveCheckoutQuoteGuard(input: {
       authoritativeQuote,
       quotePort,
       isFirstOrderEligible: input.isFirstOrderEligible,
+      offerVersion: offer?.offerVersion,
     })
     : { kind: "absent" };
   if (priceAccepted && starter.kind !== "rejected") {
     const persisted = withoutPricingPolicyToken(authoritativeQuote);
     return {
       kind: "accepted",
-      quoteSnapshot: withStarterPackContext(
+      quoteSnapshot: await withCheckoutOfferContext(offer, intent, withStarterPackContext(
         persisted,
         starter.kind === "minted" ? starter.plan : null,
-      ),
+      )),
     };
   }
   return {

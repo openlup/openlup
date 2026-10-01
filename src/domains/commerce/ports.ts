@@ -34,6 +34,7 @@ export { hasSubscriptionRecoveryContext, resolveRecoveryDestination } from "./re
 export interface CreateQuoteOptions {
   clientId?: string | null;
   pricingPolicy?: PricingPolicySnapshot;
+  offerVersion?: string; // server-resolved bound offer version; absent = the default list
 }
 
 export interface CommerceQuotePort {

@@ -271,7 +271,52 @@ describe("configurator package quantities", () => {
 
     expect(baseline.lines.map((line) => line.qty)).toEqual([8, 6, 4]);
   });
+
+  it("lets a carried minimum of 12 take a 24-unit baseline down to 12, not 11", () => {
+    const baseline = { ...snapshot([12, 12]), offerVersion: "offer.v2", minimumUnits: 12 };
+
+    const lowest = decreaseUntilBlocked(baseline);
+
+    expect(lowest).toMatchObject({ totalUnits: 12, changeApplied: false, blockReason: "minimum_order" });
+    expect(quantities(lowest.snapshot)).toEqual({ lamb: 1, beef: 11 });
+    expect(lowest.snapshot).toMatchObject({ offerVersion: "offer.v2", minimumUnits: 12 });
+  });
+
+  it("stops the same baseline at the core minimum of 14 without a carried minimum", () => {
+    const lowest = decreaseUntilBlocked(snapshot([12, 12]));
+
+    expect(lowest).toMatchObject({ totalUnits: 14, changeApplied: false, blockReason: "minimum_order" });
+    expect(quantities(lowest.snapshot)).toEqual({ lamb: 2, beef: 12 });
+  });
+
+  it("falls back atomically when hydrated overrides go below the carried minimum", () => {
+    const baseline = { ...snapshot([12, 12]), offerVersion: "offer.v2", minimumUnits: 12 };
+
+    const atMinimum = resolveConfiguratorPackageQuantities(baseline, { "variant-lamb": 1, "variant-beef": 11 });
+    const belowMinimum = resolveConfiguratorPackageQuantities(baseline, { "variant-lamb": 1, "variant-beef": 10 });
+
+    expect(atMinimum).toMatchObject({ totalUnits: 12, customized: true });
+    expect(belowMinimum.snapshot).toBe(baseline);
+    expect(belowMinimum).toMatchObject({ overrides: {}, totalUnits: 24, customized: false });
+  });
 });
+
+/** Shrink the first line, then the second, one unit at a time; return the last refusal. */
+function decreaseUntilBlocked(baseline: CommerceRecommendationSnapshot) {
+  let overrides: unknown = {};
+  let refusal: ReturnType<typeof changeConfiguratorPackageQuantity> | null = null;
+  for (const variantId of ["variant-lamb", "variant-beef"]) {
+    for (let step = 0; step < 50; step += 1) {
+      const next = changeConfiguratorPackageQuantity(baseline, overrides, variantId, -1);
+      if (!next.changeApplied) {
+        refusal = next;
+        break;
+      }
+      overrides = next.overrides;
+    }
+  }
+  return refusal;
+}
 
 function snapshot(quantities: number[]): CommerceRecommendationSnapshot {
   const slugs = ["lamb", "beef", "turkey"];

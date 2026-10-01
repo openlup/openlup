@@ -152,6 +152,8 @@ export interface ConfiguratorFormData {
 
   /** Server-authored package recommendation used by summary and checkout. */
   recommendationSnapshot: CommerceRecommendationSnapshot | null;
+  /** Offer version the server answered: undefined not answered yet, null the adopter's default offer. */
+  offerVersion?: string | null;
 
   /** Sparse customer quantities by variant id; the recommendation stays immutable. */
   packageQuantityOverrides: Record<string, number>;
@@ -209,6 +211,7 @@ function hydrateConfiguratorFormData(
     // Re-resolved against a fresh option list at step 5; never restored directly.
     selectedDeliveryOption: null,
     pendingDeliveryOptionId: draft?.form.selectedDeliveryOptionId ?? null,
+    offerVersion: draft ? draft.form.offerVersion ?? null : defaults.offerVersion,
     website: "",
   });
 }

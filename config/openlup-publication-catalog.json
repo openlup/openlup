@@ -7954,6 +7954,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/checkoutOfferPolicyPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/checkoutOfferPolicyPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/checkoutPaymentContinuationCredential.test.ts",
       "class": "public-output"
     },
@@ -8115,6 +8123,10 @@
     },
     {
       "path": "server/domains/commerce/commerceCheckoutHandler.diagnostics.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/commerceCheckoutHandler.offerPolicy.test.ts",
       "class": "public-output"
     },
     {
@@ -11682,6 +11694,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/composer/configuratorDraftIntent.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/configuratorDraftIntent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/composer/configuratorDraftStepIds.ts",
       "class": "public-output"
     },
@@ -11907,6 +11927,10 @@
     },
     {
       "path": "src/checkout/machine/quoteBandPricing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/machine/recommendationGate.test.ts",
       "class": "public-output"
     },
     {
@@ -13698,6 +13722,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/commerce/offerVersionContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/offerVersionContracts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/commerce/omnipackProviderOps.test.ts",
       "class": "public-output"
     },
@@ -14023,6 +14055,14 @@
     },
     {
       "path": "src/domains/commerce/quoteCodeRejectionDetails.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/quoteContextContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/quoteContextContracts.ts",
       "class": "public-output"
     },
     {

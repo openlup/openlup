@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
 import type { VercelResponse } from "../../_lib/types/vercel.js";
 import {
   rejectMissingPromotionExpectedQuote,
@@ -79,6 +80,39 @@ describe("promotion checkout price-change response", () => {
     expect(createQuote).toHaveBeenCalledWith(expect.any(Object), {
       clientId: "client-1",
       pricingPolicy,
+    });
+  });
+
+  it("re-quotes a bound order with the accepted offer version", async () => {
+    const createQuote = vi.fn().mockResolvedValue(quoteSnapshot());
+    const accepted = quoteSnapshot();
+    const acceptedQuoteSnapshot: CreateQuoteResponse = {
+      ...accepted,
+      quote: {
+        ...accepted.quote,
+        context: {
+          mode: "one_time",
+          cadenceDays: null,
+          promoCodes: ["SAVE80"],
+          offerVersion: "offer.v2",
+          offerEvidence: { tier: "b" },
+        },
+      },
+    };
+
+    await respondToPromotionCodePriceChange({
+      res: response(),
+      quotePort: { createQuote },
+      intent: { ...intent(), promoCodes: ["SAVE80"], offerVersion: "offer.v2", minimumUnits: 14 },
+      provisioned: { clientId: "client-1", petId: "pet-1", addressId: "address-1" },
+      checkoutKind: "one_time",
+      acceptedQuoteSnapshot,
+      recordQuote: async <T>(operation: () => Promise<T>) => operation(),
+    });
+
+    expect(createQuote).toHaveBeenCalledWith(expect.any(Object), {
+      clientId: "client-1",
+      offerVersion: "offer.v2",
     });
   });
 });

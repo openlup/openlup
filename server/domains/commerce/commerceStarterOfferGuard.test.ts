@@ -499,4 +499,25 @@ describe("resolveStarterOfferGuard — client/guard terms agreement", () => {
       expect(result.kind, `coverage ${coverageDays}`).not.toBe("rejected");
     }
   });
+  it("the steady re-quote carries offerVersion when bound; options equal { clientId } when not", async () => {
+    const bound = vi.fn().mockResolvedValue(steadyQuote());
+    await resolveStarterOfferGuard(guardInput({
+      offerVersion: "offer.v2",
+      quotePort: { createQuote: bound } as unknown as CommerceQuotePort,
+    }));
+    expect(bound.mock.calls[0][1]).toEqual({ clientId: CLIENT_ID, offerVersion: "offer.v2" });
+
+    const unbound = vi.fn().mockResolvedValue(steadyQuote());
+    await resolveStarterOfferGuard(guardInput({ quotePort: { createQuote: unbound } as unknown as CommerceQuotePort }));
+    expect(unbound.mock.calls[0][1]).toEqual({ clientId: CLIENT_ID });
+
+    const anonymous = vi.fn().mockResolvedValue(steadyQuote());
+    await resolveStarterOfferGuard(guardInput({
+      offerVersion: "offer.v2",
+      provisioned: { clientId: null, petId: PET_ID },
+      quotePort: { createQuote: anonymous } as unknown as CommerceQuotePort,
+    }));
+    expect(anonymous.mock.calls[0][1]).toEqual({ offerVersion: "offer.v2" });
+  });
+
 });

@@ -1,22 +1,24 @@
 import { z } from "../../lib/validation/zod.js";
-import { catalogAllergenSlugSchema } from "../catalog/contracts.js";
 import {
   commerceCurrencySchema,
   commerceMoneySchema,
   commerceProductSlugSchema,
-  commerceSizeConstraintSchema,
   commerceSkuSchema,
   commerceTaxCategorySchema,
   commerceTaxCountrySchema,
   commerceTaxLegalBasisSchema,
 } from "./contractPrimitives.js";
-import { starterPackPlanSchema } from "./starterOfferContracts.js";
 import { COMMERCE_CONTRACT_VERSION, type CommerceQuote } from "./types.js";
 import { catalogFactsProvenanceSchema, rejectCatalogFactsFromPublicQuote } from "./catalogFactsProvenance.js";
 import {
   pricingPolicyRequestSchema,
-  pricingPolicySnapshotSchema,
 } from "./offerPolicyContracts.js";
+import {
+  quoteContextSchema,
+  quoteCustomerEligibilityContextSchema,
+  quotePetProfileContextSchema,
+  quoteSizeConstraintSchema,
+} from "./quoteContextContracts.js";
 import { quoteDiscountSchema } from "./quotePromotionEvidence.js";
 import { quoteCodeRejectionDetailSchema } from "./quoteCodeRejectionDetails.js";
 export { quoteDiscountSchema } from "./quotePromotionEvidence.js";
@@ -37,42 +39,7 @@ export const cartLineInputSchema = z.object({
   modeAtLine: z.enum(["one_time", "subscription"]).optional(),
   isAddon: z.boolean().optional(),
 });
-export const quoteSizeConstraintSchema = commerceSizeConstraintSchema;
-export const quotePetProfileContextSchema = z
-  .object({
-    petId: z.string().trim().min(1).max(120).nullable().optional(),
-    ageBand: z.enum(["puppy", "young", "adult", "senior"]).optional(),
-    breed: z.string().trim().min(1).max(120).optional(),
-    weightKg: z.number().positive().max(120).optional(),
-    activityLevel: z.enum(["low", "normal", "high"]).optional(),
-    bcs: z.enum(["thin", "ideal", "overweight"]).optional(),
-    allergenSlugs: z.array(catalogAllergenSlugSchema).optional(),
-    dailyKcalOverride: z.number().int().positive().nullable().optional(),
-  })
-  .strict();
-
-export const quoteCustomerEligibilityContextSchema = z
-  .object({
-    email: z.string().trim().toLowerCase().email().max(320).optional(),
-    contactEmail: z.string().trim().toLowerCase().email().max(320).optional(),
-    visitorId: z.string().trim().min(1).max(120).optional(),
-  })
-  .strict();
-export const quoteContextSchema = z
-  .object({
-    mode: z.enum(["one_time", "subscription"]),
-    cadenceDays: z.number().int().positive().max(120).nullable().optional(),
-    feedingCoverageDays: z.number().positive().nullable().optional(),
-    sizeConstraint: quoteSizeConstraintSchema.optional(),
-    promoCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
-    petId: z.string().trim().min(1).max(120).nullable().optional(),
-    petProfileContext: quotePetProfileContextSchema.optional(),
-    pricingPolicy: pricingPolicySnapshotSchema.optional(),
-    // SERVER-MINTED ONLY: injected by the checkout quote guard after pricing, never
-    // accepted from a client, read by the provisional-creation RPC to seed the marker.
-    starterPack: starterPackPlanSchema.optional(),
-  })
-  .strict();
+export { quoteContextSchema, quoteCustomerEligibilityContextSchema, quotePetProfileContextSchema, quoteSizeConstraintSchema } from "./quoteContextContracts.js";
 
 export const commerceTaxBreakdownSchema = z
   .object({

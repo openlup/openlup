@@ -11,6 +11,7 @@ import {
   COMMERCE_RECOMMENDATION_VERSION,
 } from "./recommendationEngine.js";
 import { commerceOfferAvailabilityStatusSchema } from "./offerAvailabilityContracts.js";
+import { commerceMinimumUnitsSchema, commerceOfferVersionSchema } from "./offerVersionContracts.js";
 
 export const COMMERCE_RECOMMENDATION_CONTRACT_VERSION =
   "commerce.recommendation.v2";
@@ -52,6 +53,12 @@ export const commerceRecommendationRequestSchema = z
      * response then reports how few days the smaller package really covers.
      */
     sizePolicy: z.enum(["cadence_target", "minimum_order"]).optional(),
+    /**
+     * The adopter offer version to answer with. OPTIONAL for the same reason as
+     * `sizePolicy`: absence keeps the request byte-identical, and the request is
+     * the client's recommendation cache key. Core never interprets the value.
+     */
+    offerVersion: commerceOfferVersionSchema.optional(),
   })
   .strict();
 
@@ -127,6 +134,10 @@ export const commerceRecommendationSnapshotSchema = z
     // the customer explicitly adds one to selectedVariantIds.
     suggestedVariants: z.array(suggestedVariantSchema).max(50).optional(),
     allergenOverrideRecorded: z.boolean(),
+    // Additive and paired: an answer that serves an adopter offer version names it
+    // and the smallest basket that offer accepts. Absent: core's default minimum.
+    offerVersion: commerceOfferVersionSchema.optional(),
+    minimumUnits: commerceMinimumUnitsSchema.optional(),
   })
   .strict()
   .superRefine((snapshot, ctx) => {
@@ -135,6 +146,13 @@ export const commerceRecommendationSnapshotSchema = z
         code: z.ZodIssueCode.custom,
         message: "buyable recommendation requires at least one line",
         path: ["lines"],
+      });
+    }
+    if ((snapshot.offerVersion === undefined) !== (snapshot.minimumUnits === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "offerVersion and minimumUnits travel together",
+        path: [snapshot.offerVersion === undefined ? "offerVersion" : "minimumUnits"],
       });
     }
   });

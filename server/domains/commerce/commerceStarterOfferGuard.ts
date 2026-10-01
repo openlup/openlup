@@ -70,6 +70,8 @@ export interface StarterOfferGuardInput {
    * it" and the offer is refused.
    */
   isFirstOrderEligible?: () => Promise<boolean>;
+  /** The server-bound offer version, also used for the steady basket quote. */
+  offerVersion?: string;
 }
 
 export async function resolveStarterOfferGuard(
@@ -231,7 +233,10 @@ async function quoteSteadyPackage(
   try {
     const quoted = await input.quotePort.createQuote(
       buildQuoteRequest(steadyIntent, input.provisioned),
-      input.provisioned.clientId ? { clientId: input.provisioned.clientId } : {},
+      {
+        ...(input.provisioned.clientId ? { clientId: input.provisioned.clientId } : {}),
+        ...(input.offerVersion ? { offerVersion: input.offerVersion } : {}),
+      },
     );
     return quoted.quote.lines.length > 0 ? quoted : null;
   } catch {

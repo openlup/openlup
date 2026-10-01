@@ -39,7 +39,7 @@ import {
   resolveResumeOpenOrderResponse,
   type CheckoutResumeGuardDeps,
 } from "./commerceCheckoutResumeGuard.js";
-import { readCheckoutCustomerDefaults } from "./commerceCheckoutCustomerDefaults.js";
+import { readCheckoutCustomerDefaultsOrRespond } from "./commerceCheckoutCustomerDefaults.js";
 import type { CheckoutSavedPaymentMethodResolverPort } from "./savedPaymentMethodResolverPort.js";
 import { resolveSavedTpayPaymentMethodForCheckout } from "./commerceCheckoutSavedPaymentMethod.js";
 import type { CreateQuoteRequest } from "../../../src/domains/commerce/contracts.js";
@@ -68,6 +68,7 @@ export interface CommerceCheckoutHandlerDeps extends CheckoutResumeGuardDeps, Ch
   subscriptionCheckoutContractEnabled?: () => boolean;
   dhlOnlyDeliveryEnabled?: () => boolean;
   verifyPromotionAcceptance?: Parameters<typeof resolveCheckoutQuoteGuard>[0]["verifyPromotionAcceptance"];
+  offerPolicy?: Parameters<typeof resolveCheckoutQuoteGuard>[0]["offerPolicy"];
   promotionAcceptanceEnforced?: boolean;
   now?: () => Date;
   resolvePricingPolicy?: (
@@ -99,6 +100,7 @@ export function createCommerceCheckoutHandler({
   subscriptionCheckoutContractEnabled = () => false,
   dhlOnlyDeliveryEnabled = () => false,
   verifyPromotionAcceptance,
+  offerPolicy,
   promotionAcceptanceEnforced = false,
   now = () => new Date(),
   resolvePricingPolicy,
@@ -191,20 +193,11 @@ export function createCommerceCheckoutHandler({
         paymentMethodRecurringModel = savedMethodResult.paymentMethodRecurringModel;
       }
 
-      let customerDefaultsSnapshot: Awaited<ReturnType<typeof readCheckoutCustomerDefaults>> = null;
-      try {
-        customerDefaultsSnapshot = await readCheckoutCustomerDefaults({
-          port: customerDefaultsPort,
-          clientId: provisioned.clientId,
-          checkoutKind,
-          recordStage: (operation) => timing.record("customer_defaults", operation),
-        });
-      } catch {
-        sendBffError(res, "UPSTREAM_UNAVAILABLE", "Checkout customer defaults read failed", {
-          details: { feature: "checkout", stage: "customer_defaults" },
-        });
-        return;
-      }
+      const customerDefaults = await readCheckoutCustomerDefaultsOrRespond({
+        res, port: customerDefaultsPort, clientId: provisioned.clientId, checkoutKind,
+        recordStage: (operation) => timing.record("customer_defaults", operation),
+      });
+      if (customerDefaults.kind === "responded") return;
 
       let acceptedQuoteSnapshot: Awaited<ReturnType<CommerceQuotePort["createQuote"]>> | null = null;
       try {
@@ -216,6 +209,7 @@ export function createCommerceCheckoutHandler({
           expectedQuote: data.expectedQuote,
           promotionAcceptanceToken: data.expectedQuote?.promotionAcceptanceToken,
           verifyPromotionAcceptance,
+          offerPolicy,
           recordQuoteStage: (operation) => timing.record("quote", operation),
           resolvePricingPolicy,
           pricingEligibilityClientId,
@@ -266,7 +260,7 @@ export function createCommerceCheckoutHandler({
           quotePort,
           orderDraftPort,
           runtimePort,
-          customerDefaultsSnapshot,
+          customerDefaultsSnapshot: customerDefaults.snapshot,
           paymentProvider: data.paymentProvider,
           paymentAttemptSequence: data.paymentAttemptSequence,
           returnContext: data.returnContext,

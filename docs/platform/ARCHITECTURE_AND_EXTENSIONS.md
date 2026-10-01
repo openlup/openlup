@@ -26,6 +26,13 @@ on a provider SDK or provider environment shape. Provider-specific payloads and
 raw status values end at the adapter boundary. Durable state belongs to the data
 contract, not to a browser client or provider response.
 
+The checkout machine and composer treat an adopter's offer version as data they
+echo, never interpret. Only a server answer that carries one makes the checkout
+intent copy the version, the answer's `minimumUnits` and its daily energy, and
+makes the live quote request add that daily energy to its size constraint. The
+configurator draft keeps a readable token and drops an unreadable one on read
+without discarding the draft.
+
 `npm run lint` enforces the import side of this in
 [eslint.config.js](../../eslint.config.js). A package under `packages/` imports
 nothing outside its own directory. Code outside `packages/` reaches a package

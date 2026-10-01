@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   COMMERCE_RECOMMENDATION_CONTRACT_VERSION,
+  commerceRecommendationRequestSchema,
   commerceRecommendationResponseSchema,
+  commerceRecommendationSnapshotSchema,
 } from "./recommendationContracts.js";
 import {
   COMMERCE_RECOMMENDATION_VERSION,
@@ -61,7 +63,77 @@ describe("commerceRecommendationResponseSchema", () => {
 
     expect(commerceRecommendationResponseSchema.safeParse(legacyPuppyResponse).success).toBe(true);
   });
+
+  it("parses an unversioned request and snapshot deep-equal, adding no key", () => {
+    const request = unversionedRequest();
+    const snapshot = responseForStatus("ready_to_buy").recommendation;
+
+    const parsedRequest = commerceRecommendationRequestSchema.parse(request);
+    const parsedSnapshot = commerceRecommendationSnapshotSchema.parse(snapshot);
+
+    expect(parsedRequest).toEqual(request);
+    expect(Object.keys(parsedRequest)).toEqual(Object.keys(request));
+    expect(parsedSnapshot).toEqual(snapshot);
+    expect(Object.keys(parsedSnapshot)).toEqual(Object.keys(snapshot));
+  });
+
+  it("accepts an offer version on the request and refuses a malformed one", () => {
+    expect(commerceRecommendationRequestSchema.parse({ ...unversionedRequest(), offerVersion: "offer.v2" }))
+      .toMatchObject({ offerVersion: "offer.v2" });
+    for (const offerVersion of ["Offer V2", "", "a..b", 2]) {
+      expect(
+        commerceRecommendationRequestSchema.safeParse({ ...unversionedRequest(), offerVersion }).success,
+        String(offerVersion),
+      ).toBe(false);
+    }
+  });
+
+  it("requires a snapshot's offer version and minimum to travel together", () => {
+    const snapshot = responseForStatus("ready_to_buy").recommendation;
+
+    expect(commerceRecommendationSnapshotSchema.parse({ ...snapshot, offerVersion: "offer.v2", minimumUnits: 12 }))
+      .toMatchObject({ offerVersion: "offer.v2", minimumUnits: 12 });
+    const versionOnly = commerceRecommendationSnapshotSchema.safeParse({ ...snapshot, offerVersion: "offer.v2" });
+    const minimumOnly = commerceRecommendationSnapshotSchema.safeParse({ ...snapshot, minimumUnits: 12 });
+    expect(versionOnly.error?.issues).toContainEqual(expect.objectContaining({
+      message: "offerVersion and minimumUnits travel together",
+      path: ["minimumUnits"],
+    }));
+    expect(minimumOnly.error?.issues).toContainEqual(expect.objectContaining({
+      message: "offerVersion and minimumUnits travel together",
+      path: ["offerVersion"],
+    }));
+    for (const minimumUnits of [0, 100, 12.5]) {
+      expect(
+        commerceRecommendationSnapshotSchema.safeParse({ ...snapshot, offerVersion: "offer.v2", minimumUnits }).success,
+        String(minimumUnits),
+      ).toBe(false);
+    }
+  });
+
+  it("still refuses unknown request and snapshot keys", () => {
+    expect(commerceRecommendationRequestSchema.safeParse({ ...unversionedRequest(), offerTier: "b" }).success)
+      .toBe(false);
+    expect(commerceRecommendationSnapshotSchema.safeParse({
+      ...responseForStatus("ready_to_buy").recommendation,
+      offerTier: "b",
+    }).success).toBe(false);
+  });
 });
+
+function unversionedRequest() {
+  return {
+    petProfile: {
+      ageBand: "adult",
+      weightKg: 12,
+      allergenSlugs: [],
+      dailyKcalOverride: null,
+    },
+    desiredSizeKind: "feeding_days",
+    cadenceDays: 21,
+    consciousAllergenOverride: false,
+  };
+}
 
 function responseForStatus(status: "ready_to_buy" | "warning" | "manual_review") {
   return {

@@ -14,7 +14,7 @@ import {
   deliveryServiceSchema,
   pickupPointSchema,
 } from "../shipping/contracts.js";
-import { COMMERCE_MIN_ORDER_UNITS } from "./recommendationPolicyDeps.js";
+import { commerceMinimumUnits, commerceMinimumUnitsSchema, commerceOfferVersionSchema } from "./offerVersionContracts.js";
 import { starterOfferIntentSchema } from "./starterOfferContracts.js";
 
 export const CONFIGURATOR_INTENT_VERSION = "commerce.configurator_intent.v1";
@@ -143,6 +143,10 @@ export const configuratorIntentSchema = z
     // recomputes every term from the real basket and rejects a mismatch the same
     // way a moved total is rejected. Absent means the ordinary acquisition path.
     starterOffer: starterOfferIntentSchema.optional(),
+    // Echoed from a recommendation answer that served an adopter offer version. Untrusted
+    // like `starterOffer`: the checkout guard asks the adopter's offer policy to bind it.
+    offerVersion: commerceOfferVersionSchema.optional(),
+    minimumUnits: commerceMinimumUnitsSchema.optional(),
     consents: z
       .object({
         gdpr: z.literal(true),
@@ -184,10 +188,11 @@ export const configuratorIntentSchema = z
       (total, variant) => total + variant.qty,
       0,
     );
-    if (selectedUnitCount < COMMERCE_MIN_ORDER_UNITS) {
+    const minimumUnits = commerceMinimumUnits(intent);
+    if (selectedUnitCount < minimumUnits) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `selected variants require at least ${COMMERCE_MIN_ORDER_UNITS} total units`,
+        message: `selected variants require at least ${minimumUnits} total units`,
         path: ["selectedVariants"],
       });
     }

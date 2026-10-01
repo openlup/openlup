@@ -48,10 +48,12 @@ export async function respondToPromotionCodePriceChange(input: PromotionPriceCha
       input.expectedQuote?.pricingPolicy,
     );
     const pricingPolicy = await input.resolvePricingPolicy?.(quoteRequest);
+    const offerVersion = input.acceptedQuoteSnapshot?.quote.context?.offerVersion;
     authoritativeQuote = await input.recordQuote(() =>
       input.quotePort.createQuote(quoteRequest, {
         clientId: input.provisioned.clientId,
         ...(pricingPolicy ? { pricingPolicy } : {}),
+        ...(offerVersion ? { offerVersion } : {}),
       }),
     );
   } catch (error) {

@@ -443,6 +443,47 @@ describe("buildCheckoutIntent", () => {
     });
     expect(configuratorIntentSchema.safeParse(intent).success).toBe(true);
   });
+
+  it("adds no offer key and keeps the size constraint to kind and value for an unversioned answer", () => {
+    const intent = buildCheckoutIntent(completeForm(), { knownCompositionSlugs: KNOWN_COMPOSITION_SLUGS, idempotencyKey: IDEMPOTENCY_KEY });
+
+    expect(intent).not.toHaveProperty("offerVersion");
+    expect(intent).not.toHaveProperty("minimumUnits");
+    expect(Object.keys(intent?.sizeConstraint ?? {})).toEqual(["kind", "value"]);
+  });
+
+  it("echoes an answered offer version with its minimum and energy, and the intent parses", () => {
+    const answered = { ...recommendationSnapshot(), offerVersion: "offer.v2", minimumUnits: 12 };
+    const intent = buildCheckoutIntent(
+      completeForm({ recommendationSnapshot: answered }),
+      { knownCompositionSlugs: KNOWN_COMPOSITION_SLUGS, idempotencyKey: IDEMPOTENCY_KEY },
+    );
+
+    expect(intent).toMatchObject({
+      offerVersion: "offer.v2",
+      minimumUnits: 12,
+      sizeConstraint: { kind: "unit_count", value: 21, dailyKcalOverride: answered.dailyKcal },
+      recommendationSnapshot: answered,
+    });
+    expect(configuratorIntentSchema.safeParse(intent).success).toBe(true);
+  });
+
+  it("takes the offer echo from the baseline answer even when overrides change quantities", () => {
+    const answered = { ...recommendationSnapshot(), offerVersion: "offer.v2", minimumUnits: 12 };
+    const intent = buildCheckoutIntent(
+      completeForm({ recommendationSnapshot: answered, packageQuantityOverrides: { "variant-lamb-400": 1 } }),
+      { knownCompositionSlugs: KNOWN_COMPOSITION_SLUGS, idempotencyKey: IDEMPOTENCY_KEY },
+    );
+
+    // 1 + 11 = 12 units: below the core default, at the carried minimum.
+    expect(intent?.selectedVariants.map((line) => line.qty)).toEqual([1, 11]);
+    expect(intent).toMatchObject({
+      offerVersion: "offer.v2",
+      minimumUnits: 12,
+      sizeConstraint: { kind: "unit_count", value: 12, dailyKcalOverride: answered.dailyKcal },
+    });
+    expect(configuratorIntentSchema.safeParse(intent).success).toBe(true);
+  });
 });
 
 function recommendationSnapshot(): CommerceRecommendationSnapshot {

@@ -647,3 +647,22 @@ describe("quote display helpers", () => {
     expect(quoteModeDiscountPercent(q)).toBe(10);
   });
 });
+
+describe("buildQuoteRequest with an adopter offer version", () => {
+  it("adds the daily energy override only for a snapshot that carries an offer version", () => {
+    const request = buildQuoteRequest({
+      ...baseInput,
+      snapshot: snapshot({ offerVersion: "offer.v2", minimumUnits: 12 }),
+    });
+
+    expect(request?.sizeConstraint).toEqual({ kind: "unit_count", value: 21, dailyKcalOverride: 500 });
+  });
+
+  it("leaves an unversioned request unchanged", () => {
+    const request = buildQuoteRequest(baseInput);
+
+    expect(request?.sizeConstraint).toEqual({ kind: "unit_count", value: 21 });
+    expect(Object.keys(request?.sizeConstraint ?? {})).toEqual(["kind", "value"]);
+    expect(request).not.toHaveProperty("offerVersion");
+  });
+});

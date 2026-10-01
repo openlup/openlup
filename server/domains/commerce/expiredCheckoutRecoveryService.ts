@@ -8,6 +8,7 @@ import {
 import type { CommerceCheckoutRuntimePort } from "../../../src/domains/commerce/runtimePorts.js";
 import type { PaymentExecutionProvider } from "../../../src/domains/payment/types.js";
 import { createOrderDraftSnapshotFromQuoteSnapshot } from "../../../src/domains/commerce/orderDraftSnapshotContracts.js";
+import type { CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
 import { checkoutClientAction, providerFlowFor } from "./commerceCheckoutProviderPayment.js";
 import type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
 import { isStockUnavailableCheckoutConflict } from "./checkoutConflictClassifiers.js";
@@ -184,6 +185,7 @@ async function freshMatchingQuote(
   order: CheckoutRecoveryOrderSnapshot,
 ) {
   if (!order.quoteSnapshot) throw new ExpiredCheckoutRecoveryError("unavailable");
+  const frozenOfferVersion = order.quoteSnapshot.quote.context?.offerVersion;
   const fresh = await quotePort.createQuote(
     quoteRequestForExpiredRecovery(order),
     {
@@ -196,12 +198,34 @@ async function freshMatchingQuote(
       ...(order.quoteSnapshot.quote.context?.pricingPolicy
         ? { pricingPolicy: order.quoteSnapshot.quote.context.pricingPolicy }
         : {}),
+      // The same holds for a bound offer version: it selects the list the order was priced from.
+      ...(frozenOfferVersion ? { offerVersion: frozenOfferVersion } : {}),
     },
   );
   if (!quotesMatchForRecovery(order.quoteSnapshot, fresh)) {
     throw new ExpiredCheckoutRecoveryError("order_changed");
   }
-  return fresh;
+  return withFrozenOfferBinding(order.quoteSnapshot, fresh);
+}
+
+/**
+ * A fresh quote carries no offer version of its own, so the recreated order
+ * takes the frozen binding and its evidence. They stay outside the commercial
+ * fingerprint on purpose: comparing them would refuse every bound recovery.
+ * The binding is protected by pricing from the frozen version's list instead.
+ */
+function withFrozenOfferBinding(frozen: CreateQuoteResponse, fresh: CreateQuoteResponse): CreateQuoteResponse {
+  const offerVersion = frozen.quote.context?.offerVersion;
+  if (!offerVersion) return fresh;
+  if (!fresh.quote.context) throw new ExpiredCheckoutRecoveryError("unavailable");
+  const offerEvidence = frozen.quote.context?.offerEvidence;
+  return {
+    ...fresh,
+    quote: {
+      ...fresh.quote,
+      context: { ...fresh.quote.context, offerVersion, ...(offerEvidence ? { offerEvidence } : {}) },
+    },
+  };
 }
 
 async function compensate(

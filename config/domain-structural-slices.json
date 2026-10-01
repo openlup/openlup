@@ -64,6 +64,7 @@
             "server/domains/commerce/commerceCheckoutPromotionPriceChange.ts",
             "server/domains/commerce/commerceCheckoutProviderPayment.ts",
             "server/domains/commerce/commerceCheckoutQuoteGuard.ts",
+            "server/domains/commerce/checkoutOfferPolicyPort.ts",
             "server/domains/commerce/commerceStarterOfferGuard.ts",
             "server/domains/commerce/promotionAcceptanceTelemetry.ts",
             "server/domains/commerce/promotionQuoteAcceptance.ts",

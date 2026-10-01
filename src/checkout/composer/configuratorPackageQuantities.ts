@@ -1,5 +1,5 @@
 import type { CommerceRecommendationSnapshot } from "@/domains/commerce/recommendationContracts";
-import { COMMERCE_MIN_ORDER_UNITS } from "@/domains/commerce/recommendationPolicyDeps";
+import { commerceMinimumUnits } from "@/domains/commerce/offerVersionContracts";
 
 export const CONFIGURATOR_PACKAGE_LINE_MIN = 1;
 export const CONFIGURATOR_PACKAGE_LINE_MAX = 99;
@@ -74,7 +74,7 @@ export function resolveConfiguratorPackageQuantities(
   });
   const totalUnits = sumUnits(lines);
 
-  if (accepted.length === 0 || totalUnits < COMMERCE_MIN_ORDER_UNITS) {
+  if (accepted.length === 0 || totalUnits < commerceMinimumUnits(baseline)) {
     return baselineResolution(baseline);
   }
 
@@ -149,7 +149,7 @@ export function changeConfiguratorPackageQuantity(
   ) {
     return blocked(current, "stock_limit");
   }
-  if (current.totalUnits + delta < COMMERCE_MIN_ORDER_UNITS) {
+  if (current.totalUnits + delta < commerceMinimumUnits(baseline)) {
     return blocked(current, "minimum_order");
   }
 

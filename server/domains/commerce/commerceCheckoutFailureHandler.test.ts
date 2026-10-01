@@ -6,6 +6,7 @@ import { respondToCheckoutFailure } from "./commerceCheckoutFailureHandler.js";
 import { mapStartRuntimeFailure } from "./commerceCheckoutStartRuntimeFailure.js";
 import { intent, ORDER_ID, quoteSnapshot } from "./commerceCheckoutHandler.testFixtures.js";
 import { ProviderAttemptInFlightError } from "../../shared/preparedProviderAttempt.js";
+import { CheckoutOfferRefusedError } from "./checkoutOfferPolicyPort.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -374,6 +375,43 @@ describe("checkout failure handler", () => {
         details: { feature: "checkout", stage: "start_runtime", reason: "journey_consumed" },
       }),
     }));
+  });
+
+  it("maps an offer refusal to a conflict with its reason and compensates nothing", async () => {
+    const res = response([]);
+    const compensationPort = {
+      releaseOrderReservations: vi.fn(),
+      cancelUnstartedPromotionOrder: vi.fn(),
+      cancelAbandonedOrder: vi.fn(),
+    };
+    const createQuote = vi.fn();
+
+    const outcome = await respondToCheckoutFailure({
+      error: new CheckoutOfferRefusedError("offer_version_unsupported"),
+      compensationPort,
+      intent: intent(),
+      res,
+      quotePort: { createQuote },
+      provisioned: provisioned(),
+      checkoutKind: "one_time",
+      acceptedQuoteSnapshot: null,
+      recordQuote: async <T>(operation: () => Promise<T>) => operation(),
+    });
+
+    expect(outcome).toBe("rejected");
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "Checkout offer refused",
+        details: { feature: "checkout", stage: "quote", reason: "offer_version_unsupported" },
+      },
+    });
+    expect(compensationPort.releaseOrderReservations).not.toHaveBeenCalled();
+    expect(compensationPort.cancelUnstartedPromotionOrder).not.toHaveBeenCalled();
+    expect(compensationPort.cancelAbandonedOrder).not.toHaveBeenCalled();
+    expect(createQuote).not.toHaveBeenCalled();
   });
 });
 

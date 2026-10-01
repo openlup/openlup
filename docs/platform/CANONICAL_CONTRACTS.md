@@ -190,4 +190,5 @@ jobs retain raw diagnostic failures with named ownership; their addition does
 not change platform behavior, grant application privileges or declare complete
 compatibility evidence. Existing release context checks remain unchanged.
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-e1356c2282e6bc3c56d98e7a36b1f778f37ce42ddc8ebbd196cd2212469f2937","reason":"A1 lowers the neutrality baseline after thirteen BFF tests transfer database-SDK and direct-query assertions to structural lint, and removes already-absent finding allowances. No count or path gains an allowance. The existing shrink-only ratchet semantics, runtime contracts and compatibility posture described here are unchanged."} -->
+
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-d2acec6b881ce8d89c14019cb141fa81801b9e887c3394e2700acc3f57ad3da4","reason":"The structural slice assigns the new checkout offer-policy port to its existing checkout-runtime owner. This is ownership metadata only; it changes no compatibility lifecycle, runtime configuration, or neutrality allowance described in this section."} -->

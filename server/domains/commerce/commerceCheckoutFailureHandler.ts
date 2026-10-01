@@ -26,6 +26,7 @@ import {
   CheckoutProviderAttemptFailure,
   logCheckoutProviderAttemptFailure,
 } from "./commerceProviderAttemptFailure.js";
+import { CheckoutOfferRefusedError } from "./checkoutOfferPolicyPort.js";
 
 interface CheckoutFailureInput {
   error: unknown;
@@ -65,6 +66,15 @@ export async function respondToCheckoutFailure(
       });
       return "rejected";
     }
+  }
+
+  // Raised by the quote guard before any order draft exists, so there is nothing
+  // to compensate.
+  if (error instanceof CheckoutOfferRefusedError) {
+    sendBffError(input.res, "CONFLICT", "Checkout offer refused", {
+      details: { feature: "checkout", stage: "quote", reason: error.reason },
+    });
+    return "rejected";
   }
 
   if (isStockUnavailableCheckoutConflict(error)) {

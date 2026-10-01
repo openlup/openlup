@@ -69,6 +69,11 @@ export function buildCheckoutIntent(
     },
   ).snapshot;
   if (!isCheckoutableRecommendation(recommendation)) return null;
+  // An adopter offer version travels only from the server's baseline answer, with
+  // the minimum basket that answer carried; customer overrides never create one.
+  const { offerVersion, minimumUnits } = baselineRecommendation;
+  const answeredOffer =
+    offerVersion !== undefined && minimumUnits !== undefined ? { offerVersion, minimumUnits } : null;
 
   const selectedVariants = recommendation.lines.map((line) => ({
     variantId: line.variantId,
@@ -150,6 +155,7 @@ export function buildCheckoutIntent(
     sizeConstraint: {
       kind: "unit_count" as const,
       value: selectedVariants.reduce((sum, line) => sum + line.qty, 0),
+      ...(answeredOffer ? { dailyKcalOverride: recommendation.dailyKcal } : {}),
     },
     petProfile: {
       petId: data.accountPetId,
@@ -193,6 +199,9 @@ export function buildCheckoutIntent(
     // Additive and absent on every non-starter order, so the standard intent is
     // deep-equal to the pre-starter one (and its idempotency key byte-identical).
     ...(starterOffer ? { starterOffer } : {}),
+    // Likewise absent unless the answer carried an offer version; the version, its
+    // minimum and the energy override above are then the adopter policy's to check.
+    ...(answeredOffer ?? {}),
   };
 
   const parsed = configuratorIntentSchema.safeParse(candidate);

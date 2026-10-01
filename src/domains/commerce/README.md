@@ -19,8 +19,8 @@ one-time/subscription-initial checkout lives here.
 - UI/BFF clients: `commerceClient.ts`, `omsClient.ts`,
   `adminPromotionsClient.ts` (admin "Rabaty" editor),
   `adminCatalogClient.ts`, and `customerEligibilityClient.ts`.
-- Public contracts/helpers: `checkout*`, `quoteContracts.ts`,
-  `offerPricingContracts.ts`, `useCommerceOfferPricing.ts`,
+- Public contracts/helpers: `checkout*`, `quoteContracts.ts`, `quoteContextContracts.ts`,
+  `offerPricingContracts.ts`, `offerVersionContracts.ts`, `useCommerceOfferPricing.ts`,
   `adminPromotionsContracts.ts`,
   `orderDraftSnapshotContracts.ts`, `runtimeContracts.ts`, `recommendation*`,
   `productCompatibility*`, `offerAvailability*`, `paymentStatus.ts`, `oms*`, `configuratorIntent*`,
@@ -59,6 +59,28 @@ Everything else (handlers, orchestration, `dbBacked*`/`supabase*` ports) is inte
 - BFF public URLs: `/api/bff/commerce/...`, `/api/bff/admin/commerce/...`
 - BFF handler files: `server/bff/commerce/...`, `server/bff/admin/commerce/...`
   via the catch-all Vercel entrypoint `api/bff/[...path].ts`
+
+## Offer versions
+An adopter may serve more than one offer. `offerVersionContracts.ts` defines an
+offer version as an opaque, format-validated token that core never interprets,
+and `commerceMinimumUnits()` as the smallest basket an offer accepts, core's
+default when none is carried. A recommendation request may ask for an offer
+version; a snapshot that answers one carries it with `minimumUnits`, and the
+checkout gate, the package editor and the intent schema then apply that minimum.
+
+At checkout the quote guard consults the adopter's `CheckoutOfferPolicyPort`
+(`server/domains/commerce/checkoutOfferPolicyPort.ts`) only when the intent
+carries `offerVersion` or `minimumUnits`. Without a port such an intent is
+refused with `offer_version_unsupported`; any refusal answers `CONFLICT` with
+its reason before an order draft exists. A bound version reaches the quote port
+as `CreateQuoteOptions.offerVersion` and is written into
+`quote.context.offerVersion`, with the adopter's evidence in
+`quote.context.offerEvidence`; both are server-minted, like `starterPack`. The
+promotion price-change re-quote and the expired-order recreate re-quote with the
+accepted or frozen version, and the recreate carries both fields forward. The
+default database-backed quote port ignores `offerVersion`, so an adopter that
+binds versions also routes its quotes. An adopter that never sends the fields
+sees every request, snapshot, intent, quote and draft byte for byte as before.
 
 ## Admin discounts and promotion codes
 The "Rabaty" admin surface separates automatic promotions from Code Center.

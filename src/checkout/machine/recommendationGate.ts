@@ -1,5 +1,5 @@
 import type { CommerceRecommendationSnapshot } from "@/domains/commerce/recommendationContracts";
-import { COMMERCE_MIN_ORDER_UNITS } from "@/domains/commerce/recommendationPolicyDeps";
+import { commerceMinimumUnits } from "@/domains/commerce/offerVersionContracts";
 
 /**
  * Line γ seam: the neutral half of the recommendation snapshot module.
@@ -50,8 +50,8 @@ export interface RecommendationBundleSummary {
  * Whether a resolved recommendation may be taken to checkout.
  *
  * Every clause is structural: a status that is not held for review, a resolved ration, at
- * least one line, a basket at or above the published minimum, and per-line quantities that
- * are whole numbers inside the representable range.
+ * least one line, a basket at or above the minimum the snapshot carries (the published one
+ * when absent), and per-line quantities that are whole numbers inside the representable range.
  */
 export function isCheckoutableRecommendation(
   snapshot: CommerceRecommendationSnapshot | null | undefined,
@@ -61,7 +61,7 @@ export function isCheckoutableRecommendation(
       snapshot.status !== "manual_review" &&
       snapshot.dailyKcal &&
       snapshot.lines.length > 0 &&
-      snapshot.lines.reduce((sum, line) => sum + line.qty, 0) >= COMMERCE_MIN_ORDER_UNITS &&
+      snapshot.lines.reduce((sum, line) => sum + line.qty, 0) >= commerceMinimumUnits(snapshot) &&
       snapshot.lines.every((line) => Number.isInteger(line.qty) && line.qty >= 1 && line.qty <= 99),
   );
 }
