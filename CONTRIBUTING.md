@@ -457,7 +457,7 @@ into a stable or supported artifact.
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-97f7dcba22cf18c7100bcd552c84d48248950ec5f97d72aa30114f5a0530b876","reason":"Against the integrated main base, the root lockfile still changes only the core workspace version from 0.9.0 to 0.10.0. Dependency resolution, development-preview checks, and required contributor commands remain unchanged."} -->
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-60afa8c3ed0e49c415c20cdf1840ea3f7a39e324fef8250100a0a867bbe3a182","reason":"Test-only delta. The neutral catalog extension fixture adds a second installed type whose count pack dimension declares the net-content role, and asserts that an option differing from the SKU net content refuses. The file stays in the complete root Vitest diagnostic scope and outside the required test selectors; the test commands and CI jobs described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-07e6906ea0ec859e822a0c66a8a0948d8ecc417001ae985430318550e6e3a169","reason":"Test-only delta. The neutral catalog extension fixture adds a second installed type whose count pack dimension declares the net-content role, and asserts that an option differing from the SKU net content refuses. The file stays in the complete root Vitest diagnostic scope and outside the required test selectors; the test commands and CI jobs described here are unchanged."} -->
 
 ## Pull requests
 
