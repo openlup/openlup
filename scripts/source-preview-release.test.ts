@@ -338,17 +338,26 @@ describe("exact reviewed replacement admission in both gates", () => {
   const baseline = functions.map((signature) => definition(signature, 1)).join("\n");
   const paths = ["supabase/migrations/20261001000001_readiness.sql", "supabase/migrations/20261001000002_price_setup.sql", "supabase/migrations/20261001000003_starter.sql"];
   const sql = [definition(functions[0]!, 2, true), definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 2) + "\n" + definition("public.catalog_price_setup_apply(p_command text, p_fingerprint text)", 2), functions.slice(1).map((signature) => definition(signature, 2, true)).join("\n")];
-  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null) {
+  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null, runtime = false) {
     const existing = definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 1);
-    const selectedBaseline = history === "baseline" ? `${baseline}\n${existing}` : baseline;
+    const runtimeFunctions = ["public.admin_clients_search_v3(p_query text, p_page integer, p_page_size integer, p_stage text)", "public.subscription_list_due_for_renewal(p_limit integer, p_as_of timestamp with time zone DEFAULT now())"];
+    const runtimeBaseline = runtime ? runtimeFunctions.map((signature) => definition(signature, 1)).join("\n") : "";
+    const selectedBaseline = (history === "baseline" ? `${baseline}\n${existing}` : baseline) + (runtime ? `\n${runtimeBaseline}` : "");
     const sample = syntheticRelease({ extraFiles: { [MANAGED_BASELINE]: selectedBaseline, ...(history === "forward" ? { "supabase/migrations/20261001000000_existing_function.sql": existing } : {}) } });
-    const prior = reviewedFunctionDefinitions(Buffer.from(baseline)), bytes = [...sql];
+    const prior = reviewedFunctionDefinitions(Buffer.from(`${baseline}\n${runtimeBaseline}`)), bytes = [...sql];
     const forwards = paths.map((path, index) => ({ path, sha256: sqlSha256(bytes[index]!), functions: [...reviewedFunctionDefinitions(Buffer.from(bytes[index]!))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: prior.get(signature) ?? null })) }));
     const registry: ReviewedForwardRegistry = { schemaVersion: 1, baselineSha256: sqlSha256(selectedBaseline), replacementForwards: [forwards[0]!, forwards[2]!], creationForwards: [forwards[1]!] };
+    const runtimePath = "supabase/migrations/20261001000004_runtime_readers.sql";
+    if (runtime) {
+      const privilege = "GRANT SELECT (id,membership_state,role) ON public.admin_users TO service_role;";
+      bytes.push(runtimeFunctions.map((signature) => definition(signature, 2, true)).join("\n") + `\n${privilege}`);
+      registry.runtimeForwards = [{ path: runtimePath, sha256: sqlSha256(bytes[3]!), functions: [...reviewedFunctionDefinitions(Buffer.from(bytes[3]!))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: prior.get(signature)! })), privileges: [privilege] }];
+    }
     edit?.(registry, bytes);
     sample.apply({ [REVIEWED_FORWARD_PATH]: json(registry) });
     const approval = sample.commit("Separate reviewed control");
     const change = Object.fromEntries(paths.map((path, index) => [path, bytes[index]!]));
+    if (runtime) change[runtimePath] = bytes[3]!;
     return { ...sample, approval, registry, change };
   }
   const gates = (sample: ReturnType<typeof fixture>, head: string) => [
@@ -406,6 +415,97 @@ describe("exact reviewed replacement admission in both gates", () => {
     const sample = fixture((registry, bytes) => { bytes[0] += `\n${addition}`; registry.replacementForwards[0]!.sha256 = sqlSha256(bytes[0]!); });
     try {
       sample.apply(sample.change); const head = sample.commit("Unsupported statement");
+      for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
+    } finally { sample.cleanup(); }
+  });
+  it("admits the one exact runtime reader forward after separate approval in both gates", () => {
+    const sample = fixture((registry, bytes) => {
+      const forward = registry.runtimeForwards![0]!;
+      const privileges = [
+        "GRANT SELECT (principal_id,active) ON public.platform_communication_operators TO service_role;",
+        "GRANT SELECT (status,template_slug) ON public.email_sends TO service_role;",
+        "GRANT SELECT (event_type) ON public.email_events TO service_role;",
+        "GRANT SELECT (id,client_id,cadence_days,template_version,currency,region_code,payment_method_kind,status,next_cycle_at,updated_at) ON public.subscriptions TO service_role;",
+        "GRANT SELECT (id,email,first_name,last_name,phone,identity_kind,lifecycle_stage,created_at,updated_at) ON public.clients TO service_role;",
+        "GRANT SELECT (subscription_id,provider_kind,provider_customer_ref,provider_method_ref,method_kind,status,active,expires_at,client_id,updated_at,created_at) ON public.commerce_payment_method_refs TO service_role;",
+        "GRANT SELECT (subscription_id,status,next_retry_at,scheduled_at,renewal_quarantined_until) ON public.subscription_cycles TO service_role;",
+        "GRANT SELECT (id,client_id,order_number,status,created_at,updated_at) ON public.commerce_orders TO service_role;",
+        "GRANT EXECUTE ON FUNCTION public.record_admin_audit_event(uuid,text,text,text,text,jsonb,jsonb,text,text,uuid,text) TO service_role;",
+        "GRANT EXECUTE ON FUNCTION public.subscription_current_template_snapshot(uuid) TO service_role;",
+      ];
+      bytes[3] += `\n${privileges.join("\n")}`;
+      forward.privileges.push(...privileges);
+      forward.sha256 = sqlSha256(bytes[3]!);
+    }, null, true);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Runtime reader feature");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
+  });
+  it("allows a tagged runtime body mentioning attribute keywords without treating them as attributes", () => {
+    const sample = fixture((registry, bytes) => {
+      bytes[3] = bytes[3]!.replace(/SELECT '2'::jsonb;/gu, "SELECT jsonb_build_object('note', 'SECURITY DEFINER SET search_path STABLE');").replace(/\$\$/gu, "$reader$");
+      const forward = registry.runtimeForwards![0]!;
+      forward.sha256 = sqlSha256(bytes[3]!);
+      const definitions = reviewedFunctionDefinitions(Buffer.from(bytes[3]!));
+      for (const binding of forward.functions) binding.afterSha256 = definitions.get(binding.signature)!;
+    }, null, true);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Runtime body literals");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
+  });
+  it.each([
+    "same feature approval", "byte drift", "prior function drift", "header drift", "trailing SECURITY DEFINER", "trailing SET search_path", "trailing STABLE", "tagged trailing SECURITY DEFINER", "duplicate runtime forward", "duplicate privilege", "unknown column", "missing privilege pin", "null prior definition", "duplicate runtime signature",
+    "GRANT SELECT (id) ON public.unrelated TO service_role;",
+    "GRANT SELECT ON public.admin_users TO service_role;",
+    "GRANT SELECT (id) ON public.admin_users TO authenticated;",
+    "GRANT SELECT (id) ON public.admin_users TO anon;",
+    "GRANT SELECT (id) ON public.admin_users TO PUBLIC;",
+    "GRANT UPDATE (id) ON public.subscriptions TO service_role;",
+    "GRANT INSERT ON public.admin_users TO service_role;",
+    "GRANT ALL ON public.admin_users TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.admin_clients_search_v3(text,integer,integer,text) TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.unrelated() TO service_role;",
+    "UPDATE public.admin_users SET role = 'admin';",
+    "CREATE TABLE public.unrelated (id integer);",
+    "CREATE POLICY unrelated ON public.admin_users USING (true);",
+    "REVOKE SELECT (id) ON public.admin_users FROM service_role;",
+    "GRANT SELECT (id,id) ON public.admin_users TO service_role;",
+    "GRANT SELECT (id) ON public.admin_users TO service_role;",
+    "GRANT SELECT (id) ON public.catalog_products TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.subscription_current_template_snapshot(uuid) TO authenticated;",
+    "SELECT 1;",
+  ])("refuses runtime admission %s in both gates even when independently repinned", (probe) => {
+    const sample = fixture((registry, bytes) => {
+      const forward = registry.runtimeForwards![0]!;
+      if (probe === "prior function drift") forward.functions[0]!.beforeSha256 = "0".repeat(64);
+      else if (probe === "null prior definition") forward.functions[0]!.beforeSha256 = null;
+      else if (probe === "duplicate runtime signature") forward.functions[1] = { ...forward.functions[0]! };
+      else if (probe === "duplicate runtime forward") registry.runtimeForwards!.push(forward);
+      else if (probe === "duplicate privilege") { bytes[3] += `\n${forward.privileges[0]}`; forward.privileges.push(forward.privileges[0]!); }
+      else if (probe === "header drift") { bytes[3] = bytes[3]!.replace("LANGUAGE sql", "LANGUAGE sql SECURITY DEFINER"); }
+      else if (probe.startsWith("trailing ") || probe === "tagged trailing SECURITY DEFINER") {
+        const attribute = probe.endsWith("SET search_path") ? "SET search_path TO public" : probe.endsWith("STABLE") ? "STABLE" : "SECURITY DEFINER";
+        bytes[3] = bytes[3]!.replace("$$;", () => `$$ ${attribute};`);
+        if (probe.startsWith("tagged ")) bytes[3] = bytes[3]!.replace(/\$\$/gu, "$reader$");
+      }
+      else if (probe === "unknown column") { bytes[3] += "\nGRANT SELECT (secret) ON public.admin_users TO service_role;"; forward.privileges.push("GRANT SELECT (secret) ON public.admin_users TO service_role;"); }
+      else if (probe === "missing privilege pin") forward.privileges.push("GRANT SELECT (id) ON public.clients TO service_role;");
+      else if (probe.includes(";")) { bytes[3] += `\n${probe}`; forward.privileges.push(probe); }
+      forward.sha256 = sqlSha256(bytes[3]!);
+      const definitions = reviewedFunctionDefinitions(Buffer.from(bytes[3]!));
+      for (const binding of forward.functions) binding.afterSha256 = definitions.get(binding.signature)!;
+    }, null, true);
+    try {
+      const path = sample.registry.runtimeForwards![0]!.path;
+      if (probe === "byte drift") sample.change[path] += "\n";
+      if (probe === "same feature approval") {
+        sample.change[path] += "\n";
+        sample.registry.runtimeForwards![0]!.sha256 = sqlSha256(sample.change[path]!);
+        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
+      }
+      sample.apply(sample.change); const head = sample.commit("Refused runtime feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
   });

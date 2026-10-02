@@ -94,6 +94,19 @@ accepted. Grants may target only `authenticated` or `service_role`; grants to
 `PUBLIC` or `anon`, other schemas, unrelated statements and unterminated dollar
 bodies refuse even if the whole-file hash was separately repinned.
 
+The optional runtime list pins one additional forward and exactly two existing
+readers: `admin_clients_search_v3(text,integer,integer,text)` and
+`subscription_list_due_for_renewal(integer,timestamp with time zone)`. Its ordered
+privilege statements grant only `service_role` the fixed column-level SELECT
+capabilities and EXECUTE on `record_admin_audit_event` and
+`subscription_current_template_snapshot`. The checker fixes the allowed tables,
+columns and signatures independently of the registry; repinning cannot admit
+additional capabilities, table-wide SELECT, writes or another recipient.
+Function headers must preserve the preceding definition's arguments, defaults,
+return shape, volatility, execution security and settings. Attributes after the
+outer dollar body refuse; only its terminating semicolon and whitespace may
+follow. This control installs approval data, without shipping the runtime forward.
+
 Required PR/merge-group self-check requires the allowlist bytes to predate the
 feature comparison base. Release prepare uses the same checker and requires
 the identical allowlist in the parent of each forward's introduction commit.
