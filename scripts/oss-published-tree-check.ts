@@ -87,6 +87,41 @@ export function assertAppendOnlyMigrationHistory(root: string, base: string, hea
 
 const MANIFEST = "package.json";
 
+const AGENT_INSTRUCTION_FILE = /(^|\/)(AGENTS|CLAUDE|GEMINI)\.md$|(^|\/)\.cursor\/rules(\/|$)/u;
+const ADOPTER_KIT = "docs/platform/adopter-kit";
+const ADOPTER_KIT_DEPENDENCIES = `${ADOPTER_KIT}/dependabot.template.yml`;
+
+/**
+ * Keeps contributor and adopter agent guidance apart. Agent tools load instruction files by name,
+ * so one outside the repository root or a package root would govern contributors working in that
+ * folder, and an adopter-kit template under such a name would too. The kit's dependency template
+ * must also group every published package, or an adopter upgrades a mixed set.
+ */
+export function assertAgentGuidancePlacement(root: string, paths: Iterable<string>): void {
+  const violations: string[] = [];
+  const packages: string[] = [];
+  for (const path of paths) {
+    const allowed = /^(packages\/[^/]+\/)?([^/]+|\.cursor\/rules\/.+)$/u.test(path);
+    if (AGENT_INSTRUCTION_FILE.test(path) && !allowed) {
+      violations.push(`${path}: an agent-instruction file may sit only at the repository root or a package root`);
+    }
+    if (/^packages\/[^/]+\/package\.json$/u.test(path)) packages.push(path);
+  }
+  const template = join(root, ADOPTER_KIT_DEPENDENCIES);
+  const patterns = existsSync(template)
+    ? [...readFileSync(template, "utf8").matchAll(/^\s*-\s*"([^"]+)"\s*$/gmu)].map((match) => match[1]!)
+    : [];
+  if (!existsSync(template)) violations.push(`${ADOPTER_KIT_DEPENDENCIES}: the adopter kit's dependency template is missing`);
+  const covers = (name: string) => patterns.some((pattern) =>
+    new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/gu, "\\$&").replace(/\*/gu, "[^/]*")}$`, "u").test(name));
+  for (const path of packages) {
+    const manifest = JSON.parse(readFileSync(join(root, path), "utf8")) as { name?: string; private?: boolean };
+    if (manifest.private === true || typeof manifest.name !== "string") continue;
+    if (!covers(manifest.name)) violations.push(`${ADOPTER_KIT_DEPENDENCIES}: no group pattern covers published package ${manifest.name}`);
+  }
+  if (violations.length > 0) throw new Error(`agent guidance placement:\n${violations.join("\n")}`);
+}
+
 const trackedFiles = (root: string): string[] =>
   documentationGit(root, ["ls-files", "-z"]).toString("utf8").split("\0").filter(Boolean);
 
@@ -269,7 +304,9 @@ export function publicInventoryVerdict(root: string, log: (line: string) => void
 export function policyVerdict(root: string, log: (line: string) => void): boolean {
   const catalogSource = readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8");
   const state = validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource);
-  assertMaterializedPublicationCatalog(root, catalogSource, trackedFiles(root));
+  const tracked = trackedFiles(root);
+  assertMaterializedPublicationCatalog(root, catalogSource, tracked);
+  assertAgentGuidancePlacement(root, tracked);
   log(`- public policy paths: ${state.policy.activePaths.length}`);
   log(`- public policy contracts: ${state.policy.contracts.length}`);
   log(`- guard viability entries: ${state.catalog.guardViability.length}`);

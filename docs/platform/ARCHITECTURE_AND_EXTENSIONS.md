@@ -85,6 +85,98 @@ The platform will not modify or promise compatibility for an ejected copy.
 Use a documented extension seam when updates must continue to flow. A source
 ejection should be a deliberate, reviewable ownership transfer.
 
+## Package architecture
+
+OpenLup ships its platform as `@openlup/*` npm packages. This section is the
+contract every package follows. The kernel, `@openlup/core`, follows it today;
+rails, capability packages and implementation packages follow it as they are
+extracted. Development-preview rules may still change (see
+[Compatibility posture](#compatibility-posture)).
+
+### Package kinds
+
+Each package declares one `kind` in its `release-gates.json`:
+
+| Kind | Holds | May depend on |
+| --- | --- | --- |
+| `kernel` | I/O-free contracts and logic that two or more packages, or an application's composition, read; its only runtime dependency is `zod` | nothing else in `@openlup/*` |
+| `rail` | runtime infrastructure every capability emits into or records through, such as the outbox and the job-run ledger | the kernel |
+| `capability` | one capability end to end: its processes, the schema it needs and the contracts only it reads | the kernel and rails |
+| `implementation` | one port bound to one provider or market | the kernel, rails and the one package it implements |
+
+The placement rules:
+
+- **No I/O in the kernel.** A kernel file imports no database driver, provider SDK or `node:`
+  module, and is no HTTP or scheduled-job entrypoint.
+- **One capability, one package.** A capability boundary is where an adopter would replace or
+  leave out the capability as a whole. One capability is never split into a package per process.
+- **No capability depends on another capability.** Cross-capability flows go through kernel
+  contracts and rails, and the application's composition connects them.
+- **The kernel grows only for shared contracts.** It gains a contract only when a second package
+  reads it. A contract that one package reads stays in that package.
+- **Default stores need no driver.** A rail's or capability's default store is a subpath over the
+  kernel's structural SQL executor. A provider-specific store is an implementation package or
+  application code.
+- **Kernel validation contracts are `StandardSchemaV1`,** not types of one schema library.
+- **Composition stays in the application.** Runtime assembly, handler manifests, readiness
+  wiring, scheduled-job files and HTTP entries belong to the application, never to a package.
+  The reference application ships its own.
+
+Names follow `@openlup/core`, `@openlup/<rail>`, `@openlup/<capability>`,
+`@openlup/<capability>-<provider>` and `@openlup/market-<cc>`. They never name
+a brand or an industry.
+
+### Contributions, seams and readiness
+
+These rules take effect with the first rail or capability package. The kernel
+does not yet export the readiness check.
+
+- **The factory.** A rail or capability exposes a factory taking ports and options. It returns
+  a contribution, `{ handlers, schedules, routes, manifest }`; a field that does not apply is
+  empty.
+- **Ports.** Business ports are required in the factory's type. Infrastructure ports (clock,
+  logger) have defaults.
+- **The manifest** declares:
+  - the events the package handles and emits;
+  - its schedules, routes and required ports;
+  - its `requiredSchema`;
+  - the environment variables it reads.
+- **Schedules.** A schedule's `run` takes the job lease. A disabled job ends as `disabled`.
+  `run` returns `{ outcome, detail }`, and mapping that result to HTTP is the application's job.
+- **The readiness check** runs before a new version takes traffic and reports every failure at
+  once, with a stable `OPENLUP_E_*` code, the package, the subject and a fix. It covers:
+  - unwired ports;
+  - unhandled event types;
+  - unbound schedules;
+  - a schema behind the package;
+  - a mixed package set;
+  - missing environment variables.
+
+  A failing check never stops a version that is already serving.
+
+### Versions and schema
+
+- **One set below 1.0.** Below `@openlup/core` 1.0, every `@openlup/*` package carries the same
+  version `0.N.P` and is released from one commit. Each package has its own tag,
+  `openlup-<package>-v<version>`. A patch set carries fixes only; any API, behaviour or schema
+  change is a minor set.
+- **Pins.** Each package pins the others exactly. An application moves every `@openlup/*`
+  package together, after reading each changelog's `Migration:` blocks.
+- **Schema in the tarball.** A package that owns schema ships its SQL in its tarball from its
+  first release, for the application's own migration chain to apply. It never applies SQL itself.
+  Shipped SQL follows expand, compatible deploy, backfill, contract.
+
+### Agent guidance for applications
+
+- **This repository's guides are for contributors.** The root `AGENTS.md` and
+  [the agent guide](AGENT_GUIDE.md) govern work on this monorepo only.
+- **Each package carries its own `AGENTS.md`.** It states the package's kind, the maturity of each
+  subpath, one wiring example and the rules for using it from an application.
+- **Applications start from the [adopter kit](adopter-kit/README.md).** It holds an agent-guide
+  template, a dependency-update template that moves every `@openlup/*` package together, and an
+  agent-tool permission template that refuses edits to installed packages. The template files use
+  names no agent tool loads, so they never govern work in this repository.
+
 ## Compatibility posture
 
 Development-preview seams may change. `P1-SF` is the later gate for stable

@@ -45,6 +45,13 @@ reason, triage owner and unexecuted obligation; it cannot establish a passing
 installation or compatibility claim. Failure classification needs actual logs,
 not a file's presence in the catalogue.
 
+Templates that an application copies, such as the
+[adopter kit](adopter-kit/README.md), live under `docs/platform/` with names no
+agent tool loads automatically (`*.template.*`). An agent-instruction file
+(`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursor/rules`) sits only at the
+repository root or a package root. `npm run oss:published-tree -- --policy`
+refuses any other placement, so contributor and adopter guidance never mix.
+
 A test file is a falsifier to inspect, not a recorded passing result. Keep
 development-preview limits visible and do not infer framework support from
 source availability. Release-specific instructions belong with the selected

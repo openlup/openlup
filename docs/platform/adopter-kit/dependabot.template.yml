@@ -1,0 +1,13 @@
+# Dependency updates for an application that installs @openlup/* from npm.
+# Every @openlup/* package below 1.0 shares one version, so one group moves
+# them together, with no update-type filter: a 0.x minor release may break.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      openlup:
+        patterns:
+          - "@openlup/*"
