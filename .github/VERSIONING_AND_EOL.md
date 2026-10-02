@@ -571,7 +571,9 @@ A release takes three steps:
    (`packages:check --release-set`). A patch set (`0.N.P`, P above 0) only fixes,
    so it is refused when a package's API snapshot (`packages/<package>/api/`)
    differs from the one at its previous set tag `openlup-<package>-v0.N.<p>`, or
-   when the package has no such tag. It then packs every publishable package with
+   when the package has no such tag. Only an annotated tag with the release App
+   as tagger and the release message counts; a lightweight or hand-made tag does
+   not move that baseline. It then packs every publishable package with
    `npm run packages:check -- --out <dir> --release-set <version>` and scans the
    unpacked tarballs with checksum-verified gitleaks 8.30.1. Last, it decides
    each package by [its state](#resuming-a-set) and passes the packages to
@@ -594,8 +596,9 @@ A release takes three steps:
    gate then re-checks the target's main ancestry, has the App create the
    annotated tag on the target commit itself with exactly
    `OpenLup package @openlup/<package> <version>.`, and refuses unless GitHub
-   answers with that tag object and reference. The App then creates a draft
-   release with the exact note bytes and no asset. The job reads that
+   answers with that tag object, that message byte for byte, and its reference.
+   The App then creates a draft release with the exact note bytes and no asset.
+   The job reads that
    draft by the ID its creation returned, publishes it by that ID as an
    immutable release, checks the published release, its App author, its note and
    its tag at the target, and verifies GitHub's release attestation with

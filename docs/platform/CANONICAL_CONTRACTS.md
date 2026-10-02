@@ -176,7 +176,14 @@ and every exact internal pin on one, in its manifest and lockfiles.
 `packages:check` and `@openlup/core`'s release check admit only a set version
 below 1.0, `packages:check` refuses publishable packages at different
 versions, and the package release workflow refuses a version that differs from
-the manifest or that npm holds or has passed. Historical previews retain
+the manifest or that npm holds or has passed. `publish-package.yml` with
+`package: all` releases the set under one approval, one tag and immutable
+release per package at the set commit. Dispatching the same set again resumes
+it: a package npm holds with the same tarball is skipped, a package whose
+release exists but npm lacks the version waits for the re-run of its failed
+publication, the rest are released, and any other state stops the set. A patch
+set is refused when a package's API snapshot differs from its previous set's
+release tag. Historical previews retain
 their recorded package versions. This is release identity, not a stable
 compatibility promise.
 

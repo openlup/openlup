@@ -145,10 +145,29 @@ export function checkReleaseManifests(root: string, tag: string): void {
   if (runPackagesCheck(root, ["--release-tag", tag]) !== 0) throw new Error(`packages:check --release-tag ${tag} refused the target`);
 }
 
+/** The tagger of every package release tag: the release App's bot user, as GitHub writes it. */
+export const RELEASE_TAGGER = `${RELEASE_APP.login} <${RELEASE_APP.id}+${RELEASE_APP.login}@users.noreply.github.com>`;
+
+/**
+ * The package release tags of `directory` in the checkout that the release workflow made: annotated
+ * by the release App (a lightweight tag has no tagger) and worded as a release tag. A lightweight
+ * or hand-made tag of the same name is not one.
+ */
+function appReleaseTags(root: string, directory: string, pattern: string): Array<{ tag: string; version: string }> {
+  const fields = ["%(refname:strip=2)", "%(taggername) %(taggeremail)", "%(contents)"].join("%00");
+  const refs = execFileSync("git", ["for-each-ref", `--format=${fields}%01`, `refs/tags/${pattern}`], { cwd: root, encoding: "utf8" }).split("\u0001\n").filter(Boolean);
+  return refs.flatMap((line) => {
+    const [tag = "", tagger, message] = line.split("\0");
+    const release = parsePackageReleaseTag(tag);
+    const made = tagger === RELEASE_TAGGER && message === `OpenLup package ${release?.name} ${release?.version}.\n`;
+    return release?.directory === directory && made ? [{ tag, version: release.version }] : [];
+  });
+}
+
 /**
  * A patch set `0.N.P`, P above 0, only fixes: the package's API snapshot (`<directory>/api/`) at
- * `target` equals the one at its previous set, the highest tag `openlup-<package>-v0.N.<p>` with p
- * below P. A package with no such tag joins the set at a minor set.
+ * `target` equals the one at its previous set, the highest release tag `openlup-<package>-v0.N.<p>`
+ * with p below P that the release App made. A package with no such tag joins the set at a minor set.
  */
 export function assertPatchSetApiUnchanged(root: string, directory: string, version: string, target: string): void {
   const set = /^0\.([1-9]\d*)\.(0|[1-9]\d*)$/u.exec(version);
@@ -156,10 +175,8 @@ export function assertPatchSetApiUnchanged(root: string, directory: string, vers
   const minor = `0.${set[1]}.`, patch = Number(set[2]);
   if (patch === 0) return;
   const name = directory.slice("packages/".length);
-  const tags = execFileSync("git", ["tag", "--list", `openlup-${name}-v${minor}*`], { cwd: root, encoding: "utf8" }).split("\n");
-  const earlier = tags.flatMap((tag) => {
-    const release = parsePackageReleaseTag(tag);
-    return release?.directory === directory && release.version.startsWith(minor) && Number(release.version.slice(minor.length)) < patch ? [{ tag, patch: Number(release.version.slice(minor.length)) }] : [];
+  const earlier = appReleaseTags(root, directory, `openlup-${name}-v${minor}*`).flatMap(({ tag, version: other }) => {
+    return other.startsWith(minor) && Number(other.slice(minor.length)) < patch ? [{ tag, patch: Number(other.slice(minor.length)) }] : [];
   });
   const previous = earlier.sort((left, right) => right.patch - left.patch)[0]?.tag;
   if (previous === undefined) throw new Error(`${version} is a patch set, but ${name} has no earlier ${minor}<p> set tag; a package joins the set at a minor set`);

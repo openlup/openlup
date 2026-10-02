@@ -3,9 +3,9 @@
 // source, loads the edited module, and must turn its control red. The structural control is a
 // predicate over the source text.
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { REQUIRED_CHECKS } from "../agent-review-gate.mjs";
@@ -132,13 +132,14 @@ const BEHAVIOUR: Record<string, (gate: Gate) => Promise<void>> = {
     expect(offMain.calls, "no tag object for a commit off main").toEqual([]);
     checkout(fixture.base);
     const sent = "OpenLup package @openlup/core 0.12.0.\n";
-    await expect(gate.createReleaseTag(fixture.clone, fixture.base, "core", "0.12.0", "app-token", tagApi({ message: `${sent}\n` })), "the message with one more trailing newline").resolves.toMatchObject({ tagObject: TAG_OBJECT });
     const refusedAnswers: Array<[string, Record<string, unknown>]> = [
       ["a tag object on another commit", { object: { type: "commit", sha: fixture.mainTip } }],
       ["a tag object on a tree", { object: { type: "tree", sha: fixture.base } }],
       ["a tag object with another name", { tag: "openlup-core-v0.13.0" }],
       ["another message", { message: "OpenLup package @openlup/core 0.13.0.\n" }],
+      ["the message with one more trailing newline", { message: `${sent}\n` }],
       ["the message with two more trailing newlines", { message: `${sent}\n\n` }],
+      ["the message without its trailing newline", { message: sent.trimEnd() }],
     ];
     for (const [why, answer] of refusedAnswers) {
       const refused = tagApi(answer);
@@ -185,8 +186,8 @@ const DEFECTS: Defect[] = [
   { control: "the tag lands on the approved commit", plant: "the created tag object's commit unchecked", from: " || tagged.sha !== commit", to: "" },
   { control: "the tag lands on the approved commit", plant: "the created tag object's type unchecked", from: ' || tagged.type !== "commit"', to: "" },
   { control: "the tag lands on the approved commit", plant: "the created tag object's name unchecked", from: " || created.tag !== tag", to: "" },
-  { control: "the tag lands on the approved commit", plant: "any message accepted", from: "created.message === message || created.message === `${message}\\n`", to: "true" },
-  { control: "the tag lands on the approved commit", plant: "only the message exactly as sent", from: " || created.message === `${message}\\n`", to: "" },
+  { control: "the tag lands on the approved commit", plant: "any message accepted", from: " || created.message !== message)", to: ")" },
+  { control: "the tag lands on the approved commit", plant: "one more trailing newline admitted", from: "created.message !== message)", to: "created.message !== message && created.message !== `${message}\\n`)" },
   { control: "the tag lands on the approved commit", plant: "a lightweight tag", from: "{ ref: `refs/tags/${tag}`, sha: tagObject }", to: "{ ref: `refs/tags/${tag}`, sha: commit }" },
   { control: "no release or publication in flight", plant: "a run waiting for approval admitted", from: '"pending", "waiting", ', to: '"pending", ' },
   { control: "no release or publication in flight", plant: "a queued run admitted", from: '"requested", "queued", ', to: '"requested", ' },
@@ -273,6 +274,31 @@ describe("the release gate as one file outside the checkout", () => {
       const result = gate(args);
       expect(result.status, result.stderr).toBe(1);
       expect(result.stderr.trim()).toBe(`release gate: ${fixture.side} is not on main, whose tip is ${fixture.mainTip}`);
+    }
+  });
+
+  /** Runs `source` as a module imported by a script whose entry is another copy named release-gate.mts. */
+  function misdetected(source: string) {
+    const imported = join(fixture.scratch, "imported", "release-gate.mts"), entry = join(fixture.scratch, "entry", "release-gate.mts");
+    for (const file of [imported, entry]) { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, source); }
+    const loader = `await import(${JSON.stringify(pathToFileURL(imported).href)});`;
+    return spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", loader, entry, "commit", COMMIT], { cwd: fixture.clone, encoding: "utf8", timeout: 20_000, env: { ...inherited, GITHUB_TOKEN: "" } });
+  }
+  // Joined, so that this test file does not read as a command entrypoint to the publication policy.
+  const ARGV = ["process", "argv"].join(".");
+  const FAIL_CLOSED = "  // Started as a gate command, yet not detected as the entry module: an exit 0 would pass the gate.\n  console.error(`release gate: ${" + ARGV + "[1]} started, but this module is not its entry; refusing`);\n  process.exitCode = 1;\n";
+
+  it("fails closed when started as a gate command it is not the entry module of", () => {
+    const refused = misdetected(SOURCE);
+    expect(refused.status, refused.stderr).toBe(1);
+    expect(refused.stderr.trim()).toMatch(/^release gate: .*[\\/]entry[\\/]release-gate\.mts started, but this module is not its entry; refusing$/u);
+    for (const [plant, from, to] of [
+      ["a silent exit 0", FAIL_CLOSED, ""],
+      ["the refusal only logged", "  process.exitCode = 1;\n}", "}"],
+      ["only a .ts entry watched", "release-gate\\.m?ts$/u", "release-gate\\.ts$/u"],
+    ] as const) {
+      expect(SOURCE.split(from), plant).toHaveLength(2);
+      expect(misdetected(SOURCE.replace(from, () => to)).status, plant).toBe(0);
     }
   });
 

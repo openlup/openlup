@@ -11,12 +11,14 @@
  *   `<sha>` and every latest run of it succeeded.
  * - `tag <sha> <package> <version>` repeats that main ancestry, then creates the annotated tag
  *   `openlup-<package>-v<version>` on `<sha>` itself, never on another commit, and refuses unless
- *   GitHub answers with a tag object of that name on that commit and a reference to that object.
+ *   GitHub answers with a tag object of that name and exact message on that commit and a
+ *   reference to that object.
  *
  * `publish-package.yml` runs this file as it is at the dispatched `main` commit, never the
  * target's copy; `publish-packages.yml` runs it at its release commit, as it runs that commit's
  * workflow file. It imports only Node built-ins so that it runs as that one file. The token is
- * GITHUB_TOKEN; `tag` needs the release App's.
+ * GITHUB_TOKEN; `tag` needs the release App's. Started as a release-gate command but not
+ * detected as its entry module, it refuses rather than exit 0.
  */
 import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
@@ -112,10 +114,9 @@ export async function createReleaseTag(root: string, commit: string, directoryNa
   const created = await github("/git/tags", token, fetcher, { tag, message, object: commit, type: "commit" });
   const tagged = record(created.object, "created tag target");
   const tagObject = created.sha;
-  // The commit, its type and the tag name bind the release. The message is formatting: it may come
-  // back as sent or with one more trailing newline, and nothing else.
-  const sentMessage = created.message === message || created.message === `${message}\n`;
-  if (typeof tagObject !== "string" || !COMMIT.test(tagObject) || tagged.sha !== commit || tagged.type !== "commit" || created.tag !== tag || !sentMessage) throw new Error(`release gate: GitHub created another tag object than ${tag} on ${commit}`);
+  // The commit, its type, the tag name and the exact message bind the release: the release checks
+  // and a later set's plan require that message byte for byte, so any other one is refused here.
+  if (typeof tagObject !== "string" || !COMMIT.test(tagObject) || tagged.sha !== commit || tagged.type !== "commit" || created.tag !== tag || created.message !== message) throw new Error(`release gate: GitHub created another tag object than ${tag} on ${commit}`);
   const ref = await github("/git/refs", token, fetcher, { ref: `refs/tags/${tag}`, sha: tagObject });
   const referenced = record(ref.object, "created tag reference");
   if (ref.ref !== `refs/tags/${tag}` || referenced.type !== "tag" || referenced.sha !== tagObject) throw new Error(`release gate: refs/tags/${tag} does not name the tag object ${tagObject}`);
@@ -160,4 +161,8 @@ function invokedDirectly(): boolean {
 
 if (invokedDirectly()) {
   main().catch((error: unknown) => { console.error(error instanceof Error ? error.message : "release gate refused"); process.exitCode = 1; });
+} else if (/(?:^|[\\/])release-gate\.m?ts$/u.test(process.argv[1] ?? "")) {
+  // Started as a gate command, yet not detected as the entry module: an exit 0 would pass the gate.
+  console.error(`release gate: ${process.argv[1]} started, but this module is not its entry; refusing`);
+  process.exitCode = 1;
 }

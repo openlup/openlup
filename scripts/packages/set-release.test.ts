@@ -3,9 +3,9 @@
 // against real Git fixtures and a recorded GitHub and npm API. Each planted defect edits that
 // module's source, loads the edited copy with its relative imports bound to the committed
 // modules, and must turn its control red.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -18,11 +18,14 @@ import * as bump from "./release-bump.ts";
 import * as release from "./package-release.ts";
 
 const FILES = { policy: "package-manifest-policy.ts", check: "packages-check.ts", bump: "release-bump.ts", release: "package-release.ts" } as const;
-type Modules = { policy: typeof policy; check: typeof check; bump: typeof bump; release: typeof release };
-const committed: Modules = { policy, check, bump, release };
+/** The modules, and the file the release workflow runs as package-release.ts. */
+type Modules = { policy: typeof policy; check: typeof check; bump: typeof bump; release: typeof release; releaseScript: string };
+const committed: Modules = { policy, check, bump, release, releaseScript: fileURLToPath(new URL("./package-release.ts", import.meta.url)) };
 const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
 const identity = { GIT_AUTHOR_NAME: "fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", env: { ...inherited, ...identity }, stdio: ["ignore", "pipe", "pipe"] }).trim();
+/** The annotated tag the release workflow makes: the release App as tagger, the release message. */
+const appTag = (cwd: string, name: string, version: string, commit: string, message = `OpenLup package @openlup/${name} ${version}.`) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "tag", "-a", "-m", message, `openlup-${name}-v${version}`, commit], { cwd, env: { ...inherited, ...identity, GIT_COMMITTER_NAME: "openlup-release[bot]", GIT_COMMITTER_EMAIL: "334697227+openlup-release[bot]@users.noreply.github.com" }, stdio: "ignore" });
 let scratch = "";
 
 // --- A repository with two publishable packages and one private package that pins core. ---
@@ -32,7 +35,7 @@ const changelog = (version: string, name: string) => `# Changelog\n\n## [Unrelea
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 type Fixture = { root: string; write: (path: string, contents: string) => void; read: (path: string) => string; commit: (message: string) => string };
 
-/** Commit A: core and kit publishable at 0.4.0 (kit peer-pins core), demo private at 0.1.0 and pinning core; both 0.4.0 tags at A. */
+/** Commit A: core and kit publishable at 0.4.0 (kit peer-pins core in its manifest and lockfile), demo private at 0.1.0 pinning both; the App's 0.4.0 tags at A. */
 function fixture({ kitPublishable = true } = {}): Fixture & { a: string } {
   const root = realpathSync(mkdtempSync(join(scratch, "repository-")));
   const write = (path: string, contents: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); };
@@ -42,9 +45,10 @@ function fixture({ kitPublishable = true } = {}): Fixture & { a: string } {
   write("packages/core/package.json", json(publishable("core", "0.4.0")));
   const kit = { peerDependencies: { "@openlup/core": "0.4.0" } };
   write("packages/kit/package.json", json(kitPublishable ? publishable("kit", "0.4.0", kit) : { name: "@openlup/kit", version: "0.4.0", private: true, exports: { ".": "./dist/a.js" }, ...kit }));
-  write("packages/demo/package.json", json({ name: "@openlup/demo", version: "0.1.0", private: true, exports: { ".": "./dist/a.js" }, dependencies: { "@openlup/core": "0.4.0" } }));
-  write("package-lock.json", json({ name: "fixture", version: "0.0.0", lockfileVersion: 3, requires: true, packages: { "": { name: "fixture", workspaces: ["packages/*"] }, "node_modules/unrelated": { version: "0.4.0" }, "packages/core": { name: "@openlup/core", version: "0.4.0" }, "packages/kit": { name: "@openlup/kit", version: "0.4.0", peerDependencies: { "@openlup/core": "0.4.0" } }, "packages/demo": { name: "@openlup/demo", version: "0.1.0", dependencies: { "@openlup/core": "0.4.0" } } } }));
+  write("packages/demo/package.json", json({ name: "@openlup/demo", version: "0.1.0", private: true, exports: { ".": "./dist/a.js" }, dependencies: { "@openlup/core": "0.4.0" }, optionalDependencies: { "@openlup/kit": "0.4.0" } }));
+  write("package-lock.json", json({ name: "fixture", version: "0.0.0", lockfileVersion: 3, requires: true, packages: { "": { name: "fixture", workspaces: ["packages/*"] }, "node_modules/unrelated": { version: "0.4.0" }, "packages/core": { name: "@openlup/core", version: "0.4.0" }, "packages/kit": { name: "@openlup/kit", version: "0.4.0", peerDependencies: { "@openlup/core": "0.4.0" } }, "packages/demo": { name: "@openlup/demo", version: "0.1.0", dependencies: { "@openlup/core": "0.4.0" }, optionalDependencies: { "@openlup/kit": "0.4.0" } } } }));
   write("packages/core/package-lock.json", json({ name: "@openlup/core", version: "0.4.0", lockfileVersion: 3, packages: { "": { name: "@openlup/core", version: "0.4.0" } } }));
+  write("packages/kit/package-lock.json", json({ name: "@openlup/kit", version: "0.4.0", lockfileVersion: 3, packages: { "": { name: "@openlup/kit", version: "0.4.0", peerDependencies: { "@openlup/core": "0.4.0" } } } }));
   for (const name of ["core", "kit"]) {
     write(`packages/${name}/CHANGELOG.md`, changelog("0.4.0", name));
     write(`packages/${name}/api/${name}.api.md`, `# ${name} API\n`);
@@ -53,7 +57,7 @@ function fixture({ kitPublishable = true } = {}): Fixture & { a: string } {
   write(".gitignore", "dist/\n");
   git(root, "init", "--quiet");
   const a = commit("A");
-  for (const name of ["core", "kit"]) git(root, "tag", `openlup-${name}-v0.4.0`, a);
+  for (const name of ["core", "kit"]) appTag(root, name, "0.4.0", a);
   return { root, write, read, commit, a };
 }
 
@@ -89,6 +93,17 @@ function world(name: string, version: string, { tag = false, release = false, np
   return table;
 }
 const input = (version = "0.4.1", name = "core", target = TARGET) => release.packageReleaseInputs(name, version, target, "Set note.\n");
+/**
+ * Runs `script` as the release workflow does, in `cwd`. Its fetch refuses every read, or with
+ * FETCH_TABLE answers each URL, without its query, from that JSON file and 404 otherwise.
+ */
+function cli(script: string, cwd: string, args: string[], env: Record<string, string>) {
+  const stub = join(scratch, "fetch-stub.mjs");
+  if (!existsSync(stub)) writeFileSync(stub, "import { readFileSync } from \"node:fs\";\nconst table = process.env.FETCH_TABLE ? JSON.parse(readFileSync(process.env.FETCH_TABLE, \"utf8\")) : undefined;\nglobalThis.fetch = async (url) => {\n  if (!table) throw new Error(`network read ${url}`);\n  const answer = table[String(url).split(\"?\")[0]];\n  return answer === undefined ? new Response(null, { status: 404 }) : Response.json(answer);\n};\n");
+  return spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", pathToFileURL(stub).href, script, ...args], { cwd, encoding: "utf8", timeout: 60_000, env: { ...inherited, FETCH_TABLE: "", GITHUB_TOKEN: "", GITHUB_OUTPUT: "", RELEASE_OUTPUT_DIR: "", RELEASE_NOTES: "Set note.\n", ...env } });
+}
+const API_REFUSAL = "packages/core/api differs from openlup-core-v0.4.0; a patch set only fixes, so an API change is a minor set";
+let outputs = 0;
 
 /** Each behaviour throws unless it holds for the given modules. */
 const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
@@ -137,11 +152,12 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "release:bump --set moves every publishable package and every exact pin on one": async (m) => {
     const { root, read } = fixture();
-    expect(m.bump.bumpSet(root, "0.5.0").sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package.json"]);
+    expect(m.bump.bumpSet(root, "0.5.0").sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json"]);
     const manifest = (name: string) => JSON.parse(read(`packages/${name}/package.json`));
-    expect([manifest("core").version, manifest("kit").version, manifest("kit").peerDependencies, manifest("demo").version, manifest("demo").dependencies]).toEqual(["0.5.0", "0.5.0", { "@openlup/core": "0.5.0" }, "0.1.0", { "@openlup/core": "0.5.0" }]);
-    expect(JSON.parse(read("package-lock.json")).packages).toMatchObject({ "node_modules/unrelated": { version: "0.4.0" }, "packages/core": { version: "0.5.0" }, "packages/kit": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } }, "packages/demo": { version: "0.1.0", dependencies: { "@openlup/core": "0.5.0" } } });
+    expect([manifest("core").version, manifest("kit").version, manifest("kit").peerDependencies, manifest("demo").version, manifest("demo").dependencies, manifest("demo").optionalDependencies]).toEqual(["0.5.0", "0.5.0", { "@openlup/core": "0.5.0" }, "0.1.0", { "@openlup/core": "0.5.0" }, { "@openlup/kit": "0.5.0" }]);
+    expect(JSON.parse(read("package-lock.json")).packages).toMatchObject({ "node_modules/unrelated": { version: "0.4.0" }, "packages/core": { version: "0.5.0" }, "packages/kit": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } }, "packages/demo": { version: "0.1.0", dependencies: { "@openlup/core": "0.5.0" }, optionalDependencies: { "@openlup/kit": "0.5.0" } } });
     expect(JSON.parse(read("packages/core/package-lock.json"))).toMatchObject({ version: "0.5.0", packages: { "": { version: "0.5.0" } } });
+    expect(JSON.parse(read("packages/kit/package-lock.json"))).toMatchObject({ version: "0.5.0", packages: { "": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } } } });
     quiet();
     expect(committed.check.runPackagesCheck(root, []), "the bumped tree passes packages:check").toBe(0);
     for (const version of ["0.5.0", "0.4.9", "1.0.0", "0.0.9"]) expect(() => m.bump.bumpSet(root, version), version).toThrow(/is not a set version|the next set version must be above it/u);
@@ -180,6 +196,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
       ["the tag with another message", { tag: true, release: true, tagPatch: { message: "OpenLup package @openlup/core 0.4.2.\n" } }, /names another commit or message/u],
       ["a mutable release", { tag: true, release: true, releasePatch: { immutable: false } }, /is not an immutable, published, App-authored release/u],
       ["a draft", { tag: true, release: true, releasePatch: { draft: true } }, /is not an immutable, published, App-authored release/u],
+      ["a prerelease", { tag: true, release: true, releasePatch: { prerelease: true } }, /is not an immutable, published, App-authored release/u],
       ["another author", { tag: true, release: true, releasePatch: { author: { id: 43, login: APP.login } } }, /is not an immutable, published, App-authored release/u],
       ["a release asset", { tag: true, release: true, releasePatch: { assets: [{ id: 1 }] } }, /is not an immutable, published, App-authored release/u],
       ["npm holding another tarball", { tag: true, release: true, held: gzipSync(Buffer.from("other content")) }, /npm holds @openlup\/core@0\.4\.1 with another tarball/u],
@@ -210,9 +227,15 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     const change = repository.commit("C: an API change");
     for (const version of ["0.5.0", "0.4.0"]) expect(() => guard(version, change), version).not.toThrow();
     expect(() => guard("0.4.1", change)).toThrow("packages/core/api differs from openlup-core-v0.4.0; a patch set only fixes, so an API change is a minor set");
-    git(repository.root, "tag", "openlup-core-v0.4.1", change);
+    appTag(repository.root, "core", "0.4.1", change);
     expect(() => guard("0.4.2", change), "against the latest earlier patch").not.toThrow();
     expect(() => guard("0.4.2", fix), "back to the API of 0.4.0 differs from 0.4.1").toThrow(/differs from openlup-core-v0\.4\.1;/u);
+    // Later tags at the fix, with the API of 0.4.0, that the release App did not make: none moves the baseline.
+    git(repository.root, "tag", "openlup-core-v0.4.3", fix);
+    git(repository.root, "tag", "-a", "-m", "OpenLup package @openlup/core 0.4.4.", "openlup-core-v0.4.4", fix);
+    appTag(repository.root, "core", "0.4.5", fix, "OpenLup package @openlup/core 0.4.5, by hand.");
+    expect(() => guard("0.4.6", change), "a lightweight, a hand-made and a misworded tag are not the previous set").not.toThrow();
+    expect(() => guard("0.4.6", fix)).toThrow(/differs from openlup-core-v0\.4\.1;/u);
     expect(() => guard("0.6.1", change)).toThrow("0.6.1 is a patch set, but core has no earlier 0.6.<p> set tag; a package joins the set at a minor set");
     expect(() => guard("1.0.1", change)).toThrow(/is not a set version/u);
   },
@@ -243,6 +266,55 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     packed();
     writeFileSync(join(packs, "openlup-core-0.4.0.tgz"), gzipSync(Buffer.from("changed")));
     await expect(plan(set, world("core", "0.4.0", at)), "a tarball changed after packing").rejects.toThrow("openlup-core-0.4.0.tgz changed after packing");
+  },
+  "every preflight and each release leg run the patch-set check, before any network read": async (m) => {
+    const repository = fixture();
+    committed.bump.bumpSet(repository.root, "0.4.1");
+    repository.write("packages/core/api/core.api.md", "# core API\n\nexport declare const added: 1;\n");
+    const change = repository.commit("B: an API change in the patch set 0.4.1");
+    const calls: string[] = [];
+    const offline: GithubFetch = async (url: string) => { calls.push(url); throw new Error(`network read ${url}`); };
+    const one = input("0.4.1", "core", change), out = realpathSync(mkdtempSync(join(scratch, "leg-")));
+    await expect(m.release.preflightPackageRelease(repository.root, one, undefined, offline), "the one-package preflight").rejects.toThrow(API_REFUSAL);
+    await expect(m.release.preparePackageRelease(repository.root, one, out, undefined, offline), "a release leg").rejects.toThrow(API_REFUSAL);
+    expect(() => m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", change, "note\n")), "the set preflight").toThrow(API_REFUSAL);
+    expect(calls, "no network read before the refusal").toEqual([]);
+    const coordinates = { VERSION: "0.4.1", TARGET_COMMIT: change };
+    for (const [why, phase, env] of [["one package", "preflight", { PACKAGE: "core" }], ["the set", "preflight", { PACKAGE: "all" }], ["a release leg", "prepare", { PACKAGE: "core", RELEASE_OUTPUT_DIR: out }]] as const) {
+      const refused = cli(m.releaseScript, repository.root, [phase], { ...coordinates, ...env });
+      expect([refused.status, refused.stderr.trim()], `package-release.ts ${phase}, ${why}`).toEqual([1, API_REFUSAL]);
+    }
+    expect(existsSync(join(out, "notes.md")), "a refused leg prepares no note").toBe(false);
+    const fixed = fixture();
+    committed.bump.bumpSet(fixed.root, "0.4.1");
+    fixed.write("packages/core/src/a.ts", "export const a = 2;\n");
+    const fix = fixed.commit("B: a fix in the patch set 0.4.1");
+    const set = cli(m.releaseScript, fixed.root, ["preflight"], { PACKAGE: "all", VERSION: "0.4.1", TARGET_COMMIT: fix });
+    expect(set.status, set.stderr).toBe(0);
+    const reached = cli(m.releaseScript, fixed.root, ["preflight"], { PACKAGE: "core", VERSION: "0.4.1", TARGET_COMMIT: fix });
+    expect([reached.status, reached.stderr.trim()], "a fix passes the check and reaches the tag read").toEqual([1, "network read https://api.github.com/repos/openlup/openlup/git/ref/tags/openlup-core-v0.4.1"]);
+  },
+  "the plan passes the packages to release in full to the step output": async (m) => {
+    const repository = fixture();
+    const packs = realpathSync(mkdtempSync(join(scratch, "cli-packs-")));
+    const tarballs = { core: PACKED, kit: gzipSync(Buffer.from("kit tar")) };
+    writeFileSync(join(packs, check.PACKAGES_MANIFEST_FILE), JSON.stringify({ schemaVersion: 2, commit: repository.a, packages: (["core", "kit"] as const).map((name) => ({ name: `@openlup/${name}`, version: "0.4.0", filename: `openlup-${name}-0.4.0.tgz`, sha256: createHash("sha256").update(tarballs[name]).digest("hex"), integrity: integrity(tarballs[name]) })) }));
+    for (const name of ["core", "kit"] as const) writeFileSync(join(packs, `openlup-${name}-0.4.0.tgz`), tarballs[name]);
+    // kit's release exists and npm lacks it: the set resumes kit and releases only core in full.
+    const kitTag = "openlup-kit-v0.4.0", kitObject = createHash("sha1").update(kitTag).digest("hex");
+    const kitResumes = {
+      [`${API}/git/ref/tags/${kitTag}`]: { ref: `refs/tags/${kitTag}`, object: { type: "tag", sha: kitObject } },
+      [`${API}/git/tags/${kitObject}`]: { sha: kitObject, tag: kitTag, message: "OpenLup package @openlup/kit 0.4.0.\n", object: { type: "commit", sha: repository.a } },
+      [`${API}/releases/tags/${kitTag}`]: { id: 7, tag_name: kitTag, immutable: true, draft: false, prerelease: false, author: APP, assets: [] },
+    };
+    for (const [packageName, table, expected] of [["all", {}, '["core","kit"]'], ["all", kitResumes, '["core"]'], ["core", {}, '["core"]']] as const) {
+      const output = join(scratch, `output-${++outputs}`), answers = join(scratch, `answers-${outputs}.json`);
+      writeFileSync(output, "earlier=1\n");
+      writeFileSync(answers, JSON.stringify(table));
+      const planned = cli(m.releaseScript, repository.root, ["plan", packs], { FETCH_TABLE: answers, PACKAGE: packageName, VERSION: "0.4.0", TARGET_COMMIT: repository.a, GITHUB_OUTPUT: output });
+      expect(planned.status, planned.stderr).toBe(0);
+      expect(readFileSync(output, "utf8"), `${packageName} ${expected}`).toBe(`earlier=1\npackages=${expected}\n`);
+    }
   },
   "the set preflight checks the clean target, the set and every package's patch": async (m) => {
     const repository = fixture();
@@ -280,6 +352,8 @@ const DEFECTS: Defect[] = [
   { control: "--release-set packs every publishable package, each at the set version", plant: "one package and the set at once", in: "check", from: "  if (options.releaseTag !== undefined && options.releaseSet !== undefined) return", to: "  if (false) return" },
   { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "manifest pins left behind", in: "bump", from: "const manifestEdits = [...ownVersion([\"version\"]), ...pins(JSON.parse(read(manifest)), [], bumped, from, version)];", to: "const manifestEdits = [...ownVersion([\"version\"])];" },
   { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "lockfile pins left behind", in: "bump", from: ", ...pins(lockEntry, [\"packages\", entry.directory], bumped, from, version));", to: ");" },
+  { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "own-lockfile pins left behind", in: "bump", from: ", ...pins(at(JSON.parse(read(ownLock)), [\"packages\", \"\"]), [\"packages\", \"\"], bumped, from, version)];", to: "];" },
+  { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "optionalDependencies pins left behind", in: "bump", from: "const PIN_FIELDS = [\"dependencies\", \"peerDependencies\", \"optionalDependencies\"] as const;", to: "const PIN_FIELDS = [\"dependencies\", \"peerDependencies\"] as const;" },
   { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "only the first publishable package moves", in: "bump", from: "bumpFiles(root, config, publishable, from, version)", to: "bumpFiles(root, config, publishable.slice(0, 1), from, version)" },
   { control: "release:bump --set moves every publishable package and every exact pin on one", plant: "a skewed set bumped", in: "bump", from: "if (current.some(([, other]) => other !== from)) throw", to: "if (false) throw" },
   { control: "the Publishable line opens a new version section below Unreleased", plant: "the line inside Unreleased, as before", in: "bump", from: "return `${text.slice(0, end)}## [${version}]\\n\\n- Publishable", to: "return `${text.slice(0, end)}- Publishable" },
@@ -291,6 +365,7 @@ const DEFECTS: Defect[] = [
   { control: "every other state stops the set", plant: "a half-made release admitted", in: "release", from: "if (tag === undefined || release === undefined) throw", to: "if (false) throw" },
   { control: "every other state stops the set", plant: "the tag's commit unchecked", in: "release", from: "if (tag.commit !== input.target || tag.message !== `${input.message}\\n`) throw new Error(`${input.tag} names another", to: "if (tag.message !== `${input.message}\\n`) throw new Error(`${input.tag} names another" },
   { control: "every other state stops the set", plant: "a mutable release admitted", in: "release", from: "release.immutable !== true || release.draft", to: "release.draft" },
+  { control: "every other state stops the set", plant: "a prerelease admitted", in: "release", from: "release.prerelease !== false || author.id", to: "author.id" },
   { control: "every other state stops the set", plant: "any author admitted", in: "release", from: "author.id !== RELEASE_APP.id || author.login !== RELEASE_APP.login || !Array", to: "!Array" },
   { control: "every other state stops the set", plant: "another tarball skipped", in: "release", from: "if (!(await sameTarball(input.name, input.version, packument!, local, fetcher))) throw", to: "if (false) throw" },
   { control: "every other state stops the set", plant: "an unpublished version resumed", in: "release", from: "if (versions[input.version] === undefined) throw", to: "if (versions[input.version] === undefined) return \"resume\"; if (false) throw" },
@@ -304,6 +379,22 @@ const DEFECTS: Defect[] = [
   { control: "a patch set keeps each package's API snapshot from its previous set", plant: "the whole package compared, not its API", in: "release", from: "\"--\", `${directory}/api`]", to: "\"--\", directory]" },
   { control: "a patch set keeps each package's API snapshot from its previous set", plant: "the earliest earlier tag compared", in: "release", from: ".sort((left, right) => right.patch - left.patch)", to: ".sort((left, right) => left.patch - right.patch)" },
   { control: "a patch set keeps each package's API snapshot from its previous set", plant: "the previous set compared with itself", in: "release", from: "[\"diff\", \"--quiet\", previous, target,", to: "[\"diff\", \"--quiet\", previous, previous," },
+  { control: "a patch set keeps each package's API snapshot from its previous set", plant: "any tag as the previous set", in: "release", from: "const made = tagger === RELEASE_TAGGER && message === `OpenLup package ${release?.name} ${release?.version}.\\n`;", to: "const made = true;" },
+  { control: "a patch set keeps each package's API snapshot from its previous set", plant: "any tagger's tag as the previous set", in: "release", from: "const made = tagger === RELEASE_TAGGER && ", to: "const made = " },
+  { control: "a patch set keeps each package's API snapshot from its previous set", plant: "any message's tag as the previous set", in: "release", from: " && message === `OpenLup package ${release?.name} ${release?.version}.\\n`", to: "" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the one-package preflight without the check", in: "release", from: "  assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);\n", to: "" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the one-package preflight swallows the refusal", in: "release", from: "  assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);\n", to: "  try { assertPatchSetApiUnchanged(root, input.directory, input.version, input.target); } catch { /* bypassed */ }\n" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the check after the tag and npm reads", in: "release", from: "  assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);\n  await assertTagAbsent(input.tag, token, fetcher);\n  assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));\n", to: "  await assertTagAbsent(input.tag, token, fetcher);\n  assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));\n  assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);\n" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "a release leg prepares without the check", in: "release", from: "  await preflightPackageRelease(root, input, token, fetcher, manifestCheck);\n  writeFileSync(", to: "  assertReleaseCandidate(root, input);\n  manifestCheck(root, input.tag);\n  await assertTagAbsent(input.tag, token, fetcher);\n  assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));\n  writeFileSync(" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the set preflight without the check", in: "release", from: "  for (const { directory } of packages) assertPatchSetApiUnchanged(root, directory, set.version, set.target);\n", to: "" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the set preflight swallows the refusal", in: "release", from: "  for (const { directory } of packages) assertPatchSetApiUnchanged(root, directory, set.version, set.target);\n", to: "  for (const { directory } of packages) try { assertPatchSetApiUnchanged(root, directory, set.version, set.target); } catch { /* bypassed */ }\n" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the one-package command skips its preflight", in: "release", from: "    await preflightPackageRelease(root, input, token);\n", to: "" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the set command skips its preflight", in: "release", from: "const names = preflightSetRelease(root, set);", to: "const names = [\"unchecked\"];" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the leg command prepares only the note", in: "release", from: "if (phase === \"prepare\") return preparePackageRelease(root, input, out, token);", to: "if (phase === \"prepare\") return writeFileSync(resolve(out, \"notes.md\"), input.note);" },
+  { control: "the plan passes the packages to release in full to the step output", plant: "no step output", in: "release", from: "    appendFileSync(output, `packages=${JSON.stringify(full)}\\n`);\n", to: "" },
+  { control: "the plan passes the packages to release in full to the step output", plant: "a list the matrix cannot parse", in: "release", from: "`packages=${JSON.stringify(full)}\\n`", to: "`packages=${full.join(\",\")}\\n`" },
+  { control: "the plan passes the packages to release in full to the step output", plant: "the step output overwritten", in: "release", from: "    appendFileSync(output, `packages=", to: "    writeFileSync(output, `packages=" },
+  { control: "the plan passes the packages to release in full to the step output", plant: "every publishable package, not the plan's", in: "release", from: "`packages=${JSON.stringify(full)}\\n`", to: "`packages=${JSON.stringify(set ? [\"core\", \"kit\"] : full)}\\n`" },
   { control: "the release plan: one package only from nothing; a set skips, resumes, and releases at least one", plant: "one package resumed", in: "release", from: "if (single && state !== \"full\") throw", to: "if (false) throw" },
   { control: "the release plan: one package only from nothing; a set skips, resumes, and releases at least one", plant: "an empty plan", in: "release", from: "if (full.length === 0) throw", to: "if (false) throw" },
   { control: "the release plan: one package only from nothing; a set skips, resumes, and releases at least one", plant: "a skipped package released again", in: "release", from: "if (state === \"full\") full.push(", to: "if (state !== \"resume\") full.push(" },
@@ -325,7 +416,7 @@ async function load(defect: Defect): Promise<Modules> {
   const bound = planted.replace(/(\bfrom\s+)"(\.\.?\/[^"]+)"/gu, (_, keyword: string, specifier: string) => `${keyword}${JSON.stringify(resolve(dirname(file), specifier))}`);
   const copy = join(scratch, `mutant-${++mutants}-${FILES[defect.in]}`);
   writeFileSync(copy, bound);
-  return { ...committed, [defect.in]: await import(pathToFileURL(copy).href) };
+  return { ...committed, [defect.in]: await import(pathToFileURL(copy).href), releaseScript: defect.in === "release" ? copy : committed.releaseScript };
 }
 
 describe("set release controls", () => {
