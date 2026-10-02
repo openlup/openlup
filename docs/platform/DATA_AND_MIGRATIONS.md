@@ -179,7 +179,7 @@ Code rollback must remain compatible with the expanded schema. A destructive
 down migration is not a rollback plan. Each stage needs a clear readback and
 failure boundary; a backfill that cannot be safely retried is incomplete.
 
-<!-- openlup-doc-impact {"unit":"data","digest":"sha256-7f4d5f96b45a922e6ad15b2b64f27f35a631fd03675ab3f6e5596269f3a229f0","reason":"Only database tests and synthetic inputs change. Settlement, location, provider and stock fixtures select cases explicitly; actual runtime RPC roles remain distinct from owner readback witnesses. Missing managed seam/seed transport tests are withdrawn. No baseline, forward migration, privilege or compatibility lifecycle changes; current runtime-role failures remain unresolved."} -->
+<!-- openlup-doc-impact {"unit":"data","digest":"sha256-e3db022c0a7cf96995200dc1d513d48f771e14230dce5e9bc70cfe5f0310927e","reason":"Only database tests and synthetic inputs change. Settlement, location, provider and stock fixtures select cases explicitly; actual runtime RPC roles remain distinct from owner readback witnesses. Missing managed seam/seed transport tests are withdrawn. No baseline, forward migration, privilege or compatibility lifecycle changes; current runtime-role failures remain unresolved."} -->
 
 ## Contract changes
 

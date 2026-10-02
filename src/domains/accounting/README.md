@@ -123,4 +123,4 @@ for money/status/idempotency boundaries, and
 schema authority. Record the actual command and result at the revision tested;
 mocked jobs do not prove live provider, database or installation behavior.
 
-<!-- openlup-doc-impact {"unit":"domain-accounting","digest":"sha256-925435fd3077feac758a11256df3be31f1e7d041f58bfa5ebb0b0e183e1d8502","reason":"The invoice-contract test supplies explicit synthetic jurisdiction routing instead of expecting the neutral default to accept an identifier. Default refusal, contract validation and accounting implementation described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"domain-accounting","digest":"sha256-c8102686a73da1770995b46b512a14e6d5b3176a9c9bce9ecebe0f530ff9da00","reason":"The invoice-contract test supplies explicit synthetic jurisdiction routing instead of expecting the neutral default to accept an identifier. Default refusal, contract validation and accounting implementation described here are unchanged."} -->

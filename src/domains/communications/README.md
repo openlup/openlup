@@ -169,4 +169,4 @@ there because it is consent-gated and makes no false-urgency/price promise.
 Domain-boundary rules live in the maintainer canon `DOMAIN_ARCHITECTURE.md`,
 which belongs to the private overlay and is not part of the published tree.
 
-<!-- openlup-doc-impact {"unit":"domain-communications","digest":"sha256-90c6512699532b0d323c213e209071ca8135bf8edd013aa06c195cbb64830b2d","reason":"The obsolete deployment-specific database-template seed-content test is withdrawn. The selected public email registry projection remains empty; portable template, renderer, consent and delivery tests remain. No registry, send policy or email runtime changes."} -->
+<!-- openlup-doc-impact {"unit":"domain-communications","digest":"sha256-67ba6250377f2bdc8a5cb7d4815516b9e72956cd5fd43e131ab73e47a827f8e6","reason":"The obsolete deployment-specific database-template seed-content test is withdrawn. The selected public email registry projection remains empty; portable template, renderer, consent and delivery tests remain. No registry, send policy or email runtime changes."} -->
