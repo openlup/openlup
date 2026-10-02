@@ -15,7 +15,6 @@ process: an application binds its ports and composes it.
 | --- | --- | --- |
 | `./bundle` | kernel | candidate |
 | `./catalog` | kernel | candidate |
-| `./checkout` | kernel | experimental |
 | `./company-identity` | kernel | experimental |
 | `./fulfillment` | kernel | experimental |
 | `./inventory` | kernel | candidate |

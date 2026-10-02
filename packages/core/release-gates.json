@@ -54,14 +54,6 @@
       "entrypoint": "dist/pricing/index.d.ts",
       "snapshot": "api/pricing.api.md"
     },
-    "./checkout": {
-      "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/checkoutStandalone.test.ts"],
-      "entrypoint": "dist/checkout/index.d.ts",
-      "snapshot": "api/checkout.api.md"
-    },
     "./company-identity": {
       "role": "kernel",
       "maturity": "experimental",

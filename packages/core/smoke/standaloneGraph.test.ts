@@ -5,7 +5,6 @@ import { inspectStandaloneGraph, packageRoot, packageSmokeFiles, packageSourceFi
 
 const graphEntrypoints = [
   "smoke/catalogStandalone.test.ts",
-  "smoke/checkoutStandalone.test.ts",
   "smoke/companyIdentityStandalone.test.ts",
   "smoke/fulfillmentStandalone.test.ts",
   "smoke/inventoryStandalone.test.ts",
@@ -35,8 +34,6 @@ const expectedCoreFiles = [
   "src/bundle/ports.ts",
   "src/catalog/identifiers.ts",
   "src/catalog/index.ts",
-  "src/checkout/index.ts",
-  "src/checkout/idempotency.ts",
   "src/company-identity/contracts.ts",
   "src/company-identity/index.ts",
   "src/company-identity/ports.ts",

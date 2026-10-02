@@ -11,7 +11,6 @@ const uuid = {
 export function fixedBoxRuntimeImports(): string[] {
   return [
     "import { slugSchema, skuSchema } from '@openlup/core/catalog';",
-    "import { validateCheckoutIdempotencyHeader } from '@openlup/core/checkout';",
     "import { calculateInventoryAtp } from '@openlup/core/inventory';",
     "import { assertBreakdownInvariant as assertFixedBoxBreakdown, buildOrderBreakdown as buildFixedBoxBreakdown } from '@openlup/core/pricing';",
     "import { resolveShipping } from '@openlup/core/shipping';",
@@ -23,8 +22,6 @@ export function fixedBoxRuntimeScenarioLines(): string[] {
   return [
     "const fixedBoxSlug = slugSchema.parse('fixed-box-alpha');",
     "const fixedBoxSku = skuSchema.parse('CORE-SKU-ALPHA');",
-    "const fixedBoxHeader = validateCheckoutIdempotencyHeader('123e4567-e89b-42d3-a456-426614174000');",
-    "if (!fixedBoxHeader.ok) throw new Error('fixed-box idempotency rejected');",
     "const fixedBoxAtp = calculateInventoryAtp({",
     "  request: {",
     "    contractVersion: 'inventory.v0',",
@@ -65,7 +62,6 @@ export function fixedBoxRuntimeScenarioLines(): string[] {
 export function fixedBoxTypecheckImports(): string[] {
   return [
     "import { slugSchema, skuSchema } from '@openlup/core/catalog';",
-    "import { validateCheckoutIdempotencyHeader } from '@openlup/core/checkout';",
     "import { calculateInventoryAtp, type InventoryAtpRequest, type InventoryStockLine } from '@openlup/core/inventory';",
     "import { assertBreakdownInvariant as assertFixedBoxBreakdown, buildOrderBreakdown as buildFixedBoxBreakdown } from '@openlup/core/pricing';",
     "import { resolveShipping, type ShippingRule } from '@openlup/core/shipping';",
@@ -77,8 +73,6 @@ export function fixedBoxTypecheckScenarioLines(): string[] {
   return [
     "const fixedBoxSlug = slugSchema.parse('fixed-box-alpha');",
     "const fixedBoxSku = skuSchema.parse('CORE-SKU-ALPHA');",
-    "const fixedBoxHeader = validateCheckoutIdempotencyHeader('123e4567-e89b-42d3-a456-426614174000');",
-    "if (!fixedBoxHeader.ok) throw new Error('fixed-box idempotency rejected');",
     "const fixedBoxRequest: InventoryAtpRequest = {",
     "  contractVersion: 'inventory.v0',",
     "  requestedAt: '2026-08-01T10:00:00.000Z',",

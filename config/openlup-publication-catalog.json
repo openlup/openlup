@@ -1354,10 +1354,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/core/api/checkout.api.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/core/api/company-identity.api.md",
       "class": "public-output"
     },
@@ -1514,10 +1510,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/core/smoke/checkoutStandalone.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/core/smoke/companyIdentityStandalone.test.ts",
       "class": "public-output"
     },
@@ -1599,14 +1591,6 @@
     },
     {
       "path": "packages/core/src/catalog/index.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/src/checkout/idempotency.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/src/checkout/index.ts",
       "class": "public-output"
     },
     {
@@ -13283,14 +13267,6 @@
     },
     {
       "path": "src/domains/checkout/README.md",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/checkout/checkoutIdempotency.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/checkout/checkoutIdempotency.ts",
       "class": "public-output"
     },
     {

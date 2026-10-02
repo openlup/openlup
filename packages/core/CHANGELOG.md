@@ -8,6 +8,21 @@ SemVer promise.
 
 ## [Unreleased]
 
+### Removed
+
+- **API REMOVAL: the `./checkout` subpath.** It held only an
+  `Idempotency-Key` header-shape helper that no checkout path used.
+
+  Migration: replace
+
+  ```ts
+  import { validateCheckoutIdempotencyHeader } from "@openlup/core/checkout";
+  ```
+
+  with an application-owned validator, or delete the call if, like the
+  reference checkout, your checkout carries its idempotency key in the
+  request body.
+
 ### Changed
 
 - **BEHAVIOUR CHANGE for the subscription status matrix.** `cancelled` is no
