@@ -373,7 +373,13 @@ package release falsifiers: `release-workflow-authenticity.test.ts` plants a
 defect against every control of the two package release workflows and runs
 their release-event, tag-pattern, tarball and pre-publish npm checks as scripts,
 and `package-release.test.ts` exercises the manifest, version, tag, npm and draft
-refusals.
+refusals. `release-gate.test.ts` runs the release gate both workflows share
+against a real Git fixture and a recorded GitHub API: main ancestry against a
+fresh fetch, the six required contexts, the tag on the approved commit and the
+refusal while another release or publication is in flight. It plants a defect in
+the gate's source for each of those decisions and requires the edited gate to fail.
+The source preview's own required-context loop is compared with the gate's
+decision, verdict for verdict, in `scripts/oss-published-tree-check.test.ts`.
 The same directory holds the package release-shape checks and the test that
 loads the lint configuration with a conditional `imports` map.
 The public test job separately runs the materialized command-contract

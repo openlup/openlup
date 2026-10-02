@@ -561,22 +561,31 @@ A release takes three steps:
    **main** and enter the package directory name (for example `core`), the
    version, the reviewed full target commit SHA on `main` and the exact release
    note body. The unprivileged `preflight` job of
-   [`publish-package.yml`](workflows/publish-package.yml) checks that the target
-   is on `main` and that the six required contexts passed there, that
+   [`publish-package.yml`](workflows/publish-package.yml) refuses while a run of
+   `publish-package.yml` or `publish-packages.yml` for any package has not
+   completed, and names that run. It then checks that the target is on `main`, as
+   fetched from origin, and that the six required contexts passed there, that
    `packages/<package>/package.json` carries that version, that the tag
    `openlup-<package>-v<version>` does not exist, and that npm has never held
    that version and holds none above it. It then packs the package with
    `npm run packages:check -- --out <dir> --release-tag <tag>` and scans the
-   unpacked tarball with checksum-verified gitleaks 8.30.1.
+   unpacked tarball with checksum-verified gitleaks 8.30.1. Main ancestry, the
+   required contexts and the tag's commit are decided by
+   [`release-gate.ts`](../scripts/packages/release-gate.ts) as it is at the
+   dispatched `main` commit, run as one file outside the checkout, never by the
+   target's own copy.
 3. **Approval.** The `release` job waits for the maintainer to approve the
    protected `release` environment. Before the release App token exists, it
    re-verifies the target's main ancestry and required contexts, the manifest
    policy and version with `packages:check --release-tag` (no install, build or
    pack), the absent tag and npm. It installs nothing and runs no package code:
    the pack and the gitleaks scan run only in the unprivileged `preflight`, and
-   `publish-packages.yml` packs and scans the published tag again. The App then creates the
-   annotated tag with exactly `OpenLup package @openlup/<package> <version>.` and
-   a draft release with the exact note bytes and no asset. The job reads that
+   `publish-packages.yml` packs and scans the published tag again. The release
+   gate then re-checks the target's main ancestry, has the App create the
+   annotated tag on the target commit itself with exactly
+   `OpenLup package @openlup/<package> <version>.`, and refuses unless GitHub
+   answers with that tag object and reference. The App then creates a draft
+   release with the exact note bytes and no asset. The job reads that
    draft by the ID its creation returned, publishes it by that ID as an
    immutable release, checks the published release, its App author, its note and
    its tag at the target, and verifies GitHub's release attestation with
@@ -593,8 +602,8 @@ jobs:
    `^openlup-<package>-v<MAJOR>.<MINOR>.<PATCH>$`. It reads the live release and
    refuses anything other than the same immutable, App-authored release with no
    asset. It checks the annotated tag and its message, verifies GitHub's release
-   attestation, and checks that the release commit is on `main` and that the six
-   required contexts passed there. It refuses a version npm holds or has passed,
+   attestation, and checks with the same release gate that the release commit is
+   on `main` and that the six required contexts passed there. It refuses a version npm holds or has passed,
    packs exactly the tag's package at the tag's version with `packages:check`,
    and scans the unpacked tarball with gitleaks.
 2. **publish** runs in the `npm-stage` environment with no checkout and no
@@ -676,8 +685,11 @@ moves `latest` backwards. Do not recreate or move the tag. Once npm holds the
 version, or a later version overtook it, correct forward with a new version.
 Never overwrite or unpublish a published version automatically.
 
-One package's releases and publications share a concurrency group, so they run
-one at a time. GitHub keeps at most one pending run per group and cancels an
-older pending one when another is queued, so dispatch the next release of a
-package only after the previous one is published. A publication cancelled that
-way is refused on a re-run once a later version is on npm.
+A package's release job and its publication share a concurrency group, so they
+run one at a time. GitHub keeps at most one pending run per group and cancels an
+older pending one when another is queued, so a dispatch that waited in that group
+could cancel a queued publication, leaving an immutable release that npm never
+receives. The dispatch therefore joins the group only in its release job, and its
+preflight refuses while a release or publication run of any package is
+requested, queued, pending, waiting for approval or in progress, naming that run.
+Dispatch the next release after the previous one is published or recovered.

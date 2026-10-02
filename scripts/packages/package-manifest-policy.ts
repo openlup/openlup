@@ -87,8 +87,8 @@ export function parsePackagesConfig(source: string): PackagesConfig {
     return { directory: row.directory, reason: row.reason };
   });
   const directories = [...packages.map(({ directory }) => directory), ...unreleased.map(({ directory }) => directory)];
+  // A package's name is @openlup/<directory name>, so a name listed twice is a directory listed twice.
   if (new Set(directories).size !== directories.length) fail("a package directory is listed twice");
-  if (new Set(packages.map(({ name }) => name)).size !== packages.length) fail("a package name is listed twice");
   return { schemaVersion: 2, packages, unreleased };
 }
 

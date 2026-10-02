@@ -3,8 +3,12 @@
 # starts publish-packages.yml, which publishes the package to npm with --tag latest through OIDC.
 #
 # Inert until the maintainer completes the setup in .github/VERSIONING_AND_EOL.md and enables
-# OPENLUP_PACKAGE_RELEASE. The unprivileged preflight checks, before the protected release
-# environment asks for approval, that:
+# OPENLUP_PACKAGE_RELEASE. Main ancestry, the required contexts and the tag's commit are decided
+# by scripts/packages/release-gate.ts as it is at the dispatched main commit, run as one file
+# outside the checkout: the target's own code never decides whether the target is released. The
+# unprivileged preflight checks, before the protected release environment asks for approval, that:
+# - no release or publication of any package is in flight, so this dispatch never waits in a
+#   concurrency group where it could cancel a queued publication;
 # - the target is on main and the six required contexts passed there;
 # - packages/<package>/package.json carries the requested version and passes the manifest policy;
 # - the tag is absent, and npm never held that version and holds none above it;
@@ -13,10 +17,10 @@
 # The pack and the scan run only here. Before the release App token exists, the release job
 # re-verifies the main ancestry and contexts, the manifest policy and version
 # (`packages:check --release-tag`, with no install, build or pack), the absent tag and npm; it
-# installs nothing and runs no package code. publish-packages.yml packs and scans the published
-# tag again. One package's releases and publications share a concurrency group, so they never
-# overlap. No PAT; the job's own token only reads. Dispatching a run grants no publication: the
-# release approval does.
+# installs nothing and runs no package code. The release gate then creates the tag on the target
+# itself. publish-packages.yml packs and scans the published tag again. One package's release job
+# and publication share a concurrency group, so they never overlap. No PAT; the job's own token
+# only reads. Dispatching a run grants no publication: the release approval does.
 name: Publish Package
 
 on:
@@ -41,12 +45,6 @@ on:
 
 permissions: {}
 
-# Shared with the publish job of publish-packages.yml: one package never has two releases or
-# publications in flight.
-concurrency:
-  group: openlup-package-release-${{ inputs.package }}
-  cancel-in-progress: false
-
 jobs:
   preflight:
     name: preflight
@@ -56,6 +54,7 @@ jobs:
     permissions:
       contents: read
       checks: read
+      actions: read
     env:
       PACKAGE: ${{ inputs.package }}
       VERSION: ${{ inputs.version }}
@@ -72,20 +71,9 @@ jobs:
           ref: ${{ inputs.target_commit }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Check main ancestry before running target code
-        run: |
-          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
-          git fetch --no-tags --quiet origin main
-          git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD
-      - name: Check required contexts before running target code
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for context in dco typecheck install-proof test self-check gitleaks; do
-            verdict="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_COMMIT/check-runs?check_name=$context&filter=latest&per_page=100" \
-              --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
-            if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $TARGET_COMMIT"; exit 1; fi
-          done
+      # The release gate is the file at the dispatched main commit, kept outside the checkout.
+      - name: Take the release gate from the dispatched main commit
+        run: git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -96,6 +84,16 @@ jobs:
           test "$(npm --version)" = "11.19.0"
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      # GitHub keeps one pending run per concurrency group and cancels the older one, so a dispatch
+      # that waited behind another could cancel a queued publication. It refuses instead.
+      - name: Refuse while any package release or publication is in flight
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" in-flight "$GITHUB_RUN_ID"
+      - name: Check main ancestry and required contexts before running target code
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" commit "$TARGET_COMMIT"
       - run: npm ci --ignore-scripts --no-audit --fund=false
       - name: Refuse a mismatched version, an existing tag and a version npm holds or passed
         env:
@@ -131,6 +129,11 @@ jobs:
     if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_PACKAGE_RELEASE == 'enabled' && vars.OPENLUP_NPM_STAGE == 'enabled' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # Shared with the publish job of publish-packages.yml: one package never has two releases or
+    # publications in flight. The preflight refuses while any is, so no run waits here behind one.
+    concurrency:
+      group: openlup-package-release-${{ inputs.package }}
+      cancel-in-progress: false
     environment: release
     permissions:
       contents: read
@@ -152,6 +155,9 @@ jobs:
           ref: ${{ inputs.target_commit }}
           fetch-depth: 0
           persist-credentials: false
+      # The release gate is the file at the dispatched main commit, kept outside the checkout.
+      - name: Take the release gate from the dispatched main commit
+        run: git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -162,19 +168,11 @@ jobs:
           test "$(npm --version)" = "11.19.0"
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
-      # Same main ancestry and required-context check as publish-packages.yml.
+      # The same release gate as the preflight and publish-packages.yml.
       - name: The target commit is on main and passed the required contexts
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
-          git fetch --no-tags --quiet origin main
-          git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD || { echo "::error::$TARGET_COMMIT is not on main"; exit 1; }
-          for context in dco typecheck install-proof test self-check gitleaks; do
-            verdict="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_COMMIT/check-runs?check_name=$context&filter=latest&per_page=100" \
-              --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
-            if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $TARGET_COMMIT"; exit 1; fi
-          done
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" commit "$TARGET_COMMIT"
       # No install, build or pack here: the pack and the scan ran in the unprivileged preflight.
       - name: Repeat the manifest, version, tag and npm refusals and prepare the note
         env:
@@ -197,15 +195,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
+      # The release gate re-checks the target's main ancestry and tags the target itself.
       - name: Create the exact annotated tag with the release identity
         env:
-          GH_TOKEN: ${{ steps.release-identity.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: |
+          node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"
           tag="openlup-$PACKAGE-v$VERSION"
-          message="OpenLup package @openlup/$PACKAGE $VERSION."
-          tag_object="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
-            -f tag="$tag" -f message="$message"$'\n' -f object="$TARGET_COMMIT" -f type=commit --jq .sha)"
-          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$tag_object"
           git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"
       - name: Create the draft release
         env:

@@ -18,6 +18,8 @@ const committed: Workflows = {
 
 const job = (source: string, name: string) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
 const step = (source: string, name: string) => source.split(`      - name: ${name}\n`)[1]?.split(/^ {6}- /mu)[0] ?? "";
+/** A step without the comment lines that introduce the next one. */
+const stepBody = (source: string, name: string) => step(source, name).replace(/(?: {6}#[^\n]*\n)+$/u, "");
 const script = (stepText: string) => (stepText.split("        run: |\n")[1] ?? "").replace(/^ {10}/gmu, "");
 const triggers = (source: string) => [...(source.split("\non:\n")[1]?.split("\npermissions:")[0] ?? "").matchAll(/^ {2}([a-z_]+):/gmu)].map((match) => match[1]);
 /** Every marker is present, in this order. */
@@ -48,7 +50,18 @@ const ENV = ["process", "env"].join(".");
 const NODE_TAG = `${String.raw`/^openlup-([a-z0-9][a-z0-9-]*)-v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.exec(`}${ENV}.RELEASE_TAG)`;
 const SHELL_VERSION = String.raw`[[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]`;
 const PUBLISH = 'npm publish "./packs/$filename" --provenance --access public --tag latest --ignore-scripts';
-const CONTEXTS = "for context in dco typecheck install-proof test self-check gitleaks; do";
+// The release gate: publish-package.yml runs the file at the dispatched main commit, publish-packages.yml its own.
+const TAKE_GATE = 'git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"';
+const DISPATCH_GATE = 'node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts"';
+const PRODUCER_GATE = "node --experimental-strip-types scripts/packages/release-gate.ts";
+const gateStep = (command: string) => `        env:\n          GITHUB_TOKEN: \${{ github.token }}\n        run: ${command}\n`;
+const TAKE_STEP = "Take the release gate from the dispatched main commit";
+const IN_FLIGHT_STEP = "Refuse while any package release or publication is in flight";
+const GATE_STEPS = { preflight: "Check main ancestry and required contexts before running target code", release: "The target commit is on main and passed the required contexts", pack: "The release commit is on main and passed the required contexts" };
+const TAG_STEP = "Create the exact annotated tag with the release identity";
+const APP_TOKEN_ENV = "GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}";
+const TAG_RUN = [`        env:\n          ${APP_TOKEN_ENV}\n        run: |\n`, `          ${DISPATCH_GATE} tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"\n`, '          tag="openlup-$PACKAGE-v$VERSION"\n          git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"\n'].join("");
+const RELEASE_GROUP = "    concurrency:\n      group: openlup-package-release-${{ inputs.package }}\n      cancel-in-progress: false\n";
 const EVENT_STEP = "Require the release App event and the live immutable release";
 const RECHECK_STEP = "Refuse a version npm holds or passed, immediately before publishing";
 const APP_TOKEN = "GH_TOKEN: ${{ steps.release-identity.outputs.token }}";
@@ -87,13 +100,22 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     const tag = step(producer, "Verify the annotated tag and GitHub release attestation");
     return ['test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"', 'test "$(git cat-file -t "$tag_ref")" = tag', 'grep -Fxq "object $GITHUB_SHA"', "grep -Fxq 'type commit'", 'grep -Fxq "tag $RELEASE_TAG"', '= "OpenLup package @openlup/$package $version."'].every((clause) => tag.includes(clause));
   },
-  "commit on main with the six contexts passed": ({ dispatch, producer }) => [
-    [job(dispatch, "preflight"), "TARGET_COMMIT"], [job(dispatch, "release"), "TARGET_COMMIT"], [job(producer, "pack"), "GITHUB_SHA"],
-  ].every(([text, commit]) => text!.includes(`git merge-base --is-ancestor "$${commit}" FETCH_HEAD`) && text!.includes(CONTEXTS) && text!.includes(`if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $${commit}"; exit 1; fi`)),
-  "refusing checks before every write": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["Validate dispatch coordinates before checkout", "actions/checkout@", "git merge-base --is-ancestor", CONTEXTS, "npm ci --ignore-scripts", "package-release.ts preflight", `        run: ${PREFLIGHT_PACK}\n`, "sha256sum --check --strict", "gitleaks dir"])
-    && inOrder(job(dispatch, "release"), ["Validate dispatch coordinates before checkout", "git merge-base --is-ancestor", CONTEXTS, "package-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY", "immutable-releases", "/git/tags", "/git/refs", DRAFT_TAG_REF, '--method POST "repos/$GITHUB_REPOSITORY/releases"', "package-release.ts check-draft", "--method PATCH"])
+  "commit on main with the six contexts passed": ({ dispatch, producer }) => stepBody(job(dispatch, "preflight"), GATE_STEPS.preflight) === gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)
+    && stepBody(job(dispatch, "release"), GATE_STEPS.release) === gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)
+    && stepBody(job(producer, "pack"), GATE_STEPS.pack) === gateStep(`${PRODUCER_GATE} commit "$GITHUB_SHA"`),
+  "both workflows decide main and the checks with the one release gate": ({ dispatch, producer }) => [dispatch, producer].every((text) => !/merge-base|check-runs|for context in|origin main\b|\/git\/tags|\/git\/refs/u.test(text))
+    && ["preflight", "release"].every((name) => stepBody(job(dispatch, name), TAKE_STEP) === `        run: ${TAKE_GATE}\n` && inOrder(job(dispatch, name), [TAKE_GATE, DISPATCH_GATE]))
+    && count(dispatch, TAKE_GATE) === 2 && count(dispatch, DISPATCH_GATE) === 4 && count(dispatch, "release-gate.mts") === 6
+    && !/node [^\n]*scripts\/packages\/release-gate\.ts/u.test(dispatch)
+    && count(producer, PRODUCER_GATE) === 1 && count(producer, `${PRODUCER_GATE} commit "$GITHUB_SHA"\n`) === 1,
+  "the release gate tags the approved commit": ({ dispatch }) => stepBody(job(dispatch, "release"), TAG_STEP) === TAG_RUN && count(dispatch, `${DISPATCH_GATE} tag `) === 1,
+  "a later dispatch refuses rather than cancel a queued publication": ({ dispatch }) => !/^concurrency:/mu.test(dispatch) && !job(dispatch, "preflight").includes("concurrency:")
+    && stepBody(job(dispatch, "preflight"), IN_FLIGHT_STEP) === gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)
+    && inOrder(job(dispatch, "preflight"), [TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts"]),
+  "refusing checks before every write": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["Validate dispatch coordinates before checkout", "actions/checkout@", TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts preflight", `        run: ${PREFLIGHT_PACK}\n`, "sha256sum --check --strict", "gitleaks dir"])
+    && inOrder(job(dispatch, "release"), ["Validate dispatch coordinates before checkout", TAKE_GATE, `${DISPATCH_GATE} commit`, "package-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY", "immutable-releases", `${DISPATCH_GATE} tag`, 'git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"', DRAFT_TAG_REF, '--method POST "repos/$GITHUB_REPOSITORY/releases"', "package-release.ts check-draft", "--method PATCH"])
     && step(dispatch, "Create the draft release").includes(`          ${DRAFT_TAG_REF}\n`)
-    && inOrder(job(producer, "pack"), [EVENT_STEP, "actions/checkout@", "gh release verify", "git merge-base --is-ancestor", CONTEXTS, "npm ci --ignore-scripts", "package-release.ts registry", "npm run packages:check -- --out packs --release-tag", "packages.length !== 1", "sha256sum --check --strict", "gitleaks dir", "actions/upload-artifact@"])
+    && inOrder(job(producer, "pack"), [EVENT_STEP, "actions/checkout@", "gh release verify", `${PRODUCER_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts registry", "npm run packages:check -- --out packs --release-tag", "packages.length !== 1", "sha256sum --check --strict", "gitleaks dir", "actions/upload-artifact@"])
     && inOrder(job(producer, "publish"), ["actions/download-artifact@", "if (actual !== sha256)", "npm publish"]),
   "no continue-on-error, || true or set +e": ({ dispatch, producer }) => [dispatch, producer].every((text) => !/continue-on-error|\|\|\s*(?:true|:)(?:\s|$)|set \+[eo]/u.test(text)),
   "id-token: write only on publish": ({ dispatch, producer }) => !dispatch.includes("id-token") && count(producer, "id-token") === 1 && job(producer, "publish").includes("    permissions:\n      id-token: write\n") && job(producer, "publish").includes("    environment: npm-stage\n")
@@ -110,24 +132,24 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     && inOrder(job(producer, "pack"), ["package-release.ts registry", "npm run packages:check"]),
   "npm re-read immediately before publishing, past the cache": ({ producer }) => inOrder(job(producer, "publish"), ["if (actual !== sha256)", RECHECK_STEP, "npm publish"])
     && ["?cache-bypass=${randomUUID()}", "await read(`https://registry.npmjs.org/-/package/${path}/dist-tags`)", "if (held.has(version)) throw", "if (!above(other)) throw", `' "$RELEASE_TAG"`].every((clause) => step(producer, RECHECK_STEP).includes(clause)),
-  "one package's releases and publications serialized": ({ dispatch, producer }) => dispatch.includes("\nconcurrency:\n  group: openlup-package-release-${{ inputs.package }}\n  cancel-in-progress: false\n")
+  "one package's releases and publications serialized": ({ dispatch, producer }) => job(dispatch, "release").includes(`${RELEASE_GROUP}    environment: release\n`)
     && job(producer, "publish").includes("    concurrency:\n      group: openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false\n")
     && job(producer, "pack").includes("      package: ${{ steps.tag.outputs.package }}\n")
     && step(producer, "Verify the annotated tag and GitHub release attestation").startsWith("        id: tag\n")
     && step(producer, "Verify the annotated tag and GitHub release attestation").includes('echo "package=$package" >> "$GITHUB_OUTPUT"'),
   "pinned secret scans before the tag and before publishing": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), [...GITLEAKS_INSTALL, 'for tarball in "$RUNNER_TEMP"/packs/*.tgz; do', 'test -f "$tarball"', 'tar -xzf "$tarball" -C "$target"', GITLEAKS_SCAN])
     && inOrder(job(producer, "pack"), [...GITLEAKS_INSTALL, "for tarball in packs/*.tgz; do", 'tar -xzf "$tarball" -C "$target"', GITLEAKS_SCAN]),
-  "exact permission sets": ({ dispatch, producer }) => JSON.stringify(permissionBlocks(dispatch)) === JSON.stringify(["permissions: {}\n", "    permissions:\n      contents: read\n      checks: read\n", "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n"])
+  "exact permission sets": ({ dispatch, producer }) => JSON.stringify(permissionBlocks(dispatch)) === JSON.stringify(["permissions: {}\n", "    permissions:\n      contents: read\n      checks: read\n      actions: read\n", "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n"])
     && JSON.stringify(permissionBlocks(producer)) === JSON.stringify(["permissions: {}\n", "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n", "    permissions:\n      id-token: write\n"])
-    && job(dispatch, "preflight").includes("    permissions:\n      contents: read\n      checks: read\n    env:") && job(dispatch, "release").includes("    environment: release\n    permissions:\n      contents: read\n      checks: read\n      attestations: read\n")
+    && job(dispatch, "preflight").includes("    permissions:\n      contents: read\n      checks: read\n      actions: read\n    env:") && job(dispatch, "release").includes("    environment: release\n    permissions:\n      contents: read\n      checks: read\n      attestations: read\n")
     && job(producer, "pack").includes("    permissions:\n      contents: read\n      checks: read\n      attestations: read\n") && job(producer, "publish").includes("    permissions:\n      id-token: write\n"),
   "exact App token grant": ({ dispatch, producer }) => step(dispatch, "Obtain the maintainer-configured release identity") === APP_IDENTITY && count(dispatch, "create-github-app-token@") === 1 && !producer.includes("create-github-app-token"),
   "exact run conditions": ({ dispatch, producer }) => JSON.stringify(conditions(dispatch)) === JSON.stringify([`    ${GATE}`, `    ${GATE}`, "        if: failure()"])
     && JSON.stringify(conditions(producer)) === JSON.stringify([`    ${PACK_GATE}`])
     && /^ {8}if: failure\(\)\n {8}run: \|\n {10}echo '[^'\n]*'\n$/u.test(step(dispatch, "Recovery requires the maintainer")),
-  "the App-token job installs, builds and packs nothing": ({ dispatch }) => !/npm (?:ci|install|run|pack|exec)\b|npx |packages:check -- --out|--pack\b/u.test(job(dispatch, "release")),
+  "the App-token job installs, builds and packs nothing": ({ dispatch }) => !/npm (?:ci|install|run|pack|exec)\b|npx |packages:check -- --out|packages-check\.ts|--out\b|--pack\b/u.test(job(dispatch, "release")),
   "App credential only where the release writes": ({ dispatch, producer }) => !job(dispatch, "preflight").includes("OPENLUP_RELEASE_APP") && !producer.includes("OPENLUP_RELEASE_APP")
-    && ["Create the exact annotated tag with the release identity", "Create the draft release", "Publish the immutable release with the release identity"].every((name) => step(dispatch, name).includes(APP_TOKEN))
+    && step(dispatch, TAG_STEP).includes(APP_TOKEN_ENV) && ["Create the draft release", "Publish the immutable release with the release identity"].every((name) => step(dispatch, name).includes(APP_TOKEN))
     && job(dispatch, "release").includes("repositories: openlup\n          permission-contents: write\n          permission-administration: read\n")
     && [job(dispatch, "preflight"), job(dispatch, "release"), job(producer, "pack")].every((text) => !/^ {6}contents: write$/mu.test(text)),
   "publish job gets only the checked tarball": ({ producer }) => {
@@ -164,9 +186,20 @@ const DEFECTS: Defect[] = [
   { control: "release immutable, attested and assetless", plant: "assets admitted", in: "producer", from: " and (.release.assets | length) == 0", to: "" },
   { control: "annotated tag bound to the release commit", plant: "lightweight tag admitted", in: "producer", from: '          test "$(git cat-file -t "$tag_ref")" = tag\n', to: "" },
   { control: "annotated tag bound to the release commit", plant: "tag message unchecked", in: "producer", from: '= "OpenLup package @openlup/$package $version."', to: '!= ""' },
-  { control: "commit on main with the six contexts passed", plant: "no main ancestry at publication", in: "producer", from: 'git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD', to: "true" },
-  { control: "commit on main with the six contexts passed", plant: "a required context dropped", in: "dispatch", from: "for context in dco typecheck install-proof test self-check gitleaks; do", to: "for context in dco typecheck test self-check gitleaks; do" },
-  { control: "commit on main with the six contexts passed", plant: "a failed context only warns", in: "producer", from: 'echo "::error::$context has not passed at $GITHUB_SHA"; exit 1; fi', to: 'echo "::warning::$context has not passed at $GITHUB_SHA"; fi' },
+  { control: "commit on main with the six contexts passed", plant: "no main ancestry at publication", in: "producer", from: `run: ${PRODUCER_GATE} commit "$GITHUB_SHA"`, to: "run: true" },
+  { control: "commit on main with the six contexts passed", plant: "the preflight gates the dispatched main commit, not the target", in: "dispatch", from: `run: ${DISPATCH_GATE} commit "$TARGET_COMMIT"`, to: `run: ${DISPATCH_GATE} commit "$GITHUB_SHA"` },
+  { control: "commit on main with the six contexts passed", plant: "a refused gate only warns", in: "producer", from: `commit "$GITHUB_SHA"\n`, to: `commit "$GITHUB_SHA" || echo "::warning::the release gate refused"\n` },
+  { control: "commit on main with the six contexts passed", plant: "no gate in the release job", in: "dispatch", from: `      # The same release gate as the preflight and publish-packages.yml.\n      - name: ${GATE_STEPS.release}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}`, to: "" },
+  { control: "both workflows decide main and the checks with the one release gate", plant: "the publish workflow keeps its own check loop", in: "producer", from: `        run: ${PRODUCER_GATE} commit "$GITHUB_SHA"\n`, to: ["        run: |\n", '          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"\n          git fetch --no-tags --quiet origin main\n          git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD\n', "          for context in dco typecheck install-proof test self-check gitleaks; do\n", '            verdict="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=$context&filter=latest&per_page=100" --jq \'if (.check_runs | any(.conclusion == "success")) then "passed" else "missing" end\')"\n', '            [ "$verdict" = passed ]\n          done\n'].join("") },
+  { control: "both workflows decide main and the checks with the one release gate", plant: "the release job runs the target's own gate", in: "dispatch", from: `      - name: ${GATE_STEPS.release}\n        env:\n          GITHUB_TOKEN: \${{ github.token }}\n        run: ${DISPATCH_GATE}`, to: `      - name: ${GATE_STEPS.release}\n        env:\n          GITHUB_TOKEN: \${{ github.token }}\n        run: ${PRODUCER_GATE}` },
+  { control: "both workflows decide main and the checks with the one release gate", plant: "the gate taken from the target commit", in: "dispatch", from: '"$GITHUB_SHA:scripts/packages/release-gate.ts"', to: '"$TARGET_COMMIT:scripts/packages/release-gate.ts"' },
+  { control: "both workflows decide main and the checks with the one release gate", plant: "a second required-check query in the dispatch", in: "dispatch", from: "      - run: npm ci --ignore-scripts --no-audit --fund=false\n", to: '      - run: gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_COMMIT/check-runs?check_name=test" --jq .total_count\n      - run: npm ci --ignore-scripts --no-audit --fund=false\n' },
+  { control: "the release gate tags the approved commit", plant: "the tag on the dispatched main commit", in: "dispatch", from: `tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"`, to: `tag "$GITHUB_SHA" "$PACKAGE" "$VERSION"` },
+  { control: "the release gate tags the approved commit", plant: "the tag written outside the gate on the main tip", in: "dispatch", from: `          ${DISPATCH_GATE} tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"\n`, to: '          gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" -f tag="openlup-$PACKAGE-v$VERSION" -f object="$(git rev-parse refs/remotes/origin/main)" -f type=commit\n' },
+  { control: "a later dispatch refuses rather than cancel a queued publication", plant: "the whole dispatch queues in the package's group", in: "dispatch", from: "\npermissions: {}\n\njobs:", to: "\npermissions: {}\n\nconcurrency:\n  group: openlup-package-release-${{ inputs.package }}\n  cancel-in-progress: false\n\njobs:" },
+  { control: "a later dispatch refuses rather than cancel a queued publication", plant: "the preflight queues in the package's group", in: "dispatch", from: "    timeout-minutes: 20\n    permissions:", to: `    timeout-minutes: 20\n${RELEASE_GROUP}    permissions:` },
+  { control: "a later dispatch refuses rather than cancel a queued publication", plant: "no in-flight refusal", in: "dispatch", from: `run: ${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`, to: "run: echo skipped" },
+  { control: "a later dispatch refuses rather than cancel a queued publication", plant: "the in-flight refusal after the install", in: "dispatch", from: `      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}      - name: ${GATE_STEPS.preflight}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}      - run: npm ci --ignore-scripts --no-audit --fund=false\n`, to: `      - name: ${GATE_STEPS.preflight}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}      - run: npm ci --ignore-scripts --no-audit --fund=false\n      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}` },
   { control: "refusing checks before every write", plant: "no tarball scan before tagging", in: "dispatch", from: '          gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner\n', to: "" },
   { control: "refusing checks before every write", plant: "draft published unchecked", in: "dispatch", from: "        run: node --experimental-strip-types scripts/packages/package-release.ts check-draft\n", to: "        run: echo skipped\n" },
   { control: "refusing checks before every write", plant: "no pack check at publication", in: "producer", from: "          npm run packages:check -- --out packs --release-tag \"$RELEASE_TAG\"\n", to: "          npm pack --pack-destination packs\n" },
@@ -196,6 +229,7 @@ const DEFECTS: Defect[] = [
   { control: "one package's releases and publications serialized", plant: "publish job not serialized", in: "producer", from: "    concurrency:\n      group: openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false\n", to: "" },
   { control: "one package's releases and publications serialized", plant: "publish serialized per tag", in: "producer", from: "openlup-package-release-${{ needs.pack.outputs.package }}", to: "openlup-package-release-${{ github.event.release.tag_name }}" },
   { control: "one package's releases and publications serialized", plant: "releases serialized apart from publications", in: "dispatch", from: "group: openlup-package-release-${{ inputs.package }}", to: "group: publish-package" },
+  { control: "one package's releases and publications serialized", plant: "release job not serialized", in: "dispatch", from: RELEASE_GROUP, to: "" },
   { control: "one package's releases and publications serialized", plant: "an in-flight publication cancelled", in: "producer", from: "openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false", to: "openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: true" },
   { control: "pinned secret scans before the tag and before publishing", plant: "pre-tag checksum replaced", in: "dispatch", from: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb", to: "0".repeat(64) },
   { control: "pinned secret scans before the tag and before publishing", plant: "pre-tag asset replaced", in: "dispatch", from: "releases/assets/378332058", to: "releases/assets/378332059" },
@@ -212,7 +246,8 @@ const DEFECTS: Defect[] = [
   { control: "exact permission sets", plant: "contents: write on publish", in: "producer", from: "      id-token: write\n", to: "      id-token: write\n      contents: write\n" },
   { control: "exact permission sets", plant: "actions: write on release", in: "dispatch", from: "      attestations: read\n", to: "      attestations: read\n      actions: write\n" },
   { control: "exact permission sets", plant: "write-all on the pack job", in: "producer", from: "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n", to: "    permissions: write-all\n" },
-  { control: "exact permission sets", plant: "contents: write on the preflight", in: "dispatch", from: "    permissions:\n      contents: read\n      checks: read\n    env:", to: "    permissions:\n      contents: write\n      checks: read\n    env:" },
+  { control: "exact permission sets", plant: "contents: write on the preflight", in: "dispatch", from: "    permissions:\n      contents: read\n      checks: read\n      actions: read\n    env:", to: "    permissions:\n      contents: write\n      checks: read\n      actions: read\n    env:" },
+  { control: "exact permission sets", plant: "actions: write on the preflight", in: "dispatch", from: "      checks: read\n      actions: read\n    env:", to: "      checks: read\n      actions: write\n    env:" },
   { control: "exact permission sets", plant: "a workflow-wide grant", in: "producer", from: "\npermissions: {}\n", to: "\npermissions:\n  contents: write\n" },
   { control: "exact App token grant", plant: "an extra App permission", in: "dispatch", from: "          permission-administration: read\n", to: "          permission-administration: read\n          permission-actions: write\n" },
   { control: "exact App token grant", plant: "the App token for every repository", in: "dispatch", from: "          repositories: openlup\n", to: "" },
@@ -220,9 +255,10 @@ const DEFECTS: Defect[] = [
   { control: "refusing checks before every write", plant: "preflight pack without the release tag", in: "dispatch", from: ' --release-tag "openlup-$PACKAGE-v$VERSION"', to: "" },
   { control: "the App-token job installs, builds and packs nothing", plant: "install in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: "      - run: npm ci --ignore-scripts --no-audit --fund=false\n      # No install, build or pack here:" },
   { control: "the App-token job installs, builds and packs nothing", plant: "pack in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: "      - run: npm run packages:check -- --out packs\n      # No install, build or pack here:" },
+  { control: "the App-token job installs, builds and packs nothing", plant: "a direct packages-check.ts pack in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: '      - run: node --experimental-strip-types scripts/packages/packages-check.ts --out "$RUNNER_TEMP/packs"\n      # No install, build or pack here:' },
   { control: "App credential only where the release writes", plant: "App key in the unprivileged preflight", in: "dispatch", from: "      RELEASE_NOTES: ${{ inputs.notes }}\n    steps:\n      - name: Validate dispatch coordinates before checkout\n        run: |\n          [[ \"$PACKAGE\"", to: "      RELEASE_NOTES: ${{ inputs.notes }}\n      KEY: ${{ secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY }}\n    steps:\n      - name: Validate dispatch coordinates before checkout\n        run: |\n          [[ \"$PACKAGE\"" },
-  { control: "App credential only where the release writes", plant: "tag written with the default token", in: "dispatch", from: `          ${APP_TOKEN}\n        run: |\n          tag="openlup-$PACKAGE-v$VERSION"\n          message=`, to: "          GH_TOKEN: ${{ github.token }}\n        run: |\n          tag=\"openlup-$PACKAGE-v$VERSION\"\n          message=" },
-  { control: "App credential only where the release writes", plant: "write permission on the default token", in: "dispatch", from: "    permissions:\n      contents: read\n      checks: read\n    env:", to: "    permissions:\n      contents: write\n      checks: read\n    env:" },
+  { control: "App credential only where the release writes", plant: "tag written with the default token", in: "dispatch", from: `          ${APP_TOKEN_ENV}\n        run: |\n          ${DISPATCH_GATE} tag`, to: `          GITHUB_TOKEN: \${{ github.token }}\n        run: |\n          ${DISPATCH_GATE} tag` },
+  { control: "App credential only where the release writes", plant: "write permission on the default token", in: "dispatch", from: "    permissions:\n      contents: read\n      checks: read\n      actions: read\n    env:", to: "    permissions:\n      contents: write\n      checks: read\n      actions: read\n    env:" },
   { control: "publish job gets only the checked tarball", plant: "checkout in the publish job", in: "producer", from: "    steps:\n      - uses: actions/download-artifact@", to: "    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n      - uses: actions/download-artifact@" },
   { control: "publish job gets only the checked tarball", plant: "commit unchecked", in: "producer", from: `manifest.commit !== ${ENV}.GITHUB_SHA`, to: "false" },
   { control: "checkouts keep no credentials", plant: "persisted checkout token", in: "dispatch", from: "          fetch-depth: 0\n          persist-credentials: false\n", to: "          fetch-depth: 0\n" },
