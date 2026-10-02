@@ -102,6 +102,10 @@
       "class": "public-output"
     },
     {
+      "path": ".sonarcloud.properties",
+      "class": "contributor-interface"
+    },
+    {
       "path": ".squawk.toml",
       "class": "public-output"
     },
