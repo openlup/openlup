@@ -37,9 +37,9 @@ describe("return email content", () => {
     const rejectedNoCta = render(returnRejectedEmailContent(locale, baseVars, APP_EMAIL_TEAM_SIGNOFF[locale]), locale);
 
     for (const email of [approved, approvedNoCta, rejected, rejectedNoCta]) {
-      expect(email.subject).toContain("OPENLUP-ABC123");
+      expect(email.subject).toContain("ORDER-ABC123");
       expect(email.preheader.length).toBeGreaterThan(0);
-      expect(email.text).toContain("OPENLUP-ABC123");
+      expect(email.text).toContain("ORDER-ABC123");
     }
     expect(approved.html).toContain('href="https://example.test/returns"');
     expect(rejected.html).toContain('href="https://example.test/account"');

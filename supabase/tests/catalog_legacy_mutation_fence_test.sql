@@ -286,10 +286,18 @@ SELECT is(
   pg_temp.catalog_legacy_mutation_fence_contract_mismatches()::text,
   '[]',
   'all eight fenced functions retain exact signatures/defaults, definer/search-path and service-role-only execute ACLs');
+-- Managed draft persistence is installed; proposal/publication seams are separate.
 SELECT ok(
-  to_regprocedure('public.catalog_submit_change_proposal(text,text)') IS NOT NULL
-  AND to_regprocedure('public.catalog_register_publication_candidate(text,text)') IS NOT NULL,
-  'D2 proposal and publication writers remain outside the fence');
+  to_regprocedure('public.catalog_draft_apply(text,text)') IS NOT NULL
+  AND to_regprocedure('public.catalog_draft_get(uuid,integer,text)') IS NOT NULL
+  AND to_regprocedure('public.catalog_draft_list(uuid,integer)') IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM unnest(ARRAY['anon','service_role']) role,
+      unnest(ARRAY['catalog_draft_apply(text,text)', 'catalog_draft_get(uuid,integer,text)',
+                   'catalog_draft_list(uuid,integer)']) routine
+    WHERE has_function_privilege(role, 'public.' || routine, 'EXECUTE')
+  ),
+  'installed draft routines retain their ABI and refuse anonymous and service callers');
 SELECT ok(
   to_regprocedure('public.catalog_sku_eans_upsert_pack(text,text,text,text,integer,boolean,text)') IS NOT NULL,
   'OmniPack EAN writer remains outside the fence');

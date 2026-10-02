@@ -1,8 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { FulfillmentProviderError } from "../../../../src/domains/fulfillment/ports.js";
 import { mapLegacyBookDhlCourierResponse, mapLegacyDhlError } from "../../../adapters/dhl/courierAdapter.js";
 import handler from "./dhl-book-courier.js";
+
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
 
 describe("admin DHL book courier BFF route adapters", () => {
   it("refuses before constructing a standalone DHL port", async () => {
@@ -55,14 +65,31 @@ describe("admin DHL book courier BFF route adapters", () => {
       },
     });
   });
+  it("public default refuses before touching request data", async () => {
+    unitComposition.enabled = false;
+    const touched = vi.fn(() => { throw new Error("body read"); });
+    const req = { method: "POST", headers: {}, query: {} };
+    Object.defineProperty(req, "body", { get: touched });
+    const response = captureResponse();
+    try {
+      await handler(req as never, response as never);
+      expect(response.statusCode).toBe(503);
+      expect(response.payload).toMatchObject({ ok: false, error: { details: { reason: "adopter_policy_required" } } });
+      expect(touched).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 function captureResponse() {
   return {
     statusCode: 200,
     allow: "",
+    payload: undefined as unknown,
     setHeader(name: string, value: string) { if (name === "Allow") this.allow = value; return this; },
     status(code: number) { this.statusCode = code; return this; },
-    json() { return this; },
+    json(value: unknown) { this.payload = value; return this; },
   };
 }

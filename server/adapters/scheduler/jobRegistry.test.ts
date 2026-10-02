@@ -33,12 +33,7 @@ describe("jobRegistry", () => {
     expect(jobRegistryFromConfig({})).toEqual([]);
   });
 
-  it("loads the committed single source and derives unique job ids", () => {
-    const registry = loadJobRegistry();
-    expect(registry.length).toBeGreaterThan(0);
-    const ids = registry.map((job) => job.jobId);
-    expect(new Set(ids).size).toBe(ids.length); // no duplicate job ids
-    // every job has a non-empty crontab expression
-    expect(registry.every((job) => job.schedule.trim().length > 0)).toBe(true);
+  it("loads no active jobs from the selected public configuration", () => {
+    expect(loadJobRegistry()).toEqual([]);
   });
 });

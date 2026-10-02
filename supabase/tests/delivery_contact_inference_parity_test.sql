@@ -30,6 +30,17 @@
 -- Run via: the local pgTAP lane, with a schema reset first (stale state lies).
 
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['ZZ'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(17);
 
 INSERT INTO public.admin_users (id, email, role)
@@ -71,9 +82,6 @@ SELECT '7c000000-0000-4000-8000-000000000041', l.id, NULL, 1000
 -- order carries the selection from the start, exactly as a real one does, the
 -- ladder resolves it, and the external branch is reached. On the base -- where the
 -- two-rung ladder resolved NULL for this shape -- this seed would be dead code.
-INSERT INTO public.providers (kind, capability, display_name, status)
-VALUES ('omnipack', 'fulfillment', 'OmniPack Fulfillment', 'experimental')
-ON CONFLICT (kind) DO NOTHING;
 
 SELECT public.fulfillment_provider_upsert_stock_current(
   'contact-parity-stock-current-1',

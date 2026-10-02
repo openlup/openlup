@@ -2146,10 +2146,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/catalog-document-revision-foundation-real-db-proof.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/catalog-policy-overlap-concurrency.test.ts",
       "class": "public-output"
     },
@@ -2290,10 +2286,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/docker-rm-volume-flag.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/documentation-bundle-io.ts",
       "class": "public-output"
     },
@@ -2367,10 +2359,6 @@
     },
     {
       "path": "scripts/local-bff-soak-core.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/local-env-status.test.ts",
       "class": "public-output"
     },
     {
@@ -2651,10 +2639,6 @@
     },
     {
       "path": "scripts/reference-adapters/paymentEventPortConformance.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/reference-adapters/reference-journey-readbacks.test.ts",
       "class": "public-output"
     },
     {
@@ -11678,15 +11662,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/checkout/composer/PackageCardHeader.test.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/checkout/composer/PackageCardHeader.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/composer/bundleSummaryParts.test.tsx",
       "class": "public-output"
     },
     {
@@ -12539,10 +12515,6 @@
     },
     {
       "path": "src/components/product/ProductAnchorNav.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/product/ProductDetailsTabs.test.tsx",
       "class": "public-output"
     },
     {
@@ -14275,10 +14247,6 @@
     },
     {
       "path": "src/domains/communications/dbEmailTemplatePolicy.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/communications/dbEmailTemplateSeedContent.test.ts",
       "class": "public-output"
     },
     {
@@ -16058,10 +16026,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/lib/commerceV2MigrationsGuard.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/lib/commerceVisitorId.test.ts",
       "class": "public-output"
     },
@@ -16203,10 +16167,6 @@
     },
     {
       "path": "src/lib/edgeFunctions.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/lib/enRouteAliases.test.ts",
       "class": "public-output"
     },
     {
@@ -16786,10 +16746,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/lib/subscriptionSelfServiceGuardrails.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/lib/subscriptionStatusTransitionBoundary.test.ts",
       "class": "public-output"
     },
@@ -16867,10 +16823,6 @@
     },
     {
       "path": "src/pages/account/AccountWorkspaceTypes.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/CheckoutRecoveryMethodPicker.test.tsx",
       "class": "public-output"
     },
     {
@@ -17062,10 +17014,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/account/v2/order/AccountOrderStatusTerminal.test.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/pages/account/v2/order/AccountOrderStatusTerminal.tsx",
       "class": "public-output"
     },
@@ -17110,10 +17058,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/account/v2/sections/PaymentsSection.test.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/pages/account/v2/sections/PaymentsSection.tsx",
       "class": "public-output"
     },
@@ -17131,10 +17075,6 @@
     },
     {
       "path": "src/pages/account/v2/sections/sectionShared.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/start/ActionRequiredBanner.test.tsx",
       "class": "public-output"
     },
     {
@@ -17170,10 +17110,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/account/v2/subscriptions/DeliveryTimeline.test.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/pages/account/v2/subscriptions/DeliveryTimeline.tsx",
       "class": "public-output"
     },
@@ -17195,10 +17131,6 @@
     },
     {
       "path": "src/pages/account/v2/subscriptions/SubscriptionHeaderSchedule.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/subscriptions/SubscriptionScreen.test.tsx",
       "class": "public-output"
     },
     {
@@ -17250,10 +17182,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/admin/AuthCallbackPage.test.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/pages/admin/AuthCallbackPage.tsx",
       "class": "public-output"
     },
@@ -17263,10 +17191,6 @@
     },
     {
       "path": "src/pages/admin/B2BInquiriesPage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/BundlesPage.test.tsx",
       "class": "public-output"
     },
     {
@@ -17295,10 +17219,6 @@
     },
     {
       "path": "src/pages/admin/ClientsPageTable.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/DashboardPage.test.tsx",
       "class": "public-output"
     },
     {
@@ -17722,6 +17642,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/test/historicalBoundarySchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/test/render.tsx",
       "class": "public-output"
     },
@@ -17843,10 +17767,6 @@
     },
     {
       "path": "supabase/tests/catalog_authz_closure_test.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/catalog_document_seam_grants_test.sql",
       "class": "public-output"
     },
     {
@@ -18042,6 +17962,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/inventory_lot_runtime_boundary_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/inventory_recount_reserved_balances_test.sql",
       "class": "public-output"
     },
@@ -18222,10 +18146,6 @@
       "class": "public-output"
     },
     {
-      "path": "supabase/tests/production_marketing_lead_writer_fence_test.sql",
-      "class": "public-output"
-    },
-    {
       "path": "supabase/tests/promotion_checkout_canonical_money_test.sql",
       "class": "public-output"
     },
@@ -18291,10 +18211,6 @@
     },
     {
       "path": "supabase/tests/risk_blocklist_test.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/tests/seed_commerce_v2_idempotence_test.sql",
       "class": "public-output"
     },
     {
@@ -18650,19 +18566,15 @@
       "class": "public-output"
     },
     {
-      "path": "tests/preview/checkout/helpers/starterOfferCoverage.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/preview/checkout/helpers/starterOfferCoverage.ts",
-      "class": "public-output"
-    },
-    {
       "path": "tests/preview/customer-diagnostic/journey.spec.ts",
       "class": "public-output"
     },
     {
       "path": "tests/preview/customer-diagnostic/journeyDrive.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/runtime/subscriptionSelfServiceGuardrails.test.ts",
       "class": "public-output"
     },
     {

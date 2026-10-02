@@ -1,7 +1,21 @@
 -- pgTAP: canonical order money persistence, allocation and writer invariants.
 
 BEGIN;
+-- Explicit synthetic settlement coordinates; these rows are rolled back with this test.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('settlement_currency', 'XTS', NULL), ('settlement_region', 'ZZ', NULL),
+  ('min_product_payable_minor', NULL, 1)
+ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
+
 SELECT plan(79);
+INSERT INTO public.variant_formats (code,display_name) VALUES ('can','Synthetic can') ON CONFLICT (code) DO NOTHING;
+INSERT INTO public.variant_unit_forms (code,display_name) VALUES ('can','Synthetic can') ON CONFLICT (code) DO NOTHING;
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind,capability,display_name,status,enabled_for_region) VALUES ('omnipack','fulfillment','Synthetic renewal','active',ARRAY['ZZ']) ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code,display_name,kind,status,region,fulfillable,provider_kind) SELECT 'omnipack-stock-master','Synthetic renewal stock','third_party_logistics','active','ZZ',true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
 UPDATE public.subscription_delivery_alignment_control SET mode = 'off' WHERE singleton;
 
 SELECT col_not_null(
@@ -168,31 +182,31 @@ INSERT INTO public.commerce_orders (
   shipping_discount_cents, tax_cents, total_cents, metadata
 ) VALUES
 (
-  'cf100000-0000-4000-8000-000000000001', 'draft', 'PLN',
+  'cf100000-0000-4000-8000-000000000001', 'draft', 'XTS',
   300, 2, 0, 0, 0, 298, '{"fixture":"snapshotless-ordinal"}'::jsonb
 ),
 (
-  'cf100000-0000-4000-8000-000000000002', 'draft', 'PLN',
+  'cf100000-0000-4000-8000-000000000002', 'draft', 'XTS',
   100, 0, 0, 0, 0, 100,
   '{"orderDraftSnapshot":{"lines":null},"orderSnapshot":{"lines":null}}'::jsonb
 ),
 (
-  'cf100000-0000-4000-8000-000000000003', 'draft', 'PLN',
+  'cf100000-0000-4000-8000-000000000003', 'draft', 'XTS',
   100, 0, 0, 0, 0, 100,
   '{"orderDraftSnapshot":{"lines":{}}}'::jsonb
 ),
 (
-  'cf100000-0000-4000-8000-000000000004', 'draft', 'PLN',
+  'cf100000-0000-4000-8000-000000000004', 'draft', 'XTS',
   100, 0, 0, 0, 0, 100,
   '{"orderDraftSnapshot":{"lines":[]}}'::jsonb
 ),
 (
-  'cf100000-0000-4000-8000-000000000005', 'draft', 'PLN',
+  'cf100000-0000-4000-8000-000000000005', 'draft', 'XTS',
   100, 0, 0, 0, 0, 100,
   '{"orderSnapshot":{"lines":"malformed"}}'::jsonb
 ),
 (
-  'cf100000-0000-4000-8000-000000000006', 'draft', 'PLN',
+  'cf100000-0000-4000-8000-000000000006', 'draft', 'XTS',
   100, 0, 0, 0, 0, 100,
   '{"orderDraftSnapshot":{"lines":[{"sku":"VALID"}]},"orderSnapshot":{"lines":{}}}'::jsonb
 );
@@ -300,36 +314,36 @@ SELECT public.commerce_create_order_draft_with_outbox(
     "source":"commerce.order_draft.bff.v0",
     "status":"draft",
     "paymentStatus":"not_started",
-    "currency":"PLN",
+    "currency":"XTS",
     "taxIncluded":true,
     "lines":[
       {
         "sku":"CANON-A","productSlug":"canon-a","quantity":3,
-        "unitPriceGross":{"amountMinor":1490,"currency":"PLN"},
-        "lineSubtotalGross":{"amountMinor":4470,"currency":"PLN"},
+        "unitPriceGross":{"amountMinor":1490,"currency":"XTS"},
+        "lineSubtotalGross":{"amountMinor":4470,"currency":"XTS"},
         "tax":{"vatRateBps":800,
-          "netAmount":{"amountMinor":4139,"currency":"PLN"},
-          "vatAmount":{"amountMinor":331,"currency":"PLN"},
-          "grossAmount":{"amountMinor":4470,"currency":"PLN"}}
+          "netAmount":{"amountMinor":4139,"currency":"XTS"},
+          "vatAmount":{"amountMinor":331,"currency":"XTS"},
+          "grossAmount":{"amountMinor":4470,"currency":"XTS"}}
       },
       {
         "sku":"CANON-B","productSlug":"canon-b","quantity":2,
-        "unitPriceGross":{"amountMinor":1490,"currency":"PLN"},
-        "lineSubtotalGross":{"amountMinor":2980,"currency":"PLN"},
+        "unitPriceGross":{"amountMinor":1490,"currency":"XTS"},
+        "lineSubtotalGross":{"amountMinor":2980,"currency":"XTS"},
         "tax":{"vatRateBps":800,
-          "netAmount":{"amountMinor":2759,"currency":"PLN"},
-          "vatAmount":{"amountMinor":221,"currency":"PLN"},
-          "grossAmount":{"amountMinor":2980,"currency":"PLN"}}
+          "netAmount":{"amountMinor":2759,"currency":"XTS"},
+          "vatAmount":{"amountMinor":221,"currency":"XTS"},
+          "grossAmount":{"amountMinor":2980,"currency":"XTS"}}
       }
     ],
     "totals":{
-      "subtotalGross":{"amountMinor":7450,"currency":"PLN"},
-      "discountTotalGross":{"amountMinor":3725,"currency":"PLN"},
-      "shippingGross":{"amountMinor":1500,"currency":"PLN"},
-      "shippingDiscountGross":{"amountMinor":1500,"currency":"PLN"},
-      "netTotal":{"amountMinor":3449,"currency":"PLN"},
-      "taxTotal":{"amountMinor":276,"currency":"PLN"},
-      "totalGross":{"amountMinor":3725,"currency":"PLN"}
+      "subtotalGross":{"amountMinor":7450,"currency":"XTS"},
+      "discountTotalGross":{"amountMinor":3725,"currency":"XTS"},
+      "shippingGross":{"amountMinor":1500,"currency":"XTS"},
+      "shippingDiscountGross":{"amountMinor":1500,"currency":"XTS"},
+      "netTotal":{"amountMinor":3449,"currency":"XTS"},
+      "taxTotal":{"amountMinor":276,"currency":"XTS"},
+      "totalGross":{"amountMinor":3725,"currency":"XTS"}
     }
   }'::jsonb
 ) AS result;
@@ -500,27 +514,27 @@ SELECT public.commerce_create_order_draft_with_outbox(
   '{"contractVersion":"commerce.v0"}'::jsonb,
   '{
     "contractVersion":"commerce.v0","source":"commerce.order_draft.bff.v0",
-    "status":"draft","paymentStatus":"not_started","currency":"PLN","taxIncluded":true,
+    "status":"draft","paymentStatus":"not_started","currency":"XTS","taxIncluded":true,
     "lines":[{
       "sku":"ROUND-A","productSlug":"round-a","quantity":1,
-      "unitPriceGross":{"amountMinor":1490,"currency":"PLN"},
-      "lineSubtotalGross":{"amountMinor":1490,"currency":"PLN"},
-      "tax":{"vatRateBps":800,"netAmount":{"amountMinor":1380,"currency":"PLN"},
-        "vatAmount":{"amountMinor":110,"currency":"PLN"},
-        "grossAmount":{"amountMinor":1490,"currency":"PLN"}}
+      "unitPriceGross":{"amountMinor":1490,"currency":"XTS"},
+      "lineSubtotalGross":{"amountMinor":1490,"currency":"XTS"},
+      "tax":{"vatRateBps":800,"netAmount":{"amountMinor":1380,"currency":"XTS"},
+        "vatAmount":{"amountMinor":110,"currency":"XTS"},
+        "grossAmount":{"amountMinor":1490,"currency":"XTS"}}
     },{
       "sku":"ROUND-B","productSlug":"round-b","quantity":1,
-      "unitPriceGross":{"amountMinor":2980,"currency":"PLN"},
-      "lineSubtotalGross":{"amountMinor":2980,"currency":"PLN"},
-      "tax":{"vatRateBps":800,"netAmount":{"amountMinor":2759,"currency":"PLN"},
-        "vatAmount":{"amountMinor":221,"currency":"PLN"},
-        "grossAmount":{"amountMinor":2980,"currency":"PLN"}}
+      "unitPriceGross":{"amountMinor":2980,"currency":"XTS"},
+      "lineSubtotalGross":{"amountMinor":2980,"currency":"XTS"},
+      "tax":{"vatRateBps":800,"netAmount":{"amountMinor":2759,"currency":"XTS"},
+        "vatAmount":{"amountMinor":221,"currency":"XTS"},
+        "grossAmount":{"amountMinor":2980,"currency":"XTS"}}
     }],
-    "totals":{"subtotalGross":{"amountMinor":4470,"currency":"PLN"},
-      "discountTotalGross":{"amountMinor":6,"currency":"PLN"},
-      "netTotal":{"amountMinor":4133,"currency":"PLN"},
-      "taxTotal":{"amountMinor":331,"currency":"PLN"},
-      "totalGross":{"amountMinor":4464,"currency":"PLN"}}
+    "totals":{"subtotalGross":{"amountMinor":4470,"currency":"XTS"},
+      "discountTotalGross":{"amountMinor":6,"currency":"XTS"},
+      "netTotal":{"amountMinor":4133,"currency":"XTS"},
+      "taxTotal":{"amountMinor":331,"currency":"XTS"},
+      "totalGross":{"amountMinor":4464,"currency":"XTS"}}
   }'::jsonb
 ) AS result;
 SELECT is(
@@ -688,11 +702,11 @@ INSERT INTO public.commerce_orders (
   shipping_discount_cents, tax_cents, total_cents, metadata
 ) VALUES
 (
-  'ca000000-0000-4000-8000-000000000010', 'draft', 'PLN',
+  'ca000000-0000-4000-8000-000000000010', 'draft', 'XTS',
   100, 0, 0, 0, 0, 100, '{"fixture":"vat-zero"}'::jsonb
 ),
 (
-  'ca000000-0000-4000-8000-000000000011', 'draft', 'PLN',
+  'ca000000-0000-4000-8000-000000000011', 'draft', 'XTS',
   12300, 0, 0, 0, 2300, 12300, '{"fixture":"vat-23"}'::jsonb
 );
 INSERT INTO public.commerce_order_items (
@@ -746,7 +760,7 @@ INSERT INTO public.catalog_skus (
 );
 SELECT public.fulfillment_provider_upsert_stock_current(
   'canonical-renewal-stock-1',
-  'omnipack',
+  (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic renewal'),
   'CANON-RENEWAL-A',
   10, 10, 0,
   now(),
@@ -756,7 +770,7 @@ SELECT public.fulfillment_provider_upsert_stock_current(
 );
 SELECT public.fulfillment_provider_upsert_stock_current(
   'canonical-renewal-stock-2',
-  'omnipack',
+  (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic renewal'),
   'CANON-RENEWAL-B',
   10, 10, 0,
   now(),
@@ -773,7 +787,7 @@ INSERT INTO public.subscriptions (
 ) VALUES (
   'ca000000-0000-4000-8000-000000000004',
   'ca000000-0000-4000-8000-000000000003',
-  14, '{"kind":"unit_count","value":2}'::jsonb, 'PLN', 'PL', 'active',
+  14, '{"kind":"unit_count","value":2}'::jsonb, 'XTS', 'ZZ', 'active',
   '2026-08-01T10:00:00Z', '2026-07-01T10:00:00Z', 72, 1,
   'pm_canonical', 'card', 'Europe/Warsaw'
 );
@@ -801,33 +815,33 @@ SELECT public.subscription_create_cycle_order_with_outbox(
   '{"source":"canonical_order_money_test"}'::jsonb,
   '{
     "contractVersion":"commerce.v0","source":"subscription.own_engine.v0",
-    "status":"pending_payment","paymentStatus":"pending","currency":"PLN",
+    "status":"pending_payment","paymentStatus":"pending","currency":"XTS",
     "taxIncluded":true,
     "lines":[{
       "sku":"CANON-RENEWAL-A","productSlug":"canonical-renewal","quantity":1,
-      "unitPriceGross":{"amountMinor":1000,"currency":"PLN"},
-      "lineSubtotalGross":{"amountMinor":1000,"currency":"PLN"},
+      "unitPriceGross":{"amountMinor":1000,"currency":"XTS"},
+      "lineSubtotalGross":{"amountMinor":1000,"currency":"XTS"},
       "tax":{"vatRateBps":800,
-        "netAmount":{"amountMinor":926,"currency":"PLN"},
-        "vatAmount":{"amountMinor":74,"currency":"PLN"},
-        "grossAmount":{"amountMinor":1000,"currency":"PLN"}}
+        "netAmount":{"amountMinor":926,"currency":"XTS"},
+        "vatAmount":{"amountMinor":74,"currency":"XTS"},
+        "grossAmount":{"amountMinor":1000,"currency":"XTS"}}
     },{
       "sku":"CANON-RENEWAL-B","productSlug":"canonical-renewal","quantity":1,
-      "unitPriceGross":{"amountMinor":2000,"currency":"PLN"},
-      "lineSubtotalGross":{"amountMinor":2000,"currency":"PLN"},
+      "unitPriceGross":{"amountMinor":2000,"currency":"XTS"},
+      "lineSubtotalGross":{"amountMinor":2000,"currency":"XTS"},
       "tax":{"vatRateBps":800,
-        "netAmount":{"amountMinor":1852,"currency":"PLN"},
-        "vatAmount":{"amountMinor":148,"currency":"PLN"},
-        "grossAmount":{"amountMinor":2000,"currency":"PLN"}}
+        "netAmount":{"amountMinor":1852,"currency":"XTS"},
+        "vatAmount":{"amountMinor":148,"currency":"XTS"},
+        "grossAmount":{"amountMinor":2000,"currency":"XTS"}}
     }],
     "totals":{
-      "subtotalGross":{"amountMinor":3000,"currency":"PLN"},
-      "discountTotalGross":{"amountMinor":900,"currency":"PLN"},
-      "shippingGross":{"amountMinor":1500,"currency":"PLN"},
-      "shippingDiscountGross":{"amountMinor":1500,"currency":"PLN"},
-      "netTotal":{"amountMinor":1945,"currency":"PLN"},
-      "taxTotal":{"amountMinor":155,"currency":"PLN"},
-      "totalGross":{"amountMinor":2100,"currency":"PLN"}
+      "subtotalGross":{"amountMinor":3000,"currency":"XTS"},
+      "discountTotalGross":{"amountMinor":900,"currency":"XTS"},
+      "shippingGross":{"amountMinor":1500,"currency":"XTS"},
+      "shippingDiscountGross":{"amountMinor":1500,"currency":"XTS"},
+      "netTotal":{"amountMinor":1945,"currency":"XTS"},
+      "taxTotal":{"amountMinor":155,"currency":"XTS"},
+      "totalGross":{"amountMinor":2100,"currency":"XTS"}
     }
   }'::jsonb
 ) AS result;
@@ -1160,7 +1174,7 @@ INSERT INTO public.commerce_orders (
   id, order_number, status, currency, subtotal_cents, discount_cents,
   shipping_cents, shipping_discount_cents, tax_cents, total_cents
 ) VALUES (
-  'ca000000-0000-4000-8000-000000000040', 'CANON-MIXED-VAT', 'paid', 'PLN',
+  'ca000000-0000-4000-8000-000000000040', 'CANON-MIXED-VAT', 'paid', 'XTS',
   223, 0, 0, 0, 23, 223
 );
 INSERT INTO public.commerce_order_items (
@@ -1183,7 +1197,7 @@ INSERT INTO public.commerce_payments (
 ) VALUES (
   'ca000000-0000-4000-8000-000000000043',
   'ca000000-0000-4000-8000-000000000040',
-  'stripe', 'pi_mixed_vat', 'succeeded', 223, 'PLN'
+  'stripe', 'pi_mixed_vat', 'succeeded', 223, 'XTS'
 );
 INSERT INTO public.commerce_payment_intents (
   id, target_kind, order_id, payment_id, status, amount_cents, currency,
@@ -1193,7 +1207,7 @@ INSERT INTO public.commerce_payment_intents (
   'one_time_order',
   'ca000000-0000-4000-8000-000000000040',
   'ca000000-0000-4000-8000-000000000043',
-  'succeeded', 223, 'PLN', 'pi_mixed_vat', now()
+  'succeeded', 223, 'XTS', 'pi_mixed_vat', now()
 );
 INSERT INTO public.accounting_invoices (
   id, order_id, order_ref, invoice_ref, status, currency, buyer_snapshot,
@@ -1202,7 +1216,7 @@ INSERT INTO public.accounting_invoices (
 ) VALUES (
   'ca000000-0000-4000-8000-000000000045',
   'ca000000-0000-4000-8000-000000000040',
-  'CANON-MIXED-VAT', 'CANON-MIXED-VAT:issue', 'issue_requested', 'PLN',
+  'CANON-MIXED-VAT', 'CANON-MIXED-VAT:issue', 'issue_requested', 'XTS',
   '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '[]'::jsonb,
   200, 223, 'fakturownia_test', '{"fixtureMode":"one_time"}'::jsonb
 );

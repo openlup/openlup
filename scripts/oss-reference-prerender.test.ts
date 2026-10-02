@@ -35,13 +35,15 @@ describe("public reference prerender", () => {
     expect(detail).toContain("Field notes");
   });
 
-  it("refuses the source deployment manifest rather than silently prerendering its 79 routes", async () => {
+  it("refuses an invalid manifest before loading the SSR entry", async () => {
     const root = temp();
     mkdirSync(join(root, "config"));
     mkdirSync(join(root, "dist"));
-    writeFileSync(join(root, "config", "site-routes.json"), readFileSync("config/site-routes.json", "utf8"));
+    const manifest = JSON.parse(readFileSync("config/public-reference-site-routes.json", "utf8"));
+    manifest.siteLifecycle = "invalid-lifecycle";
+    writeFileSync(join(root, "config", "site-routes.json"), JSON.stringify(manifest));
     writeFileSync(join(root, "dist", "index.html"), "<div id=\"root\"></div>");
 
-    await expect(prerenderPublicReference(root)).rejects.toThrow(/projected public reference/);
+    await expect(prerenderPublicReference(root)).rejects.toThrow("Invalid site lifecycle");
   });
 });

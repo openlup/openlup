@@ -23,6 +23,16 @@ vi.mock("../../../_lib/admin-domain/auth.js", () => ({
 
 vi.mock("#tester-program-email-binding", () => ({ createTesterProgramAdminEmailPort }));
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 function response() {
   return {
     statusCode: 200,
@@ -100,4 +110,19 @@ describe("communications send email admin BFF route", () => {
     expect(res.statusCode).toBe(200);
     expect(res.payload).toMatchObject({ ok: true, data: { message: { id: "send-1", providerMessageId: "provider-1" } } });
   });
+  it("public default refuses before auth resolution or creating a send port", async () => {
+    unitComposition.enabled = false;
+    const res = response();
+    try {
+      await handler(request("POST", { recipientId: "recipient-1", templateSlug: "receipt" }), res as never);
+      expect(res.statusCode).toBe(503);
+      expect(res.payload).toMatchObject({ ok: false, error: { details: { reason: "adopter_policy_required" } } });
+      for (const port of [resolveBundleId, createAdminAuthClient, authorizeAdminBooleanWithUser,
+        resolveAdminAuthBinding, resolveCommunicationsControlPlaneBinding, createTesterProgramAdminEmailPort])
+        expect(port).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });

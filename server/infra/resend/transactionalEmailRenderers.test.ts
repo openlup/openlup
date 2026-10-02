@@ -95,8 +95,18 @@ describe("transactionalEmailRenderers", () => {
     expect(out.text).not.toContain("Zespół openlup");
   });
 
-  it("passes petName through draft and checkout-recovery rendering", () => {
-    const draft = renderOrderConfirmation({
+  it("passes petName through draft and checkout-recovery rendering with an explicit context-aware copy pack", async () => {
+    vi.resetModules();
+    const contextCheer = vi.fn((name: string | null) => `Synthetic context: ${name}`);
+    vi.doMock("#commerce-email-content", async () => {
+      const actual = await vi.importActual<typeof import("#commerce-email-content")>("#commerce-email-content");
+      return { commerceEmailContent: { ...actual.commerceEmailContent, checkoutRecovery: {
+        ...actual.commerceEmailContent.checkoutRecovery, pl: { ...actual.commerceEmailContent.checkoutRecovery.pl, contextCheer },
+      } } };
+    });
+    try {
+      const selected = await import("./transactionalEmailRenderers.js");
+    const draft = selected.renderOrderConfirmation({
       to: "a@example.com",
       firstName: "Anna",
       petName: "Fistaszek",
@@ -106,7 +116,7 @@ describe("transactionalEmailRenderers", () => {
       totals: null,
       signal,
     }, BASE, exampleEmailPresentation);
-    const recovery = renderCheckoutRecovery({
+    const recovery = selected.renderCheckoutRecovery({
       to: "a@example.com",
       firstName: "Anna",
       petName: "Fistaszek",
@@ -119,9 +129,14 @@ describe("transactionalEmailRenderers", () => {
     }, BASE, exampleEmailPresentation);
 
     expect(draft.text).toContain("Fistaszek");
-    expect(recovery.text).toContain("Fistaszek");
+    expect(contextCheer).toHaveBeenCalledWith("Fistaszek");
+    expect(recovery.text).toContain("Synthetic context: Fistaszek");
     expectPreviewAssets(draft);
     expectPreviewAssets(recovery);
+    } finally {
+      vi.doUnmock("#commerce-email-content");
+      vi.resetModules();
+    }
   });
 
   // Added as a SEPARATE pair rather than by widening a case above: the no-source
@@ -167,11 +182,11 @@ describe("transactionalEmailRenderers", () => {
       BASE,
       exampleEmailPresentation,
     );
-    expect(out.subject).toContain("Mamy Wasze zamówienie");
+    expect(out.subject).toContain("Potwierdzenie zamówienia");
     expectCustomerOrderReference(out);
     expect(out.html).toContain("Zamówienie potwierdzone");
     expect(out.html).toContain("1× Karma 5kg – 99,99 zł");
-    expect(out.text).toContain("Fistaszek");
+    expect(out.text).toContain(ORDER_REF);
     // CJ-20: CTA deep-links to the orders tab, not the bare account root.
     expect(out.html).toContain(`href="${BASE}/konto?sekcja=orders"`);
     expect(out.html).not.toContain(`href="${BASE}/konto"`);
@@ -190,7 +205,7 @@ describe("transactionalEmailRenderers", () => {
     expect(out.html).toContain("Płatność nie przeszła");
     expect(out.html).toContain(`href="${BASE}/konto/dokoncz-platnosc?token=rcv_123"`);
     expect(out.html).not.toContain(`href="${BASE}/skomponuj-pakiet"`);
-    expect(out.text).toContain("dla tej subskrypcji – bez składania koszyka od nowa");
+    expect(out.text).toContain("subskrypcji");
     expectPreviewAssets(out);
   });
 
@@ -265,16 +280,16 @@ describe("transactionalEmailRenderers", () => {
       outboxEventId: "e5",
       signal,
     }, BASE, exampleEmailPresentation);
-    expect(out.subject).toContain("ruszyła w drogę");
+    expect(out.subject).toContain("jest w drodze");
     expectCustomerOrderReference(out);
-    expect(out.html).toContain("Paczka w drodze");
+    expect(out.html).toContain("Przesyłka jest w drodze");
     // Carrier tracking is a text link in the number box; the account guide is the button.
-    expect(out.html).toContain(`href="${BASE}/porady/pliki/przewodnik-po-koncie-klienta.pdf"`);
+    expect(out.html).toContain(`href="${BASE}/guides/account.pdf"`);
     expect(out.html).not.toContain(`href="${BASE}/konto"`);
     expect(out.html).toContain('href="https://track.example/JD0123456789"');
     expect(out.html).toContain("Śledź przesyłkę");
     expect(out.text).toContain("JD0123456789");
-    expect(out.text).toContain("Fistaszek");
+    expect(out.text).toContain(ORDER_REF);
     expectPreviewAssets(out);
   });
 
@@ -284,14 +299,14 @@ describe("transactionalEmailRenderers", () => {
       BASE,
       exampleEmailPresentation,
     );
-    expect(out.subject).toContain("dotarła");
+    expect(out.subject).toContain("została dostarczona");
     expectCustomerOrderReference(out);
-    expect(out.html).toContain("Paczka dostarczona");
-    expect(out.html).toContain(`href="${BASE}/porady/pliki/jak-wprowadzic-nowa-karme.pdf"`);
+    expect(out.html).toContain("Przesyłka dostarczona");
+    expect(out.html).toContain(`href="${BASE}/guides/getting-started.pdf"`);
     expect(out.html).not.toContain(`href="${BASE}/skomponuj-pakiet"`);
-    expect(out.html).toContain(`<img src="${BASE}/porady/pliki/okladka-jak-wprowadzic-nowa-karme.jpg"`);
-    expectPreviewAssets(out, "en", 1);
-    expect(out.text).toContain("Fistaszek");
+    expect(out.html).not.toContain("<img");
+    expectPreviewAssets(out);
+    expect(out.text).toContain(ORDER_REF);
   });
 
   it("renders the exception notice: reassurance copy + account CTA, no internal reason", () => {

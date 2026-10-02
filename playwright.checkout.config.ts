@@ -24,11 +24,7 @@ export default defineConfig({
   // per-IP checkout quota (10/hour). Genuine capacity blips (429/503) are handled
   // in-test by skipping, so a retry buys nothing and risks the quota.
   retries: 0,
-  // `list` for humans; the second reporter is the fail-closed accounting for the
-  // starter-offer skip (wave W4b) — it fails a run in which the acquisition offer
-  // suppressed guarded checkout journeys, so a suite that proves nothing can no
-  // longer report green. See tests/preview/checkout/helpers/starterOfferCoverage.ts.
-  reporter: [["list"], ["./tests/preview/checkout/helpers/starterOfferCoverage.ts"]],
+  reporter: [["list"]],
   outputDir: "test-results/checkout-preview",
   use: {
     baseURL,

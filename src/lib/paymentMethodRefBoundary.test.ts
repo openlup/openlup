@@ -1,18 +1,20 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { currentTableStatements, explicitFunctionExecuteRoles } from "../test/historicalBoundarySchema";
 import { describe, expect, it } from "vitest";
 
-const migration = read("supabase/migrations/20260606160000_hidden_payment_method_refs.sql");
+const functions = ["commerce_payment_method_ref_upsert", "commerce_payment_method_ref_deactivate", "commerce_payment_method_ref_switch_active", "commerce_payment_method_ref_link_subscription_mirror"];
+const ledger = currentTableStatements("commerce_payment_method_refs");
+const migration = [ledger, ...functions.map(effectiveFunctionBody)].join("\n");
 
 describe("hidden reusable payment method refs boundary", () => {
   it("adds a provider-neutral reusable payment method ledger", () => {
     for (const required of [
-      "CREATE TABLE IF NOT EXISTS public.commerce_payment_method_refs",
+      "CREATE TABLE public.commerce_payment_method_refs",
       "provider_kind text NOT NULL",
-      "method_kind text NOT NULL CHECK (method_kind IN ('card', 'blik_payid', 'wallet', 'alias'))",
-      "status text NOT NULL DEFAULT 'pending_verification'",
-      "consent_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb",
-      "raw_provider_payload jsonb NOT NULL DEFAULT '{}'::jsonb",
+      "commerce_payment_method_refs_method_kind_check",
+      "status text DEFAULT 'pending_verification'::text NOT NULL",
+      "consent_snapshot jsonb DEFAULT '{}'::jsonb NOT NULL",
+      "raw_provider_payload jsonb DEFAULT '{}'::jsonb NOT NULL",
       "UNIQUE (provider_kind, provider_method_ref)",
       "uniq_commerce_payment_method_refs_subscription_active",
     ]) {
@@ -27,11 +29,11 @@ describe("hidden reusable payment method refs boundary", () => {
       "commerce_payment_method_ref_switch_active",
       "commerce_payment_method_ref_link_subscription_mirror",
     ]) {
-      expect(migration).toContain(`CREATE OR REPLACE FUNCTION public.${fn}`);
-      expect(migration).toContain(`REVOKE ALL ON FUNCTION public.${fn}`);
-      expect(migration).toContain("FROM PUBLIC, anon, authenticated");
-      expect(migration).toContain(`GRANT EXECUTE ON FUNCTION public.${fn}`);
-      expect(migration).toContain("TO service_role");
+      expect(effectiveFunctionBody(fn)).toContain("SECURITY DEFINER");
+      for (const roles of explicitFunctionExecuteRoles(fn).values()) {
+        expect(roles.has("service_role")).toBe(true);
+        for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+      }
     }
   });
 
@@ -53,7 +55,7 @@ describe("hidden reusable payment method refs boundary", () => {
       "FROM public.commerce_idempotency_keys",
       "payment_method_ref_idempotency_conflict",
       "ON CONFLICT (provider_kind, provider_method_ref) DO UPDATE",
-      "RETURN v_existing.response_payload",
+      "RETURN jsonb_set(v_existing.response_payload, '{paymentMethodRef,replayed}'",
     ]) {
       expect(migration).toContain(required);
     }
@@ -69,7 +71,3 @@ describe("hidden reusable payment method refs boundary", () => {
     expect(migration).not.toContain("subscription_handle_payment_failure_dunning");
   });
 });
-
-function read(path: string): string {
-  return readFileSync(join(process.cwd(), path), "utf8");
-}

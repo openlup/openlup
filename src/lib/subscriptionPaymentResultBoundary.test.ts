@@ -1,61 +1,23 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { explicitFunctionExecuteRoles, currentTrigger } from "../test/historicalBoundarySchema";
 
-const migration = read("supabase/migrations/20260604183000_commerce_v2_w7e_subscription_payment_result.sql");
-const guardMigration = read(
-  "supabase/migrations/20260605143000_commerce_payment_control_legacy_subscription_guard.sql",
-);
-const deprecationProbe = read("docs/sql/subscription_payment_result_deprecation_probe.sql");
-
-describe("subscription payment result boundary", () => {
-  it("keeps historical service-role-only payment result RPC symbols", () => {
-    for (const required of [
-      "CREATE OR REPLACE FUNCTION public.subscription_apply_payment_success",
-      "CREATE OR REPLACE FUNCTION public.subscription_apply_payment_failure",
-      "CREATE OR REPLACE FUNCTION public.subscription_record_missing_payment_method",
-      "SECURITY DEFINER",
-      "FROM anon",
-      "FROM authenticated",
-      "TO service_role",
-    ]) {
-      expect(migration).toContain(required);
-    }
-  });
-
-  it("supersedes legacy success/failure RPCs with a payment-control guard", () => {
-    for (const required of [
-      "CREATE OR REPLACE FUNCTION public.subscription_apply_payment_success",
-      "CREATE OR REPLACE FUNCTION public.subscription_apply_payment_failure",
-      "subscription_payment_result_deprecated_use_payment_control",
-      "commerce_payment_control_apply_result",
-      "Payment-control is the canonical payment-result writer",
-    ]) {
-      expect(guardMigration).toContain(required);
-    }
-  });
-
-  it("keeps shipment gating but no longer treats subscription RPCs as canonical payment writers", () => {
-    expect(migration).toContain("commerce_guard_paid_order_shipment_ref");
-    expect(guardMigration).not.toContain("UPDATE public.commerce_orders");
-    expect(guardMigration).not.toContain("UPDATE public.commerce_payments");
-    expect(guardMigration).not.toContain("UPDATE public.subscription_cycles");
-    expect(guardMigration).not.toContain("UPDATE public.subscriptions");
-  });
-
-  it("proves legacy payment-result RPCs fail fast locally", () => {
-    for (const required of [
-      "subscription_apply_payment_success",
-      "subscription_apply_payment_failure",
-      "subscription_payment_result_deprecated_use_payment_control",
-      "unexpectedly mutated state",
-      "ROLLBACK",
-    ]) {
-      expect(deprecationProbe).toContain(required);
-    }
+describe("current subscription payment result boundary", () => {
+  for (const name of ["subscription_apply_payment_success", "subscription_apply_payment_failure"]) {
+    it(`${name} refuses before any durable payment or lifecycle write`, () => {
+      const body = effectiveFunctionBody(name);
+      expect(body).toContain("RAISE EXCEPTION 'subscription_payment_result_deprecated_use_payment_control'");
+      expect(body).not.toMatch(/\b(?:UPDATE|INSERT INTO|DELETE FROM)\s+public\.(?:commerce_orders|commerce_payments|subscription_cycles|subscriptions)/);
+      for (const roles of explicitFunctionExecuteRoles(name).values()) {
+        expect(roles.has("service_role")).toBe(true);
+        for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+      }
+    });
+  }
+  it("retains the installed paid-order shipment guard", () => {
+    expect(currentTrigger("trg_commerce_guard_paid_order_shipment_ref")).toContain("commerce_guard_paid_order_shipment_ref()");
+    const body = effectiveFunctionBody("commerce_guard_paid_order_shipment_ref");
+    expect(body).toContain("paid");
+    expect(body).toMatch(/RAISE EXCEPTION/);
   });
 });
-
-function read(path: string): string {
-  return readFileSync(join(process.cwd(), path), "utf8");
-}

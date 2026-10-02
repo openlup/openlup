@@ -122,3 +122,5 @@ for money/status/idempotency boundaries, and
 [Data and migrations](../../../docs/platform/DATA_AND_MIGRATIONS.md) for durable
 schema authority. Record the actual command and result at the revision tested;
 mocked jobs do not prove live provider, database or installation behavior.
+
+<!-- openlup-doc-impact {"unit":"domain-accounting","digest":"sha256-925435fd3077feac758a11256df3be31f1e7d041f58bfa5ebb0b0e183e1d8502","reason":"The invoice-contract test supplies explicit synthetic jurisdiction routing instead of expecting the neutral default to accept an identifier. Default refusal, contract validation and accounting implementation described here are unchanged."} -->

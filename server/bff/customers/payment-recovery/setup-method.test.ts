@@ -14,6 +14,16 @@ vi.mock("../../../infra/stripe/buildStripeApiClientIfEnabled.js", () => ({
   buildStripeApiClientIfEnabled: mockBuildStripeApiClientIfEnabled,
 }));
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const ENV_KEYS = [
   "COMMERCE_V2_W12_CUSTOMER_AUTH_UI",
   "COMMERCE_SUBSCRIPTION_MUTATIONS_ENABLED",
@@ -127,6 +137,21 @@ describe("payment recovery setup-method BFF route", () => {
       { idempotencyKey: "recovery-setup:11111111-1111-4111-8111-111111111111:recovery-setup-1" },
     );
   });
+  it("public default refuses before creating client or provider dependencies", async () => {
+    unitComposition.enabled = false;
+    enableRecovery();
+    try {
+      const { default: handler } = await import("./setup-method.js");
+      const res = createResponse();
+      await handler(request(), res);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }) }));
+      for (const effect of [mockCreateClient, mockBuildStripeApiClientIfEnabled]) expect(effect).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 function enableRecovery(): void {

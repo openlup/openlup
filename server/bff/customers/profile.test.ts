@@ -5,6 +5,16 @@ const { mockCreateClient } = vi.hoisted(() => ({ mockCreateClient: vi.fn() }));
 
 vi.mock("@supabase/supabase-js", () => ({ createClient: mockCreateClient }));
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const ENV_KEYS = [
   "COMMERCE_V2_W12_CUSTOMER_AUTH_UI",
   "COMMERCE_CUSTOMER_SELF_SERVICE_ENABLED",
@@ -28,6 +38,7 @@ describe("/api/bff/customers/profile route", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     for (const key of ENV_KEYS) {
       const value = originalEnv.get(key);
       if (value === undefined) delete process.env[key];
@@ -63,6 +74,29 @@ describe("/api/bff/customers/profile route", () => {
     expect(mockCreateClient).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(500);
   });
+  it("public policy refuses before creating clients even when legacy flags are enabled", async () => {
+    unitComposition.enabled = false;
+    for (const key of ENV_KEYS) {
+      if (key.startsWith("COMMERCE_")) vi.stubEnv(key, "true");
+    }
+    const { default: handler } = await import("./profile.js");
+    const res = createResponse();
+    try {
+      await handler(request("PATCH"), res);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({
+          code: "UPSTREAM_UNAVAILABLE",
+          details: expect.objectContaining({ reason: "adopter_policy_required" }),
+        }),
+      }));
+      expect(mockCreateClient).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 function request(method: string): VercelRequest {

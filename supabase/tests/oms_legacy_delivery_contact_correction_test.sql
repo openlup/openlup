@@ -6,6 +6,17 @@
 -- is incorrectly admitted to the new-dispatch candidate set.
 
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['ZZ'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(43);
 
 INSERT INTO public.admin_users (id, email, role)
@@ -30,16 +41,16 @@ INSERT INTO public.addresses (
 );
 
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency,
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code,
   subtotal_cents, total_cents, metadata
 ) VALUES (
   '71a00000-0000-4000-8000-0000000000b1',
   '71a00000-0000-4000-8000-0000000000a1',
   '71a00000-0000-4000-8000-0000000000a2',
-  'LEGACY-FALSIFIER-1', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+  'LEGACY-FALSIFIER-1', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
   jsonb_build_object('runtimeFinalize', jsonb_build_object(
     'selectedDelivery', jsonb_build_object(
-      'providerKind', 'omnipack', 'serviceCode', 'TEST', 'kind', 'courier'
+      'providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'serviceCode', 'TEST', 'kind', 'courier'
     )
   ))
 );
@@ -52,7 +63,7 @@ INSERT INTO public.commerce_fulfillment_orders (
   '71a00000-0000-4000-8000-0000000000b1',
   '71a00000-0000-4000-8000-0000000000a1',
   '71a00000-0000-4000-8000-0000000000a2',
-  'legacy-contact-falsifier-1', 'created', 'omnipack',
+  'legacy-contact-falsifier-1', 'created', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
   jsonb_build_object(
     'label', 'Legacy label', 'line1', 'Falsifier Street 1',
     'city', 'Testville', 'postalCode', '00-001', 'country', 'ZZ'
@@ -173,17 +184,17 @@ INSERT INTO public.addresses (
   'shipping', 'Address phone label', 'Address Phone 2', 'Testville', '00-002', 'ZZ', '+48000000072'
 );
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency,
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code,
   subtotal_cents, total_cents, metadata
 ) VALUES (
   '71a00000-0000-4000-8000-0000000000b2',
   '71a00000-0000-4000-8000-0000000000a3',
   '71a00000-0000-4000-8000-0000000000a4',
-  'LEGACY-ADDRESS-PHONE-2', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+  'LEGACY-ADDRESS-PHONE-2', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
   jsonb_build_object('runtimeFinalize', jsonb_build_object(
     'selectedDelivery', jsonb_build_object(
-      'kind', 'courier', 'deliveryKind', 'courier', 'providerKind', 'omnipack',
-      'carrierKind', 'omnipack', 'carrierCode', 'TEST', 'serviceCode', 'TEST'
+      'kind', 'courier', 'deliveryKind', 'courier', 'providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
+      'carrierKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'carrierCode', 'TEST', 'serviceCode', 'TEST'
     )
   ))
 );
@@ -195,7 +206,7 @@ INSERT INTO public.commerce_fulfillment_orders (
   '71a00000-0000-4000-8000-0000000000b2',
   '71a00000-0000-4000-8000-0000000000a3',
   '71a00000-0000-4000-8000-0000000000a4',
-  'legacy-address-phone-2', 'created', 'omnipack',
+  'legacy-address-phone-2', 'created', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
   jsonb_build_object(
     'label', 'Address phone label', 'line1', 'Address Phone 2',
     'city', 'Testville', 'postalCode', '00-002', 'country', 'ZZ'
@@ -241,17 +252,17 @@ SELECT is(
 -- The OMS detail endpoint must receive the SQL answer, including the channel
 -- arm and the nested runtimeFinalize selection that the former TS ladder lacked.
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency,
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code,
   subtotal_cents, total_cents, metadata
 ) VALUES (
   '71a00000-0000-4000-8000-0000000000b9',
   '71a00000-0000-4000-8000-0000000000a3',
   '71a00000-0000-4000-8000-0000000000a4',
-  'LEGACY-CHANNEL-READ-9', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+  'LEGACY-CHANNEL-READ-9', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
   jsonb_build_object(
     'runtimeFinalize', jsonb_build_object(
       'selectedDelivery', jsonb_build_object(
-        'deliveryKind', 'courier', 'providerKind', 'omnipack', 'serviceCode', 'NESTED'
+        'deliveryKind', 'courier', 'providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'serviceCode', 'NESTED'
       )
     ),
     'channelOrderSnapshot', jsonb_build_object(
@@ -306,15 +317,15 @@ SELECT is(
 );
 
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency,
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code,
   subtotal_cents, total_cents, metadata
 ) VALUES (
   '71a00000-0000-4000-8000-0000000000ba',
   '71a00000-0000-4000-8000-0000000000a3',
   '71a00000-0000-4000-8000-0000000000a4',
-  'LEGACY-DIGEST-ABA-10', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+  'LEGACY-DIGEST-ABA-10', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
   jsonb_build_object('runtimeFinalize', jsonb_build_object(
-    'selectedDelivery', jsonb_build_object('providerKind', 'omnipack', 'serviceCode', 'TEST')
+    'selectedDelivery', jsonb_build_object('providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'serviceCode', 'TEST')
   ))
 );
 CREATE TEMP TABLE legacy_contact_expected_digest AS
@@ -355,17 +366,17 @@ UPDATE public.addresses SET line1 = 'Address Phone 2'
 -- No parcel exists for this order.  Its only delivery metadata is the production
 -- runtimeFinalize selectedDelivery shape; the correction must write rev 2 override.
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency,
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code,
   subtotal_cents, total_cents, metadata
 ) VALUES (
   '71a00000-0000-4000-8000-0000000000b3',
   '71a00000-0000-4000-8000-0000000000a3',
   '71a00000-0000-4000-8000-0000000000a4',
-  'LEGACY-PRE-PARCEL-3', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+  'LEGACY-PRE-PARCEL-3', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
   jsonb_build_object('runtimeFinalize', jsonb_build_object(
     'selectedDelivery', jsonb_build_object(
-      'kind', 'courier', 'deliveryKind', 'courier', 'providerKind', 'omnipack',
-      'carrierKind', 'omnipack', 'carrierCode', 'TEST', 'serviceCode', 'TEST'
+      'kind', 'courier', 'deliveryKind', 'courier', 'providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
+      'carrierKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'carrierCode', 'TEST', 'serviceCode', 'TEST'
     )
   ))
 );
@@ -422,25 +433,25 @@ SELECT throws_ok(
 );
 
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency,
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code,
   subtotal_cents, total_cents, metadata
 ) VALUES
   (
     '71a00000-0000-4000-8000-0000000000b4',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'LEGACY-MALFORMED-4', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+    'LEGACY-MALFORMED-4', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
     jsonb_build_object('runtimeFinalize', jsonb_build_object(
-      'selectedDelivery', jsonb_build_object('providerKind', 'omnipack', 'serviceCode', 'TEST')
+      'selectedDelivery', jsonb_build_object('providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'serviceCode', 'TEST')
     ))
   ),
   (
     '71a00000-0000-4000-8000-0000000000b5',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'LEGACY-CANONICAL-FENCE-5', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+    'LEGACY-CANONICAL-FENCE-5', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
     jsonb_build_object('runtimeFinalize', jsonb_build_object(
-      'selectedDelivery', jsonb_build_object('providerKind', 'omnipack', 'serviceCode', 'TEST'),
+      'selectedDelivery', jsonb_build_object('providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'serviceCode', 'TEST'),
       'deliveryContact', jsonb_build_object('schemaVersion', 1, 'source', 'checkout_submission', 'revision', 1)
     ))
   ),
@@ -448,9 +459,9 @@ INSERT INTO public.commerce_orders (
     '71a00000-0000-4000-8000-0000000000b6',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'LEGACY-PROOF-BYPASS-6', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+    'LEGACY-PROOF-BYPASS-6', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
     jsonb_build_object('runtimeFinalize', jsonb_build_object(
-      'selectedDelivery', jsonb_build_object('providerKind', 'omnipack', 'serviceCode', 'TEST'),
+      'selectedDelivery', jsonb_build_object('providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'serviceCode', 'TEST'),
       'deliveryContact', jsonb_build_object('schemaVersion', 1, 'source', 'checkout_submission', 'revision', 1)
     ))
   );
@@ -463,7 +474,7 @@ INSERT INTO public.commerce_fulfillment_orders (
     '71a00000-0000-4000-8000-0000000000b4',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'legacy-malformed-4', 'created', 'omnipack',
+    'legacy-malformed-4', 'created', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
     jsonb_build_object('line1', 'Malformed 4', 'city', 'Testville', 'postalCode', '00-004', 'country', 'ZZ',
       'deliveryContact', 'malformed')
   ),
@@ -472,7 +483,7 @@ INSERT INTO public.commerce_fulfillment_orders (
     '71a00000-0000-4000-8000-0000000000b5',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'legacy-canonical-fence-5', 'created', 'omnipack',
+    'legacy-canonical-fence-5', 'created', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
     jsonb_build_object('line1', 'Canonical Fence 5', 'city', 'Testville', 'postalCode', '00-005', 'country', 'ZZ')
   ),
   (
@@ -480,7 +491,7 @@ INSERT INTO public.commerce_fulfillment_orders (
     '71a00000-0000-4000-8000-0000000000b6',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'legacy-proof-bypass-6', 'created', 'omnipack',
+    'legacy-proof-bypass-6', 'created', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
     jsonb_build_object('line1', 'Proof Bypass 6', 'city', 'Testville', 'postalCode', '00-006', 'country', 'ZZ')
   );
 
@@ -569,7 +580,7 @@ SELECT ok(
 SELECT is(
   private.commerce_delivery_contact_resolve_v1(jsonb_build_object(
     'channelOrderSnapshot', NULL,
-    'selectedDeliveryCandidates', jsonb_build_array(jsonb_build_object('providerKind', 'omnipack')),
+    'selectedDeliveryCandidates', jsonb_build_array(jsonb_build_object('providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'))),
     'recipientCandidates', jsonb_build_array('Old snapshot label'),
     'phoneCandidates', jsonb_build_array('+48000000072'),
     'legacyClientEmail', 'old-generation@example.invalid',
@@ -583,18 +594,18 @@ SELECT is(
 -- row. Candidate selection must skip it quietly, continue, and freeze the good
 -- legacy contact before an old worker re-reads its payload inputs.
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency,
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code,
   subtotal_cents, total_cents, metadata
 ) VALUES
   (
     '71a00000-0000-4000-8000-0000000000b7',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'LEGACY-PAID-MALFORMED-7', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+    'LEGACY-PAID-MALFORMED-7', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
     jsonb_build_object('runtimeFinalize', jsonb_build_object(
       'selectedDelivery', jsonb_build_object(
-        'kind', 'courier', 'deliveryKind', 'courier', 'providerKind', 'omnipack',
-        'carrierKind', 'omnipack', 'carrierCode', 'TEST', 'serviceCode', 'TEST'
+        'kind', 'courier', 'deliveryKind', 'courier', 'providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
+        'carrierKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'carrierCode', 'TEST', 'serviceCode', 'TEST'
       )
     ))
   ),
@@ -602,11 +613,11 @@ INSERT INTO public.commerce_orders (
     '71a00000-0000-4000-8000-0000000000b8',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'LEGACY-PERSISTED-RECIPIENT-8', 'fulfillment_pending', 'one_time', 'XTS', 1000, 1000,
+    'LEGACY-PERSISTED-RECIPIENT-8', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 1000, 1000,
     jsonb_build_object('runtimeFinalize', jsonb_build_object(
       'selectedDelivery', jsonb_build_object(
-        'kind', 'courier', 'deliveryKind', 'courier', 'providerKind', 'omnipack',
-        'carrierKind', 'omnipack', 'carrierCode', 'TEST', 'serviceCode', 'TEST'
+        'kind', 'courier', 'deliveryKind', 'courier', 'providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
+        'carrierKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'carrierCode', 'TEST', 'serviceCode', 'TEST'
       )
     ))
   );
@@ -620,7 +631,7 @@ INSERT INTO public.commerce_fulfillment_orders (
     '71a00000-0000-4000-8000-0000000000b7',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'legacy-paid-malformed-7', 'created', 'omnipack',
+    'legacy-paid-malformed-7', 'created', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
     jsonb_build_object(
       'recipientName', 'Malformed Candidate 7', 'line1', 'Malformed 7',
       'city', 'Testville', 'postalCode', '00-007', 'country', 'ZZ',
@@ -633,7 +644,7 @@ INSERT INTO public.commerce_fulfillment_orders (
     '71a00000-0000-4000-8000-0000000000b8',
     '71a00000-0000-4000-8000-0000000000a3',
     '71a00000-0000-4000-8000-0000000000a4',
-    'legacy-persisted-recipient-8', 'created', 'omnipack',
+    'legacy-persisted-recipient-8', 'created', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
     jsonb_build_object(
       'recipientName', 'Persisted Recipient 8', 'line1', 'Persisted 8', 'line2', 'Suite 8',
       'city', 'Testville', 'postalCode', '00-008', 'country', 'ZZ',

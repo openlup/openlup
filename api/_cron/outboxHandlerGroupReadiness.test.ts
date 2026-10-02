@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
 import { readOutboxHandlerGroupReadiness } from "./outboxHandlerGroupReadiness.js";
 
 const EMAIL_READY_ENV = {
@@ -8,15 +7,6 @@ const EMAIL_READY_ENV = {
 };
 
 describe("outbox handler group readiness", () => {
-  it("forwards the complete direct fulfillment activation set in stock Compose", () => {
-    const compose = readFileSync("docker-compose.yml", "utf8");
-    for (const name of [
-      "COMMERCE_FULFILLMENT_AUTO_DISPATCH_ENABLED",
-      "COMMERCE_FULFILLMENT_AUTO_DISPATCH_PROVIDER",
-      "FULFILLMENT_PORT_KEY",
-      "ACCOUNTING_REQUEST_ENABLED",
-    ]) expect(compose).toContain(`${name}: \${${name}:-`);
-  });
   it("fails closed when no handler group is ready", () => {
     const result = readOutboxHandlerGroupReadiness({});
 

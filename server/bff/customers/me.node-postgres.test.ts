@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const FLAG = "COMMERCE_V2_W12_CUSTOMER_AUTH_UI";
 const ORIGINAL_FLAG = process.env[FLAG];
 const ORIGINAL_BUNDLE = process.env.PLATFORM_BUNDLE;
@@ -60,6 +70,23 @@ describe("GET /api/bff/customers/me direct identity errors", () => {
     });
     expect(mePort.getCustomerMe).not.toHaveBeenCalled();
   });
+  it("public default refuses before authenticating or reading the direct profile", async () => {
+    unitComposition.enabled = false;
+    const authenticateUser = vi.fn();
+    const mePort = { getCustomerMe: vi.fn() };
+    try {
+      const handler = await routeWith({ authenticateUser, mePort });
+      const res = response();
+      await handler(request(), res as never);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }) }));
+      expect(authenticateUser).not.toHaveBeenCalled();
+      expect(mePort.getCustomerMe).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 async function routeWith(binding: unknown) {

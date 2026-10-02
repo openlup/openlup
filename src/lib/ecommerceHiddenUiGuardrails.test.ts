@@ -97,7 +97,6 @@ function isAdminFile(file: string): boolean {
 function isAdminOmsPreviewFile(file: string): boolean {
   const path = relativePath(file);
   return new Set([
-    "src/App.tsx",
     "src/components/admin/AdminLayout.tsx",
     "src/pages/admin/DashboardPage.tsx",
     "src/pages/admin/OrderDetailBlocks.tsx",
@@ -142,8 +141,8 @@ describe("ecommerce hidden UI guardrails", () => {
     const uiRuntimeFiles = [
       ...readFiles(join(repoRoot, "src/pages")),
       ...readFiles(join(repoRoot, "src/components")),
-      join(repoRoot, "src/App.tsx"),
-      join(repoRoot, "src/main.tsx"),
+      join(repoRoot, "src/public-reference/App.tsx"),
+      join(repoRoot, "src/public-reference/main.tsx"),
     ]
       .filter((file) => /\.(ts|tsx)$/.test(file))
       .filter((file) => !/\.(test|spec)\./.test(file))

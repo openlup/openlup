@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Locale } from "../../../lib/i18n/resolveLocale.js";
 import { APP_EMAIL_BRAND, APP_EMAIL_TEAM_SIGNOFF } from "../../../lib/brand/appBrand.js";
@@ -32,8 +32,8 @@ describe("shipmentDispatchedEmailContent", () => {
     const rendered = render(content, locale);
 
     expect(rendered.preheader.length).toBeGreaterThan(0);
-    expect(rendered.subject).toContain("OPENLUP-ABC123");
-    expect(rendered.text).toContain("OPENLUP-ABC123");
+    expect(rendered.subject).toContain("ORDER-ABC123");
+    expect(rendered.text).toContain("ORDER-ABC123");
     expect(rendered.text).toContain("JD0123456789");
     // The tracking page is a text link inside the number box, not a button.
     expect(content.blocks).toContainEqual(expect.objectContaining({
@@ -45,9 +45,9 @@ describe("shipmentDispatchedEmailContent", () => {
     // The account guide card is the one call to action and lives under the site origin.
     expect(content.blocks).toContainEqual(expect.objectContaining({
       kind: "featureCard",
-      cta: expect.objectContaining({ href: `${SITE}/porady/pliki/przewodnik-po-koncie-klienta.pdf` }),
+      cta: expect.objectContaining({ href: `${SITE}/guides/account.pdf` }),
     }));
-    expect(rendered.text).toContain("Fistaszek");
+    expect(rendered.text).toContain("ORDER-ABC123");
   });
 
   it("keeps the number box without a link when the carrier gave no tracking page", () => {
@@ -93,7 +93,7 @@ describe("shipmentDispatchedEmailContent", () => {
 
     expect(content.blocks).toContainEqual(expect.objectContaining({ kind: "accentBox" }));
     expect(content.blocks.map((block) => block.kind)).not.toContain("linkParagraph");
-    expect(rendered.html).toContain(`href="${SITE}/porady/pliki/przewodnik-po-koncie-klienta.pdf"`);
+    expect(rendered.html).toContain(`href="${SITE}/guides/account.pdf"`);
     expect(rendered.html).not.toContain("track.example");
   });
 
@@ -106,7 +106,36 @@ describe("shipmentDispatchedEmailContent", () => {
       siteOrigin: `${SITE}/`,
     }, APP_EMAIL_TEAM_SIGNOFF[TEST_LOCALES[0]]);
 
-    expect(render(content, TEST_LOCALES[0]).html).toContain(`href="${SITE}/porady/pliki/`);
+    expect(render(content, TEST_LOCALES[0]).html).toContain(`href="${SITE}/guides/`);
     expect(render(content, TEST_LOCALES[0]).html).not.toContain(`${SITE}//`);
   });
+  it("forwards optional context and guide illustration through an explicit selected copy pack", async () => {
+    vi.resetModules();
+    const contextText = vi.fn((name: string | null) => `Synthetic context: ${name ?? "absent"}`);
+    vi.doMock("#commerce-email-content", async () => {
+      const actual = await vi.importActual<typeof import("#commerce-email-content")>("#commerce-email-content");
+      const copy = actual.commerceEmailContent.shipmentDispatched.pl;
+      return { commerceEmailContent: { ...actual.commerceEmailContent,
+        shipmentDispatched: { ...actual.commerceEmailContent.shipmentDispatched, pl: { ...copy,
+          accountGuide: { ...copy.accountGuide, path: "synthetic/guide.pdf", text: contextText,
+            image: { path: "synthetic/cover.svg", alt: "Synthetic guide cover", widthPx: 100, heightPx: 80 } },
+        } },
+      } };
+    });
+    try {
+      const { shipmentDispatchedEmailContent: selected } = await import("./shipmentDispatched.js");
+      const output = render(selected("pl", { firstName: null, orderId: "order_abc123", petName: "Context-1",
+        siteOrigin: `${SITE}/`, trackingNumber: null, trackingUrl: null,
+      }, "Synthetic team"), "pl");
+      expect(contextText).toHaveBeenCalledWith("Context-1");
+      expect(output.text).toContain("Synthetic context: Context-1");
+      expect(output.html).toContain(`href="${SITE}/synthetic/guide.pdf"`);
+      expect(output.html).toContain(`src="${SITE}/synthetic/cover.svg"`);
+      expect(output.html).not.toContain(`${SITE}//`);
+    } finally {
+      vi.doUnmock("#commerce-email-content");
+      vi.resetModules();
+    }
+  });
+
 });

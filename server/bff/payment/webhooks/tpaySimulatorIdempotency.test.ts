@@ -12,6 +12,16 @@ const { mockCreateClient } = vi.hoisted(() => ({
 
 vi.mock("@supabase/supabase-js", () => ({ createClient: mockCreateClient }));
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const ENV_KEYS = [
   "COMMERCE_PROVIDER_PAYMENTS_ENABLED",
   "COMMERCE_PROVIDER_WEBHOOKS_ENABLED",
@@ -81,7 +91,7 @@ describe("Tpay simulator webhook re-delivery idempotency", () => {
       .mockResolvedValueOnce(APPLY_CONFLICT);
     mockCreateClient.mockReturnValue({ rpc });
     enableSimulator();
-    const { default: handler } = await import("./tpay-simulator.js");
+    const handler = await loadHandler();
     const res = createResponse();
 
     await handler(request({ providerPaymentId: PROVIDER_PAYMENT_ID, resultStatus: "succeeded" }), res);
@@ -101,7 +111,7 @@ describe("Tpay simulator webhook re-delivery idempotency", () => {
       .mockResolvedValueOnce({ data: { paymentMethodRef: { replayed: false } }, error: null });
     mockCreateClient.mockReturnValue({ rpc });
     enableSimulator();
-    const { default: handler } = await import("./tpay-simulator.js");
+    const handler = await loadHandler();
     const res = createResponse();
 
     await handler(request({
@@ -129,7 +139,7 @@ describe("Tpay simulator webhook re-delivery idempotency", () => {
       .mockResolvedValueOnce({ data: null, error: { code: "40P01", message: "deadlock detected" } });
     mockCreateClient.mockReturnValue({ rpc });
     enableSimulator();
-    const { default: handler } = await import("./tpay-simulator.js");
+    const handler = await loadHandler();
     const res = createResponse();
 
     await handler(request({ providerPaymentId: PROVIDER_PAYMENT_ID, resultStatus: "succeeded" }), res);
@@ -146,7 +156,7 @@ describe("Tpay simulator webhook re-delivery idempotency", () => {
       .mockResolvedValueOnce({ data: null, error: { code: "23505", message: "commerce_idempotency_conflict" } });
     mockCreateClient.mockReturnValue({ rpc });
     enableSimulator();
-    const { default: handler } = await import("./tpay-simulator.js");
+    const handler = await loadHandler();
     const res = createResponse();
 
     await handler(request({ providerPaymentId: PROVIDER_PAYMENT_ID, resultStatus: "succeeded" }), res);
@@ -157,7 +167,27 @@ describe("Tpay simulator webhook re-delivery idempotency", () => {
       error: expect.objectContaining({ code: "CONFLICT" }),
     }));
   });
+  it("public default refuses before creating client or provider dependencies", async () => {
+    unitComposition.enabled = false;
+    enableSimulator();
+    try {
+      const handler = await loadHandler();
+      const res = createResponse();
+      await handler(request(), res);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }) }));
+      for (const effect of [mockCreateClient]) expect(effect).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
+
+async function loadHandler() {
+  const { default: handler } = await import("./tpay-simulator.js");
+  return handler;
+}
 
 function request(body: unknown = "{}", headers: Record<string, string> = {}): VercelRequest {
   return { method: "POST", body, query: {}, headers } as unknown as VercelRequest;

@@ -6,6 +6,16 @@ import {
 } from "../../domains/platform-runtime/platformKernel.js";
 import handler from "./me.js";
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const FLAG = "COMMERCE_V2_W12_CUSTOMER_AUTH_UI";
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const PROFILE = {
@@ -184,6 +194,21 @@ describe("GET /api/bff/customers/me default bundle contract", () => {
       expect(transport.fetch).not.toHaveBeenCalled();
     },
   );
+  it("public default refuses before making identity or profile transport requests", async () => {
+    unitComposition.enabled = false;
+    const transport = installTransport({ profile: PROFILE });
+    configureDefaultBundle(DEFAULT_PLATFORM_BUNDLE);
+    try {
+      const res = createResponse();
+      await handler(request("GET"), res);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }) }));
+      expect(transport.fetch).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 function configureDefaultBundle(bundle: (typeof BUNDLES)[number]) {

@@ -27,6 +27,16 @@ vi.mock("../../../../adapters/supabase/omnipackWebhookGateway.js", () => ({
   createSupabaseOmnipackWebhookGateway: mockCreateGateway,
 }));
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const ENV_KEYS = [
   "COMMERCE_OMNIPACK_WEBHOOKS_ENABLED",
   "OMNIPACK_PROVIDER_ENABLED",
@@ -251,6 +261,25 @@ describe("OmniPack webhook BFF route", () => {
     expect(mockCreateGateway).toHaveBeenCalledTimes(1);
     expect(res.status).toHaveBeenCalledWith(400);
   });
+  it.each(CONCRETE_ROUTES)("public default refuses $event before gateway or payload work", async ({ handler }) => {
+    unitComposition.enabled = false;
+    mockCreateGateway.mockClear();
+    enableWebhookEnv();
+    const touched = vi.fn(() => { throw new Error("payload read"); });
+    const req = { method: "POST", headers: {} };
+    Object.defineProperty(req, "body", { get: touched });
+    try {
+      const res = response();
+      await handler(req as never, res);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }) }));
+      expect(mockCreateGateway).not.toHaveBeenCalled();
+      expect(touched).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 function request(

@@ -6,7 +6,7 @@
 -- migration; the migration itself owns the one-time pre-existing-row backfill.
 
 BEGIN;
-SELECT plan(47);
+SELECT plan(46);
 
 INSERT INTO public.admin_users (id, email, role, is_machine_actor) VALUES
   ('ab100000-0000-4000-8000-000000000001', 'membership-actor@example.invalid', 'admin', false),
@@ -83,20 +83,9 @@ SELECT ok(
   'PUBLIC holds no execute privilege on the exact synthetic-fixture cleanup RPC'
 );
 
-SET LOCAL ROLE service_role;
-
-SELECT lives_ok(
-  $$ INSERT INTO public.admin_users (id, email, role, is_machine_actor)
-     VALUES (
-       'ab100000-0000-4000-8000-000000000005',
-       'admin-oms-preview+fixture-run-deadbeef@example.invalid',
-       'admin',
-       true
-     ) $$,
-  'service_role can create the synthetic fixture through INSERT only'
-);
-
-RESET ROLE;
+-- The owner creates fixture data; service-role INSERT is not a runtime contract.
+INSERT INTO public.admin_users (id,email,role,is_machine_actor) VALUES
+ ('ab100000-0000-4000-8000-000000000005','admin-oms-preview+fixture-run-deadbeef@example.invalid','admin',true);
 
 INSERT INTO public.admin_audit_events
   (actor_admin_id, actor_email, action, target_admin_id, target_email)
@@ -162,12 +151,15 @@ SELECT throws_ok(
   'a mismatched id and exact-shaped email cannot select a different fixture'
 );
 
+RESET ROLE;
+-- Owner-only witness; cleanup RPC continues to execute as service_role.
 SELECT is(
   (SELECT count(*)::integer FROM public.admin_users
    WHERE id = 'ab100000-0000-4000-8000-000000000006'),
   1,
   'the mismatched synthetic fixture remains present'
 );
+SET LOCAL ROLE service_role;
 
 SELECT throws_ok(
   $$ SELECT public.admin_oms_preview_cleanup_fixture_admin(
@@ -178,12 +170,15 @@ SELECT throws_ok(
   'a human row with a fixture-shaped email cannot be physically removed'
 );
 
+RESET ROLE;
+-- Owner-only witness; cleanup RPC continues to execute as service_role.
 SELECT is(
   (SELECT count(*)::integer FROM public.admin_users
    WHERE id = 'ab100000-0000-4000-8000-000000000007'),
   1,
   'the human row remains present after refused cleanup'
 );
+SET LOCAL ROLE service_role;
 
 SELECT throws_ok(
   $$ SELECT public.admin_oms_preview_cleanup_fixture_admin(
@@ -194,12 +189,15 @@ SELECT throws_ok(
   'a machine row with an ordinary email cannot be physically removed'
 );
 
+RESET ROLE;
+-- Owner-only witness; cleanup RPC continues to execute as service_role.
 SELECT is(
   (SELECT count(*)::integer FROM public.admin_users
    WHERE id = 'ab100000-0000-4000-8000-000000000008'),
   1,
   'the ordinary-email machine row remains present after refused cleanup'
 );
+SET LOCAL ROLE service_role;
 
 SELECT set_config('app.admin_oms_preview_fixture_cleanup', 'true', true);
 

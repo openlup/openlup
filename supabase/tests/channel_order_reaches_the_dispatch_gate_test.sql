@@ -12,6 +12,17 @@
 -- returns the order. Nothing here dispatches anything; the point is candidacy.
 --
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['ZZ'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(12);
 
 -- The fixture's currency, country and product kind are deliberately the neutral placeholders this
@@ -50,7 +61,7 @@ INSERT INTO public.sales_channels (
   -- while implying this suite had checked them. It has not: what a dispatch payload does with a
   -- carrier code is the dispatch port's question and has its own suite. This one asks only whether
   -- a marketplace order is eligible to leave at all.
-  '{"kind":"courier","deliveryKind":"courier","providerKind":"omnipack"}'::jsonb
+  jsonb_build_object('kind', 'courier', 'deliveryKind', 'courier', 'providerKind', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'))
 ), (
   'd0000000-0000-4000-8000-000000000006', 'd0000000-0000-4000-8000-000000000004',
   'channel-parity-silent', 'marketplace', 'Silent', 'active', 'XTS', 'ZZ',

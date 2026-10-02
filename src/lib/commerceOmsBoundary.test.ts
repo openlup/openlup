@@ -1,48 +1,41 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { currentTableStatements, explicitFunctionExecuteRoles } from "../test/historicalBoundarySchema";
 
 const repoRoot = process.cwd();
-const migration = read("supabase/migrations/20260605100000_commerce_v2_phase1_hidden_oms.sql");
-const hardeningMigration = read("supabase/migrations/20260613221000_admin_oms_preview_hardening.sql");
-// The LIVE body of public.commerce_oms_admin_list_queue: the one an admin queue
-// request actually executes. Until W0 these assertions read three SUPERSEDED
-// migrations (20260614143000_admin_oms_queue_aggregates,
-// 20260704180000_admin_oms_paid_summary_totals,
-// 20260704190000_admin_dashboard_command_center_queue), each of which had since
-// been fully replaced. They therefore proved nothing about production.
-const liveQueueMigration = read("supabase/migrations/20260816082705_oms_queue_summary_single_currency.sql");
-const probe = read("docs/sql/commerce_oms_hold_rehearsal_probe.sql");
-const queueProbe = read("docs/sql/commerce_oms_queue_aggregates_probe.sql");
+const holdNames = ["commerce_oms_create_hold", "commerce_oms_release_hold"];
+const migration = [currentTableStatements("commerce_order_holds"), currentTableStatements("commerce_order_operations"), ...holdNames.map(effectiveFunctionBody)].join("\n");
+const hardeningMigration = effectiveFunctionBody("commerce_oms_update_shipping_address");
+const liveQueueMigration = effectiveFunctionBody("commerce_oms_admin_list_queue");
 
 describe("commerce OMS hidden boundary", () => {
   it("adds OMS hold and operation tables without payment-control result logic", () => {
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.commerce_order_holds");
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.commerce_order_operations");
-    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.commerce_oms_create_hold");
-    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.commerce_oms_release_hold");
+    expect(migration).toContain("CREATE TABLE public.commerce_order_holds");
+    expect(migration).toContain("CREATE TABLE public.commerce_order_operations");
+    expect(migration).toContain("CREATE FUNCTION public.commerce_oms_create_hold");
+    expect(migration).toContain("CREATE FUNCTION public.commerce_oms_release_hold");
     expect(migration).not.toContain("commerce_payment_control_apply_result");
     expect(migration).not.toContain("commerce_payment_state_transitions");
   });
 
-  it("keeps hold RPCs service-role-only and rehearses payment-control non-mutation", () => {
-    for (const required of [
-      "TO service_role",
-      "commerce_oms_hold_replay_failed",
-      "commerce_oms_touched_payment_control_tables",
-      "commerce_oms_hold_rpc_publicly_exposed",
-      "ROLLBACK",
-    ]) {
-      expect(`${migration}\n${probe}`).toContain(required);
+  it("keeps hold RPCs server-only without payment-control writes", () => {
+    for (const name of holdNames) {
+      const body = effectiveFunctionBody(name);
+      expect(body).not.toMatch(/(?:INSERT INTO|UPDATE|DELETE FROM) public\.(?:commerce_payment_intents|commerce_payment_attempts|commerce_payments|commerce_payment_state_transitions)/);
+      for (const roles of explicitFunctionExecuteRoles(name).values()) {
+        expect(roles.has("service_role")).toBe(true);
+        for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+      }
     }
   });
-
   it("keeps hidden OMS routes out of the current production UI", () => {
     const uiFiles = [
       ...readFiles(join(repoRoot, "src/pages")),
       ...readFiles(join(repoRoot, "src/components")),
-      join(repoRoot, "src/App.tsx"),
-      join(repoRoot, "src/main.tsx"),
+      join(repoRoot, "src/public-reference/App.tsx"),
+      join(repoRoot, "src/public-reference/main.tsx"),
     ]
       .filter((file) => /\.(ts|tsx)$/.test(file))
       .filter((file) => !/\.(test|spec)\./.test(file))
@@ -61,21 +54,28 @@ describe("commerce OMS hidden boundary", () => {
 
   it("hardens admin OMS preview address correction behind a service-role RPC", () => {
     expect(hardeningMigration).toContain("'shipping_address_updated'");
-    expect(hardeningMigration).toContain("CREATE OR REPLACE FUNCTION public.commerce_oms_update_shipping_address");
-    expect(hardeningMigration).toContain("commerce_oms_shipping_address_locked_after_label");
-    expect(hardeningMigration).toContain("shipping_address_snapshot = v_shipping_address_snapshot");
-    expect(hardeningMigration).toContain("TO service_role");
+    expect(hardeningMigration).toContain("CREATE FUNCTION public.commerce_oms_update_shipping_address");
+    expect(hardeningMigration).toContain("commerce_oms_delivery_contact_submission_started");
+    expect(hardeningMigration).toContain("v_fulfillment.status NOT IN ('created', 'packed', 'label_pending')");
+    expect(hardeningMigration).toContain("shipping_address_snapshot = shipping_address_snapshot || jsonb_build_object(");
+    expect(hardeningMigration).toContain("'deliveryContact', v_updated_contact");
+    for (const roles of explicitFunctionExecuteRoles("commerce_oms_update_shipping_address").values()) {
+      expect(roles.has("service_role")).toBe(true);
+      for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+    }
   });
 
   it("keeps the live admin OMS queue aggregate read model service-role-only", () => {
-    expect(liveQueueMigration).toContain("CREATE OR REPLACE FUNCTION public.commerce_oms_admin_list_queue");
+    expect(liveQueueMigration).toContain("CREATE FUNCTION public.commerce_oms_admin_list_queue");
     expect(liveQueueMigration).toContain("STABLE");
     expect(liveQueueMigration).toContain("SECURITY DEFINER");
     expect(liveQueueMigration).toContain("summaryCounts");
     expect(liveQueueMigration).toContain("fulfillment_blocked");
     expect(liveQueueMigration).toContain("review_fulfillment");
-    expect(liveQueueMigration).toContain("TO service_role");
-    expect(liveQueueMigration).toContain("FROM PUBLIC, anon, authenticated");
+    for (const roles of explicitFunctionExecuteRoles("commerce_oms_admin_list_queue").values()) {
+      expect(roles.has("service_role")).toBe(true);
+      for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+    }
   });
 
   // The provider-coupling MEASUREMENT that used to live here as an assertion has
@@ -87,13 +87,6 @@ describe("commerce OMS hidden boundary", () => {
   // findings belong, and the OSS readiness scanner already measures that
   // vocabulary continuously against its own baseline.
 
-  it("documents a rollback-only probe for Admin OMS queue pagination beyond 500", () => {
-    expect(queueProbe).toContain("generate_series(1, 506)");
-    expect(queueProbe).toContain("commerce_oms_queue_beyond_500_wrong");
-    expect(queueProbe).toContain("summaryCounts,readyForFulfillment");
-    expect(queueProbe).toContain("commerce_oms_queue_rpc_grants_wrong");
-    expect(queueProbe).toContain("ROLLBACK");
-  });
 
   it("keeps admin dashboard summary totals paid-only in the live queue RPC", () => {
     expect(liveQueueMigration).toContain("summaryTotals");
@@ -127,7 +120,6 @@ function read(path: string): string {
 function isAllowedAdminOmsPreviewFile(file: string): boolean {
   const path = relativePath(file);
   return new Set([
-    "src/App.tsx",
     "src/components/admin/AdminLayout.tsx",
     // Shell OMS attention badge; its query is gated on isAdminOmsSurfaceAllowed()
     // so no OMS request is issued where the surface is hidden.

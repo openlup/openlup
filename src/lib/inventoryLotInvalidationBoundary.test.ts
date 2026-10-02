@@ -1,11 +1,8 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { explicitFunctionExecuteRoles } from "../test/historicalBoundarySchema";
 import { describe, expect, it } from "vitest";
 
-const migration = read("supabase/migrations/20260605153000_inventory_lot_invalidation_guard.sql");
-const revokeMigration = read(
-  "supabase/migrations/20260605160000_inventory_lot_invalidation_revoke_execute.sql",
-);
+const migration = [effectiveFunctionBody("inventory_guard_consumable_lot"), effectiveFunctionBody("inventory_invalidate_lot")].join("\n");
 
 describe("inventory lot invalidation boundary", () => {
   it("releases active reservations for recalled/expired lots and blocks stale consumption", () => {
@@ -23,18 +20,12 @@ describe("inventory lot invalidation boundary", () => {
   });
 
   it("keeps lot invalidation functions service-role-only", () => {
-    for (const required of [
-      "REVOKE ALL ON FUNCTION public.inventory_guard_consumable_lot()",
-      "REVOKE ALL ON FUNCTION public.inventory_invalidate_lot(text, uuid, text, text, jsonb)",
-      "FROM PUBLIC, anon, authenticated",
-      "GRANT EXECUTE ON FUNCTION public.inventory_invalidate_lot(text, uuid, text, text, jsonb)",
-      "TO service_role",
-    ]) {
-      expect(revokeMigration).toContain(required);
+    for (const name of ["inventory_guard_consumable_lot", "inventory_invalidate_lot"]) {
+      const overloads = explicitFunctionExecuteRoles(name);
+      for (const roles of overloads.values()) {
+        expect(roles.has("service_role")).toBe(true);
+        for (const browser of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(browser)).toBe(false);
+      }
     }
   });
 });
-
-function read(path: string): string {
-  return readFileSync(join(process.cwd(), path), "utf8");
-}

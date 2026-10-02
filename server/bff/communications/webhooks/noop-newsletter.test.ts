@@ -2,6 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const { mockCreateClient, mockCreateSupabasePort, port } = vi.hoisted(() => {
   const port = {
     recordProviderEvent: vi.fn(),
@@ -100,6 +110,23 @@ describe("POST /api/bff/communications/webhooks/noop-newsletter", () => {
     }));
     expect(res.status).toHaveBeenCalledWith(200);
   });
+  it("public default refuses before privileged consent or event work", async () => {
+    unitComposition.enabled = false;
+    setEnv();
+    try {
+      const { default: handler } = await import("./noop-newsletter.js");
+      const res = createResponse();
+      await handler(request(JSON.stringify(validPayload())), res);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        ok: false, error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }),
+      }));
+      for (const effect of [mockCreateClient, mockCreateSupabasePort, port.recordProviderEvent, port.recordPermission]) expect(effect).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 function setEnv() {

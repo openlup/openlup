@@ -6,6 +6,12 @@
 -- readiness paths below remain deliberately unchanged in behaviour.
 
 BEGIN;
+-- Explicit synthetic settlement coordinates; these rows are rolled back with this test.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('settlement_currency', 'XTS', NULL), ('settlement_region', 'ZZ', NULL),
+  ('min_product_payable_minor', NULL, 1)
+ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
+
 SELECT plan(19);
 
 -- ---- Fixtures ---------------------------------------------------------------
@@ -106,7 +112,7 @@ SELECT is(
   ARRAY[public.platform_region_code()],
   'the per-lane evaluator row is scoped to the market the mirror names');
 
-UPDATE public.commerce_settings SET value_text = 'ZZ' WHERE key = 'settlement_region';
+UPDATE public.commerce_settings SET value_text = 'XY' WHERE key = 'settlement_region';
 SELECT lives_ok(
   $$ SELECT public.admin_promotion_code_create(
        'c3100000-0000-4000-8000-000000000001', 'f3c-second', 'F3c Second', NULL::text,
@@ -120,7 +126,7 @@ SELECT is(
      JOIN public.promotion_code_bindings pcb ON pcb.promotion_id = p.id
      JOIN public.promotion_codes pc ON pc.id = pcb.promotion_code_id
     WHERE pc.code_normalized = 'F3C-SECOND'),
-  ARRAY['ZZ'],
+  ARRAY['XY'],
   'and it is scoped to the new market, so the value is read per call and not compiled in');
 UPDATE public.commerce_settings AS settings SET value_text = (
   SELECT list.region_code FROM public.price_lists AS list
@@ -175,7 +181,7 @@ SELECT is(
 
 RESET ROLE;
 
-UPDATE public.commerce_settings SET value_text = 'XTS' WHERE key = 'settlement_currency';
+UPDATE public.commerce_settings SET value_text = 'XXX' WHERE key = 'settlement_currency';
 SELECT is(
   (SELECT public.commerce_offer_policy_v2_readiness()#>>'{evidence,activePriceListCount}'),
   '0',
@@ -189,7 +195,7 @@ UPDATE public.commerce_settings AS settings SET value_text = (
    WHERE list.id = 'c3400000-0000-4000-8000-000000000001')
  WHERE settings.key = 'settlement_currency';
 
-UPDATE public.commerce_settings SET value_text = 'ZZ' WHERE key = 'settlement_region';
+UPDATE public.commerce_settings SET value_text = 'XY' WHERE key = 'settlement_region';
 SELECT is(
   (SELECT public.commerce_offer_policy_v2_readiness()#>>'{evidence,activePriceListCount}'),
   '0',

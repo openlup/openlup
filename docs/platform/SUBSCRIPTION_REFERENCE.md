@@ -24,6 +24,21 @@ and a local renewal-date summary and confirmation. A renewal date is the planned
 renewal/charge date, never a promised delivery date. Automatic renewal, fulfillment,
 failed-renewal recovery and delivery alignment are separate acceptance stages.
 
+## Test scope
+
+The selected subscription UI supplies the purchase, callback, stored account and
+renewal-date interactions described above. Older composer, payment-recovery,
+delivery-timeline and admin dashboard screens are not part of that composition.
+Their interaction suites become acceptance work when an approved profile mounts
+those exact screens; source availability alone does not claim that journey.
+Keep the selected renewal-date modal tested, including the distinction between
+a renewal forecast and a promised delivery date.
+
+This limit does not retire installed database guarantees. Money, ownership,
+reservation conservation, replay, recovery-token security and delivery chronology
+still need their own runtime-role proofs even before a complete provider journey.
+Provider fixtures in those proofs do not activate external integrations.
+
 ## Create an owned disposable installation
 
 Run from this repository root. Choose an unused project name, absolute empty

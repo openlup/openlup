@@ -4,6 +4,17 @@
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['ZZ'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(5);
 
 INSERT INTO public.clients (id, email)
@@ -21,9 +32,9 @@ VALUES ('a9400000-0000-0000-0000-000000000001', 'cycle-fulfillment-product', 'Cy
 INSERT INTO public.catalog_skus (id, product_id, sku, title, pet_type, status, net_weight_g, kcal_per_unit)
 VALUES ('a9500000-0000-0000-0000-000000000001', 'a9400000-0000-0000-0000-000000000001', 'CYCLE-FULFILLMENT', 'Cycle Fulfillment', 'dog', 'active', 400, 500);
 
--- Renewal now reserves via the Omnipack ORACLE path, so seed the oracle
+-- Renewal now reserves via the the provider ORACLE path, so seed the oracle
 -- (fulfillment_provider_upsert_stock_current) instead of a local balance. It
--- auto-creates the lot_id=NULL mirror balance at the omnipack-stock-master
+-- auto-creates the lot_id=NULL mirror balance at the the provider-stock-master
 -- location (from the fulfillment_provider_stock_authority migration).
 SELECT public.fulfillment_provider_upsert_stock_current(
   'cycle-fulfillment-oracle-1',

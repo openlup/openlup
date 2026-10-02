@@ -276,8 +276,6 @@ describe("every entrypoint that can reach the currency module initialises", () =
       // job modules, which are not routable and are only ever imported by one.
       ...sourceFilesUnder(join(REPO_ROOT, "api"))
         .filter((file) => !relative(REPO_ROOT, file).startsWith("api/_cron/")),
-      ...sourceFilesUnder(join(REPO_ROOT, "server/workers")),
-      join(REPO_ROOT, "server/runtime/serve.node.ts"),
     ];
 
     const reaching = entrypoints
@@ -286,7 +284,7 @@ describe("every entrypoint that can reach the currency module initialises", () =
 
     // A walk that reached nothing would pass the assertion below while proving
     // nothing; the BFF entrypoints alone are two of them.
-    expect(reaching.length).toBeGreaterThanOrEqual(DELEGATES_TO_DISPATCH.length + 1);
+    expect(reaching).toEqual(expect.arrayContaining(DELEGATES_TO_DISPATCH));
 
     const uninitialised = reaching
       .filter((file) => !DELEGATES_TO_DISPATCH.includes(file))

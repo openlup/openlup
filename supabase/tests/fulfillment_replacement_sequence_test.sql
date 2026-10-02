@@ -19,6 +19,11 @@
 -- Run via: the local pgTAP lane, with a schema reset first (stale state lies).
 
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['ZZ'])
+ON CONFLICT (kind) DO NOTHING;
+
 SELECT plan(27);
 
 INSERT INTO public.admin_users (id, email, role)
@@ -39,62 +44,62 @@ VALUES
   ('77000000-0000-4000-8000-0000000000d3', '77000000-0000-4000-8000-0000000000a3', 'shipping', 'Sequence Street 3', 'Testville', '00-003', 'ZZ');
 
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency, total_cents, subtotal_cents
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code, total_cents, subtotal_cents
 )
 VALUES
-  ('77000000-0000-4000-8000-0000000000b1', '77000000-0000-4000-8000-0000000000a1', '77000000-0000-4000-8000-0000000000d1', 'REPL-R1-01', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000b2', '77000000-0000-4000-8000-0000000000a2', '77000000-0000-4000-8000-0000000000d2', 'REPL-R1-02', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000b3', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-03', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000b4', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-04', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000b5', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-05', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000b6', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-06', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000b7', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-07', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000b8', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-08', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000b9', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-09', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000),
-  ('77000000-0000-4000-8000-0000000000ba', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-10', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000);
+  ('77000000-0000-4000-8000-0000000000b1', '77000000-0000-4000-8000-0000000000a1', '77000000-0000-4000-8000-0000000000d1', 'REPL-R1-01', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000b2', '77000000-0000-4000-8000-0000000000a2', '77000000-0000-4000-8000-0000000000d2', 'REPL-R1-02', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000b3', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-03', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000b4', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-04', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000b5', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-05', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000b6', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-06', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000b7', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-07', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000b8', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-08', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000b9', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-09', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000),
+  ('77000000-0000-4000-8000-0000000000ba', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'REPL-R1-10', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000);
 
 INSERT INTO public.commerce_orders (
-  id, client_id, shipping_address_id, order_number, status, mode, currency,
+  id, client_id, shipping_address_id, order_number, status, mode, currency, region_code,
   total_cents, subtotal_cents, metadata
 ) VALUES (
   '77000000-0000-4000-8000-0000000000bb',
   '77000000-0000-4000-8000-0000000000a3',
   '77000000-0000-4000-8000-0000000000d3',
-  'REPL-R1-11', 'fulfillment_pending', 'one_time', 'XTS', 10000, 10000,
+  'REPL-R1-11', 'fulfillment_pending', 'one_time', 'XTS', 'ZZ', 10000, 10000,
   '{"runtimeFinalize":{"deliveryContact":{"schemaVersion":1,"source":"checkout_submission","revision":1,"recipientName":"Before Parcel","contactEmail":"before@example.invalid","contactPhone":"+48000000001","line1":"Before Street 1","line2":null,"city":"Beforetown","postalCode":"00-011","country":"ZZ","selectedDelivery":null,"deliveryInstructions":null,"courierInstructions":null}}}'::jsonb
 );
 
 -- Originals. Every one of these takes `sequence_no = 0` from the column default,
 -- exactly as `commerce_fulfillment_create_order` does today.
-INSERT INTO public.commerce_fulfillment_orders (
+INSERT INTO public.commerce_fulfillment_orders (provider_kind,
   id, order_id, client_id, shipping_address_id, create_idempotency_key, status,
   shipping_address_snapshot, delivered_at
 )
 VALUES
-  ('77000000-0000-4000-8000-0000000000f1', '77000000-0000-4000-8000-0000000000b1', '77000000-0000-4000-8000-0000000000a1', '77000000-0000-4000-8000-0000000000d1', 'repl-fo-1',  'delivered', '{}'::jsonb, now() - interval '55 days'),
-  ('77000000-0000-4000-8000-0000000000f3', '77000000-0000-4000-8000-0000000000b2', '77000000-0000-4000-8000-0000000000a2', '77000000-0000-4000-8000-0000000000d2', 'repl-fo-3',  'delivered', '{}'::jsonb, now() - interval '40 days'),
-  ('77000000-0000-4000-8000-0000000000f4', '77000000-0000-4000-8000-0000000000b3', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-4',  'delivered', '{}'::jsonb, now() - interval '25 days'),
-  ('77000000-0000-4000-8000-0000000000f6', '77000000-0000-4000-8000-0000000000b4', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-6',  'delivered', '{}'::jsonb, now() - interval '55 days'),
-  ('77000000-0000-4000-8000-0000000000f8', '77000000-0000-4000-8000-0000000000b5', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-8',  'exception', '{}'::jsonb, NULL),
-  ('77000000-0000-4000-8000-0000000000fa', '77000000-0000-4000-8000-0000000000b6', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-10', 'created',   '{}'::jsonb, NULL),
-  ('77000000-0000-4000-8000-0000000000fc', '77000000-0000-4000-8000-0000000000b7', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-12', 'created',   '{}'::jsonb, NULL),
-  ('77000000-0000-4000-8000-0000000000fd', '77000000-0000-4000-8000-0000000000b8', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-13', 'delivered', '{}'::jsonb, now() - interval '10 days'),
-  ('77000000-0000-4000-8000-0000000000fe', '77000000-0000-4000-8000-0000000000b9', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-14', 'delivered', '{}'::jsonb, now() - interval '34 days'),
-  ('77000000-0000-4000-8000-0000000000ff', '77000000-0000-4000-8000-0000000000ba', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-15', 'exception', '{}'::jsonb, NULL);
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f1', '77000000-0000-4000-8000-0000000000b1', '77000000-0000-4000-8000-0000000000a1', '77000000-0000-4000-8000-0000000000d1', 'repl-fo-1',  'delivered', '{}'::jsonb, now() - interval '55 days'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f3', '77000000-0000-4000-8000-0000000000b2', '77000000-0000-4000-8000-0000000000a2', '77000000-0000-4000-8000-0000000000d2', 'repl-fo-3',  'delivered', '{}'::jsonb, now() - interval '40 days'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f4', '77000000-0000-4000-8000-0000000000b3', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-4',  'delivered', '{}'::jsonb, now() - interval '25 days'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f6', '77000000-0000-4000-8000-0000000000b4', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-6',  'delivered', '{}'::jsonb, now() - interval '55 days'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f8', '77000000-0000-4000-8000-0000000000b5', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-8',  'exception', '{}'::jsonb, NULL),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000fa', '77000000-0000-4000-8000-0000000000b6', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-10', 'created',   '{}'::jsonb, NULL),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000fc', '77000000-0000-4000-8000-0000000000b7', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-12', 'created',   '{}'::jsonb, NULL),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000fd', '77000000-0000-4000-8000-0000000000b8', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-13', 'delivered', '{}'::jsonb, now() - interval '10 days'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000fe', '77000000-0000-4000-8000-0000000000b9', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-14', 'delivered', '{}'::jsonb, now() - interval '34 days'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000ff', '77000000-0000-4000-8000-0000000000ba', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-15', 'exception', '{}'::jsonb, NULL);
 
 -- Replacements. Each one takes the next ordinal, names the row it replaces and
 -- says why, which is the only shape the CHECK admits above ordinal 0.
-INSERT INTO public.commerce_fulfillment_orders (
+INSERT INTO public.commerce_fulfillment_orders (provider_kind,
   id, order_id, client_id, shipping_address_id, create_idempotency_key, status,
   shipping_address_snapshot, delivered_at,
   sequence_no, replaces_fulfillment_order_id, replacement_reason
 )
 VALUES
-  ('77000000-0000-4000-8000-0000000000f2', '77000000-0000-4000-8000-0000000000b1', '77000000-0000-4000-8000-0000000000a1', '77000000-0000-4000-8000-0000000000d1', 'repl-fo-2', 'delivered', '{}'::jsonb, now() - interval '40 days', 1, '77000000-0000-4000-8000-0000000000f1', 'damaged'),
-  ('77000000-0000-4000-8000-0000000000f5', '77000000-0000-4000-8000-0000000000b3', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-5', 'delivered', '{}'::jsonb, now() - interval '2 days',  1, '77000000-0000-4000-8000-0000000000f4', 'lost'),
-  ('77000000-0000-4000-8000-0000000000f7', '77000000-0000-4000-8000-0000000000b4', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-7', 'delivered', '{}'::jsonb, now() - interval '5 days',  1, '77000000-0000-4000-8000-0000000000f6', 'returned_undelivered'),
-  ('77000000-0000-4000-8000-0000000000f9', '77000000-0000-4000-8000-0000000000b5', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-9', 'exception', '{}'::jsonb, NULL, 1, '77000000-0000-4000-8000-0000000000f8', 'other'),
-  ('77000000-0000-4000-8000-0000000000fb', '77000000-0000-4000-8000-0000000000b6', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-11', 'packed',
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f2', '77000000-0000-4000-8000-0000000000b1', '77000000-0000-4000-8000-0000000000a1', '77000000-0000-4000-8000-0000000000d1', 'repl-fo-2', 'delivered', '{}'::jsonb, now() - interval '40 days', 1, '77000000-0000-4000-8000-0000000000f1', 'damaged'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f5', '77000000-0000-4000-8000-0000000000b3', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-5', 'delivered', '{}'::jsonb, now() - interval '2 days',  1, '77000000-0000-4000-8000-0000000000f4', 'lost'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f7', '77000000-0000-4000-8000-0000000000b4', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-7', 'delivered', '{}'::jsonb, now() - interval '5 days',  1, '77000000-0000-4000-8000-0000000000f6', 'returned_undelivered'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000f9', '77000000-0000-4000-8000-0000000000b5', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-9', 'exception', '{}'::jsonb, NULL, 1, '77000000-0000-4000-8000-0000000000f8', 'other'),
+  ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-0000000000fb', '77000000-0000-4000-8000-0000000000b6', '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3', 'repl-fo-11', 'packed',
    '{"deliveryContact":{"schemaVersion":1,"source":"legacy_inferred","revision":1,"recipientName":"Current Recipient","contactEmail":"current@example.invalid","contactPhone":"+48000000000","line1":"Old Street 1","line2":null,"city":"Oldtown","postalCode":"00-001","country":"ZZ","selectedDelivery":null,"deliveryInstructions":null,"courierInstructions":null}}'::jsonb,
    NULL, 1, '77000000-0000-4000-8000-0000000000fa', 'damaged');
 
@@ -148,22 +153,20 @@ VALUES
 -- ---------------------------------------------------------------------------
 
 SELECT lives_ok(
-  $$INSERT INTO public.commerce_fulfillment_orders (
+  $$INSERT INTO public.commerce_fulfillment_orders (provider_kind,
       id, order_id, client_id, shipping_address_id, create_idempotency_key, status,
       shipping_address_snapshot, sequence_no, replaces_fulfillment_order_id, replacement_reason
-    ) VALUES (
-      '77000000-0000-4000-8000-000000000201', '77000000-0000-4000-8000-0000000000b7',
+    ) VALUES ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-000000000201', '77000000-0000-4000-8000-0000000000b7',
       '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3',
       'repl-shape-ok', 'created', '{}'::jsonb, 1,
       '77000000-0000-4000-8000-0000000000fc', 'lost')$$,
   'an order takes a second fulfilment row when it is shaped as a replacement');
 
 SELECT throws_ok(
-  $$INSERT INTO public.commerce_fulfillment_orders (
+  $$INSERT INTO public.commerce_fulfillment_orders (provider_kind,
       id, order_id, client_id, shipping_address_id, create_idempotency_key, status,
       shipping_address_snapshot, sequence_no, replaces_fulfillment_order_id, replacement_reason
-    ) VALUES (
-      '77000000-0000-4000-8000-000000000202', '77000000-0000-4000-8000-0000000000b7',
+    ) VALUES ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-000000000202', '77000000-0000-4000-8000-0000000000b7',
       '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3',
       'repl-shape-dup', 'created', '{}'::jsonb, 1,
       '77000000-0000-4000-8000-0000000000fc', 'lost')$$,
@@ -171,33 +174,30 @@ SELECT throws_ok(
   'the same ordinal cannot be taken twice on one order');
 
 SELECT throws_ok(
-  $$INSERT INTO public.commerce_fulfillment_orders (
+  $$INSERT INTO public.commerce_fulfillment_orders (provider_kind,
       id, order_id, client_id, shipping_address_id, create_idempotency_key,
       status, shipping_address_snapshot
-    ) VALUES (
-      '77000000-0000-4000-8000-000000000203', '77000000-0000-4000-8000-0000000000b7',
+    ) VALUES ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-000000000203', '77000000-0000-4000-8000-0000000000b7',
       '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3',
       'repl-shape-stray', 'created', '{}'::jsonb)$$,
   '23505', NULL,
   'a stray insert that omits the ordinal still collides on ordinal 0, as it did before');
 
 SELECT throws_ok(
-  $$INSERT INTO public.commerce_fulfillment_orders (
+  $$INSERT INTO public.commerce_fulfillment_orders (provider_kind,
       id, order_id, client_id, shipping_address_id, create_idempotency_key, status,
       shipping_address_snapshot, sequence_no, replacement_reason
-    ) VALUES (
-      '77000000-0000-4000-8000-000000000204', '77000000-0000-4000-8000-0000000000b7',
+    ) VALUES ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-000000000204', '77000000-0000-4000-8000-0000000000b7',
       '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3',
       'repl-shape-no-predecessor', 'created', '{}'::jsonb, 2, 'lost')$$,
   '23514', NULL,
   'an ordinal above zero without a predecessor is refused');
 
 SELECT throws_ok(
-  $$INSERT INTO public.commerce_fulfillment_orders (
+  $$INSERT INTO public.commerce_fulfillment_orders (provider_kind,
       id, order_id, client_id, shipping_address_id, create_idempotency_key, status,
       shipping_address_snapshot, sequence_no, replaces_fulfillment_order_id
-    ) VALUES (
-      '77000000-0000-4000-8000-000000000205', '77000000-0000-4000-8000-0000000000b7',
+    ) VALUES ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-000000000205', '77000000-0000-4000-8000-0000000000b7',
       '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3',
       'repl-shape-no-reason', 'created', '{}'::jsonb, 2,
       '77000000-0000-4000-8000-0000000000fc')$$,
@@ -205,11 +205,10 @@ SELECT throws_ok(
   'an ordinal above zero without a reason is refused');
 
 SELECT throws_ok(
-  $$INSERT INTO public.commerce_fulfillment_orders (
+  $$INSERT INTO public.commerce_fulfillment_orders (provider_kind,
       id, order_id, client_id, shipping_address_id, create_idempotency_key, status,
       shipping_address_snapshot, sequence_no, replaces_fulfillment_order_id, replacement_reason
-    ) VALUES (
-      '77000000-0000-4000-8000-000000000206', '77000000-0000-4000-8000-0000000000b7',
+    ) VALUES ((SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), '77000000-0000-4000-8000-000000000206', '77000000-0000-4000-8000-0000000000b7',
       '77000000-0000-4000-8000-0000000000a3', '77000000-0000-4000-8000-0000000000d3',
       'repl-shape-bad-reason', 'created', '{}'::jsonb, 2,
       '77000000-0000-4000-8000-0000000000fc', 'operator felt like it')$$,

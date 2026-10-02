@@ -1,31 +1,35 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { currentTableStatements, explicitFunctionExecuteRoles } from "../test/historicalBoundarySchema";
 
 const repoRoot = process.cwd();
-const migration = read("supabase/migrations/20260605123000_commerce_fulfillment_integration_control_plane.sql");
-const probe = read("docs/sql/commerce_fulfillment_integration_rehearsal_probe.sql");
+const functions = ["commerce_fulfillment_create_order", "commerce_fulfillment_mark_handed_over", "commerce_fulfillment_record_label_created"];
+const migration = [ ...["commerce_fulfillment_orders", "commerce_fulfillment_order_lines", "commerce_fulfillment_operations", "commerce_fulfillment_provider_attempts"].map(currentTableStatements), ...functions.map(effectiveFunctionBody)].join("\n");
 
 describe("commerce fulfillment integration boundary", () => {
   it("adds fulfillment workflow persistence without duplicating provider tracking", () => {
     for (const required of [
-      "CREATE TABLE IF NOT EXISTS public.commerce_fulfillment_orders",
-      "CREATE TABLE IF NOT EXISTS public.commerce_fulfillment_order_lines",
-      "CREATE TABLE IF NOT EXISTS public.commerce_fulfillment_operations",
-      "CREATE TABLE IF NOT EXISTS public.commerce_fulfillment_provider_attempts",
-      "CREATE OR REPLACE FUNCTION public.commerce_fulfillment_create_order",
-      "CREATE OR REPLACE FUNCTION public.commerce_fulfillment_mark_handed_over",
+      "CREATE TABLE public.commerce_fulfillment_orders",
+      "CREATE TABLE public.commerce_fulfillment_order_lines",
+      "CREATE TABLE public.commerce_fulfillment_operations",
+      "CREATE TABLE public.commerce_fulfillment_provider_attempts",
+      "CREATE FUNCTION public.commerce_fulfillment_create_order",
+      "CREATE FUNCTION public.commerce_fulfillment_mark_handed_over",
       "INSERT INTO public.shipment_external_refs",
     ]) {
       expect(migration).toContain(required);
     }
-    expect(migration).not.toContain("CREATE TABLE IF NOT EXISTS public.shipment_external_refs");
-    expect(migration).not.toContain("CREATE TABLE IF NOT EXISTS public.commerce_fulfillment_tracking");
+    expect(migration).not.toContain("CREATE TABLE public.shipment_external_refs");
+    expect(migration).not.toContain("CREATE TABLE public.commerce_fulfillment_tracking");
   });
 
   it("keeps fulfillment RPCs service-role-only and provider-call-free", () => {
-    expect(migration).toContain("TO service_role");
-    expect(migration).toContain("FROM PUBLIC, anon, authenticated");
+    for (const name of functions) for (const roles of explicitFunctionExecuteRoles(name).values()) {
+      expect(roles.has("service_role")).toBe(true);
+      for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+    }
     expect(`${migration}\n${read("server/domains/fulfillment/commerceFulfillmentHandlers.ts")}`).not.toMatch(
       /\bcreateDhlShipment\b|\bbookDhlCourier\b|\bdhl-create-shipment\b|\binpost\b/i,
     );
@@ -46,19 +50,17 @@ describe("commerce fulfillment integration boundary", () => {
     expect(duplicateInterfaces).toEqual([]);
   });
 
-  it("rehearses create, idempotency, label-without-consume, and handoff consume-once", () => {
-    for (const required of [
-      "commerce_fulfillment_probe_create_replay_failed",
-      "commerce_fulfillment_probe_expected_failed_payment_rejection",
-      "commerce_fulfillment_probe_expected_no_reservation_rejection",
-      "commerce_fulfillment_probe_label_consumed_inventory",
-      "commerce_fulfillment_probe_double_consume",
-      "ROLLBACK",
-    ]) {
-      expect(probe).toContain(required);
-    }
+  it("keeps label recording free of stock consumption and handoff replay guarded", () => {
+    expect(effectiveFunctionBody("commerce_fulfillment_record_label_created")).not.toContain("inventory_consume_reservation_for_fulfillment");
+    const handoff = effectiveFunctionBody("commerce_fulfillment_mark_handed_over");
+    expect(handoff).toContain("inventory_consume_reservation_for_fulfillment");
+    const replay = handoff.indexOf("IF v_fulfillment.status IN ('handed_over', 'in_transit', 'delivered') THEN");
+    expect(replay).toBeGreaterThan(handoff.indexOf("FOR UPDATE"));
+    expect(handoff.indexOf("'replayed', true")).toBeGreaterThan(replay);
+    expect(handoff.indexOf("inventory_consume_reservation_for_fulfillment")).toBeGreaterThan(handoff.indexOf("'replayed', true"));
+    expect(handoff).toContain("p_idempotency_key || ':' || v_reservation_id::text");
+    expect(handoff).toContain("ON CONFLICT (idempotency_key) DO NOTHING");
   });
-
 });
 
 function read(path: string): string {

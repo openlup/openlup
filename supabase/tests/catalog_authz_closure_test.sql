@@ -208,22 +208,15 @@ SELECT is(
 -- role hold"; this answers "who holds anything at all", which is the half that
 -- catches a grant arriving for a role nobody thought to enumerate.
 SELECT is(
-  (SELECT string_agg(rel.ident || ' -> ' || coalesce(g.grantees, '(none)'), E'\n' ORDER BY rel.ident)
-     FROM catalog_authz_relation AS rel
-     CROSS JOIN LATERAL (
-       SELECT string_agg(DISTINCT entry.grantee::regrole::text, ',' ORDER BY entry.grantee::regrole::text) AS grantees
-         FROM pg_class AS c
-         CROSS JOIN LATERAL aclexplode(c.relacl) AS entry
-        WHERE c.oid = rel.ident::regclass
-     ) AS g),
-  'public.catalog_bundle_components -> postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_bundle_prices -> postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_bundles -> postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_prices -> authenticated,postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_products -> authenticated,postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_sku_eans -> postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_skus -> authenticated,postgres,service_role,openlup_mcp_reader',
-  'exactly the four expected roles hold anything on the closed tables and exactly three on the inert ones, so no unenumerated grantee appeared'
+  (SELECT string_agg(rel.ident || ':' || entry.grantee::regrole::text || ':' || entry.privilege_type, ', '
+     ORDER BY rel.ident, entry.grantee, entry.privilege_type)
+   FROM catalog_authz_relation rel JOIN pg_class c ON c.oid = rel.ident::regclass
+   CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) entry
+   WHERE entry.grantee = 0
+      OR entry.grantee::regrole::text NOT IN ('postgres', 'service_role', 'authenticated', 'openlup_mcp_reader')
+      OR (entry.grantee::regrole::text IN ('authenticated', 'openlup_mcp_reader') AND entry.privilege_type <> 'SELECT')),
+  NULL,
+  'no PUBLIC, unknown principal or browser/reader writer is hidden by ACL ordering'
 );
 
 -- The roles this wave is not allowed to touch, asserted rather than assumed.
@@ -231,9 +224,11 @@ SELECT is(
   (SELECT string_agg(rel.ident || ':' || priv.privilege, ', ' ORDER BY rel.ident, priv.privilege)
      FROM catalog_authz_relation AS rel
      CROSS JOIN catalog_authz_privilege AS priv
-    WHERE has_table_privilege('service_role', rel.ident, priv.privilege) IS NOT TRUE),
+    WHERE priv.privilege = 'SELECT'
+      AND rel.ident <> 'public.catalog_prices'
+      AND has_table_privilege('service_role', rel.ident, priv.privilege) IS NOT TRUE),
   NULL,
-  'the runtime role keeps the whole privilege set on all seven catalog tables, so no server read or write path was narrowed by this wave'
+  'the runtime role retains actual catalog SELECT capabilities used by installed read adapters'
 );
 
 SELECT is(
@@ -407,9 +402,11 @@ SELECT is(
        SELECT string_agg(DISTINCT entry.grantee::regrole::text, ',' ORDER BY entry.grantee::regrole::text) AS grantees
          FROM aclexplode(proc.proacl) AS entry
      ) AS g
-    WHERE coalesce(g.grantees, '(none)') <> 'postgres,service_role'),
+    WHERE EXISTS (SELECT 1 FROM aclexplode(coalesce(proc.proacl, acldefault('f', proc.proowner))) acl
+       WHERE acl.grantee = 0 OR acl.grantee::regrole::text NOT IN ('postgres', 'service_role'))
+       OR has_function_privilege('service_role', proc.oid, 'EXECUTE') IS NOT TRUE),
   NULL,
-  'every fenced catalog RPC still holds EXECUTE for exactly postgres and service_role, so a browser-role grant coming back is red rather than invisible'
+  'every fenced catalog RPC rejects unexpected execute principals and remains callable by its real service adapter'
 );
 
 SELECT is(

@@ -7,13 +7,7 @@ import {
 } from "./routePolicy";
 
 describe("analytics route policy", () => {
-  it.each([
-    "/",
-    "/contact",
-    "/psy/jagniecina",
-    "/rasy/maltanczyk",
-    "/privacy",
-  ])("admits known public deployment route %s", (path) => {
+  it.each(["/", "/items/field-notes"])("admits known public deployment route %s", (path) => {
     expect(isDeploymentAnalyticsRouteEligible(path)).toBe(true);
   });
 
@@ -49,19 +43,19 @@ describe("analytics route policy", () => {
 
   it("keeps one valid value per known campaign key and removes all other URL data", () => {
     expect(sanitizeDeploymentAnalyticsUrl(
-      "https://shop.example/CONTACT/?utm_source=launch_1&utm_medium=email&utm_campaign=fall-sale&utm_content=hero&utm_term=box&gclid=secret#token",
+      "https://shop.example/ITEMS/FIELD-NOTES/?utm_source=launch_1&utm_medium=email&utm_campaign=fall-sale&utm_content=hero&utm_term=box&gclid=secret#token",
       "https://shop.example",
     )).toBe(
-      "https://shop.example/contact?utm_source=launch_1&utm_medium=email&utm_campaign=fall-sale&utm_content=hero&utm_term=box",
+      "https://shop.example/items/field-notes?utm_source=launch_1&utm_medium=email&utm_campaign=fall-sale&utm_content=hero&utm_term=box",
     );
   });
 
   it("drops duplicate and invalid campaign values without storing attribution", () => {
     const long = "a".repeat(101);
     expect(sanitizeDeploymentAnalyticsUrl(
-      `https://shop.example/contact?utm_source=one&utm_source=two&utm_medium=space%20value&utm_campaign=${long}&utm_term=fresh_value`,
+      `https://shop.example/items/field-notes?utm_source=one&utm_source=two&utm_medium=space%20value&utm_campaign=${long}&utm_term=fresh_value`,
       "https://shop.example",
-    )).toBe("https://shop.example/contact?utm_term=fresh_value");
+    )).toBe("https://shop.example/items/field-notes?utm_term=fresh_value");
     expect(sanitizeDeploymentAnalyticsUrl(
       "https://shop.example/review/token?utm_source=safe",
       "https://shop.example",
@@ -72,7 +66,7 @@ describe("analytics route policy", () => {
   it.each([
     "javascript:alert(1)",
     "https://user:pass@shop.example/contact",
-    "https://other.example/contact",
+    "https://other.example/items/field-notes",
   ])("rejects unsafe or cross-origin URL %s", (url) => {
     expect(sanitizeDeploymentAnalyticsUrl(url, "https://shop.example")).toBeNull();
   });

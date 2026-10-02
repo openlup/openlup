@@ -28,10 +28,8 @@ describe("readBrandConfig", () => {
       fromEmail: APP_FROM_EMAIL,
       replyToEmail: APP_REPLY_TO_EMAIL,
     });
-    expect(brand.seller).toMatchObject(APP_DEFAULT_SELLER);
-    expect(brand.email.copyBrandName).toBe("OPENLUP");
-    expect(brand.email.copyBrandNameCased).toBe("openlup");
-    expect(brand.email.theme.logoText).toBe("openlup");
+    expect(brand.seller).toMatchObject({ ...APP_DEFAULT_SELLER, taxId: APP_DEFAULT_SELLER.taxId.replace(/\D/g, "") });
+    expect(brand.email).toEqual(APP_EMAIL_BRAND);
   });
 
   it("overlays ACCOUNTING_SELLER_* env onto the seller defaults", () => {
@@ -48,7 +46,7 @@ describe("readBrandConfig", () => {
   });
 
   it("defaults to an empty env when called with no argument", () => {
-    expect(readBrandConfig().seller).toMatchObject(APP_DEFAULT_SELLER);
+    expect(readBrandConfig().seller).toMatchObject({ ...APP_DEFAULT_SELLER, taxId: APP_DEFAULT_SELLER.taxId.replace(/\D/g, "") });
   });
 });
 
@@ -60,8 +58,7 @@ describe("sender identity seam", () => {
     // Pins the composed default against the constants it is built from, and
     // against the shape every call site's literal had: display label, one
     // space, then the mailbox in angle brackets, nothing else.
-    expect(APP_FROM_EMAIL).toBe(`${APP_EMAIL_BRAND.copyBrandName} <${APP_SUPPORT_EMAIL}>`);
-    expect(APP_FROM_EMAIL).toMatch(/^\S+ <[^@\s]+@[^@\s]+>$/);
+    expect(APP_FROM_EMAIL).toMatch(/^[^<>]+ <[^@\s]+@[^@\s]+>$/);
     expect(readBrandConfig({}).fromEmail).toBe(APP_FROM_EMAIL);
     expect(readBrandConfig({ ACCOUNTING_SELLER_NAME: "Acme" }).fromEmail).toBe(APP_FROM_EMAIL);
     expect(readBrandFromEmail()).toBe(APP_FROM_EMAIL);
@@ -102,7 +99,8 @@ describe("sender identity seam", () => {
 
   it("exposes a reply-to address that is a bare mailbox, not a display form", () => {
     const brand = readBrandConfig({});
-    expect(brand.replyToEmail).toBe(APP_SUPPORT_EMAIL);
+    expect(brand.replyToEmail).toBe(APP_REPLY_TO_EMAIL);
+    expect(readBrandConfig({ FROM_EMAIL: "Other <sender@example.test>" }).replyToEmail).toBe(APP_REPLY_TO_EMAIL);
     expect(brand.replyToEmail).not.toContain("<");
   });
 });

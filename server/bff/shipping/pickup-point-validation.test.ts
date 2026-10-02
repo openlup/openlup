@@ -1,12 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 // Deterministic port: no ShipX/InPost network dependency in the route test.
+const createPort = vi.hoisted(() => vi.fn(() => ({
+  listOptions: async () => [],
+  validatePickupPoint: async () => null,
+})));
 vi.mock("./deliverySelectionFactory.js", () => ({
-  createValidatedDeliverySelectionPort: () => ({
-    listOptions: async () => [],
-    validatePickupPoint: async () => null,
-  }),
+  createValidatedDeliverySelectionPort: createPort,
 }));
 
 function request(method: string, body: unknown): VercelRequest {
@@ -54,4 +65,19 @@ describe("pickup-point-validation route", () => {
 
     expect(res.statusCode).toBe(405);
   });
+  it("public default refuses before creating the validation port", async () => {
+    unitComposition.enabled = false;
+    createPort.mockClear();
+    try {
+      const { default: handler } = await import("./pickup-point-validation.js");
+      const res = createResponse();
+      await handler(request("POST", { pointId: "POINT-1", carrierKind: "inpost" }), res as unknown as VercelResponse);
+      expect(res.statusCode).toBe(503);
+      expect(res.body).toMatchObject({ ok: false, error: { details: { reason: "adopter_policy_required" } } });
+      expect(createPort).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });

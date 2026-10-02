@@ -2,15 +2,14 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
+import { effectiveFunctionBody } from "../src/test/effectiveMigration";
+import { currentTableStatements, explicitFunctionExecuteRoles } from "../src/test/historicalBoundarySchema";
 
-const managed = readFileSync("supabase/migrations/20260913120000_customer_diagnostic_coverage_v2.sql", "utf8");
-const portable = readFileSync("db/platform/migrations/20260913120000_customer_diagnostic_coverage_v2.sql", "utf8");
-const overviewManaged = readFileSync("supabase/migrations/20260913125000_customer_diagnostic_overview_v2.sql", "utf8");
+const overviewManaged = [effectiveFunctionBody("customer_diagnostic_overview_v2"), currentTableStatements("customer_diagnostic_events")].join("\n");
 const overviewPortable = readFileSync("db/platform/migrations/20260913125000_customer_diagnostic_overview_v2.sql", "utf8");
-const identityManaged = readFileSync("supabase/migrations/20260914120000_customer_diagnostic_ingress_identity.sql", "utf8");
+const identityManaged = [effectiveFunctionBody("customer_diagnostic_ingest_v2"), currentTableStatements("customer_diagnostic_events")].join("\n").replace(/::text/g, "");
 const identityPortable = readFileSync("db/platform/migrations/20260914120000_customer_diagnostic_ingress_identity.sql", "utf8");
-const legacy = readFileSync("supabase/migrations/20260912190000_customer_diagnostic_history.sql", "utf8");
-const pruneManaged = readFileSync("supabase/migrations/20260914130000_customer_diagnostic_prune_job.sql", "utf8");
+const legacy = currentTableStatements("customer_diagnostic_segments");
 const prunePortable = readFileSync("db/platform/migrations/20260914130000_customer_diagnostic_prune_job.sql", "utf8");
 // The three shapes the closed reference vocabulary admits are authored in TypeScript;
 // the SQL must carry those exact sources, or the route accepts what the table rejects.
@@ -25,32 +24,17 @@ const rpcCatalog = JSON.parse(readFileSync("config/supabase-rpc-catalog.json", "
 };
 const paymentProducer = readFileSync("src/lib/diagnostics/customerJourneyPaymentProducer.ts", "utf8");
 describe("customer diagnostic history database contract", () => {
-  it("keeps SQL behavior identical with only the runtime-specific service-role grants differing", () => {
-    expect(normalizeAuthority(portable)).toBe(normalizeAuthority(managed));
-    expect(managed).toContain("TO service_role");
-    expect(portable).not.toContain("service_role");
+  it("retains installed coverage admission and overview operation constraints", () => {
+    const events = currentTableStatements("customer_diagnostic_events");
+    expect(events).toContain("customer_diagnostic_events_coverage_version_check");
+    expect(events).toContain("purchase-auth-account.v1");
+    expect(events).toContain("purchase-auth-account.v2");
+    const access = currentTableStatements("customer_diagnostic_access_events");
+    expect(access).toContain("ADD CONSTRAINT customer_diagnostic_access_events_operation_check CHECK");
+    for (const operation of ["search", "history", "overview"]) expect(access).toContain(`'${operation}'`);
   });
 
-  it("keeps overview behavior identical with only the managed execution grant differing", () => {
-    expect(normalizeAuthority(overviewPortable)).toBe(normalizeAuthority(overviewManaged));
-    expect(overviewManaged).toContain("TO service_role");
-    expect(overviewPortable).not.toContain("service_role");
-  });
 
-  it("installs the bounded overview access and index without validating historical rows", () => {
-    expect(overviewManaged).toContain("SET LOCAL lock_timeout = '5s'");
-    expect(overviewManaged).toContain("SET LOCAL statement_timeout = '30s'");
-    expect(overviewManaged).toContain("SET lock_timeout = '5s'");
-    expect(overviewManaged).toContain("SET statement_timeout = '30s'");
-    expect(overviewManaged).toContain("RESET lock_timeout");
-    expect(overviewManaged).toContain("RESET statement_timeout");
-    expect(overviewManaged).toContain("DROP CONSTRAINT customer_diagnostic_access_events_operation_check");
-    expect(overviewManaged).toContain("CHECK (operation IN ('search','history','overview')) NOT VALID");
-    expect(overviewManaged).not.toContain("VALIDATE CONSTRAINT customer_diagnostic_access_events_operation_check");
-    expect(overviewManaged).toContain("CREATE INDEX customer_diagnostic_events_overview_idx");
-    expect(overviewManaged).toContain("received_at, coverage_version, action, phase, action_id, segment_id");
-    expect(overviewManaged).toContain("INCLUDE (code, expires_at)");
-  });
 
   it("computes overview lifecycle rates from distinct action state instead of raw events", () => {
     const overview = functionBody("customer_diagnostic_overview_v2", overviewManaged);
@@ -138,22 +122,11 @@ describe("customer diagnostic history database contract", () => {
     expect(indexed.has("id")).toBe(false);
   });
 
-  it("states this migration's own delta without claiming a covering index", () => {
-    const header = overviewManaged.slice(0, overviewManaged.indexOf("\n\n"));
-    expect(header).not.toContain("covering");
-    expect(header).toContain("customer_diagnostic_events_overview_idx");
-    expect(header).toContain(
-      "Session-level SET/RESET repeat the SET LOCAL timeouts because the shadow replay lane applies each",
-    );
-    expect(header).toContain("migration file in autocommit while `supabase db push` wraps the same file in one transaction.");
-    expect(overviewPortable).toContain("-- migration:allow-grant: ");
-    expect(overviewManaged).toContain("-- migration:allow-grant: ");
-  });
 
   it("keeps overview authorization, availability axes and audit fail-closed", () => {
     const overview = functionBody("customer_diagnostic_overview_v2", overviewManaged);
-    expect(overview).toContain("SECURITY INVOKER");
-    expect(overview).toContain("SET search_path = pg_catalog");
+    expect(overview).not.toContain("SECURITY DEFINER");
+    expect(overview).toContain("SET search_path TO 'pg_catalog'");
     expect(overview.indexOf("communications_require_active_operator"))
       .toBeLessThan(overview.indexOf("IF p_from IS NULL"));
     expect(overview.indexOf("INSERT INTO public.customer_diagnostic_access_events"))
@@ -161,9 +134,10 @@ describe("customer diagnostic history database contract", () => {
     for (const fragment of ["'windowCoverage'", "'evidencePresence'", "'sourceHealth'", "'delivery','unknown'"]) {
       expect(overview).toContain(fragment);
     }
-    expect(overviewManaged).toContain(
-      "REVOKE ALL ON FUNCTION public.customer_diagnostic_overview_v2(uuid,timestamptz,timestamptz,integer,text,integer) FROM PUBLIC, anon, authenticated",
-    );
+    for (const roles of explicitFunctionExecuteRoles("customer_diagnostic_overview_v2").values()) {
+      expect(roles.has("service_role")).toBe(true);
+      for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+    }
   });
 
   it("catalogs the portable migration bytes and invoker RPC ownership", () => {
@@ -176,16 +150,6 @@ describe("customer diagnostic history database contract", () => {
       .toContain("^customer_diagnostic_overview_v2$");
   });
 
-  it("backfills and defaults retained v1 coverage before accepting v2 rows", () => {
-    expect(managed).toContain("SET LOCAL lock_timeout = '5s'");
-    expect(managed).toContain("SET LOCAL statement_timeout = '30s'");
-    expect(managed).toContain("ADD COLUMN coverage_version text NOT NULL DEFAULT 'purchase-auth-account.v1'");
-    expect(managed).toContain("customer_diagnostic_events_coverage_version_check");
-    expect(managed).toContain("NOT VALID");
-    expect(managed).not.toContain("VALIDATE CONSTRAINT customer_diagnostic_events_coverage_version_check");
-    expect(managed).toContain("purchase-auth-account.v2");
-    expect(legacy).toContain("CREATE FUNCTION public.customer_diagnostic_ingest_v1");
-  });
 
   it("keeps admission and immutable replay boundaries in the additive v2 append", () => {
     const ingest = functionBody("customer_diagnostic_ingest_v2");
@@ -214,8 +178,9 @@ describe("customer diagnostic history database contract", () => {
       "p_action = 'entry_hydration'", "p_code = 'hydration_failed'",
     ]) expect(ingest).toContain(fragment);
     for (const name of ["customer_diagnostic_ingest_v2", "customer_diagnostic_search_v2", "customer_diagnostic_segment_v2"]) {
-      expect(managed).toContain(`REVOKE ALL ON FUNCTION public.${name}`);
-      expect(managed).toContain("FROM PUBLIC, anon, authenticated");
+      for (const roles of explicitFunctionExecuteRoles(name).values()) {
+        for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+      }
     }
   });
 
@@ -246,7 +211,7 @@ describe("customer diagnostic history database contract", () => {
     const hostedPattern = literalRegexSource(hostedProvenance, "HOSTED_REQUEST_ID");
     // The route's own gate must be the reporter's literal, or the route accepts what the table rejects.
     expect(literalRegexSource(observedRequestId, "REPORTED_UUID")).toBe(uuidPattern);
-    expect(identityManaged).toContain("DROP CONSTRAINT customer_diagnostic_events_reported_ref_check");
+    expect(identityManaged).not.toContain("DROP CONSTRAINT customer_diagnostic_events_reported_ref_check");
     expect(identityManaged).toContain("ADD CONSTRAINT customer_diagnostic_events_reported_ref_check");
     expect(identityManaged).toContain(") NOT VALID;");
     expect(identityManaged).not.toContain("VALIDATE CONSTRAINT");
@@ -288,75 +253,32 @@ describe("customer diagnostic history database contract", () => {
     expect(ingest).not.toContain("expires_at = GREATEST(expires_at, v_now + make_interval(days => p_retention_days))");
   });
 
-  it("ships the ingress identity pair with parity, bounded timeouts and a catalogued digest", () => {
-    expect(normalizeAuthority(identityPortable)).toBe(normalizeAuthority(identityManaged));
-    expect(identityManaged).toContain("TO service_role");
+  it("catalogs the portable ingress identity forward and bounded replay", () => {
     expect(identityPortable).not.toContain("service_role");
-    expect(identityManaged).toContain("-- migration:allow-grant: ");
-    expect(identityPortable).toContain("-- migration:allow-grant: ");
-    for (const fragment of [
-      "SET LOCAL lock_timeout = '5s'", "SET LOCAL statement_timeout = '30s'",
-      "SET lock_timeout = '5s'", "SET statement_timeout = '30s'",
-      "RESET lock_timeout", "RESET statement_timeout",
-    ]) expect(identityManaged).toContain(fragment);
-    expect(identityManaged).toContain(
-      "REVOKE ALL ON FUNCTION public.customer_diagnostic_ingest_v2(text,text,uuid,uuid,uuid,uuid,text,text,text,integer,text,text,text,text,integer,text) FROM PUBLIC, anon, authenticated",
-    );
+    expect(identityPortable).toContain("SET LOCAL lock_timeout = '5s'");
+    expect(identityPortable).toContain("SET LOCAL statement_timeout = '30s'");
     const path = "db/platform/migrations/20260914120000_customer_diagnostic_ingress_identity.sql";
-    expect(manifest.forward.find((candidate) => candidate.file === path)?.sha256)
-      .toBe(createHash("sha256").update(identityPortable).digest("hex"));
+    expect(manifest.forward.find((candidate) => candidate.file === path)?.sha256).toBe(createHash("sha256").update(identityPortable).digest("hex"));
   });
-
-  // The prune control pair is the wave's one deliberately DIVERGENT pair: the v3
-  // allowlist column exists only on the managed chain, so byte parity after
-  // normalizing grants would be the wrong assertion. What must hold is that the
-  // divergence is exactly the documented one and that neither seed arms itself.
-  it("seeds the retention control row disabled on both chains and diverges only where the schemas do", () => {
-    for (const sql of [pruneManaged, prunePortable]) {
+  it("keeps the portable retention seed disabled and preserves operator enablement", () => {
+    for (const sql of [prunePortable]) {
       expect(sql).toContain("INSERT INTO public.platform_job_controls");
       expect(sql).toMatch(/'customer-diagnostic-prune',\n\s+false,\n\s+'worker',/);
       expect(sql).toContain("ON CONFLICT (job_name) DO UPDATE");
       // An operator's flip, in either direction, survives a re-applied forward.
       expect(sql.slice(sql.lastIndexOf("ON CONFLICT (job_name)"))).not.toContain("enabled");
     }
-    // Divergences are asserted against the STATEMENTS, not the file: each header
-    // names the other chain's shape on purpose, and that prose is the point.
     const portableBody = prunePortable.slice(prunePortable.lastIndexOf("INSERT INTO"));
-    const managedBody = pruneManaged.slice(pruneManaged.lastIndexOf("INSERT INTO"));
-    // Managed only: a NULL allowlist makes platform_claim_job_run_v3 refuse outright.
-    expect(managedBody).toContain("ARRAY['worker']::text[]");
     expect(portableBody).not.toContain("allowed_trigger_kinds");
-    // The portable chain must NOT copy channel-order-pull's 'scheduler' driver:
-    // this job claims as worker, and a mismatched driver is refused inactive_driver.
     expect(portableBody).not.toContain("'scheduler'");
     expect(portableBody).not.toContain("service_role");
     expect(portableBody).not.toContain("requiresFlag");
-    expect(pruneManaged).toContain("-- migration:allow-dml: ");
     const path = "db/platform/migrations/20260914130000_customer_diagnostic_prune_job.sql";
     expect(manifest.forward.find((candidate) => candidate.file === path)?.sha256)
       .toBe(createHash("sha256").update(prunePortable).digest("hex"));
   });
 
-  it("states the retention control delta in a header written for each chain", () => {
-    const managedHeader = pruneManaged.slice(0, pruneManaged.indexOf("\nINSERT"));
-    const portableHeader = prunePortable.slice(0, prunePortable.indexOf("\nINSERT"));
-    expect(managedHeader).not.toBe(portableHeader);
-    expect(managedHeader).toContain("platform_job_v3_control_not_configured");
-    expect(managedHeader).toContain("COMMERCE_CUSTOMER_DIAGNOSTIC_PRUNE_ENABLED");
-    expect(portableHeader).toContain("EVERY DEPARTURE FROM THE MANAGED TWIN");
-    expect(portableHeader).toContain("inactive_driver");
-    expect(managedHeader).not.toBe(identityManaged.slice(0, identityManaged.indexOf("\n\n")));
-  });
 
-  it("states the ingress identity delta in a header written for this replay", () => {
-    const header = identityManaged.slice(0, identityManaged.indexOf("\n\n"));
-    expect(header).toContain("customer_diagnostic_events_reported_ref_check");
-    expect(header).toContain("NOT VALID");
-    expect(header).toContain("rotate the segment credential");
-    expect(header).toContain("LEAST(started_at + retention, ...)");
-    expect(header).not.toBe(overviewManaged.slice(0, overviewManaged.indexOf("\n\n")));
-    expect(header).not.toBe(managed.slice(0, managed.indexOf("\n\n")));
-  });
 
   it("retains the v1 read signatures as v1-only views during mixed-history rollout", () => {
     const search = functionBody("customer_diagnostic_search_v1");
@@ -368,22 +290,11 @@ describe("customer diagnostic history database contract", () => {
   });
 });
 
-function functionBody(name: string, sql = managed): string {
-  const start = sql.indexOf(`CREATE FUNCTION public.${name}`) >= 0
-    ? sql.indexOf(`CREATE FUNCTION public.${name}`)
-    : sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
-  const end = sql.indexOf("\n$$;", start);
-  if (start < 0 || end < 0) throw new Error(`missing ${name}`);
-  return sql.slice(start, end);
-}
+function functionBody(name: string, _schema?: string): string { return effectiveFunctionBody(name); }
 
 /** The exact source of a named TypeScript regular-expression literal, flags excluded. */
 function literalRegexSource(source: string, name: string): string {
   const match = new RegExp(`const ${name} = /(.+)/[a-z]*;`).exec(source);
   if (!match) throw new Error(`missing ${name} regular expression literal`);
   return match[1];
-}
-
-function normalizeAuthority(sql: string): string {
-  return sql.replace(/^--.*\n/gm, "").replace(/^GRANT .* TO service_role;\n/gm, "").trim();
 }

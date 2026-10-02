@@ -1,8 +1,14 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { currentTrigger } from "../test/historicalBoundarySchema";
 import { describe, expect, it } from "vitest";
 
-const migration = read("supabase/migrations/20260605151000_fulfillment_provider_capability_guard.sql");
+const migration = [
+  effectiveFunctionBody("commerce_validate_fulfillment_provider_kind"),
+  effectiveFunctionBody("commerce_guard_fulfillment_order_provider"),
+  effectiveFunctionBody("commerce_guard_fulfillment_attempt_provider"),
+  currentTrigger("trg_commerce_guard_fulfillment_order_provider"),
+  currentTrigger("trg_commerce_guard_fulfillment_attempt_provider"),
+].join("\n");
 
 describe("fulfillment provider guard boundary", () => {
   it("validates capability, status, and region for fulfillment provider writes", () => {
@@ -19,7 +25,3 @@ describe("fulfillment provider guard boundary", () => {
     }
   });
 });
-
-function read(path: string): string {
-  return readFileSync(join(process.cwd(), path), "utf8");
-}

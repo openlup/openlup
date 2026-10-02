@@ -1,17 +1,18 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { currentTableStatements, explicitFunctionExecuteRoles } from "../test/historicalBoundarySchema";
 import { describe, expect, it } from "vitest";
 
-const migration = read("supabase/migrations/20260605170000_hidden_subscription_activation_dunning.sql");
+const names = ["subscription_activate_from_paid_checkout_order", "subscription_handle_payment_failure_dunning", "subscription_mark_dunning_recovered", "subscription_record_payment_recovery_request", "subscription_resume_from_dunning_with_cycle_order"];
+const migration = [ ...["subscription_dunning_cases", "subscription_dunning_notifications", "subscription_payment_recovery_tokens"].map(currentTableStatements), ...names.map(effectiveFunctionBody), effectiveFunctionBody("subscription_handle_payment_failure_dunning_before_cancel_fence") ].join("\n");
 
 describe("hidden subscription activation and dunning boundary", () => {
   it("adds durable dunning ledgers and hashed recovery token storage", () => {
     for (const required of [
-      "CREATE TABLE IF NOT EXISTS public.subscription_dunning_cases",
-      "CREATE TABLE IF NOT EXISTS public.subscription_dunning_notifications",
-      "CREATE TABLE IF NOT EXISTS public.subscription_payment_recovery_tokens",
+      "CREATE TABLE public.subscription_dunning_cases",
+      "CREATE TABLE public.subscription_dunning_notifications",
+      "CREATE TABLE public.subscription_payment_recovery_tokens",
       "token_hash text NOT NULL",
-      "purpose text NOT NULL CHECK (purpose IN ('repair_payment', 'resume_subscription'))",
+      "subscription_payment_recovery_tokens_purpose_check",
       "UNIQUE (cycle_id)",
       "UNIQUE (idempotency_key)",
     ]) {
@@ -27,11 +28,11 @@ describe("hidden subscription activation and dunning boundary", () => {
       "subscription_record_payment_recovery_request",
       "subscription_resume_from_dunning_with_cycle_order",
     ]) {
-      expect(migration).toContain(`CREATE OR REPLACE FUNCTION public.${fn}`);
-      expect(migration).toContain(`REVOKE ALL ON FUNCTION public.${fn}`);
-      expect(migration).toContain("FROM PUBLIC, anon, authenticated");
-      expect(migration).toContain(`GRANT EXECUTE ON FUNCTION public.${fn}`);
-      expect(migration).toContain("TO service_role");
+      expect(effectiveFunctionBody(fn)).toContain("SECURITY DEFINER");
+      for (const roles of explicitFunctionExecuteRoles(fn).values()) {
+        expect(roles.has("service_role")).toBe(true);
+        for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+      }
     }
   });
 
@@ -64,7 +65,7 @@ describe("hidden subscription activation and dunning boundary", () => {
 
   it("supports expired resume by creating a fresh cycle order through the existing boundary", () => {
     for (const required of [
-      "CREATE OR REPLACE FUNCTION public.subscription_resume_from_dunning_with_cycle_order",
+      "CREATE FUNCTION public.subscription_resume_from_dunning_with_cycle_order",
       "v_token.purpose <> 'resume_subscription'",
       "v_case.status <> 'expired'",
       "subscription_dunning_resume_cycle_number_not_fresh",
@@ -85,7 +86,3 @@ describe("hidden subscription activation and dunning boundary", () => {
     expect(migration).not.toContain("fakturownia");
   });
 });
-
-function read(path: string): string {
-  return readFileSync(join(process.cwd(), path), "utf8");
-}

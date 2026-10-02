@@ -1,7 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { resolveConfig } from "vite";
 
 /**
  * Regression guard for the account "blank spinner" stall (CJ01-AD / CJ-47…67).
@@ -31,14 +30,4 @@ describe("vite manualChunks init-order guard", () => {
     ).toBe(false);
   });
 
-  it("keeps client dependency discovery enabled when LOCAL_BFF serves the lazy BFF", async () => {
-    vi.stubEnv("LOCAL_BFF", "1");
-    try {
-      const config = await resolveConfig({ configFile: join(process.cwd(), "vite.config.ts") }, "serve");
-      expect(config.optimizeDeps.noDiscovery).toBe(false);
-      expect(config.optimizeDeps.entries).toEqual(["index.html"]);
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
 });

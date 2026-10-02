@@ -24,6 +24,9 @@
 
 BEGIN;
 SELECT plan(54);
+-- This sample owns one active internal location, never a deployment-dependent first row.
+INSERT INTO public.inventory_locations (id,code,display_name,kind,status,region,fulfillable)
+VALUES ('78000000-0000-4000-8000-000000000091','pgtap-replacement','Synthetic replacement stock','internal_warehouse','active','ZZ',true);
 
 INSERT INTO public.admin_users (id, email, role)
 VALUES ('78000000-0000-4000-8000-0000000000e1', 'replacement-command-admin@example.invalid', 'admin');
@@ -40,13 +43,11 @@ VALUES ('78000000-0000-4000-8000-000000000031', 'replacement-command-alpha', 'ac
 INSERT INTO public.catalog_skus (id, product_id, sku, title, pet_type, status, net_weight_g, kcal_per_unit)
 VALUES ('78000000-0000-4000-8000-000000000041', '78000000-0000-4000-8000-000000000031', 'SKU-REPLACEMENT-A', 'Replacement Command Alpha 400g', 'dog', 'active', 400, 420);
 
--- One stocked, fulfillable location, selected by predicate rather than by name.
+-- Six requested2-unit generations: three originals and three replacement admissions.
 INSERT INTO public.inventory_balances (sku_id, location_id, lot_id, on_hand)
-SELECT '78000000-0000-4000-8000-000000000041', l.id, NULL, 1000
+SELECT '78000000-0000-4000-8000-000000000041', l.id, NULL, (3 + 3) * 2
   FROM public.inventory_locations l
- WHERE l.status = 'active'
-   AND l.fulfillable = true
- LIMIT 1;
+ WHERE l.id = '78000000-0000-4000-8000-000000000091';
 
 -- A: the order that gets its replacement.  B: the order that refuses.
 -- D: an order with no parcel at all, which pins the gate this wave must not weaken.

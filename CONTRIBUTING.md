@@ -405,6 +405,16 @@ including `src/lib/*Boundary*` and `*Guardrails*`. Playwright specifications
 retain their separate browser/profile runners; the root Vitest command does not
 claim browser journey evidence.
 
+Keep executable tests tied to a current offered contract, installed safety
+boundary or selected reference behaviour. Historical migration spellings,
+withheld commands, deployment inventory counts and adopter presentation are not
+platform acceptance requirements. Removing an obsolete assertion requires its
+ended duty or equivalent surviving proof; a similar test name is insufficient.
+Unmounted UI may defer interaction proof until that exact UI is selected, while
+installed authorization, money, persistence and replay controls remain tested.
+Retire dormant scenarios from the source tree rather than adding skips or
+runner exclusions; reintroduce neutral scenarios when their contract is selected.
+
 The `pgtap` job uses Supabase CLI **2.98.2** and a fresh local database stack,
 replays the shipped managed baseline and every published forward in filename
 order, with its public prerequisite SQL, then runs

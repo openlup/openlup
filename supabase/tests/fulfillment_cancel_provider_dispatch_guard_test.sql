@@ -1,7 +1,7 @@
--- pgTAP: commerce_fulfillment_cancel_order must refuse while OmniPack still
+-- pgTAP: commerce_fulfillment_cancel_order must refuse while the provider still
 -- holds the order (20260720140000).
 --
--- WHY THIS EXISTS. Cancelling locally does not tell OmniPack — there is no
+-- WHY THIS EXISTS. Cancelling locally does not tell the provider — there is no
 -- outbound cancel command anywhere in the system. The previous guard allowed
 -- status IN ('created','packed','label_pending'), which permitted cancellation
 -- both BEFORE the dispatch ack landed (the PR #1972 poison-record state) and
@@ -14,6 +14,17 @@
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['PL'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(25);
 
 -- ---------------------------------------------------------------------------
@@ -24,7 +35,7 @@ VALUES ('c1000000-0000-4000-8000-000000000001', 'cancel-dispatch-guard@example.i
 
 INSERT INTO public.addresses (id, client_id, kind, line1, city, postal_code, country)
 VALUES ('cc000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
-        'shipping', 'ul. Testowa 1', 'Warszawa', '00-001', 'PL');
+        'shipping', 'ul. Testowa 1', 'Warszawa', '00-001', (SELECT enabled_for_region[1] FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'));
 
 INSERT INTO public.catalog_products (id, slug, name, status)
 VALUES ('c2000000-0000-4000-8000-000000000001', 'cdg-product', 'CDG Product', 'active');
@@ -105,7 +116,7 @@ SELECT ('ca000000-0000-4000-8000-' || lpad(series.i::text, 12, '0'))::uuid,
   FROM generate_series(1, 5) AS series(i);
 
 -- Dispatch refs. Order 5 deliberately has NONE (manual/simulator regression).
---   1 -> 'created'    + provider_order_id : OmniPack accepted, ack landed
+--   1 -> 'created'    + provider_order_id : the provider accepted, ack landed
 --   2 -> 'created'    + provider_order_id : same, but fulfillment already packed
 --   3 -> 'submitting' , no provider id    : in flight, outcome unknown
 --   4 -> 'failed'                          : provider never took it
@@ -180,7 +191,7 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------------
--- 3. In-flight submission: we do NOT know whether OmniPack received it, so the
+-- 3. In-flight submission: we do NOT know whether the provider received it, so the
 --    conservative answer is to refuse.
 -- ---------------------------------------------------------------------------
 SELECT throws_ok(

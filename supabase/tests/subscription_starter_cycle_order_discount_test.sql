@@ -23,6 +23,22 @@
 -- Run via: npm run test:db:local (the guarded local database lane)
 
 BEGIN;
+INSERT INTO public.commerce_settings (key,value_text,value_minor) VALUES
+ ('settlement_currency','XTS',NULL),('settlement_region','ZZ',NULL),('min_product_payable_minor',NULL,1)
+ON CONFLICT (key) DO UPDATE SET value_text=EXCLUDED.value_text,value_minor=EXCLUDED.value_minor;
+INSERT INTO public.variant_formats (code, display_name) VALUES ('can', 'Synthetic can') ON CONFLICT (code) DO NOTHING;
+INSERT INTO public.variant_unit_forms (code, display_name) VALUES ('can', 'Synthetic can') ON CONFLICT (code) DO NOTHING;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['ZZ'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(9);
 
 INSERT INTO public.clients (id, email)
@@ -45,7 +61,7 @@ INSERT INTO public.catalog_skus (
 -- fixture has to publish provider-current stock before the order items land.
 SELECT public.fulfillment_provider_upsert_stock_current(
   'starter-cycle-stock-1',
-  'omnipack',
+  (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
   'STARTER-CYCLE-SKU',
   100, 100, 0,
   now(),
@@ -59,13 +75,13 @@ INSERT INTO public.subscriptions (
   template_version, payment_method_kind, payment_method_ref, starter_pack
 )
 VALUES (
-  'e2000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000001', 17, 'PLN', 'PL',
+  'e2000000-0000-0000-0000-000000000001', 'e1000000-0000-0000-0000-000000000001', 17, 'XTS', 'ZZ',
   'active', '2026-06-09T12:00:00Z', 1, 'card', 'pm_starter_cycle',
   '{"schemaVersion":"1","starterIntervalDays":17,"basisTemplateVersion":1,
     "delivery2":{"discountBps":3500,"discountMinor":3752,"basisSubtotalMinor":10720},
     "graduation":{"cadenceDays":28,"lines":[{"sku":"STARTER-CYCLE-SKU","qty":8,"sortOrder":0,"isAddon":false,
-      "quoteLine":{"unitPriceGross":{"amountMinor":1340,"currency":"PLN"},
-        "lineSubtotalGross":{"amountMinor":10720,"currency":"PLN"}}}]}}'::jsonb
+      "quoteLine":{"unitPriceGross":{"amountMinor":1340,"currency":"XTS"},
+        "lineSubtotalGross":{"amountMinor":10720,"currency":"XTS"}}}]}}'::jsonb
 );
 
 INSERT INTO public.subscription_lines (id, subscription_id, variant_id, qty, sort_order, is_addon, template_version)
@@ -79,22 +95,22 @@ CREATE TEMP TABLE _order_snapshot AS SELECT '{
   "source":"subscription.own_engine.v0",
   "status":"pending_payment",
   "paymentStatus":"pending",
-  "currency":"PLN",
+  "currency":"XTS",
   "taxIncluded":true,
   "lines":[{"sku":"STARTER-CYCLE-SKU","productSlug":"starter-cycle-product","quantity":8,
-    "unitPriceGross":{"amountMinor":1340,"currency":"PLN"},
-    "lineSubtotalGross":{"amountMinor":10720,"currency":"PLN"},
-    "tax":{"included":true,"country":"PL","category":"pet_food","vatRateBps":800,
+    "unitPriceGross":{"amountMinor":1340,"currency":"XTS"},
+    "lineSubtotalGross":{"amountMinor":10720,"currency":"XTS"},
+    "tax":{"included":true,"country":"ZZ","category":"pet_food","vatRateBps":800,
       "legalBasis":"PL VAT Annex 3 item 10c",
-      "netAmount":{"amountMinor":9926,"currency":"PLN"},
-      "vatAmount":{"amountMinor":794,"currency":"PLN"},
-      "grossAmount":{"amountMinor":10720,"currency":"PLN"}}}],
+      "netAmount":{"amountMinor":9926,"currency":"XTS"},
+      "vatAmount":{"amountMinor":794,"currency":"XTS"},
+      "grossAmount":{"amountMinor":10720,"currency":"XTS"}}}],
   "totals":{
-    "subtotalGross":{"amountMinor":10720,"currency":"PLN"},
-    "discountTotalGross":{"amountMinor":3752,"currency":"PLN"},
-    "totalGross":{"amountMinor":6968,"currency":"PLN"},
-    "netTotal":{"amountMinor":6452,"currency":"PLN"},
-    "taxTotal":{"amountMinor":516,"currency":"PLN"}}}'::jsonb AS s;
+    "subtotalGross":{"amountMinor":10720,"currency":"XTS"},
+    "discountTotalGross":{"amountMinor":3752,"currency":"XTS"},
+    "totalGross":{"amountMinor":6968,"currency":"XTS"},
+    "netTotal":{"amountMinor":6452,"currency":"XTS"},
+    "taxTotal":{"amountMinor":516,"currency":"XTS"}}}'::jsonb AS s;
 
 CREATE TEMP TABLE _pricing_snapshot AS SELECT '{
   "contractVersion":"commerce.v0",
@@ -103,11 +119,11 @@ CREATE TEMP TABLE _pricing_snapshot AS SELECT '{
   "scheduledAt":"2026-06-09T12:00:00Z",
   "cycleNumber":2,
   "totals":{
-    "subtotalGross":{"amountMinor":10720,"currency":"PLN"},
-    "discountTotalGross":{"amountMinor":3752,"currency":"PLN"},
-    "totalGross":{"amountMinor":6968,"currency":"PLN"},
-    "netTotal":{"amountMinor":6452,"currency":"PLN"},
-    "taxTotal":{"amountMinor":516,"currency":"PLN"}},
+    "subtotalGross":{"amountMinor":10720,"currency":"XTS"},
+    "discountTotalGross":{"amountMinor":3752,"currency":"XTS"},
+    "totalGross":{"amountMinor":6968,"currency":"XTS"},
+    "netTotal":{"amountMinor":6452,"currency":"XTS"},
+    "taxTotal":{"amountMinor":516,"currency":"XTS"}},
   "provenance":{"starterPack":{"reasonCode":"starter_pack_delivery_2",
     "discountMinor":3752,"basisTemplateVersion":1}}}'::jsonb AS s;
 

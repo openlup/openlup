@@ -54,6 +54,20 @@ Rows that platform behaviour depends on must ship as idempotent statements in a
 forward, rather than relying on a reference fixture or process startup. A missing
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
+## Database test fixtures and witnesses
+
+A selected test may supply neutral settlement, format, provider, location and
+stock rows in its own transaction. Concurrency connections need the same declared
+inputs. Those rows model configured examples; they must not replace policy or
+control data the offered runtime requires the platform chain to install.
+
+Execute a domain operation as its documented runtime role. A result or no-write
+witness may use the database owner when direct table reads are deliberately
+closed, but that observer must not become the executor of an invoker RPC.
+Test-only grants, broader table access and owner execution cannot establish that
+a service call works. Assert negative browser permissions and runtime behavior
+separately from historical grant spellings or inherited CLI defaults.
+
 ## Exact reviewed function forwards
 
 Reviewed replacement is a separate admission class, not expand-only. The fixed
@@ -165,7 +179,7 @@ Code rollback must remain compatible with the expanded schema. A destructive
 down migration is not a rollback plan. Each stage needs a clear readback and
 failure boundary; a backfill that cannot be safely retried is incomplete.
 
-<!-- openlup-doc-impact {"unit":"data","digest":"sha256-d915406b81907bb044829233faec2bebfaf66b6176c4b4f7ec8c836d240d1c86","reason":"Comment-only delta in five pgTAP test files. Comments stop naming downstream scripts and documents and name the runner by its public command. No SQL statement, assertion, migration or compatibility rule described here changes."} -->
+<!-- openlup-doc-impact {"unit":"data","digest":"sha256-7f4d5f96b45a922e6ad15b2b64f27f35a631fd03675ab3f6e5596269f3a229f0","reason":"Only database tests and synthetic inputs change. Settlement, location, provider and stock fixtures select cases explicitly; actual runtime RPC roles remain distinct from owner readback witnesses. Missing managed seam/seed transport tests are withdrawn. No baseline, forward migration, privilege or compatibility lifecycle changes; current runtime-role failures remain unresolved."} -->
 
 ## Contract changes
 

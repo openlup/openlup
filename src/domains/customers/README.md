@@ -69,3 +69,5 @@ bounded public-source inventory. A repository path establishes source existence
 at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
+
+<!-- openlup-doc-impact {"unit":"domain-customers","digest":"sha256-5b1aba9efc1abf8025fda270be566c684a129aea837c536a7bf9004ca752a92b","reason":"The order-history schema test resolves the installed function body instead of a removed historical managed forward filename. Customer-owned reads, shipment tracking projection, authorization and route availability described here are unchanged."} -->
