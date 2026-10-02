@@ -1902,6 +1902,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/hostNeutralDeclarations.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/paymentFailureTaxonomy.test.ts",
       "class": "public-output"
     },
@@ -1983,10 +1987,6 @@
     },
     {
       "path": "packages/core/tsconfig.smoke.json",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/types/host-abort-signal.d.ts",
       "class": "public-output"
     },
     {

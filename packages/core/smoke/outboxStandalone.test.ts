@@ -104,6 +104,12 @@ describe("outbox standalone", () => {
     const eventTypes = PLATFORM_OUTBOX_EVENT_TYPES.map((entry) => entry.eventType);
 
     expect(PLATFORM_OUTBOX_EVENT_TYPES).toHaveLength(39);
+    // The declared type lists every entry, so the API snapshot moves with the vocabulary.
+    expectTypeOf<(typeof PLATFORM_OUTBOX_EVENT_TYPES)["length"]>().toEqualTypeOf<39>();
+    expectTypeOf<(typeof PLATFORM_OUTBOX_EVENT_TYPES)[0]>().toEqualTypeOf<{
+      readonly eventType: "channel.order.ingested";
+      readonly owner: "channel";
+    }>();
     expect(JSON.stringify(eventTypes)).toBe(MEASURED_EVENT_TYPES);
     expect([...eventTypes].sort()).toEqual(eventTypes);
     expect(new Set(eventTypes).size).toBe(eventTypes.length);

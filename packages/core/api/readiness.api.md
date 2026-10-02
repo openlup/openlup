@@ -72,6 +72,21 @@ export interface OutboxHandlerContext {
     setPhase(phase: string): void;
 }
 /**
+ * The abort signal a handler receives, typed structurally so the kernel names
+ * no host global. The `AbortSignal` of browsers and Node.js satisfies it. A
+ * handler that forwards the signal to an API typed `AbortSignal` may declare
+ * its own parameter as `AbortSignal`.
+ * @beta
+ */
+export interface OutboxAbortSignal {
+    readonly aborted: boolean;
+    readonly reason: unknown;
+    addEventListener(type: "abort", listener: () => void, options?: {
+        once?: boolean;
+    }): void;
+    removeEventListener(type: "abort", listener: () => void): void;
+}
+/**
  * Handles one event type. Delivery is at least once and ordered per aggregate
  * only, so a handler is idempotent on `row.id` or `row.idempotency_key`. The
  * signal aborts at `timeoutMs`; handler I/O honours it, so a timed-out side
@@ -81,7 +96,7 @@ export interface OutboxHandlerContext {
 export interface OutboxHandler {
     readonly eventType: string;
     readonly timeoutMs: number;
-    handle(row: OutboxEventRow, signal: AbortSignal, ctx?: OutboxHandlerContext): Promise<OutboxHandlerOutcome>;
+    handle(row: OutboxEventRow, signal: OutboxAbortSignal, ctx?: OutboxHandlerContext): Promise<OutboxHandlerOutcome>;
 }
 /** @beta */
 export type { OutboxEventTypeDeclaration, OutboxEventTypeDeclarationState, OutboxEventTypeEntry, } from "./vocabulary.js";
@@ -118,10 +133,128 @@ export interface OutboxEventTypeDeclaration {
     readonly reason: string;
 }
 /**
- * The platform vocabulary, sorted by event type.
+ * The platform vocabulary, sorted by event type. Its type lists every entry, so
+ * the API snapshot changes when a type is added or removed.
  * @beta
  */
-export declare const PLATFORM_OUTBOX_EVENT_TYPES: ReadonlyArray<OutboxEventTypeEntry>;
+export declare const PLATFORM_OUTBOX_EVENT_TYPES: readonly [{
+    readonly eventType: "channel.order.ingested";
+    readonly owner: "channel";
+}, {
+    readonly eventType: "commerce.checkout.expired";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.checkout_recovery";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.fulfillment.handed_over";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order.canceled";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order.cancelled";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order.paid";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order.paid.email";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order.refunded";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order.reorder_reminder";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order.review_effects";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order.review_request";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order_draft.abandoned.1h";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order_draft.abandoned.24h";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order_draft.abandoned.72h";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.order_draft.created";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.payment.failed";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.payment_attempt.requested";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.product.back_in_stock";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.return.approved";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.return.rejected";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.settlement.settled";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.shipment.delivered";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.shipment.dispatched";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.shipment.exception";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.subscription_payment.requested";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "commerce.subscription_payment.retry_requested";
+    readonly owner: "commerce";
+}, {
+    readonly eventType: "personalization.declension_requested";
+    readonly owner: "personalization";
+}, {
+    readonly eventType: "subscription.activation_action_required";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.address_changed";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.cancelled";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.created";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.cycle_skipped";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.delivery_rescheduled";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.package_changed";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.pause_reminder_due";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.paused";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.renewal_upcoming";
+    readonly owner: "subscription";
+}, {
+    readonly eventType: "subscription.resumed";
+    readonly owner: "subscription";
+}];
 /**
  * The declaration that covers `eventType`: an exact declaration first, then the
  * longest matching prefix. Returns `undefined` when none covers it.

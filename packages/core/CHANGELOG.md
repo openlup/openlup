@@ -14,12 +14,14 @@ SemVer promise.
   the claim returns it, with its persisted column names in
   `OUTBOX_EVENT_ROW_FIELDS`.
 - `./outbox`: the handler contract `OutboxHandler`, whose `handle(row, signal,
-  ctx)` takes one extensible `OutboxHandlerContext` (`setPhase` today), and its
-  outcomes `OutboxHandlerOutcome` (`processed`, `retry`, `discard` with
+  ctx)` takes a structural `OutboxAbortSignal`, which any host `AbortSignal`
+  satisfies, and one extensible `OutboxHandlerContext` (`setPhase` today), and
+  its outcomes `OutboxHandlerOutcome` (`processed`, `retry`, `discard` with
   `benign`, `snooze`), with the persisted names in
   `OUTBOX_HANDLER_OUTCOME_KINDS`.
 - `./outbox`: the platform event-type vocabulary `PLATFORM_OUTBOX_EVENT_TYPES`,
-  39 types as OpenLup's platform SQL emits them, each with an owner, and
+  39 types as OpenLup's platform SQL emits them, typed entry by entry, each
+  with an owner, and
   `OutboxEventTypeDeclaration` with `matchOutboxEventTypeDeclaration` for
   ignored or dormant types, exact or by prefix.
 - `./readiness`: the `Contribution` and `PackageManifest` shapes, with

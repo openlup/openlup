@@ -168,11 +168,31 @@ const compareText = (left: string, right: string): number => (left < right ? -1 
 const byPackageThenSubject = (left: ReadinessFailure, right: ReadinessFailure): number =>
   compareText(left.package, right.package) || compareText(left.subject, right.subject);
 
+const RELEASE_VERSION = /^\d+\.\d+\.\d+$/;
+
+function parseVersion(version: string): { core: number[]; pre: string[] | null } {
+  const [withoutBuild] = version.split("+");
+  const dash = withoutBuild.indexOf("-");
+  const core = (dash === -1 ? withoutBuild : withoutBuild.slice(0, dash)).split(".").map(Number);
+  return { core, pre: dash === -1 ? null : withoutBuild.slice(dash + 1).split(".") };
+}
+
+/** Version precedence: a pre-release ranks below its release, as in SemVer. */
 function compareVersions(left: string, right: string): number {
-  const a = left.split(/[.+-]/).map((part) => Number.parseInt(part, 10));
-  const b = right.split(/[.+-]/).map((part) => Number.parseInt(part, 10));
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    const difference = (a[index] || 0) - (b[index] || 0);
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (a.core[index] || 0) - (b.core[index] || 0);
+    if (difference !== 0) return difference;
+  }
+  if (a.pre && !b.pre) return -1;
+  if (!a.pre && b.pre) return 1;
+  if (!a.pre || !b.pre) return compareText(left, right);
+  for (let index = 0; index < Math.max(a.pre.length, b.pre.length); index += 1) {
+    const [x, y] = [a.pre[index], b.pre[index]];
+    if (x === undefined || y === undefined) return x === undefined ? -1 : 1;
+    const [xNumeric, yNumeric] = [/^\d+$/.test(x), /^\d+$/.test(y)];
+    const difference = xNumeric && yNumeric ? Number(x) - Number(y) : xNumeric !== yNumeric ? (xNumeric ? -1 : 1) : compareText(x, y);
     if (difference !== 0) return difference;
   }
   return compareText(left, right);
@@ -246,7 +266,7 @@ export async function checkReadiness(input: ReadinessInput): Promise<ReadinessRe
   // A manifest that emits a type owns it; the kernel's listing is not an owner.
   const handled = new Set(input.contributions.flatMap((contribution) =>
     contribution.handlers.map((handler) => handler.eventType)));
-  const vocabularyOwners = new Map(PLATFORM_OUTBOX_EVENT_TYPES.map((entry) => [entry.eventType, entry.owner]));
+  const vocabularyOwners = new Map<string, string>(PLATFORM_OUTBOX_EVENT_TYPES.map((entry) => [entry.eventType, entry.owner]));
   const emitters = new Map<string, string[]>();
   const handlerDeclarers = new Map<string, string[]>();
   const record = (index: Map<string, string[]>, eventType: string, name: string): void => {
@@ -267,10 +287,17 @@ export async function checkReadiness(input: ReadinessInput): Promise<ReadinessRe
       declared.push({ eventType, declaration });
       continue;
     }
-    const raisedBy = emitters.get(eventType)?.[0] ?? handlerDeclarers.get(eventType)?.[0] ?? KERNEL_PACKAGE;
-    const owner = vocabularyOwners.get(eventType) ?? raisedBy;
+    const claimants = emitters.get(eventType);
+    const declarers = handlerDeclarers.get(eventType);
+    const platformOwner = vocabularyOwners.get(eventType);
+    const raisedBy = claimants?.[0] ?? declarers?.[0] ?? KERNEL_PACKAGE;
+    const whose = claimants
+      ? `emitted by ${claimants.join(", ")}`
+      : declarers
+        ? `declared handled by ${declarers.join(", ")}`
+        : `platform event type, owner ${platformOwner}`;
     fail(READINESS_CODES.EVENT_UNHANDLED, raisedBy, eventType,
-      `Compose a handler for ${eventType} (owner ${owner}), or declare it ignored or dormant.`);
+      `Compose a handler for ${eventType} (${whose}), or declare it ignored or dormant.`);
   }
   for (const [eventType, claimants] of emitters) {
     if (claimants.length < 2) continue;
@@ -302,8 +329,12 @@ export async function checkReadiness(input: ReadinessInput): Promise<ReadinessRe
     if (present.length !== required.length) {
       throw new TypeError(`schema probe answered ${present.length} of ${required.length} objects`);
     }
+    const malformed = present.findIndex((answer) => typeof answer !== "boolean");
+    if (malformed !== -1) {
+      throw new TypeError(`schema probe answered ${JSON.stringify(present[malformed])} for object ${malformed + 1}; only true or false is an answer`);
+    }
     required.forEach(({ manifest, object }, index) => {
-      if (!present[index]) {
+      if (present[index] === false) {
         fail(READINESS_CODES.SCHEMA_BEHIND, manifest.name, describeObject(object),
           `Apply ${manifest.name}'s migrations up to ${manifest.requiredSchema?.version}, then run readiness again.`);
       }
@@ -316,7 +347,11 @@ export async function checkReadiness(input: ReadinessInput): Promise<ReadinessRe
   }
   const versions = [...new Set(loaded.values())].sort(compareVersions);
   if (versions.length > 1) {
-    const target = versions[versions.length - 1];
+    // The newest set version (MAJOR.MINOR.PATCH) is the target, never a pre-release.
+    // Only when no set version is loaded does precedence pick among the others.
+    const releases = versions.filter((version) => RELEASE_VERSION.test(version));
+    const candidates = releases.length > 0 ? releases : versions;
+    const target = candidates[candidates.length - 1];
     const names = [...loaded.keys()].sort(compareText);
     const command = `npm install --save-exact ${names.map((name) => `${name}@${target}`).join(" ")}`;
     for (const [name, version] of loaded) {

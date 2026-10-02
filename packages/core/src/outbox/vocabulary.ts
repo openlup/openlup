@@ -34,56 +34,57 @@ export interface OutboxEventTypeDeclaration {
   readonly reason: string;
 }
 
-const entry = (eventType: string): OutboxEventTypeEntry => ({
-  eventType,
-  owner: eventType.slice(0, eventType.indexOf(".")),
-});
+function freezeEntries<const T extends ReadonlyArray<OutboxEventTypeEntry>>(entries: T): T {
+  for (const entry of entries) Object.freeze(entry);
+  return Object.freeze(entries);
+}
 
 /**
- * The platform vocabulary, sorted by event type.
+ * The platform vocabulary, sorted by event type. Its type lists every entry, so
+ * the API snapshot changes when a type is added or removed.
  * @beta
  */
-export const PLATFORM_OUTBOX_EVENT_TYPES: ReadonlyArray<OutboxEventTypeEntry> = Object.freeze([
-  "channel.order.ingested",
-  "commerce.checkout.expired",
-  "commerce.checkout_recovery",
-  "commerce.fulfillment.handed_over",
-  "commerce.order.canceled",
-  "commerce.order.cancelled",
-  "commerce.order.paid",
-  "commerce.order.paid.email",
-  "commerce.order.refunded",
-  "commerce.order.reorder_reminder",
-  "commerce.order.review_effects",
-  "commerce.order.review_request",
-  "commerce.order_draft.abandoned.1h",
-  "commerce.order_draft.abandoned.24h",
-  "commerce.order_draft.abandoned.72h",
-  "commerce.order_draft.created",
-  "commerce.payment.failed",
-  "commerce.payment_attempt.requested",
-  "commerce.product.back_in_stock",
-  "commerce.return.approved",
-  "commerce.return.rejected",
-  "commerce.settlement.settled",
-  "commerce.shipment.delivered",
-  "commerce.shipment.dispatched",
-  "commerce.shipment.exception",
-  "commerce.subscription_payment.requested",
-  "commerce.subscription_payment.retry_requested",
-  "personalization.declension_requested",
-  "subscription.activation_action_required",
-  "subscription.address_changed",
-  "subscription.cancelled",
-  "subscription.created",
-  "subscription.cycle_skipped",
-  "subscription.delivery_rescheduled",
-  "subscription.package_changed",
-  "subscription.pause_reminder_due",
-  "subscription.paused",
-  "subscription.renewal_upcoming",
-  "subscription.resumed",
-].map((eventType) => Object.freeze(entry(eventType))));
+export const PLATFORM_OUTBOX_EVENT_TYPES = freezeEntries([
+  { eventType: "channel.order.ingested", owner: "channel" },
+  { eventType: "commerce.checkout.expired", owner: "commerce" },
+  { eventType: "commerce.checkout_recovery", owner: "commerce" },
+  { eventType: "commerce.fulfillment.handed_over", owner: "commerce" },
+  { eventType: "commerce.order.canceled", owner: "commerce" },
+  { eventType: "commerce.order.cancelled", owner: "commerce" },
+  { eventType: "commerce.order.paid", owner: "commerce" },
+  { eventType: "commerce.order.paid.email", owner: "commerce" },
+  { eventType: "commerce.order.refunded", owner: "commerce" },
+  { eventType: "commerce.order.reorder_reminder", owner: "commerce" },
+  { eventType: "commerce.order.review_effects", owner: "commerce" },
+  { eventType: "commerce.order.review_request", owner: "commerce" },
+  { eventType: "commerce.order_draft.abandoned.1h", owner: "commerce" },
+  { eventType: "commerce.order_draft.abandoned.24h", owner: "commerce" },
+  { eventType: "commerce.order_draft.abandoned.72h", owner: "commerce" },
+  { eventType: "commerce.order_draft.created", owner: "commerce" },
+  { eventType: "commerce.payment.failed", owner: "commerce" },
+  { eventType: "commerce.payment_attempt.requested", owner: "commerce" },
+  { eventType: "commerce.product.back_in_stock", owner: "commerce" },
+  { eventType: "commerce.return.approved", owner: "commerce" },
+  { eventType: "commerce.return.rejected", owner: "commerce" },
+  { eventType: "commerce.settlement.settled", owner: "commerce" },
+  { eventType: "commerce.shipment.delivered", owner: "commerce" },
+  { eventType: "commerce.shipment.dispatched", owner: "commerce" },
+  { eventType: "commerce.shipment.exception", owner: "commerce" },
+  { eventType: "commerce.subscription_payment.requested", owner: "commerce" },
+  { eventType: "commerce.subscription_payment.retry_requested", owner: "commerce" },
+  { eventType: "personalization.declension_requested", owner: "personalization" },
+  { eventType: "subscription.activation_action_required", owner: "subscription" },
+  { eventType: "subscription.address_changed", owner: "subscription" },
+  { eventType: "subscription.cancelled", owner: "subscription" },
+  { eventType: "subscription.created", owner: "subscription" },
+  { eventType: "subscription.cycle_skipped", owner: "subscription" },
+  { eventType: "subscription.delivery_rescheduled", owner: "subscription" },
+  { eventType: "subscription.package_changed", owner: "subscription" },
+  { eventType: "subscription.pause_reminder_due", owner: "subscription" },
+  { eventType: "subscription.paused", owner: "subscription" },
+  { eventType: "subscription.renewal_upcoming", owner: "subscription" },
+  { eventType: "subscription.resumed", owner: "subscription" },
+] as const satisfies ReadonlyArray<OutboxEventTypeEntry>);
 
 /**
  * The declaration that covers `eventType`: an exact declaration first, then the

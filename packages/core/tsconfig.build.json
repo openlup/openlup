@@ -18,5 +18,5 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "types/host-abort-signal.d.ts"]
+  "include": ["src/**/*.ts"]
 }

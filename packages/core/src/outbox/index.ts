@@ -81,6 +81,20 @@ export interface OutboxHandlerContext {
 }
 
 /**
+ * The abort signal a handler receives, typed structurally so the kernel names
+ * no host global. The `AbortSignal` of browsers and Node.js satisfies it. A
+ * handler that forwards the signal to an API typed `AbortSignal` may declare
+ * its own parameter as `AbortSignal`.
+ * @beta
+ */
+export interface OutboxAbortSignal {
+  readonly aborted: boolean;
+  readonly reason: unknown;
+  addEventListener(type: "abort", listener: () => void, options?: { once?: boolean }): void;
+  removeEventListener(type: "abort", listener: () => void): void;
+}
+
+/**
  * Handles one event type. Delivery is at least once and ordered per aggregate
  * only, so a handler is idempotent on `row.id` or `row.idempotency_key`. The
  * signal aborts at `timeoutMs`; handler I/O honours it, so a timed-out side
@@ -92,7 +106,7 @@ export interface OutboxHandler {
   readonly timeoutMs: number;
   handle(
     row: OutboxEventRow,
-    signal: AbortSignal,
+    signal: OutboxAbortSignal,
     ctx?: OutboxHandlerContext,
   ): Promise<OutboxHandlerOutcome>;
 }

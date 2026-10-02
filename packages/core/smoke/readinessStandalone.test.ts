@@ -157,15 +157,40 @@ describe("readiness standalone", () => {
         code: "OPENLUP_E_EVENT_UNHANDLED",
         package: "@openlup/core",
         subject: "personalization.declension_requested",
-        fix: "Compose a handler for personalization.declension_requested (owner personalization), or declare it ignored or dormant.",
+        fix: "Compose a handler for personalization.declension_requested (platform event type, owner personalization), or declare it ignored or dormant.",
       },
       {
         code: "OPENLUP_E_EVENT_UNHANDLED",
         package: RAIL,
         subject: EXAMPLE_EVENT,
-        fix: `Compose a handler for ${EXAMPLE_EVENT} (owner ${RAIL}), or declare it ignored or dormant.`,
+        fix: `Compose a handler for ${EXAMPLE_EVENT} (emitted by ${RAIL}), or declare it ignored or dormant.`,
       },
     ]);
+  });
+
+  it("names the claimant of an unhandled platform type, and a package that declared it handled", async () => {
+    // A manifest claims a kernel-listed type it emits: the fix names that package, not the namespace.
+    const silentCapability: Contribution = { ...capability(), handlers: [] };
+    const allButPaid: OutboxEventTypeDeclaration[] = [
+      ...declarations.filter((entry) => entry.eventType !== "commerce."),
+      ...PLATFORM_OUTBOX_EVENT_TYPES.filter((entry) => entry.owner === "commerce" && entry.eventType !== "commerce.order.paid")
+        .map((entry): OutboxEventTypeDeclaration => ({ eventType: entry.eventType, state: "ignored", owner: "commerce", reason: "Not composed here." })),
+    ];
+    const claimed = await checkReadiness(input({ contributions: [rail(), silentCapability], eventTypeDeclarations: allButPaid }));
+
+    expect(claimed.failures).toEqual([{
+      code: "OPENLUP_E_EVENT_UNHANDLED",
+      package: CAPABILITY,
+      subject: "commerce.order.paid",
+      fix: `Compose a handler for commerce.order.paid (emitted by ${CAPABILITY}), or declare it ignored or dormant.`,
+    }]);
+
+    const promised = rail(railManifest({ events: { handles: [EXAMPLE_EVENT, "example.item.audited"], emits: [EXAMPLE_EVENT] } }));
+    const declaredOnly = await checkReadiness(input({ contributions: [promised, capability()] }));
+    expect(declaredOnly.failures.map(({ package: pkg, fix }) => [pkg, fix])).toEqual([[
+      RAIL,
+      `Compose a handler for example.item.audited (declared handled by ${RAIL}), or declare it ignored or dormant.`,
+    ]]);
   });
 
   it("raises EVENT_DUPLICATE only for two non-kernel owners", async () => {
@@ -226,6 +251,31 @@ describe("readiness standalone", () => {
     }]);
   });
 
+  it("never targets a pre-release, and ranks it below its release", async () => {
+    const versionsOf = async (rail0: string, capability0: string, core: string) => {
+      const report = await checkReadiness(input({
+        contributions: [rail(railManifest({ version: rail0 })), capability(capabilityManifest({ version: capability0 }))],
+        packages: [{ name: "@openlup/core", version: core }],
+      }));
+      return report.failures.map(({ subject, fix }) => [subject, fix.match(/@openlup\/core@(\S+)/)?.[1]]);
+    };
+
+    // 0.13.0-rc.1 ranks below 0.13.0.
+    await expect(versionsOf("0.13.0-rc.1", "0.13.0", "0.13.0")).resolves.toEqual([[`${RAIL}@0.13.0-rc.1`, "0.13.0"]]);
+    // A newer pre-release does not pull the set forward: the newest release is the target.
+    await expect(versionsOf("0.13.0-rc.1", "0.12.0", "0.12.0")).resolves.toEqual([[`${RAIL}@0.13.0-rc.1`, "0.12.0"]]);
+    // With no set version loaded, precedence decides: rc.10 is above rc.2, numerically ...
+    await expect(versionsOf("0.13.0-rc.2", "0.13.0-rc.10", "0.13.0-rc.2")).resolves.toEqual([
+      [`@openlup/core@0.13.0-rc.2`, "0.13.0-rc.10"],
+      [`${RAIL}@0.13.0-rc.2`, "0.13.0-rc.10"],
+    ]);
+    // ... and a pre-release ranks below the same version without one.
+    await expect(versionsOf("0.13.0+local.1", "0.13.0-rc.1", "0.13.0-rc.1")).resolves.toEqual([
+      [`@openlup/core@0.13.0-rc.1`, "0.13.0+local.1"],
+      [`${CAPABILITY}@0.13.0-rc.1`, "0.13.0+local.1"],
+    ]);
+  });
+
   it("raises ENV_MISSING for an absent or blank variable", async () => {
     await expect(codesOf(input({ env: {} }))).resolves.toEqual(["OPENLUP_E_ENV_MISSING"]);
     const report = await checkReadiness(input({ env: { EXAMPLE_SIGNING_KEY: "  " } }));
@@ -283,6 +333,15 @@ describe("readiness standalone", () => {
       schemaProbe: { probe: async () => [true] },
     }))).rejects.toThrow("schema probe answered 1 of 3 objects");
   });
+
+  it("accepts only true or false from the probe, so a missing object never reads as present", async () => {
+    for (const answer of ["f", "no", 0, 1, null]) {
+      const probe: SchemaProbePort = { probe: async () => [true, answer, true] as unknown as boolean[] };
+      await expect(checkReadiness(input({ schemaProbe: probe }))).rejects.toThrow(
+        `schema probe answered ${JSON.stringify(answer)} for object 2; only true or false is an answer`,
+      );
+    }
+  });
 });
 
 describe("schema probe builder and reader", () => {
@@ -305,6 +364,23 @@ describe("schema probe builder and reader", () => {
     expect(query.text).toContain("FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])");
     expect(query.text).toContain("pg_catalog.oidvectortypes(p.proargtypes) = probe.signature");
     expect(query.text).not.toMatch(/example_/);
+  });
+
+  it("pins each catalogue predicate in the branch it guards", () => {
+    const text = buildSchemaProbe([]).text.replace(/\s+/g, " ");
+    const [, table, column, fn] = text.split(/WHEN '(?:table|column|function)' THEN/);
+    const searchPath =
+      "CASE WHEN probe.schema_name IS NULL THEN n.nspname = ANY (pg_catalog.current_schemas(false)) ELSE n.nspname = probe.schema_name END";
+
+    // A table is a relation of a table-like kind: not an index, sequence or type.
+    expect(table).toContain("c.relkind IN ('r', 'p', 'v', 'm', 'f')");
+    // A column is a user column that still exists: not a system column, not a dropped one.
+    expect(column).toContain("a.attnum > 0");
+    expect(column).toContain("NOT a.attisdropped");
+    // A function matches its argument types when a signature is given.
+    expect(fn).toContain("probe.signature IS NULL OR pg_catalog.oidvectortypes(p.proargtypes) = probe.signature");
+    // Every branch resolves an unqualified name through the search path only.
+    for (const branch of [table, column, fn]) expect(branch).toContain(searchPath);
   });
 
   it("refuses names it cannot probe exactly", () => {

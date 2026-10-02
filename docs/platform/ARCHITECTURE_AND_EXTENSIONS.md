@@ -151,6 +151,7 @@ the outbox handler contract and platform event types from `@openlup/core/outbox`
   once, with a stable `OPENLUP_E_*` code, the package, the subject and a fix. It covers:
   - unwired ports;
   - unhandled event types;
+  - an event type that two packages claim to emit;
   - unbound schedules;
   - a schema behind the package;
   - a mixed package set;
