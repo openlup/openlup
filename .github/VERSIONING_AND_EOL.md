@@ -351,16 +351,17 @@ that commit, and runs the descendant check described under
 [Publish, refuse and recover](#publish-refuse-and-recover). Only then does the
 job create the annotated tag with exactly `OpenLup source preview N.`
 
-The App creates a **draft prerelease** with no asset, and the job checks the
-draft's exact body, and that it carries no asset, before publishing it. GitHub's
-release lookup by tag never returns a draft, so the check finds the draft in the
-release list and refuses unless exactly one draft carries the tag. Both creation
-and publication use the same saved note file. Publication makes the prerelease
+The App creates a **draft prerelease** with the exact saved note bytes and no
+asset. The job records the ID returned by creation, reads only that release ID,
+and checks its tag, draft identity, exact body and empty assets before publishing.
+A newly created ID may briefly return 404, so this read has three bounded
+attempts; any other refusal or changed draft stops the run. Publication changes
+only the draft flag on that same ID. Publication makes the prerelease
 immutable, and GitHub attests the release; the attestation binds the annotated
 tag object. The App token emits the release event that starts
 `publish-packages.yml`; the default `GITHUB_TOKEN` would suppress that
 downstream workflow. The final steps check that the completed immutable release
-carries the exact body and no asset and that its annotated tag names the target
+has the created ID, exact body and no asset and that its annotated tag names the target
 with the exact message, then verify GitHub's release attestation with
 `gh release verify`. The separate package workflow independently checks the
 release event's exact App bot user ID, the live immutable prerelease, annotated
@@ -375,17 +376,6 @@ verification does not undo publication. Runs share one concurrency group so
 different preview numbers cannot publish simultaneously. The manual procedure
 below remains available for exceptional recovery; it carries the same authority
 and refusal rules.
-
-For the interrupted preview 9 run, the one-off
-[`recover-source-preview-9.yml`](workflows/recover-source-preview-9.yml) uses the
-same protected `release` environment and concurrency group. It accepts no
-coordinates: before the App publishes the existing draft, it checks the fixed
-tag, target commit, release ID, reviewed body digest, bot author, empty assets,
-repository immutability and six required contexts. It changes only the draft
-flag on that release ID, then checks the immutable release and GitHub tag
-attestation. Dispatch and protected approval remain maintainer decisions.
-Never rerun this recovery after a partial publication; inspect the release and
-package state and correct forward instead.
 
 ### Prepare from public inputs
 

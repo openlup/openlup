@@ -15,6 +15,11 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function releaseId(value: string): number {
+  if (!/^[1-9][0-9]*$/u.test(value) || !Number.isSafeInteger(Number(value))) throw new Error("RELEASE_ID must be the positive safe integer returned by draft creation");
+  return Number(value);
+}
+
 export function previewInputs(target: string, ordinal: string, note: string) {
   if (!/^[a-f0-9]{40}$/u.test(target)) throw new Error("target_commit must be a full lowercase commit SHA");
   if (!/^[1-9][0-9]*$/u.test(ordinal) || !Number.isSafeInteger(Number(ordinal)) || Number(ordinal) < 2) throw new Error("preview_number must be the next descendant preview number (at least 2)");
@@ -106,35 +111,32 @@ function assertReleaseBody(release: Record<string, unknown>, note: string, label
   if (!Array.isArray(release.assets) || release.assets.length !== 0) throw new Error(`${label} release must carry no asset`);
 }
 
-export function assertDraft(value: unknown, tag: string, note: string) {
+export function assertDraft(value: unknown, id: number, tag: string, note: string) {
   const release = record(value);
-  if (release.tag_name !== tag || release.draft !== true || release.prerelease !== true) throw new Error("draft release identity differs from the prepared tag");
+  if (release.id !== id || release.tag_name !== tag || release.draft !== true || release.prerelease !== true) throw new Error("draft release identity differs from the created draft");
   assertReleaseBody(release, note, "draft");
 }
 
-// GitHub's release lookup by tag returns only published releases, so the draft is found in
-// the release list, which includes drafts for a token with push access.
-export async function findDraft(tag: string, token?: string, fetcher: GithubFetch = fetch) {
-  const drafts: Record<string, unknown>[] = [];
-  for (let page = 1; ; page++) {
-    const releases = await (await read(`/releases?per_page=100&page=${page}`, token, fetcher)).json();
-    if (!Array.isArray(releases)) throw new Error("release inventory is malformed");
-    for (const release of releases.map(record)) if (release.tag_name === tag && release.draft === true) drafts.push(release);
-    if (releases.length < 100) break;
+/** Read only the created draft. A newly created ID may briefly return 404. */
+export async function checkDraft(idText: string, tag: string, note: string, token?: string, fetcher: GithubFetch = fetch) {
+  const id = releaseId(idText), path = `/releases/${id}`;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const response = await fetcher(`${api}${path}`, { headers: headers(token) });
+    if (response.status === 404 && attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      continue;
+    }
+    if (!response.ok) throw new Error(`source preview API refused ${path}: HTTP ${response.status}`);
+    assertDraft(await response.json(), id, tag, note);
+    return;
   }
-  if (drafts.length !== 1) throw new Error(`expected exactly one draft release for ${tag}, found ${drafts.length}; maintainer recovery is required`);
-  return drafts[0];
-}
-
-/** The check-draft phase: the one draft carrying the tag must hold the exact note and no asset. */
-export async function checkDraft(tag: string, note: string, token?: string, fetcher: GithubFetch = fetch) {
-  assertDraft(await findDraft(tag, token, fetcher), tag, note);
 }
 
 /** The verify phase: the published immutable prerelease, its exact note and its annotated tag at the target. */
-export async function verifyPublished(input: ReturnType<typeof previewInputs>, note: string, token?: string, fetcher: GithubFetch = fetch) {
+export async function verifyPublished(input: ReturnType<typeof previewInputs>, note: string, idText: string, token?: string, fetcher: GithubFetch = fetch) {
+  const id = releaseId(idText);
   const release = record(await (await read(`/releases/tags/${encodeURIComponent(input.tag)}`, token, fetcher)).json());
-  if (release.tag_name !== input.tag || release.immutable !== true || release.prerelease !== true || release.draft !== false) throw new Error(`${input.tag} is not an immutable published preview`);
+  if (release.id !== id || release.tag_name !== input.tag || release.immutable !== true || release.prerelease !== true || release.draft !== false) throw new Error(`${input.tag} is not the created immutable published preview`);
   assertReleaseBody(release, note, "published");
   const tag = await annotatedTag(input.tag, token, fetcher);
   if (tag.commit !== input.target || tag.message !== `${input.message}\n`) throw new Error("published tag differs from the prepared target or message");
@@ -153,14 +155,14 @@ async function main() {
   const out = realpathSync(process.env.RELEASE_OUTPUT_DIR ?? "");
   if (out === root || out.startsWith(`${root}${sep}`)) throw new Error("release outputs must stay outside the checkout");
   if (execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim() !== input.target) throw new Error("checkout differs from target_commit");
-  const token = process.env.GITHUB_TOKEN;
+  const { GITHUB_TOKEN: token, RELEASE_ID: idText } = process.env;
   const notes = () => readFileSync(resolve(out, "notes.md"), "utf8");
   if (phase === "prepare") {
     await preparePreview(input, root, out, token);
   } else if (phase === "check-draft") {
-    await checkDraft(input.tag, notes(), token);
+    await checkDraft(idText ?? "", input.tag, notes(), token);
   } else if (phase === "verify") {
-    await verifyPublished(input, notes(), token);
+    await verifyPublished(input, notes(), idText ?? "", token);
     console.log(`Verified immutable ${input.tag} at ${input.target}`);
   } else throw new Error("expected packages, prepare, check-draft or verify");
 }
