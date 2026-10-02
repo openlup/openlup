@@ -6,11 +6,11 @@
 #
 # Inert until the maintainer completes the setup in .github/VERSIONING_AND_EOL.md and enables
 # OPENLUP_PACKAGE_RELEASE. Main ancestry, the required contexts and the tag's commit are decided
-# by scripts/packages/release-gate.ts as it is at the dispatched main commit, run as one file
-# outside the checkout: the target's own code never decides whether the target is released. Both
-# jobs take that gate, the Node version (.nvmrc) and the Node contract (package.json) from the
-# dispatched main commit, and read no file of the target until the gate has passed. The
-# unprivileged preflight checks, before the protected release environment asks for approval, that:
+# by scripts/packages/release-gate.ts as it is at the dispatched main commit: the target's own code
+# never decides whether the target is released. Both jobs check out that main commit first, set up
+# Node from its .nvmrc, assert its Node contract and run its gate; only after the gate passes do
+# they check out the target, into target/, and run anything of it there. The unprivileged
+# preflight checks, before the protected release environment asks for approval, that:
 # - no release or publication of any package is in flight, so this dispatch never waits in a
 #   concurrency group where it could cancel a queued publication;
 # - the target is on main and the six required contexts passed there;
@@ -24,14 +24,15 @@
 #   only from nothing. The set skips a package npm already holds with the same tarball, leaves a
 #   package whose release exists but npm lacks the version to the re-run of its failed
 #   publication, releases the rest in full, and stops on any other state.
-# The release job runs once per package to release in full; its legs wait for one approval. Each
-# leg also refuses while another run's release or publication is in flight, since a re-run of a
-# failed leg skips the preflight.
+# The release job runs once per package to release in full; its legs wait for one approval. A
+# re-run of a failed leg skips the preflight and its in-flight refusal: re-run legs only after any
+# pending publication of their package has completed.
 # The pack and the scan run only here. Before the release App token exists, the release job
 # re-verifies the main ancestry and contexts, the manifest policy and version
 # (`packages:check --release-tag`, with no install, build or pack), the patch-set check, the
-# absent tag and npm; it installs nothing and runs no package code. The release gate then creates
-# the tag on the target itself. publish-packages.yml packs and scans the published tag again.
+# absent tag and npm; it installs nothing and runs no package code. A fresh copy of main's release
+# gate, taken from the dispatched commit in the tag step itself, then creates the tag on the target.
+# publish-packages.yml packs and scans the published tag again.
 # The plan's packages reach the release job as matrix values, and each leg checks its package
 # again and runs only for a package the dispatch named, so the plan can narrow a release but
 # never widen it. One package's release job
@@ -85,54 +86,55 @@ jobs:
           [[ "$PACKAGE" =~ ^[a-z0-9][a-z0-9-]*$ ]]
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$TARGET_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+      # Until the gate passes, the workspace is the dispatched main commit and nothing of the target
+      # is checked out: setup-node's version probes and every command run in main's tree.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.target_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      # Until the gate passes, no step reads or runs a file of the target: the gate, the Node version
-      # and the Node contract are main's, copied outside the checkout, and npm runs outside it too.
-      - name: Take the release gate and the Node contract from the dispatched main commit
-        id: main
-        run: |
-          git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"
-          git show "$GITHUB_SHA:package.json" > "$RUNNER_TEMP/main-package.json"
-          node_version="$(git show "$GITHUB_SHA:.nvmrc")"
-          [[ "$node_version" =~ ^[1-9][0-9]*$ ]]
-          echo "node-version=$node_version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: ${{ steps.main.outputs.node-version }}
+          node-version-file: .nvmrc
           package-manager-cache: false
       - name: Assert the Node and npm contract of the dispatched main commit
-        working-directory: ${{ runner.temp }}
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
           test "$(npm --version)" = "11.19.0"
-          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).engines.node')" = "24.x"
-          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).packageManager')" = "npm@11.19.0"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
       # GitHub keeps one pending run per concurrency group and cancels the older one, so a dispatch
       # that waited behind another could cancel a queued publication. It refuses instead.
       - name: Refuse while any package release or publication is in flight
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" in-flight "$GITHUB_RUN_ID"
+        run: node --experimental-strip-types scripts/packages/release-gate.ts in-flight "$GITHUB_RUN_ID"
       - name: Check main ancestry and required contexts before running target code
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" commit "$TARGET_COMMIT"
-      # After the gate the target is main's code; its own contract is read as data, never run.
+        run: node --experimental-strip-types scripts/packages/release-gate.ts commit "$TARGET_COMMIT"
+      # After the gate the target is reviewed main code, checked out into its own directory.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.target_commit }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
       - name: Assert the target's Node and npm contract
+        working-directory: target
         run: |
           test "$(cat .nvmrc)" = "$(node -p 'process.versions.node.split(".")[0]')"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
       - run: npm ci --ignore-scripts --no-audit --fund=false
+        working-directory: target
       - name: Refuse a mismatched version, an existing tag and a version npm holds or passed
+        working-directory: target
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types scripts/packages/package-release.ts preflight
       - name: Pack and check the packages of this release
+        working-directory: target
         run: |
           if [ "$PACKAGE" = all ]; then
             npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-set "$VERSION"
@@ -164,6 +166,7 @@ jobs:
       # Each package by its tag, release and npm state, against the tarballs packed above.
       - name: Decide each package's release from its tag, release and npm state
         id: plan
+        working-directory: target
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types scripts/packages/package-release.ts plan "$RUNNER_TEMP/packs"
@@ -190,7 +193,6 @@ jobs:
       contents: read
       checks: read
       attestations: read
-      actions: read
     env:
       PACKAGE: ${{ matrix.package }}
       DISPATCH: ${{ inputs.package }}
@@ -206,50 +208,43 @@ jobs:
           [[ "$DISPATCH" = all || "$DISPATCH" = "$PACKAGE" ]]
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$TARGET_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+      # As in the preflight: main's commit, its Node and its gate before anything of the target.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.target_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      # As in the preflight: main's gate, Node version and Node contract, before any target file.
-      - name: Take the release gate and the Node contract from the dispatched main commit
-        id: main
-        run: |
-          git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"
-          git show "$GITHUB_SHA:package.json" > "$RUNNER_TEMP/main-package.json"
-          node_version="$(git show "$GITHUB_SHA:.nvmrc")"
-          [[ "$node_version" =~ ^[1-9][0-9]*$ ]]
-          echo "node-version=$node_version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: ${{ steps.main.outputs.node-version }}
+          node-version-file: .nvmrc
           package-manager-cache: false
       - name: Assert the Node and npm contract of the dispatched main commit
-        working-directory: ${{ runner.temp }}
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
           test "$(npm --version)" = "11.19.0"
-          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).engines.node')" = "24.x"
-          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).packageManager')" = "npm@11.19.0"
-      # A re-run of a failed leg skips the preflight, so each leg refuses too while a release or
-      # publication of another run has not completed; it could otherwise cancel a pending publication.
-      - name: Refuse while any package release or publication is in flight
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" in-flight "$GITHUB_RUN_ID"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
       # The same release gate as the preflight and publish-packages.yml.
       - name: The target commit is on main and passed the required contexts
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" commit "$TARGET_COMMIT"
-      # After the gate the target is main's code; its own contract is read as data, never run.
+        run: node --experimental-strip-types scripts/packages/release-gate.ts commit "$TARGET_COMMIT"
+      # After the gate the target is reviewed main code, checked out into its own directory.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.target_commit }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
       - name: Assert the target's Node and npm contract
+        working-directory: target
         run: |
           test "$(cat .nvmrc)" = "$(node -p 'process.versions.node.split(".")[0]')"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
       # No install, build or pack here: the pack and the scan ran in the unprivileged preflight.
       - name: Repeat the manifest, version, tag and npm refusals and prepare the note
+        working-directory: target
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -270,12 +265,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
-      # The release gate re-checks the target's main ancestry and tags the target itself.
+      # Target code ran in this job, so the gate that tags is a fresh copy of main's, taken from the
+      # dispatched commit here: it re-checks the target's main ancestry and tags the target itself.
       - name: Create the exact annotated tag with the release identity
         env:
           GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: |
-          node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"
+          gate="$(mktemp -d "$RUNNER_TEMP/release-gate.XXXXXX")/release-gate.mts"
+          git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$gate"
+          node --experimental-strip-types "$gate" tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"
           tag="openlup-$PACKAGE-v$VERSION"
           git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"
       - name: Create the draft release
@@ -291,6 +289,7 @@ jobs:
           [[ "$draft_id" =~ ^[1-9][0-9]*$ ]]
           echo "RELEASE_ID=$draft_id" >> "$GITHUB_ENV"
       - name: Refuse publication if the draft differs
+        working-directory: target
         env:
           GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: node --experimental-strip-types scripts/packages/package-release.ts check-draft
@@ -303,6 +302,7 @@ jobs:
           printf '{"draft":false}' | gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --input - \
             --jq '{id,tag_name,draft,prerelease,immutable,published_at}'
       - name: Verify the completed immutable release and its tag
+        working-directory: target
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types scripts/packages/package-release.ts verify

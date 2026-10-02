@@ -95,11 +95,10 @@ const BEHAVIOUR: Record<string, (gate: Gate) => Promise<void>> = {
     checkout(fixture.side);
     for (const ref of ["refs/openlup-release/main", "refs/remotes/origin/main", "refs/heads/main"]) git(fixture.clone, ["update-ref", ref, fixture.side]);
     expect(() => gate.assertOnFreshMain(fixture.clone, fixture.side), "a commit off main").toThrow(`release gate: ${fixture.side} is not on main, whose tip is ${fixture.mainTip}`);
-    expect(() => gate.assertOnFreshMain(fixture.clone, fixture.base), "a commit that is not the checkout").toThrow(/the checkout is not/u);
-    for (const commit of [fixture.base, fixture.mainTip]) {
-      checkout(commit);
-      expect(gate.assertOnFreshMain(fixture.clone, commit), "a commit on main").toBe(fixture.mainTip);
-    }
+    const absent = "e".repeat(40);
+    expect(() => gate.assertOnFreshMain(fixture.clone, absent), "a commit the repository lacks").toThrow(`release gate: ${absent} is not on main, whose tip is ${fixture.mainTip}`);
+    // The workflows run the gate in a checkout of main, so what is checked out does not decide.
+    for (const commit of [fixture.base, fixture.mainTip]) expect(gate.assertOnFreshMain(fixture.clone, commit), `${commit} on main, the checkout off it`).toBe(fixture.mainTip);
     for (const ref of ["refs/openlup-release/main", "refs/remotes/origin/main", "refs/heads/main"]) git(fixture.clone, ["update-ref", ref, fixture.mainTip]);
   },
   "required contexts: GitHub Actions ran each one and every latest run succeeded": async (gate) => {
@@ -175,7 +174,7 @@ const DEFECTS: Defect[] = [
   { control: "main ancestry against a freshly fetched origin/main", plant: "fetch the target commit instead of main", from: "`+refs/heads/main:${FRESH_MAIN}`", to: "`+${commit}:${FRESH_MAIN}`" },
   { control: "main ancestry against a freshly fetched origin/main", plant: "no fetch: trust a local main ref", from: '  git("fetch", "--no-tags", "--quiet", "origin", `+refs/heads/main:${FRESH_MAIN}`);\n', to: "" },
   { control: "main ancestry against a freshly fetched origin/main", plant: "ancestry against the checkout", from: 'git("merge-base", "--is-ancestor", commit, mainTip);', to: 'git("merge-base", "--is-ancestor", commit, "HEAD");' },
-  { control: "main ancestry against a freshly fetched origin/main", plant: "the checkout unchecked", from: '  if (git("rev-parse", "HEAD") !== commit) throw', to: '  if (git("rev-parse", "HEAD") === "") throw' },
+  { control: "main ancestry against a freshly fetched origin/main", plant: "a failed ancestry check admitted", from: "    throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);", to: "    return mainTip;" },
   { control: "required contexts: GitHub Actions ran each one and every latest run succeeded", plant: "any app's run counts", from: '.filter((run) => (run.app as Json | null | undefined)?.slug === "github-actions")', to: "" },
   { control: "required contexts: GitHub Actions ran each one and every latest run succeeded", plant: "one success among failures", from: "actions.every((run) =>", to: "actions.some((run) =>" },
   { control: "required contexts: GitHub Actions ran each one and every latest run succeeded", plant: "no run counts as passed", from: "actions.length > 0 && ", to: "" },

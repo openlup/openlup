@@ -564,9 +564,10 @@ A release takes three steps:
    version, the reviewed full target commit SHA on `main` and the exact release
    note body, which every package's release carries. The unprivileged
    `preflight` job of [`publish-package.yml`](workflows/publish-package.yml)
-   reads no file of the target until the release gate has passed: the gate, the
-   Node version (`.nvmrc`) and the Node contract (`package.json`, parsed as data)
-   are copied from the dispatched `main` commit. It refuses while a run of
+   checks out the dispatched `main` commit, sets up Node from its `.nvmrc` with no
+   package-manager cache, asserts its Node contract and runs its release gate;
+   only after the gate passes does it check out the target, into `target/`, and
+   run anything of it there. It refuses while a run of
    `publish-package.yml` or `publish-packages.yml` for any package has not
    completed, and names that run. It then checks that the target
    is on `main`, as fetched from origin, and that the six required contexts passed
@@ -593,15 +594,18 @@ A release takes three steps:
 3. **Approval.** The `release` job runs once per package to release in full.
    Those runs wait for the protected `release` environment together, so one
    maintainer approval covers the set. A failed run leaves the others to finish.
-   Each run takes main's gate and Node contract the same way, and, because a
-   re-run of a failed run skips the preflight, refuses again while another run's
-   release or publication is in flight. Before the release App token exists, each run
+   Each run starts the same way: main's commit, its Node and its gate, then the
+   target in `target/`. A re-run of a failed run skips the preflight's in-flight
+   refusal, so re-run one only after any pending publication of its package has
+   completed; this window is a known limitation. Before the release App token exists, each run
    re-verifies the target's main ancestry and required contexts, the manifest
    policy and version with `packages:check --release-tag` (no install, build or
    pack), the patch-set check, the absent tag and npm. It installs nothing and runs no package code:
    the pack and the gitleaks scan run only in the unprivileged `preflight`, and
-   `publish-packages.yml` packs and scans the published tag again. The release
-   gate then re-checks the target's main ancestry, has the App create the
+   `publish-packages.yml` packs and scans the published tag again. A fresh copy
+   of main's release gate, taken from the dispatched commit in the tag step
+   itself because target code has run in the job, then re-checks the target's
+   main ancestry, has the App create the
    annotated tag on the target commit itself with exactly
    `OpenLup package @openlup/<package> <version>.`, and refuses unless GitHub
    answers with that tag object, that message byte for byte, and its reference.

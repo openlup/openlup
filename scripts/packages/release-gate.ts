@@ -6,16 +6,17 @@
  *   requested, queued, pending, waiting for approval or in progress, and names each such run.
  *   GitHub keeps one pending run per concurrency group and cancels the older one, so a second
  *   dispatch could otherwise cancel a queued publication.
- * - `commit <sha>` refuses unless the checkout is `<sha>`, `<sha>` is an ancestor of `main` as
- *   fetched from origin now, and each required context passed there: GitHub Actions ran it at
- *   `<sha>` and every latest run of it succeeded.
+ * - `commit <sha>` refuses unless `<sha>` is an ancestor of `main` as fetched from origin now, and
+ *   each required context passed there: GitHub Actions ran it at `<sha>` and every latest run of it
+ *   succeeded. The target need not be checked out.
  * - `tag <sha> <package> <version>` repeats that main ancestry, then creates the annotated tag
  *   `openlup-<package>-v<version>` on `<sha>` itself, never on another commit, and refuses unless
  *   GitHub answers with a tag object of that name and exact message on that commit and a
  *   reference to that object.
  *
- * `publish-package.yml` runs this file as it is at the dispatched `main` commit, never the
- * target's copy; `publish-packages.yml` runs it at its release commit, as it runs that commit's
+ * `publish-package.yml` runs this file as it is at the dispatched `main` commit (in its checkout of
+ * that commit, and as a fresh copy for the tag), never the target's copy; `publish-packages.yml`
+ * runs it at its release commit, as it runs that commit's
  * workflow file. It imports only Node built-ins so that it runs as that one file. The token is
  * GITHUB_TOKEN; `tag` needs the release App's. Started as a release-gate command but not
  * detected as its entry module, it refuses rather than exit 0.
@@ -51,11 +52,14 @@ async function github(path: string, token: string | undefined, fetcher: GateFetc
   return record(await response.json(), `GitHub's answer to ${path}`);
 }
 
-/** The checkout is `commit`, which is an ancestor of origin's `main` fetched now. Returns that `main` commit. */
+/**
+ * `commit` is an ancestor of origin's `main` fetched now; returns that `main` commit. It is decided
+ * by the commit's SHA in the repository at `root`, which need not have it checked out: the release
+ * workflows run the gate in a checkout of main and check the target out only after it passes.
+ */
 export function assertOnFreshMain(root: string, commit: string): string {
   if (!COMMIT.test(commit)) throw new Error("release gate: the commit must be a full lowercase SHA");
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  if (git("rev-parse", "HEAD") !== commit) throw new Error(`release gate: the checkout is not ${commit}`);
   git("fetch", "--no-tags", "--quiet", "origin", `+refs/heads/main:${FRESH_MAIN}`);
   const mainTip = git("rev-parse", "--verify", `${FRESH_MAIN}^{commit}`);
   try {
