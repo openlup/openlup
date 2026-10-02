@@ -113,12 +113,15 @@ describe("maintainer-controlled source preview workflow", () => {
   });
 
   it("verifies the previous attestation, checks the draft before publishing and verifies the attested release afterward", () => {
-    const steps = ['gh release verify "openlup-source-preview/$((PREVIEW_NUMBER - 1))"', "source-preview-release.ts prepare", "Create the exact annotated tag", "gh release create", "source-preview-release.ts check-draft", "gh release edit", "source-preview-release.ts verify", 'gh release verify "openlup-source-preview/$PREVIEW_NUMBER"'];
+    const steps = ['gh release verify "openlup-source-preview/$((PREVIEW_NUMBER - 1))"', "source-preview-release.ts prepare", "Create the exact annotated tag", 'gh api --method POST "repos/$GITHUB_REPOSITORY/releases"', "source-preview-release.ts check-draft", "gh api --method PATCH", "source-preview-release.ts verify", 'gh release verify "openlup-source-preview/$PREVIEW_NUMBER"'];
     const positions = steps.map((step) => sourcePreviewWorkflow.indexOf(step));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(sourcePreviewWorkflow).toContain("--verify-tag --draft --prerelease");
-    expect(sourcePreviewWorkflow.match(/--notes-file "\$RELEASE_OUTPUT_DIR\/notes.md"/gu)).toHaveLength(2);
+    expect(sourcePreviewWorkflow).toContain('git/ref/tags/$tag" --jq .object.sha');
+    expect(sourcePreviewWorkflow).toContain('--rawfile body "$RELEASE_OUTPUT_DIR/notes.md"');
+    expect(sourcePreviewWorkflow).toContain('echo "RELEASE_ID=$draft_id" >> "$GITHUB_ENV"');
+    expect(sourcePreviewWorkflow).toContain('repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --input -');
+    expect(sourcePreviewWorkflow).toContain('printf \'{"draft":false}\'');
     expect(sourcePreviewWorkflow.match(/immutable-releases/gu)).toHaveLength(2);
     expect(sourcePreviewWorkflow).toContain("Recovery requires the maintainer");
   });

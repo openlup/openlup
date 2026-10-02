@@ -85,7 +85,7 @@ function github(options: Overrides & { previousTarget?: string; releaseTarget?: 
     const page = /^.*\/releases\?per_page=100&page=([1-9][0-9]*)$/u.exec(url);
     if (page) return Response.json(page[1] === "1" ? options.releases ?? [{ tag_name: oldTag, immutable: true, prerelease: true, draft: false }] : []);
     if (url === `${root}/releases/tags/${encodeURIComponent(oldTag)}`) return Response.json({ tag_name: oldTag, immutable: true, prerelease: true, draft: false, body: "previous note", assets: [], ...options.previous });
-    if (url === `${root}/releases/tags/${encodeURIComponent(tag)}` && options.published) return Response.json({ tag_name: tag, immutable: true, prerelease: true, draft: false, body: "release note", assets: [], ...options.published });
+    if (url === `${root}/releases/tags/${encodeURIComponent(tag)}` && options.published) return Response.json({ id: 123, tag_name: tag, immutable: true, prerelease: true, draft: false, body: "release note", assets: [], ...options.published });
     if (url === `${root}/git/ref/tags/${encodeURIComponent(oldTag)}`) return Response.json({ ref: `refs/tags/${oldTag}`, object: { type: "tag", sha: previousTagObject }, ...options.previousRef });
     if (url === `${root}/git/tags/${previousTagObject}`) return Response.json({ sha: previousTagObject, tag: oldTag, message: "OpenLup source preview 1.\n", object: { type: "commit", sha: previousTarget }, ...options.previousTag });
     if (url === `${root}/git/ref/tags/${encodeURIComponent(tag)}` && options.targetRef !== undefined && options.targetRef !== null) return Response.json({ ref: `refs/tags/${tag}`, object: { type: "tag", sha: targetTagObject }, ...options.targetRef });
@@ -249,48 +249,69 @@ describe("source preview workflow preparation", () => {
   });
 
   it("checks the exact draft note and refuses any release asset before publication", () => {
-    const release = { tag_name: tag, draft: true, prerelease: true, body: "release note", assets: [] };
-    expect(() => assertDraft(release, tag, "release note")).not.toThrow();
-    for (const change of [{ draft: false }, { prerelease: false }, { tag_name: oldTag }]) expect(() => assertDraft({ ...release, ...change }, tag, "release note")).toThrow(/identity differs/u);
-    for (const change of [{ body: "release note\n" }, { body: undefined }]) expect(() => assertDraft({ ...release, ...change }, tag, "release note")).toThrow(/body differs/u);
-    for (const change of [{ assets: [{ name: "any-asset.json", digest: `sha256:${"0".repeat(64)}` }] }, { assets: undefined }]) expect(() => assertDraft({ ...release, ...change }, tag, "release note")).toThrow(/must carry no asset/u);
-    expect(() => assertDraft(release, tag, "other note")).toThrow(/body differs/u);
+    const release = { id: 123, tag_name: tag, draft: true, prerelease: true, body: "release note", assets: [] };
+    expect(() => assertDraft(release, 123, tag, "release note")).not.toThrow();
+    for (const change of [{ id: 124 }, { id: "123" }, { draft: false }, { prerelease: false }, { tag_name: oldTag }]) expect(() => assertDraft({ ...release, ...change }, 123, tag, "release note")).toThrow(/identity differs/u);
+    for (const change of [{ body: "release note\n" }, { body: undefined }]) expect(() => assertDraft({ ...release, ...change }, 123, tag, "release note")).toThrow(/body differs/u);
+    for (const change of [{ assets: [{ name: "any-asset.json", digest: `sha256:${"0".repeat(64)}` }] }, { assets: undefined }]) expect(() => assertDraft({ ...release, ...change }, 123, tag, "release note")).toThrow(/must carry no asset/u);
+    expect(() => assertDraft(release, 123, tag, "other note")).toThrow(/body differs/u);
   });
 
-  it("finds the draft in the release list, because the lookup by tag never returns a draft", async () => {
-    const draft = { tag_name: tag, draft: true, prerelease: true, body: "release note", assets: [] };
-    const published = { ...draft, draft: false, immutable: true };
-    const other = { ...draft, tag_name: oldTag };
-    // Models the GitHub API: the tag lookup answers only for a published release, and the list
-    // includes drafts in pages of 100.
-    const list = (releases: object[]): GithubFetch => async (url) => {
-      if (url === `${root}/releases/tags/${encodeURIComponent(tag)}`) {
-        const match = releases.find((release) => (release as typeof draft).tag_name === tag && (release as typeof draft).draft === false);
-        return match ? Response.json(match) : new Response(null, { status: 404 });
-      }
-      const page = /^.*\/releases\?per_page=100&page=([1-9][0-9]*)$/u.exec(url);
-      if (page) return Response.json(releases.slice((Number(page[1]) - 1) * 100, Number(page[1]) * 100));
-      return new Response(null, { status: 500 });
+  it("reads only the created draft ID and retries temporary invisibility without retrying permanent rejection", async () => {
+    const draft = { id: 123, tag_name: tag, draft: true, prerelease: true, body: "release note", assets: [] };
+    const lookup = (statuses: number[], release: object = draft) => {
+      const paths: string[] = [];
+      const fetcher: GithubFetch = async (url) => {
+        paths.push(url);
+        if (url !== `${root}/releases/123`) throw new Error(`unexpected release lookup: ${url}`);
+        const status = statuses.shift() ?? 200;
+        return status === 200 ? Response.json(release) : new Response(null, { status });
+      };
+      return { fetcher, paths };
     };
-    await expect(checkDraft(tag, "release note", undefined, list([other, draft]))).resolves.toBeUndefined();
-    await expect(checkDraft(tag, "release note", undefined, list([...Array.from({ length: 100 }, () => other), draft]))).resolves.toBeUndefined();
-    await expect(checkDraft(tag, "release note", undefined, list([draft, draft]))).rejects.toThrow(/exactly one draft release for openlup-source-preview\/2, found 2/);
-    await expect(checkDraft(tag, "release note", undefined, list([other]))).rejects.toThrow(/found 0/);
-    await expect(checkDraft(tag, "release note", undefined, list([published]))).rejects.toThrow(/found 0/);
-    await expect(checkDraft(tag, "other note", undefined, list([draft]))).rejects.toThrow(/body differs/);
-    await expect(checkDraft(tag, "release note", undefined, list([{ ...draft, assets: [{ name: "any-asset.json" }] }]))).rejects.toThrow(/no asset/);
+    const direct = lookup([200]);
+    await expect(checkDraft("123", tag, "release note", undefined, direct.fetcher)).resolves.toBeUndefined();
+    expect(direct.paths).toEqual([`${root}/releases/123`]);
+    vi.useFakeTimers();
+    try {
+      const delayed = lookup([404, 404, 200]);
+      const eventual = expect(checkDraft("123", tag, "release note", undefined, delayed.fetcher)).resolves.toBeUndefined();
+      await vi.runAllTimersAsync();
+      await eventual;
+      expect(delayed.paths).toEqual(Array(3).fill(`${root}/releases/123`));
+
+      const missing = lookup([404, 404, 404]);
+      const exhausted = expect(checkDraft("123", tag, "release note", undefined, missing.fetcher)).rejects.toThrow(/HTTP 404/u);
+      await vi.runAllTimersAsync();
+      await exhausted;
+      expect(missing.paths).toEqual(Array(3).fill(`${root}/releases/123`));
+    } finally { vi.useRealTimers(); }
+
+    const denied = lookup([403]);
+    await expect(checkDraft("123", tag, "release note", undefined, denied.fetcher)).rejects.toThrow(/HTTP 403/u);
+    expect(denied.paths).toEqual([`${root}/releases/123`]);
+    for (const invalid of ["", "0", "0123", "123x", "9007199254740992"]) {
+      const unused = lookup([200]);
+      await expect(checkDraft(invalid, tag, "release note", undefined, unused.fetcher)).rejects.toThrow(/RELEASE_ID/u);
+      expect(unused.paths).toEqual([]);
+    }
+    for (const changed of [{ id: 124 }, { tag_name: oldTag }, { draft: false }, { prerelease: false }, { body: "changed" }, { assets: [{ id: 1 }] }]) {
+      const mismatch = lookup([200], { ...draft, ...changed });
+      await expect(checkDraft("123", tag, "release note", undefined, mismatch.fetcher)).rejects.toThrow(/identity differs|body differs|no asset/u);
+      expect(mismatch.paths).toEqual([`${root}/releases/123`]);
+    }
   });
 
   it("verifies the published immutable release, its exact note and its annotated tag at the target", async () => {
     const input = previewInputs(target, "2", "release note");
-    await expect(verifyPublished(input, "release note", undefined, github({ published: {}, targetRef: {} }))).resolves.toBeUndefined();
-    for (const published of [{ immutable: false }, { prerelease: false }, { draft: true }, { tag_name: oldTag }]) await expect(verifyPublished(input, "release note", undefined, github({ published, targetRef: {} }))).rejects.toThrow(/not an immutable published preview/u);
-    await expect(verifyPublished(input, "release note", undefined, github({ published: { body: "edited note" }, targetRef: {} }))).rejects.toThrow(/body differs/u);
-    await expect(verifyPublished(input, "release note", undefined, github({ published: { assets: [{ name: "any-asset.json" }] }, targetRef: {} }))).rejects.toThrow(/no asset/u);
-    await expect(verifyPublished(input, "release note", undefined, github({ published: {}, targetRef: {}, releaseTarget: "b".repeat(40) }))).rejects.toThrow(/prepared target or message/u);
-    await expect(verifyPublished(input, "release note", undefined, github({ published: {}, targetRef: {}, targetTag: { message: "OpenLup source preview 2.\n\nExtra text\n" } }))).rejects.toThrow(/prepared target or message/u);
-    await expect(verifyPublished(input, "release note", undefined, github({ published: {}, targetRef: { object: { type: "commit", sha: target } } }))).rejects.toThrow(/annotated tag/u);
-    await expect(verifyPublished(input, "release note", undefined, github({ published: {} }))).rejects.toThrow(/HTTP 404/u);
+    await expect(verifyPublished(input, "release note", "123", undefined, github({ published: {}, targetRef: {} }))).resolves.toBeUndefined();
+    for (const published of [{ id: 124 }, { immutable: false }, { prerelease: false }, { draft: true }, { tag_name: oldTag }]) await expect(verifyPublished(input, "release note", "123", undefined, github({ published, targetRef: {} }))).rejects.toThrow(/not the created immutable published preview/u);
+    await expect(verifyPublished(input, "release note", "123", undefined, github({ published: { body: "edited note" }, targetRef: {} }))).rejects.toThrow(/body differs/u);
+    await expect(verifyPublished(input, "release note", "123", undefined, github({ published: { assets: [{ name: "any-asset.json" }] }, targetRef: {} }))).rejects.toThrow(/no asset/u);
+    await expect(verifyPublished(input, "release note", "123", undefined, github({ published: {}, targetRef: {}, releaseTarget: "b".repeat(40) }))).rejects.toThrow(/prepared target or message/u);
+    await expect(verifyPublished(input, "release note", "123", undefined, github({ published: {}, targetRef: {}, targetTag: { message: "OpenLup source preview 2.\n\nExtra text\n" } }))).rejects.toThrow(/prepared target or message/u);
+    await expect(verifyPublished(input, "release note", "123", undefined, github({ published: {}, targetRef: { object: { type: "commit", sha: target } } }))).rejects.toThrow(/annotated tag/u);
+    await expect(verifyPublished(input, "release note", "123", undefined, github({ published: {} }))).rejects.toThrow(/HTTP 404/u);
   });
 });
 

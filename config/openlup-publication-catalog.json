@@ -86,10 +86,6 @@
       "class": "public-output"
     },
     {
-      "path": ".github/workflows/recover-source-preview-9.yml",
-      "class": "public-output"
-    },
-    {
       "path": ".gitignore",
       "class": "public-output"
     },
