@@ -93,14 +93,16 @@ function world(name: string, version: string, { tag = false, release = false, np
   return table;
 }
 const input = (version = "0.4.1", name = "core", target = TARGET) => release.packageReleaseInputs(name, version, target, "Set note.\n");
+let stubs = 0;
 /**
- * Runs `script` as the release workflow does, in `cwd`. Its fetch refuses every read, or with
- * FETCH_TABLE answers each URL, without its query, from that JSON file and 404 otherwise.
+ * Runs `script` as the release workflow does, in `cwd`. Its fetch refuses every read, or, given
+ * `table`, answers each URL, without its query, from that table and 404 otherwise. The table is
+ * written into the fetch stub itself.
  */
-function cli(script: string, cwd: string, args: string[], env: Record<string, string>) {
-  const stub = join(scratch, "fetch-stub.mjs");
-  if (!existsSync(stub)) writeFileSync(stub, "import { readFileSync } from \"node:fs\";\nconst table = process.env.FETCH_TABLE ? JSON.parse(readFileSync(process.env.FETCH_TABLE, \"utf8\")) : undefined;\nglobalThis.fetch = async (url) => {\n  if (!table) throw new Error(`network read ${url}`);\n  const answer = table[String(url).split(\"?\")[0]];\n  return answer === undefined ? new Response(null, { status: 404 }) : Response.json(answer);\n};\n");
-  return spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", pathToFileURL(stub).href, script, ...args], { cwd, encoding: "utf8", timeout: 60_000, env: { ...inherited, FETCH_TABLE: "", GITHUB_TOKEN: "", GITHUB_OUTPUT: "", RELEASE_OUTPUT_DIR: "", RELEASE_NOTES: "Set note.\n", ...env } });
+function cli(script: string, cwd: string, args: string[], env: Record<string, string>, table?: Record<string, unknown>) {
+  const stub = join(scratch, `fetch-stub-${++stubs}.mjs`);
+  writeFileSync(stub, `const table = ${table === undefined ? "undefined" : JSON.stringify(table)};\nglobalThis.fetch = async (url) => {\n  if (!table) throw new Error(\`network read \${url}\`);\n  const answer = table[String(url).split("?")[0]];\n  return answer === undefined ? new Response(null, { status: 404 }) : Response.json(answer);\n};\n`);
+  return spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", pathToFileURL(stub).href, script, ...args], { cwd, encoding: "utf8", timeout: 60_000, env: { ...inherited, GITHUB_TOKEN: "", GITHUB_OUTPUT: "", RELEASE_OUTPUT_DIR: "", RELEASE_NOTES: "Set note.\n", ...env } });
 }
 const API_REFUSAL = "packages/core/api differs from openlup-core-v0.4.0; a patch set only fixes, so an API change is a minor set";
 let outputs = 0;
@@ -308,10 +310,9 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
       [`${API}/releases/tags/${kitTag}`]: { id: 7, tag_name: kitTag, immutable: true, draft: false, prerelease: false, author: APP, assets: [] },
     };
     for (const [packageName, table, expected] of [["all", {}, '["core","kit"]'], ["all", kitResumes, '["core"]'], ["core", {}, '["core"]']] as const) {
-      const output = join(scratch, `output-${++outputs}`), answers = join(scratch, `answers-${outputs}.json`);
+      const output = join(scratch, `output-${++outputs}`);
       writeFileSync(output, "earlier=1\n");
-      writeFileSync(answers, JSON.stringify(table));
-      const planned = cli(m.releaseScript, repository.root, ["plan", packs], { FETCH_TABLE: answers, PACKAGE: packageName, VERSION: "0.4.0", TARGET_COMMIT: repository.a, GITHUB_OUTPUT: output });
+      const planned = cli(m.releaseScript, repository.root, ["plan", packs], { PACKAGE: packageName, VERSION: "0.4.0", TARGET_COMMIT: repository.a, GITHUB_OUTPUT: output }, table);
       expect(planned.status, planned.stderr).toBe(0);
       expect(readFileSync(output, "utf8"), `${packageName} ${expected}`).toBe(`earlier=1\npackages=${expected}\n`);
     }
