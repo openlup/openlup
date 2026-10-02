@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -8,74 +8,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
 import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, assertDescendantSourceRelease, assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
-import { annotatedTag, assertDraft, assertNextPreview, assertReleasablePackages, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
-import { PUBLIC_REPOSITORY_URL } from "./packages/package-manifest-policy.ts";
+import { annotatedTag, assertDraft, assertNextPreview, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { MANAGED_BASELINE, REVIEWED_FORWARD_PATH, reviewedFunctionDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const target = "a".repeat(40), previousCommit = "d".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
 const previousTagObject = "6".repeat(40), targetTagObject = "c".repeat(40);
-const packageProducer = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", ".github/workflows/publish-packages.yml"), "utf8");
 type Overrides = { releases?: object[]; previous?: Record<string, unknown>; published?: Record<string, unknown>; previousRef?: Record<string, unknown>; previousTag?: Record<string, unknown>; targetRef?: Record<string, unknown> | null; targetTag?: Record<string, unknown> };
-
-describe("direct npm package producer", () => {
-  it("rejects forged release events and a changed live release before checkout", () => {
-    const step = packageProducer.split("      - name: Require the release App event and the live immutable prerelease\n")[1]?.split("      - uses:")[0];
-    const run = step?.split("        run: |\n")[1]?.replace(/^ {10}/gmu, "");
-    expect(run).toBeTruthy();
-    const directory = mkdtempSync(join(tmpdir(), "openlup-release-event-"));
-    const eventFile = join(directory, "event.json"), liveFile = join(directory, "live.json");
-    const gh = join(directory, "gh");
-    writeFileSync(gh, "#!/bin/sh\n[ \"$1\" = api ] || exit 1\ncat \"$LIVE_RELEASE\"\n");
-    chmodSync(gh, 0o755);
-    const bot = { id: 334697227, login: "openlup-release[bot]" };
-    const event = { action: "published", repository: { full_name: "openlup/openlup" }, sender: { ...bot, type: "Bot" }, release: { id: 123, tag_name: "openlup-source-preview/9", prerelease: true, draft: false, author: bot, assets: [] } };
-    const live = { id: 123, tag_name: "openlup-source-preview/9", prerelease: true, draft: false, immutable: true, published_at: "2026-09-30T00:00:00Z", author: bot, assets: [] };
-    const inheritedEnv = Reflect.get(process, "env") as NodeJS.ProcessEnv;
-    const check = (changedEvent = event, changedLive = live) => {
-      writeFileSync(eventFile, JSON.stringify(changedEvent));
-      writeFileSync(liveFile, JSON.stringify(changedLive));
-      return spawnSync("bash", ["-e", "-o", "pipefail", "-c", run!], {
-        env: { ...inheritedEnv, PATH: `${directory}:${inheritedEnv.PATH}`, LIVE_RELEASE: liveFile, GITHUB_EVENT_PATH: eventFile, GITHUB_REPOSITORY: "openlup/openlup", RELEASE_TAG: "openlup-source-preview/9" },
-        encoding: "utf8", timeout: 5000,
-      }).status;
-    };
-    try {
-      expect(check()).toBe(0);
-      for (const changed of [
-        { sender: { ...bot, type: "Bot", id: 43 } }, { sender: { ...bot, type: "User" } },
-        { sender: { ...bot, type: "Bot", login: "another-release[bot]" } },
-        { action: "edited" }, { repository: { full_name: "someone/else" } },
-        { release: { ...event.release, author: { ...bot, id: 43 } } },
-        { release: { ...event.release, draft: true } }, { release: { ...event.release, assets: [{ id: 1 }] } },
-      ]) expect(check({ ...event, ...changed })).not.toBe(0);
-      for (const changed of [{ immutable: false }, { prerelease: false }, { id: 124 }, { tag_name: "openlup-source-preview/8" }, { author: { ...bot, id: 43 } }, { assets: [{ id: 1 }] }]) {
-        expect(check(event, { ...live, ...changed })).not.toBe(0);
-      }
-    } finally { rmSync(directory, { recursive: true, force: true }); }
-  });
-
-  it("verifies release provenance before packing and publishes only checked tarballs through OIDC", () => {
-    const pack = packageProducer.split("  pack:\n")[1]?.split("\n  publish:\n")[0] ?? "";
-    const publish = packageProducer.split("\n  publish:\n")[1] ?? "";
-    const ordered = [
-      "Require the release App event", "actions/checkout@", "Verify the annotated tag and GitHub release attestation",
-      "gh release verify", "The release commit is on main", "npm run packages:check", "Scan the unpacked tarballs", "actions/upload-artifact@",
-    ];
-    const positions = ordered.map((item) => pack.indexOf(item));
-    expect(positions.every((position) => position >= 0)).toBe(true);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(pack).toContain("attestations: read");
-    expect(pack).not.toContain("id-token: write");
-    expect(publish).toContain("needs: pack");
-    expect(publish).toContain("environment: npm-stage");
-    expect(publish).toContain("id-token: write");
-    expect(publish).toContain("if (actual !== sha256)");
-    expect(publish).toContain('npm publish "./packs/$filename" --tag preview --provenance --access public --ignore-scripts');
-    expect(publish).not.toMatch(/npm stage publish|npm stage approve|actions\/checkout@|npm ci/u);
-  });
-});
 
 /** Models the read-only GitHub API for a published preview/1 and, once tagged, preview/2. */
 function github(options: Overrides & { previousTarget?: string; releaseTarget?: string } = {}): GithubFetch {
@@ -655,68 +595,6 @@ describe("descendant source release check", () => {
       for (const out of [same.out, foreign.out, refused.out]) expect(existsSync(join(out, "notes.md"))).toBe(false);
     } finally { sample.cleanup(); for (const out of outputs) rmSync(out, { recursive: true, force: true }); }
   });
-});
-
-
-describe("publishable package preflight", () => {
-  const fixture = (version: string) => {
-    const repo = mkdtempSync(join(tmpdir(), "openlup-package-preflight-"));
-    const run = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
-    const write = (path: string, contents: string) => { mkdirSync(dirname(join(repo, path)), { recursive: true }); writeFileSync(join(repo, path), contents); };
-    run("init", "--quiet"); run("config", "user.name", "Release Test"); run("config", "user.email", "release@example.com");
-    write("config/openlup-packages.json", JSON.stringify({ schemaVersion: 1, version, packages: [{ name: "@openlup/pub", directory: "packages/pub", publish: true }], unreleased: [] }));
-    write("packages/pub/package.json", JSON.stringify({ name: "@openlup/pub", version, license: "Apache-2.0", files: ["dist/**"], publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: "packages/pub" }, exports: { ".": "./dist/a.js" } }, null, 2));
-    write("packages/pub/src/a.ts", "export const a = 1;\n");
-    write("packages/pub/dist/a.js", "export const a = 1;\n");
-    const commit = () => { run("add", "--all"); run("commit", "--quiet", "-m", "fixture"); return run("rev-parse", "HEAD"); };
-    return { repo, write, commit, cleanup: () => rmSync(repo, { recursive: true, force: true }) };
-  };
-
-  it("refuses a mismatched or dirty version before writing a release note", () => {
-    const sample = fixture("0.9.0");
-    try {
-      const head = sample.commit();
-      expect(() => assertReleasablePackages(sample.repo, head, "openlup-source-preview/10")).toThrow(/packages:check .* refused the target/);
-      sample.write("config/openlup-packages.json", JSON.stringify({ schemaVersion: 1, version: "0.10.0", packages: [{ name: "@openlup/pub", directory: "packages/pub", publish: true }], unreleased: [] }));
-      expect(() => assertReleasablePackages(sample.repo, head, "openlup-source-preview/10")).toThrow(/without tracked changes/);
-      sample.write("packages/pub/package.json", JSON.stringify({ name: "@openlup/pub", version: "0.10.0", license: "Apache-2.0", files: ["dist/**"], publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: "packages/pub" }, exports: { ".": "./dist/a.js" } }, null, 2));
-      const bumped = sample.commit();
-      expect(() => assertReleasablePackages(sample.repo, bumped, "openlup-source-preview/10")).not.toThrow();
-    } finally { sample.cleanup(); }
-  });
-
-  it("runs the package check before writing notes in release prepare", async () => {
-    const sample = syntheticRelease(), out = mkdtempSync(join(tmpdir(), "openlup-prepare-package-check-"));
-    try {
-      const head = sample.release({ "README.md": "package-gated descendant\n" });
-      const check = vi.fn((_root: string, _target: string, _tag: string) => {
-        expect(existsSync(join(out, "notes.md"))).toBe(false);
-        throw new Error("package scan refused");
-      });
-      await expect(preparePreview(previewInputs(head, "2", "release note\n"), sample.repo, out, undefined, github({ previousTarget: sample.rootCommit }), check))
-        .rejects.toThrow("package scan refused");
-      expect(check).toHaveBeenCalledExactlyOnceWith(sample.repo, head, "openlup-source-preview/2");
-      expect(existsSync(join(out, "notes.md"))).toBe(false);
-    } finally { sample.cleanup(); rmSync(out, { recursive: true, force: true }); }
-  });
-
-  it("packs through the same CLI phase used by the unprivileged workflow", () => {
-    const sample = fixture("0.9.0"), output = join(mkdtempSync(join(tmpdir(), "openlup-preflight-packs-")), "packs");
-    try {
-      const old = sample.commit();
-      const phase = (head: string, preview: string) => {
-        vi.stubEnv("TARGET_COMMIT", head); vi.stubEnv("PREVIEW_NUMBER", preview); vi.stubEnv("RELEASE_NOTES", "release note");
-        return spawnSync(process.execPath, ["--experimental-strip-types", fileURLToPath(new URL("./source-preview-release.ts", import.meta.url)), "packages", output], { cwd: sample.repo, encoding: "utf8" });
-      };
-      expect(phase(old, "10").status).toBe(1);
-      expect(existsSync(output)).toBe(false);
-      const packed = phase(old, "9");
-      expect(packed.status, packed.stderr).toBe(0);
-      expect(packed.stdout).toContain(`${old} packs a publishable package for openlup-source-preview/9`);
-      expect(readFileSync(join(output, "packages-manifest.json"), "utf8")).toContain(old);
-      expect(existsSync(join(output, "openlup-pub-0.9.0.tgz"))).toBe(true);
-    } finally { vi.unstubAllEnvs(); sample.cleanup(); rmSync(dirname(output), { recursive: true, force: true }); }
-  }, 60_000);
 });
 
 describe("expand-only platform SQL admission", () => {

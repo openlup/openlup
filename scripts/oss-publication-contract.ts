@@ -13,7 +13,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/ast-grep/check-filewide-ignore.mjs",
   "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",
-  "scripts/packages/packages-check.ts", "scripts/packages/release-bump.ts",
+  "scripts/packages/package-release.ts", "scripts/packages/packages-check.ts", "scripts/packages/release-bump.ts",
   "scripts/public-reference/grant-operator.mjs", "scripts/public-reference/setup-subscription.mjs",
   "scripts/public-reference/verify-subscription.mjs",
   "scripts/public-ci-neutrality.mjs", "scripts/public-ci-pgtap.mjs",

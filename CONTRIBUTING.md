@@ -359,25 +359,31 @@ CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
 The required test command also includes the source preview release falsifiers
-(`scripts/source-preview-release.test.ts`). They exercise the package producer's
-release-event identity and live immutable-release refusals before checkout,
-and pin tag-attestation, pack and OIDC publish ordering. The source preview
+(`scripts/source-preview-release.test.ts`). The source preview
 falsifiers also check bounded 404 reads of the exact draft ID returned by
-creation and refusal of a changed draft before publication. Under `scripts/packages`,
-the command includes package release-shape checks and the test that loads the
-lint configuration with a conditional `imports` map.
+creation and refusal of a changed draft before publication. Under `scripts/packages`, it runs the
+package release falsifiers: `release-workflow-authenticity.test.ts` plants a
+defect against every control of the two package release workflows and runs
+their release-event, tag-pattern, tarball and pre-publish npm checks as scripts,
+and `package-release.test.ts` exercises the manifest, version, tag, npm and draft
+refusals.
+The same directory holds the package release-shape checks and the test that
+loads the lint configuration with a conditional `imports` map.
 The public test job separately runs the materialized command-contract
 falsifiers, which also run in the complete root scope.
 
 `npm run packages:check` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each
-package as released or as unreleased. A released package has the one lockstep
-version, exact pins to other released `@openlup/*` packages, registry semver
+package as released or as unreleased. A released package `packages/<name>` is
+named `@openlup/<name>` and has its own `MAJOR.MINOR.PATCH` version, exact pins
+to the current versions of other released `@openlup/*` packages, registry semver
 ranges for every other dependency, and curated `exports`: no wildcard or
 directory entries, and every target under `./dist/` except a `core-source`
 target, which stays under `./src/`. It is either `private: true` or carries
-exactly the public, provenance-backed `preview` publication settings and a
-`repository` entry. An unreleased package is always `private: true`.
+exactly the public, provenance-backed publication settings and a `repository`
+entry. Its `publishConfig.tag` stays `preview`, so only the release workflow's
+explicit `--tag latest` moves `latest`. An unreleased package is always
+`private: true`.
 
 `npm run packages:check -- --pack` also builds and packs each released package
 into a temporary directory, from a package directory with no uncommitted
@@ -387,10 +393,11 @@ It refuses source maps and source-map references, build-machine home paths, and
 the operational coordinates the public detector knows. It prints each tarball's
 integrity. `-- --out <dir>` implies `--pack`. It keeps each publishable
 package's tarball in an empty directory, with a `packages-manifest.json` of
-their digests. `-- --release-tag openlup-source-preview/<n>` requires the lockstep
-version to be `0.<n>.0`. The command publishes nothing; the package preview
-channel in [`.github/VERSIONING_AND_EOL.md`](.github/VERSIONING_AND_EOL.md)
-describes how the protected release approval leads to direct OIDC publication.
+their versions and digests. `-- --release-tag openlup-<package>-v<version>`
+packs only that publishable package and requires its manifest version to be
+`<version>`. The command publishes nothing;
+[Package releases](.github/VERSIONING_AND_EOL.md#package-releases) describes how
+the protected release approval leads to direct OIDC publication.
 
 The root test command has no directory or file filters. It collects the shipped
 Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
@@ -489,14 +496,20 @@ an earlier one, or a comment line starting `// openlup-remove-before:` that does
 not parse. Temporary compatibility files use such a marker so that a preview
 cannot ship them past their announced removal.
 
-The maintainer prepares the next npm preview version with `npm run release:bump -- <n>`
-before the cut of `openlup-source-preview/<n>`. The command updates only the
-lockstep package version carriers and the publishable package changelog. The
-release workflow checks and packs that exact version before asking for release
-approval. The package workflow independently verifies the App-published immutable
-release, tag and attestation, then publishes the checked tarball through npm OIDC
-without another approval. The maintainer confirms the pinned release App bot,
-protected `npm-stage` environment and direct-publish trust before enabling it.
+Platform modules are contributed package-first: a reusable module becomes an
+`@openlup/*` package with documented extension seams, and the reference
+application consumes that package. Source-only changes are for the reference
+application and documentation. Each package is released on its own semantic
+version, independently of source previews. A release-preparation pull request
+runs `npm run release:bump -- <package> <version>`, which updates only that
+package's version carriers and its changelog; merging it authorizes no release.
+A release is then dispatched with `publish-package.yml` for the reviewed commit,
+and the maintainer's approval of the protected `release` environment authorizes
+it. The package workflow independently verifies the App-published immutable
+release, tag and attestation, then publishes the checked tarball through npm
+OIDC with `--tag latest`, without another approval.
+[Package releases](.github/VERSIONING_AND_EOL.md#package-releases) lists every
+check and the maintainer setup.
 
 A new or renamed path also needs its row in
 `config/openlup-publication-catalog.json`. After changing that catalogue, a

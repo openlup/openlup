@@ -71,34 +71,25 @@ describe("maintainer-controlled source preview workflow", () => {
     expect(sourcePreviewWorkflow).toContain('test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"');
   });
 
-  it("gates release on a single packed tarball and a checksum-pinned pre-tag scan", () => {
-    const preflight = workflowJob("package-preflight", sourcePreviewWorkflow);
+  it("checks the target before the approval request and cuts a source snapshot with no package", () => {
+    const jobs = [...(sourcePreviewWorkflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gmu)].map((match) => match[1]);
+    expect(jobs).toEqual(["preflight", "release"]);
+    const preflight = workflowJob("preflight", sourcePreviewWorkflow);
     const release = workflowJob("release", sourcePreviewWorkflow);
-    const required = [
-      'git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD',
-      'for context in dco typecheck install-proof test self-check gitleaks; do',
-      'npm ci --ignore-scripts --no-audit --fund=false',
-      'scripts/source-preview-release.ts packages',
-      'repos/gitleaks/gitleaks/releases/assets/378332058',
-      '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb',
-      'tar -xzf "$tarball" -C "$target"',
-      'gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner',
-    ];
-    let last = -1;
-    for (const step of required) {
-      const next = preflight.indexOf(step);
-      expect(next, step).toBeGreaterThan(last);
-      last = next;
+    const checks = ['git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD', "for context in dco typecheck install-proof test self-check gitleaks; do"];
+    for (const [job, ordered] of [[preflight, checks], [release, [...checks, "source-preview-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY"]]] as const) {
+      const positions = ordered.map((step) => job.indexOf(step));
+      expect(positions.every((position) => position >= 0), positions.join(",")).toBe(true);
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
     }
-    expect(preflight).not.toContain("OPENLUP_RELEASE_APP_PRIVATE_KEY");
-    expect(preflight).not.toContain("permission-contents: write");
-    expect(preflight).not.toContain("source-preview-release.ts prepare");
-    expect(release).toContain("needs: package-preflight");
+    expect(preflight).not.toMatch(/OPENLUP_RELEASE_APP|permission-contents: write|source-preview-release\.ts|npm ci/u);
+    expect(release).toContain("needs: preflight");
+    expect(sourcePreviewWorkflow).not.toMatch(/packages:check|npm publish|OPENLUP_NPM_STAGE|source-preview-release\.ts packages/u);
   });
 
   it("pins actions and uses an environment App token for tag and release writes", () => {
     const uses = [...sourcePreviewWorkflow.matchAll(/uses: [^@\n]+@([^\s#]+)/gu)].map((match) => match[1]);
-    expect(uses).toHaveLength(5);
+    expect(uses).toHaveLength(4);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
     expect(sourcePreviewWorkflow).toContain("secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY");
     expect(sourcePreviewWorkflow).toContain("vars.OPENLUP_RELEASE_APP_CLIENT_ID");

@@ -2,7 +2,8 @@
 
 Status: development-preview guidance.
 Audience and purpose: contributors and maintainers following a change from local
-verification through a pull request to a source preview and npm package.
+verification through a pull request to a package release on npm, or to an
+optional source preview, which carries no package.
 The current channel is evaluation-only; this process does not establish a stable
 API, production deployment or supported adopter upgrade.
 
@@ -26,8 +27,9 @@ Local success is preparation, not proof that a hosted run or release succeeded.
 | Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Active native admission waits for six actual successes and current review evidence. |
 | Merge queue | Authorized enqueue requests a merge group | Mechanical checks run on the actual group. Native admission binds group identity and review evidence; a changed whole tree requires fresh integration review. |
 | Main | Squash merge produces a main push | Mechanical checks and raw diagnostics run again; Sonar updates its main analysis. Native admission does not run on main pushes. A merge is not a release. |
-| Source preview | Authorized dispatch for reviewed main SHA, next ordinal and exact notes | Unprivileged package preflight precedes protected release approval. The release workflow validates the tree, creates and verifies the immutable source preview. |
-| npm | Published source-preview event from the release App | Package workflow independently checks identity and tarballs, then publishes with OIDC provenance. Verify its observed result; publication does not update an adopter. |
+| Package release | Authorized dispatch of `publish-package.yml` for a reviewed main SHA, one package at its manifest version, and exact notes | Unprivileged preflight checks ancestry, contexts, version, absent tag and npm, then packs and scans the tarball before protected release approval. The release App creates the annotated tag `openlup-<package>-v<version>` and the immutable release. |
+| npm | Published package-release event from the release App | Package workflow independently checks identity, tag and tarball, re-reads npm, then publishes with OIDC provenance under `latest`. Verify its observed result; publication does not update an adopter. |
+| Source preview (optional) | Authorized dispatch for reviewed main SHA, next ordinal and exact notes | A source snapshot with no package. The release workflow validates the tree, creates and verifies the immutable source preview. |
 
 Dependabot PRs are a special case: Published Tree CI selects them only for a
 human `ready_for_review` event. They are update signals, not a direct merge
@@ -57,7 +59,7 @@ remain in [contribution checks](../../CONTRIBUTING.md#development-preview-checks
 | Native session review and `native-review` | Independent semantic review bound to candidate, scope and criteria; hosted receipt admission after mechanical success. | Required for registered agent tasks; hosted status depends on explicit activation. Review does not grant publication or release authority. |
 | SonarQube Cloud automatic analysis | Additional security/reliability findings on PR pushes and main, using configured source/test scope. Runs in Sonar Cloud, not a local scanner or Actions job. | Advisory pilot; no required status, coverage import or per-PR token/login. A hotspot needs contextual review, not automatic classification as a vulnerability. |
 | Dependabot | Scheduled dependency/Actions update proposals; security-update activation is a separate repository setting. | Triage signal, not test evidence or automatic approval. |
-| `npm run packages:check -- --out <outside-checkout-directory> --release-tag openlup-source-preview/<n>` | Package versions, exports, packed contents and consumer boundary; local release preparation and hosted pack/preflight. | Release prerequisite. Does not publish. Check the exact candidate, not just its package manifest. |
+| `npm run packages:check -- --out <outside-checkout-directory> --release-tag openlup-<package>-v<version>` | Package versions, exports, packed contents and consumer boundary; local release preparation and hosted pack/preflight. | Release prerequisite. Does not publish. Check the exact candidate, not just its package manifest. |
 | `gh release verify <tag> --repo openlup/openlup` | GitHub attestation of the immutable release/tag; maintainer preparation and hosted release/package workflows. | Release evidence. It does not establish npm publication or an adopter installation. |
 
 Core's `ci` includes license allowlisting, production-dependency SBOM and audit,
@@ -118,38 +120,57 @@ Triage existing findings separately by impact; do not bulk-clean unrelated code
 or turn a pilot gate into a required check without a new decision. If App access
 is revoked, analysis may stop; it is not a new merge blocker in this pilot.
 
-## Cutting and checking a preview
+## Releasing a package
 
-The [versioning policy](../../.github/VERSIONING_AND_EOL.md#one-click-source-preview-workflow)
+Each `@openlup/*` package is released on its own version, independently of
+source previews. Source preview 11, which published `@openlup/core` `0.11.0` on
+the `preview` dist-tag, was the last lockstep cut that also published a package.
+The [versioning policy](../../.github/VERSIONING_AND_EOL.md#package-releases)
 owns release permissions, setup, detailed refusals and recovery. The sequence is:
 
-1. Prepare the matching `0.<n>.0` package version through a reviewed ordinary
-   PR before source preview `<n>`. Select the exact reviewed main commit and
-   check its six mechanical contexts, package preflight and adjacent notes.
-2. Verify the previous preview's attestation. Release prepare checks the next
-   ordinal, absent tag, ancestry, removal markers, immutable migration history,
-   admitted forwards, exact publication catalogue and source contract.
-3. With explicit authority, dispatch the source workflow from main with the
-   exact SHA, ordinal and reviewed note bytes. It runs unprivileged pack/Gitleaks
-   preflight before protected `release` approval; dispatch itself is not approval.
-4. After owner approval, the release App creates the annotated tag and draft,
-   validates the same draft ID and publishes the immutable prerelease. Verify
-   the completed release's exact note bytes, identity and GitHub attestation.
-5. The App event starts package packing and independent release/tag checks.
-   The `npm-stage` job verifies tarball digests and publishes with OIDC provenance
-   under `preview`. There is no second npm reviewer in the configured direct
-   publishing route. The source workflow's old staging/2FA header comment is
-   historical; the actual publish job and current policy define this route.
+1. Prepare the package's next `MAJOR.MINOR.PATCH` version, above every version
+   npm holds, with `npm run release:bump -- <package> <version>` in a reviewed
+   ordinary PR. A version bump by itself publishes nothing.
+2. Select the exact reviewed main commit that carries the version and check its
+   six mechanical contexts, then run `packages:check` with the package release tag.
+3. With explicit authority, dispatch `publish-package.yml` from main with the
+   package, the version, the exact SHA and reviewed note bytes. Its unprivileged
+   preflight checks ancestry, contexts, version, absent tag and npm, then packs and
+   scans the tarball before protected `release` approval; dispatch itself is not approval.
+4. After owner approval, the release job repeats those checks without installing
+   or packing. The release App then creates the annotated tag `openlup-<package>-v<version>`
+   and draft, validates the same draft ID and publishes the immutable release.
+   Verify the completed release's exact note bytes, identity and GitHub attestation.
+5. The App event starts package packing and independent release/tag checks. The
+   `npm-stage` job verifies the tarball digest, re-reads npm and publishes with OIDC
+   provenance under `latest`. There is no second npm reviewer in the configured direct
+   publishing route. One package's releases and publications run one at a time.
 6. Observe package-workflow success and verify the exact registry version,
-   integrity and provenance before offering adoption. A source release success
-   alone cannot prove npm success. After both succeed, prepare the next version
-   bump through another ordinary reviewed PR.
+   integrity and provenance before offering adoption. A release success alone
+   cannot prove npm success.
 
 On partial release or package failure, stop for maintainer recovery. Do not
-retag, rewrite an immutable release, republish a version or blindly rerun a job
-that may have already published some packages. The policy distinguishes a safe
-retry with no published package from a partial publication requiring forward
-correction. No step deploys production or changes an adopter's dependency pin.
+retag, rewrite an immutable release or republish a version. A failed publish job
+may be rerun: it re-reads npm and refuses once npm holds that version or a later
+one, so `latest` never moves backwards; otherwise correct forward with a new
+version. No step deploys production or changes an adopter's dependency pin.
+
+## Cutting an optional source preview
+
+After preview 11, a source preview is an optional source snapshot with no package. The
+[versioning policy](../../.github/VERSIONING_AND_EOL.md#one-click-source-preview-workflow)
+owns its permissions, setup, refusals and recovery.
+
+1. Verify the previous preview's attestation. Release prepare checks the next
+   ordinal, absent tag, ancestry, removal markers, immutable migration history,
+   admitted forwards, exact publication catalogue and source contract.
+2. With explicit authority, dispatch the source workflow from main with the
+   exact SHA, ordinal and reviewed note bytes. Its unprivileged preflight checks
+   ancestry and contexts before protected `release` approval.
+3. After owner approval, the release App creates the annotated tag and draft,
+   validates the same draft ID and publishes the immutable prerelease. Verify
+   the completed release's exact note bytes, identity and GitHub attestation.
+   The package workflow skips a preview, so no package is published.
 
 ## Documentation and distribution boundary
 

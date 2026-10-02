@@ -289,10 +289,12 @@ not make this a stable API.
 Maintainers can cut an adjacent development preview with
 [`publish-source-preview.yml`](workflows/publish-source-preview.yml). This
 workflow is inert until the repository variable `OPENLUP_SOURCE_RELEASE` is
-`enabled`. It runs only when dispatched from `main`. Its unprivileged package
-preflight runs before the maintainer approves the `release` environment. That
-approval authorizes the source preview and its checked npm package; dispatching
-a run alone is not publication authorization.
+`enabled`. It runs only when dispatched from `main`. Its unprivileged preflight
+checks the target's main ancestry and required contexts before the maintainer
+approves the `release` environment. That approval authorizes the source preview;
+dispatching a run alone is not publication authorization. A source preview is an
+optional source snapshot: it carries no npm package, and packages are released
+on their own (see [Package releases](#package-releases)).
 
 Before enabling it, the maintainer configures every item below:
 
@@ -327,9 +329,8 @@ Before enabling it, the maintainer configures every item below:
    GitHub's release attestations; it cannot create a release or an attestation.
 7. Finally set the **repository variable** `OPENLUP_SOURCE_RELEASE` to
    **`enabled`**. Removing it or using another value disables future runs.
-   `OPENLUP_NPM_STAGE`, the `npm-stage` environment and npm trusted-publisher
-   setup remain separate; follow
-   [Package preview channel](#package-preview-channel) before the first cut.
+   Package releases have their own workflow, variable and setup; see
+   [Package releases](#package-releases).
 
 In Actions, choose **Publish Source Preview → Run workflow**, select **main**,
 and enter the reviewed full lowercase **target commit SHA**, immediately next
@@ -338,8 +339,6 @@ target diff before approving the `release` environment. Include the adjacent
 preview's upgrade actions and any applicable pending notes from this document.
 If a future release policy defines a release-semantics block, include that block
 in these same note bytes; this document currently defines no such block.
-Confirm the package version `0.<n>.0` and its pack proof before approving a
-preview that should publish packages.
 
 The job repeats the package workflow's main-ancestry and six required-context
 check at the target, and verifies GitHub's release attestation of preview N-1
@@ -364,15 +363,12 @@ A newly created ID may briefly return 404, so this read has three bounded
 attempts; any other refusal or changed draft stops the run. Publication changes
 only the draft flag on that same ID. Publication makes the prerelease
 immutable, and GitHub attests the release; the attestation binds the annotated
-tag object. The App token emits the release event that starts
-`publish-packages.yml`; the default `GITHUB_TOKEN` would suppress that
-downstream workflow. The final steps check that the completed immutable release
+tag object. The final steps check that the completed immutable release
 has the created ID, exact body and no asset and that its annotated tag names the target
 with the exact message, then verify GitHub's release attestation with
-`gh release verify`. The separate package workflow independently checks the
-release event's exact App bot user ID, the live immutable prerelease, annotated
-tag and attestation before packing. Its protected OIDC job publishes the checked
-tarball without another approval. A source release changes no deployment.
+`gh release verify`. The package workflow `publish-packages.yml` skips a
+prerelease, so a source preview publishes no package. A source release changes
+no deployment.
 
 A failed run never automatically deletes a tag or draft or edits a published
 release. An abandoned tag/draft blocks the next attempt.
@@ -523,110 +519,152 @@ consumer before adoption. The later
 has a separate catalog-slug compatibility action. Publication alone updates no
 adopter; no preview is a supported upgrade channel.
 
-## Package preview channel
+## Package releases
 
-`@openlup/core` is the one publishable package in
-[`config/openlup-packages.json`](../config/openlup-packages.json)
-(`publish: true`). Its version is `0.<n>.0` for source preview
-`openlup-source-preview/<n>`: `0.6.0` rides on preview 6. Before each later cut,
-a commit sets the next version in that file, in each listed `package.json` and
-in both lockfiles, and regenerates the source release contract; otherwise the
-pack job refuses and that preview carries no package. Use `npm run release:bump -- <n>` in an ordinary PR to set the next version;
-after this gate merges, future cuts refuse a different lockstep version and run
-an unprivileged package preflight before requesting the `release` environment
-approval. Determine the selected candidate version from the package registry
-configuration and manifests, and publication from the immutable release and npm
-registry evidence; a version bump by itself publishes nothing. The preflight checks main ancestry and
-required contexts before installing without scripts,
-then packs the package once and scans the exact unpacked tarball with checksum-verified
-gitleaks 8.30.1. A failed scan refuses the cut before a tag exists.
-The source preview still requires its existing descendant and removal-marker
-checks. The package workflow publishes the tarball directly after the protected
-`release` approval. It is inert until the repository variable
-`OPENLUP_NPM_STAGE` is set to `enabled`.
+Each `@openlup/*` package is released on its own, with its own semantic version.
+[`config/openlup-packages.json`](../config/openlup-packages.json) lists the
+packages, and `publish: true` marks one that may be published; `@openlup/core`
+is currently the only one. A package's version lives in its own `package.json`.
+A package release needs no source preview. `openlup-source-preview/11` was the
+last lockstep cut that also published a package: `@openlup/core` `0.11.0`, on
+the `preview` dist-tag. Later source previews are optional snapshots with no
+package, and the next `@openlup/core` version is released on its own. No package
+version implies a stable API or a supported upgrade path.
 
-When a source preview `openlup-source-preview/<n>` is published,
-[`.github/workflows/publish-packages.yml`](workflows/publish-packages.yml) works
-in two jobs:
+A release takes three steps:
+
+1. **Release preparation.** An ordinary reviewed pull request runs
+   `npm run release:bump -- <package> <version>`, which sets that package's
+   version in its `package.json` and lockfile entries and adds its CHANGELOG
+   line, and regenerates the source release contract as `CONTRIBUTING.md`
+   describes. The version is `MAJOR.MINOR.PATCH` and must be above every version
+   npm holds for the package. Merging it does not authorize a release. Read the
+   candidate version from the package's manifest, and publication only from the
+   immutable release and the npm registry: a version bump by itself publishes
+   nothing. A package may narrow its own version rule: the `@openlup/core`
+   release check still requires `0.<n>.0`.
+2. **Dispatch.** In Actions, choose **Publish Package → Run workflow** on
+   **main** and enter the package directory name (for example `core`), the
+   version, the reviewed full target commit SHA on `main` and the exact release
+   note body. The unprivileged `preflight` job of
+   [`publish-package.yml`](workflows/publish-package.yml) checks that the target
+   is on `main` and that the six required contexts passed there, that
+   `packages/<package>/package.json` carries that version, that the tag
+   `openlup-<package>-v<version>` does not exist, and that npm has never held
+   that version and holds none above it. It then packs the package with
+   `npm run packages:check -- --out <dir> --release-tag <tag>` and scans the
+   unpacked tarball with checksum-verified gitleaks 8.30.1.
+3. **Approval.** The `release` job waits for the maintainer to approve the
+   protected `release` environment. Before the release App token exists, it
+   re-verifies the target's main ancestry and required contexts, the manifest
+   policy and version with `packages:check --release-tag` (no install, build or
+   pack), the absent tag and npm. It installs nothing and runs no package code:
+   the pack and the gitleaks scan run only in the unprivileged `preflight`, and
+   `publish-packages.yml` packs and scans the published tag again. The App then creates the
+   annotated tag with exactly `OpenLup package @openlup/<package> <version>.` and
+   a draft release with the exact note bytes and no asset. The job reads that
+   draft by the ID its creation returned, publishes it by that ID as an
+   immutable release, checks the published release, its App author, its note and
+   its tag at the target, and verifies GitHub's release attestation with
+   `gh release verify`. Dispatching a run grants no publication; the approval
+   does.
+
+The App-published release starts
+[`publish-packages.yml`](workflows/publish-packages.yml), which works in two
+jobs:
 
 1. **pack** accepts only a `published` event from `openlup-release[bot]`
-   (GitHub user ID `334697227`). It reads the live release and refuses anything other than the same
-   immutable, published prerelease with no assets. It checks the exact annotated
-   tag and verifies GitHub's release attestation, then checks that the release
-   commit is on `main` and that the six required GitHub Actions contexts passed
-   there. It also requires the lockstep version to be `0.<n>.0`. It then runs
-   `npm run packages:check -- --out packs --release-tag <tag>`, scans the unpacked
-   tarballs with gitleaks, and records each tarball's sha256 and integrity.
-2. **publish** runs in the `npm-stage` environment with no checkout. It verifies
-   the commit, the version and those digests, then publishes each tarball with
-   `npm publish ./packs/<file> --tag preview --provenance --access public`.
+   (GitHub user ID `334697227`) for a release that is not a prerelease, whose
+   tag matches the anchored pattern
+   `^openlup-<package>-v<MAJOR>.<MINOR>.<PATCH>$`. It reads the live release and
+   refuses anything other than the same immutable, App-authored release with no
+   asset. It checks the annotated tag and its message, verifies GitHub's release
+   attestation, and checks that the release commit is on `main` and that the six
+   required contexts passed there. It refuses a version npm holds or has passed,
+   packs exactly the tag's package at the tag's version with `packages:check`,
+   and scans the unpacked tarball with gitleaks.
+2. **publish** runs in the `npm-stage` environment with no checkout and no
+   install, in the package's concurrency group. It checks the commit, package,
+   version and digest of the one tarball. Immediately before publishing it
+   reads npm again, past the CDN cache, and refuses a version npm holds or has
+   passed. Then it runs
+   `npm publish ./packs/<file> --provenance --access public --tag latest`.
    GitHub's OIDC token is the npm trusted-publisher credential; there is no
-   stored npm token.
+   stored npm token, and only this job has `id-token: write`.
 
-Every channel version carries the `preview` dist-tag. The registry gives a new package's first
-version the `latest` tag, whatever tag that publish names, and keeps a `latest`
-tag on every package, so `latest` points at the first, inert version (setup
-step 5) and no channel version moves it before a stable channel exists. A
-tarball publish does not take its tag from `publishConfig`, so every manual
-publish passes `--tag preview` explicitly, as the publish job does. A package's
+Every package release moves the npm `latest` dist-tag, which is why its version
+must be above every version npm holds. A package's `publishConfig.tag` stays
+`preview`, so a publish that names no tag never moves `latest`. A package's
 `prepublishOnly` refuses `npm publish` from its directory: only a checked
-tarball is published. A compromised version is deprecated and fixed forward,
-never unpublished.
+tarball is published. Versions published before per-package releases, up to
+`@openlup/core` `0.11.0`, carry the `preview` dist-tag, and no later release
+moves it. `latest` keeps naming the inert placeholder `0.0.0` until a package's
+first per-package release, which must be above `0.11.0` for `@openlup/core`;
+that package's own release check admits only `0.<n>.0`, so its next version is
+`0.12.0` unless that rule changes. A compromised version is deprecated and fixed
+forward, never unpublished.
 
 A release runs the workflow file of its tagged commit, so whoever can create a
-preview-named tag on a commit can also change every check in that workflow. The
-tag ruleset therefore restricts who may create `openlup-source-preview/*` tags,
-besides updating and deleting them. The `release` environment protects the App
-credential that makes those tags and events. The `npm-stage` tag rule limits
-which refs may deploy to its OIDC identity; it does not replace source approval.
+package release tag on a commit can also change every check in that workflow.
+The tag rulesets therefore restrict who may create, update and delete
+`openlup-*-v*` tags. The `release` environment protects the App credential that
+makes those tags and events. The `npm-stage` tag rule limits which refs may
+deploy to its OIDC identity; it does not replace the release approval.
 
-The maintainer sets the channel up in this order, before the variable is
-enabled:
+The maintainer sets package releases up in this order, before enabling
+`OPENLUP_PACKAGE_RELEASE`:
 
 1. The `@openlup` scope belongs to the npm organization `openlup`, whose members
    are maintainers with 2FA.
 2. The maintainer's npm account requires 2FA for authorization and writes
    (`npm profile enable-2fa auth-and-writes`), and holds no token that bypasses
    2FA.
-3. The GitHub environment `npm-stage` exists with **no required reviewer**, no
-   administrator bypass, deployments limited to `openlup-source-preview/*`
-   tags, and no secrets or variables. Keep its environment name: npm binds OIDC
-   to it. It must exist before the variable: a first run would otherwise create
-   it without the intended tag restriction. The sole human approval remains
-   the protected `release` environment.
-4. The preview tag-creation ruleset permits repository administrators and the
-   dedicated release App to create `openlup-source-preview/*` tags. Keep tag
-   updates and deletions restricted without an App bypass, as described in the
-   source release setup above.
+3. The tag-creation ruleset permits only repository administrators and the
+   release App to create `openlup-*-v*` tags, and a separate ruleset restricts
+   their update and deletion without an App bypass, as for
+   `openlup-source-preview/*` tags.
+4. The GitHub environment `npm-stage` exists with **no required reviewer**, no
+   administrator bypass, deployments limited to `openlup-*-v*` tags, and no
+   secrets or variables. Keep its environment name: npm binds OIDC to it. The
+   sole human approval remains the protected `release` environment.
+   Previews no longer publish, so its `openlup-source-preview/*` tag rule may be
+   removed.
 5. A trusted publisher can be bound only to an existing package name. For each
    new name the maintainer publishes a placeholder version `0.0.0` by hand with
    2FA and `--tag preview`, outside this workflow, then deprecates it
    (`npm deprecate`).
 6. Package access requires 2FA and disallows tokens
-   (`npm access set mfa=publish @openlup/core`).
-7. For each publishable `@openlup/*` package, replace any stage-only trusted
-   publisher with one bound to `openlup/openlup`, the exact
-   `publish-packages.yml` file and `npm-stage` environment, permitting direct
-   `npm publish`: inspect its ID with `npm trust list @openlup/core`, revoke that
-   ID with `npm trust revoke @openlup/core --id=<id>`, then run
-   `npm trust github @openlup/core --file publish-packages.yml --repository openlup/openlup --environment npm-stage --allow-publish`.
-   Verify the resulting scope with `npm trust list @openlup/core` before the
-   next cut. npm trust changes require the maintainer's interactive 2FA.
+   (`npm access set mfa=publish @openlup/<package>`).
+7. Each publishable package has a trusted publisher bound to `openlup/openlup`,
+   the exact `publish-packages.yml` file and the `npm-stage` environment,
+   permitting direct `npm publish`:
+   `npm trust github @openlup/<package> --file publish-packages.yml --repository openlup/openlup --environment npm-stage --allow-publish`.
+   Verify it with `npm trust list @openlup/<package>`. npm trust changes require
+   the maintainer's interactive 2FA.
 8. Confirm the installed release App emits events as `openlup-release[bot]`
-   (GitHub user ID `334697227`); the package guard pins that identity. The App
-   client ID and bot user ID are different.
-9. The repository variable, not an environment variable, `OPENLUP_NPM_STAGE` is
-   `enabled`: the pack job reads it before any environment applies.
+   (GitHub user ID `334697227`); both package workflows pin that identity. The
+   App client ID and bot user ID are different. Package releases use the same
+   protected `release` environment and App credential as source previews.
+9. The repository variables, not environment variables, `OPENLUP_NPM_STAGE` and
+   `OPENLUP_PACKAGE_RELEASE` are `enabled`. Both jobs read them before any
+   environment applies; removing either disables future package releases.
 
-Before cutting a preview that carries a package, run
-`npm run packages:check -- --out "$(mktemp -d)" --release-tag openlup-source-preview/<n>`
-on the exact commit to be tagged: the pack job first runs after the preview is
-published, when a refusal can no longer be corrected in that preview.
+Before dispatching, run
+`npm run packages:check -- --out "$(mktemp -d)" --release-tag openlup-<package>-v<version>`
+on the exact target commit.
 
-If GitHub publishes the immutable source release but npm fails, the source
-release remains published. Inspect the package job and npm registry versions
-before recovery. If no package version was published, repair the missing
-prerequisite and rerun that release's failed package workflow; do not recut or
-move its tag. If any package version was published, do not rerun the whole job
-blindly: reconcile the partial state and correct forward with a new preview and
-version. Never overwrite or unpublish a published version automatically.
+If GitHub publishes the release but npm fails, the release remains published.
+Inspect the package job and the npm registry before recovery. The publish job
+reads npm again immediately before `npm publish`, past the registry's CDN cache,
+and refuses when npm holds that version or any later one; a re-run repeats that
+check. So after repairing a missing prerequisite, the failed package workflow
+may be rerun: it publishes only while the version is still the newest, and never
+moves `latest` backwards. Do not recreate or move the tag. Once npm holds the
+version, or a later version overtook it, correct forward with a new version.
+Never overwrite or unpublish a published version automatically.
+
+One package's releases and publications share a concurrency group, so they run
+one at a time. GitHub keeps at most one pending run per group and cancels an
+older pending one when another is queued, so dispatch the next release of a
+package only after the previous one is published. A publication cancelled that
+way is refused on a re-run once a later version is on npm.
