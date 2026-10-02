@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { FIXED_BOX_CONSUMER_MARKER } from "./core-package-consumer-fixed-box-fixture.ts";
+import { isSetVersion, setVersionRule } from "./public-api-config.ts";
 import {
   scanNeutralitySource,
   type SourceNeutralityPolicy,
@@ -54,7 +55,6 @@ const packagedNeutralityPolicy: SourceNeutralityPolicy = {
 const approvedDogfoodEvidence = "A private product currently imports candidate package seams; this does not establish a public platform adopter seam.";
 const extensionlessTextPackFiles = new Set(["LICENSE"]);
 const approvedPublicSecurityContact = "dev@openlup.com";
-const previewChannelVersion = /^0\.[1-9]\d*\.0$/;
 const approvedPublishConfig = { access: "public", provenance: true, tag: "preview" };
 const approvedRepository = { type: "git", url: "git+https://github.com/openlup/openlup.git", directory: "packages/core" };
 const simpleStringLiteralSource = String.raw`["'][A-Za-z0-9._@:/+ -]{1,64}["']`;
@@ -128,8 +128,8 @@ function assertPublishablePackageAudit({
 }: AuditInput): void {
   assert((packageJson.private ?? false) === false, "core package must be publishable, not private");
   assert(
-    previewChannelVersion.test(packageJson.version),
-    `core package version must be a preview-channel version 0.<n>.0, not ${packageJson.version}`,
+    isSetVersion(packageJson.version),
+    `core package version must be a set version ${setVersionRule} below 1.0, not ${packageJson.version}`,
   );
   assert(
     isDeepStrictEqual(packageJson.publishConfig, approvedPublishConfig),

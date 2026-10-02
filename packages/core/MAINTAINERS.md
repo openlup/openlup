@@ -1,7 +1,8 @@
 # Maintainers
 
 `@openlup/core` is maintained in the phase-5 platform monorepo. It is not an
-independent product; its versions ride on the source previews.
+independent product. Below 1.0 its versions are set versions `0.N.P`, shared by
+every `@openlup/*` package; versions up to `0.11.0` rode on the source previews.
 
 ## Responsibilities
 

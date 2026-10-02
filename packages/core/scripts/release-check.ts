@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { assertPackageSurfaceConfig } from "./public-api-config.ts";
+import { assertPackageSurfaceConfig, assertSetVersion, setVersionRule } from "./public-api-config.ts";
 import { createNpmReleaseChecks } from "./release-npm-checks.ts";
 import { verifyRepositoryPolicy } from "./repository-policy-check.ts";
 
@@ -27,6 +27,7 @@ const npmChecks = createNpmReleaseChecks({
 });
 
 const checks = {
+  identity: checkReleaseIdentity,
   lock: checkLock,
   licenses: checkLicenses,
   sbom: npmChecks.sbom,
@@ -39,7 +40,6 @@ const checks = {
 assert(mode === "all" || checks[mode], `unknown release check: ${mode}`);
 
 if (mode === "all") {
-  checkReleaseIdentity();
   assertPackageSurfaceConfig({ manifest, gates, packageRoot });
   for (const check of Object.values(checks)) check();
 } else {
@@ -47,20 +47,16 @@ if (mode === "all") {
 }
 
 function checkReleaseIdentity() {
-  // The lockstep value itself is config/openlup-packages.json at the repository root,
-  // which packages:check enforces; this package only admits the channel's version shape.
-  assert(
-    gates.packageRelease?.versionRule === "0.<n>.0" &&
-      /^0\.[1-9]\d*\.0$/.test(manifest.version),
-    `package version must be a preview-channel version 0.<n>.0, not ${manifest.version}`,
-  );
+  // config/openlup-packages.json at the repository root lists the packages of a set, and
+  // packages:check enforces their manifests; this package admits only a set version.
+  assertSetVersion(gates.packageRelease?.versionRule, manifest.version);
   assert(
     gates.packageRelease?.phase === "platform-monorepo-phase-5" &&
       gates.packageRelease?.publicStability === "not-claimed" &&
       gates.packageRelease?.artifactChannel === "npm-staged-preview",
     "package release must stay on the staged npm preview channel without a public API stability claim",
   );
-  console.log(`package release identity ok (${manifest.version}, npm-staged-preview)`);
+  console.log(`package release identity ok (${manifest.version}, set ${setVersionRule}, npm-staged-preview)`);
 }
 
 function checkLock() {

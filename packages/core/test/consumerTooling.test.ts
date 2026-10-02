@@ -27,6 +27,11 @@ const approvedDogfoodEvidence = JSON.parse(
 ).evidence.dogfoodEvidence.meaning;
 
 function assertArtifactRefused(path: string, source: string, reason: RegExp, manifest: Record<string, unknown> = {}): void {
+  auditPackedFixture(path, source, manifest, reason);
+}
+
+// Without a reason, the audit must accept the packed fixture.
+function auditPackedFixture(path: string, source: string, manifest: Record<string, unknown>, reason?: RegExp): void {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "core-package-audit-"));
   const sourceRoot = join(temporaryRoot, "source", "package");
   const extractedRoot = join(temporaryRoot, "extracted");
@@ -48,7 +53,7 @@ function assertArtifactRefused(path: string, source: string, reason: RegExp, man
     const packageRoot = join(extractedRoot, "package");
     expect(existsSync(packageRoot)).toBe(true);
 
-    expect(() => assertCorePackagePortabilityProof({
+    const audit = () => assertCorePackagePortabilityProof({
       packageRoot,
       packageName: "@openlup/core",
       packageJson: {
@@ -69,7 +74,9 @@ function assertArtifactRefused(path: string, source: string, reason: RegExp, man
         "| `./pricing` | kernel | candidate |",
       ].join("\n"),
       packFiles: requiredPackFiles,
-    })).toThrow(reason);
+    });
+    if (reason) expect(audit).toThrow(reason);
+    else expect(audit).not.toThrow();
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }
@@ -129,12 +136,16 @@ describe("packed consumer dependency roots", () => {
 
   it.each([
     ["private", { private: true }, /must be publishable, not private/],
-    ["prerelease version", { version: "0.1.0-rc.1" }, /preview-channel version 0\.<n>\.0/],
-    ["stable version", { version: "1.0.0" }, /preview-channel version 0\.<n>\.0/],
+    ["prerelease version", { version: "0.1.0-rc.1" }, /set version 0\.N\.P below 1\.0, not 0\.1\.0-rc\.1/],
+    ["stable version", { version: "1.0.0" }, /set version 0\.N\.P below 1\.0, not 1\.0\.0/],
     ["blocked registry", { publishConfig: { access: "public", provenance: true, tag: "preview", registry: "http://127.0.0.1:9" } }, /publishConfig must be exactly/],
     ["latest tag", { publishConfig: { access: "public", provenance: true, tag: "latest" } }, /publishConfig must be exactly/],
     ["missing repository", { repository: undefined }, /repository must be exactly/],
   ])("refuses a packed manifest that is not publishable as declared: %s", (_kind, manifest, reason) => {
     assertArtifactRefused("none", "", reason, manifest);
+  });
+
+  it.each(["0.12.0", "0.12.1", "0.13.0"])("accepts a packed manifest at the set version %s", (version) => {
+    auditPackedFixture("none", "", { version });
   });
 });

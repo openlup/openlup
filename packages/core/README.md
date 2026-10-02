@@ -11,6 +11,9 @@ Agents start with [AGENTS.md](AGENTS.md).
   provenance from its release tag `openlup-core-v<version>` after a protected
   release approval. Versions up to `0.11.0` were published on the `preview`
   dist-tag only. `npm publish` from this directory is refused.
+- **Versions:** below 1.0 every `@openlup/*` package shares one set version
+  `0.N.P`: a minor set for any API, behaviour or schema change, a patch set for
+  a fix only.
 - **Stability:** development preview. Any version may change an export, and
   each change is recorded in [the changelog](CHANGELOG.md). Pin an exact
   version and read the changelog when you upgrade.

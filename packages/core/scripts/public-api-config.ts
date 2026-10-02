@@ -4,6 +4,24 @@ import { resolve, sep } from "node:path";
 
 const expectedPolicies = ["internal-candidate", "testing-internal"];
 export const packageKinds = ["kernel", "rail", "capability", "implementation"];
+// While @openlup/core is below 1.0, every @openlup package carries one set version 0.N.P:
+// a minor set for any API, behaviour or schema change, a patch set for a fix only. This checks
+// the form; the package release workflow orders the sets by refusing a version npm holds or
+// has passed.
+export const setVersionRule = "0.N.P";
+const setVersion = /^0\.[1-9]\d*\.(?:0|[1-9]\d*)$/;
+
+export function isSetVersion(version: unknown): boolean {
+  return typeof version === "string" && setVersion.test(version);
+}
+
+export function assertSetVersion(versionRule: unknown, version: unknown): void {
+  assert(
+    versionRule === setVersionRule && isSetVersion(version),
+    `package version must be a set version ${setVersionRule} below 1.0, not ${String(version)}`,
+  );
+}
+
 const expectedConditions = [
   "core-source",
   "types",

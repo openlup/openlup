@@ -521,28 +521,42 @@ adopter; no preview is a supported upgrade channel.
 
 ## Package releases
 
-Each `@openlup/*` package is released on its own, with its own semantic version.
+While `@openlup/core` is below 1.0, the `@openlup/*` packages are released as
+one set:
+
+- Every package carries the same set version `0.N.P`, released from one commit.
+- Each package has its own tag `openlup-<package>-v<set version>`, and every tag
+  of a set points at that commit.
+- Every package is republished in each set, changed or not.
+- A patch set only restores documented behaviour, with no API or schema change.
+  Any API, behaviour or schema change makes a minor set, and so does any SQL a
+  package ships. A change to subscription, renewal or payment objects is always
+  a minor set with a `Migration:` block in the package's changelog.
+
 [`config/openlup-packages.json`](../config/openlup-packages.json) lists the
-packages, and `publish: true` marks one that may be published; `@openlup/core`
-is currently the only one. A package's version lives in its own `package.json`.
-A package release needs no source preview. `openlup-source-preview/11` was the
-last lockstep cut that also published a package: `@openlup/core` `0.11.0`, on
-the `preview` dist-tag. Later source previews are optional snapshots with no
-package, and the next `@openlup/core` version is released on its own. No package
-version implies a stable API or a supported upgrade path.
+packages, and `publish: true` marks one that may be published. `@openlup/core`
+is currently the only one, so today a set has one package. A package's version
+lives in its own `package.json`. A set release needs no source preview. A
+dispatch that releases a whole set does not exist yet; a set of one is released
+with `publish-package.yml` as described below. `openlup-source-preview/11` was
+the last lockstep cut that also published a package: `@openlup/core` `0.11.0`,
+on the `preview` dist-tag. Later source previews are optional snapshots with no
+package. The first set is `0.12.0`. No package version implies a stable API or a
+supported upgrade path, and the version model at 1.0 is not decided.
 
 A release takes three steps:
 
 1. **Release preparation.** An ordinary reviewed pull request runs
-   `npm run release:bump -- <package> <version>`, which sets that package's
-   version in its `package.json` and lockfile entries and adds its CHANGELOG
-   line, and regenerates the source release contract as `CONTRIBUTING.md`
-   describes. The version is `MAJOR.MINOR.PATCH` and must be above every version
-   npm holds for the package. Merging it does not authorize a release. Read the
-   candidate version from the package's manifest, and publication only from the
-   immutable release and the npm registry: a version bump by itself publishes
-   nothing. A package may narrow its own version rule: the `@openlup/core`
-   release check still requires `0.<n>.0`.
+   `npm run release:bump -- <package> <version>` for each package of the set,
+   which sets that package's version in its `package.json` and lockfile entries
+   and adds its CHANGELOG line. The pull request also turns each changelog's
+   Unreleased section into the version's section and regenerates the source
+   release contract as `CONTRIBUTING.md` describes. The version is the next set
+   version `0.N.P` and must be above every version npm holds for the package;
+   the `@openlup/core` release check admits only a set version below 1.0.
+   Merging it does not authorize a release. Read the candidate version from the
+   package's manifest, and publication only from the immutable release and the
+   npm registry: a version bump by itself publishes nothing.
 2. **Dispatch.** In Actions, choose **Publish Package → Run workflow** on
    **main** and enter the package directory name (for example `core`), the
    version, the reviewed full target commit SHA on `main` and the exact release
@@ -599,9 +613,8 @@ must be above every version npm holds. A package's `publishConfig.tag` stays
 tarball is published. Versions published before per-package releases, up to
 `@openlup/core` `0.11.0`, carry the `preview` dist-tag, and no later release
 moves it. `latest` keeps naming the inert placeholder `0.0.0` until a package's
-first per-package release, which must be above `0.11.0` for `@openlup/core`;
-that package's own release check admits only `0.<n>.0`, so its next version is
-`0.12.0` unless that rule changes. A compromised version is deprecated and fixed
+first per-package release. For `@openlup/core` that is the first set, `0.12.0`,
+above the `0.11.0` npm holds. A compromised version is deprecated and fixed
 forward, never unpublished.
 
 A release runs the workflow file of its tagged commit, so whoever can create a
