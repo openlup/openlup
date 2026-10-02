@@ -70,6 +70,10 @@ The workflow records each task's outcome, scope, authority, acceptance,
 risk and execution/proof plan in one compact record. A separate specification
 is needed for an ambiguous or durable contract, not for every small task.
 Agents may refine execution notes without changing approved goals or guarantees.
+The [agent guide](../docs/platform/AGENT_GUIDE.md#change-and-verification-rules)
+owns finite outcome, inherited exclusions, necessary recovery and completion.
+Review checks that approved boundary; a discovery or optional recommendation
+cannot add acceptance obligations. Handoff retains blockers and consumed attempts.
 Programme or batch authority must be explicit; a generated plan cannot grant it.
 
 The initial candidate receives one short cold review for ordinary prose or
