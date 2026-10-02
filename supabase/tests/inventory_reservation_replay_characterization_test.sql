@@ -48,8 +48,8 @@ SET LOCAL ROLE service_role;
 INSERT INTO replay_result SELECT public.inventory_reserve_order(
   'replay-fixture:c4555555-5555-4555-8555-555555555555',
   'c4444444-4444-4444-8444-444444444444', 'c4555555-5555-4555-8555-555555555555', NULL,
-  'c4333333-3333-4333-8333-333333333333', 3, 'checkout_payment_window', 'processing',
-  now() + interval '30 minutes', '{}', NULL
+  'c4333333-3333-4333-8333-333333333333', 99, 'manual_ops', 'processing',
+  now() + interval '2 days', '{}', NULL
 ) AS result;
 RESET ROLE;
 
@@ -57,7 +57,7 @@ RESET ROLE;
 
 SELECT is((SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM public.inventory_reservations r
   WHERE order_id = 'c4444444-4444-4444-8444-444444444444'),
-  (SELECT rows FROM replay_before), 'replay does not modify rows or renew expiry');
+  (SELECT rows FROM replay_before), 'changed-command replay does not modify rows or renew expiry');
 
 UPDATE public.inventory_reservations SET status = 'released', released_at = now()
 WHERE order_id = 'c4444444-4444-4444-8444-444444444444';
