@@ -74,6 +74,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/publish-package.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-packages.yml",
       "class": "public-output"
     },
@@ -2534,6 +2538,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/package-release.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/package-release.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/package-tarball-gate.test.ts",
       "class": "public-output"
     },
@@ -2555,6 +2567,10 @@
     },
     {
       "path": "scripts/packages/release-bump.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-workflow-authenticity.test.ts",
       "class": "public-output"
     },
     {

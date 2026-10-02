@@ -112,14 +112,19 @@ merchant, that merchant is **"Example Store"** - a neutral placeholder, never th
 platform's own identity, and never a real business. Any adapter or sample naming
 a specific vendor is a reference implementation, not a dependency of the core.
 
-**The name set is settled, and the publication is not.** The project name is
-decided, and every identifier in the source now agrees with it: the repository
-manifest, the kernel package, the UI package, and the configuration assistant
-all read `openlup`. The npm scope was claimed by the owner on 2026-08-24; what
-is still open is publication - nothing is released under it - so **do not depend
-on a package name, branch, commit, or source checkout yet**. A supported adopter
-dependency begins only when a tagged stable release states its platform BOM and
-artifacts. The remaining open items are technical steps, not naming decisions.
+**The name set is settled, and supported publication is not.** The project
+name is decided, and every identifier in the source now agrees with it: the
+repository manifest, the kernel package, the UI package, and the configuration
+assistant all read `openlup`. The npm scope was claimed by the owner on
+2026-08-24. Development-preview packages are released under it package-first:
+each `@openlup/*` package on its own version, behind the protected release
+approval described in
+[Versioning and end of life](VERSIONING_AND_EOL.md#package-releases). None of
+them is a supported release, so **do not depend on a package name, version,
+branch, commit, or source checkout as a supported interface yet**. A supported
+adopter dependency begins only when a tagged stable release states its platform
+BOM and artifacts. The remaining open items are technical steps, not naming
+decisions.
 
 ## Release posture
 

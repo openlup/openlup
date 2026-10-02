@@ -1,19 +1,21 @@
-# Publishes provenance-backed @openlup/* tarballs for a published source preview.
+# Publishes the provenance-backed @openlup/* tarball of a published package release
+# openlup-<package>-v<version>, which publish-package.yml creates. Source previews carry no
+# package: their prereleases never start a job here.
 #
 # Inert by default: nothing runs unless the repository variable OPENLUP_NPM_STAGE is
-# "enabled". The release event must come from the release App bot, and the
-# release, annotated tag and GitHub attestation must agree before any package is packed.
-# The publish job uses GitHub's OIDC token for the `npm-stage` environment, never a
-# stored npm token. The protected `release` approval authorizes the source and package cut.
+# "enabled". The release event must come from the release App bot, and the release, annotated
+# tag and GitHub attestation must agree before the package is packed. The publish job uses
+# GitHub's OIDC token for the `npm-stage` environment, never a stored npm token. The protected
+# `release` approval in publish-package.yml authorizes the release and its package.
 # The maintainer setup this relies on is in .github/VERSIONING_AND_EOL.md.
 #
 # The pack job is unprivileged. It checks that:
 # - the release commit is on main;
 # - the six required GitHub Actions contexts passed there;
-# - the lockstep version is 0.<n>.0 for tag openlup-source-preview/<n>;
-# - every packed file passes `npm run packages:check -- --out`.
-# It then runs a gitleaks scan over the unpacked tarballs. The publish job gets only the
-# tarballs and their digests: no checkout and no install.
+# - npm never held the tag's version and holds none above it;
+# - the tag's package, at the tag's version, passes `npm run packages:check -- --out`.
+# It then runs a gitleaks scan over the unpacked tarball. The publish job gets only the
+# tarball and its digest: no checkout and no install. It publishes with --tag latest.
 
 name: Publish Packages
 
@@ -30,7 +32,7 @@ concurrency:
 jobs:
   pack:
     name: pack
-    if: ${{ github.repository == 'openlup/openlup' && vars.OPENLUP_NPM_STAGE == 'enabled' && github.event.release.prerelease && startsWith(github.event.release.tag_name, 'openlup-source-preview/') }}
+    if: ${{ github.repository == 'openlup/openlup' && vars.OPENLUP_NPM_STAGE == 'enabled' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'openlup-') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -40,30 +42,30 @@ jobs:
     outputs:
       node-version: ${{ steps.node.outputs.version }}
     steps:
-      - name: Require the release App event and the live immutable prerelease
+      - name: Require the release App event and the live immutable release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          [[ "$RELEASE_TAG" =~ ^openlup-source-preview/[1-9][0-9]*$ ]] || exit 1
+          [[ "$RELEASE_TAG" =~ ^openlup-[a-z0-9][a-z0-9-]*-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
           release_id="$(jq -er --arg repo "$GITHUB_REPOSITORY" --arg tag "$RELEASE_TAG" '
             select(.action == "published" and .repository.full_name == $repo and
               .sender.type == "Bot" and .sender.id == 334697227 and
               .sender.login == "openlup-release[bot]" and
-              .release.tag_name == $tag and .release.prerelease == true and
+              .release.tag_name == $tag and .release.prerelease == false and
               .release.draft == false and
               .release.author.id == 334697227 and
               .release.author.login == "openlup-release[bot]" and
               (.release.assets | type) == "array" and (.release.assets | length) == 0 and
               (.release.id | type) == "number") | .release.id
-          ' "$GITHUB_EVENT_PATH")" || { echo '::error::Release event identity or immutable prerelease is invalid'; exit 1; }
+          ' "$GITHUB_EVENT_PATH")" || { echo '::error::Release event identity or immutable release is invalid'; exit 1; }
           gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" |
             jq -e --arg tag "$RELEASE_TAG" --argjson id "$release_id" '
-              .id == $id and .tag_name == $tag and .prerelease == true and
+              .id == $id and .tag_name == $tag and .prerelease == false and
               .draft == false and .immutable == true and .published_at != null and
               .author.id == 334697227 and .author.login == "openlup-release[bot]" and
               (.assets | type) == "array" and (.assets | length) == 0
-            ' >/dev/null || { echo '::error::Live release is not the exact immutable prerelease'; exit 1; }
+            ' >/dev/null || { echo '::error::Live release is not the exact immutable release'; exit 1; }
       # A release event checks out refs/tags/<tag> at GITHUB_SHA; no ref is passed, so a
       # branch with the tag's name cannot stand in for it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -82,8 +84,10 @@ jobs:
           printf '%s\n' "$tag_headers" | grep -Fxq "object $GITHUB_SHA"
           printf '%s\n' "$tag_headers" | grep -Fxq 'type commit'
           printf '%s\n' "$tag_headers" | grep -Fxq "tag $RELEASE_TAG"
-          number="${RELEASE_TAG#openlup-source-preview/}"
-          test "$(git for-each-ref --format='%(contents)' "$tag_ref")" = "OpenLup source preview $number."
+          package="${RELEASE_TAG#openlup-}"
+          package="${package%-v*}"
+          version="${RELEASE_TAG##*-v}"
+          test "$(git for-each-ref --format='%(contents)' "$tag_ref")" = "OpenLup package @openlup/$package $version."
           gh release verify "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -110,12 +114,16 @@ jobs:
             if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $GITHUB_SHA"; exit 1; fi
           done
       - run: npm ci --ignore-scripts --no-audit --fund=false
-      - name: Pack and check every publishable package
+      - name: Refuse a version npm holds or passed
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: node --experimental-strip-types scripts/packages/package-release.ts registry
+      - name: Pack and check the release's package
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           npm run packages:check -- --out packs --release-tag "$RELEASE_TAG"
-          node -e 'if (require("./packs/packages-manifest.json").packages.length === 0) { console.error("no publishable package in this release"); process.exit(1); }'
+          node -e 'if (require("./packs/packages-manifest.json").packages.length !== 1) { console.error("a package release packs exactly one package"); process.exit(1); }'
       - name: Install checksum-verified gitleaks 8.30.1
         env:
           GH_TOKEN: ${{ github.token }}
@@ -169,7 +177,7 @@ jobs:
         with:
           node-version: ${{ needs.pack.outputs.node-version }}
           package-manager-cache: false
-      - name: Verify the tarballs the pack job checked
+      - name: Verify the tarball the pack job checked
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -179,24 +187,22 @@ jobs:
             const { createHash } = require("node:crypto");
             const { readFileSync, readdirSync } = require("node:fs");
             const manifest = JSON.parse(readFileSync("packs/packages-manifest.json", "utf8"));
-            if (manifest.commit !== process.env.GITHUB_SHA) throw new Error("the tarballs were packed from another commit");
-            const number = /^openlup-source-preview\/([1-9]\d*)$/.exec(process.env.RELEASE_TAG)?.[1];
-            if (number === undefined || manifest.version !== `0.${number}.0`) throw new Error("the version does not match the release tag");
-            if (manifest.packages.length === 0) throw new Error("no publishable package in this release");
-            const listed = new Set(manifest.packages.map(({ filename }) => filename));
-            for (const name of readdirSync("packs")) if (name !== "packages-manifest.json" && !listed.has(name)) throw new Error(`unlisted file ${name}`);
-            for (const { name, filename, sha256 } of manifest.packages) {
-              if (!/^[a-z0-9-]+-\d+\.\d+\.\d+\.tgz$/.test(filename)) throw new Error(`unexpected tarball name ${filename}`);
-              if (filename !== `${name.slice(1).replace("/", "-")}-${manifest.version}.tgz`) throw new Error(`${filename} is not ${name}@${manifest.version}`);
-              const actual = createHash("sha256").update(readFileSync(`packs/${filename}`)).digest("hex");
-              if (actual !== sha256) throw new Error(`${filename} changed after packing`);
-            }
-          '
+            if (manifest.schemaVersion !== 2 || manifest.commit !== process.env.GITHUB_SHA) throw new Error("the tarball was packed from another commit");
+            const tag = /^openlup-([a-z0-9][a-z0-9-]*)-v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.exec(process.env.RELEASE_TAG);
+            if (tag === null) throw new Error("the release tag is not a package release tag");
+            if (manifest.packages.length !== 1) throw new Error("a package release publishes exactly one package");
+            const [{ name, version, filename, sha256 }] = manifest.packages;
+            if (name !== `@openlup/${tag[1]}` || version !== tag[2]) throw new Error(`${name}@${version} is not the package the release tag names`);
+            if (filename !== `openlup-${tag[1]}-${tag[2]}.tgz`) throw new Error(`unexpected tarball name ${filename}`);
+            for (const file of readdirSync("packs")) if (file !== "packages-manifest.json" && file !== filename) throw new Error(`unlisted file ${file}`);
+            const actual = createHash("sha256").update(readFileSync(`packs/${filename}`)).digest("hex");
+            if (actual !== sha256) throw new Error(`${filename} changed after packing`);
+            console.log(filename);
+          ' > "$RUNNER_TEMP/tarball-name"
       # "./" makes npm read a local file; a bare "packs/<file>" is GitHub shorthand for a remote repository.
-      # A partial publish is corrected forward; never overwrite or unpublish a version.
-      - name: Publish each verified tarball with OIDC provenance
+      # The tag is explicit: every package release moves latest. A failed publish is corrected forward
+      # with a new version; never overwrite or unpublish one.
+      - name: Publish the verified tarball with OIDC provenance
         run: |
-          node -e 'for (const { filename } of require("./packs/packages-manifest.json").packages) console.log(filename)' |
-            while read -r filename; do
-              npm publish "./packs/$filename" --tag preview --provenance --access public --ignore-scripts
-            done
+          filename="$(cat "$RUNNER_TEMP/tarball-name")"
+          npm publish "./packs/$filename" --provenance --access public --tag latest --ignore-scripts

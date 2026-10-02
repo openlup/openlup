@@ -11,9 +11,10 @@
  *
  * `--out <dir>` implies `--pack`. It keeps the tarball of every publishable
  * package in an empty `<dir>`, and writes `packages-manifest.json` there: the
- * commit, the version, and each tarball's sha256 and integrity. That is the
- * input a publication job stages. `--release-tag openlup-source-preview/<n>`
- * requires the lockstep version to be `0.<n>.0`. Nothing here publishes.
+ * commit, and each tarball's package, version, sha256 and integrity. That is
+ * the input a publication job stages. `--release-tag openlup-<package>-v<version>`
+ * names one publishable package, requires its manifest version to be that
+ * version, and packs only that package. Nothing here publishes.
  */
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -21,13 +22,13 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { PACKAGES_CONFIG_PATH, checkPackageDirectories, checkPackageManifest, checkUnreleasedManifest, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
+import { PACKAGES_CONFIG_PATH, checkPackageDirectories, checkPackageManifest, checkUnreleasedManifest, parsePackageReleaseTag, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.ts";
 
 type PackResult = { filename: string; integrity: string; sha256: string; entryCount: number };
 export const PACKAGES_MANIFEST_FILE = "packages-manifest.json";
-const RELEASE_TAG = /^openlup-source-preview\/([1-9]\d*)$/;
 const capture = (root: string, command: string, args: string[], cwd = root): string => execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+const versionOf = (manifest: unknown): unknown => (manifest !== null && typeof manifest === "object" && !Array.isArray(manifest) ? (manifest as Record<string, unknown>).version : undefined);
 
 function walk(directory: string, onSymlink: (path: string) => void): string[] {
   return readdirSync(directory).flatMap((name) => {
@@ -82,6 +83,17 @@ function parseOptions(args: readonly string[]): Options | string {
   return options;
 }
 
+/** The one package a release tag selects, with a finding for every way the tag and the tree disagree. */
+function releaseSelection(tag: string, packages: readonly PackageEntry[], versions: ReadonlyMap<string, unknown>, findings: Finding[]): PackageEntry[] {
+  const release = parsePackageReleaseTag(tag);
+  const entry = release && packages.find(({ directory }) => directory === release.directory);
+  const refuse = (rule: string, detail: string): PackageEntry[] => { findings.push({ subject: tag, rule, detail }); return []; };
+  if (!release) return refuse("release-tag", "a package release tag is openlup-<package>-v<MAJOR.MINOR.PATCH>");
+  if (!entry || !entry.publish) return refuse("release-tag", `${release.directory} is not a publishable package in ${PACKAGES_CONFIG_PATH}`);
+  if (versions.get(entry.name) !== release.version) return refuse("release-version", `${entry.name} is at ${String(versions.get(entry.name))}; this release needs ${release.version}`);
+  return [entry];
+}
+
 export function runPackagesCheck(root: string, args: readonly string[]): number {
   const options = parseOptions(args);
   if (typeof options === "string") { console.error(`packages:check: ${options}`); return 2; }
@@ -89,26 +101,24 @@ export function runPackagesCheck(root: string, args: readonly string[]): number 
   const readTracked = (path: string): Uint8Array | undefined => (tracked.has(path) ? readFileSync(join(root, path)) : undefined);
   const manifest = (directory: string): unknown => { const bytes = readTracked(`${directory}/package.json`); return bytes ? JSON.parse(new TextDecoder().decode(bytes)) : undefined; };
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
+  const versions = new Map(config.packages.map(({ name, directory }) => [name, versionOf(manifest(directory))]));
   const findings = checkPackageDirectories(config, [...tracked]);
-  for (const entry of config.packages) if (manifest(entry.directory) !== undefined) findings.push(...checkPackageManifest(entry, manifest(entry.directory), config));
+  for (const entry of config.packages) if (manifest(entry.directory) !== undefined) findings.push(...checkPackageManifest(entry, manifest(entry.directory), config, versions));
   for (const entry of config.unreleased) if (manifest(entry.directory) !== undefined) findings.push(...checkUnreleasedManifest(entry, manifest(entry.directory)));
-  if (options.releaseTag !== undefined) {
-    const number = RELEASE_TAG.exec(options.releaseTag)?.[1];
-    if (number === undefined) findings.push({ subject: options.releaseTag, rule: "release-version", detail: "a package release rides on an openlup-source-preview/<n> tag" });
-    else if (config.version !== `0.${number}.0`) findings.push({ subject: options.releaseTag, rule: "release-version", detail: `the lockstep version is ${config.version}; this release needs 0.${number}.0` });
-  }
+  const selected = options.releaseTag === undefined ? config.packages : releaseSelection(options.releaseTag, config.packages, versions, findings);
   const outDir = options.outDir === undefined ? undefined : resolve(root, options.outDir);
   if (outDir && existsSync(outDir) && (!lstatSync(outDir).isDirectory() || readdirSync(outDir).length > 0)) { console.error(`packages:check: ${options.outDir} is not an empty directory`); return 2; }
   // Publishable tarballs wait here, and reach the out directory only when nothing was found.
   const keepDir = outDir ? mkdtempSync(join(tmpdir(), "openlup-packages-kept-")) : undefined;
   try {
-    const packed: Array<{ name: string } & PackResult> = [];
+    const packed: Array<{ name: string; version: string } & PackResult> = [];
     if (options.pack) {
-      for (const entry of config.packages) {
+      for (const entry of selected) {
         const result = packAndCheck(root, entry, readTracked, findings, keepDir);
         if (!result) continue;
-        console.log(`packed ${entry.name}@${config.version}: ${result.filename}, ${result.entryCount} files, ${result.integrity}`);
-        if (entry.publish) packed.push({ name: entry.name, ...result });
+        const version = String(versions.get(entry.name));
+        console.log(`packed ${entry.name}@${version}: ${result.filename}, ${result.entryCount} files, ${result.integrity}`);
+        if (entry.publish) packed.push({ name: entry.name, version, ...result });
       }
     }
     for (const { subject, rule, detail } of findings) console.error(`${rule} ${subject}: ${detail}`);
@@ -116,14 +126,14 @@ export function runPackagesCheck(root: string, args: readonly string[]): number 
       mkdirSync(outDir, { recursive: true });
       for (const { filename } of packed) copyFileSync(join(keepDir, filename), join(outDir, filename));
       const commit = capture(root, "git", ["rev-parse", "HEAD"]).trim();
-      const packages = packed.map(({ name, filename, sha256, integrity }) => ({ name, filename, sha256, integrity }));
-      writeFileSync(join(outDir, PACKAGES_MANIFEST_FILE), `${JSON.stringify({ schemaVersion: 1, commit, version: config.version, packages }, null, 2)}\n`);
+      const packages = packed.map(({ name, version, filename, sha256, integrity }) => ({ name, version, filename, sha256, integrity }));
+      writeFileSync(join(outDir, PACKAGES_MANIFEST_FILE), `${JSON.stringify({ schemaVersion: 2, commit, packages }, null, 2)}\n`);
       console.log(`packages:check: ${packages.length} publishable tarball(s) kept in ${options.outDir}`);
     }
   } finally {
     if (keepDir) rmSync(keepDir, { recursive: true, force: true });
   }
-  console.log(findings.length === 0 ? `packages:check: ${config.packages.length} package(s) at ${config.version}, no findings` : `packages:check: ${findings.length} finding(s)`);
+  console.log(findings.length === 0 ? `packages:check: ${config.packages.length} package(s), no findings` : `packages:check: ${findings.length} finding(s)`);
   return findings.length === 0 ? 0 : 1;
 }
 

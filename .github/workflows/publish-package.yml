@@ -1,50 +1,65 @@
-# Inert until the maintainer protects release, installs the release App and enables
-# OPENLUP_SOURCE_RELEASE. The unprivileged preflight checks the target's main ancestry and
-# required contexts before the release environment asks for approval. A source preview is an
-# optional source snapshot: it carries no package, and publish-packages.yml ignores its
-# prerelease. Packages are released one at a time by publish-package.yml. No PAT; the job's
-# own token only reads.
-name: Publish Source Preview
+# Releases one @openlup/* package at a reviewed commit on main, as the annotated tag
+# openlup-<package>-v<version> and an immutable GitHub release. That release's published event
+# starts publish-packages.yml, which publishes the package to npm with --tag latest through OIDC.
+#
+# Inert until the maintainer completes the setup in .github/VERSIONING_AND_EOL.md and enables
+# OPENLUP_PACKAGE_RELEASE. The unprivileged preflight checks, before the protected release
+# environment asks for approval, that:
+# - the target is on main and the six required contexts passed there;
+# - packages/<package>/package.json carries the requested version;
+# - the tag is absent, and npm never held that version and holds none above it;
+# - `npm run packages:check -- --out` packs that one package;
+# - gitleaks finds nothing in the unpacked tarball.
+# The release job repeats every check before the release App writes. No PAT; the job's own
+# token only reads. Dispatching a run grants no publication: the release approval does.
+name: Publish Package
 
 on:
   workflow_dispatch:
     inputs:
+      package:
+        description: Package directory name under packages/
+        required: true
+        type: string
+      version:
+        description: The MAJOR.MINOR.PATCH version that package.json already carries
+        required: true
+        type: string
       target_commit:
         description: Reviewed full commit SHA on main
         required: true
         type: string
-      preview_number:
-        description: Immediately next source preview number N
-        required: true
-        type: string
-      release_notes:
-        description: Exact reviewed release body, including adjacent-preview upgrade actions
+      notes:
+        description: Exact reviewed release body
         required: true
         type: string
 
 permissions: {}
 
 concurrency:
-  group: publish-source-preview
+  group: publish-package
   cancel-in-progress: false
 
 jobs:
   preflight:
     name: preflight
-    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_SOURCE_RELEASE == 'enabled' }}
+    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_PACKAGE_RELEASE == 'enabled' && vars.OPENLUP_NPM_STAGE == 'enabled' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
       checks: read
     env:
+      PACKAGE: ${{ inputs.package }}
+      VERSION: ${{ inputs.version }}
       TARGET_COMMIT: ${{ inputs.target_commit }}
-      PREVIEW_NUMBER: ${{ inputs.preview_number }}
+      RELEASE_NOTES: ${{ inputs.notes }}
     steps:
       - name: Validate dispatch coordinates before checkout
         run: |
+          [[ "$PACKAGE" =~ ^[a-z0-9][a-z0-9-]*$ ]]
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$TARGET_COMMIT" =~ ^[a-f0-9]{40}$ ]]
-          [[ "$PREVIEW_NUMBER" =~ ^[1-9][0-9]*$ ]]
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.target_commit }}
@@ -64,10 +79,49 @@ jobs:
               --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
             if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $TARGET_COMMIT"; exit 1; fi
           done
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Assert Node and npm contract
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      - run: npm ci --ignore-scripts --no-audit --fund=false
+      - name: Refuse a mismatched version, an existing tag and a version npm holds or passed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types scripts/packages/package-release.ts preflight
+      - name: Pack and check the package for this release
+        run: npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"
+      - name: Install checksum-verified gitleaks 8.30.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz"
+          install_dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$install_dir"
+          gh api -H "Accept: application/octet-stream" \
+            repos/gitleaks/gitleaks/releases/assets/378332058 > "$archive"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$install_dir" gitleaks
+          echo "$install_dir" >> "$GITHUB_PATH"
+          "$install_dir/gitleaks" version
+      - name: Scan the unpacked tarball before creating a tag
+        run: |
+          for tarball in "$RUNNER_TEMP"/packs/*.tgz; do
+            test -f "$tarball"
+            target="$RUNNER_TEMP/scan/$(basename "$tarball" .tgz)"
+            mkdir -p "$target"
+            tar -xzf "$tarball" -C "$target"
+          done
+          gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner
 
   release:
     needs: preflight
-    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_SOURCE_RELEASE == 'enabled' }}
+    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_PACKAGE_RELEASE == 'enabled' && vars.OPENLUP_NPM_STAGE == 'enabled' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: release
@@ -76,14 +130,16 @@ jobs:
       checks: read
       attestations: read
     env:
+      PACKAGE: ${{ inputs.package }}
+      VERSION: ${{ inputs.version }}
       TARGET_COMMIT: ${{ inputs.target_commit }}
-      PREVIEW_NUMBER: ${{ inputs.preview_number }}
-      RELEASE_NOTES: ${{ inputs.release_notes }}
+      RELEASE_NOTES: ${{ inputs.notes }}
     steps:
       - name: Validate dispatch coordinates before checkout
         run: |
+          [[ "$PACKAGE" =~ ^[a-z0-9][a-z0-9-]*$ ]]
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$TARGET_COMMIT" =~ ^[a-f0-9]{40}$ ]]
-          [[ "$PREVIEW_NUMBER" =~ ^[1-9][0-9]*$ ]]
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ inputs.target_commit }}
@@ -112,18 +168,13 @@ jobs:
               --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
             if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $TARGET_COMMIT"; exit 1; fi
           done
-      # GitHub's own release attestation of the previous immutable preview binds its tag object.
-      - name: Verify the previous preview's GitHub release attestation
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release verify "openlup-source-preview/$((PREVIEW_NUMBER - 1))" --repo "$GITHUB_REPOSITORY"
-      - name: Check the target describes itself as a descendant and prepare the note
+      - name: Repeat the version, tag and npm refusals and prepare the note
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          release_out="$(realpath "$(mktemp -d "$RUNNER_TEMP/source-preview.XXXXXX")")"
+          release_out="$(realpath "$(mktemp -d "$RUNNER_TEMP/package-release.XXXXXX")")"
           echo "RELEASE_OUTPUT_DIR=$release_out" >> "$GITHUB_ENV"
-          RELEASE_OUTPUT_DIR="$release_out" node --experimental-strip-types scripts/source-preview-release.ts prepare
+          RELEASE_OUTPUT_DIR="$release_out" node --experimental-strip-types scripts/packages/package-release.ts prepare
       - name: Obtain the maintainer-configured release identity
         id: release-identity
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -142,30 +193,30 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: |
-          tag="openlup-source-preview/$PREVIEW_NUMBER"
-          message="OpenLup source preview $PREVIEW_NUMBER."
+          tag="openlup-$PACKAGE-v$VERSION"
+          message="OpenLup package @openlup/$PACKAGE $VERSION."
           tag_object="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
             -f tag="$tag" -f message="$message"$'\n' -f object="$TARGET_COMMIT" -f type=commit --jq .sha)"
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$tag_object"
           git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"
-      - name: Create the draft prerelease
+      - name: Create the draft release
         env:
           GH_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: |
-          tag="openlup-source-preview/$PREVIEW_NUMBER"
+          tag="openlup-$PACKAGE-v$VERSION"
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)" = "$(git rev-parse "refs/tags/$tag")"
-          draft_id="$(jq -n --arg tag "$tag" --arg name "OpenLup source preview $PREVIEW_NUMBER" \
+          draft_id="$(jq -n --arg tag "$tag" --arg name "@openlup/$PACKAGE $VERSION" \
             --rawfile body "$RELEASE_OUTPUT_DIR/notes.md" \
-            '{tag_name:$tag,name:$name,body:$body,draft:true,prerelease:true}' | \
+            '{tag_name:$tag,name:$name,body:$body,draft:true,prerelease:false}' | \
             gh api --method POST "repos/$GITHUB_REPOSITORY/releases" --input - --jq .id)"
           [[ "$draft_id" =~ ^[1-9][0-9]*$ ]]
           echo "RELEASE_ID=$draft_id" >> "$GITHUB_ENV"
       - name: Refuse publication if the draft differs
         env:
           GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}
-        run: node --experimental-strip-types scripts/source-preview-release.ts check-draft
-      # The release App publishes; the job's own token only reads. Publish Packages skips a preview.
-      - name: Publish the immutable prerelease with the release identity
+        run: node --experimental-strip-types scripts/packages/package-release.ts check-draft
+      # The App token, rather than GITHUB_TOKEN, emits release.published for Publish Packages.
+      - name: Publish the immutable release with the release identity
         env:
           GH_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: |
@@ -175,13 +226,12 @@ jobs:
       - name: Verify the completed immutable release and its tag
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node --experimental-strip-types scripts/source-preview-release.ts verify
-      # Publishing an immutable release makes GitHub attest the tag object; the release carries no asset.
+        run: node --experimental-strip-types scripts/packages/package-release.ts verify
       - name: Verify GitHub's release attestation of the published tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release verify "openlup-source-preview/$PREVIEW_NUMBER" --repo "$GITHUB_REPOSITORY"
+        run: gh release verify "openlup-$PACKAGE-v$VERSION" --repo "$GITHUB_REPOSITORY"
       - name: Recovery requires the maintainer
         if: failure()
         run: |
-          echo '::error::Release refused. Inspect this run and any unpublished tag/draft before retrying. No tag, asset or body is overwritten or deleted automatically; published releases are corrected forward.'
+          echo '::error::Release refused. Inspect this run and any unpublished tag or draft before retrying. No tag, release or npm version is overwritten or deleted automatically; published releases are corrected forward with a new version.'
