@@ -309,3 +309,113 @@ describe("the release gate as one file outside the checkout", () => {
     }
   });
 });
+
+// The workflows reach the gate only through its command entry, so each command is also a control,
+// run as `node --experimental-strip-types <file> <command> ...` against the Git fixture with a
+// recorded GitHub API. Each planted defect edits the command entry and must turn its control red.
+describe("the release gate's commands, as the workflows run them", () => {
+  let cli: Fixture;
+  let runs = 0;
+  beforeAll(() => { cli = createFixture(); });
+  afterAll(() => { rmSync(cli.scratch, { recursive: true, force: true }); });
+
+  type Request = { method: string; url: string; body?: Record<string, unknown> };
+  /**
+   * Runs `source` as a command in the fixture clone. Its fetch answers each GET URL from `answers`
+   * (404 otherwise), echoes a created tag object and reference as GitHub does, and records every request.
+   */
+  function command(source: string, args: string[], answers: Record<string, unknown>) {
+    const directory = join(cli.scratch, `command-${++runs}`);
+    mkdirSync(directory);
+    const file = join(directory, "release-gate.mts"), log = join(directory, "requests.jsonl"), stub = join(directory, "fetch-stub.mjs");
+    writeFileSync(file, source);
+    writeFileSync(log, "");
+    writeFileSync(stub, [
+      'import { appendFileSync } from "node:fs";',
+      `const answers = ${JSON.stringify(answers)};`,
+      "globalThis.fetch = async (url, init = {}) => {",
+      '  const method = init.method ?? "GET", body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;',
+      `  appendFileSync(${JSON.stringify(log)}, JSON.stringify({ method, url, body }) + "\\n");`,
+      `  if (method === "POST" && url.endsWith("/git/tags")) return Response.json({ sha: ${JSON.stringify(TAG_OBJECT)}, tag: body.tag, message: body.message, object: { type: body.type, sha: body.object } }, { status: 201 });`,
+      '  if (method === "POST" && url.endsWith("/git/refs")) return Response.json({ ref: body.ref, object: { type: "tag", sha: body.sha } }, { status: 201 });',
+      "  const answer = answers[url];",
+      "  return answer === undefined ? new Response(null, { status: 404 }) : Response.json(answer);",
+      "};",
+      "",
+    ].join("\n"));
+    const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "--import", pathToFileURL(stub).href, file, ...args], { cwd: cli.clone, encoding: "utf8", timeout: 30_000, env: { ...inherited, GITHUB_TOKEN: "token" } });
+    const requests = readFileSync(log, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as Request);
+    return { status: result.status, stdout: result.stdout.trim(), stderr: result.stderr.trim(), requests };
+  }
+  /** The six contexts' latest check runs at `commit`: each passed unless `failing` names it. */
+  const contexts = (commit: string, failing: readonly string[] = []) => Object.fromEntries(SIX.map((context) => [
+    `${API}/commits/${commit}/check-runs?check_name=${context}&filter=latest&per_page=100`,
+    { total_count: 1, check_runs: [{ name: context, status: "completed", app: { slug: "github-actions" }, conclusion: failing.includes(context) ? "failure" : "success" }] },
+  ]));
+  /** The unfinished runs of both release workflows, per status, as GitHub lists them. */
+  const workflowRuns = (listed: Partial<Record<string, Partial<Record<string, object[]>>>>) => Object.fromEntries(WORKFLOWS.flatMap((workflow) => ACTIVE.map((status) => {
+    const runsListed = listed[workflow]?.[status] ?? [];
+    return [`${API}/actions/workflows/${workflow}/runs?status=${status}&per_page=100`, { total_count: runsListed.length, workflow_runs: runsListed }];
+  })));
+
+  /** Each command behaviour throws unless it holds for the given gate source. */
+  const COMMANDS: Record<string, (source: string) => void> = {
+    "commit: the target on main, with every required context passed at the target": (source) => {
+      const { base, mainTip, side } = cli;
+      const passed = command(source, ["commit", base], { ...contexts(base), ...contexts(mainTip, ["test"]) });
+      expect([passed.status, passed.stdout], "the target passed, main's tip did not").toEqual([0, `${base} is on main at ${mainTip} and passed ${SIX.join(", ")}`]);
+      expect(passed.requests.map(({ url }) => url), "only the target's contexts are read").toEqual(SIX.map((context) => `${API}/commits/${base}/check-runs?check_name=${context}&filter=latest&per_page=100`));
+      const failed = command(source, ["commit", base], { ...contexts(base, ["test"]), ...contexts(mainTip) });
+      expect([failed.status, failed.stderr], "the target failed, main's tip passed").toEqual([1, `release gate: test has not passed at ${base}`]);
+      const off = command(source, ["commit", side], contexts(side));
+      expect([off.status, off.stderr, off.requests], "a commit off main, its contexts passed").toEqual([1, `release gate: ${side} is not on main, whose tip is ${mainTip}`, []]);
+    },
+    "in-flight: refuses while another release or publication run has not completed": (source) => {
+      const alone = command(source, ["in-flight", "1001"], workflowRuns({ "publish-package.yml": { in_progress: [OWN] } }));
+      expect([alone.status, alone.stdout], "only this run").toEqual([0, "No other package release or publication is in flight"]);
+      expect(alone.requests, "every workflow and unfinished status is read").toHaveLength(WORKFLOWS.length * ACTIVE.length);
+      const other = { id: 42, name: "Publish Packages", status: "queued", html_url: "https://github.com/openlup/openlup/actions/runs/42" };
+      const busy = command(source, ["in-flight", "1001"], workflowRuns({ "publish-package.yml": { in_progress: [OWN] }, "publish-packages.yml": { queued: [other] } }));
+      expect([busy.status, busy.stderr], "a queued publication").toEqual([1, "release gate: one package release or publication runs at a time, and these have not completed: Publish Packages run 42 (queued) https://github.com/openlup/openlup/actions/runs/42"]);
+    },
+    "tag: the annotated tag on the target itself, then its reference": (source) => {
+      const { base, mainTip } = cli;
+      const tagged = command(source, ["tag", base, "core", "0.12.1"], {});
+      expect([tagged.status, tagged.stdout]).toEqual([0, `Created openlup-core-v0.12.1 (${TAG_OBJECT}) on ${base}, an ancestor of main at ${mainTip}`]);
+      expect(tagged.requests).toEqual([
+        { method: "POST", url: `${API}/git/tags`, body: { tag: "openlup-core-v0.12.1", message: "OpenLup package @openlup/core 0.12.1.\n", object: base, type: "commit" } },
+        { method: "POST", url: `${API}/git/refs`, body: { ref: "refs/tags/openlup-core-v0.12.1", sha: TAG_OBJECT } },
+      ]);
+    },
+    "a refused or unknown command exits 1": (source) => {
+      for (const args of [["commit", cli.side], ["tag", cli.side, "core", "0.12.1"], ["publish"], ["commit"]]) expect(command(source, args, {}).status, args.join(" ")).toBe(1);
+    },
+  };
+
+  type CommandDefect = { control: string; plant: string; from: string; to: string };
+  const COMMAND_DEFECTS: CommandDefect[] = [
+    { control: "commit: the target on main, with every required context passed at the target", plant: "commit skips the required contexts", from: "    await assertRequiredChecks(commit, token);\n    console.log(", to: "    console.log(" },
+    { control: "commit: the target on main, with every required context passed at the target", plant: "commit checks main's tip instead of the target", from: "await assertRequiredChecks(commit, token);", to: "await assertRequiredChecks(mainTip, token);" },
+    { control: "commit: the target on main, with every required context passed at the target", plant: "commit without the main ancestry", from: "const mainTip = assertOnFreshMain(root, commit);\n    await assertRequiredChecks", to: "const mainTip = commit;\n    await assertRequiredChecks" },
+    { control: "in-flight: refuses while another release or publication run has not completed", plant: "in-flight does nothing", from: "    await assertNoReleaseInFlight(args[0]!, token);\n", to: "" },
+    { control: "in-flight: refuses while another release or publication run has not completed", plant: "in-flight for another run ID than this one", from: "assertNoReleaseInFlight(args[0]!, token)", to: 'assertNoReleaseInFlight("1", token)' },
+    { control: "tag: the annotated tag on the target itself, then its reference", plant: "tag tags main's tip", from: "createReleaseTag(root, args[0]!, args[1]!, args[2]!, token)", to: "createReleaseTag(root, assertOnFreshMain(root, args[0]!), args[1]!, args[2]!, token)" },
+    { control: "tag: the annotated tag on the target itself, then its reference", plant: "tag with the package and the version swapped", from: "createReleaseTag(root, args[0]!, args[1]!, args[2]!, token)", to: "createReleaseTag(root, args[0]!, args[2]!, args[1]!, token)" },
+    { control: "a refused or unknown command exits 1", plant: "a refused command exits 0", from: '"release gate refused"); process.exitCode = 1;', to: '"release gate refused"); process.exitCode = 0;' },
+    { control: "a refused or unknown command exits 1", plant: "an unknown command exits 0", from: "  throw new Error(USAGE);\n}", to: "  return;\n}" },
+  ];
+
+  it("hold on the committed source", () => {
+    for (const [name, holds] of Object.entries(COMMANDS)) expect(() => holds(SOURCE), name).not.toThrow();
+  }, 60_000);
+
+  it("each command control has a planted defect", () => {
+    expect(new Set(COMMAND_DEFECTS.map(({ control }) => control))).toEqual(new Set(Object.keys(COMMANDS)));
+  });
+
+  it.each(COMMAND_DEFECTS.map((defect) => [`${defect.control}: ${defect.plant}`, defect] as const))("turns red on %s", (_, defect) => {
+    expect(SOURCE.split(defect.from), "the anchor occurs exactly once").toHaveLength(2);
+    // A function replacer, so a `$` in the source is never read as a replacement pattern.
+    expect(() => COMMANDS[defect.control]!(SOURCE.replace(defect.from, () => defect.to))).toThrow();
+  }, 60_000);
+});

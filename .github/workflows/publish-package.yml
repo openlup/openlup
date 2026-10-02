@@ -265,8 +265,9 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.release-identity.outputs.token }}
         run: test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
-      # Target code ran in this job, so the gate that tags is a fresh copy of main's, taken from the
-      # dispatched commit here: it re-checks the target's main ancestry and tags the target itself.
+      # The gate that tags is a fresh copy of main's, taken from the dispatched commit here, as defence
+      # in depth; the control is this leg's gate above, which bound the target to main before any
+      # target code ran. It re-checks the target's main ancestry and tags the target itself.
       - name: Create the exact annotated tag with the release identity
         env:
           GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}

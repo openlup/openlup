@@ -587,8 +587,9 @@ A release takes three steps:
    release in full to the `release` job. Main ancestry, the required contexts
    and the tag's commit are decided by
    [`release-gate.ts`](../scripts/packages/release-gate.ts) as it is at the
-   dispatched `main` commit, run as one file outside the checkout, never by the
-   target's own copy. A dispatch naming one package checks that package the same
+   dispatched `main` commit, never by the target's own copy: `in-flight` and
+   `commit` run in place in each job's checkout of that commit, before the target
+   is checked out, and only the tag step runs a fresh copy of it. A dispatch naming one package checks that package the same
    way and releases it only when its tag and release are absent and npm never
    held its version.
 3. **Approval.** The `release` job runs once per package to release in full.
@@ -604,8 +605,8 @@ A release takes three steps:
    the pack and the gitleaks scan run only in the unprivileged `preflight`, and
    `publish-packages.yml` packs and scans the published tag again. A fresh copy
    of main's release gate, taken from the dispatched commit in the tag step
-   itself because target code has run in the job, then re-checks the target's
-   main ancestry, has the App create the
+   itself as defence in depth, then re-checks the target's main ancestry, has the
+   App create the
    annotated tag on the target commit itself with exactly
    `OpenLup package @openlup/<package> <version>.`, and refuses unless GitHub
    answers with that tag object, that message byte for byte, and its reference.
