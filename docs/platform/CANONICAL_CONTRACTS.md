@@ -166,7 +166,7 @@ This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see
 [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-737019ca9c6c4e77efedac3f39ef156f0ad2b342d6d67e1d3a3e339cdf4367dd","reason":"The package configuration advances only the lockstep version from 0.10.0 to 0.11.0 after preview 10 and its package publication. Matching package and source preview numbering, development-preview compatibility, and release preparation rules remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-1189eee35af5c79cedb47e98ed1b0d43d316379fbe4b4ed4d46e2444bb3eb6ec","reason":"The package configuration advances only the lockstep version from 0.10.0 to 0.11.0 after preview 10 and its package publication. Matching package and source preview numbering, development-preview compatibility, and release preparation rules remain unchanged."} -->
 
 Future source preview cuts require a publishable npm package at the matching
 lockstep `0.<n>.0` version. Before such a cut, `release:bump` prepares that
