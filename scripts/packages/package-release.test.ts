@@ -1,8 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GithubFetch } from "../source-preview-release.ts";
 import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
@@ -219,4 +219,58 @@ describe("the command line", () => {
     expect(run(["preflight"], { PACKAGE: "../core", VERSION: "0.11.0", TARGET_COMMIT: target, RELEASE_NOTES: "note" })).toMatchObject({ status: 1, stderr: expect.stringContaining("package must be") });
     expect(run(["registry"], { RELEASE_TAG: "openlup-source-preview/11" })).toMatchObject({ status: 1, stderr: expect.stringContaining("not a package release tag") });
   });
+  it("takes package all as the set only in the preflight and the plan, and only at a set version", () => {
+    const set = { PACKAGE: "all", VERSION: "0.12.1", TARGET_COMMIT: target, RELEASE_NOTES: "note" };
+    for (const args of [["plan"], ["plan", "a", "b"], ["preflight", "a"]]) expect(run(args, set), args.join(" ")).toMatchObject({ status: 1, stderr: expect.stringContaining("expected one phase: preflight, plan <packs directory>, prepare") });
+    for (const version of ["1.0.0", "0.0.1", "0.12"]) expect(run(["preflight"], { ...set, VERSION: version }), version).toMatchObject({ status: 1, stderr: expect.stringContaining("version must be a set version 0.N.P below 1.0 for a set release") });
+    for (const phase of ["prepare", "check-draft", "verify"]) expect(run([phase], set), phase).toMatchObject({ status: 1, stderr: expect.stringContaining(`phase ${phase} releases one package`) });
+    expect(run(["plan", tmpdir()], { ...set, GITHUB_OUTPUT: "" })).toMatchObject({ status: 1, stderr: expect.stringContaining("plan writes its packages to GITHUB_OUTPUT") });
+    expect(() => packageReleaseInputs("all", "0.12.1", target, "note")).toThrow("package all names the whole set, not one package");
+  });
+});
+
+describe("package-release.ts started as a command", () => {
+  const file = fileURLToPath(new URL("./package-release.ts", import.meta.url));
+  const SOURCE = readFileSync(file, "utf8");
+  // Joined, so that this test file does not read as a command entrypoint to the publication policy.
+  const ARGV = ["process", "argv"].join(".");
+  const FAIL_CLOSED = "  // Started as a package-release command, yet not detected as the entry module: an exit 0 would skip every check.\n  console.error(`package release: ${" + ARGV + "[1]} started, but this module is not its entry; refusing`);\n  process.exitCode = 1;\n";
+  /** `source` with its relative imports bound to the committed modules, so a copy runs from anywhere. */
+  const bound = (source: string) => source.replace(/(\bfrom\s+)"(\.\.?\/[^"]+)"/gu, (_, keyword: string, specifier: string) => `${keyword}${JSON.stringify(resolve(dirname(file), specifier))}`);
+  // PACKAGE "../core" makes the command refuse at once, which shows that it ran.
+  const run = (args: string[]) => {
+    const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
+    return spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", ...args], { encoding: "utf8", timeout: 20_000, env: { ...inherited, PACKAGE: "../core", VERSION: "0.12.1", TARGET_COMMIT: target, RELEASE_NOTES: "note" } });
+  };
+  function copies(source: string) {
+    const scratch = realpathSync(mkdtempSync(join(tmpdir(), "openlup-package-release-entry-")));
+    cleanups.push(() => rmSync(scratch, { recursive: true, force: true }));
+    const at = (path: string) => { mkdirSync(dirname(join(scratch, path)), { recursive: true }); writeFileSync(join(scratch, path), bound(source)); return join(scratch, path); };
+    const link = join(scratch, "link", "package-release.ts");
+    mkdirSync(dirname(link));
+    symlinkSync(at("real/package-release.ts"), link);
+    return { imported: at("imported/package-release.ts"), entry: at("entry/package-release.ts"), link };
+  }
+  /** The module imported by a script whose entry is another copy named package-release.ts, and the module run through a symbolic link. */
+  function outcomes(source: string) {
+    const { imported, entry, link } = copies(source);
+    const misdetected = run(["--input-type=module", "-e", `await import(${JSON.stringify(pathToFileURL(imported).href)});`, entry, "preflight"]);
+    const linked = run([link, "preflight"]);
+    return { misdetected: [misdetected.status, misdetected.stderr.trim()], linked: [linked.status, linked.stderr.trim()] };
+  }
+
+  it("refuses when started but not its entry module, and runs when started through a symbolic link", () => {
+    const committed = outcomes(SOURCE);
+    expect(committed.misdetected).toEqual([1, expect.stringMatching(/^package release: .*[\\/]entry[\\/]package-release\.ts started, but this module is not its entry; refusing$/u)]);
+    expect(committed.linked).toEqual([1, "package must be a directory name under packages/"]);
+    for (const [plant, from, to] of [
+      ["a silent exit 0", FAIL_CLOSED, ""],
+      ["the refusal only logged", "  process.exitCode = 1;\n}", "}"],
+      ["only a .mts entry watched", "package-release\\.m?ts$/u", "package-release\\.mts$/u"],
+      ["the entry matched without its real path", `pathToFileURL(realpathSync(${ARGV}[1] ?? "")).href`, `pathToFileURL(resolve(${ARGV}[1] ?? "")).href`],
+    ] as const) {
+      expect(SOURCE.split(from), plant).toHaveLength(2);
+      expect(outcomes(SOURCE.replace(from, () => to)), plant).not.toEqual(committed);
+    }
+  }, 120_000);
 });

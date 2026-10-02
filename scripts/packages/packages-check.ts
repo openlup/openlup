@@ -1,9 +1,10 @@
 /**
- * `npm run packages:check [-- --pack] [-- --out <dir>] [-- --release-tag <tag>]`,
+ * `npm run packages:check [-- --pack] [-- --out <dir>] [-- --release-tag <tag> | --release-set <version>]`,
  * from the repository root.
  *
  * Without options it checks every package manifest against
- * `config/openlup-packages.json` and needs no build. With `--pack` it also
+ * `config/openlup-packages.json`, including that every publishable package
+ * carries the same set version `0.N.P`, and needs no build. With `--pack` it also
  * builds and packs each listed package into a temporary directory, and checks
  * every packed file (see `package-tarball-gate.ts`). A package directory must
  * be clean before the build and still clean after it, so the packed bytes are
@@ -14,7 +15,9 @@
  * commit, and each tarball's package, version, sha256 and integrity. That is
  * the input a publication job stages. `--release-tag openlup-<package>-v<version>`
  * names one publishable package, requires its manifest version to be that
- * version, and packs only that package. Nothing here publishes.
+ * version, and packs only that package. `--release-set <version>` names the
+ * whole set: every publishable package, each at that set version. Nothing here
+ * publishes.
  */
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -22,7 +25,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { PACKAGES_CONFIG_PATH, checkPackageDirectories, checkPackageManifest, checkUnreleasedManifest, parsePackageReleaseTag, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
+import { PACKAGES_CONFIG_PATH, SET_VERSION, checkPackageDirectories, checkPackageManifest, checkSetVersions, checkUnreleasedManifest, parsePackageReleaseTag, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.ts";
 
 type PackResult = { filename: string; integrity: string; sha256: string; entryCount: number };
@@ -67,19 +70,20 @@ function packAndCheck(root: string, entry: PackageEntry, readTracked: (path: str
   }
 }
 
-type Options = { pack: boolean; outDir?: string; releaseTag?: string };
+type Options = { pack: boolean; outDir?: string; releaseTag?: string; releaseSet?: string };
 function parseOptions(args: readonly string[]): Options | string {
   const options: Options = { pack: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--pack") options.pack = true;
-    else if (arg === "--out" || arg === "--release-tag") {
+    else if (arg === "--out" || arg === "--release-tag" || arg === "--release-set") {
       const value = args[index + 1];
       if (value === undefined || value.startsWith("--")) return `${arg} needs a value`;
-      if (arg === "--out") { options.outDir = value; options.pack = true; } else options.releaseTag = value;
+      if (arg === "--out") { options.outDir = value; options.pack = true; } else if (arg === "--release-tag") options.releaseTag = value; else options.releaseSet = value;
       index += 1;
     } else return `unknown argument ${arg}`;
   }
+  if (options.releaseTag !== undefined && options.releaseSet !== undefined) return "name one package with --release-tag or the set with --release-set, not both";
   return options;
 }
 
@@ -94,6 +98,16 @@ function releaseSelection(tag: string, packages: readonly PackageEntry[], versio
   return [entry];
 }
 
+/** Every publishable package, each at the set version, with a finding for every way the set and the tree disagree. */
+function setSelection(version: string, packages: readonly PackageEntry[], versions: ReadonlyMap<string, unknown>, findings: Finding[]): PackageEntry[] {
+  const refuse = (detail: string): PackageEntry[] => { findings.push({ subject: `set ${version}`, rule: "release-set", detail }); return []; };
+  if (!SET_VERSION.test(version)) return refuse("a set version is 0.N.P below 1.0");
+  const publishable = packages.filter(({ publish }) => publish);
+  if (publishable.length === 0) return refuse(`${PACKAGES_CONFIG_PATH} lists no publishable package`);
+  const behind = publishable.filter(({ name }) => versions.get(name) !== version).map(({ name }) => `${name} is at ${String(versions.get(name))}`);
+  return behind.length === 0 ? publishable : refuse(`${behind.join(", ")}; this set needs ${version} for every publishable package`);
+}
+
 export function runPackagesCheck(root: string, args: readonly string[]): number {
   const options = parseOptions(args);
   if (typeof options === "string") { console.error(`packages:check: ${options}`); return 2; }
@@ -105,7 +119,9 @@ export function runPackagesCheck(root: string, args: readonly string[]): number 
   const findings = checkPackageDirectories(config, [...tracked]);
   for (const entry of config.packages) if (manifest(entry.directory) !== undefined) findings.push(...checkPackageManifest(entry, manifest(entry.directory), config, versions));
   for (const entry of config.unreleased) if (manifest(entry.directory) !== undefined) findings.push(...checkUnreleasedManifest(entry, manifest(entry.directory)));
-  const selected = options.releaseTag === undefined ? config.packages : releaseSelection(options.releaseTag, config.packages, versions, findings);
+  findings.push(...checkSetVersions(config, versions));
+  const selected = options.releaseTag !== undefined ? releaseSelection(options.releaseTag, config.packages, versions, findings)
+    : options.releaseSet !== undefined ? setSelection(options.releaseSet, config.packages, versions, findings) : config.packages;
   const outDir = options.outDir === undefined ? undefined : resolve(root, options.outDir);
   if (outDir && existsSync(outDir) && (!lstatSync(outDir).isDirectory() || readdirSync(outDir).length > 0)) { console.error(`packages:check: ${options.outDir} is not an empty directory`); return 2; }
   // Publishable tarballs wait here, and reach the out directory only when nothing was found.

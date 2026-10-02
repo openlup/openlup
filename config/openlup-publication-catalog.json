@@ -2582,7 +2582,19 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/release-gate.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/release-gate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/release-workflow-authenticity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/set-release.test.ts",
       "class": "public-output"
     },
     {
