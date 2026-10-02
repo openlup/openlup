@@ -75,16 +75,6 @@
       "import": "./dist/bundle/contracts.js",
       "default": "./dist/bundle/contracts.js"
     },
-    "./checkout": {
-      "core-source": "./src/checkout/index.ts",
-      "types": "./dist/checkout/index.d.ts",
-      "module": "./dist/checkout/index.js",
-      "node": "./dist/checkout/index.js",
-      "development": "./dist/checkout/index.js",
-      "production": "./dist/checkout/index.js",
-      "import": "./dist/checkout/index.js",
-      "default": "./dist/checkout/index.js"
-    },
     "./company-identity": {
       "core-source": "./src/company-identity/index.ts",
       "types": "./dist/company-identity/index.d.ts",

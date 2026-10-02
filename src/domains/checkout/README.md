@@ -1,32 +1,20 @@
 # checkout domain
 
-Small shared helpers for checkout idempotency. The current commerce checkout
-boundary does **not** use this folder as the checkout engine: it validates body
+Small shared checkout helpers. The current commerce checkout boundary does
+**not** use this folder as the checkout engine: it validates body
 `intent.idempotencyKey` in `src/domains/commerce` and then suffixes that key
 through order, inventory, payment-control, and provider work.
 
 ## Owns / does not own
-- **Owns:** compatibility exports for `@openlup/core/checkout`.
+- **Owns:** `checkoutPaymentMethods.ts`, the closed set of payment methods a
+  buyer can choose at checkout.
 - **Does not own:** pricing, order persistence, payments (all in `commerce`/`payment`).
 
 ## Public surface (import cross-domain ONLY these)
-- `checkoutIdempotency.ts` — `CHECKOUT_IDEMPOTENCY_KEY_HEADER`,
-  `validateCheckoutIdempotencyHeader`.
+- `checkoutPaymentMethods.ts`.
 
-## Header idempotency reference flow
-The `Idempotency-Key` header helper is a reference contract only. If a BFF
-handler adopts it, that handler must also wire the persistence workflow against
-the existing `commerce_idempotency_keys` shell table with `scope='checkout'`:
-
-- `in_progress` -> return `409` with a retry-after hint.
-- `completed` -> return the cached `response_payload` for idempotent replay.
-- `failed` -> require a fresh key for a force-retry.
-- missing row -> insert `in_progress`, proceed with checkout work, then mark
-  the record `completed`.
-
-The current commerce checkout path does not read this header contract; it
-validates body `intent.idempotencyKey` in `src/domains/commerce` and carries
-that key through order, inventory, payment-control, and provider work.
+The checkout path does not use an `Idempotency-Key` header contract, and
+`@openlup/core` no longer exports one.
 
 The browser-facing checkout endpoint is `POST /api/bff/commerce/checkout`.
 Its handler is registered under `server/bff/commerce`, while the physical
@@ -35,9 +23,7 @@ Vercel catch-all entrypoint remains `api/bff/[...path].ts`. The public server ex
 contract.
 
 ## Where the code lives
-- Core package: `packages/core/src/checkout/` (pure helper; no server half).
-- Shared/frontend compatibility: `src/domains/checkout/` re-exports the package
-  by name so existing product imports remain stable before the OSS split.
+- Shared/frontend: `src/domains/checkout/`.
 
 ## Public navigation and availability
 

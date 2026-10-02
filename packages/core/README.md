@@ -25,7 +25,6 @@ promise.
 | --- | --- | --- | --- |
 | `./bundle` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
 | `./catalog` | kernel | candidate | `smoke/catalogStandalone.test.ts` |
-| `./checkout` | kernel | experimental | `smoke/checkoutStandalone.test.ts` |
 | `./company-identity` | kernel | experimental | `smoke/companyIdentityStandalone.test.ts` |
 | `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts` |
 | `./inventory` | kernel | candidate | `smoke/inventoryStandalone.test.ts` |
