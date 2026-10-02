@@ -49,6 +49,7 @@ const agentGuideSections = [
   "Wiring example",
   "Sources and declarations",
   "Readiness codes",
+  "Using this package in an application",
 ];
 const wiringExamplePath = "smoke/agentsWiringExample.ts";
 

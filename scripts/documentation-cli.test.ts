@@ -40,6 +40,7 @@ function seed(root: string): string {
   write(root, "README.md", "# Fixture\n\n## Contract\n\nThe demo preserves replay safety.\n\n## Other\n\nSeparate guidance.\n");
   write(root, "docs/platform/DOCUMENTATION.md", "# Documentation\n");
   write(root, "docs/platform/SUBSCRIPTION_WORKFLOWS.md", "# Workflows\n");
+  write(root, "docs/platform/adopter-kit/dependabot.template.yml", 'groups:\n  openlup:\n    patterns:\n      - "@openlup/*"\n');
   write(root, "src/lib/coreDomains.ts", 'export const CORE_DOMAINS = Object.freeze(["demo"] as const);\n');
   write(root, "src/domains/demo/main.ts", "export const value = 1;\n");
   write(root, "src/domains/demo/README.md", "# Demo\n");

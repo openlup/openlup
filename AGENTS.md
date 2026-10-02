@@ -7,6 +7,7 @@ for their locations. The one-time public-root projection is no longer an authori
 
 OpenLup is a subscription-commerce platform. The platform's public tree is a platform monorepo; an adopter owns its own application, brand, content, local policy, and integrations.
 This guide governs work in that public tree only. It does not authorize releases, external mutations, or stable-framework claims.
+An application that installs `@openlup/*` from npm follows its own `AGENTS.md`, started from the [adopter kit](docs/platform/adopter-kit/README.md).
 
 ## Orientation
 
