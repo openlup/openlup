@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { resolve, sep } from "node:path";
 
 const expectedPolicies = ["internal-candidate", "testing-internal"];
+export const packageKinds = ["kernel", "rail", "capability", "implementation"];
 const expectedConditions = [
   "core-source",
   "types",
@@ -33,6 +34,7 @@ type PackageSurfaceConfigInput = {
   manifest: { exports: Record<string, Record<string, string>> };
   gates: {
     schemaVersion: number;
+    kind?: unknown;
     compatibilityPolicies: Record<string, string>;
     packageSurface: Record<string, PackageSurfaceContract>;
     packageRelease: { phase: string; publicStability: string; artifactChannel: string };
@@ -48,7 +50,11 @@ export function assertPackageSurfaceConfig({
   packageRoot,
   requireSnapshots = true,
 }: PackageSurfaceConfigInput): void {
-  assert(gates.schemaVersion === 4, "unsupported release-gates.json schema");
+  assert(gates.schemaVersion === 5, "unsupported release-gates.json schema");
+  assert(
+    typeof gates.kind === "string" && packageKinds.includes(gates.kind),
+    `package kind must be one of ${packageKinds.join(", ")}`,
+  );
   assert(
     gates.packageRelease.phase === "platform-monorepo-phase-5" &&
       gates.packageRelease.publicStability === "not-claimed" &&

@@ -22,6 +22,7 @@
   "files": [
     "dist/**",
     "src/**",
+    "AGENTS.md",
     "CHANGELOG.md",
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",

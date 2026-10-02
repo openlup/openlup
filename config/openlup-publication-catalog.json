@@ -1314,6 +1314,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/AGENTS.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/CHANGELOG.md",
       "class": "public-output"
     },
@@ -1499,6 +1503,10 @@
     },
     {
       "path": "packages/core/scripts/repository-policy-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/smoke/agentsWiringExample.ts",
       "class": "public-output"
     },
     {

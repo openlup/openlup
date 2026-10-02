@@ -1,14 +1,19 @@
 # Commerce Core
 
-`@openlup/core` is a framework-independent TypeScript workspace package of
-subscription and bundle commerce kernels, not a separate library product.
+`@openlup/core` is the kernel of the `@openlup/*` package family: the
+framework-independent TypeScript contracts and logic for subscription and
+bundle commerce that the other packages and an application's composition read.
+Agents start with [AGENTS.md](AGENTS.md).
 
-> [!IMPORTANT]
-> Version `0.<n>.0` is packed from source preview `openlup-source-preview/<n>`,
-> staged with provenance and approved with 2FA, on the `preview` dist-tag only.
-> `npm publish` from this directory is refused. No version implies a stable
-> API or supported consumer path. Build, pack, and isolated-import checks are
-> package smoke evidence only.
+## Channel and stability
+
+- **Channel:** npm, on the `latest` dist-tag. Each version is published with
+  provenance from its release tag `openlup-core-v<version>` after a protected
+  release approval. Versions up to `0.11.0` were published on the `preview`
+  dist-tag only. `npm publish` from this directory is refused.
+- **Stability:** development preview. Any version may change an export, and
+  each change is recorded in [the changelog](CHANGELOG.md). Pin an exact
+  version and read the changelog when you upgrade.
 
 ## Package Surface Maturity
 
@@ -55,8 +60,7 @@ npm run ci
 ```
 
 Focused proofs are `npm run api:check`, `npm run release:check`, and
-`npm run test:consumer`. The root test script skips this suite. A `preview`
-install is evaluation, not a supported install.
+`npm run test:consumer`. The root test script skips this suite.
 
 Repository neutrality checks reuse the existing source scanner through
 [the tree counting interface](./scripts/neutrality-tree-counts.ts). This
@@ -88,5 +92,3 @@ neutrality evidence, not package activation or consumer compatibility evidence.
   `./subscription` kernel owns, its deterministic-clock contract, the
   late-payment cycle-shift rule and its monotonic clamp, and how a host
   application consumes it.
-
-<!-- openlup-doc-impact {"unit":"core","digest":"sha256-fbf1589b7a2c49f656a295c102b1076d8beaa5180bdc369ba575c462f39ec96f","reason":"The core manifest and lockfile advance only the lockstep version from 0.10.0 to 0.11.0. Exports, dependencies, package smoke, publication settings, and development-preview maturity remain unchanged."} -->

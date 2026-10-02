@@ -2,6 +2,9 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { packageKinds } from "./public-api-config.ts";
+import { packDryRun } from "./release-npm-checks.ts";
+
 const defaultPackageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const downstreamRepositoryCommand = "veli";
 const retiredPackageScope = "veli";
@@ -16,6 +19,7 @@ const forbiddenExtractedRootReferences = [
   [/\bpackages\/(?:ui|create-[a-z0-9-]+)\b/, "sibling monorepo package"],
 ];
 const packageHygieneFiles = [
+  "AGENTS.md",
   "README.md",
   "CHANGELOG.md",
   "CONTRIBUTING.md",
@@ -39,8 +43,22 @@ const forbiddenContributionClaims = [
   ["stable API change", "retired stable API claim"],
   ["stable API changes", "retired stable API claim"],
 ] as const;
+const agentGuideSections = [
+  "Purpose and kind",
+  "Subpath maturity",
+  "Wiring example",
+  "Sources and declarations",
+  "Readiness codes",
+];
+const wiringExamplePath = "smoke/agentsWiringExample.ts";
 
-export function assertDocumentationContract(packageRoot = defaultPackageRoot): void {
+type SurfaceContract = { role?: unknown; maturity?: unknown; packageSmokeEvidence?: unknown };
+
+export function assertDocumentationContract(
+  packageRoot = defaultPackageRoot,
+  // The packed file list; by default a real `npm pack --dry-run`.
+  packedFiles: () => string[] = () => (packDryRun(packageRoot).files ?? []).map((file) => file.path),
+): void {
   const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
     scripts?: Record<string, string>;
     exports?: Record<string, unknown>;
@@ -49,7 +67,8 @@ export function assertDocumentationContract(packageRoot = defaultPackageRoot): v
     homepage?: unknown;
   };
   const gates = JSON.parse(readFileSync(join(packageRoot, "release-gates.json"), "utf8")) as {
-    packageSurface?: Record<string, { role?: unknown; maturity?: unknown; packageSmokeEvidence?: unknown }>;
+    kind?: unknown;
+    packageSurface?: Record<string, SurfaceContract>;
   };
   const violations: string[] = [];
 
@@ -76,12 +95,66 @@ export function assertDocumentationContract(packageRoot = defaultPackageRoot): v
     }
   }
 
-  assertSurfaceTable(packageRoot, manifest.exports ?? {}, gates.packageSurface ?? {}, violations);
+  const exports = manifest.exports ?? {};
+  const surface = gates.packageSurface ?? {};
+  assertSurfaceTable(packageRoot, "README.md", "Package Surface Maturity", true, exports, surface, violations);
+  assertAgentGuide(packageRoot, gates.kind, exports, surface, packedFiles, violations);
+  assertSingleUnreleasedSection(packageRoot, violations);
   assertPackageHygiene(packageRoot, violations);
   assertGeneratedOutputIgnores(packageRoot, violations);
 
   assert(violations.length === 0, `documentation contract violations:\n${violations.join("\n")}`);
   console.log("extracted-root documentation contract ok");
+}
+
+// Every tarball carries an agent guide stating the package's kind, the
+// maturity of each subpath and one wiring example that compiles in CI.
+function assertAgentGuide(
+  packageRoot: string,
+  kind: unknown,
+  exports: Record<string, unknown>,
+  surface: Record<string, SurfaceContract>,
+  packedFiles: () => string[],
+  violations: string[],
+): void {
+  if (typeof kind !== "string" || !packageKinds.includes(kind)) {
+    violations.push(`release-gates.json: package kind must be one of ${packageKinds.join(", ")}`);
+  }
+  if (!packedFiles().includes("AGENTS.md")) violations.push("npm pack: tarball is missing AGENTS.md");
+  const guidePath = join(packageRoot, "AGENTS.md");
+  if (!existsSync(guidePath)) {
+    violations.push("AGENTS.md: missing agent guide");
+    return;
+  }
+  const guide = readFileSync(guidePath, "utf8");
+  for (const heading of agentGuideSections) {
+    if (!markdownSection(guide, heading)) violations.push(`AGENTS.md: missing ${heading} section`);
+  }
+  if (!guide.includes(`Kind: \`${String(kind)}\`.`)) {
+    violations.push("AGENTS.md: kind differs from release gates");
+  }
+  assertSurfaceTable(packageRoot, "AGENTS.md", "Subpath maturity", false, exports, surface, violations);
+  const example = markdownSection(guide, "Wiring example")?.match(/```ts\n(?<code>[\s\S]*?)```/)?.groups?.code;
+  const examplePath = join(packageRoot, wiringExamplePath);
+  if (!existsSync(examplePath) || example !== readFileSync(examplePath, "utf8")) {
+    violations.push(`AGENTS.md: wiring example differs from ${wiringExamplePath}`);
+  }
+}
+
+// One Unreleased section collects every change since the last version.
+function assertSingleUnreleasedSection(packageRoot: string, violations: string[]): void {
+  const changelogPath = join(packageRoot, "CHANGELOG.md");
+  if (!existsSync(changelogPath)) {
+    violations.push("CHANGELOG.md: missing changelog");
+    return;
+  }
+  const changelog = readFileSync(changelogPath, "utf8");
+  const sections = changelog.match(/^## \[?Unreleased\b/gm)?.length ?? 0;
+  if (sections > 1) violations.push(`CHANGELOG.md: ${sections} Unreleased sections; keep one`);
+}
+
+function markdownSection(source: string, heading: string): string | undefined {
+  return source.match(new RegExp(`## ${heading}\n(?<body>[\\s\\S]*?)(?:\n## |$)`))?.groups?.body;
 }
 
 function assertGeneratedOutputIgnores(packageRoot: string, violations: string[]): void {
@@ -126,14 +199,17 @@ function hasUnnegatedClaim(source: string, claim: string): boolean {
 
 function assertSurfaceTable(
   packageRoot: string,
+  file: string,
+  heading: string,
+  withEvidence: boolean,
   exports: Record<string, unknown>,
-  packageSurface: Record<string, { role?: unknown; maturity?: unknown; packageSmokeEvidence?: unknown }>,
+  packageSurface: Record<string, SurfaceContract>,
   violations: string[],
 ): void {
-  const readme = readFileSync(join(packageRoot, "README.md"), "utf8");
-  const section = readme.match(/## Package Surface Maturity\n(?<body>[\s\S]*?)(?:\n## |$)/)?.groups?.body;
+  const path = join(packageRoot, file);
+  const section = existsSync(path) ? markdownSection(readFileSync(path, "utf8"), heading) : undefined;
   if (!section) {
-    violations.push("README.md: missing Package Surface Maturity section");
+    violations.push(`${file}: missing ${heading} section`);
     return;
   }
   const lines = section.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith("|"));
@@ -141,7 +217,7 @@ function assertSurfaceTable(
   const documented = new Set(rows.map((cells) => cells[0]?.replace(/^`|`$/g, "")));
   const expected = Object.keys(exports).sort();
   if (JSON.stringify([...documented].sort()) !== JSON.stringify(expected)) {
-    violations.push("README.md: maturity table exports differ from package exports");
+    violations.push(`${file}: maturity table exports differ from package exports`);
   }
   for (const cells of rows) {
     const subpath = cells[0]?.replace(/^`|`$/g, "");
@@ -150,8 +226,9 @@ function assertSurfaceTable(
     const evidence = Array.isArray(contract.packageSmokeEvidence)
       ? contract.packageSmokeEvidence.map((path: unknown) => `\`${String(path)}\``).join("<br>")
       : "";
-    if (cells[1] !== contract.role || cells[2] !== contract.maturity || cells[3] !== evidence) {
-      violations.push(`README.md: maturity row differs from release gates for ${subpath}`);
+    const evidenceDiffers = withEvidence ? cells[3] !== evidence : cells.length !== 3;
+    if (cells[1] !== contract.role || cells[2] !== contract.maturity || evidenceDiffers) {
+      violations.push(`${file}: maturity row differs from release gates for ${subpath}`);
     }
   }
 }

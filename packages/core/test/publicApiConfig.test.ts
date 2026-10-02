@@ -41,4 +41,20 @@ describe("private package surface configuration", () => {
       /external consumer evidence must exclude first-party packed consumers/,
     );
   });
+
+  it("rejects a release-gates schema older than 5", () => {
+    const candidate = cloneGates();
+    candidate.schemaVersion = 4;
+    expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).toThrow(
+      /unsupported release-gates.json schema/,
+    );
+  });
+
+  it.each([undefined, "library"])("rejects a package kind of %s", (kind) => {
+    const candidate = cloneGates();
+    candidate.kind = kind;
+    expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).toThrow(
+      "package kind must be one of kernel, rail, capability, implementation",
+    );
+  });
 });
