@@ -537,7 +537,7 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-28981a86a00b50d03374d5b365ac11eccb8e5ea72476b0d675ed03b41131d2c6","reason":"The catalog and retry tests inspect core source through the installed package in both workspace-linked and registry consumer layouts, and the catalog test requires a catalog TypeScript source file. The import-map test uses an alias whose target is infrastructure in both layouts. Lint rules, contributor commands, and required CI checks described here retain their behavior."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-b587272f4dbd372c62d9932fdec4d038949c76a97689a6b1c7dc035b8ef39f25","reason":"The split-root manifest check now also requires AGENTS.md in the core files list, so the extracted package ships its agent guide. Lint rules, contributor commands, development-preview checks and required CI jobs described here keep their behavior."} -->
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-904e5646a70769415ea7e72029532a9f05ecde4dc7e882101d00424043ac4f57","reason":"The root lockfile changes only the core workspace version from 0.10.0 to 0.11.0. Dependency resolution, development-preview checks, and required contributor commands remain unchanged."} -->
 

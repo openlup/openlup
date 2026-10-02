@@ -28,14 +28,55 @@ function fixture(readme: string): string {
   );
   writeFileSync(
     join(root, "release-gates.json"),
-    '{"packageSurface":{"./subscription":{"role":"kernel","maturity":"candidate","packageSmokeEvidence":["docs/guide.md"]}}}\n',
+    '{"kind":"kernel","packageSurface":{"./subscription":{"role":"kernel","maturity":"candidate","packageSmokeEvidence":["docs/guide.md"]}}}\n',
   );
+  mkdirSync(join(root, "smoke"));
+  writeFileSync(join(root, "smoke", "agentsWiringExample.ts"), wiringExample);
+  writeFileSync(join(root, "AGENTS.md"), agentGuide());
+  writeFileSync(join(root, "CHANGELOG.md"), "# Changelog\n\n## [Unreleased]\n\n- A change.\n");
   writeFileSync(join(root, ".gitignore"), "/coverage/\n/dist/\n/node_modules/\n/release/\n");
   writeFileSync(join(root, "README.md"), `${readme}\n${surfaceTable()}`);
   writeFileSync(join(root, "MAINTAINERS.md"), "# Maintainers\n");
   writeFileSync(join(root, "docs", "SPLIT_AND_UPGRADE.md"), "# Split and Upgrade\n");
   writeFileSync(join(root, "docs", "guide.md"), "# Guide\n");
   return root;
+}
+
+const wiringExample = 'import { kernel } from "@scope/package";\n\nexport const wired = kernel;\n';
+
+function agentGuide(overrides: { kind?: string; row?: string; example?: string } = {}): string {
+  return [
+    "# Agent guide",
+    "",
+    "## Purpose and kind",
+    "",
+    `Kind: \`${overrides.kind ?? "kernel"}\`.`,
+    "",
+    "## Subpath maturity",
+    "",
+    "| Export | Role | Maturity |",
+    "| --- | --- | --- |",
+    overrides.row ?? "| `./subscription` | kernel | candidate |",
+    "",
+    "## Wiring example",
+    "",
+    "```ts",
+    `${overrides.example ?? wiringExample}\`\`\``,
+    "",
+    "## Sources and declarations",
+    "",
+    "Sources ship under `src/`.",
+    "",
+    "## Readiness codes",
+    "",
+    "None.",
+    "",
+  ].join("\n");
+}
+
+// The fixture's packed file list stands in for `npm pack --dry-run`.
+function check(root: string, packed = ["AGENTS.md", "README.md", "package.json"]): void {
+  assertDocumentationContract(root, () => packed);
 }
 
 function surfaceTable(): string {
@@ -63,12 +104,12 @@ describe("extracted-root documentation contract", () => {
 
   it("accepts package-local links and declared commands", () => {
     const root = fixture("[Guide](docs/guide.md)\n\n```sh\nnpm run ci\n```\n");
-    expect(() => assertDocumentationContract(root)).not.toThrow();
+    expect(() => check(root)).not.toThrow();
   });
 
   it("rejects dangling links, unknown commands, and monorepo paths", () => {
     const root = fixture("[Missing](docs/missing.md)\n\nnpm run ghost\n\npackages/core\n");
-    expect(() => assertDocumentationContract(root)).toThrow(
+    expect(() => check(root)).toThrow(
       /monorepo package path[\s\S]*dangling local link[\s\S]*unknown npm script/,
     );
   });
@@ -79,7 +120,7 @@ describe("extracted-root documentation contract", () => {
       join(root, "docs", "REPOSITORY_BOOTSTRAP.md"),
       "# Historical evidence\n\nnpm run release:policy-snapshot\n",
     );
-    expect(() => assertDocumentationContract(root)).toThrow(
+    expect(() => check(root)).toThrow(
       /docs\/REPOSITORY_BOOTSTRAP\.md: unknown npm script release:policy-snapshot/,
     );
   });
@@ -87,7 +128,7 @@ describe("extracted-root documentation contract", () => {
   it("rejects links outside the package and inline downstream commands", () => {
     const downstreamCommand = "veli";
     const root = fixture(`[Outside](..)\n\nDo not run \`./${downstreamCommand} verify\`.\n`);
-    expect(() => assertDocumentationContract(root)).toThrow(
+    expect(() => check(root)).toThrow(
       /downstream repository command[\s\S]*local link escapes package/,
     );
   });
@@ -105,7 +146,7 @@ describe("extracted-root documentation contract", () => {
       '{"scripts":{"ci":"echo ok"},"exports":{"./subscription":{}}}\n',
     );
 
-    expect(() => assertDocumentationContract(root)).toThrow(
+    expect(() => check(root)).toThrow(
       /downstream product reference[\s\S]*retired package identity/,
     );
   });
@@ -121,7 +162,7 @@ describe("extracted-root documentation contract", () => {
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, source);
 
-    expect(() => assertDocumentationContract(root)).toThrow(`${path}: ${violation}`);
+    expect(() => check(root)).toThrow(`${path}: ${violation}`);
   });
 
   it("allows an explicit negation of a retired contribution claim", () => {
@@ -130,14 +171,14 @@ describe("extracted-root documentation contract", () => {
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, "This is not a stable API change.\n");
 
-    expect(() => assertDocumentationContract(root)).not.toThrow();
+    expect(() => check(root)).not.toThrow();
   });
 
   it("rejects an extracted root that exposes generated release state", () => {
     const root = fixture("# Fixture\n");
     writeFileSync(join(root, ".gitignore"), "/dist/\n/node_modules/\n");
 
-    expect(() => assertDocumentationContract(root)).toThrow(
+    expect(() => check(root)).toThrow(
       /.gitignore: expected exactly \/coverage\/, \/dist\/, \/node_modules\/, \/release\//,
     );
   });
@@ -149,8 +190,67 @@ describe("extracted-root documentation contract", () => {
       "/coverage/\n/dist/\n/node_modules/\n/release/\n*\n!/src/\n",
     );
 
-    expect(() => assertDocumentationContract(root)).toThrow(
+    expect(() => check(root)).toThrow(
       /received \/coverage\/, \/dist\/, \/node_modules\/, \/release\/, \*, !\/src\//,
     );
+  });
+
+  it("refuses a tarball without AGENTS.md", () => {
+    const root = fixture("# Fixture\n");
+    expect(() => check(root, ["README.md", "package.json"])).toThrow(
+      "npm pack: tarball is missing AGENTS.md",
+    );
+  });
+
+  it("refuses a package without a kind", () => {
+    const root = fixture("# Fixture\n");
+    writeFileSync(
+      join(root, "release-gates.json"),
+      '{"packageSurface":{"./subscription":{"role":"kernel","maturity":"candidate","packageSmokeEvidence":["docs/guide.md"]}}}\n',
+    );
+    expect(() => check(root)).toThrow(
+      "release-gates.json: package kind must be one of kernel, rail, capability, implementation",
+    );
+  });
+
+  it("refuses a package without an agent guide", () => {
+    const root = fixture("# Fixture\n");
+    rmSync(join(root, "AGENTS.md"));
+    expect(() => check(root)).toThrow("AGENTS.md: missing agent guide");
+  });
+
+  it("refuses an agent guide whose kind differs from the release gates", () => {
+    const root = fixture("# Fixture\n");
+    writeFileSync(join(root, "AGENTS.md"), agentGuide({ kind: "rail" }));
+    expect(() => check(root)).toThrow("AGENTS.md: kind differs from release gates");
+  });
+
+  it("refuses an agent guide without a required section", () => {
+    const root = fixture("# Fixture\n");
+    writeFileSync(join(root, "AGENTS.md"), agentGuide().replace("## Readiness codes", "## Codes"));
+    expect(() => check(root)).toThrow("AGENTS.md: missing Readiness codes section");
+  });
+
+  it("refuses an agent guide whose maturity row differs from the release gates", () => {
+    const root = fixture("# Fixture\n");
+    writeFileSync(join(root, "AGENTS.md"), agentGuide({ row: "| `./subscription` | kernel | experimental |" }));
+    expect(() => check(root)).toThrow("AGENTS.md: maturity row differs from release gates for ./subscription");
+  });
+
+  it("refuses a wiring example that differs from the type-checked source", () => {
+    const root = fixture("# Fixture\n");
+    writeFileSync(join(root, "AGENTS.md"), agentGuide({ example: wiringExample.replace("wired", "unwired") }));
+    expect(() => check(root)).toThrow(
+      "AGENTS.md: wiring example differs from smoke/agentsWiringExample.ts",
+    );
+  });
+
+  it("refuses a changelog with two Unreleased sections", () => {
+    const root = fixture("# Fixture\n");
+    writeFileSync(
+      join(root, "CHANGELOG.md"),
+      "# Changelog\n\n## Unreleased — one topic\n\n- A.\n\n## [Unreleased]\n\n- B.\n",
+    );
+    expect(() => check(root)).toThrow("CHANGELOG.md: 2 Unreleased sections; keep one");
   });
 });

@@ -24,6 +24,7 @@ const graphEntrypoints = [
 
 const expectedSmokeFiles = [
   ...graphEntrypoints,
+  "smoke/agentsWiringExample.ts",
   "smoke/nullAdapters.ts",
   "smoke/standaloneImportGraph.ts",
   "smoke/stubBrand.ts",

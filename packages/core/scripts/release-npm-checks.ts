@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import type { SpawnSyncReturns } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { assertReleaseSbomIdentity } from "./release-bundle.ts";
 
 // The registry intermittently answers `npm audit --json` with a document that
@@ -24,9 +25,12 @@ type Manifest = {
   version?: string;
   exports?: Record<string, Record<string, unknown>>;
 };
+type ClassBudget = { maxPackedBytes: number; maxFiles: number };
 type Gates = {
   audit: { maximumVulnerabilities: Record<string, number> };
   pack: {
+    code: ClassBudget;
+    docs: ClassBudget;
     maxPackedBytes: number;
     maxUnpackedBytes: number;
     maxFiles: number;
@@ -55,12 +59,12 @@ type CommandResult = Pick<
   error?: Error & { code?: string };
   signal?: NodeJS.Signals | null;
 };
-type NpmRunner = (
+export type NpmRunner = (
   packageRoot: string,
   args: string[],
   timeoutMs?: number,
 ) => CommandResult;
-type PackReport = {
+export type PackReport = {
   size: number;
   unpackedSize: number;
   entryCount: number;
@@ -74,10 +78,13 @@ export function createNpmReleaseChecks(input: {
   lock: Lock;
   run?: NpmRunner;
   sleep?: (milliseconds: number) => void;
+  readPackedFile?: (path: string) => Buffer;
 }): { sbom: () => void; audit: () => void; pack: () => void } {
   const { packageRoot, manifest, gates, lock } = input;
   const run = input.run ?? runNpm;
   const sleep = input.sleep ?? sleepSync;
+  const readPackedFile =
+    input.readPackedFile ?? ((path: string) => readFileSync(join(packageRoot, path)));
   // Both retryable shapes log and back off identically; only the reason differs.
   const retryAudit = (attempt: number, reason: string): void => {
     const retrying = attempt < AUDIT_ATTEMPTS;
@@ -183,27 +190,26 @@ export function createNpmReleaseChecks(input: {
       );
     },
     pack: () => {
-      const result = run(packageRoot, [
-        "pack",
-        "--dry-run",
-        "--json",
-        "--ignore-scripts",
-        "--workspaces=false",
-      ]);
-      assert(
-        result.status === 0,
-        `npm pack --dry-run failed:\n${result.stderr}`,
-      );
-      const reports = parseCommandJson<PackReport[]>(
-        result,
-        "npm pack --dry-run",
-      );
-      assert(
-        Array.isArray(reports) && reports.length === 1,
-        "npm pack emitted an unexpected report",
-      );
-      const report = reports[0];
-      const files = new Set((report.files ?? []).map((file) => file.path));
+      const report = packDryRun(packageRoot, run);
+      const paths = (report.files ?? []).map((file) => file.path).sort();
+      const files = new Set(paths);
+      const classSummaries = [];
+      for (const budgetClass of ["code", "docs"] as const) {
+        const budget = gates.pack[budgetClass];
+        const members = paths.filter((path) => packFileClass(path) === budgetClass);
+        // A class's packed share: its files gzipped together, in path order.
+        const packed = gzipSync(Buffer.concat(members.map(readPackedFile))).length;
+        assert(
+          members.length <= budget.maxFiles,
+          `${budgetClass} files ${members.length} exceed ${budget.maxFiles}`,
+        );
+        assert(
+          packed <= budget.maxPackedBytes,
+          `${budgetClass} packed bytes ${packed} exceed ${budget.maxPackedBytes}`,
+        );
+        classSummaries.push(`${budgetClass} ${packed} packed bytes in ${members.length} files`);
+      }
+      // The backstop: also counts files outside both classes.
       assert(
         report.size <= gates.pack.maxPackedBytes,
         `packed bytes ${report.size} exceed ${gates.pack.maxPackedBytes}`,
@@ -229,10 +235,39 @@ export function createNpmReleaseChecks(input: {
         }
       }
       console.log(
-        `pack budget ok (${report.size} packed bytes, ${report.unpackedSize} unpacked bytes, ${report.entryCount} files)`,
+        `pack budget ok (${report.size} packed bytes, ${report.unpackedSize} unpacked bytes, ${report.entryCount} files; ${classSummaries.join("; ")})`,
       );
     },
   };
+}
+
+// The code budget counts dist JavaScript, declarations and shipped TypeScript
+// sources; the docs budget counts files at the package root (documentation and
+// metadata). Anything else counts only toward the tarball total.
+export function packFileClass(path: string): "code" | "docs" | "other" {
+  if (/^dist\/.+\.(?:js|d\.ts)$/.test(path) || /^src\/.+\.ts$/.test(path))
+    return "code";
+  return path.includes("/") ? "other" : "docs";
+}
+
+export function packDryRun(
+  packageRoot: string,
+  run: NpmRunner = runNpm,
+): PackReport {
+  const result = run(packageRoot, [
+    "pack",
+    "--dry-run",
+    "--json",
+    "--ignore-scripts",
+    "--workspaces=false",
+  ]);
+  assert(result.status === 0, `npm pack --dry-run failed:\n${result.stderr}`);
+  const reports = parseCommandJson<PackReport[]>(result, "npm pack --dry-run");
+  assert(
+    Array.isArray(reports) && reports.length === 1,
+    "npm pack emitted an unexpected report",
+  );
+  return reports[0];
 }
 
 function productionLockEntries(lock: Lock): Array<[string, LockEntry]> {

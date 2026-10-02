@@ -63,6 +63,7 @@ export function assertPackageManifest(packageRoot: string): CorePackageJson {
       [
         "dist/**",
         "src/**",
+        "AGENTS.md",
         "CHANGELOG.md",
         "CODE_OF_CONDUCT.md",
         "CONTRIBUTING.md",

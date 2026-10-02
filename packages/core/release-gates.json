@@ -1,5 +1,6 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
+  "kind": "kernel",
   "compatibilityPolicies": {
     "internal-candidate": "Candidate package surfaces may change until the platform phase-5 activation explicitly freezes a public API.",
     "testing-internal": "Test-support surfaces may change and are not runtime compatibility promises."
@@ -209,11 +210,20 @@
     }
   },
   "pack": {
-    "$raiseReason": "2026-09-27, owner-approved: the subscription status matrix, the win-back and the exhausted-ladder pause and resume add four functions, one predicate and two constants with their JSDoc, including the host duties the managed SQL restarts keep, JavaScript and declaration outputs, plus their changelog entry. Measured, not estimated: clean origin/main packs 122809 packed bytes, 534452 unpacked bytes and 192 files; this change packs about 130.3 thousand packed and 569.7 thousand unpacked bytes (rounded, because this note's own text moves the last digits) and 192 files. Packed allowance increases by 8192 bytes and unpacked by 38912 bytes; maxFiles stays 192. The package export map, dependencies and all other release gates are unchanged; the ./subscription entry gains named exports. The previous raise, 2026-09-11 and owner-approved, moved packed by 2048 and unpacked by 6144 bytes for checkout refusal recovery.",
-    "maxPackedBytes": 131072,
-    "maxUnpackedBytes": 573440,
-    "maxFiles": 192,
+    "$budgetReason": "2026-10-02, owner-approved at the patch read: the pack budget splits into classes so that documentation and metadata cannot crowd out code, and code growth stays visible. Code counts dist JavaScript, declarations and src TypeScript; docs counts the documentation and metadata files at the package root; anything else counts only toward the total. A class's packed bytes are its files gzipped together. Measured, not estimated: clean origin/main packs 131062 packed bytes, 572032 unpacked bytes and 192 files against caps of 131072, 573440 and 192. With AGENTS.md this change packs about 132.1 thousand packed and 575.6 thousand unpacked bytes and 193 files: code exactly 113573 packed bytes in 183 files, docs about 17.8 thousand packed bytes in 10 files (rounded, because this note's own text moves the last digits). The code caps of 114688 bytes and 183 files admit no new code file without a raise. The docs caps are 24576 bytes and 12 files. The total backstop is the sum of the class caps, 139264 packed bytes and 195 files, with 614400 unpacked bytes.",
+    "code": {
+      "maxPackedBytes": 114688,
+      "maxFiles": 183
+    },
+    "docs": {
+      "maxPackedBytes": 24576,
+      "maxFiles": 12
+    },
+    "maxPackedBytes": 139264,
+    "maxUnpackedBytes": 614400,
+    "maxFiles": 195,
     "requiredFiles": [
+      "AGENTS.md",
       "CHANGELOG.md",
       "CODE_OF_CONDUCT.md",
       "CONTRIBUTING.md",

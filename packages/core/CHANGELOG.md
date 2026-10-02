@@ -6,12 +6,6 @@ source previews may already ship some changes, and their release notes say
 which. Declaration snapshots track candidate drift, not a stable API or
 SemVer promise.
 
-## Unreleased — checkout recovery contracts
-
-- Add neutral checkout recovery evidence, method, operation and action contracts
-  to the existing payment surface. They describe guidance only and do not change
-  payment admission, renewal classification or enabled payment methods.
-
 ## [Unreleased]
 
 ### Changed
@@ -65,6 +59,22 @@ SemVer promise.
 
 ### Added
 
+- `AGENTS.md` ships in the tarball. It states the package's kind and each
+  subpath's maturity, gives one wiring example that compiles in CI, points to
+  the shipped sources and declarations, and lists the readiness codes the
+  package raises (none yet).
+- `release-gates.json` schema 5 declares the package kind (`"kind": "kernel"`)
+  and splits the pack budget. Code files (dist JavaScript, declarations and
+  shipped sources) and root documentation and metadata files each have their
+  own caps on packed bytes and files; the tarball total stays as a backstop.
+
+  Migration: a tool that reads `release-gates.json` checks `schemaVersion: 5`.
+  Before: `"pack": { "maxPackedBytes": …, "maxFiles": … }`. After: `"pack": {
+  "code": { "maxPackedBytes": …, "maxFiles": … }, "docs": { … },
+  "maxPackedBytes": …, "maxFiles": … }`.
+- Add neutral checkout recovery evidence, method, operation and action contracts
+  to the existing payment surface. They describe guidance only and do not change
+  payment admission, renewal classification or enabled payment methods.
 - Export neutral lookup normalization from `./company-identity` for extensions.
 
 - `SUBSCRIPTION_STATUS_TRANSITIONS`, the frozen status matrix, and
