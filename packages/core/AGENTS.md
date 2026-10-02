@@ -81,3 +81,16 @@ those before guessing at a contract.
 ## Readiness codes
 
 This version raises no `OPENLUP_E_*` readiness code.
+
+## Using this package in an application
+
+- **Do not edit the installed package.** Do not change files under `node_modules/@openlup/`, and
+  do not patch it with `patch-package`, `overrides` or a fork.
+- **Change behaviour through seams.** Use this package's ports and options and your application's
+  own composition. If a seam is missing, raise an upstream issue.
+- **Copying source is ejection.** Copying this package's source into your application makes the
+  copy yours, including its upgrades.
+- **Upgrade every `@openlup/*` package together,** after reading each changelog's `Migration:`
+  blocks.
+- **Inside the OpenLup monorepo,** where this package is a workspace, the repository's root
+  `AGENTS.md` governs instead.

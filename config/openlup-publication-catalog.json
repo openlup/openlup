@@ -1166,6 +1166,26 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/adopter-kit/AGENTS.template.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/adopter-kit/CLAUDE.template.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/adopter-kit/README.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/adopter-kit/claude-settings.template.json",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/adopter-kit/dependabot.template.yml",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/autonomous-reviewed-delivery-intent.md",
       "class": "platform-documentation"
     },

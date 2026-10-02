@@ -8,6 +8,12 @@ SemVer promise.
 
 ## [Unreleased]
 
+### Changed
+
+- `AGENTS.md` gains a required "Using this package in an application" section: do not edit or
+  patch the installed package, change behaviour through its seams, and upgrade every
+  `@openlup/*` package together. `docs:check` refuses a guide without it.
+
 ## [0.12.0]
 
 ### Removed

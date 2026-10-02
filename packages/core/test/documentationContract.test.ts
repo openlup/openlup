@@ -71,6 +71,10 @@ function agentGuide(overrides: { kind?: string; row?: string; example?: string }
     "",
     "None.",
     "",
+    "## Using this package in an application",
+    "",
+    "Do not edit the installed package.",
+    "",
   ].join("\n");
 }
 
@@ -229,6 +233,12 @@ describe("extracted-root documentation contract", () => {
     const root = fixture("# Fixture\n");
     writeFileSync(join(root, "AGENTS.md"), agentGuide().replace("## Readiness codes", "## Codes"));
     expect(() => check(root)).toThrow("AGENTS.md: missing Readiness codes section");
+  });
+
+  it("refuses an agent guide without the application-use section", () => {
+    const root = fixture("# Fixture\n");
+    writeFileSync(join(root, "AGENTS.md"), agentGuide().replace("## Using this package in an application", "## Usage"));
+    expect(() => check(root)).toThrow("AGENTS.md: missing Using this package in an application section");
   });
 
   it("refuses an agent guide whose maturity row differs from the release gates", () => {

@@ -53,6 +53,13 @@ for where each check runs, Draft/Ready/queue/main triggers, blocking versus
 diagnostic results, and the source-to-npm handoff. This section owns the detailed
 contributor commands; the overview links here rather than replacing them.
 
+`npm run oss:published-tree -- --policy` also keeps agent guidance in place.
+It refuses an `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` or `.cursor/rules` file
+anywhere but the repository root or a package root. It also refuses an adopter
+kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
+published `@openlup/*` package. Move such a file or extend the pattern; do not
+add an exception.
+
 ### Optional SonarQube Cloud diagnostics
 
 The SonarQube Cloud OSS pilot uses one public project and automatic analysis of

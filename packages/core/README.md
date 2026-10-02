@@ -3,7 +3,10 @@
 `@openlup/core` is the kernel of the `@openlup/*` package family: the
 framework-independent TypeScript contracts and logic for subscription and
 bundle commerce that the other packages and an application's composition read.
-Agents start with [AGENTS.md](AGENTS.md).
+Agents start with [AGENTS.md](AGENTS.md). Its "Using this package in an
+application" section, which `docs:check` requires, tells an application's agent
+not to edit or patch the installed package and to upgrade every `@openlup/*`
+package together.
 
 ## Channel and stability
 

@@ -24,6 +24,7 @@ import {
   validateSourceReleaseContract,
 } from "./oss-publication-contract.ts";
 import {
+  assertAgentGuidancePlacement,
   assertMaterializedOutputInventory,
   assertMaterializedPublicationCatalog,
   materializedOutputPaths,
@@ -580,6 +581,8 @@ describe("the public-only policy check", () => {
       writeFileSync(join(root, "README.md"), "# Public source\n");
       writeFileSync(join(root, "docs", "platform", "README.md"), "[Guide](AGENT_GUIDE.md)\n[Directory](../../docs/platform/)\n");
       writeFileSync(join(root, "docs", "platform", "AGENT_GUIDE.md"), "# Guide\n");
+      mkdirSync(join(root, "docs", "platform", "adopter-kit"), { recursive: true });
+      writeFileSync(join(root, "docs", "platform", "adopter-kit", "dependabot.template.yml"), 'groups:\n  openlup:\n    patterns:\n      - "@openlup/*"\n');
       for (const path of PUBLIC_EXECUTION_ENTRYPOINTS) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), "public\n"); }
       writePackageManifests(root);
       writeFileSync(join(root, "config", "openlup-policy-registry.json"), JSON.stringify({
@@ -587,7 +590,7 @@ describe("the public-only policy check", () => {
         activePaths: ["README.md"],
         contracts: [{ id: "entrypoint", owners: ["README.md"] }],
       }));
-      const policyPaths = [...new Set(["README.md", "config/openlup-policy-registry.json", "config/openlup-publication-catalog.json", "docs/platform/README.md", "docs/platform/AGENT_GUIDE.md", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS])].sort();
+      const policyPaths = [...new Set(["README.md", "config/openlup-policy-registry.json", "config/openlup-publication-catalog.json", "docs/platform/README.md", "docs/platform/AGENT_GUIDE.md", "docs/platform/adopter-kit/dependabot.template.yml", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS])].sort();
       writeFileSync(join(root, "config", "openlup-publication-catalog.json"), createPublicPublicationCatalog(policyPaths.map((path) => ({ path, class: "public-output" })), [{
           id: "example-withheld",
           status: "withheld",
@@ -802,5 +805,49 @@ if ((scenario === stage && !['inventory', 'version', 'readback'].includes(stage)
       expect(calls.some(({ stage }) => ["start", "stop", "test"].includes(stage))).toBe(false);
       expect(result.stderr).toContain(scenario === "version" ? "requires Supabase CLI 2.98.2" : "bytes differ from committed candidate");
     });
+  });
+});
+
+describe("agent guidance placement", () => {
+  const kitTemplate = "docs/platform/adopter-kit/dependabot.template.yml";
+  function kit(patterns: string[]): string {
+    const root = mkdtempSync(join(tmpdir(), "agent-guidance-"));
+    mkdirSync(join(root, "docs", "platform", "adopter-kit"), { recursive: true });
+    mkdirSync(join(root, "packages", "core"), { recursive: true });
+    mkdirSync(join(root, "packages", "ui"), { recursive: true });
+    writeFileSync(join(root, kitTemplate), `groups:\n  openlup:\n    patterns:\n${patterns.map((pattern) => `      - "${pattern}"\n`).join("")}`);
+    writeFileSync(join(root, "packages", "core", "package.json"), JSON.stringify({ name: "@openlup/core" }));
+    writeFileSync(join(root, "packages", "ui", "package.json"), JSON.stringify({ name: "@openlup/ui", private: true }));
+    return root;
+  }
+  const base = ["AGENTS.md", "packages/core/AGENTS.md", "packages/core/package.json", "packages/ui/package.json", kitTemplate, ".cursor/rules/style.mdc"];
+
+  it("accepts guides at the repository root and package roots, and a covering kit template", () => {
+    const root = kit(["@openlup/*"]);
+    try { expect(() => assertAgentGuidancePlacement(root, base)).not.toThrow(); } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("accepts this repository's tracked files and its real adopter kit", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
+    expect(tracked).toContain(kitTemplate);
+    expect(() => assertAgentGuidancePlacement(ROOT, tracked)).not.toThrow();
+  });
+
+  it("refuses an instruction file below the root or a package root, including an auto-loaded kit name", () => {
+    const root = kit(["@openlup/*"]);
+    try {
+      for (const path of ["docs/platform/adopter-kit/AGENTS.md", "src/CLAUDE.md", "packages/core/docs/GEMINI.md", "src/.cursor/rules/x.mdc"]) {
+        expect(() => assertAgentGuidancePlacement(root, [...base, path])).toThrow(`${path}: an agent-instruction file may sit only at the repository root or a package root`);
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("refuses a kit dependency template that misses a published package or is absent", () => {
+    const narrow = kit(["@openlup/ui"]);
+    try {
+      expect(() => assertAgentGuidancePlacement(narrow, base)).toThrow("no group pattern covers published package @openlup/core");
+      rmSync(join(narrow, kitTemplate));
+      expect(() => assertAgentGuidancePlacement(narrow, base)).toThrow("the adopter kit's dependency template is missing");
+    } finally { rmSync(narrow, { recursive: true, force: true }); }
   });
 });
