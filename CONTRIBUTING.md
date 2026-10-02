@@ -364,8 +364,9 @@ falsifiers also check bounded 404 reads of the exact draft ID returned by
 creation and refusal of a changed draft before publication. Under `scripts/packages`, it runs the
 package release falsifiers: `release-workflow-authenticity.test.ts` plants a
 defect against every control of the two package release workflows and runs
-their release-event, tag-pattern and tarball checks as scripts, and
-`package-release.test.ts` exercises the version, tag, npm and draft refusals.
+their release-event, tag-pattern, tarball and pre-publish npm checks as scripts,
+and `package-release.test.ts` exercises the manifest, version, tag, npm and draft
+refusals.
 The same directory holds the package release-shape checks and the test that
 loads the lint configuration with a conditional `imports` map.
 The public test job separately runs the materialized command-contract

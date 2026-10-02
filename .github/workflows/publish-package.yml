@@ -6,12 +6,17 @@
 # OPENLUP_PACKAGE_RELEASE. The unprivileged preflight checks, before the protected release
 # environment asks for approval, that:
 # - the target is on main and the six required contexts passed there;
-# - packages/<package>/package.json carries the requested version;
+# - packages/<package>/package.json carries the requested version and passes the manifest policy;
 # - the tag is absent, and npm never held that version and holds none above it;
 # - `npm run packages:check -- --out` packs that one package;
 # - gitleaks finds nothing in the unpacked tarball.
-# The release job repeats every check before the release App writes. No PAT; the job's own
-# token only reads. Dispatching a run grants no publication: the release approval does.
+# The pack and the scan run only here. Before the release App token exists, the release job
+# re-verifies the main ancestry and contexts, the manifest policy and version
+# (`packages:check --release-tag`, with no install, build or pack), the absent tag and npm; it
+# installs nothing and runs no package code. publish-packages.yml packs and scans the published
+# tag again. One package's releases and publications share a concurrency group, so they never
+# overlap. No PAT; the job's own token only reads. Dispatching a run grants no publication: the
+# release approval does.
 name: Publish Package
 
 on:
@@ -36,8 +41,10 @@ on:
 
 permissions: {}
 
+# Shared with the publish job of publish-packages.yml: one package never has two releases or
+# publications in flight.
 concurrency:
-  group: publish-package
+  group: openlup-package-release-${{ inputs.package }}
   cancel-in-progress: false
 
 jobs:
@@ -168,7 +175,8 @@ jobs:
               --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"
             if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $TARGET_COMMIT"; exit 1; fi
           done
-      - name: Repeat the version, tag and npm refusals and prepare the note
+      # No install, build or pack here: the pack and the scan ran in the unprivileged preflight.
+      - name: Repeat the manifest, version, tag and npm refusals and prepare the note
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |

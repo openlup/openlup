@@ -4,9 +4,10 @@
  *
  * - `preflight` and `prepare` run at the clean target commit, from the dispatch inputs
  *   PACKAGE, VERSION, TARGET_COMMIT and RELEASE_NOTES. Both refuse unless the package is
- *   publishable at exactly that version, the tag `openlup-<package>-v<version>` is absent, and
- *   npm has never held that version and holds none above it. `prepare` then writes the exact
- *   note bytes to RELEASE_OUTPUT_DIR, outside the checkout.
+ *   publishable at exactly that version and passes `packages:check --release-tag` (manifests
+ *   only: no install, build or pack), the tag `openlup-<package>-v<version>` is absent, and npm
+ *   has never held that version and holds none above it. `prepare` then writes the exact note
+ *   bytes to RELEASE_OUTPUT_DIR, outside the checkout.
  * - `check-draft` reads only the draft whose ID creation returned (RELEASE_ID) and refuses any
  *   difference from the prepared tag, title and note, or any asset.
  * - `verify` checks the published release by that ID: immutable, authored by the release App,
@@ -16,11 +17,13 @@
  * Every phase only reads. The workflow writes the tag and the release with the release App.
  */
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { annotatedTag, type GithubFetch } from "../source-preview-release.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackageReleaseTag, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
+import { runPackagesCheck } from "./packages-check.ts";
 
 const GITHUB_API = "https://api.github.com/repos/openlup/openlup";
 const NPM_REGISTRY = "https://registry.npmjs.org";
@@ -61,9 +64,12 @@ export async function assertTagAbsent(tag: string, token?: string, fetcher: Gith
   if (response.status !== 404) throw new Error(`${tag} is present or unavailable (HTTP ${response.status}); never retag or overwrite`);
 }
 
-/** The full npm document of `name`, or undefined when npm has never held the name. */
+/**
+ * The full npm document of `name`, or undefined when npm has never held the name. The registry's
+ * CDN serves a document for up to five minutes, so a unique query reads past that cache.
+ */
 export async function readPackument(name: string, fetcher: GithubFetch = fetch): Promise<Json | undefined> {
-  const response = await fetcher(`${NPM_REGISTRY}/${name.replace("/", "%2f")}`, { headers: { Accept: "application/json" } });
+  const response = await fetcher(`${NPM_REGISTRY}/${name.replace("/", "%2f")}?cache-bypass=${randomUUID()}`, { headers: { Accept: "application/json" } });
   if (response.status === 404) return undefined;
   if (!response.ok) throw new Error(`npm registry refused ${name}: HTTP ${response.status}`);
   const document = record(await response.json(), "npm document");
@@ -100,16 +106,22 @@ export function assertReleaseCandidate(root: string, input: PackageRelease): voi
   if (version !== input.version) throw new Error(`${input.directory}/package.json is at ${String(version)}, not ${input.version}; merge its release:bump first`);
 }
 
+/** The manifest policy and release version of every package at the tag: `packages:check --release-tag`, with no install, build or pack. */
+export function checkReleaseManifests(root: string, tag: string): void {
+  if (runPackagesCheck(root, ["--release-tag", tag]) !== 0) throw new Error(`packages:check --release-tag ${tag} refused the target`);
+}
+
 /** Every refusal that needs no write, before the protected approval and again after it. */
-export async function preflightPackageRelease(root: string, input: PackageRelease, token?: string, fetcher: GithubFetch = fetch): Promise<void> {
+export async function preflightPackageRelease(root: string, input: PackageRelease, token?: string, fetcher: GithubFetch = fetch, manifestCheck: typeof checkReleaseManifests = checkReleaseManifests): Promise<void> {
   assertReleaseCandidate(root, input);
+  manifestCheck(root, input.tag);
   await assertTagAbsent(input.tag, token, fetcher);
   assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));
 }
 
 /** The preflight refusals, then the exact note bytes that creation and the checks use. */
-export async function preparePackageRelease(root: string, input: PackageRelease, out: string, token?: string, fetcher: GithubFetch = fetch): Promise<void> {
-  await preflightPackageRelease(root, input, token, fetcher);
+export async function preparePackageRelease(root: string, input: PackageRelease, out: string, token?: string, fetcher: GithubFetch = fetch, manifestCheck: typeof checkReleaseManifests = checkReleaseManifests): Promise<void> {
+  await preflightPackageRelease(root, input, token, fetcher, manifestCheck);
   writeFileSync(resolve(out, "notes.md"), input.note, { flag: "wx" });
 }
 

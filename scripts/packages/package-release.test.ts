@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GithubFetch } from "../source-preview-release.ts";
+import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
 import { RELEASE_APP, assertRegistryReady, assertReleaseCandidate, assertTagAbsent, assertVersionUnpublished, checkPackageDraft, packageReleaseInputs, preflightPackageRelease, preparePackageRelease, readPackument, verifyPackageRelease } from "./package-release.ts";
 
 const target = "a".repeat(40), tagObject = "c".repeat(40), api = "https://api.github.com/repos/openlup/openlup", registry = "https://registry.npmjs.org/@openlup%2fcore";
@@ -12,10 +13,10 @@ const input = packageReleaseInputs("core", "0.11.0", target, "Reviewed release n
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
 
-/** Answers each URL from a table; anything else is a 404, as GitHub and npm answer an absent object. */
+/** Answers each URL, without an npm cache-bypass query, from a table; anything else is a 404, as GitHub and npm answer an absent object. */
 const routes = (table: Record<string, Response | (() => Response)>): GithubFetch & { calls: string[] } => {
   const calls: string[] = [];
-  const fetcher = async (url: string) => { calls.push(url); const answer = table[url]; return typeof answer === "function" ? answer() : answer?.clone() ?? new Response(null, { status: 404 }); };
+  const fetcher = async (url: string) => { calls.push(url); const answer = table[url.startsWith(registry) ? url.split("?")[0]! : url]; return typeof answer === "function" ? answer() : answer?.clone() ?? new Response(null, { status: 404 }); };
   return Object.assign(fetcher, { calls });
 };
 const packument = (versions: string[], times: string[] = versions) => Response.json({ name: "@openlup/core", versions: Object.fromEntries(versions.map((version) => [version, {}])), time: { created: "2026-08-24T00:00:00Z", modified: "2026-10-01T00:00:00Z", ...Object.fromEntries(times.map((version) => [version, "2026-09-01T00:00:00Z"])) } });
@@ -47,10 +48,14 @@ describe("the npm version check", () => {
     expect(() => assertVersionUnpublished("@openlup/core", "0.11.0", { versions: ["0.10.0"] })).toThrow(/npm versions is malformed/u);
     expect(() => assertVersionUnpublished("@openlup/core", "0.11.0", { time: "x" })).toThrow(/npm time is malformed/u);
   });
-  it("reads the full registry document and treats only 404 as a name npm never held", async () => {
+  it("reads the full registry document past the CDN cache and treats only 404 as a name npm never held", async () => {
     const fetcher = vi.fn<GithubFetch>(async () => packument(["0.10.0"]));
     await expect(readPackument("@openlup/core", fetcher)).resolves.toMatchObject({ name: "@openlup/core" });
-    expect(fetcher).toHaveBeenCalledWith(registry, { headers: { Accept: "application/json" } });
+    await expect(readPackument("@openlup/core", fetcher)).resolves.toMatchObject({ name: "@openlup/core" });
+    const urls = fetcher.mock.calls.map(([url]) => url);
+    for (const url of urls) expect(url).toMatch(/^https:\/\/registry\.npmjs\.org\/@openlup%2fcore\?cache-bypass=[0-9a-f-]{36}$/u);
+    expect(new Set(urls).size, "each read uses a fresh cache-bypass query").toBe(2);
+    expect(fetcher).toHaveBeenCalledWith(urls[0], { headers: { Accept: "application/json" } });
     await expect(readPackument("@openlup/core", routes({}))).resolves.toBeUndefined();
     await expect(readPackument("@openlup/core", routes({ [registry]: new Response(null, { status: 503 }) }))).rejects.toThrow(/HTTP 503/u);
     await expect(readPackument("@openlup/core", routes({ [registry]: Response.json({ name: "@openlup/other" }) }))).rejects.toThrow(/answered @openlup\/other/u);
@@ -111,14 +116,23 @@ describe("the tag and draft checks", () => {
 });
 
 describe("the release candidate at the target commit", () => {
+  /** A manifest that passes the package policy: publishable, or private when it is not. */
+  const manifest = (version: string, publish = true, patch: Record<string, unknown> = {}) => ({
+    name: "@openlup/core", version, exports: { ".": "./dist/a.js" },
+    ...(publish ? { license: "Apache-2.0", files: ["dist/**"], publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: "packages/core" } } : { private: true }),
+    ...patch,
+  });
   function repository(version = "0.11.0", publish = true) {
     const repo = mkdtempSync(join(tmpdir(), "openlup-package-release-"));
     const out = mkdtempSync(join(tmpdir(), "openlup-package-release-out-"));
     cleanups.push(() => { rmSync(repo, { recursive: true, force: true }); rmSync(out, { recursive: true, force: true }); });
+    // packages:check reports to the console; keep the test output to its assertions.
+    const quiet = [vi.spyOn(console, "log").mockImplementation(() => undefined), vi.spyOn(console, "error").mockImplementation(() => undefined)];
+    cleanups.push(() => { for (const spy of quiet) spy.mockRestore(); });
     const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "-c", "core.hooksPath=/dev/null", ...args], { cwd: repo, encoding: "utf8" }).trim();
     const write = (path: string, contents: string) => { mkdirSync(dirname(join(repo, path)), { recursive: true }); writeFileSync(join(repo, path), contents); };
     write("config/openlup-packages.json", JSON.stringify({ schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish }], unreleased: [] }));
-    write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version }));
+    write("packages/core/package.json", JSON.stringify(manifest(version, publish)));
     git("init", "--quiet"); git("add", "--all"); git("commit", "--quiet", "-m", "fixture");
     const head = git("rev-parse", "HEAD");
     return { repo, out, head, write, input: packageReleaseInputs("core", "0.11.0", head, "note\n") };
@@ -152,6 +166,39 @@ describe("the release candidate at the target commit", () => {
     await expect(preparePackageRelease(ready.repo, ready.input, ready.out, undefined, routes({ [registry]: packument(["0.10.0"]) }))).resolves.toBeUndefined();
     expect(readFileSync(join(ready.out, "notes.md"), "utf8")).toBe("note\n");
     await expect(preparePackageRelease(ready.repo, ready.input, ready.out, undefined, routes({ [registry]: packument(["0.10.0"]) }))).rejects.toThrow(/EEXIST/u);
+  });
+
+  it("refuses, from the command line and before any network read, a moved checkout, outputs inside it, and a changed note", () => {
+    const ready = repository();
+    const script = fileURLToPath(new URL("./package-release.ts", import.meta.url));
+    const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
+    const run = (phase: string, env: Record<string, string>) => spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, phase], {
+      cwd: ready.repo, encoding: "utf8", timeout: 20_000,
+      env: { ...inherited, PACKAGE: "core", VERSION: "0.11.0", TARGET_COMMIT: ready.head, RELEASE_NOTES: "note\n", RELEASE_OUTPUT_DIR: ready.out, RELEASE_ID: "77", GITHUB_TOKEN: "", ...env },
+    });
+    const refused = (result: ReturnType<typeof run>, message: string) => { expect(result.status, result.stderr).toBe(1); expect(result.stderr.trim()).toBe(message); };
+    for (const phase of ["prepare", "check-draft", "verify"]) refused(run(phase, { TARGET_COMMIT: "b".repeat(40) }), "checkout differs from target_commit");
+    mkdirSync(join(ready.repo, "inside"));
+    for (const phase of ["prepare", "check-draft", "verify"]) for (const inside of [ready.repo, join(ready.repo, "inside")]) refused(run(phase, { RELEASE_OUTPUT_DIR: inside }), "release outputs must stay outside the checkout");
+    expect(existsSync(join(ready.repo, "inside", "notes.md"))).toBe(false);
+    writeFileSync(join(ready.out, "notes.md"), "another note\n");
+    for (const phase of ["check-draft", "verify"]) refused(run(phase, {}), "the prepared note differs from the dispatched notes");
+  }, 60_000);
+
+  it("re-verifies the manifest policy and version with packages:check --release-tag, without install, before any network read or note", async () => {
+    const drifted = repository();
+    drifted.write("packages/core/package.json", JSON.stringify(manifest("0.11.0", true, { publishConfig: { access: "public", provenance: true, tag: "latest" } })));
+    const committed = execFileSync("git", ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "-c", "core.hooksPath=/dev/null", "commit", "--quiet", "-am", "drift"], { cwd: drifted.repo, encoding: "utf8" });
+    expect(committed).toBe("");
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: drifted.repo, encoding: "utf8" }).trim();
+    const untouched = routes({});
+    await expect(preparePackageRelease(drifted.repo, packageReleaseInputs("core", "0.11.0", head, "note\n"), drifted.out, undefined, untouched)).rejects.toThrow(/^packages:check --release-tag openlup-core-v0\.11\.0 refused the target$/u);
+    expect(untouched.calls).toEqual([]);
+    expect(existsSync(join(drifted.out, "notes.md"))).toBe(false);
+    const ready = repository();
+    const check = vi.fn((root: string, tag: string) => { expect(existsSync(join(ready.out, "notes.md"))).toBe(false); expect([root, tag]).toEqual([ready.repo, "openlup-core-v0.11.0"]); });
+    await expect(preparePackageRelease(ready.repo, ready.input, ready.out, undefined, routes({ [registry]: packument(["0.10.0"]) }), check)).resolves.toBeUndefined();
+    expect(check).toHaveBeenCalledOnce();
   });
 });
 

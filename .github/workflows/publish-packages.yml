@@ -15,7 +15,10 @@
 # - npm never held the tag's version and holds none above it;
 # - the tag's package, at the tag's version, passes `npm run packages:check -- --out`.
 # It then runs a gitleaks scan over the unpacked tarball. The publish job gets only the
-# tarball and its digest: no checkout and no install. It publishes with --tag latest.
+# tarball and its digest: no checkout and no install. It shares the package's concurrency group
+# with publish-package.yml, re-reads npm past its CDN cache immediately before publishing, and
+# refuses a version npm holds or has passed, so no run or re-run moves latest backwards. It
+# publishes with --tag latest.
 
 name: Publish Packages
 
@@ -41,6 +44,7 @@ jobs:
       attestations: read
     outputs:
       node-version: ${{ steps.node.outputs.version }}
+      package: ${{ steps.tag.outputs.package }}
     steps:
       - name: Require the release App event and the live immutable release
         env:
@@ -72,6 +76,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify the annotated tag and GitHub release attestation
+        id: tag
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -89,6 +94,7 @@ jobs:
           version="${RELEASE_TAG##*-v}"
           test "$(git for-each-ref --format='%(contents)' "$tag_ref")" = "OpenLup package @openlup/$package $version."
           gh release verify "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
@@ -168,6 +174,10 @@ jobs:
     environment: npm-stage
     permissions:
       id-token: write
+    # Shared with publish-package.yml: one package never has two releases or publications in flight.
+    concurrency:
+      group: openlup-package-release-${{ needs.pack.outputs.package }}
+      cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -199,9 +209,47 @@ jobs:
             if (actual !== sha256) throw new Error(`${filename} changed after packing`);
             console.log(filename);
           ' > "$RUNNER_TEMP/tarball-name"
+      # An explicit dist-tag turns off npm's own refusal to move latest backwards, and the pack job's
+      # check may be stale by the time this job, or a re-run of it, publishes. So read npm again
+      # here: the document past its CDN cache, and the uncached dist-tags.
+      - name: Refuse a version npm holds or passed, immediately before publishing
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          # shellcheck disable=SC2016 # the single-quoted script is JavaScript, not shell
+          node -e '
+            const { randomUUID } = require("node:crypto");
+            const tag = /^openlup-([a-z0-9][a-z0-9-]*)-v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.exec(process.argv[1]);
+            if (tag === null) throw new Error("the release tag is not a package release tag");
+            const name = `@openlup/${tag[1]}`, version = tag[2], path = `@openlup%2f${tag[1]}`;
+            const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+            const above = (other) => {
+              const next = semver.exec(version), previous = semver.exec(other);
+              if (previous === null) throw new Error(`npm lists ${name}@${other}, which is not a semver version`);
+              for (const index of [1, 2, 3]) if (BigInt(next[index]) !== BigInt(previous[index])) return BigInt(next[index]) > BigInt(previous[index]);
+              return previous[4] !== undefined;
+            };
+            const read = async (url) => {
+              const response = await fetch(url, { headers: { Accept: "application/json" } });
+              if (response.status === 404) return undefined;
+              if (!response.ok) throw new Error(`npm registry refused ${url}: HTTP ${response.status}`);
+              return response.json();
+            };
+            (async () => {
+              const document = await read(`https://registry.npmjs.org/${path}?cache-bypass=${randomUUID()}`);
+              const distTags = await read(`https://registry.npmjs.org/-/package/${path}/dist-tags`);
+              if (document !== undefined && document.name !== name) throw new Error(`npm registry answered ${document.name} for ${name}`);
+              const times = Object.keys(document?.time ?? {}).filter((key) => !["created", "modified", "unpublished"].includes(key));
+              const held = new Set([...Object.keys(document?.versions ?? {}), ...times, ...Object.values(distTags ?? {})]);
+              if (held.has(version)) throw new Error(`${name}@${version} is or was on npm; a version is never republished`);
+              for (const other of held) if (!above(other)) throw new Error(`${name}@${version} is not above ${name}@${other} on npm; latest only moves forward`);
+              console.log(`npm holds neither ${name}@${version} nor any later version`);
+            })().catch((error) => { console.error(error.message); process.exitCode = 1; });
+          ' "$RELEASE_TAG"
       # "./" makes npm read a local file; a bare "packs/<file>" is GitHub shorthand for a remote repository.
-      # The tag is explicit: every package release moves latest. A failed publish is corrected forward
-      # with a new version; never overwrite or unpublish one.
+      # The tag is explicit: every package release moves latest. A re-run repeats the check above, so
+      # it refuses once npm holds this version or a later one; then correct forward with a new
+      # version. Never overwrite or unpublish one.
       - name: Publish the verified tarball with OIDC provenance
         run: |
           filename="$(cat "$RUNNER_TEMP/tarball-name")"

@@ -550,8 +550,12 @@ A release takes three steps:
    `npm run packages:check -- --out <dir> --release-tag <tag>` and scans the
    unpacked tarball with checksum-verified gitleaks 8.30.1.
 3. **Approval.** The `release` job waits for the maintainer to approve the
-   protected `release` environment. It repeats the target, version, tag and npm
-   checks before the release App token exists. The App then creates the
+   protected `release` environment. Before the release App token exists, it
+   re-verifies the target's main ancestry and required contexts, the manifest
+   policy and version with `packages:check --release-tag` (no install, build or
+   pack), the absent tag and npm. It installs nothing and runs no package code:
+   the pack and the gitleaks scan run only in the unprivileged `preflight`, and
+   `publish-packages.yml` packs and scans the published tag again. The App then creates the
    annotated tag with exactly `OpenLup package @openlup/<package> <version>.` and
    a draft release with the exact note bytes and no asset. The job reads that
    draft by the ID its creation returned, publishes it by that ID as an
@@ -575,8 +579,10 @@ jobs:
    packs exactly the tag's package at the tag's version with `packages:check`,
    and scans the unpacked tarball with gitleaks.
 2. **publish** runs in the `npm-stage` environment with no checkout and no
-   install. It checks the commit, package, version and digest of the one
-   tarball, then runs
+   install, in the package's concurrency group. It checks the commit, package,
+   version and digest of the one tarball. Immediately before publishing it
+   reads npm again, past the CDN cache, and refuses a version npm holds or has
+   passed. Then it runs
    `npm publish ./packs/<file> --provenance --access public --tag latest`.
    GitHub's OIDC token is the npm trusted-publisher credential; there is no
    stored npm token, and only this job has `id-token: write`.
@@ -639,8 +645,17 @@ Before dispatching, run
 on the exact target commit.
 
 If GitHub publishes the release but npm fails, the release remains published.
-Inspect the package job and the npm registry before recovery. If the version
-was not published, repair the missing prerequisite and rerun that release's
-failed package workflow; do not recreate or move its tag. If it was published,
-do not rerun the workflow: correct forward with a new version. Never overwrite
-or unpublish a published version automatically.
+Inspect the package job and the npm registry before recovery. The publish job
+reads npm again immediately before `npm publish`, past the registry's CDN cache,
+and refuses when npm holds that version or any later one; a re-run repeats that
+check. So after repairing a missing prerequisite, the failed package workflow
+may be rerun: it publishes only while the version is still the newest, and never
+moves `latest` backwards. Do not recreate or move the tag. Once npm holds the
+version, or a later version overtook it, correct forward with a new version.
+Never overwrite or unpublish a published version automatically.
+
+One package's releases and publications share a concurrency group, so they run
+one at a time. GitHub keeps at most one pending run per group and cancels an
+older pending one when another is queued, so dispatch the next release of a
+package only after the previous one is published. A publication cancelled that
+way is refused on a re-run once a later version is on npm.

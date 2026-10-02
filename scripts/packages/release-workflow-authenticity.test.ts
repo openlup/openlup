@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -50,7 +50,22 @@ const SHELL_VERSION = String.raw`[[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9
 const PUBLISH = 'npm publish "./packs/$filename" --provenance --access public --tag latest --ignore-scripts';
 const CONTEXTS = "for context in dco typecheck install-proof test self-check gitleaks; do";
 const EVENT_STEP = "Require the release App event and the live immutable release";
+const RECHECK_STEP = "Refuse a version npm holds or passed, immediately before publishing";
 const APP_TOKEN = "GH_TOKEN: ${{ steps.release-identity.outputs.token }}";
+const GITLEAKS_INSTALL = ['repos/gitleaks/gitleaks/releases/assets/378332058 > "$archive"', 'echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict', 'tar -xzf "$archive" -C "$install_dir" gitleaks', 'echo "$install_dir" >> "$GITHUB_PATH"'];
+const GITLEAKS_SCAN = 'gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner';
+const PACK_GATE = "if: ${{ github.repository == 'openlup/openlup' && vars.OPENLUP_NPM_STAGE == 'enabled' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'openlup-') }}";
+const DRAFT_TAG_REF = 'test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)" = "$(git rev-parse "refs/tags/$tag")"';
+const PREFLIGHT_PACK = 'npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"';
+const APP_IDENTITY = [
+  "        id: release-identity\n        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0\n        with:\n",
+  "          client-id: ${{ vars.OPENLUP_RELEASE_APP_CLIENT_ID }}\n          private-key: ${{ secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY }}\n          owner: ${{ github.repository_owner }}\n",
+  "          repositories: openlup\n          permission-contents: write\n          permission-administration: read\n",
+].join("");
+/** Every `permissions:` block of a workflow, top level and per job, as exact text; a one-line or an added grant changes it. */
+const permissionBlocks = (source: string) => [...source.matchAll(/^( *)permissions:(.*)\n((?:\1 {2}\S.*\n)*)/gmu)].map((match) => `${match[1]}permissions:${match[2]}\n${match[3]}`);
+/** Every `if:` line of a workflow, job or step. */
+const conditions = (source: string) => [...source.matchAll(/^ *if:.*$/gmu)].map((match) => match[0]);
 
 /** Each release control, named, as a predicate over both workflow texts. */
 const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
@@ -75,8 +90,9 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
   "commit on main with the six contexts passed": ({ dispatch, producer }) => [
     [job(dispatch, "preflight"), "TARGET_COMMIT"], [job(dispatch, "release"), "TARGET_COMMIT"], [job(producer, "pack"), "GITHUB_SHA"],
   ].every(([text, commit]) => text!.includes(`git merge-base --is-ancestor "$${commit}" FETCH_HEAD`) && text!.includes(CONTEXTS) && text!.includes(`if [ "$verdict" != "passed" ]; then echo "::error::$context has not passed at $${commit}"; exit 1; fi`)),
-  "refusing checks before every write": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["Validate dispatch coordinates before checkout", "actions/checkout@", "git merge-base --is-ancestor", CONTEXTS, "npm ci --ignore-scripts", "package-release.ts preflight", "npm run packages:check -- --out", "sha256sum --check --strict", "gitleaks dir"])
-    && inOrder(job(dispatch, "release"), ["Validate dispatch coordinates before checkout", "git merge-base --is-ancestor", CONTEXTS, "package-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY", "immutable-releases", "/git/tags", "/git/refs", '--method POST "repos/$GITHUB_REPOSITORY/releases"', "package-release.ts check-draft", "--method PATCH"])
+  "refusing checks before every write": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["Validate dispatch coordinates before checkout", "actions/checkout@", "git merge-base --is-ancestor", CONTEXTS, "npm ci --ignore-scripts", "package-release.ts preflight", `        run: ${PREFLIGHT_PACK}\n`, "sha256sum --check --strict", "gitleaks dir"])
+    && inOrder(job(dispatch, "release"), ["Validate dispatch coordinates before checkout", "git merge-base --is-ancestor", CONTEXTS, "package-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY", "immutable-releases", "/git/tags", "/git/refs", DRAFT_TAG_REF, '--method POST "repos/$GITHUB_REPOSITORY/releases"', "package-release.ts check-draft", "--method PATCH"])
+    && step(dispatch, "Create the draft release").includes(`          ${DRAFT_TAG_REF}\n`)
     && inOrder(job(producer, "pack"), [EVENT_STEP, "actions/checkout@", "gh release verify", "git merge-base --is-ancestor", CONTEXTS, "npm ci --ignore-scripts", "package-release.ts registry", "npm run packages:check -- --out packs --release-tag", "packages.length !== 1", "sha256sum --check --strict", "gitleaks dir", "actions/upload-artifact@"])
     && inOrder(job(producer, "publish"), ["actions/download-artifact@", "if (actual !== sha256)", "npm publish"]),
   "no continue-on-error, || true or set +e": ({ dispatch, producer }) => [dispatch, producer].every((text) => !/continue-on-error|\|\|\s*(?:true|:)(?:\s|$)|set \+[eo]/u.test(text)),
@@ -92,6 +108,24 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
   "the version not already on npm": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["package-release.ts preflight", "npm run packages:check"])
     && inOrder(job(dispatch, "release"), ["package-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY"])
     && inOrder(job(producer, "pack"), ["package-release.ts registry", "npm run packages:check"]),
+  "npm re-read immediately before publishing, past the cache": ({ producer }) => inOrder(job(producer, "publish"), ["if (actual !== sha256)", RECHECK_STEP, "npm publish"])
+    && ["?cache-bypass=${randomUUID()}", "await read(`https://registry.npmjs.org/-/package/${path}/dist-tags`)", "if (held.has(version)) throw", "if (!above(other)) throw", `' "$RELEASE_TAG"`].every((clause) => step(producer, RECHECK_STEP).includes(clause)),
+  "one package's releases and publications serialized": ({ dispatch, producer }) => dispatch.includes("\nconcurrency:\n  group: openlup-package-release-${{ inputs.package }}\n  cancel-in-progress: false\n")
+    && job(producer, "publish").includes("    concurrency:\n      group: openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false\n")
+    && job(producer, "pack").includes("      package: ${{ steps.tag.outputs.package }}\n")
+    && step(producer, "Verify the annotated tag and GitHub release attestation").startsWith("        id: tag\n")
+    && step(producer, "Verify the annotated tag and GitHub release attestation").includes('echo "package=$package" >> "$GITHUB_OUTPUT"'),
+  "pinned secret scans before the tag and before publishing": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), [...GITLEAKS_INSTALL, 'for tarball in "$RUNNER_TEMP"/packs/*.tgz; do', 'test -f "$tarball"', 'tar -xzf "$tarball" -C "$target"', GITLEAKS_SCAN])
+    && inOrder(job(producer, "pack"), [...GITLEAKS_INSTALL, "for tarball in packs/*.tgz; do", 'tar -xzf "$tarball" -C "$target"', GITLEAKS_SCAN]),
+  "exact permission sets": ({ dispatch, producer }) => JSON.stringify(permissionBlocks(dispatch)) === JSON.stringify(["permissions: {}\n", "    permissions:\n      contents: read\n      checks: read\n", "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n"])
+    && JSON.stringify(permissionBlocks(producer)) === JSON.stringify(["permissions: {}\n", "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n", "    permissions:\n      id-token: write\n"])
+    && job(dispatch, "preflight").includes("    permissions:\n      contents: read\n      checks: read\n    env:") && job(dispatch, "release").includes("    environment: release\n    permissions:\n      contents: read\n      checks: read\n      attestations: read\n")
+    && job(producer, "pack").includes("    permissions:\n      contents: read\n      checks: read\n      attestations: read\n") && job(producer, "publish").includes("    permissions:\n      id-token: write\n"),
+  "exact App token grant": ({ dispatch, producer }) => step(dispatch, "Obtain the maintainer-configured release identity") === APP_IDENTITY && count(dispatch, "create-github-app-token@") === 1 && !producer.includes("create-github-app-token"),
+  "exact run conditions": ({ dispatch, producer }) => JSON.stringify(conditions(dispatch)) === JSON.stringify([`    ${GATE}`, `    ${GATE}`, "        if: failure()"])
+    && JSON.stringify(conditions(producer)) === JSON.stringify([`    ${PACK_GATE}`])
+    && /^ {8}if: failure\(\)\n {8}run: \|\n {10}echo '[^'\n]*'\n$/u.test(step(dispatch, "Recovery requires the maintainer")),
+  "the App-token job installs, builds and packs nothing": ({ dispatch }) => !/npm (?:ci|install|run|pack|exec)\b|npx |packages:check -- --out|--pack\b/u.test(job(dispatch, "release")),
   "App credential only where the release writes": ({ dispatch, producer }) => !job(dispatch, "preflight").includes("OPENLUP_RELEASE_APP") && !producer.includes("OPENLUP_RELEASE_APP")
     && ["Create the exact annotated tag with the release identity", "Create the draft release", "Publish the immutable release with the release identity"].every((name) => step(dispatch, name).includes(APP_TOKEN))
     && job(dispatch, "release").includes("repositories: openlup\n          permission-contents: write\n          permission-administration: read\n")
@@ -155,6 +189,37 @@ const DEFECTS: Defect[] = [
   { control: "the version not already on npm", plant: "no npm check in preflight", in: "dispatch", from: "        run: node --experimental-strip-types scripts/packages/package-release.ts preflight\n", to: "        run: echo skipped\n" },
   { control: "the version not already on npm", plant: "no npm check before the App token", in: "dispatch", from: "scripts/packages/package-release.ts prepare", to: "scripts/packages/package-release.ts note" },
   { control: "the version not already on npm", plant: "no npm check at publication", in: "producer", from: "        run: node --experimental-strip-types scripts/packages/package-release.ts registry\n", to: "        run: echo skipped\n" },
+  { control: "npm re-read immediately before publishing, past the cache", plant: "publish without the re-check", in: "producer", from: /^ {6}# An explicit dist-tag turns off[\s\S]*?' "\$RELEASE_TAG"\n/mu, to: "" },
+  { control: "npm re-read immediately before publishing, past the cache", plant: "a cached registry read", in: "producer", from: "?cache-bypass=${randomUUID()}", to: "" },
+  { control: "npm re-read immediately before publishing, past the cache", plant: "dist-tags unread", in: "producer", from: "await read(`https://registry.npmjs.org/-/package/${path}/dist-tags`)", to: "undefined" },
+  { control: "npm re-read immediately before publishing, past the cache", plant: "a held version admitted", in: "producer", from: "if (held.has(version)) throw", to: "if (false) throw" },
+  { control: "one package's releases and publications serialized", plant: "publish job not serialized", in: "producer", from: "    concurrency:\n      group: openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false\n", to: "" },
+  { control: "one package's releases and publications serialized", plant: "publish serialized per tag", in: "producer", from: "openlup-package-release-${{ needs.pack.outputs.package }}", to: "openlup-package-release-${{ github.event.release.tag_name }}" },
+  { control: "one package's releases and publications serialized", plant: "releases serialized apart from publications", in: "dispatch", from: "group: openlup-package-release-${{ inputs.package }}", to: "group: publish-package" },
+  { control: "one package's releases and publications serialized", plant: "an in-flight publication cancelled", in: "producer", from: "openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false", to: "openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: true" },
+  { control: "pinned secret scans before the tag and before publishing", plant: "pre-tag checksum replaced", in: "dispatch", from: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb", to: "0".repeat(64) },
+  { control: "pinned secret scans before the tag and before publishing", plant: "pre-tag asset replaced", in: "dispatch", from: "releases/assets/378332058", to: "releases/assets/378332059" },
+  { control: "pinned secret scans before the tag and before publishing", plant: "pre-tag tarball not extracted", in: "dispatch", from: '            tar -xzf "$tarball" -C "$target"\n', to: "" },
+  { control: "pinned secret scans before the tag and before publishing", plant: "pre-publish tarball not extracted", in: "producer", from: '            tar -xzf "$tarball" -C "$target"\n', to: "" },
+  { control: "pinned secret scans before the tag and before publishing", plant: "pre-tag scan without its config", in: "dispatch", from: " --config config/gitleaks.toml", to: "" },
+  { control: "exact run conditions", plant: "pack job without the repository gate", in: "producer", from: "github.repository == 'openlup/openlup' && vars.OPENLUP_NPM_STAGE", to: "vars.OPENLUP_NPM_STAGE" },
+  { control: "exact run conditions", plant: "pack job without the npm switch", in: "producer", from: "vars.OPENLUP_NPM_STAGE == 'enabled' && !github", to: "!github" },
+  { control: "exact run conditions", plant: "publish runs after a failed pack", in: "producer", from: "    needs: pack\n", to: "    needs: pack\n    if: always()\n" },
+  { control: "exact run conditions", plant: "publish runs unless cancelled", in: "producer", from: "    needs: pack\n", to: "    needs: pack\n    if: ${{ !cancelled() }}\n" },
+  { control: "exact run conditions", plant: "npm publish after a failed re-read", in: "producer", from: "      - name: Publish the verified tarball with OIDC provenance\n", to: "      - name: Publish the verified tarball with OIDC provenance\n        if: always()\n" },
+  { control: "exact run conditions", plant: "tag created after a failed prepare", in: "dispatch", from: "      - name: Create the exact annotated tag with the release identity\n", to: "      - name: Create the exact annotated tag with the release identity\n        if: success() || failure()\n" },
+  { control: "exact run conditions", plant: "the recovery step writes", in: "dispatch", from: "        if: failure()\n        run: |\n", to: "        if: failure()\n        run: |\n          gh api --method PATCH \"repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID\" -f draft=false\n" },
+  { control: "exact permission sets", plant: "contents: write on publish", in: "producer", from: "      id-token: write\n", to: "      id-token: write\n      contents: write\n" },
+  { control: "exact permission sets", plant: "actions: write on release", in: "dispatch", from: "      attestations: read\n", to: "      attestations: read\n      actions: write\n" },
+  { control: "exact permission sets", plant: "write-all on the pack job", in: "producer", from: "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n", to: "    permissions: write-all\n" },
+  { control: "exact permission sets", plant: "contents: write on the preflight", in: "dispatch", from: "    permissions:\n      contents: read\n      checks: read\n    env:", to: "    permissions:\n      contents: write\n      checks: read\n    env:" },
+  { control: "exact permission sets", plant: "a workflow-wide grant", in: "producer", from: "\npermissions: {}\n", to: "\npermissions:\n  contents: write\n" },
+  { control: "exact App token grant", plant: "an extra App permission", in: "dispatch", from: "          permission-administration: read\n", to: "          permission-administration: read\n          permission-actions: write\n" },
+  { control: "exact App token grant", plant: "the App token for every repository", in: "dispatch", from: "          repositories: openlup\n", to: "" },
+  { control: "refusing checks before every write", plant: "draft created without the tag-ref check", in: "dispatch", from: `          ${DRAFT_TAG_REF}\n`, to: "" },
+  { control: "refusing checks before every write", plant: "preflight pack without the release tag", in: "dispatch", from: ' --release-tag "openlup-$PACKAGE-v$VERSION"', to: "" },
+  { control: "the App-token job installs, builds and packs nothing", plant: "install in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: "      - run: npm ci --ignore-scripts --no-audit --fund=false\n      # No install, build or pack here:" },
+  { control: "the App-token job installs, builds and packs nothing", plant: "pack in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: "      - run: npm run packages:check -- --out packs\n      # No install, build or pack here:" },
   { control: "App credential only where the release writes", plant: "App key in the unprivileged preflight", in: "dispatch", from: "      RELEASE_NOTES: ${{ inputs.notes }}\n    steps:\n      - name: Validate dispatch coordinates before checkout\n        run: |\n          [[ \"$PACKAGE\"", to: "      RELEASE_NOTES: ${{ inputs.notes }}\n      KEY: ${{ secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY }}\n    steps:\n      - name: Validate dispatch coordinates before checkout\n        run: |\n          [[ \"$PACKAGE\"" },
   { control: "App credential only where the release writes", plant: "tag written with the default token", in: "dispatch", from: `          ${APP_TOKEN}\n        run: |\n          tag="openlup-$PACKAGE-v$VERSION"\n          message=`, to: "          GH_TOKEN: ${{ github.token }}\n        run: |\n          tag=\"openlup-$PACKAGE-v$VERSION\"\n          message=" },
   { control: "App credential only where the release writes", plant: "write permission on the default token", in: "dispatch", from: "    permissions:\n      contents: read\n      checks: read\n    env:", to: "    permissions:\n      contents: write\n      checks: read\n    env:" },
@@ -280,5 +345,46 @@ describe("the publish job's tarball check", () => {
       ["an unanchored tag", undefined, "x-openlup-core-v0.11.0"],
     ];
     for (const [name, change, releaseTag] of refusals) expect(check(change, releaseTag).status, name).not.toBe(0);
+  });
+});
+
+describe("the publish job's npm re-read", () => {
+  const javascript = script(step(committed.producer, RECHECK_STEP)).split("node -e '\n")[1]?.split("\n' \"$RELEASE_TAG\"")[0] ?? "";
+  const document = "https://registry.npmjs.org/@openlup%2fcore", distTags = "https://registry.npmjs.org/-/package/@openlup%2fcore/dist-tags";
+  type Answer = { status?: number; body?: unknown };
+  const packument = (versions: string[], times: string[] = versions): Answer => ({ body: { name: "@openlup/core", versions: Object.fromEntries(versions.map((version) => [version, {}])), time: { created: "x", modified: "y", ...Object.fromEntries(times.map((version) => [version, "z"])) } } });
+
+  /** Runs the step's script with a registry stub that answers by URL without its query, and logs each requested URL. */
+  function check(answers: Record<string, Answer>, tag = "openlup-core-v0.11.0") {
+    const directory = mkdtempSync(join(tmpdir(), "openlup-npm-reread-"));
+    try {
+      const log = join(directory, "requests.log"), stub = join(directory, "registry-stub.mjs");
+      writeFileSync(stub, `import { appendFileSync } from "node:fs";\nconst answers = ${JSON.stringify(answers)};\nglobalThis.fetch = async (url) => { appendFileSync(${JSON.stringify(log)}, url + "\\n"); const answer = answers[String(url).split("?")[0]] ?? { status: 404 }; return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), { status: answer.status ?? 200 }); };\n`);
+      writeFileSync(log, "");
+      const result = spawnSync(process.execPath, ["--import", pathToFileURL(stub).href, "-e", javascript, tag], { encoding: "utf8", timeout: 5000 });
+      return { status: result.status, stderr: result.stderr, requests: readFileSync(log, "utf8").split("\n").filter(Boolean) };
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
+
+  it("publishes only a version above everything npm holds, reading the document past the cache and the dist-tags", () => {
+    expect(javascript).toContain("cache-bypass");
+    const passed = check({ [document]: packument(["0.0.0", "0.10.0", "0.11.0-rc.1"]), [distTags]: { body: { latest: "0.0.0", preview: "0.10.0" } } });
+    expect(passed.status, passed.stderr).toBe(0);
+    expect(passed.requests).toEqual([expect.stringMatching(/^https:\/\/registry\.npmjs\.org\/@openlup%2fcore\?cache-bypass=[0-9a-f-]{36}$/u), distTags]);
+    expect(check({}).status, "a name npm never held").toBe(0);
+    const refusals: Array<[string, Record<string, Answer>, string?]> = [
+      ["the version is held", { [document]: packument(["0.10.0", "0.11.0"]) }],
+      ["a later version is held", { [document]: packument(["0.10.0", "0.12.0"]) }],
+      ["the version was published and removed", { [document]: packument(["0.10.0"], ["0.10.0", "0.11.0"]) }],
+      ["latest already names a later version the document does not show yet", { [document]: packument(["0.10.0"]), [distTags]: { body: { latest: "0.12.0" } } }],
+      ["a later prerelease is held", { [document]: packument(["0.12.0-rc.1"]) }],
+      ["an unreadable held version", { [document]: packument(["not-a-version"]) }],
+      ["another package's document", { [document]: { body: { name: "@openlup/other", versions: {} } } }],
+      ["the document read fails", { [document]: { status: 503 } }],
+      ["the dist-tags read fails", { [document]: packument(["0.10.0"]), [distTags]: { status: 503 } }],
+      ["a source preview tag", {}, "openlup-source-preview/11"],
+      ["an unanchored tag", {}, "x-openlup-core-v0.11.0"],
+    ];
+    for (const [name, answers, tag] of refusals) expect(check(answers, tag).status, name).not.toBe(0);
   });
 });
