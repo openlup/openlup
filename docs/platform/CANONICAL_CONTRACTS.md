@@ -171,10 +171,12 @@ database compatibility proof; see
 While `@openlup/core` is below 1.0, every `@openlup/*` package is released in
 one set version `0.N.P` from one commit, each package with its own tag
 `openlup-<package>-v<version>` at that commit, and a source preview carries no
-package. `release:bump` prepares one package's version in its manifest and
-lockfiles. `@openlup/core`'s release check admits only a set version below 1.0,
-and the package release workflow refuses a version that differs from the
-manifest or that npm holds or has passed. Historical previews retain
+package. `release:bump --set` prepares every publishable package's version,
+and every exact internal pin on one, in its manifest and lockfiles.
+`packages:check` and `@openlup/core`'s release check admit only a set version
+below 1.0, `packages:check` refuses publishable packages at different
+versions, and the package release workflow refuses a version that differs from
+the manifest or that npm holds or has passed. Historical previews retain
 their recorded package versions. This is release identity, not a stable
 compatibility promise.
 

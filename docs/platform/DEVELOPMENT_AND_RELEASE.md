@@ -27,7 +27,7 @@ Local success is preparation, not proof that a hosted run or release succeeded.
 | Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Active native admission waits for six actual successes and current review evidence. |
 | Merge queue | Authorized enqueue requests a merge group | Mechanical checks run on the actual group. Native admission binds group identity and review evidence; a changed whole tree requires fresh integration review. |
 | Main | Squash merge produces a main push | Mechanical checks and raw diagnostics run again; Sonar updates its main analysis. Native admission does not run on main pushes. A merge is not a release. |
-| Package release | Authorized dispatch of `publish-package.yml` for a reviewed main SHA, one package at its manifest version, and exact notes | Unprivileged preflight refuses while any package release or publication is in flight, checks ancestry, contexts, version, absent tag and npm, then packs and scans the tarball before protected release approval. The release App creates the annotated tag `openlup-<package>-v<version>` on the target and the immutable release. |
+| Package release | Authorized dispatch of `publish-package.yml` for a reviewed main SHA, package `all` (the set) or one package, the version, and exact notes | Unprivileged preflight refuses while any package release or publication is in flight, checks ancestry, contexts and versions, packs and scans every tarball, and decides each package by its tag, release and npm state before protected release approval. One approval covers the set; the release App creates each annotated tag `openlup-<package>-v<version>` on the target and its immutable release. |
 | npm | Published package-release event from the release App | Package workflow independently checks identity, tag and tarball, re-reads npm, then publishes with OIDC provenance under `latest`. Verify its observed result; publication does not update an adopter. |
 | Source preview (optional) | Authorized dispatch for reviewed main SHA, next ordinal and exact notes | A source snapshot with no package. The release workflow validates the tree, creates and verifies the immutable source preview. |
 
@@ -134,22 +134,27 @@ The [versioning policy](../../.github/VERSIONING_AND_EOL.md#package-releases)
 owns release permissions, setup, detailed refusals and recovery. The sequence is:
 
 1. Prepare the next set version, above every version npm holds, with
-   `npm run release:bump -- <package> <version>` for each package of the set in
-   a reviewed ordinary PR, and turn each changelog's Unreleased section into the
-   version's section. A version bump by itself publishes nothing.
+   `npm run release:bump -- --set <version>` in a reviewed ordinary PR. It sets
+   every publishable package and every exact internal pin on one, and opens each
+   changelog's version section below a fresh Unreleased heading. A version bump
+   by itself publishes nothing.
 2. Select the exact reviewed main commit that carries the version and check its
-   six mechanical contexts, then run `packages:check` with the package release tag.
-3. With explicit authority, dispatch `publish-package.yml` from main with the
-   package, the version, the exact SHA and reviewed note bytes. Its unprivileged
+   six mechanical contexts, then run `packages:check` with `--release-set <version>`.
+3. With explicit authority, dispatch `publish-package.yml` from main with package
+   `all`, the set version, the exact SHA and reviewed note bytes. Its unprivileged
    preflight refuses while any package release or publication is in flight, checks
-   ancestry, contexts, version, absent tag and npm, then packs and scans the tarball
-   before protected `release` approval; dispatch itself is not approval. The release
-   gate that decides ancestry, contexts and the tag's commit runs as it is at the
-   dispatched main commit, never as the target's copy.
-4. After owner approval, the release job repeats those checks without installing
-   or packing. The release App then creates the annotated tag `openlup-<package>-v<version>`
-   and draft, validates the same draft ID and publishes the immutable release.
-   Verify the completed release's exact note bytes, identity and GitHub attestation.
+   ancestry, contexts, the set version of every publishable package and, for a
+   patch set, each unchanged API snapshot. It packs and scans every tarball, then
+   decides each package by its tag, release and npm state, before protected
+   `release` approval; dispatch itself is not approval. The release gate that
+   decides ancestry, contexts and the tag's commit runs as it is at the dispatched
+   main commit, never as the target's copy. A single package name still releases
+   that one package, from nothing only.
+4. After one owner approval, the release job runs once per package to release:
+   it repeats those checks without installing or packing, then the release App
+   creates the annotated tag `openlup-<package>-v<version>` and draft, validates
+   the same draft ID and publishes the immutable release. Verify each completed
+   release's exact note bytes, identity and GitHub attestation.
 5. The App event starts package packing and independent release/tag checks. The
    `npm-stage` job verifies the tarball digest, re-reads npm and publishes with OIDC
    provenance under `latest`. There is no second npm reviewer in the configured direct
@@ -162,7 +167,9 @@ On partial release or package failure, stop for maintainer recovery. Do not
 retag, rewrite an immutable release or republish a version. A failed publish job
 may be rerun: it re-reads npm and refuses once npm holds that version or a later
 one, so `latest` never moves backwards; otherwise correct forward with a new
-version. No step deploys production or changes an adopter's dependency pin.
+version. Dispatching the set again resumes it: it skips a package npm holds with
+the same tarball, leaves a package whose release exists but npm lacks the
+version to that rerun, releases the rest, and stops on any other state. No step deploys production or changes an adopter's dependency pin.
 
 ## Cutting an optional source preview
 

@@ -2594,6 +2594,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/set-release.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/partner-acquisition-schema.test.ts",
       "class": "public-output"
     },

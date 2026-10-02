@@ -380,6 +380,10 @@ refusal while another release or publication is in flight. It plants a defect in
 the gate's source for each of those decisions and requires the edited gate to fail.
 The source preview's own required-context loop is compared with the gate's
 decision, verdict for verdict, in `scripts/oss-published-tree-check.test.ts`.
+`set-release.test.ts` plants a defect against each set release control in its
+module's source: one set version `0.N.P` across publishable packages,
+`packages:check --release-set`, `release:bump --set` and its changelog section,
+the patch-set API check, and the skip, resume and full states of a set.
 The same directory holds the package release-shape checks and the test that
 loads the lint configuration with a conditional `imports` map.
 The public test job separately runs the materialized command-contract
@@ -516,13 +520,14 @@ application and documentation. While `@openlup/core` is below 1.0, the
 packages are released as one set, independently of source previews: one set
 version `0.N.P` from one commit, with each package tagged
 `openlup-<package>-v<version>` at that commit and republished in every set. A
-release-preparation pull request runs `npm run release:bump -- <package> <version>`
-for each package of the set, which updates only that package's version carriers
-and its changelog line; the pull request also turns each changelog's Unreleased
-section into the version's section. Merging it authorizes no release.
-A release is then dispatched with `publish-package.yml` for the reviewed commit,
-and the maintainer's approval of the protected `release` environment authorizes
-it. The package workflow independently verifies the App-published immutable
+release-preparation pull request runs `npm run release:bump -- --set <version>`,
+which updates every publishable package's version carriers and every exact
+internal pin on one, and opens each changelog's version section below a fresh
+Unreleased heading. Merging it authorizes no release.
+A release is then dispatched with `publish-package.yml` and package `all` for the
+reviewed commit, and one maintainer approval of the protected `release`
+environment authorizes every package of the set. Dispatching the set again
+resumes one that stopped part way. The package workflow independently verifies the App-published immutable
 release, tag and attestation, then publishes the checked tarball through npm
 OIDC with `--tag latest`, without another approval.
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) lists every

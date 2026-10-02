@@ -26,7 +26,7 @@ export type GateFetch = (input: string, init?: RequestInit) => Promise<Response>
 const GITHUB_API = "https://api.github.com/repos/openlup/openlup";
 /** The required jobs of `published-tree-ci.yml`, by their check names. */
 export const REQUIRED_CONTEXTS = ["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks"] as const;
-/** The workflows that release or publish a package; a set release joins this list. */
+/** The workflows that release or publish a package; a set release is a run of publish-package.yml. */
 export const RELEASE_WORKFLOWS = ["publish-package.yml", "publish-packages.yml"] as const;
 /** Every status of a workflow run that has not completed. */
 export const ACTIVE_RUN_STATUSES = ["requested", "queued", "pending", "waiting", "in_progress"] as const;

@@ -61,7 +61,7 @@ const GATE_STEPS = { preflight: "Check main ancestry and required contexts befor
 const TAG_STEP = "Create the exact annotated tag with the release identity";
 const APP_TOKEN_ENV = "GITHUB_TOKEN: ${{ steps.release-identity.outputs.token }}";
 const TAG_RUN = [`        env:\n          ${APP_TOKEN_ENV}\n        run: |\n`, `          ${DISPATCH_GATE} tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"\n`, '          tag="openlup-$PACKAGE-v$VERSION"\n          git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"\n'].join("");
-const RELEASE_GROUP = "    concurrency:\n      group: openlup-package-release-${{ inputs.package }}\n      cancel-in-progress: false\n";
+const RELEASE_GROUP = "    concurrency:\n      group: openlup-package-release-${{ matrix.package }}\n      cancel-in-progress: false\n";
 const EVENT_STEP = "Require the release App event and the live immutable release";
 const RECHECK_STEP = "Refuse a version npm holds or passed, immediately before publishing";
 const APP_TOKEN = "GH_TOKEN: ${{ steps.release-identity.outputs.token }}";
@@ -70,6 +70,13 @@ const GITLEAKS_SCAN = 'gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks
 const PACK_GATE = "if: ${{ github.repository == 'openlup/openlup' && vars.OPENLUP_NPM_STAGE == 'enabled' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'openlup-') }}";
 const DRAFT_TAG_REF = 'test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)" = "$(git rev-parse "refs/tags/$tag")"';
 const PREFLIGHT_PACK = 'npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"';
+const SET_PACK = 'npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-set "$VERSION"';
+/** The preflight packs the one package, or for the set every publishable package at the set version. */
+const PACK_RUN = `        run: |\n          if [ "$PACKAGE" = all ]; then\n            ${SET_PACK}\n          else\n            ${PREFLIGHT_PACK}\n          fi\n`;
+const PLAN_STEP = "Decide each package's release from its tag, release and npm state";
+const PLAN_RUN = '        id: plan\n        env:\n          GITHUB_TOKEN: ${{ github.token }}\n        run: node --experimental-strip-types scripts/packages/package-release.ts plan "$RUNNER_TEMP/packs"\n';
+const PLAN_OUTPUT = "    outputs:\n      packages: ${{ steps.plan.outputs.packages }}\n";
+const MATRIX = "    strategy:\n      fail-fast: false\n      matrix:\n        package: ${{ fromJSON(needs.preflight.outputs.packages) }}\n";
 const APP_IDENTITY = [
   "        id: release-identity\n        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0\n        with:\n",
   "          client-id: ${{ vars.OPENLUP_RELEASE_APP_CLIENT_ID }}\n          private-key: ${{ secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY }}\n          owner: ${{ github.repository_owner }}\n",
@@ -112,7 +119,7 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
   "a later dispatch refuses rather than cancel a queued publication": ({ dispatch }) => !/^concurrency:/mu.test(dispatch) && !job(dispatch, "preflight").includes("concurrency:")
     && stepBody(job(dispatch, "preflight"), IN_FLIGHT_STEP) === gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)
     && inOrder(job(dispatch, "preflight"), [TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts"]),
-  "refusing checks before every write": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["Validate dispatch coordinates before checkout", "actions/checkout@", TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts preflight", `        run: ${PREFLIGHT_PACK}\n`, "sha256sum --check --strict", "gitleaks dir"])
+  "refusing checks before every write": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["Validate dispatch coordinates before checkout", "actions/checkout@", TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts preflight", PACK_RUN, "sha256sum --check --strict", "gitleaks dir"])
     && inOrder(job(dispatch, "release"), ["Validate dispatch coordinates before checkout", TAKE_GATE, `${DISPATCH_GATE} commit`, "package-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY", "immutable-releases", `${DISPATCH_GATE} tag`, 'git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"', DRAFT_TAG_REF, '--method POST "repos/$GITHUB_REPOSITORY/releases"', "package-release.ts check-draft", "--method PATCH"])
     && step(dispatch, "Create the draft release").includes(`          ${DRAFT_TAG_REF}\n`)
     && inOrder(job(producer, "pack"), [EVENT_STEP, "actions/checkout@", "gh release verify", `${PRODUCER_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts registry", "npm run packages:check -- --out packs --release-tag", "packages.length !== 1", "sha256sum --check --strict", "gitleaks dir", "actions/upload-artifact@"])
@@ -132,6 +139,15 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     && inOrder(job(producer, "pack"), ["package-release.ts registry", "npm run packages:check"]),
   "npm re-read immediately before publishing, past the cache": ({ producer }) => inOrder(job(producer, "publish"), ["if (actual !== sha256)", RECHECK_STEP, "npm publish"])
     && ["?cache-bypass=${randomUUID()}", "await read(`https://registry.npmjs.org/-/package/${path}/dist-tags`)", "if (held.has(version)) throw", "if (!above(other)) throw", `' "$RELEASE_TAG"`].every((clause) => step(producer, RECHECK_STEP).includes(clause)),
+  "the preflight plans each package after packing and scanning every tarball": ({ dispatch }) => stepBody(job(dispatch, "preflight"), "Pack and check the packages of this release") === PACK_RUN
+    && job(dispatch, "preflight").endsWith(`      - name: ${PLAN_STEP}\n${PLAN_RUN}\n`) && count(dispatch, "package-release.ts plan") === 1
+    && inOrder(job(dispatch, "preflight"), [PACK_RUN, GITLEAKS_SCAN, `      - name: ${PLAN_STEP}\n`])
+    && job(dispatch, "preflight").includes(`    runs-on: ubuntu-24.04\n    # The packages the plan step releases in full, as a JSON array of directory names.\n${PLAN_OUTPUT}`) && count(dispatch, "outputs:") === 1,
+  "one approval releases each planned package in its own leg": ({ dispatch }) => job(dispatch, "release").includes(MATRIX) && count(dispatch, "strategy:") === 1 && !/max-parallel|fail-fast: true/u.test(dispatch)
+    && job(dispatch, "release").includes("    env:\n      PACKAGE: ${{ matrix.package }}\n") && count(dispatch, "PACKAGE: ${{ inputs.package }}") === 1 && job(dispatch, "preflight").includes("      PACKAGE: ${{ inputs.package }}\n")
+    && count(dispatch, "environment: release") === 1,
+  "a release leg releases one package the dispatch named": ({ dispatch }) => step(job(dispatch, "release"), "Validate dispatch coordinates before checkout").includes(`          [[ "$PACKAGE" =~ ^[a-z0-9][a-z0-9-]*$ ]]\n          [[ "$PACKAGE" != all ]]\n          [[ "$DISPATCH" = all || "$DISPATCH" = "$PACKAGE" ]]\n`)
+    && job(dispatch, "release").includes("      PACKAGE: ${{ matrix.package }}\n      DISPATCH: ${{ inputs.package }}\n") && count(dispatch, "DISPATCH: ") === 1,
   "one package's releases and publications serialized": ({ dispatch, producer }) => job(dispatch, "release").includes(`${RELEASE_GROUP}    environment: release\n`)
     && job(producer, "publish").includes("    concurrency:\n      group: openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false\n")
     && job(producer, "pack").includes("      package: ${{ steps.tag.outputs.package }}\n")
@@ -228,7 +244,22 @@ const DEFECTS: Defect[] = [
   { control: "npm re-read immediately before publishing, past the cache", plant: "a held version admitted", in: "producer", from: "if (held.has(version)) throw", to: "if (false) throw" },
   { control: "one package's releases and publications serialized", plant: "publish job not serialized", in: "producer", from: "    concurrency:\n      group: openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false\n", to: "" },
   { control: "one package's releases and publications serialized", plant: "publish serialized per tag", in: "producer", from: "openlup-package-release-${{ needs.pack.outputs.package }}", to: "openlup-package-release-${{ github.event.release.tag_name }}" },
-  { control: "one package's releases and publications serialized", plant: "releases serialized apart from publications", in: "dispatch", from: "group: openlup-package-release-${{ inputs.package }}", to: "group: publish-package" },
+  { control: "one package's releases and publications serialized", plant: "releases serialized apart from publications", in: "dispatch", from: "group: openlup-package-release-${{ matrix.package }}", to: "group: publish-package" },
+  { control: "one package's releases and publications serialized", plant: "every leg in the dispatched name's group", in: "dispatch", from: "group: openlup-package-release-${{ matrix.package }}", to: "group: openlup-package-release-${{ inputs.package }}" },
+  { control: "the preflight plans each package after packing and scanning every tarball", plant: "no plan: the release job gets no packages", in: "dispatch", from: `      # Each package by its tag, release and npm state, against the tarballs packed above.\n      - name: ${PLAN_STEP}\n${PLAN_RUN}`, to: "" },
+  { control: "the preflight plans each package after packing and scanning every tarball", plant: "a plan before the pack, without tarballs to compare", in: "dispatch", from: "      - name: Pack and check the packages of this release\n", to: `      - name: ${PLAN_STEP}\n${PLAN_RUN}      - name: Pack and check the packages of this release\n` },
+  { control: "the preflight plans each package after packing and scanning every tarball", plant: "the plan replaced by the dispatched package", in: "dispatch", from: 'run: node --experimental-strip-types scripts/packages/package-release.ts plan "$RUNNER_TEMP/packs"', to: 'run: echo "packages=[\\"$PACKAGE\\"]" >> "$GITHUB_OUTPUT"' },
+  { control: "the preflight plans each package after packing and scanning every tarball", plant: "the output read from another step", in: "dispatch", from: "packages: ${{ steps.plan.outputs.packages }}", to: "packages: ${{ steps.pack.outputs.packages }}" },
+  { control: "the preflight plans each package after packing and scanning every tarball", plant: "the set packs only one package", in: "dispatch", from: SET_PACK, to: PREFLIGHT_PACK },
+  { control: "the preflight plans each package after packing and scanning every tarball", plant: "the set packs nothing", in: "dispatch", from: `            ${SET_PACK}\n`, to: "            true\n" },
+  { control: "one approval releases each planned package in its own leg", plant: "one failed leg cancels the others", in: "dispatch", from: "      fail-fast: false\n", to: "      fail-fast: true\n" },
+  { control: "one approval releases each planned package in its own leg", plant: "fail-fast left at its default", in: "dispatch", from: "      fail-fast: false\n", to: "" },
+  { control: "one approval releases each planned package in its own leg", plant: "one leg at a time, each asking for its own approval", in: "dispatch", from: "      fail-fast: false\n", to: "      fail-fast: false\n      max-parallel: 1\n" },
+  { control: "one approval releases each planned package in its own leg", plant: "each leg releases the dispatched name", in: "dispatch", from: "      PACKAGE: ${{ matrix.package }}\n", to: "      PACKAGE: ${{ inputs.package }}\n" },
+  { control: "one approval releases each planned package in its own leg", plant: "the legs taken from the dispatch, not the plan", in: "dispatch", from: "package: ${{ fromJSON(needs.preflight.outputs.packages) }}", to: "package: ${{ fromJSON(format('[\"{0}\"]', inputs.package)) }}" },
+  { control: "a release leg releases one package the dispatch named", plant: "no refusal of the set's name", in: "dispatch", from: '          [[ "$PACKAGE" != all ]]\n', to: "" },
+  { control: "a release leg releases one package the dispatch named", plant: "a one-package dispatch releases whatever the plan names", in: "dispatch", from: '          [[ "$DISPATCH" = all || "$DISPATCH" = "$PACKAGE" ]]\n', to: "" },
+  { control: "a release leg releases one package the dispatch named", plant: "the dispatch compared with the leg itself", in: "dispatch", from: "      DISPATCH: ${{ inputs.package }}\n", to: "      DISPATCH: ${{ matrix.package }}\n" },
   { control: "one package's releases and publications serialized", plant: "release job not serialized", in: "dispatch", from: RELEASE_GROUP, to: "" },
   { control: "one package's releases and publications serialized", plant: "an in-flight publication cancelled", in: "producer", from: "openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: false", to: "openlup-package-release-${{ needs.pack.outputs.package }}\n      cancel-in-progress: true" },
   { control: "pinned secret scans before the tag and before publishing", plant: "pre-tag checksum replaced", in: "dispatch", from: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb", to: "0".repeat(64) },

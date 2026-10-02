@@ -1,6 +1,8 @@
 # Releases one @openlup/* package at a reviewed commit on main, as the annotated tag
 # openlup-<package>-v<version> and an immutable GitHub release. That release's published event
 # starts publish-packages.yml, which publishes the package to npm with --tag latest through OIDC.
+# The package `all` releases the whole set: every publishable package at the one set version
+# 0.N.P, each with its own tag and release at the target, under one release approval.
 #
 # Inert until the maintainer completes the setup in .github/VERSIONING_AND_EOL.md and enables
 # OPENLUP_PACKAGE_RELEASE. Main ancestry, the required contexts and the tag's commit are decided
@@ -11,14 +13,24 @@
 #   concurrency group where it could cancel a queued publication;
 # - the target is on main and the six required contexts passed there;
 # - packages/<package>/package.json carries the requested version and passes the manifest policy;
+#   for the set, every publishable package carries the set version, and a patch set leaves each
+#   API snapshot as the previous set left it;
 # - the tag is absent, and npm never held that version and holds none above it;
-# - `npm run packages:check -- --out` packs that one package;
-# - gitleaks finds nothing in the unpacked tarball.
+# - `npm run packages:check -- --out` packs that one package, or every publishable package;
+# - gitleaks finds nothing in the unpacked tarball;
+# - each package's tag, release and npm state decides what happens to it. One package is released
+#   only from nothing. The set skips a package npm already holds with the same tarball, leaves a
+#   package whose release exists but npm lacks the version to the re-run of its failed
+#   publication, releases the rest in full, and stops on any other state.
+# The release job runs once per package to release in full; its legs wait for one approval.
 # The pack and the scan run only here. Before the release App token exists, the release job
 # re-verifies the main ancestry and contexts, the manifest policy and version
-# (`packages:check --release-tag`, with no install, build or pack), the absent tag and npm; it
-# installs nothing and runs no package code. The release gate then creates the tag on the target
-# itself. publish-packages.yml packs and scans the published tag again. One package's release job
+# (`packages:check --release-tag`, with no install, build or pack), the patch-set check, the
+# absent tag and npm; it installs nothing and runs no package code. The release gate then creates
+# the tag on the target itself. publish-packages.yml packs and scans the published tag again.
+# The plan's packages reach the release job as matrix values, and each leg checks its package
+# again and runs only for a package the dispatch named, so the plan can narrow a release but
+# never widen it. One package's release job
 # and publication share a concurrency group, so they never overlap. No PAT; the job's own token
 # only reads. Dispatching a run grants no publication: the release approval does.
 name: Publish Package
@@ -27,11 +39,11 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: Package directory name under packages/
+        description: Package directory name under packages/, or all for every publishable package
         required: true
         type: string
       version:
-        description: The MAJOR.MINOR.PATCH version that package.json already carries
+        description: The MAJOR.MINOR.PATCH version that package.json already carries; for all, the set version
         required: true
         type: string
       target_commit:
@@ -50,6 +62,9 @@ jobs:
     name: preflight
     if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_PACKAGE_RELEASE == 'enabled' && vars.OPENLUP_NPM_STAGE == 'enabled' }}
     runs-on: ubuntu-24.04
+    # The packages the plan step releases in full, as a JSON array of directory names.
+    outputs:
+      packages: ${{ steps.plan.outputs.packages }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -99,8 +114,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types scripts/packages/package-release.ts preflight
-      - name: Pack and check the package for this release
-        run: npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"
+      - name: Pack and check the packages of this release
+        run: |
+          if [ "$PACKAGE" = all ]; then
+            npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-set "$VERSION"
+          else
+            npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"
+          fi
       - name: Install checksum-verified gitleaks 8.30.1
         env:
           GH_TOKEN: ${{ github.token }}
@@ -123,16 +143,29 @@ jobs:
             tar -xzf "$tarball" -C "$target"
           done
           gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner
+      # Each package by its tag, release and npm state, against the tarballs packed above.
+      - name: Decide each package's release from its tag, release and npm state
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types scripts/packages/package-release.ts plan "$RUNNER_TEMP/packs"
 
   release:
     needs: preflight
     if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && vars.OPENLUP_PACKAGE_RELEASE == 'enabled' && vars.OPENLUP_NPM_STAGE == 'enabled' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # One leg per package the preflight planned, each the release of that one package. The legs wait
+    # for the protected environment together, so one approval covers the set. A failed leg leaves
+    # the others to finish; dispatching the set again skips or resumes what they released.
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.preflight.outputs.packages) }}
     # Shared with the publish job of publish-packages.yml: one package never has two releases or
     # publications in flight. The preflight refuses while any is, so no run waits here behind one.
     concurrency:
-      group: openlup-package-release-${{ inputs.package }}
+      group: openlup-package-release-${{ matrix.package }}
       cancel-in-progress: false
     environment: release
     permissions:
@@ -140,14 +173,18 @@ jobs:
       checks: read
       attestations: read
     env:
-      PACKAGE: ${{ inputs.package }}
+      PACKAGE: ${{ matrix.package }}
+      DISPATCH: ${{ inputs.package }}
       VERSION: ${{ inputs.version }}
       TARGET_COMMIT: ${{ inputs.target_commit }}
       RELEASE_NOTES: ${{ inputs.notes }}
     steps:
+      # A leg releases one package, and only one the dispatch named: itself, or any for the set.
       - name: Validate dispatch coordinates before checkout
         run: |
           [[ "$PACKAGE" =~ ^[a-z0-9][a-z0-9-]*$ ]]
+          [[ "$PACKAGE" != all ]]
+          [[ "$DISPATCH" = all || "$DISPATCH" = "$PACKAGE" ]]
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$TARGET_COMMIT" =~ ^[a-f0-9]{40}$ ]]
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -238,4 +275,4 @@ jobs:
       - name: Recovery requires the maintainer
         if: failure()
         run: |
-          echo '::error::Release refused. Inspect this run and any unpublished tag or draft before retrying. No tag, release or npm version is overwritten or deleted automatically; published releases are corrected forward with a new version.'
+          echo '::error::Release refused. Inspect this run and any unpublished tag or draft before retrying. No tag, release or npm version is overwritten or deleted automatically; published releases are corrected forward with a new version. A set resumes when it is dispatched again with package all.'
