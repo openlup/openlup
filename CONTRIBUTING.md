@@ -48,6 +48,11 @@ handling.
 
 ## Development-preview checks
 
+Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
+for where each check runs, Draft/Ready/queue/main triggers, blocking versus
+diagnostic results, and the source-to-npm handoff. This section owns the detailed
+contributor commands; the overview links here rather than replacing them.
+
 ### Optional SonarQube Cloud diagnostics
 
 The SonarQube Cloud OSS pilot uses one public project and automatic analysis of

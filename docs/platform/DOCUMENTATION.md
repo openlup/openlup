@@ -14,6 +14,10 @@ Keep one canonical explanation for each boundary. A domain README describes its
 responsibility, public contracts, important internal steps, refusal behavior and
 verification route. A platform page explains a contract spanning domains. Link
 between them instead of copying the same instructions into several manuals.
+The [development and release overview](DEVELOPMENT_AND_RELEASE.md) owns the
+end-to-end execution map: keep its triggers, result interpretation and links
+aligned with contributor commands and release policy, without copying their
+full procedures or maintainer-local installation instructions.
 
 Write for a concrete task: identify the reader's question, the owning module,
 the code to inspect, and the failure that would disprove the description. For

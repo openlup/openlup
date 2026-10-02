@@ -1134,6 +1134,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/DEVELOPMENT_AND_RELEASE.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/DOCUMENTATION.md",
       "class": "platform-documentation"
     },

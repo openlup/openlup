@@ -15,7 +15,7 @@ npm run ci
 
 The gate builds every export, runs standalone tests and isolated package smoke,
 verifies declaration snapshots, and checks license, SBOM, audit, pack, and
-publish controls. Neither the root test script nor root CI runs it.
+publish controls. Root Vitest excludes this suite; CI's required test job runs it separately.
 
 ## Scope
 
