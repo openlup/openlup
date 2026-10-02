@@ -7,9 +7,10 @@ Agents start with [AGENTS.md](AGENTS.md).
 
 ## Channel and stability
 
-- **Channel:** npm, on the `preview` dist-tag. Each version is published with
+- **Channel:** npm, on the `latest` dist-tag. Each version is published with
   provenance from its release tag `openlup-core-v<version>` after a protected
-  release approval. `npm publish` from this directory is refused.
+  release approval. Versions up to `0.11.0` were published on the `preview`
+  dist-tag only. `npm publish` from this directory is refused.
 - **Stability:** development preview. Any version may change an export, and
   each change is recorded in [the changelog](CHANGELOG.md). Pin an exact
   version and read the changelog when you upgrade.
