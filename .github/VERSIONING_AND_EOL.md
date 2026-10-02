@@ -525,8 +525,11 @@ Each `@openlup/*` package is released on its own, with its own semantic version.
 [`config/openlup-packages.json`](../config/openlup-packages.json) lists the
 packages, and `publish: true` marks one that may be published; `@openlup/core`
 is currently the only one. A package's version lives in its own `package.json`.
-A package release needs no source preview, and a source preview carries no
-package. No package version implies a stable API or a supported upgrade path.
+A package release needs no source preview. `openlup-source-preview/11` was the
+last lockstep cut that also published a package: `@openlup/core` `0.11.0`, on
+the `preview` dist-tag. Later source previews are optional snapshots with no
+package, and the next `@openlup/core` version is released on its own. No package
+version implies a stable API or a supported upgrade path.
 
 A release takes three steps:
 
@@ -535,9 +538,11 @@ A release takes three steps:
    version in its `package.json` and lockfile entries and adds its CHANGELOG
    line, and regenerates the source release contract as `CONTRIBUTING.md`
    describes. The version is `MAJOR.MINOR.PATCH` and must be above every version
-   npm holds for the package. Merging it does not authorize a release. A package
-   may narrow its own version rule: the `@openlup/core` release check still
-   requires `0.<n>.0`.
+   npm holds for the package. Merging it does not authorize a release. Read the
+   candidate version from the package's manifest, and publication only from the
+   immutable release and the npm registry: a version bump by itself publishes
+   nothing. A package may narrow its own version rule: the `@openlup/core`
+   release check still requires `0.<n>.0`.
 2. **Dispatch.** In Actions, choose **Publish Package → Run workflow** on
    **main** and enter the package directory name (for example `core`), the
    version, the reviewed full target commit SHA on `main` and the exact release
@@ -591,9 +596,13 @@ Every package release moves the npm `latest` dist-tag, which is why its version
 must be above every version npm holds. A package's `publishConfig.tag` stays
 `preview`, so a publish that names no tag never moves `latest`. A package's
 `prepublishOnly` refuses `npm publish` from its directory: only a checked
-tarball is published. Versions published before per-package releases carry the
-`preview` dist-tag; no later release moves it. A compromised version is
-deprecated and fixed forward, never unpublished.
+tarball is published. Versions published before per-package releases, up to
+`@openlup/core` `0.11.0`, carry the `preview` dist-tag, and no later release
+moves it. `latest` keeps naming the inert placeholder `0.0.0` until a package's
+first per-package release, which must be above `0.11.0` for `@openlup/core`;
+that package's own release check admits only `0.<n>.0`, so its next version is
+`0.12.0` unless that rule changes. A compromised version is deprecated and fixed
+forward, never unpublished.
 
 A release runs the workflow file of its tagged commit, so whoever can create a
 package release tag on a commit can also change every check in that workflow.

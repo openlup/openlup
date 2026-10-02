@@ -48,6 +48,12 @@ describe("the npm version check", () => {
     expect(() => assertVersionUnpublished("@openlup/core", "0.11.0", { versions: ["0.10.0"] })).toThrow(/npm versions is malformed/u);
     expect(() => assertVersionUnpublished("@openlup/core", "0.11.0", { time: "x" })).toThrow(/npm time is malformed/u);
   });
+  it("after preview 11 (latest 0.0.0, preview 0.11.0), refuses 0.11.0 and anything below it, and admits only later versions", () => {
+    const registryState = { name: "@openlup/core", versions: Object.fromEntries(["0.0.0", "0.6.0", "0.7.0", "0.9.0", "0.10.0", "0.11.0"].map((version) => [version, {}])), "dist-tags": { latest: "0.0.0", preview: "0.11.0" } };
+    expect(() => assertVersionUnpublished("@openlup/core", "0.11.0", registryState)).toThrow(/^@openlup\/core@0\.11\.0 is or was on npm; a version is never republished$/u);
+    for (const version of ["0.10.1", "0.1.0"]) expect(() => assertVersionUnpublished("@openlup/core", version, registryState), version).toThrow(/is not above @openlup\/core@0\.11\.0 on npm|is not above @openlup\/core@0\.(?:6|7|9|10)\.0 on npm/u);
+    for (const version of ["0.11.1", "0.12.0", "1.0.0"]) expect(() => assertVersionUnpublished("@openlup/core", version, registryState), version).not.toThrow();
+  });
   it("reads the full registry document past the CDN cache and treats only 404 as a name npm never held", async () => {
     const fetcher = vi.fn<GithubFetch>(async () => packument(["0.10.0"]));
     await expect(readPackument("@openlup/core", fetcher)).resolves.toMatchObject({ name: "@openlup/core" });

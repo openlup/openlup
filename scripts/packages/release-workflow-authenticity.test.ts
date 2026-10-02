@@ -372,6 +372,11 @@ describe("the publish job's npm re-read", () => {
     expect(passed.status, passed.stderr).toBe(0);
     expect(passed.requests).toEqual([expect.stringMatching(/^https:\/\/registry\.npmjs\.org\/@openlup%2fcore\?cache-bypass=[0-9a-f-]{36}$/u), distTags]);
     expect(check({}).status, "a name npm never held").toBe(0);
+    // The registry after preview 11: latest still names the placeholder, preview names 0.11.0.
+    const afterPreview11 = { [document]: packument(["0.0.0", "0.6.0", "0.7.0", "0.9.0", "0.10.0", "0.11.0"]), [distTags]: { body: { latest: "0.0.0", preview: "0.11.0" } } };
+    for (const tag of ["openlup-core-v0.11.1", "openlup-core-v0.12.0"]) expect(check(afterPreview11, tag).status, tag).toBe(0);
+    for (const tag of ["openlup-core-v0.11.0", "openlup-core-v0.10.1"]) expect(check(afterPreview11, tag).status, tag).not.toBe(0);
+    expect(check({ [document]: packument(["0.0.0", "0.10.0"]), [distTags]: { body: { latest: "0.0.0", preview: "0.11.0" } } }, "openlup-core-v0.11.0").status, "a preview dist-tag the cached document does not show yet").not.toBe(0);
     const refusals: Array<[string, Record<string, Answer>, string?]> = [
       ["the version is held", { [document]: packument(["0.10.0", "0.11.0"]) }],
       ["a later version is held", { [document]: packument(["0.10.0", "0.12.0"]) }],
