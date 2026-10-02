@@ -122,15 +122,21 @@ is revoked, analysis may stop; it is not a new merge blocker in this pilot.
 
 ## Releasing a package
 
-Each `@openlup/*` package is released on its own version, independently of
-source previews. Source preview 11, which published `@openlup/core` `0.11.0` on
-the `preview` dist-tag, was the last lockstep cut that also published a package.
+While `@openlup/core` is below 1.0, the `@openlup/*` packages are released as
+one set, independently of source previews: one set version `0.N.P` from one
+commit, a tag `openlup-<package>-v<version>` per package at that commit, and
+every package republished in each set. A patch set only fixes; any API,
+behaviour or schema change is a minor set. Today the set has one package,
+`@openlup/core`, and its first set is `0.12.0`. Source preview 11, which
+published `@openlup/core` `0.11.0` on the `preview` dist-tag, was the last
+lockstep cut that also published a package.
 The [versioning policy](../../.github/VERSIONING_AND_EOL.md#package-releases)
 owns release permissions, setup, detailed refusals and recovery. The sequence is:
 
-1. Prepare the package's next `MAJOR.MINOR.PATCH` version, above every version
-   npm holds, with `npm run release:bump -- <package> <version>` in a reviewed
-   ordinary PR. A version bump by itself publishes nothing.
+1. Prepare the next set version, above every version npm holds, with
+   `npm run release:bump -- <package> <version>` for each package of the set in
+   a reviewed ordinary PR, and turn each changelog's Unreleased section into the
+   version's section. A version bump by itself publishes nothing.
 2. Select the exact reviewed main commit that carries the version and check its
    six mechanical contexts, then run `packages:check` with the package release tag.
 3. With explicit authority, dispatch `publish-package.yml` from main with the

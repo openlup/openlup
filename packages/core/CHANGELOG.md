@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.12.0]
+
 ### Removed
 
 - **API REMOVAL: the `./checkout` subpath.** It held only an
@@ -45,6 +47,15 @@ SemVer promise.
   `dunning_not_exhausted`. An exhaustive `switch` over the union must handle
   both.
 
+- `release-gates.json` sets `packageRelease.versionRule` to `0.N.P`. Below
+  1.0 every `@openlup/*` package carries one set version: a minor set for any
+  API, behaviour or schema change, a patch set for a fix only.
+
+  Migration: a tool that reads `versionRule` expects the set rule. Before:
+  `"versionRule": "0.<n>.0"`. After: `"versionRule": "0.N.P"`.
+
+- Publishable on the npm `latest` dist-tag as `0.12.0`, from tag
+  `openlup-core-v0.12.0`.
 - Publishable on the npm `preview` dist-tag as `0.11.0`, for source preview
   `openlup-source-preview/11`.
 - Publishable on the npm `preview` dist-tag as `0.10.0`, for source preview
@@ -251,6 +262,9 @@ SemVer promise.
 
 ## Release Status
 
-No npm version has been released yet. A `preview` version establishes no
-stable package API or supported upgrade channel. Add a dated section only
-after a version is published.
+Versions up to `0.11.0` were published on the npm `preview` dist-tag without
+sections of their own, so the `0.12.0` section also lists the changes they
+carried. A release-preparation pull request turns the Unreleased section into
+the next version's section; its release tag and npm record when it is
+published. No version establishes a stable package API or supported upgrade
+channel.

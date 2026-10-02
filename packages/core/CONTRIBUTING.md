@@ -1,8 +1,10 @@
 # Contributing
 
 Commerce Core is public source for framework-independent commerce kernels.
-Its npm versions ride on the source previews (`preview` dist-tag only) and
-activate no separate package product or stable API.
+Below 1.0 its npm versions are set versions `0.N.P`, shared by every
+`@openlup/*` package and published on the `latest` dist-tag; versions up to
+`0.11.0` rode on the source previews (`preview` dist-tag only). No version
+activates a separate package product or stable API.
 
 ## Set up and verify
 

@@ -499,10 +499,14 @@ cannot ship them past their announced removal.
 Platform modules are contributed package-first: a reusable module becomes an
 `@openlup/*` package with documented extension seams, and the reference
 application consumes that package. Source-only changes are for the reference
-application and documentation. Each package is released on its own semantic
-version, independently of source previews. A release-preparation pull request
-runs `npm run release:bump -- <package> <version>`, which updates only that
-package's version carriers and its changelog; merging it authorizes no release.
+application and documentation. While `@openlup/core` is below 1.0, the
+packages are released as one set, independently of source previews: one set
+version `0.N.P` from one commit, with each package tagged
+`openlup-<package>-v<version>` at that commit and republished in every set. A
+release-preparation pull request runs `npm run release:bump -- <package> <version>`
+for each package of the set, which updates only that package's version carriers
+and its changelog line; the pull request also turns each changelog's Unreleased
+section into the version's section. Merging it authorizes no release.
 A release is then dispatched with `publish-package.yml` for the reviewed commit,
 and the maintainer's approval of the protected `release` environment authorizes
 it. The package workflow independently verifies the App-published immutable

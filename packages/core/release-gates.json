@@ -9,7 +9,7 @@
     "phase": "platform-monorepo-phase-5",
     "publicStability": "not-claimed",
     "artifactChannel": "npm-staged-preview",
-    "versionRule": "0.<n>.0"
+    "versionRule": "0.N.P"
   },
   "evidence": {
     "packageSmokeEvidence": {

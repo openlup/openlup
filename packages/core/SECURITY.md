@@ -2,10 +2,10 @@
 
 ## Release Support
 
-No package version is supported. A `0.<n>.0` version on the `preview`
-dist-tag is development-preview evaluation, not a supported public release. A
-future support policy belongs to phase-5 public platform governance, not to a
-separate package release channel.
+No package version is supported. A `0.N.P` version, on the `preview` dist-tag
+up to `0.11.0` or on `latest` after it, is development-preview evaluation, not a
+supported public release. A future support policy belongs to phase-5 public
+platform governance, not to a separate package release channel.
 
 ## Vulnerability Reporting
 

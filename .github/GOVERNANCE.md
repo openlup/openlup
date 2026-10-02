@@ -117,8 +117,8 @@ name is decided, and every identifier in the source now agrees with it: the
 repository manifest, the kernel package, the UI package, and the configuration
 assistant all read `openlup`. The npm scope was claimed by the owner on
 2026-08-24. Development-preview packages are released under it package-first:
-each `@openlup/*` package on its own version, behind the protected release
-approval described in
+below `@openlup/core` 1.0, every `@openlup/*` package in one set version, each
+with its own tag, behind the protected release approval described in
 [Versioning and end of life](VERSIONING_AND_EOL.md#package-releases). None of
 them is a supported release, so **do not depend on a package name, version,
 branch, commit, or source checkout as a supported interface yet**. A supported
