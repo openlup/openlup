@@ -15,10 +15,7 @@ npm run ci
 
 The gate builds every export, runs standalone tests and isolated package smoke,
 verifies declaration snapshots, and checks license, SBOM, audit, pack, and
-publish controls. The root Vitest script does not collect this standalone suite.
-Published Tree CI invokes this package's `npm run ci` separately in its
-required test job, and the installed local verifier mirrors that step.
-A passing root suite alone does not prove the package checks.
+publish controls. Root Vitest excludes this suite; CI's required test job runs it separately.
 
 ## Scope
 
