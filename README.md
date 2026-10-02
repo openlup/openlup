@@ -61,6 +61,7 @@ with GET/HEAD methods. The reference refuses checkout, subscription, admin,
 API/BFF, cron and mutations. The build and checks do not start a database,
 payment provider or full subscription application. For the actual support
 boundary, see the [install support policy](.github/INSTALL_SUPPORT_POLICY.md).
+For the local-to-release sequence, use the [development and diagnostics guide](docs/platform/DEVELOPMENT_AND_RELEASE.md).
 Contributions use [CONTRIBUTING.md](CONTRIBUTING.md); a released source preview
 does not itself update any adopter.
 

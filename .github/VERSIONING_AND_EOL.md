@@ -95,6 +95,10 @@ the licence or make an already released artifact unavailable to fork.
 
 ## Before stable
 
+For the contributor-to-release sequence and diagnostic execution map, start with
+[Development, diagnostics and preview releases](../docs/platform/DEVELOPMENT_AND_RELEASE.md).
+This policy remains the owner of release permissions, channel rules and recovery.
+
 The project has not entered the stable channel. No current version is supported,
 and the stable support window above does not apply. Preview releases can break,
 but they still owe explicit, release-specific upgrade notes; "pre-1.0" is not
@@ -310,8 +314,10 @@ Before enabling it, the maintainer configures every item below:
 4. Allow the App to create `openlup-source-preview/*` tags in the **tag-creation
    ruleset**. Preserve restrictions on tag updates and deletions in a separate
    ruleset without an App bypass. The workflow refuses an existing tag and
-   never retags or deletes one. Main's existing required contexts remain
+   never retags or deletes one. The release preflight checks six mechanical contexts:
    `dco`, `typecheck`, `install-proof`, `test`, `self-check` and `gitleaks`.
+   Activated PR/queue native admission adds a separate required `native-review`
+   status; it is not a seventh release-preflight check or a main-push job.
 5. Enable **release immutability** for the repository (or enforce it from the
    organization). The workflow refuses before tag creation and again before
    publication if the setting is not enabled or cannot be read.
@@ -528,9 +534,9 @@ in both lockfiles, and regenerates the source release contract; otherwise the
 pack job refuses and that preview carries no package. Use `npm run release:bump -- <n>` in an ordinary PR to set the next version;
 after this gate merges, future cuts refuse a different lockstep version and run
 an unprivileged package preflight before requesting the `release` environment
-approval. This tree now carries the `0.9.0` bump and has removed the files
-marked for deletion by preview 9; neither the source preview nor the package
-has been published by this change. The preflight checks main ancestry and
+approval. Determine the selected candidate version from the package registry
+configuration and manifests, and publication from the immutable release and npm
+registry evidence; a version bump by itself publishes nothing. The preflight checks main ancestry and
 required contexts before installing without scripts,
 then packs the package once and scans the exact unpacked tarball with checksum-verified
 gitleaks 8.30.1. A failed scan refuses the cut before a tag exists.
