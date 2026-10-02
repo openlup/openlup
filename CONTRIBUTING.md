@@ -470,7 +470,7 @@ into a stable or supported artifact.
 
 <!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-28981a86a00b50d03374d5b365ac11eccb8e5ea72476b0d675ed03b41131d2c6","reason":"The catalog and retry tests inspect core source through the installed package in both workspace-linked and registry consumer layouts, and the catalog test requires a catalog TypeScript source file. The import-map test uses an alias whose target is infrastructure in both layouts. Lint rules, contributor commands, and required CI checks described here retain their behavior."} -->
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-97f7dcba22cf18c7100bcd552c84d48248950ec5f97d72aa30114f5a0530b876","reason":"Against the integrated main base, the root lockfile still changes only the core workspace version from 0.9.0 to 0.10.0. Dependency resolution, development-preview checks, and required contributor commands remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-da3911e1f7f7dec8cc75903915847c790c1c378c34734424e38a545f1dbbfd39","reason":"The root lockfile changes only the core workspace version from 0.10.0 to 0.11.0. Dependency resolution, development-preview checks, and required contributor commands remain unchanged."} -->
 
 <!-- openlup-doc-impact {"unit":"tests","digest":"sha256-e23f5b124da515a37baee7ec68971f347f56f2e0c3a38fe498e0e293bb3565dc","reason":"Test-only delta. The neutral catalog extension fixture adds a second installed type whose count pack dimension declares the net-content role, and asserts that an option differing from the SKU net content refuses. The file stays in the complete root Vitest diagnostic scope and outside the required test selectors; the test commands and CI jobs described here are unchanged."} -->
 

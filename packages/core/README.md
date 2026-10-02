@@ -89,4 +89,4 @@ neutrality evidence, not package activation or consumer compatibility evidence.
   late-payment cycle-shift rule and its monotonic clamp, and how a host
   application consumes it.
 
-<!-- openlup-doc-impact {"unit":"core","digest":"sha256-074e25741bf9bc6c0c2717eaa0af20b26a5d219c4a082397b702bfc12e2e245f","reason":"Against the integrated main base, the core manifest and lockfile still advance only the lockstep version from 0.9.0 to 0.10.0. Exports, package smoke, publication settings, and development-preview maturity remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"core","digest":"sha256-462894839183d70ffd3e1b2f2a34ea3088e7b8c3f95aa248246bf75299115e36","reason":"The core manifest and lockfile advance only the lockstep version from 0.10.0 to 0.11.0. Exports, dependencies, package smoke, publication settings, and development-preview maturity remain unchanged."} -->
