@@ -1,13 +1,14 @@
 // Seeded falsifiers for the package release workflows. Every release control is a predicate over
 // the committed workflow text, and each has at least one planted defect that must turn it red.
-// The event identity, tag pattern and tarball checks also run as the real step scripts.
+// The event identity, tag pattern and tarball checks also run as the real step scripts, and so does
+// the dispatch preflight up to its gate, against a target whose package.json runs code.
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 type Workflows = { dispatch: string; producer: string };
@@ -55,7 +56,27 @@ const TAKE_GATE = 'git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$R
 const DISPATCH_GATE = 'node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts"';
 const PRODUCER_GATE = "node --experimental-strip-types scripts/packages/release-gate.ts";
 const gateStep = (command: string) => `        env:\n          GITHUB_TOKEN: \${{ github.token }}\n        run: ${command}\n`;
-const TAKE_STEP = "Take the release gate from the dispatched main commit";
+const TAKE_STEP = "Take the release gate and the Node contract from the dispatched main commit";
+/** Main's gate, Node version and Node contract, copied outside the checkout before any step reads the target. */
+const TAKE_RUN = ["        id: main\n        run: |\n", `          ${TAKE_GATE}\n`, '          git show "$GITHUB_SHA:package.json" > "$RUNNER_TEMP/main-package.json"\n', '          node_version="$(git show "$GITHUB_SHA:.nvmrc")"\n', '          [[ "$node_version" =~ ^[1-9][0-9]*$ ]]\n', '          echo "node-version=$node_version" >> "$GITHUB_OUTPUT"\n'].join("");
+const SETUP_NODE = "uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version: ${{ steps.main.outputs.node-version }}\n          package-manager-cache: false\n";
+const MAIN_ASSERT_STEP = "Assert the Node and npm contract of the dispatched main commit";
+const MAIN_ASSERT = ["        working-directory: ${{ runner.temp }}\n        run: |\n", `          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"\n          test "$(npm --version)" = "11.19.0"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).engines.node')" = "24.x"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).packageManager')" = "npm@11.19.0"\n`].join("");
+const TARGET_ASSERT_STEP = "Assert the target's Node and npm contract";
+const LEG_IN_FLIGHT = "      # A re-run of a failed leg skips the preflight, so each leg refuses too while a release or\n      # publication of another run has not completed; it could otherwise cancel a pending publication.\n";
+const RELEASE_TAKE = "      # As in the preflight: main's gate, Node version and Node contract, before any target file.\n";
+/** The contract assertion as it was: in the checkout, with require of the target's package.json. */
+const OLD_ASSERT = `        run: |\n          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"\n          test "$(npm --version)" = "11.19.0"\n          test "$(node -p 'require("./package.json").engines.node')" = "24.x"\n          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"\n`;
+/** After the gate, the target's own contract, read as data. */
+const TARGET_ASSERT = ["        run: |\n", `          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node.split(".")[0]')"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"\n`].join("");
+const TARGET_ASSERT_TEXT = `      # After the gate the target is main's code; its own contract is read as data, never run.\n      - name: ${TARGET_ASSERT_STEP}\n${TARGET_ASSERT}`;
+/** Each step of a job: its name, or the first line of an unnamed step. */
+const stepList = (jobText: string) => jobText.split(/^ {6}- /mu).slice(1).map((text) => text.slice(text.startsWith("name: ") ? 6 : 0, text.indexOf("\n")));
+/** Until the gate passes a job reads no file of the target: then come these steps, in this order. */
+const GATE_FIRST = {
+  preflight: [TAKE_STEP, SETUP_NODE.split("\n")[0]!, MAIN_ASSERT_STEP, "Refuse while any package release or publication is in flight", "Check main ancestry and required contexts before running target code", TARGET_ASSERT_STEP, "run: npm ci --ignore-scripts --no-audit --fund=false"],
+  release: [TAKE_STEP, SETUP_NODE.split("\n")[0]!, MAIN_ASSERT_STEP, "Refuse while any package release or publication is in flight", "The target commit is on main and passed the required contexts", TARGET_ASSERT_STEP, "Repeat the manifest, version, tag and npm refusals and prepare the note"],
+} as const;
 const IN_FLIGHT_STEP = "Refuse while any package release or publication is in flight";
 const GATE_STEPS = { preflight: "Check main ancestry and required contexts before running target code", release: "The target commit is on main and passed the required contexts", pack: "The release commit is on main and passed the required contexts" };
 const TAG_STEP = "Create the exact annotated tag with the release identity";
@@ -111,14 +132,22 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     && stepBody(job(dispatch, "release"), GATE_STEPS.release) === gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)
     && stepBody(job(producer, "pack"), GATE_STEPS.pack) === gateStep(`${PRODUCER_GATE} commit "$GITHUB_SHA"`),
   "both workflows decide main and the checks with the one release gate": ({ dispatch, producer }) => [dispatch, producer].every((text) => !/merge-base|check-runs|for context in|origin main\b|\/git\/tags|\/git\/refs/u.test(text))
-    && ["preflight", "release"].every((name) => stepBody(job(dispatch, name), TAKE_STEP) === `        run: ${TAKE_GATE}\n` && inOrder(job(dispatch, name), [TAKE_GATE, DISPATCH_GATE]))
-    && count(dispatch, TAKE_GATE) === 2 && count(dispatch, DISPATCH_GATE) === 4 && count(dispatch, "release-gate.mts") === 6
+    && ["preflight", "release"].every((name) => stepBody(job(dispatch, name), TAKE_STEP) === TAKE_RUN && inOrder(job(dispatch, name), [TAKE_GATE, DISPATCH_GATE]))
+    && count(dispatch, TAKE_GATE) === 2 && count(dispatch, DISPATCH_GATE) === 5 && count(dispatch, "release-gate.mts") === 7
     && !/node [^\n]*scripts\/packages\/release-gate\.ts/u.test(dispatch)
     && count(producer, PRODUCER_GATE) === 1 && count(producer, `${PRODUCER_GATE} commit "$GITHUB_SHA"\n`) === 1,
+  "no target file is read or run before main's gate passes": ({ dispatch }) => (["preflight", "release"] as const).every((name) => {
+    const text = job(dispatch, name);
+    const expected = ["Validate dispatch coordinates before checkout", "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7", ...GATE_FIRST[name]];
+    return JSON.stringify(stepList(text).slice(0, expected.length)) === JSON.stringify(expected)
+      && stepBody(text, TAKE_STEP) === TAKE_RUN && stepBody(text, MAIN_ASSERT_STEP) === MAIN_ASSERT && stepBody(text, TARGET_ASSERT_STEP) === TARGET_ASSERT && text.includes(`      - ${SETUP_NODE}`);
+  }) && !dispatch.includes("node-version-file") && !/require\((?!"node:)/u.test(dispatch),
   "the release gate tags the approved commit": ({ dispatch }) => stepBody(job(dispatch, "release"), TAG_STEP) === TAG_RUN && count(dispatch, `${DISPATCH_GATE} tag `) === 1,
   "a later dispatch refuses rather than cancel a queued publication": ({ dispatch }) => !/^concurrency:/mu.test(dispatch) && !job(dispatch, "preflight").includes("concurrency:")
     && stepBody(job(dispatch, "preflight"), IN_FLIGHT_STEP) === gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)
-    && inOrder(job(dispatch, "preflight"), [TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts"]),
+    && inOrder(job(dispatch, "preflight"), [TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts"])
+    && stepBody(job(dispatch, "release"), IN_FLIGHT_STEP) === gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)
+    && inOrder(job(dispatch, "release"), [TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "package-release.ts prepare"]),
   "refusing checks before every write": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["Validate dispatch coordinates before checkout", "actions/checkout@", TAKE_GATE, `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts preflight", PACK_RUN, "sha256sum --check --strict", "gitleaks dir"])
     && inOrder(job(dispatch, "release"), ["Validate dispatch coordinates before checkout", TAKE_GATE, `${DISPATCH_GATE} commit`, "package-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY", "immutable-releases", `${DISPATCH_GATE} tag`, 'git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"', DRAFT_TAG_REF, '--method POST "repos/$GITHUB_REPOSITORY/releases"', "package-release.ts check-draft", "--method PATCH"])
     && step(dispatch, "Create the draft release").includes(`          ${DRAFT_TAG_REF}\n`)
@@ -155,9 +184,9 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     && step(producer, "Verify the annotated tag and GitHub release attestation").includes('echo "package=$package" >> "$GITHUB_OUTPUT"'),
   "pinned secret scans before the tag and before publishing": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), [...GITLEAKS_INSTALL, 'for tarball in "$RUNNER_TEMP"/packs/*.tgz; do', 'test -f "$tarball"', 'tar -xzf "$tarball" -C "$target"', GITLEAKS_SCAN])
     && inOrder(job(producer, "pack"), [...GITLEAKS_INSTALL, "for tarball in packs/*.tgz; do", 'tar -xzf "$tarball" -C "$target"', GITLEAKS_SCAN]),
-  "exact permission sets": ({ dispatch, producer }) => JSON.stringify(permissionBlocks(dispatch)) === JSON.stringify(["permissions: {}\n", "    permissions:\n      contents: read\n      checks: read\n      actions: read\n", "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n"])
+  "exact permission sets": ({ dispatch, producer }) => JSON.stringify(permissionBlocks(dispatch)) === JSON.stringify(["permissions: {}\n", "    permissions:\n      contents: read\n      checks: read\n      actions: read\n", "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n      actions: read\n"])
     && JSON.stringify(permissionBlocks(producer)) === JSON.stringify(["permissions: {}\n", "    permissions:\n      contents: read\n      checks: read\n      attestations: read\n", "    permissions:\n      id-token: write\n"])
-    && job(dispatch, "preflight").includes("    permissions:\n      contents: read\n      checks: read\n      actions: read\n    env:") && job(dispatch, "release").includes("    environment: release\n    permissions:\n      contents: read\n      checks: read\n      attestations: read\n")
+    && job(dispatch, "preflight").includes("    permissions:\n      contents: read\n      checks: read\n      actions: read\n    env:") && job(dispatch, "release").includes("    environment: release\n    permissions:\n      contents: read\n      checks: read\n      attestations: read\n      actions: read\n    env:")
     && job(producer, "pack").includes("    permissions:\n      contents: read\n      checks: read\n      attestations: read\n") && job(producer, "publish").includes("    permissions:\n      id-token: write\n"),
   "exact App token grant": ({ dispatch, producer }) => step(dispatch, "Obtain the maintainer-configured release identity") === APP_IDENTITY && count(dispatch, "create-github-app-token@") === 1 && !producer.includes("create-github-app-token"),
   "exact run conditions": ({ dispatch, producer }) => JSON.stringify(conditions(dispatch)) === JSON.stringify([`    ${GATE}`, `    ${GATE}`, "        if: failure()"])
@@ -210,12 +239,26 @@ const DEFECTS: Defect[] = [
   { control: "both workflows decide main and the checks with the one release gate", plant: "the release job runs the target's own gate", in: "dispatch", from: `      - name: ${GATE_STEPS.release}\n        env:\n          GITHUB_TOKEN: \${{ github.token }}\n        run: ${DISPATCH_GATE}`, to: `      - name: ${GATE_STEPS.release}\n        env:\n          GITHUB_TOKEN: \${{ github.token }}\n        run: ${PRODUCER_GATE}` },
   { control: "both workflows decide main and the checks with the one release gate", plant: "the gate taken from the target commit", in: "dispatch", from: '"$GITHUB_SHA:scripts/packages/release-gate.ts"', to: '"$TARGET_COMMIT:scripts/packages/release-gate.ts"' },
   { control: "both workflows decide main and the checks with the one release gate", plant: "a second required-check query in the dispatch", in: "dispatch", from: "      - run: npm ci --ignore-scripts --no-audit --fund=false\n", to: '      - run: gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_COMMIT/check-runs?check_name=test" --jq .total_count\n      - run: npm ci --ignore-scripts --no-audit --fund=false\n' },
+  { control: "no target file is read or run before main's gate passes", plant: "setup-node reads the target's .nvmrc", in: "dispatch", from: "          node-version: ${{ steps.main.outputs.node-version }}\n", to: "          node-version-file: .nvmrc\n" },
+  { control: "no target file is read or run before main's gate passes", plant: "the release job's setup-node reads the target's .nvmrc", in: "dispatch", from: `${RELEASE_TAKE}      - name: ${TAKE_STEP}\n${TAKE_RUN}      - ${SETUP_NODE}`, to: `${RELEASE_TAKE}      - name: ${TAKE_STEP}\n${TAKE_RUN}      - ${SETUP_NODE.replace("node-version: ${{ steps.main.outputs.node-version }}", "node-version-file: .nvmrc")}` },
+  { control: "no target file is read or run before main's gate passes", plant: "a require of the target's package.json before the gate", in: "dispatch", from: 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).engines.node', to: 'require("./package.json").engines.node' },
+  { control: "no target file is read or run before main's gate passes", plant: "a require of the target's package.json after the gate", in: "dispatch", from: 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node', to: 'require("./package.json").engines.node' },
+  { control: "no target file is read or run before main's gate passes", plant: "a step reading the target tree before the preflight's gate", in: "dispatch", from: `      - name: ${IN_FLIGHT_STEP}\n`, to: `      - name: Read the target early\n        run: cat package.json\n      - name: ${IN_FLIGHT_STEP}\n` },
+  { control: "no target file is read or run before main's gate passes", plant: "the target's contract asserted before the release job's gate", in: "dispatch", from: `      # The same release gate as the preflight and publish-packages.yml.\n      - name: ${GATE_STEPS.release}\n`, to: `      - name: ${TARGET_ASSERT_STEP}\n        run: cat .nvmrc package.json\n      # The same release gate as the preflight and publish-packages.yml.\n      - name: ${GATE_STEPS.release}\n` },
+  { control: "no target file is read or run before main's gate passes", plant: "a require of the target's package.json before a leg's gate", in: "dispatch", from: `${MAIN_ASSERT}${LEG_IN_FLIGHT}`, to: `${OLD_ASSERT}${LEG_IN_FLIGHT}` },
+  { control: "no target file is read or run before main's gate passes", plant: "a leg's gate copied from the checkout", in: "dispatch", from: `${RELEASE_TAKE}      - name: ${TAKE_STEP}\n        id: main\n        run: |\n          ${TAKE_GATE}\n`, to: `${RELEASE_TAKE}      - name: ${TAKE_STEP}\n        id: main\n        run: |\n          cp scripts/packages/release-gate.ts "$RUNNER_TEMP/release-gate.mts"\n` },
+  { control: "no target file is read or run before main's gate passes", plant: "the gate copied from the checkout", in: "dispatch", from: TAKE_GATE, to: 'cp scripts/packages/release-gate.ts "$RUNNER_TEMP/release-gate.mts"' },
+  { control: "no target file is read or run before main's gate passes", plant: "the Node version read from the checkout", in: "dispatch", from: 'node_version="$(git show "$GITHUB_SHA:.nvmrc")"', to: 'node_version="$(cat .nvmrc)"' },
+  { control: "no target file is read or run before main's gate passes", plant: "the Node contract copied from the checkout", in: "dispatch", from: 'git show "$GITHUB_SHA:package.json" > "$RUNNER_TEMP/main-package.json"', to: 'cp package.json "$RUNNER_TEMP/main-package.json"' },
+  { control: "no target file is read or run before main's gate passes", plant: "node and npm asserted inside the checkout", in: "dispatch", from: "        working-directory: ${{ runner.temp }}\n", to: "" },
   { control: "the release gate tags the approved commit", plant: "the tag on the dispatched main commit", in: "dispatch", from: `tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"`, to: `tag "$GITHUB_SHA" "$PACKAGE" "$VERSION"` },
   { control: "the release gate tags the approved commit", plant: "the tag written outside the gate on the main tip", in: "dispatch", from: `          ${DISPATCH_GATE} tag "$TARGET_COMMIT" "$PACKAGE" "$VERSION"\n`, to: '          gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" -f tag="openlup-$PACKAGE-v$VERSION" -f object="$(git rev-parse refs/remotes/origin/main)" -f type=commit\n' },
   { control: "a later dispatch refuses rather than cancel a queued publication", plant: "the whole dispatch queues in the package's group", in: "dispatch", from: "\npermissions: {}\n\njobs:", to: "\npermissions: {}\n\nconcurrency:\n  group: openlup-package-release-${{ inputs.package }}\n  cancel-in-progress: false\n\njobs:" },
   { control: "a later dispatch refuses rather than cancel a queued publication", plant: "the preflight queues in the package's group", in: "dispatch", from: "    timeout-minutes: 20\n    permissions:", to: `    timeout-minutes: 20\n${RELEASE_GROUP}    permissions:` },
+  { control: "a later dispatch refuses rather than cancel a queued publication", plant: "a re-run leg without the in-flight refusal", in: "dispatch", from: `${LEG_IN_FLIGHT}      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}`, to: "" },
+  { control: "a later dispatch refuses rather than cancel a queued publication", plant: "a leg that refuses only for another run ID", in: "dispatch", from: `${LEG_IN_FLIGHT}      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}`, to: `${LEG_IN_FLIGHT}      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_NUMBER"`)}` },
   { control: "a later dispatch refuses rather than cancel a queued publication", plant: "no in-flight refusal", in: "dispatch", from: `run: ${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`, to: "run: echo skipped" },
-  { control: "a later dispatch refuses rather than cancel a queued publication", plant: "the in-flight refusal after the install", in: "dispatch", from: `      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}      - name: ${GATE_STEPS.preflight}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}      - run: npm ci --ignore-scripts --no-audit --fund=false\n`, to: `      - name: ${GATE_STEPS.preflight}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}      - run: npm ci --ignore-scripts --no-audit --fund=false\n      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}` },
+  { control: "a later dispatch refuses rather than cancel a queued publication", plant: "the in-flight refusal after the install", in: "dispatch", from: `      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}      - name: ${GATE_STEPS.preflight}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}${TARGET_ASSERT_TEXT}      - run: npm ci --ignore-scripts --no-audit --fund=false\n`, to: `      - name: ${GATE_STEPS.preflight}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}${TARGET_ASSERT_TEXT}      - run: npm ci --ignore-scripts --no-audit --fund=false\n      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}` },
   { control: "refusing checks before every write", plant: "no tarball scan before tagging", in: "dispatch", from: '          gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner\n', to: "" },
   { control: "refusing checks before every write", plant: "draft published unchecked", in: "dispatch", from: "        run: node --experimental-strip-types scripts/packages/package-release.ts check-draft\n", to: "        run: echo skipped\n" },
   { control: "refusing checks before every write", plant: "no pack check at publication", in: "producer", from: "          npm run packages:check -- --out packs --release-tag \"$RELEASE_TAG\"\n", to: "          npm pack --pack-destination packs\n" },
@@ -325,6 +368,93 @@ describe("package release workflow controls", () => {
       expect(failing({ ...committed, dispatch: insert(committed.dispatch, line) }), line).toContain(control);
     }
   });
+});
+
+describe("the dispatch preflight against a target whose package.json is a directory", () => {
+  const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
+  const identity = { GIT_AUTHOR_NAME: "fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", env: { ...inherited, ...identity }, stdio: ["ignore", "pipe", "pipe"] }).trim();
+  // Run by require("./package.json"): it records that target code ran and replaces the main gate copy.
+  const HOSTILE = 'const { writeFileSync } = require("node:fs");\nconst temp = Reflect.get(process, "env").RUNNER_TEMP;\nwriteFileSync(`${temp}/target-code-ran`, "yes");\nwriteFileSync(`${temp}/release-gate.mts`, "console.log(\\"forged gate\\");\\n");\nmodule.exports = { engines: { node: "24.x" }, packageManager: "npm@11.19.0" };\n';
+  let scratch = "", clone = "", main = "", side = "";
+
+  beforeAll(() => {
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), "openlup-hostile-target-")));
+    const origin = join(scratch, "origin");
+    const write = (path: string, contents: string) => { mkdirSync(dirname(join(origin, path)), { recursive: true }); writeFileSync(join(origin, path), contents); };
+    mkdirSync(origin);
+    git(origin, "init", "--quiet");
+    git(origin, "checkout", "--quiet", "-b", "main");
+    write("scripts/packages/release-gate.ts", readFileSync(join(ROOT, "scripts/packages/release-gate.ts"), "utf8"));
+    write(".nvmrc", "24\n");
+    write("package.json", '{ "engines": { "node": "24.x" }, "packageManager": "npm@11.19.0" }\n');
+    git(origin, "add", "--all");
+    git(origin, "commit", "--quiet", "-m", "main");
+    main = git(origin, "rev-parse", "HEAD");
+    git(origin, "checkout", "--quiet", "-b", "side");
+    rmSync(join(origin, "package.json"));
+    write("package.json/index.js", HOSTILE);
+    write("scripts/packages/release-gate.ts", 'console.log("forged gate");\n');
+    git(origin, "add", "--all");
+    git(origin, "commit", "--quiet", "-m", "off main");
+    side = git(origin, "rev-parse", "HEAD");
+    git(origin, "checkout", "--quiet", "main");
+    clone = join(scratch, "clone");
+    execFileSync("git", ["-c", "core.hooksPath=/dev/null", "clone", "--quiet", origin, clone], { stdio: "ignore" });
+    git(clone, "checkout", "--quiet", "--detach", side);
+  });
+  afterAll(() => { rmSync(scratch, { recursive: true, force: true }); });
+
+  /** A job's run steps from its checkout to its gate, in order. The in-flight refusal only reads GitHub. */
+  function untilGate(dispatch: string, name: "preflight" | "release") {
+    const parts = job(dispatch, name).split(/^ {6}- /mu).slice(1);
+    const start = parts.findIndex((part) => part.startsWith("uses: actions/checkout@"));
+    const end = parts.findIndex((part) => part.startsWith(`name: ${GATE_STEPS[name]}\n`));
+    return parts.slice(start + 1, end + 1).filter((part) => !part.startsWith("uses: ") && !part.startsWith(`name: ${IN_FLIGHT_STEP}\n`)).map((part) => ({
+      run: /^ {8}run: (?!\|)(.*)$/mu.exec(part)?.[1] ?? (part.split("        run: |\n")[1] ?? "").replace(/(?: {6}#[^\n]*\n)+$/u, "").replace(/^ {10}/gmu, ""),
+      inTemp: part.includes("        working-directory: ${{ runner.temp }}\n"),
+    }));
+  }
+  /** Runs those steps as the runner does, in the checkout of the off-main target, and stops at the first failure. */
+  function upToGate(dispatch: string, name: "preflight" | "release") {
+    const temp = realpathSync(mkdtempSync(join(scratch, "runner-temp-")));
+    writeFileSync(join(temp, "github-output"), "");
+    const env = { ...inherited, GITHUB_SHA: main, TARGET_COMMIT: side, RUNNER_TEMP: temp, GITHUB_OUTPUT: join(temp, "github-output"), GITHUB_TOKEN: "", GITHUB_RUN_ID: "1", PACKAGE: "core", VERSION: "0.12.1" };
+    for (const { run, inTemp } of untilGate(dispatch, name)) {
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", run], { cwd: inTemp ? temp : clone, env, encoding: "utf8", timeout: 30_000 });
+      if (result.status !== 0) return { passed: false, stderr: result.stderr.trim(), targetRan: existsSync(join(temp, "target-code-ran")) };
+    }
+    return { passed: true, stderr: "", targetRan: existsSync(join(temp, "target-code-ran")) };
+  }
+  const refusedByMainGate = (result: ReturnType<typeof upToGate>) => !result.passed && !result.targetRan && result.stderr === `release gate: ${side} is not on main, whose tip is ${main}`;
+
+  it("refuses the off-main target with main's gate before any target code runs, in the preflight and in each leg", () => {
+    for (const name of ["preflight", "release"] as const) {
+      expect(untilGate(committed.dispatch, name).map(({ run }) => run.split("\n")[0]), name).toEqual([TAKE_GATE, `test "$(node -p 'process.versions.node.split(".")[0]')" = "24"`, `${DISPATCH_GATE} commit "$TARGET_COMMIT"`]);
+      const result = upToGate(committed.dispatch, name);
+      expect(refusedByMainGate(result), `${name}: ${JSON.stringify(result)}`).toBe(true);
+    }
+  }, 60_000);
+
+  it("lets the target's code forge the gate when a planted step reads the target first, in either job", () => {
+    const early = `      - name: Read the target early\n        run: node -e 'require("./package.json")'\n      - name: ${IN_FLIGHT_STEP}\n`;
+    const plants: Array<[string, "preflight" | "release", string, string]> = [
+      ["the main contract asserted with require in the checkout, as before", "preflight", MAIN_ASSERT, OLD_ASSERT],
+      ["the gate copied from the checkout", "preflight", TAKE_GATE, 'cp scripts/packages/release-gate.ts "$RUNNER_TEMP/release-gate.mts"'],
+      ["a step running the target's package.json before the gate", "preflight", `      - name: ${IN_FLIGHT_STEP}\n`, early],
+      ["a leg's contract asserted with require in the checkout, as before", "release", `${MAIN_ASSERT}${LEG_IN_FLIGHT}`, `${OLD_ASSERT}${LEG_IN_FLIGHT}`],
+      ["a leg's gate copied from the checkout", "release", `${RELEASE_TAKE}      - name: ${TAKE_STEP}\n        id: main\n        run: |\n          ${TAKE_GATE}\n`, `${RELEASE_TAKE}      - name: ${TAKE_STEP}\n        id: main\n        run: |\n          cp scripts/packages/release-gate.ts "$RUNNER_TEMP/release-gate.mts"\n`],
+      ["a leg's step running the target's package.json before its gate", "release", `${LEG_IN_FLIGHT}      - name: ${IN_FLIGHT_STEP}\n`, `${LEG_IN_FLIGHT}${early}`],
+    ];
+    for (const [plant, name, from, to] of plants) {
+      // A preflight anchor occurs in both jobs and the preflight's comes first; a leg's anchor is its own.
+      expect(committed.dispatch.split(from), plant).toHaveLength(name === "preflight" ? 3 : 2);
+      const planted = committed.dispatch.replace(from, () => to);
+      const result = upToGate(planted, name);
+      expect(refusedByMainGate(result), `${plant}: ${JSON.stringify(result)}`).toBe(false);
+      expect(result.targetRan || result.passed, plant).toBe(true);
+    }
+  }, 60_000);
 });
 
 describe("the release event step", () => {

@@ -7,7 +7,9 @@
 # Inert until the maintainer completes the setup in .github/VERSIONING_AND_EOL.md and enables
 # OPENLUP_PACKAGE_RELEASE. Main ancestry, the required contexts and the tag's commit are decided
 # by scripts/packages/release-gate.ts as it is at the dispatched main commit, run as one file
-# outside the checkout: the target's own code never decides whether the target is released. The
+# outside the checkout: the target's own code never decides whether the target is released. Both
+# jobs take that gate, the Node version (.nvmrc) and the Node contract (package.json) from the
+# dispatched main commit, and read no file of the target until the gate has passed. The
 # unprivileged preflight checks, before the protected release environment asks for approval, that:
 # - no release or publication of any package is in flight, so this dispatch never waits in a
 #   concurrency group where it could cancel a queued publication;
@@ -22,7 +24,9 @@
 #   only from nothing. The set skips a package npm already holds with the same tarball, leaves a
 #   package whose release exists but npm lacks the version to the re-run of its failed
 #   publication, releases the rest in full, and stops on any other state.
-# The release job runs once per package to release in full; its legs wait for one approval.
+# The release job runs once per package to release in full; its legs wait for one approval. Each
+# leg also refuses while another run's release or publication is in flight, since a re-run of a
+# failed leg skips the preflight.
 # The pack and the scan run only here. Before the release App token exists, the release job
 # re-verifies the main ancestry and contexts, the manifest policy and version
 # (`packages:check --release-tag`, with no install, build or pack), the patch-set check, the
@@ -86,19 +90,27 @@ jobs:
           ref: ${{ inputs.target_commit }}
           fetch-depth: 0
           persist-credentials: false
-      # The release gate is the file at the dispatched main commit, kept outside the checkout.
-      - name: Take the release gate from the dispatched main commit
-        run: git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"
+      # Until the gate passes, no step reads or runs a file of the target: the gate, the Node version
+      # and the Node contract are main's, copied outside the checkout, and npm runs outside it too.
+      - name: Take the release gate and the Node contract from the dispatched main commit
+        id: main
+        run: |
+          git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"
+          git show "$GITHUB_SHA:package.json" > "$RUNNER_TEMP/main-package.json"
+          node_version="$(git show "$GITHUB_SHA:.nvmrc")"
+          [[ "$node_version" =~ ^[1-9][0-9]*$ ]]
+          echo "node-version=$node_version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ steps.main.outputs.node-version }}
           package-manager-cache: false
-      - name: Assert Node and npm contract
+      - name: Assert the Node and npm contract of the dispatched main commit
+        working-directory: ${{ runner.temp }}
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
           test "$(npm --version)" = "11.19.0"
-          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
-          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).engines.node')" = "24.x"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).packageManager')" = "npm@11.19.0"
       # GitHub keeps one pending run per concurrency group and cancels the older one, so a dispatch
       # that waited behind another could cancel a queued publication. It refuses instead.
       - name: Refuse while any package release or publication is in flight
@@ -109,6 +121,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" commit "$TARGET_COMMIT"
+      # After the gate the target is main's code; its own contract is read as data, never run.
+      - name: Assert the target's Node and npm contract
+        run: |
+          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node.split(".")[0]')"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
       - run: npm ci --ignore-scripts --no-audit --fund=false
       - name: Refuse a mismatched version, an existing tag and a version npm holds or passed
         env:
@@ -172,6 +190,7 @@ jobs:
       contents: read
       checks: read
       attestations: read
+      actions: read
     env:
       PACKAGE: ${{ matrix.package }}
       DISPATCH: ${{ inputs.package }}
@@ -192,24 +211,43 @@ jobs:
           ref: ${{ inputs.target_commit }}
           fetch-depth: 0
           persist-credentials: false
-      # The release gate is the file at the dispatched main commit, kept outside the checkout.
-      - name: Take the release gate from the dispatched main commit
-        run: git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"
+      # As in the preflight: main's gate, Node version and Node contract, before any target file.
+      - name: Take the release gate and the Node contract from the dispatched main commit
+        id: main
+        run: |
+          git show "$GITHUB_SHA:scripts/packages/release-gate.ts" > "$RUNNER_TEMP/release-gate.mts"
+          git show "$GITHUB_SHA:package.json" > "$RUNNER_TEMP/main-package.json"
+          node_version="$(git show "$GITHUB_SHA:.nvmrc")"
+          [[ "$node_version" =~ ^[1-9][0-9]*$ ]]
+          echo "node-version=$node_version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ steps.main.outputs.node-version }}
           package-manager-cache: false
-      - name: Assert Node and npm contract
+      - name: Assert the Node and npm contract of the dispatched main commit
+        working-directory: ${{ runner.temp }}
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
           test "$(npm --version)" = "11.19.0"
-          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
-          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).engines.node')" = "24.x"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("main-package.json", "utf8")).packageManager')" = "npm@11.19.0"
+      # A re-run of a failed leg skips the preflight, so each leg refuses too while a release or
+      # publication of another run has not completed; it could otherwise cancel a pending publication.
+      - name: Refuse while any package release or publication is in flight
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" in-flight "$GITHUB_RUN_ID"
       # The same release gate as the preflight and publish-packages.yml.
       - name: The target commit is on main and passed the required contexts
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node --experimental-strip-types "$RUNNER_TEMP/release-gate.mts" commit "$TARGET_COMMIT"
+      # After the gate the target is main's code; its own contract is read as data, never run.
+      - name: Assert the target's Node and npm contract
+        run: |
+          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node.split(".")[0]')"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
       # No install, build or pack here: the pack and the scan ran in the unprivileged preflight.
       - name: Repeat the manifest, version, tag and npm refusals and prepare the note
         env:

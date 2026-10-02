@@ -564,16 +564,22 @@ A release takes three steps:
    version, the reviewed full target commit SHA on `main` and the exact release
    note body, which every package's release carries. The unprivileged
    `preflight` job of [`publish-package.yml`](workflows/publish-package.yml)
-   refuses while a run of `publish-package.yml` or `publish-packages.yml` for any
-   package has not completed, and names that run. It then checks that the target
+   reads no file of the target until the release gate has passed: the gate, the
+   Node version (`.nvmrc`) and the Node contract (`package.json`, parsed as data)
+   are copied from the dispatched `main` commit. It refuses while a run of
+   `publish-package.yml` or `publish-packages.yml` for any package has not
+   completed, and names that run. It then checks that the target
    is on `main`, as fetched from origin, and that the six required contexts passed
    there, and that every publishable package carries the set version
    (`packages:check --release-set`). A patch set (`0.N.P`, P above 0) only fixes,
    so it is refused when a package's API snapshot (`packages/<package>/api/`)
    differs from the one at its previous set tag `openlup-<package>-v0.N.<p>`, or
-   when the package has no such tag. Only an annotated tag with the release App
-   as tagger and the release message counts; a lightweight or hand-made tag does
-   not move that baseline. It then packs every publishable package with
+   when the package has no such tag. What protects that baseline is the
+   tag-creation ruleset, which lets only the release App and administrators
+   create these tags. The check itself only adds consistency: it counts an
+   annotated tag with the release App's tagger line and the release message, so a
+   lightweight or hand-made tag is ignored, but a tagger line proves nothing on
+   its own. It then packs every publishable package with
    `npm run packages:check -- --out <dir> --release-set <version>` and scans the
    unpacked tarballs with checksum-verified gitleaks 8.30.1. Last, it decides
    each package by [its state](#resuming-a-set) and passes the packages to
@@ -587,7 +593,9 @@ A release takes three steps:
 3. **Approval.** The `release` job runs once per package to release in full.
    Those runs wait for the protected `release` environment together, so one
    maintainer approval covers the set. A failed run leaves the others to finish.
-   Before the release App token exists, each run
+   Each run takes main's gate and Node contract the same way, and, because a
+   re-run of a failed run skips the preflight, refuses again while another run's
+   release or publication is in flight. Before the release App token exists, each run
    re-verifies the target's main ancestry and required contexts, the manifest
    policy and version with `packages:check --release-tag` (no install, build or
    pack), the patch-set check, the absent tag and npm. It installs nothing and runs no package code:

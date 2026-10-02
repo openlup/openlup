@@ -149,9 +149,11 @@ export function checkReleaseManifests(root: string, tag: string): void {
 export const RELEASE_TAGGER = `${RELEASE_APP.login} <${RELEASE_APP.id}+${RELEASE_APP.login}@users.noreply.github.com>`;
 
 /**
- * The package release tags of `directory` in the checkout that the release workflow made: annotated
- * by the release App (a lightweight tag has no tagger) and worded as a release tag. A lightweight
- * or hand-made tag of the same name is not one.
+ * The package release tags of `directory` in the checkout that look as the release workflow makes
+ * them: annotated with the release App's tagger line (a lightweight tag has none) and worded as a
+ * release tag. This is a consistency check, since a tagger line is not authenticated; the
+ * tag-creation ruleset, which lets only the release App and administrators create these tags, is
+ * the control.
  */
 function appReleaseTags(root: string, directory: string, pattern: string): Array<{ tag: string; version: string }> {
   const fields = ["%(refname:strip=2)", "%(taggername) %(taggeremail)", "%(contents)"].join("%00");
@@ -402,6 +404,19 @@ async function main(): Promise<void> {
   console.log(`Verified immutable ${input.tag} at ${input.target}`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+/** Run as a command, also through a symbolic link; never when imported. */
+function invokedDirectly(): boolean {
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1] ?? "")).href;
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   main().catch((error: unknown) => { console.error(error instanceof Error ? error.message : "package release refused"); process.exitCode = 1; });
+} else if (/(?:^|[\\/])package-release\.m?ts$/u.test(process.argv[1] ?? "")) {
+  // Started as a package-release command, yet not detected as the entry module: an exit 0 would skip every check.
+  console.error(`package release: ${process.argv[1]} started, but this module is not its entry; refusing`);
+  process.exitCode = 1;
 }
