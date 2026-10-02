@@ -35,13 +35,16 @@ promise.
 | `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts` |
 | `./inventory` | kernel | candidate | `smoke/inventoryStandalone.test.ts` |
 | `./marketing/research` | kernel | experimental | `smoke/marketingResearchStandalone.test.ts` |
+| `./outbox` | kernel | experimental | `smoke/outboxStandalone.test.ts` |
 | `./partners` | kernel | experimental | `smoke/partnersStandalone.test.ts` |
 | `./payment` | kernel | experimental | `smoke/paymentStandalone.test.ts` |
 | `./platform-runtime` | kernel | experimental | `smoke/platformRuntimeStandalone.test.ts` |
 | `./pricing` | kernel | candidate | `smoke/pricingStandalone.test.ts` |
 | `./promo` | kernel | candidate | `smoke/promoStandalone.test.ts` |
+| `./readiness` | kernel | experimental | `smoke/readinessStandalone.test.ts` |
 | `./risk` | kernel | candidate | `smoke/riskStandalone.test.ts` |
 | `./shipping` | kernel | candidate | `smoke/shippingStandalone.test.ts` |
+| `./standard-schema` | kernel | experimental | `smoke/standardSchemaStandalone.test.ts` |
 | `./subscription` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
 | `./testing` | testing | testing | `smoke/testingStandalone.test.ts` |
 

@@ -19,13 +19,16 @@ process: an application binds its ports and composes it.
 | `./fulfillment` | kernel | experimental |
 | `./inventory` | kernel | candidate |
 | `./marketing/research` | kernel | experimental |
+| `./outbox` | kernel | experimental |
 | `./partners` | kernel | experimental |
 | `./payment` | kernel | experimental |
 | `./platform-runtime` | kernel | experimental |
 | `./pricing` | kernel | candidate |
 | `./promo` | kernel | candidate |
+| `./readiness` | kernel | experimental |
 | `./risk` | kernel | candidate |
 | `./shipping` | kernel | candidate |
+| `./standard-schema` | kernel | experimental |
 | `./subscription` | kernel | candidate |
 | `./testing` | testing | testing |
 
@@ -80,7 +83,21 @@ those before guessing at a contract.
 
 ## Readiness codes
 
-This version raises no `OPENLUP_E_*` readiness code.
+`checkReadiness` from `./readiness` raises these codes. Each failure names the
+package, the subject and a one-sentence fix, and the codes are public API.
+
+| Code | Raised when |
+| --- | --- |
+| `OPENLUP_E_PORT_MISSING` | a manifest lists a required port that was not wired |
+| `OPENLUP_E_EVENT_UNHANDLED` | a platform or manifest event type has no handler and no ignored or dormant declaration |
+| `OPENLUP_E_EVENT_DUPLICATE` | two packages' manifests emit the same event type |
+| `OPENLUP_E_SCHEDULE_UNBOUND` | a declared schedule has no host trigger |
+| `OPENLUP_E_SCHEMA_BEHIND` | the schema probe finds a `requiredSchema` object missing |
+| `OPENLUP_E_SET_MISMATCH` | loaded `@openlup/*` packages carry different versions |
+| `OPENLUP_E_ENV_MISSING` | a manifest's environment variable is absent or blank |
+
+An application runs the check before a new version takes traffic. A failure
+refuses that version; it never stops a version that is already serving.
 
 ## Using this package in an application
 

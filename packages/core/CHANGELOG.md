@@ -8,6 +8,36 @@ SemVer promise.
 
 ## [Unreleased]
 
+### Added
+
+- `./outbox`: the outbox event envelope `OutboxEventRow`, field for field as
+  the claim returns it, with its persisted column names in
+  `OUTBOX_EVENT_ROW_FIELDS`.
+- `./outbox`: the handler contract `OutboxHandler`, whose `handle(row, signal,
+  ctx)` takes one extensible `OutboxHandlerContext` (`setPhase` today), and its
+  outcomes `OutboxHandlerOutcome` (`processed`, `retry`, `discard` with
+  `benign`, `snooze`), with the persisted names in
+  `OUTBOX_HANDLER_OUTCOME_KINDS`.
+- `./outbox`: the platform event-type vocabulary `PLATFORM_OUTBOX_EVENT_TYPES`,
+  39 types as OpenLup's platform SQL emits them, each with an owner, and
+  `OutboxEventTypeDeclaration` with `matchOutboxEventTypeDeclaration` for
+  ignored or dormant types, exact or by prefix.
+- `./readiness`: the `Contribution` and `PackageManifest` shapes, with
+  `ScheduleDeclaration`, `ScheduleRunResult`, `RouteDeclaration` and
+  `RequiredSchema`; the codes `READINESS_CODES`; and `checkReadiness`, which
+  reports every failure at once and reaches the database only through a
+  `SchemaProbePort`.
+- `./readiness`: `buildSchemaProbe` and `readSchemaProbe`, a pure catalogue
+  query and its reader, and `./platform-runtime`'s structural `SqlExecutor`
+  that runs it.
+- `./standard-schema`: the `StandardSchemaV1` and `StandardTypedV1` types,
+  copied from the Standard Schema specification 1.1.0, so a validation contract
+  needs no schema library.
+- `./platform-runtime`: the job lease port `JobRunLeasePort`
+  (`claimJobRun`, `finishJobRun`) and its `PlatformJobInvocation`,
+  `PlatformJobTriggerKind`, `PlatformJobClaim`, `PlatformJobFinishStatus` and
+  `PlatformJobFinishSummary` types.
+
 ### Changed
 
 - `AGENTS.md` gains a required "Using this package in an application" section: do not edit or

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   createPlatformBundleIdGuard,
   createPlatformBundleRegistry,
@@ -6,7 +6,12 @@ import {
   type BlobStoragePort,
   type DataGatewayPort,
   type HttpRuntimePort,
+  type JobRunLeasePort,
+  type PlatformJobClaim,
+  type PlatformJobFinishSummary,
+  type PlatformJobInvocation,
   type SchedulerPort,
+  type SqlExecutor,
 } from "@openlup/core/platform-runtime";
 
 describe("platform-runtime standalone", () => {
@@ -123,5 +128,62 @@ describe("platform-runtime standalone", () => {
     expect(await blob.upload("object", new Uint8Array([1]))).toMatchObject({ pathname: "object" });
     await expect(data.asService(async (gateway) => gateway)).resolves.toEqual({ source: "service" });
     expect(typeof http.handle).toBe("function");
+  });
+
+  it("keeps the job lease port to claim and finish, carrying persisted values as data", async () => {
+    const calls: unknown[][] = [];
+    const lease: JobRunLeasePort = {
+      claimJobRun: async (...args) => {
+        calls.push(["claim", ...args]);
+        return args[0] === "example-disabled"
+          ? { acquired: false, runId: null, reason: "job_disabled" }
+          : { acquired: true, runId: "run-1", reason: "acquired" };
+      },
+      finishJobRun: async (...args) => {
+        calls.push(["finish", ...args]);
+        return true;
+      },
+    };
+    const invocation: PlatformJobInvocation = { triggerKind: "scheduler", invocationSource: "example-cron" };
+    const summary: PlatformJobFinishSummary = { checked: 2, updated: 1, failures: 1, skipped: false };
+
+    await expect(lease.claimJobRun("example-dispatch", invocation, 120)).resolves.toEqual({
+      acquired: true,
+      runId: "run-1",
+      reason: "acquired",
+    });
+    await expect(lease.claimJobRun("example-disabled", invocation)).resolves.toMatchObject({ reason: "job_disabled" });
+    await expect(lease.finishJobRun("example-dispatch", "run-1", invocation, "success", summary, { "example.key": 1 }))
+      .resolves.toBe(true);
+    expect(calls).toEqual([
+      ["claim", "example-dispatch", invocation, 120],
+      ["claim", "example-disabled", invocation],
+      ["finish", "example-dispatch", "run-1", invocation, "success", summary, { "example.key": 1 }],
+    ]);
+    // The ledger's field names, pinned: they are persisted by the lease adapters.
+    expectTypeOf<keyof PlatformJobInvocation>().toEqualTypeOf<"triggerKind" | "invocationSource">();
+    expectTypeOf<keyof PlatformJobClaim>().toEqualTypeOf<"acquired" | "runId" | "reason">();
+    expectTypeOf<keyof PlatformJobFinishSummary>().toEqualTypeOf<"checked" | "updated" | "failures" | "skipped" | "reason">();
+    expectTypeOf<PlatformJobInvocation["triggerKind"]>().toEqualTypeOf<"worker" | "scheduler" | "operator">();
+    expectTypeOf<keyof JobRunLeasePort>().toEqualTypeOf<"claimJobRun" | "finishJobRun">();
+  });
+
+  it("accepts a driver-shaped client as a structural SQL executor", async () => {
+    // The shape a PostgreSQL pool exposes: overloads and mutable arrays.
+    interface DriverClient {
+      query(config: { text: string; values?: unknown[] }): Promise<{ rows: Array<Record<string, unknown>>; rowCount: number | null }>;
+      query(text: string, values?: unknown[]): Promise<{ rows: Array<Record<string, unknown>>; rowCount: number | null }>;
+    }
+    const client: DriverClient = {
+      query: async (textOrConfig: string | { text: string }, values?: unknown[]) => ({
+        rows: [{ text: typeof textOrConfig === "string" ? textOrConfig : textOrConfig.text, values }],
+        rowCount: 1,
+      }),
+    };
+    const sql: SqlExecutor = client;
+
+    await expect(sql.query("SELECT $1::integer AS value", [1])).resolves.toMatchObject({
+      rows: [{ text: "SELECT $1::integer AS value", values: [1] }],
+    });
   });
 });
