@@ -827,6 +827,12 @@ describe("agent guidance placement", () => {
     try { expect(() => assertAgentGuidancePlacement(root, base)).not.toThrow(); } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
+  it("accepts this repository's tracked files and its real adopter kit", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
+    expect(tracked).toContain(kitTemplate);
+    expect(() => assertAgentGuidancePlacement(ROOT, tracked)).not.toThrow();
+  });
+
   it("refuses an instruction file below the root or a package root, including an auto-loaded kit name", () => {
     const root = kit(["@openlup/*"]);
     try {

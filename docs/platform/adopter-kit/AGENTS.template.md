@@ -18,8 +18,8 @@ monorepo instead, and this file does not apply there.
 - **Move every `@openlup/*` package together,** to the same version. Read each package's
   `CHANGELOG.md` `Migration:` blocks before you upgrade, and apply any SQL a package ships through
   your own migration chain.
-- **Run the readiness check before deploying.** It names every unwired port, unhandled event or
-  missing schema object, where a package provides it.
+- **Run the readiness check before deploying,** once an installed package provides it. It names
+  every unwired port, unhandled event or missing schema object.
 - **OpenLup's contributor process is not yours.** Its worktrees, sign-off, native review and
   release authority apply only inside the OpenLup monorepo.
 - **Your brand, copy, catalogue, local policy and provider choices** live in this application,

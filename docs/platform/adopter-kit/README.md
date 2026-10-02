@@ -10,7 +10,7 @@ agent tools from loading them here.
 | --- | --- | --- |
 | `AGENTS.template.md` | `AGENTS.md` | The agent guide for your application, with a managed block of OpenLup rules |
 | `CLAUDE.template.md` | `CLAUDE.md` | Makes Claude Code read `AGENTS.md` |
-| `claude-settings.template.json` | `.claude/settings.json` | Refuses agent edits to installed packages |
+| `claude-settings.template.json` | `.claude/settings.json` | Refuses Claude Code's file-edit tools under `node_modules/` |
 | `dependabot.template.yml` | `.github/dependabot.yml` | Moves every `@openlup/*` package in one pull request |
 
 ## Start your application

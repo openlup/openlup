@@ -88,9 +88,9 @@ ejection should be a deliberate, reviewable ownership transfer.
 ## Package architecture
 
 OpenLup ships its platform as `@openlup/*` npm packages. This section is the
-contract every package follows. The kernel, `@openlup/core`, follows it today;
-rails, capability packages and implementation packages follow it as they are
-extracted. Development-preview rules may still change (see
+contract every package follows as it is extracted. Today only the kernel,
+`@openlup/core`, is published. Rules that need a contract the kernel does not
+export yet say so. Development-preview rules may still change (see
 [Compatibility posture](#compatibility-posture)).
 
 ### Package kinds
@@ -114,10 +114,11 @@ The placement rules:
   contracts and rails, and the application's composition connects them.
 - **The kernel grows only for shared contracts.** It gains a contract only when a second package
   reads it. A contract that one package reads stays in that package.
-- **Default stores need no driver.** A rail's or capability's default store is a subpath over the
-  kernel's structural SQL executor. A provider-specific store is an implementation package or
-  application code.
-- **Kernel validation contracts are `StandardSchemaV1`,** not types of one schema library.
+- **Default stores need no driver** (from the first rail or capability package). A default store is
+  a subpath over a structural SQL executor, which the kernel adds with that package. A
+  provider-specific store is an implementation package or application code.
+- **New kernel validation contracts are typed as `StandardSchemaV1`,** not as types of one schema
+  library. The kernel's existing exports are `zod` schemas today.
 - **Composition stays in the application.** Runtime assembly, handler manifests, readiness
   wiring, scheduled-job files and HTTP entries belong to the application, never to a package.
   The reference application ships its own.
@@ -174,7 +175,7 @@ does not yet export the readiness check.
   subpath, one wiring example and the rules for using it from an application.
 - **Applications start from the [adopter kit](adopter-kit/README.md).** It holds an agent-guide
   template, a dependency-update template that moves every `@openlup/*` package together, and an
-  agent-tool permission template that refuses edits to installed packages. The template files use
+  agent-tool permission template that refuses file-edit tools under `node_modules/`. The template files use
   names no agent tool loads, so they never govern work in this repository.
 
 ## Compatibility posture

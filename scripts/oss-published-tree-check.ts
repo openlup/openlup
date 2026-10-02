@@ -108,10 +108,11 @@ export function assertAgentGuidancePlacement(root: string, paths: Iterable<strin
     if (/^packages\/[^/]+\/package\.json$/u.test(path)) packages.push(path);
   }
   const template = join(root, ADOPTER_KIT_DEPENDENCIES);
-  const patterns = existsSync(template)
+  const hasTemplate = existsSync(template);
+  const patterns = hasTemplate
     ? [...readFileSync(template, "utf8").matchAll(/^\s*-\s*"([^"]+)"\s*$/gmu)].map((match) => match[1]!)
     : [];
-  if (!existsSync(template)) violations.push(`${ADOPTER_KIT_DEPENDENCIES}: the adopter kit's dependency template is missing`);
+  if (!hasTemplate) violations.push(`${ADOPTER_KIT_DEPENDENCIES}: the adopter kit's dependency template is missing`);
   const covers = (name: string) => patterns.some((pattern) =>
     new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/gu, "\\$&").replace(/\*/gu, "[^/]*")}$`, "u").test(name));
   for (const path of packages) {
