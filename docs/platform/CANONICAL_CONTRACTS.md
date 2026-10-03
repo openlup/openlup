@@ -161,10 +161,7 @@ The [reviewed function-forward approval data](../../config/reviewed-platform-for
 binds exact managed SQL files and old/new function definitions. Its replacement
 list contains exactly three existing signatures in two files; a distinct creation
 list requires the two price-setup signatures to be absent before their forward.
-An optional runtime list binds one additional forward replacing only the existing
-admin search and due-renewal readers, with fixed `service_role` column-read and
-function-execution capabilities. Header identity and execution attributes remain
-bound to the preceding definitions. The registry must precede both the feature
+The registry must precede both the feature
 comparison base and the parent of its introduction; a feature cannot approve itself.
 Required self-check and release preparation share the same admission check.
 This is a separately reviewed preview admission class, not expand-only or a live

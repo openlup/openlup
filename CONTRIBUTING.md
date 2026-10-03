@@ -603,12 +603,7 @@ check admits additive forwards and the separate exact reviewed function class un
 Reviewed function forwards use the same checker in required self-check and release
 prepare. Their whole-file bytes, signatures and old/new definitions are pinned in
 `config/reviewed-platform-forwards.json`; the feature PR cannot change its own
-approval. The original three replacements and the optional two runtime reader
-replacements are not expand-only. The runtime class also pins ordered,
-`service_role`-only column reads and two EXECUTE capabilities; changing registry
-hashes cannot widen the checker's fixed capability set or function attributes.
-The control must precede the feature comparison base and introduction parent.
-See
+approval. The three replacements are not expand-only. See
 [the exact class](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 and its refusal tests in `scripts/source-preview-release.test.ts`.
 It refuses edits or deletions of migration history, unapproved non-expand-only SQL, a
