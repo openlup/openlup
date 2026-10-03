@@ -46,6 +46,13 @@ maintainer controls outcomes, important contracts and delivery authority.
 Technical review of maintainer-authorized agent tasks is delegated to independent
 fresh-context reviewers in the same task conversation.
 
+An author without native-subagent capability or upstream write authority can
+prepare signed local commits and public check evidence, then use the
+[local contribution handoff](../CONTRIBUTING.md#local-contribution-handoff).
+The authorized maintainer or supervisor owns independent native review, source
+receipt submission, dispatch and queue admission. A dependency guide or local
+check result grants none of those rights.
+
 The [autonomous delivery intent](../docs/platform/plans/autonomous-reviewed-delivery-intent.md)
 and [implementation plan](../docs/platform/plans/autonomous-reviewed-delivery.md)
 define the native subscription-backed default. The active supervisor launches

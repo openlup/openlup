@@ -72,6 +72,7 @@ export function assertDocumentationContract(
     packageSurface?: Record<string, SurfaceContract>;
   };
   const violations: string[] = [];
+  const packed = new Set(packedFiles());
 
   for (const file of markdownFiles(packageRoot)) {
     const source = readFileSync(file, "utf8");
@@ -88,6 +89,8 @@ export function assertDocumentationContract(
         violations.push(`${label}: local link escapes package ${target}`);
       } else if (!cleanTarget || !existsSync(resolvedTarget)) {
         violations.push(`${label}: dangling local link ${target}`);
+      } else if (packed.has(label) && !packed.has(relative(packageRoot, resolvedTarget).split(sep).join("/"))) {
+        violations.push(`${label}: local link ${target} targets a file missing from npm pack`);
       }
     }
     for (const match of source.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)) {
@@ -99,7 +102,7 @@ export function assertDocumentationContract(
   const exports = manifest.exports ?? {};
   const surface = gates.packageSurface ?? {};
   assertSurfaceTable(packageRoot, "README.md", "Package Surface Maturity", true, exports, surface, violations);
-  assertAgentGuide(packageRoot, gates.kind, exports, surface, packedFiles, violations);
+  assertAgentGuide(packageRoot, gates.kind, exports, surface, packed, violations);
   assertSingleUnreleasedSection(packageRoot, violations);
   assertPackageHygiene(packageRoot, violations);
   assertGeneratedOutputIgnores(packageRoot, violations);
@@ -115,13 +118,13 @@ function assertAgentGuide(
   kind: unknown,
   exports: Record<string, unknown>,
   surface: Record<string, SurfaceContract>,
-  packedFiles: () => string[],
+  packedFiles: ReadonlySet<string>,
   violations: string[],
 ): void {
   if (typeof kind !== "string" || !packageKinds.includes(kind)) {
     violations.push(`release-gates.json: package kind must be one of ${packageKinds.join(", ")}`);
   }
-  if (!packedFiles().includes("AGENTS.md")) violations.push("npm pack: tarball is missing AGENTS.md");
+  if (!packedFiles.has("AGENTS.md")) violations.push("npm pack: tarball is missing AGENTS.md");
   const guidePath = join(packageRoot, "AGENTS.md");
   if (!existsSync(guidePath)) {
     violations.push("AGENTS.md: missing agent guide");
@@ -252,7 +255,7 @@ function markdownLinkTargets(source: string): string[] {
 }
 
 function isExternalOrAnchor(target: string): boolean {
-  return target.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(target);
+  return target.startsWith("#") || target.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(target);
 }
 
 function assert(condition: unknown, message: string): asserts condition {

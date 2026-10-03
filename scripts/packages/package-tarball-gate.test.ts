@@ -3,7 +3,7 @@ import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.t
 
 const encode = (text: string) => new TextEncoder().encode(text);
 const entry = { name: "@openlup/core", directory: "packages/core", publish: false };
-const manifest = JSON.stringify({ name: "@openlup/core", version: "0.6.0", private: true, exports: { "./a": { types: "./dist/a.d.ts", default: "./dist/a.js" } } });
+const manifest = JSON.stringify({ name: "@openlup/core", version: "0.6.0", private: true, exports: { "./a": { "core-source": "./src/a.ts", types: "./dist/a.d.ts", import: "./dist/a.js", default: "./dist/a.js" } } });
 const tracked: Record<string, string> = { "packages/core/package.json": manifest, "packages/core/README.md": "# Core\n", "packages/core/src/a.ts": "export const a = 1;\n", "packages/core/src/b.tsx": "export const b = 2;\n", "packages/core/src/a.test.ts": "test\n" };
 const readTracked = (path: string) => (path in tracked ? encode(tracked[path] as string) : undefined);
 const defaults: Array<[string, string]> = [["package.json", manifest], ["README.md", "# Core\n"], ["src/a.ts", "export const a = 1;\n"], ["dist/a.js", "export const a = 1;\n"], ["dist/a.d.ts", "export declare const a = 1;\n"], ["dist/b.js", "export const b = 2;\n"]];
@@ -13,6 +13,11 @@ const rules = (entries: TarballEntry[]) => checkTarballEntries(entry, entries, r
 describe("tarball gate", () => {
   it("accepts tracked files, built output of tracked sources and the tracked manifest", () => {
     expect(rules(packed())).toEqual([]);
+  });
+  it.each(["dist/a.js", "dist/a.d.ts", "src/a.ts"])("refuses the missing export target %s even though its source is tracked", (path) => {
+    expect(checkTarballEntries(entry, packed([], { [path]: null }), readTracked)).toEqual([
+      { subject: `${entry.name}:${path}`, rule: "missing-export", detail: expect.stringContaining(`target ./${path} is not packed`) },
+    ]);
   });
   it("refuses a manifest that differs from the tracked one in any byte", () => {
     const withScript = JSON.stringify({ ...JSON.parse(manifest), scripts: { postinstall: "node x.js" } });

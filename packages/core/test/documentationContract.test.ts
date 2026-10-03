@@ -79,7 +79,7 @@ function agentGuide(overrides: { kind?: string; row?: string; example?: string }
 }
 
 // The fixture's packed file list stands in for `npm pack --dry-run`.
-function check(root: string, packed = ["AGENTS.md", "README.md", "package.json"]): void {
+function check(root: string, packed = ["AGENTS.md", "README.md", "package.json", "docs/guide.md"]): void {
   assertDocumentationContract(root, () => packed);
 }
 
@@ -109,6 +109,28 @@ describe("extracted-root documentation contract", () => {
   it("accepts package-local links and declared commands", () => {
     const root = fixture("[Guide](docs/guide.md)\n\n```sh\nnpm run ci\n```\n");
     expect(() => check(root)).not.toThrow();
+  });
+
+  it("refuses a shipped link to documentation present in source but absent from the tarball", () => {
+    const root = fixture("[Guide](docs/guide.md#setup)\n");
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
+      "README.md: local link docs/guide.md#setup targets a file missing from npm pack",
+    );
+  });
+
+  it("checks nested shipped Markdown and resolves reference links relative to that file", () => {
+    const root = fixture("[Guide](docs/guide.md)\n");
+    writeFileSync(join(root, "docs", "guide.md"), "[Back][readme]\n\n[readme]: ../README.md#package-surface-maturity\n\n[Upgrade](SPLIT_AND_UPGRADE.md)\n");
+    expect(() => check(root)).toThrow(
+      "docs/guide.md: local link SPLIT_AND_UPGRADE.md targets a file missing from npm pack",
+    );
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json", "docs/guide.md", "docs/SPLIT_AND_UPGRADE.md"])).not.toThrow();
+  });
+
+  it("accepts external URLs, anchors and encoded packed paths without requiring their targets in source", () => {
+    const root = fixture("[Website](https://example.invalid/guide)\n[CDN](//example.invalid/guide)\n[Email](mailto:maintainer@example.invalid)\n[Section](#setup)\n[Guide](docs/a%20guide.md?view=full#setup)\n");
+    writeFileSync(join(root, "docs", "a guide.md"), "# Guide\n");
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json", "docs/a guide.md"])).not.toThrow();
   });
 
   it("rejects dangling links, unknown commands, and monorepo paths", () => {

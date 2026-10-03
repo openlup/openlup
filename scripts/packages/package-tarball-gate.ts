@@ -1,5 +1,5 @@
 import { carriesPrivateOperationalCoordinate } from "../oss-public-coordinate-detector.ts";
-import type { Finding, PackageEntry } from "./package-manifest-policy.ts";
+import { exportTargets, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 
 /**
  * What may ship inside a packed `@openlup/*` tarball.
@@ -25,7 +25,20 @@ const equalBytes = (left: Uint8Array, right: Uint8Array): boolean => left.length
 export function checkTarballEntries(entry: PackageEntry, entries: readonly TarballEntry[], readTracked: TrackedReader): Finding[] {
   const findings: Finding[] = [];
   const finding = (path: string, rule: string, detail: string): void => { findings.push({ subject: `${entry.name}:${path}`, rule, detail }); };
-  if (!entries.some(({ path }) => path === "package.json")) finding("package.json", "manifest", "the tarball has no package.json");
+  const packedPaths = new Set(entries.map(({ path }) => path));
+  if (!packedPaths.has("package.json")) finding("package.json", "manifest", "the tarball has no package.json");
+  const manifestBytes = readTracked(`${entry.directory}/package.json`);
+  if (manifestBytes) {
+    // The manifest policy validated this tracked manifest before packing it.
+    const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as { exports?: unknown };
+    const checked = new Set<string>();
+    for (const { conditions, target } of exportTargets(manifest.exports)) {
+      if (checked.has(target)) continue;
+      checked.add(target);
+      const path = target.slice(2);
+      if (!packedPaths.has(path)) finding(path, "missing-export", `${conditions.join(" > ")} target ${target} is not packed`);
+    }
+  }
   for (const { path, bytes } of entries) {
     if (path.split("/").includes("..") || path.startsWith("/")) { finding(path, "path", "a packed path leaves the package root"); continue; }
     const text = new TextDecoder().decode(bytes);

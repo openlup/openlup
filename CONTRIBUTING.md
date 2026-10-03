@@ -17,12 +17,44 @@ and separate current behavior from proposals or dated history. Correct the
 owning page in the same contribution as a changed public contract; a link check
 alone does not establish that an install or feature works.
 
+## Use a package or contribute source
+
+For an application task, start from your application's root with Node 24 and
+npm 11.19.0: `npm install --save-exact @openlup/core@0.12.0`. Read the installed
+`AGENTS.md` and its [typed wiring example](packages/core/AGENTS.md#wiring-example),
+then use the [adopter route](docs/platform/adopter-kit/README.md). No OpenLup
+clone or contributor check is needed to compose an installed package. Your
+application's instructions and task authority govern that work.
+
+The remaining commands in this guide require an OpenLup source checkout.
+
 ## Contribution shape
+
+Before implementing, obtain the accountable human's task scope and the applicable
+maintainer authorization under the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md).
+Record whether it covers only local work or also publication, pull-request
+submission and merge. Review evidence cannot extend those rights.
 
 Use a dedicated task worktree and branch for implementation; the coordination
 checkout stays clean. Claude and Codex create that isolation automatically with
 the configured repository helper before task edits, installs or tests. Continue
 in an already assigned task worktree and leave other tasks' checkouts alone.
+
+If no maintainer helper is configured, use ordinary Git isolation. In a local
+fork, `origin` normally names your fork: add `upstream` for
+`https://github.com/openlup/openlup.git` if needed. From the coordination checkout,
+the following example uses a new task name `my-change`:
+
+```sh
+git fetch upstream main
+OPENLUP_BASE="$(git rev-parse upstream/main)"
+git worktree add -b codex/my-change ../openlup-my-change "$OPENLUP_BASE"
+cd ../openlup-my-change
+```
+
+Retain that full base SHA in the task record, then install and run the public
+checks in this task worktree. A maintainer helper, native review access and
+upstream write rights are not prerequisites for preparing a local contribution.
 
 Record the finite observable outcome, smallest complete scope and exclusions,
 authority and delivery boundary, acceptance and sufficient completion evidence,
@@ -447,6 +479,10 @@ package.
 into a temporary directory, from a package directory with no uncommitted
 changes. Every packed file must be either a tracked file of that package, byte
 for byte (the manifest included), or built output of a tracked non-test source.
+Every concrete `exports` target, including JavaScript, declarations and
+`core-source`, must be present in the tarball. The core documentation check also
+requires relative Markdown links in shipped files to target packed files, not
+just files present in the source checkout.
 It refuses source maps and source-map references, build-machine home paths, and
 the operational coordinates the public detector knows. It prints each tarball's
 integrity. `-- --out <dir>` implies `--pack`. It keeps each publishable
@@ -505,6 +541,16 @@ A pure addition, such as a name added to an export list, has no "before", so it
 needs none; a comment that opens a line is ignored, the code on its lines is
 not, and the head must keep each publishable package's gates file and snapshots
 readable.
+
+This is a textual, base-bound signal, not semantic migration certification. A
+marker in a code fence or a reused block can satisfy it; declaration text that
+reappears in order can look additive. Behaviour or schema changes and withdrawal
+followed by re-admission of a package still need semantic review. Reviewers must
+check the actual compatibility change and useful before/after migration steps;
+the API snapshots, tests and release classification remain separate obligations.
+Merge API changes with their `Unreleased` migration notes before a separate
+release-bump pull request: the bump moves those notes into the version section
+and opens a fresh empty `Unreleased` section.
 
 The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
 measured failing or aborted files, reasons, incomplete obligations and triage
@@ -578,7 +624,9 @@ Unreleased heading. Merging it authorizes no release.
 A release is then dispatched with `publish-package.yml` and package `all` for the
 reviewed commit, and one maintainer approval of the protected `release`
 environment authorizes every package of the set. Dispatching the set again
-resumes one that stopped part way. The package workflow independently verifies the App-published immutable
+resumes one that stopped part way; preflight requires completed releases to keep
+the exact reviewed release-note bytes in both skip and resume states. The package
+workflow independently verifies the App-published immutable
 release, tag and attestation, then publishes the checked tarball through npm
 OIDC with `--tag latest`, without another approval.
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) lists every
@@ -616,16 +664,42 @@ into a stable or supported artifact.
 
 ## Pull requests
 
+### Local contribution handoff
+
+If your agent lacks native-subagent capability or you lack upstream write
+authority, finish the authorized local change, signed commits and
+[public required checks](#required-and-raw-checks), then hand off the existing
+task record and commits to an authorized maintainer or supervisor. Include the
+approved scope and delivery limits, full comparison base and head SHAs, changed
+paths, check commands with exit codes, and unresolved or unavailable evidence.
+For the fork setup above, obtain the committed head and validate DCO against the
+recorded base:
+
+```sh
+git rev-parse HEAD
+git diff --stat "$OPENLUP_BASE" HEAD
+npm run check:dco-signoff -- "$OPENLUP_BASE" "$(git rev-parse HEAD)"
+```
+
+Stop there within local authority. Do not invent a review receipt or claim hosted
+admission from local checks. The authorized supervisor takes ownership of native
+review of the exact committed candidate, required verification, the PR head
+source receipt and dispatch, actual admission, and queue follow-through. Any
+publication or merge also needs its applicable authority. The supervisor can be
+the author only when that person has the required capabilities and rights.
+
 ### Deliver a change
 
-This is the order for one authorized task, from first edit to merge. Each step
-points to its detailed rule.
+This is the order for a task with an authorized submission supervisor, from
+first edit to merge. An author preparing a local handoff follows the section
+above; the supervisor owns the protected steps below. Each step points to its
+detailed rule.
 
 1. **Worktree.** One task, one worktree and one branch, as in
    [AGENTS.md](AGENTS.md).
 2. **Commit.** Run `npx --no -- ast-grep scan` after each change and
    `npm run lint` before committing. Commit with `git commit -s`.
-3. **Native review** of the exact committed candidate, by the rules in
+3. **Supervisor's native review** of the exact committed candidate, by the rules in
    [AGENTS.md](AGENTS.md) and in this section:
    - write `.context/scratch/agent-review/intent.json` in the shape the
      [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
