@@ -209,8 +209,15 @@ The [repository check](../../scripts/public-ci-neutrality.mjs) counts text
 regardless of filename extension and inventories binary files. It refuses
 increases against both the comparison tree and the accepted baseline, including
 an increased baseline allowance. Regeneration may lower existing allowances;
-it cannot admit new debt. These counts reuse the existing scanner semantics and
-do not expand a runtime contract or establish a stable preview channel.
+it cannot admit new debt except for the fixed diagnostic-fixture introduction
+recorded in the checker. That introduction admits five exact SQL fixture files
+in category `ui-15`, verified by their complete SHA-256 bytes, original counts
+and accepted counts, against one full comparison commit. The explicit baseline
+recalibration is required; the candidate still must fit that baseline. A later
+comparison commit uses the ordinary ratchet, including refusal of regrowth after
+a reduction. Scanner pins and every other path, category and increase remain
+unchanged. These counts reuse the existing scanner semantics and do not expand
+a runtime contract or establish a stable preview channel.
 
 Published Tree CI enforces that ratchet in required `self-check` and exercises
 its CLI refusal tests in required `test`. The complete root and managed pgTAP
