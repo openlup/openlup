@@ -673,8 +673,8 @@ SELECT is(
   (SELECT enabled::text || ':' || active_driver
      FROM public.platform_job_controls
     WHERE job_name = 'promotion-claim-sweep'),
-  'true:vercel_cron',
-  'the sweep has an explicit scheduler control row independent from its default-off flag');
+  'false:vercel_cron',
+  'the sweep installs a disabled scheduler control independent from its default-off flag');
 
 CREATE TEMP TABLE _legacy_unchanged AS
 SELECT pg_temp.create_promotion_order(

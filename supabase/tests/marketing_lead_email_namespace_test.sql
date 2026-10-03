@@ -87,13 +87,15 @@ VALUES (
   'Warszawa',
   '00-001'
 );
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.marketing_rehome_client_lead_v1(
     '08100000-0000-4000-8000-000000000002', now()
   )->>'outcome',
   'applied',
   'a personalization-only hidden-configurator shell is rehomed');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT normalized_email
@@ -129,20 +131,24 @@ SELECT is(
       AND source_id = '08100000-0000-4000-8000-000000000002'),
   1,
   'the communication source link records the marketing subject');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.marketing_rehome_client_lead_v1(
     '08100000-0000-4000-8000-000000000002', now()
   )->>'outcome',
   'noop',
   'rehome is idempotent');
+RESET ROLE;
 
+SET LOCAL ROLE service_role;
 SELECT is(
   public.marketing_rehome_client_lead_v1(
     '08100000-0000-4000-8000-000000000003', now()
   )->>'refusalCode',
   'client_has_customer_footprint',
   'a delivery address refuses reclassification by substance');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT email FROM public.clients
@@ -152,27 +158,31 @@ SELECT is(
 
 DELETE FROM public.addresses
  WHERE client_id = '08100000-0000-4000-8000-000000000003';
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.marketing_rehome_client_lead_v1(
     '08100000-0000-4000-8000-000000000003', now()
   )->>'outcome',
   'applied',
   'the residual clears only after the row passes the original classifier');
+RESET ROLE;
 
+SET LOCAL ROLE service_role;
 SELECT is(
   public.marketing_rehome_client_lead_v1(
     '08100000-0000-4000-8000-000000000004', now()
   )->>'refusalCode',
   'client_has_identity',
   'an Auth-linked row refuses reclassification');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT email FROM public.clients
     WHERE id = '08100000-0000-4000-8000-000000000004'),
   'namespace-identity@example.invalid',
   'an Auth-linked row keeps its real address');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_correct_subject_email_v1(
     '08a00000-0000-4000-8000-000000000001',
@@ -184,6 +194,8 @@ SELECT is(
   )->>'outcome',
   'applied',
   'the customer can immediately claim the address released by a marketing shell');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT email FROM public.clients
@@ -191,11 +203,11 @@ SELECT is(
   'namespace-lead-target@example.invalid',
   'the claimed address is stored on the customer');
 
+SET LOCAL ROLE service_role;
 CREATE TEMP TABLE namespace_results (
   name text PRIMARY KEY,
   result jsonb NOT NULL
 ) ON COMMIT DROP;
-
 INSERT INTO namespace_results (name, result) VALUES
   ('fresh-first', public.personalization_persist_lead(
     'Fresh-Marketing@example.invalid', 'Fresh', 'Lead', '+48500100200', NULL)),
@@ -203,6 +215,8 @@ INSERT INTO namespace_results (name, result) VALUES
     'fresh-marketing@example.invalid', 'Fresh', 'Lead', '+48500100200', NULL)),
   ('customer-overlap', public.personalization_persist_lead(
     'namespace-lead-target@example.invalid', 'Attacker', 'Overwrite', '+48500999999', NULL));
+RESET ROLE;
+
 
 SELECT is(
   (SELECT result->>'matchReason' FROM namespace_results WHERE name = 'fresh-first'),

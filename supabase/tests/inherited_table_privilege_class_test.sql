@@ -29,7 +29,7 @@
 -- table created inside this transaction proves the default actually applies to new tables,
 -- rather than proving only that the catalogue text changed.
 BEGIN;
-SELECT plan(23);
+SELECT plan(27);
 
 CREATE TEMP TABLE narrowed_table (
   ident text PRIMARY KEY,
@@ -144,15 +144,14 @@ SELECT is(
   'authenticated holds no privilege at all on the subscription event ledger'
 );
 
--- The runtime role's grant on this ledger is deliberately untouched by this wave: the
--- subscription engine appends event rows under the runtime credential, and withdrawing its
--- DELETE is a separate wave with its own writer audit.
+-- The current evidence reader needs only its two projection fields and window
+-- predicate. The unbound winback adapter is not a direct ledger writer.
 SELECT is(
-  (SELECT string_agg(candidate.privilege, ', ' ORDER BY candidate.privilege)
-     FROM (VALUES ('SELECT'), ('INSERT')) AS candidate(privilege)
-    WHERE has_table_privilege('service_role', 'public.subscription_events', candidate.privilege) IS NOT TRUE),
+  (SELECT string_agg(column_name, ', ' ORDER BY column_name)
+     FROM unnest(ARRAY['subscription_id','event_type','occurred_at']) column_name
+    WHERE has_column_privilege('service_role', 'public.subscription_events', column_name, 'SELECT') IS NOT TRUE),
   NULL,
-  'the runtime role still reads and appends to the subscription event ledger, which this wave leaves alone'
+  'the runtime evidence reader retains exactly its required event projection and time predicate'
 );
 
 -- Part C: the default that created the class. Only the entry whose owning role matches the
@@ -251,7 +250,25 @@ SELECT is(
 
 -- The catalogue assertions above would still pass if the runtime reached these tables as some
 -- other principal, so take the role the runtime actually carries and let the server refuse.
+CREATE TEMP TABLE _event_read_before AS SELECT count(*)::bigint AS rows FROM public.subscription_events;
 SET LOCAL ROLE service_role;
+
+SELECT lives_ok(
+  $$SELECT subscription_id,event_type FROM public.subscription_events
+    WHERE occurred_at >= now() - interval '24 hours' LIMIT 2000$$,
+  'as service_role, the exact event evidence read and time predicate execute'
+);
+SELECT throws_ok(
+  $$INSERT INTO public.subscription_events (subscription_id,event_type,idempotency_key,payload)
+    VALUES ('f8000000-0000-4000-8000-000000000001','subscription.winback.email_sent','unbound-writer-probe','{}'::jsonb)$$,
+  '42501', 'permission denied for table subscription_events',
+  'as service_role, the unbound direct event append is denied before any write'
+);
+SELECT throws_ok(
+  $$SELECT payload FROM public.subscription_events$$,
+  '42501', 'permission denied for table subscription_events',
+  'as service_role, event payload remains unreadable outside the needed evidence projection'
+);
 
 SELECT throws_ok(
   $$INSERT INTO public.omnipack_status_evidence DEFAULT VALUES$$,
@@ -294,6 +311,12 @@ SELECT lives_ok(
 );
 
 RESET ROLE;
+SELECT is(
+  (SELECT count(*)::bigint FROM public.subscription_events),
+  (SELECT rows FROM _event_read_before),
+  'the denied direct event append leaves the ledger unchanged'
+);
+
 
 SET LOCAL ROLE anon;
 

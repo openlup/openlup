@@ -103,7 +103,7 @@ SELECT is(
          WHERE policy_row.table_name = referencing.relname)),
   0,
   'every table referencing clients today is classified, so the shipped seed refuses nothing by accident');
-
+SET LOCAL ROLE service_role;
 -- ---------------------------------------------------------------------------
 -- The absorption itself, on the shape production actually holds.
 -- ---------------------------------------------------------------------------
@@ -119,6 +119,8 @@ SELECT is(
   )->>'outcome',
   'applied',
   'a lead carrying personalization, consents, attribution and a delivery is absorbed');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT response->>'carried'
@@ -213,7 +215,7 @@ SELECT is(
       AND requested_action = 'absorb_lead'),
   'applied|absorb-lead@example.invalid|absorbed+07100000000040008000000000000002@absorbed.invalid',
   'the audit names the address before and the tombstone after');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_correct_subject_email_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -225,6 +227,8 @@ SELECT is(
   )->>'outcome',
   'applied',
   'the released address is then takeable by the correction that was refused before');
+RESET ROLE;
+
 
 -- ---------------------------------------------------------------------------
 -- Membership that keys on its own tables is out of reach by construction.
@@ -241,7 +245,7 @@ SELECT is(
     WHERE email = 'absorb-tester@example.invalid'),
   1,
   'tester membership is untouched');
-
+SET LOCAL ROLE service_role;
 -- ---------------------------------------------------------------------------
 -- Replay and re-run.
 -- ---------------------------------------------------------------------------
@@ -257,6 +261,8 @@ SELECT is(
   )->>'outcome',
   'replayed',
   'the settled idempotency key replays rather than absorbing twice');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT count(*)::int FROM public.customer_support_subscription_audit_events
@@ -264,7 +270,7 @@ SELECT is(
       AND requested_action = 'absorb_lead'),
   1,
   'the replay writes no second audit row');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_absorb_lead_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -276,7 +282,9 @@ SELECT is(
   )->>'outcome',
   'noop',
   'an already-absorbed pair under a fresh key is a settled fact, not a stale expectation');
+RESET ROLE;
 
+SET LOCAL ROLE service_role;
 -- ---------------------------------------------------------------------------
 -- Every refusal arm, and the proof that nothing moved with it.
 -- ---------------------------------------------------------------------------
@@ -292,12 +300,14 @@ SELECT is(
   )->>'refusalCode',
   'lead_has_identity',
   'a lead carrying an authorization identity is refused: absorbing one is an account takeover');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT email FROM public.clients WHERE id = '07100000-0000-4000-8000-000000000004'),
   'absorb-identity@example.invalid',
   'the refused identity keeps its address');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_absorb_lead_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -309,13 +319,15 @@ SELECT is(
   )->'blockingTables',
   '["addresses"]'::jsonb,
   'a lead with a commercial row is refused and the refusal names what it found');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT client_id::text FROM public.addresses
     WHERE client_id = '07100000-0000-4000-8000-000000000003'),
   '07100000-0000-4000-8000-000000000003',
   'the blocking row stays exactly where it was');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_absorb_lead_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -327,7 +339,9 @@ SELECT is(
   )->>'refusalCode',
   'lead_not_found',
   'an unknown lead is refused by name');
+RESET ROLE;
 
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_absorb_lead_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -339,7 +353,9 @@ SELECT is(
   )->>'refusalCode',
   'customer_not_found',
   'an unknown customer is refused by name');
+RESET ROLE;
 
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_absorb_lead_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -351,6 +367,8 @@ SELECT is(
   )->>'outcome',
   'conflict',
   'a stale address expectation conflicts so the operator re-reads instead of absorbing blind');
+RESET ROLE;
+
 
 -- ---------------------------------------------------------------------------
 -- The customer already occupies a carry table's own key: theirs is kept.
@@ -358,7 +376,7 @@ SELECT is(
 
 INSERT INTO public.customer_personalization (client_id, owner_name_raw, source)
 VALUES ('07100000-0000-4000-8000-000000000006', 'Ola', 'llm');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_absorb_lead_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -370,6 +388,8 @@ SELECT is(
   )->'carried'->>'personalization',
   '0',
   'a carry table the customer already occupies moves nothing rather than overwriting');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT owner_name_raw FROM public.customer_personalization
@@ -396,7 +416,7 @@ CREATE TABLE public.absorption_unclassified_probe (
 
 INSERT INTO public.absorption_unclassified_probe (client_id)
 VALUES ('07100000-0000-4000-8000-000000000005');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_absorb_lead_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -408,6 +428,8 @@ SELECT is(
   )->'blockingTables',
   '["absorption_unclassified_probe"]'::jsonb,
   'a referencing table nobody classified blocks the absorption and is named');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT email FROM public.clients WHERE id = '07100000-0000-4000-8000-000000000005'),
@@ -418,7 +440,7 @@ SELECT is(
 -- it neither stops the absorption nor travels with it.
 INSERT INTO public.client_absorption_policy (table_name, disposition)
 VALUES ('absorption_unclassified_probe', 'retain');
-
+SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_absorb_lead_v1(
     '07a00000-0000-4000-8000-000000000001',
@@ -430,13 +452,15 @@ SELECT is(
   )->>'outcome',
   'applied',
   'one policy row answers the refusal: no CREATE OR REPLACE of the routine is needed');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT count(*)::int FROM public.absorption_unclassified_probe
     WHERE client_id = '07100000-0000-4000-8000-000000000005'),
   1,
   'a retained table stays with the archived record: neither a blocker nor a passenger');
-
+SET LOCAL ROLE service_role;
 -- ---------------------------------------------------------------------------
 -- Raised vocabulary, and the cost assumption this wave made.
 -- ---------------------------------------------------------------------------
@@ -450,9 +474,11 @@ SELECT throws_ok(
       'absorb-lead-deactivated-1',
       now())$$,
   '42501',
-  NULL,
+  'communications_operator_inactive',
   'a deactivated operator is refused before any customer state is read');
+RESET ROLE;
 
+SET LOCAL ROLE service_role;
 SELECT throws_ok(
   $$SELECT public.customer_support_absorb_lead_v1(
       '07a00000-0000-4000-8000-000000000001',
@@ -462,9 +488,11 @@ SELECT throws_ok(
       'absorb-lead-self-1',
       now())$$,
   '22023',
-  NULL,
+  'customer_support_absorb_lead_invalid',
   'absorbing a record into itself is malformed input, not a refusal with a code');
+RESET ROLE;
 
+SET LOCAL ROLE service_role;
 SELECT throws_ok(
   $$SELECT public.customer_support_absorb_lead_v1(
       '07a00000-0000-4000-8000-000000000001',
@@ -474,14 +502,16 @@ SELECT throws_ok(
       'absorb-lead-happy-path-1',
       now())$$,
   '23505',
-  NULL,
+  'customer_support_idempotency_conflict',
   'a settled key replayed with a different payload is a conflict, not a second absorption');
+RESET ROLE;
+
 
 SELECT is(
   (SELECT prosecdef FROM pg_catalog.pg_proc
     WHERE oid = 'public.customer_support_absorb_lead_v1(uuid,uuid,uuid,text,text,timestamptz)'::regprocedure),
   false,
-  'the absorption runs with invoker rights: service_role already holds everything it writes');
+  'the absorption remains invoker-rights; actual service execution above must prove its capabilities');
 
 SELECT * FROM finish();
 ROLLBACK;

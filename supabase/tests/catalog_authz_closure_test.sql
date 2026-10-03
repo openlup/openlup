@@ -219,16 +219,44 @@ SELECT is(
   'no PUBLIC, unknown principal or browser/reader writer is hidden by ACL ordering'
 );
 
--- The roles this wave is not allowed to touch, asserted rather than assumed.
+-- The selected checkout reads exact catalog columns, not whole-table SELECT.
 SELECT is(
-  (SELECT string_agg(rel.ident || ':' || priv.privilege, ', ' ORDER BY rel.ident, priv.privilege)
-     FROM catalog_authz_relation AS rel
-     CROSS JOIN catalog_authz_privilege AS priv
-    WHERE priv.privilege = 'SELECT'
-      AND rel.ident <> 'public.catalog_prices'
-      AND has_table_privilege('service_role', rel.ident, priv.privilege) IS NOT TRUE),
+  (SELECT string_agg(missing.capability, ', ' ORDER BY missing.capability) FROM (
+    SELECT ident || ':' || column_name AS capability
+      FROM (VALUES
+       ('public.catalog_products', 'id'),
+       ('public.catalog_products', 'slug'),
+       ('public.catalog_products', 'status'),
+       ('public.catalog_products', 'name'),
+       ('public.catalog_products', 'description'),
+       ('public.catalog_products', 'ingredients'),
+       ('public.catalog_products', 'allergens'),
+       ('public.catalog_products', 'marketing_content'),
+       ('public.catalog_products', 'primary_sku_id'),
+       ('public.catalog_skus', 'id'),
+       ('public.catalog_skus', 'product_id'),
+       ('public.catalog_skus', 'sku'),
+       ('public.catalog_skus', 'title'),
+       ('public.catalog_skus', 'pet_type'),
+       ('public.catalog_skus', 'status'),
+       ('public.catalog_skus', 'net_weight_g'),
+       ('public.catalog_skus', 'format_code'),
+       ('public.catalog_skus', 'unit_form_code'),
+       ('public.catalog_skus', 'is_addon'),
+       ('public.catalog_skus', 'sellable_standalone'),
+       ('public.catalog_skus', 'sellable_in_subscription'),
+       ('public.catalog_skus', 'requires_pet_profile'),
+       ('public.catalog_skus', 'min_order_qty')
+      ) expected(ident,column_name)
+     WHERE has_column_privilege('service_role', ident, column_name, 'SELECT') IS NOT TRUE
+    UNION ALL
+    SELECT rel.ident || ':SELECT'
+      FROM catalog_authz_relation rel
+     WHERE rel.ident NOT IN ('public.catalog_products','public.catalog_skus','public.catalog_prices')
+       AND has_table_privilege('service_role', rel.ident, 'SELECT') IS NOT TRUE
+  ) missing),
   NULL,
-  'the runtime role retains actual catalog SELECT capabilities used by installed read adapters'
+  'the selected checkout retains exact product/SKU projections; remaining catalog reader privileges are unchanged'
 );
 
 SELECT is(

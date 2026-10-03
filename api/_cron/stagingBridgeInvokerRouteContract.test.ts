@@ -145,7 +145,7 @@ function request(method: string, token = CRON_SECRET): VercelRequest {
       "x-openlup-scheduler-driver": "pg_cron",
     },
     query: {},
-  } as VercelRequest;
+  } as unknown as VercelRequest;
 }
 
 /**

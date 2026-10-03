@@ -136,7 +136,7 @@ apply the separate `db/platform/migrations` portable PostgreSQL chain or claim
 that the two installation paths are interchangeable. The public setup creates
 one owned local Supabase project, adds `pg_trgm` in `public` and the non-login,
 non-RLS-bypass `openlup_mcp_reader` role required by that baseline, and replays
-the baseline transactionally, then applies the managed alignment seed forward.
+the baseline transactionally, then applies the managed alignment and required policy-data forwards.
 Its synthetic seed supplies only the recurring catalog item, prices, stock and
 settlement settings. The compatibility alignment seed is now a no-op. Setup
 does not insert a paid order or active subscription.
@@ -192,7 +192,25 @@ Code rollback must remain compatible with the expanded schema. A destructive
 down migration is not a rollback plan. Each stage needs a clear readback and
 failure boundary; a backfill that cannot be safely retried is incomplete.
 
-<!-- openlup-doc-impact {"unit":"data","digest":"sha256-ef387c93a5c4a6dcef9deea476256f95675f2059ba77cbf900d34d813381f094","reason":"Only database tests and synthetic inputs change. Current managed membership commands now execute as authenticated, while forged service-role DML, replay and audit witnesses remain. Synthetic readiness promotions explicitly select their region and validity. Legacy catalog handlers refuse before SQL: tests retain service/browser/PUBLIC denial and separate owner-body fences. Internal quote and chargeability helpers are checked through actual service RPC callers rather than inherited helper grants. Existing inventory replay still preserves rows and leases. No database baseline, forward or runtime privilege changes; real runtime capability and control-row failures remain visible."} -->
+The managed forward `20261003110000_required_platform_policy_data.sql` supplies
+configuration omitted by the schema-only baseline. It classifies all 27 current
+relations referencing clients: four marketing relations carry, account-event
+history stays on the archived lead, and the other 22 block absorption. Unknown
+future relations still refuse. Existing classifications survive replay.
+
+The same forward installs seven disabled job controls, the four exact declared
+dormant command identities and four message controls. Message controls begin
+enabled to preserve the sender's existing missing-row behavior; a prior disabled
+operator choice stays disabled. No job, provider or scheduler is activated.
+Existing driver, metadata, note and dormant-reason choices also survive replay.
+The dormant insert uses the frozen five-column relation order and literal UTC
+migration timestamps; the managed regression checks that order before replaying
+the actual forward. No portable twin or installation-path parity is claimed.
+
+Database proofs execute order writing, accounting and dispatch claims as
+`service_role`, and membership commands as `authenticated`. Owner readback
+observes persisted state and denied writes. Legacy catalog commands stay denied;
+no broader raw table DML is required to reach an otherwise inert handler.
 
 ## Contract changes
 

@@ -608,9 +608,13 @@ describe("descendant source release check", () => {
     try { expect(() => sample.release(change, seal)).toThrow(expected); } finally { sample.cleanup(); }
   });
 
-  it("admits the real managed alignment seed forward", () => {
-    const path = MANAGED_ALIGNMENT_FORWARD;
+  it.each([
+    ["alignment", MANAGED_ALIGNMENT_FORWARD],
+    ["required policy data", "supabase/migrations/20261003110000_required_platform_policy_data.sql"],
+  ])("admits the real managed %s forward", (_label, path) => {
     const sql = readManagedForward(fileURLToPath(new URL("..", import.meta.url)), path);
+    expect(isExpandOnlyPlatformForward(sql)).toBe(true);
+    expect(isExpandOnlyPlatformForward(`${sql}\nUPDATE public.platform_job_controls SET enabled = true;`)).toBe(false);
     const sample = syntheticRelease({ extraFiles: { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n" } });
     try { expect(() => sample.release({ [path]: sql })).not.toThrow(); } finally { sample.cleanup(); }
   });

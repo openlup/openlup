@@ -17702,6 +17702,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261003110000_required_platform_policy_data.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -18215,6 +18219,10 @@
     },
     {
       "path": "supabase/tests/replacement_shipment_command_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/required_platform_policy_data_seed_test.sql",
       "class": "public-output"
     },
     {

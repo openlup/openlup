@@ -21,7 +21,7 @@ public selection is the neutral example. A host selecting another presentation
 must make its import-map target available to its runtime; source-level
 selection alone does not establish function packaging or deployment behavior.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-63984227438807288ca293222d75f2533c9634e70231a47e3618458eb22f2190","reason":"Handler tests distinguish real default adopter-policy refusal from explicit unit compositions. Concrete GET/POST requests retain bearer validation, production pg_cron refusal, configured claim driver mapping and default unconfigured refusal; they no longer reconstruct unpublished scheduler migrations. No runtime route, policy or scheduler installation changes."} -->
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-2897bc2e21ae9df70d15d88da3eb1dbcfbfc85c9486caee8ca21cbd96be049c3","reason":"Handler tests distinguish real default adopter-policy refusal from explicit unit compositions. Concrete GET/POST requests retain bearer validation, production pg_cron refusal, configured claim driver mapping and default unconfigured refusal; they no longer reconstruct unpublished scheduler migrations. No runtime route, policy or scheduler installation changes."} -->
 
 ## Self-host boundary
 

@@ -63,4 +63,8 @@ at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
 
-<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-538200774ee40afdaa4c5a7db80cd92c33822650dca954437e39b203e32a410b","reason":"Tests select explicit synthetic invoice presentation, the empty scheduler registry and current catalog envelope. Adapter implementations, capabilities, refusal behavior and provider activation described here are unchanged."} -->
+The managed observability event reader projects only `subscription_id` and
+`event_type`, filtered on `occurred_at` within the preceding 24 hours and capped
+at 2,000 rows. It needs SELECT on those three columns, not event payload access
+or direct INSERT. The unbound winback adapter does not establish a runtime
+writer requirement. Tests retain the window's old-versus-recent reminder signal.
