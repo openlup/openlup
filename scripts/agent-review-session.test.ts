@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { createHash } from 'node:crypto';
 import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
@@ -229,6 +230,140 @@ describe('bounded repair convergence', () => {
   it('does not renew root coverage expiry with a fresh closure', async () => {
     const state = await advance(await initial(), repaired(), { now: () => 2000 }); const observation = closure(state, 0, { completedAt: 2000 });
     expect((await check({ ...state, reports: [observation] }, { now: () => 2001, maxAgeMs: 1000 })).reason).toContain('expired');
+  });
+});
+
+describe('explicit owner regroup without reset', () => {
+  const expanded = { ...intent, scope: ['source.txt', 'new.txt'], criteria: 'Preserve behavior and explicitly approved additional source' };
+  const finding = { mechanism: 'lost clamp', precondition: 'late parcel', requirement: 'no early cycle', effect: 'early renewal', risk: 'ordinary' };
+  const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const delta = async (_cwd, before, after) => before.head === after.head ? [] : after.changedPaths;
+  const next = (number = 1, changedPaths = expanded.scope) => ({ ...candidate, head: String(number).repeat(40), tree: String(number + 2).repeat(40), workingDigest: String(number + 4).repeat(64), indexDigest: String(number + 6).repeat(64), changedPaths });
+  function approval(previous, approved = expanded) {
+    return { priorRequestDigest: digest(previous.request), priorIntentDigest: digest(previous.request.intent), nextIntentDigest: digest(approved), ownerDecision: 'Synthetic test approval for the explicitly expanded scope' };
+  }
+  async function initial() {
+    const req = await request();
+    return { request: req, reports: [{ ...report(req), verdict: 'fail', materialFindings: [finding] }, report(req, 1)] };
+  }
+  async function regroup(previous, candidate = next(), extra = {}) {
+    return prepareAgentReviewState({ cwd: '.', base, intent: expanded, authorSessionId: 'author', now, snapshot: async () => candidate, modeCheck: async () => false, delta, previous, fullRefresh: true, regroup: approval(previous), ...extra });
+  }
+  function complete(state, prefix = 'regroup') {
+    return state.request.roles.map((role, index) => ({ ...report(state.request, index), role, reviewerId: `${prefix}-${index}`, sessionId: `${prefix}-session-${index}`, coveredScope: state.request.continuation.mode === 'full' ? [...new Set([...state.request.intent.scope, ...state.request.continuation.deltaPaths])] : state.request.continuation.deltaPaths, closure: { coveredDelta: state.request.continuation.deltaPaths, interactionsChecked: true, ordinarySemantics: state.request.continuation.mode === 'closure', resolvedFindings: state.request.continuation.findings.map(card => card.id) } }));
+  }
+  async function check(state, extra = {}) {
+    return verifyAgentReview({ cwd: '.', ...state, snapshot: async () => state.request.candidate, delta, now, ...extra });
+  }
+  it('binds expanded scope to exact requests and preserves history, findings and consumed budget', async () => {
+    const root = await initial();
+    const first = await prepareAgentReviewState({ cwd: '.', base, intent, authorSessionId: 'author', now, snapshot: async () => next(1, intent.scope), delta, previous: root, fullRefresh: true });
+    const state = await regroup(first, next(2));
+    expect(state.history).toEqual([...first.history, { request: first.request, reports: first.reports }]);
+    expect(state.request.continuation).toMatchObject({ cycle: 2, mode: 'full', regroup: approval(first), findings: first.request.continuation.findings });
+    expect(state.request.intent).toEqual(expanded); expect(state.request.authorSessionId).toBe('author');
+    expect(state.request.roles).toEqual(['correctness', 'security']); expect(state.reports).toEqual([]);
+    expect((await check(state)).status).toBe('needs_agent_review');
+    state.reports = complete(state); expect((await check(state)).status).toBe('reviewed');
+    await expect(regroup(state, next(3), { regroup: undefined })).rejects.toThrow('two automatic repair cycles');
+    await expect(regroup(state, next(3), { intent: { ...expanded, scope: [...expanded.scope, 'third.txt'] }, regroup: approval(state, { ...expanded, scope: [...expanded.scope, 'third.txt'] }) })).rejects.toThrow('two automatic repair cycles');
+  });
+  it('forces fresh full2 on same-SHA expansion and keeps pending and completed prepare idempotent without renewing expiry', async () => {
+    const prior = await initial(); const decision = approval(prior); const state = await regroup(prior, candidate);
+    expect(state.request.continuation.deltaPaths).toEqual([]); expect(state.request.continuation.mode).toBe('full');
+    expect(state.request.roles).toHaveLength(2); expect(state.reports).toEqual([]);
+    for (const completed of [false, true]) {
+      if (completed) state.reports = complete(state);
+      const repeated = await regroup(state, candidate, { regroup: decision, now: () => 86402000 });
+      expect(repeated).toEqual(state); expect(repeated.request.preparedAt).toBe(1000);
+      expect((await check(repeated, { now: () => 86402000 })).reason).toContain('expired');
+    }
+  });
+  it('retains historic regroup metadata through a later ordinary continuation and retries', async () => {
+    const prior = await initial(); const decision = approval(prior); const first = await regroup(prior);
+    first.reports = complete(first);
+    const second = await regroup(first, next(2), { regroup: decision, fullRefresh: false, repairRisk: 'ordinary' }); second.reports = complete(second, 'later');
+    expect(second.request.continuation.mode).toBe('closure');
+    expect(second.request.continuation.cycle).toBe(2); expect(second.request.continuation.regroup).toBeUndefined();
+    expect(second.history[1].request.continuation.regroup).toEqual(decision); expect((await check(second)).status).toBe('reviewed');
+    expect(await regroup(second, next(2), { regroup: decision })).toEqual(second);
+    expect(await regroup(second, next(2), { regroup: decision, now: () => 86402000 })).toEqual(second);
+    expect((await check(second, { now: () => 86402000 })).reason).toContain('expired');
+    await expect(regroup(second, next(2), { regroup: { ...decision, ownerDecision: 'Different decision' } })).rejects.toThrow('preserved transition');
+  });
+  it('requires explicit full refresh, unchanged author and preserved previous state', async () => {
+    const prior = await initial();
+    await expect(regroup(prior, next(), { regroup: undefined })).rejects.toThrow('changed execution approach');
+    await expect(regroup(prior, next(), { fullRefresh: false })).rejects.toThrow('explicit full refresh');
+    await expect(regroup(prior, next(), { authorSessionId: 'other-author' })).rejects.toThrow('changed execution approach');
+    await expect(regroup(prior, next(), { previous: undefined })).rejects.toThrow('preserved previous state');
+  });
+  it.each(['priorRequestDigest', 'priorIntentDigest', 'nextIntentDigest'])('rejects mismatched %s at prepare and persisted verification', async field => {
+    const prior = await initial(); const decision = { ...approval(prior), [field]: 'f'.repeat(64) };
+    await expect(regroup(prior, next(), { regroup: decision })).rejects.toThrow('differs from exact');
+    const state = await regroup(prior); state.request.continuation.regroup[field] = 'f'.repeat(64);
+    expect((await check(state)).status).toBe('needs_agent_review');
+  });
+  it.each([
+    { ...intent, criteria: 'Replacement criteria only' }, { ...intent, risk: 'unknown' },
+    { ...intent, scope: ['new.txt'] }, { ...expanded, risk: 'prose' }, { ...expanded, risk: 'routine' },
+  ])('rejects equal, replaced or shrunk scope and non-full review risk: %j', async approved => {
+    const prior = await initial();
+    await expect(regroup(prior, candidate, { intent: approved, regroup: approval(prior, approved) })).rejects.toThrow(/expanded scope|exceeds approved scope/);
+  });
+  it.each([
+    { ownerDecision: '' }, { ownerDecision: 'x'.repeat(4097) }, { ownerDecision: true },
+    { priorRequestDigest: 'invalid' }, { extra: true }, { nextIntentDigest: undefined },
+  ])('refuses invalid regroup metadata: %j', async mutation => {
+    const prior = await initial();
+    await expect(regroup(prior, next(), { regroup: { ...approval(prior), ...mutation } })).rejects.toThrow();
+    const state = await regroup(prior); Object.assign(state.request.continuation.regroup, mutation);
+    expect((await check(state)).status).toBe('needs_agent_review');
+  });
+  it('cannot erase history, findings or expiry, or bypass dirty, nonancestor and current source checks', async () => {
+    const prior = await initial();
+    await expect(regroup(prior, { ...next(), clean: false })).rejects.toThrow('clean committed');
+    await expect(regroup(prior, next(), { delta: async () => { throw new Error('not an authenticated ancestor'); } })).rejects.toThrow('nonancestor integration');
+    const state = await regroup(prior); state.reports = complete(state);
+    for (const mutate of [value => { value.history = []; }, value => { value.request.continuation.findings = []; }, value => { value.request.continuation.mode = 'closure'; }, value => { value.request.preparedAt = 1001; }]) {
+      const altered = structuredClone(state); mutate(altered); expect((await check(altered)).status).toBe('needs_agent_review');
+    }
+    expect((await check(state, { snapshot: async () => ({ ...state.request.candidate, clean: false }) })).status).toBe('needs_agent_review');
+    expect((await check(state, { delta: async () => ['concealed-permission-change.txt'] })).reason).toContain('actual committed repair delta');
+    expect((await check(state, { snapshot: async () => ({ ...state.request.candidate, indexDigest: 'f'.repeat(64) }) })).reason).toContain('candidate changed');
+  });
+  it('binds real permission changes to the committed delta and refuses later permission drift', async () => {
+    const { cwd, base: baseline, git } = await fixture();
+    await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
+    const previous = await prepareAgentReviewState({ cwd, base: baseline, intent, authorSessionId: 'author', now });
+    await chmod(join(cwd, 'source.txt'), 0o755); git('add', 'source.txt'); git('commit', '-qm', 'permission change');
+    const state = await prepareAgentReviewState({ cwd, base: baseline, intent: expanded, authorSessionId: 'author', now, previous, fullRefresh: true, regroup: approval(previous) });
+    expect(state.request.continuation.deltaPaths).toEqual(['source.txt']); expect(state.request.roles).toHaveLength(2);
+    state.reports = complete(state); expect((await verifyAgentReview({ cwd, ...state, now })).status).toBe('reviewed');
+    await chmod(join(cwd, 'source.txt'), 0o644);
+    expect((await verifyAgentReview({ cwd, ...state, now })).status).toBe('needs_agent_review');
+    await expect(recordAgentReview({ cwd, ...state, report: complete(state, 'drift')[0], now })).rejects.toThrow('candidate changed');
+  });
+  it('requires CLI metadata for expansion and rejects a separate regroup command without mutating state', async () => {
+    const { cwd, git } = await fixture();
+    await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
+    const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
+    await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
+    const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
+    const specPath = join(directory, 'intent.json'); const statePath = join(directory, 'session.json');
+    const spec = { intent, base: baseline, authorSessionId: 'author' }; await writeFile(specPath, JSON.stringify(spec));
+    const script = resolve('scripts/agent-review-session.mjs');
+    const invoke = (...args: string[]) => {
+      try { return execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', stdio: 'pipe' }); }
+      catch (error) { throw new Error(error instanceof Error && 'stdout' in error && 'stderr' in error ? String(error.stdout) + String(error.stderr) : String(error)); }
+    };
+    invoke('prepare'); const before = await readFile(statePath, 'utf8');
+    await writeFile(specPath, JSON.stringify({ ...spec, intent: expanded, fullRefresh: true }));
+    expect(() => invoke('prepare')).toThrow('changed execution approach'); expect(await readFile(statePath, 'utf8')).toBe(before);
+    expect(() => invoke('regroup')).toThrow('use prepare'); expect(await readFile(statePath, 'utf8')).toBe(before);
+    const previous = JSON.parse(before); await writeFile(specPath, JSON.stringify({ ...spec, intent: expanded, fullRefresh: true, regroup: approval(previous) }));
+    expect(JSON.parse(invoke('prepare')).status).toBe('needs_agent_review');
+    const state = JSON.parse(await readFile(statePath, 'utf8')); expect(state.request.roles).toHaveLength(2); expect(state.reports).toEqual([]); expect(state.history).toEqual([previous]);
   });
 });
 
