@@ -219,12 +219,51 @@ describe('source-keyed pull-request receipts', () => {
     const s = await sourceFixture(); const binding = await observeNativeAdmission(s.api, s.f.input);
     await s.upload('native-review-10-1', { input: s.f.input, binding }, 123); await expect(s.wait()).resolves.toBeUndefined();
   });
-  it('R8 merge groups ignore source receipts', async () => {
-    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-    const tree = s.f.git('rev-parse', 'HEAD^{tree}'); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'synthetic group'); s.f.group(s.f.base, head);
-    s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
-    Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
-    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
+  describe('merge groups admitted by their source receipt', () => {
+    // Builds main2 = base + <path>=<contents>, then the queue's squash of the reviewed change on main2.
+    async function behindGroup(s: Awaited<ReturnType<typeof sourceFixture>>, path: string, contents: string, extra?: [string, string]) {
+      const f = s.f; f.git('checkout', '-q', '--detach', f.base);
+      await mkdir(join(f.cwd, path, '..'), { recursive: true }); await writeFile(join(f.cwd, path), contents); f.git('add', '.'); f.git('commit', '-qm', 'new main');
+      const main2 = f.git('rev-parse', 'HEAD');
+      let tree = f.git('merge-tree', '--write-tree', `--merge-base=${f.base}`, main2, f.head);
+      if (extra) { f.git('checkout', '-q', '--detach', main2); f.git('read-tree', tree); f.git('checkout-index', '-a', '-f'); await writeFile(join(f.cwd, extra[0]), extra[1]); f.git('add', extra[0]); tree = f.git('write-tree'); }
+      const head = f.git('commit-tree', tree, '-p', main2, '-m', 'queue group'); f.group(main2, head);
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      return { main2, head };
+    }
+    it('G1 admits a behind group whose base moved only on unrelated paths', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n'); await expect(s.wait()).resolves.toBeUndefined();
+    });
+    it('G2 refuses when the base moved under a reviewed path', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'code.ts', 'export const n = 2;\n'); await expect(s.wait()).rejects.toThrow('the base moved under a reviewed path');
+    });
+    it('G3 refuses when the base changed workflow machinery', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, '.github/workflows/extra.yml', 'name: extra\n'); await expect(s.wait()).rejects.toThrow('machinery');
+    });
+    it('G4 refuses a group that is not exactly the reviewed change on its base', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n', ['smuggled.ts', 'not reviewed\n']); await expect(s.wait()).rejects.toThrow('not exactly the reviewed change');
+    });
+    it('G5 admits a group with the unchanged reviewed tree', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      const tree = s.f.git('rev-parse', `${s.f.head}^{tree}`); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-m', 'queue group'); s.f.group(s.f.base, head);
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      await expect(s.wait()).resolves.toBeUndefined();
+    });
+    it('G6 waits when the queue entry names another reviewed head', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n'); s.f.entry.pullRequest.headRefOid = s.f.base;
+      await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
+    });
+    it('G7 refuses an expired source review in the group', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n'); s.setClock(86401001); await expect(s.wait()).rejects.toThrow('Native admission refused');
+    });
   });
   for (const mutation of ['head-repository', 'workflow-file'] as const) it(`R9 refuses a run with a different ${mutation}`, async () => {
     const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);

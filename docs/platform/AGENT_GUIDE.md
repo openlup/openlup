@@ -144,11 +144,23 @@ keeps reviewers in this same task and subscription. It was active at the dated
 inspection in [Development and release](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
 The supervisor supplies current source evidence for the reviewed PR head, or
 for the exact merge-group run/attempt, then observes the queue's actual base,
-head, tree and source identity. An entire
-group tree equal to the reviewed source tree needs no additional review. A
-different tree needs two fresh independent full integration reviews under the
-same approved criteria; filenames or an author statement cannot establish
-noninteraction. Keep the source branch unchanged and record group evidence
+head, tree and source identity.
+
+A source review carries over to a merge group when either:
+- the group tree equals the reviewed tree; or
+- the group is exactly the reviewed change on its queue base, which admission
+  checks with `git merge-tree`, and the base's new commits touch neither the
+  change's paths nor the trust machinery: `.github/`, the review scripts, the
+  identity fence, package manifests and lockfiles, and migrations.
+
+Then the pull request's source receipt admits the group, with no new receipt
+and no live session. The six mechanical checks on the group tree cover
+behavioural interaction. Otherwise the run-keyed receipt with two fresh
+independent full integration reviews applies, under the same approved
+criteria.
+
+An author statement cannot establish that the change does not interact with the
+base. Keep the source branch unchanged and record group evidence
 separately. The existing nonqueue base-integration and repair-budget rules remain.
 The supervisor creates the bounded transport input with
 `node scripts/agent-review-queue.mjs input-source PR source-session.json` for the

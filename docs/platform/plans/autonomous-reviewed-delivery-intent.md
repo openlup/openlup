@@ -113,6 +113,9 @@ cannot inherit the old admission.
 For the one-source pilot, compare the actual entire group tree with the reviewed
 source tree. Equal trees need no additional review; a different tree requires
 two fresh independent full integration reviews with unchanged approved criteria.
+Since 2026-10-03 (W4), a group that is exactly the reviewed change on a base
+whose new commits avoid its paths and the trust machinery carries the source
+review over instead.
 Keep source and group identities separate and leave the source branch unchanged.
 This does not alter the nonqueue base-integration protocol or reset its repair
 budget. At most two automatic queue-rebuild retries are a separate bound;
