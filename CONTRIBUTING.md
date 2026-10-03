@@ -622,6 +622,26 @@ Read the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) before
 submitting material AI-assisted work. Human accountability and DCO, independent
 native review, and actual task publication authority remain required.
 
+**Merge queue.** `main` takes squash merges through GitHub's merge queue, which
+builds and checks the fresh integration tree itself. The
+[base-move and receipt plan](docs/platform/plans/ci-base-move-and-receipts.md)
+records why these rules exist.
+
+- **No rebasing for freshness.** Do not rebase a pull request, or merge `main`
+  into it, only because it is behind. Rebase only for a textual conflict, and
+  then obtain a fresh full review.
+- **Arming.** Arm `gh pr merge --auto --squash`, with the maintainer's
+  configured author email, only under actual merge authority. Do it after the
+  required checks, the native review and any required maintainer read.
+- **Receipts.** While native admission is active, a supervisor with task
+  delivery authority submits the run-keyed native receipt as soon as each
+  pull-request or merge-group run exists. A group whose tree differs from the reviewed tree
+  also needs the two integration reviews described above.
+- **Flakes.** A removal counts as a flake only when the same job passed on the
+  same tree, or a `gh run rerun` passed without a code change. One requeue for a
+  flake uses the existing two-retry budget. A second removal of the same head
+  stops for diagnosis.
+
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned
 brand, content, catalogue, local policy, and business-specific integrations out
