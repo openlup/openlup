@@ -21,7 +21,7 @@ public selection is the neutral example. A host selecting another presentation
 must make its import-map target available to its runtime; source-level
 selection alone does not establish function packaging or deployment behavior.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-c64ee07eb63829654e4cabf488d81372b5156395e35b978b10fe5357fd07be2d","reason":"Handler tests now distinguish the real default adopter-policy refusal before dependency resolution from explicit unit compositions. Current route dispatch, compatibility tombstones and authorization/signature/replay assertions remain tested; no runtime route or policy implementation changes."} -->
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-6e8bb271897a16d989b062ecf2d5b8925ff01270d974b031275c8b6862026ef7","reason":"Handler tests now distinguish the real default adopter-policy refusal before dependency resolution from explicit unit compositions. Current route dispatch, compatibility tombstones and authorization/signature/replay assertions remain tested; no runtime route or policy implementation changes."} -->
 
 ## Self-host boundary
 
@@ -70,7 +70,7 @@ supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
 
-<!-- openlup-doc-impact {"unit":"reference","digest":"sha256-5309fb9a619665e8b595db121f456134678fbc44412a8130bdc01f561be8da5d","reason":"The prerender test supplies a complete synthetic route/pricing/read-model fixture at the existing seam. Public reference selection, fail-closed availability and installation boundary described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"reference","digest":"sha256-884ca5ed9122270ab455bf89ac1c75358759011e025e8b6101908a6a5ca1987c","reason":"The prerender refusal test supplies an invalid lifecycle route manifest at the existing seam. Public reference selection, fail-closed availability and installation boundary described here are unchanged."} -->
 
 ## Customer diagnostic history preview
 
@@ -185,7 +185,7 @@ presentation argument for callers. A host that changes the selection must
 verify its server module resolution and rendered output. The public source
 does not declare a managed serverless packaging rule for this alias.
 
-<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-94dc6c53eee3b524aa5c725b6eac97264428fab7ef9a3616a59757b296349a01","reason":"Transactional renderer tests now exercise neutral default presentation plus explicit synthetic presentation/content inputs, retaining rendered transport outcomes and refusal assertions. No renderer, provider, host or import-map implementation changes."} -->
+<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-3236bdacbafedd31395352ba24f0c64593648df93c2f999f34093681ae6b5739","reason":"Transactional renderer tests now exercise neutral default presentation plus explicit synthetic presentation/content inputs, retaining rendered transport outcomes and refusal assertions. No renderer, provider, host or import-map implementation changes."} -->
 
 Canonical production hostnames come from
 `config/site-routes.json.productionHosts`. Configure this list for an adopting

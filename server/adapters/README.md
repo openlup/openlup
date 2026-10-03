@@ -63,4 +63,4 @@ at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
 
-<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-e9c0f6f9a98ffbacf6265735787bab53a34781112bd1551377d86b9348cd7de0","reason":"Tests select explicit synthetic invoice presentation, the empty scheduler registry and current catalog envelope. Adapter implementations, capabilities, refusal behavior and provider activation described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-538200774ee40afdaa4c5a7db80cd92c33822650dca954437e39b203e32a410b","reason":"Tests select explicit synthetic invoice presentation, the empty scheduler registry and current catalog envelope. Adapter implementations, capabilities, refusal behavior and provider activation described here are unchanged."} -->
