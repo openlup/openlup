@@ -49,7 +49,7 @@ CREATE TEMP TABLE _data_before_replay AS SELECT jsonb_build_object(
   'dormant', (SELECT jsonb_agg(to_jsonb(r) ORDER BY event_type) FROM public.outbox_dormant_event_types r),
   'notifications', (SELECT jsonb_agg(to_jsonb(r) ORDER BY slug) FROM public.comms_notification_controls r)
 ) AS state;
-\ir ../migrations/20261003110000_required_platform_policy_data.sql
+\ir 20261003110000_required_platform_policy_data.sql.inc
 SELECT is(jsonb_build_object(
   'policies', (SELECT jsonb_agg(to_jsonb(r) ORDER BY table_name) FROM public.client_absorption_policy r),
   'jobs', (SELECT jsonb_agg(to_jsonb(r) ORDER BY job_name) FROM public.platform_job_controls r),

@@ -735,7 +735,7 @@ const row = { stage, args, input };
 if (stage === 'start' || stage === 'test') {
   const directory = args[args.indexOf('--workdir') + 1];
   row.config = fs.readFileSync(path.join(directory, 'supabase/config.toml'), 'utf8');
-  if (stage === 'test') row.tests = Object.fromEntries(fs.readdirSync(path.join(directory, 'supabase/tests')).map(name => [name, fs.readFileSync(path.join(directory, 'supabase/tests', name), 'utf8')]));
+  row.tests = Object.fromEntries(fs.readdirSync(path.join(directory, 'supabase/tests')).map(name => [name, fs.readFileSync(path.join(directory, 'supabase/tests', name), 'utf8')]));
 }
 fs.appendFileSync(environment.PGTAP_STAND_IN_LOG, JSON.stringify(row) + '\\n');
 if (stage === 'inventory') {
@@ -788,7 +788,13 @@ if ((scenario === stage && !['inventory', 'version', 'readback'].includes(stage)
       expect(replay.input).not.toMatch(/GRANT EXECUTE ON ALL FUNCTIONS|GRANT ALL/u);
       expect(calls.find(({ stage }) => stage === "formatter")!.input).toBe("ALTER SYSTEM SET supautils.hint_roles = '';");
       expect(calls.find(({ stage }) => stage === "readback")!.args).toContain("SELECT current_setting('supautils.hint_roles') = ''");
+      expect(start.tests).toEqual({
+        "first_test.sql": "BEGIN; SELECT 'first assertion'; ROLLBACK;\n",
+        "second_test.sql": "BEGIN; SELECT 'second assertion'; ROLLBACK;\n",
+      });
       expect(tests.tests).toEqual({
+        "00000000000000_platform_schema_baseline.sql.inc": "SELECT 'baseline replay';\n",
+        "20260927090000_forward.sql.inc": "SELECT 'ordered forward';\n",
         "first_test.sql": "BEGIN; SELECT 'first assertion'; ROLLBACK;\n",
         "second_test.sql": "BEGIN; SELECT 'second assertion'; ROLLBACK;\n",
       });

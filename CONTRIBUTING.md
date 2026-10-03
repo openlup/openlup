@@ -166,7 +166,8 @@ and before `--typecheck`; its `prelint` script builds core in that same job.
 
 The managed pgTAP diagnostic replays the committed baseline and every ordered
 forward in an owned disposable project. Only after replay does it materialize
-those same committed SQL bytes for relative test includes. Policy-data tests
+those same committed SQL bytes as `.inc` files in the CLI-mounted tests directory
+for relative test includes. These files are not additional pgTAP tests. Policy-data tests
 read installed rows before setup, replay the actual forward and verify operator
 choices survive. Runtime operations use their declared role; owner readback is
 an observer. No test grant or scheduler activation is part of this transport.
