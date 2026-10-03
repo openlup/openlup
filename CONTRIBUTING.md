@@ -60,7 +60,7 @@ kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
 published `@openlup/*` package. Move such a file or extend the pattern; do not
 add an exception.
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-39e7c011f725884003d0afdf00ddeedb805c8e703e1271121fbe7b83cc20d0f2","reason":"The native session protocol accepts an explicitly owner-bound scope expansion while preserving prior history, findings, the two-cycle budget and two fresh full reviews. Its updated protocol owner documents that transition; contributor commands, required check contexts and existing refusal boundaries in this section remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-f083d4449d64f49960cef940b221160a4b2d6e2acb0fefa7a001ece6fc9f909c","reason":"Comment-only test change. The S5 rebase case in the native session test now says that prepare refuses with needs_rescope and keeps the state, and that only state prepared from scratch binds the new fork point; test behaviour, contributor commands, required checks and the documented review protocol are unchanged."} -->
 
 ### Optional SonarQube Cloud diagnostics
 
