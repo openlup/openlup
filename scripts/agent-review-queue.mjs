@@ -24,6 +24,13 @@ function digest(bytes) { return createHash('sha256').update(bytes).digest('hex')
 export function parseNativeAdmission(bytes) {
   demand(typeof bytes === 'string' && Buffer.byteLength(bytes) <= LIMIT, 'receipt exceeds transport bound; do not truncate evidence');
   const value = JSON.parse(bytes);
+  if (value?.version === 2) {
+    // Pull-request receipts bind the reviewed PR head and tree, not one run/attempt.
+    demand(Object.keys(value).sort().join(',') === 'integration,source,target,version' && value.target && Object.keys(value.target).sort().join(',') === 'event,prNumber,sourceHead', 'receipt schema differs');
+    demand(value.target.event === 'pull_request' && integer(value.target.prNumber) && SHA.test(value.target.sourceHead) && value.integration === null, 'source target is invalid');
+    demand(value.source?.request && Array.isArray(value.source.reports), 'native states are missing');
+    return value;
+  }
   demand(value && Object.keys(value).sort().join(',') === 'integration,prNumber,source,targetAttempt,targetRunId,version' && value.version === 1, 'receipt schema differs');
   demand(integer(value.targetRunId) && integer(value.targetAttempt) && integer(value.prNumber), 'target run/attempt/PR is invalid');
   demand(value.source?.request && Array.isArray(value.source.reports) && (value.integration === null || value.integration?.request && Array.isArray(value.integration.reports)), 'native states are missing');
@@ -58,15 +65,16 @@ export async function observeNativeAdmission(api, input) {
   demand(ref.ref === `refs/heads/${run.head_branch}` && ref.object?.sha === run.head_sha && ref.object.type === 'commit' && main.object?.sha === entry.baseCommit.oid && group.sha === run.head_sha && SHA.test(group.tree?.sha), 'group ref, current base or tree changed');
   return { event: run.event, workflowId: run.workflow_id, runId: run.id, attempt: run.run_attempt, prNumber: pr.number, sourceHead: source.head, sourceTree: source.tree, entryId: entry.id, enqueuedAt: entry.enqueuedAt, base: entry.baseCommit.oid, head: run.head_sha, tree: group.tree.sha, ref: ref.ref };
 }
+async function verifyReviewState(cwd, state, now) {
+  const candidate = await captureCommittedReviewCandidate(cwd, state.request.candidate.base, state.request.candidate.head);
+  const result = await verifyAgentReview({ cwd, ...state, snapshot: async () => candidate, now });
+  demand(result.status === 'reviewed', result.reason ?? 'complete independent native review is missing');
+  return candidate;
+}
 export async function verifyNativeAdmission({ cwd, api, input, expected, now = Date.now }) {
   const first = await observeNativeAdmission(api, input);
   if (expected) demand(equal(first, expected), 'target event/request binding changed');
-  async function verify(state) {
-    const candidate = await captureCommittedReviewCandidate(cwd, state.request.candidate.base, state.request.candidate.head);
-    const result = await verifyAgentReview({ cwd, ...state, snapshot: async () => candidate, now });
-    demand(result.status === 'reviewed', result.reason ?? 'complete independent native review is missing');
-    return candidate;
-  }
+  const verify = state => verifyReviewState(cwd, state, now);
   await verify(input.source);
   if (first.event === 'merge_group') {
     // Entire-tree equality is an objective unchanged-code proof. Path disjointness
@@ -90,6 +98,31 @@ export async function verifyNativeAdmission({ cwd, api, input, expected, now = D
   const admittedAt = now();
   assertAgentReviewFreshness(input.source, admittedAt);
   if (input.integration) assertAgentReviewFreshness(input.integration, admittedAt);
+  return final;
+}
+/** The live PR still carries the reviewed head and tree; with a run, that run is its exact Published Tree CI target. */
+export async function observeSourceAdmission(api, input, target = null) {
+  const root = `/repos/${REPOSITORY}`;
+  const pr = await api.get(`${root}/pulls/${input.target.prNumber}`);
+  demand(pr.number === input.target.prNumber && pr.state === 'open' && pr.draft === false && !pr.merged && pr.base?.repo?.id === REPOSITORY_ID && pr.base.ref === 'main' && SHA.test(pr.head?.sha), 'PR is not the current open main candidate');
+  const source = input.source.request.candidate;
+  demand(source.head === input.target.sourceHead && pr.head.sha === source.head, 'PR head changed after source review');
+  const commit = await api.get(`${root}/git/commits/${source.head}`);
+  demand(commit.sha === source.head && commit.tree?.sha === source.tree, 'reviewed source tree differs');
+  const binding = { event: 'pull_request', prNumber: pr.number, sourceHead: source.head, sourceTree: source.tree };
+  if (!target) return binding;
+  const run = await api.get(`${root}/actions/runs/${target.runId}`);
+  demand(run.id === target.runId && run.run_attempt === target.attempt && run.repository?.id === REPOSITORY_ID && run.path === WORKFLOW && integer(run.workflow_id) && run.event === 'pull_request', 'target workflow identity or attempt differs');
+  demand(run.status !== 'completed' || run.conclusion === 'success', 'target run has already failed');
+  demand(run.head_sha === source.head && run.head_branch === pr.head.ref && run.head_repository?.id === pr.head.repo?.id, 'PR run is not the source review target');
+  return { ...binding, runId: run.id, attempt: run.run_attempt, workflowId: run.workflow_id };
+}
+export async function verifySourceAdmission({ cwd, api, input, target = null, now = Date.now }) {
+  const first = await observeSourceAdmission(api, input, target);
+  await verifyReviewState(cwd, input.source, now);
+  const final = await observeSourceAdmission(api, input, target);
+  demand(equal(first, final), 'candidate or workflow attempt changed during verification');
+  assertAgentReviewFreshness(input.source, now());
   return final;
 }
 function apiTransport() {
@@ -116,26 +149,44 @@ export async function readNativeAdmissionArtifact(api, input) {
   const artifacts = listing.artifacts.filter(artifact => !artifact.expired);
   demand(artifacts.length <= 1, 'multiple receipts for one run/attempt require regrouping');
   for (const artifact of artifacts.sort((a, b) => b.id - a.id)) {
-    const run = await api.get(`/repos/${REPOSITORY}/actions/runs/${artifact.workflow_run.id}`);
-    if (run.status !== 'completed') continue;
-    const workflow = await api.get(`/repos/${REPOSITORY}/actions/workflows/native-review-admission.yml`);
-    demand(workflow.path === DISPATCH && workflow.state === 'active' && workflow.id === run.workflow_id && run.repository?.id === REPOSITORY_ID && run.event === 'workflow_dispatch' && run.path === DISPATCH && run.head_branch === 'main' && run.head_sha === artifact.workflow_run.head_sha && run.status === 'completed' && run.conclusion === 'success' && run.run_attempt === 1, 'receipt is not from successful trusted-main dispatch; dispatch reruns are refused');
-    demand(integer(artifact.id) && artifact.size_in_bytes > 0 && artifact.size_in_bytes <= 128000 && /^sha256:[a-f0-9]{64}$/u.test(artifact.digest), 'artifact identity/bounds are invalid');
-    const directory = await mkdtemp(join(tmpdir(), 'native-review-'));
-    try {
-      const archive = join(directory, 'receipt.zip');
-      const bytes = await api.download(`/repos/${REPOSITORY}/actions/artifacts/${artifact.id}/zip`);
-      demand(Buffer.isBuffer(bytes) && bytes.length <= 128000 && `sha256:${digest(bytes)}` === artifact.digest, 'downloaded artifact digest differs');
-      await writeFile(archive, bytes);
-      const names = await execute('unzip', ['-Z1', archive], { timeout: 5000, maxBuffer: 1024 });
-      demand(names.stdout.trim() === 'receipt.json', 'artifact contains unexpected entries');
-      const output = await execute('unzip', ['-p', archive, 'receipt.json'], { timeout: 5000, maxBuffer: ARTIFACT_LIMIT });
-      const receipt = JSON.parse(output.stdout);
-      demand(receipt && Object.keys(receipt).sort().join(',') === 'binding,input' && receipt.input.targetRunId === input.targetRunId && receipt.input.targetAttempt === input.targetAttempt && (input.prNumber === 0 || receipt.input.prNumber === input.prNumber), 'artifact target is stale');
-      return receipt;
-    } finally { await rm(directory, { recursive: true, force: true }); }
+    const receipt = await readTrustedReceipt(api, artifact);
+    if (!receipt) continue;
+    demand(receipt.input.targetRunId === input.targetRunId && receipt.input.targetAttempt === input.targetAttempt && (input.prNumber === 0 || receipt.input.prNumber === input.prNumber), 'artifact target is stale');
+    return receipt;
   }
   return null;
+}
+/** A source receipt for this PR head. Artifacts failing provenance are skipped: the name is predictable and any run can upload one. */
+export async function readSourceAdmissionArtifact(api, prNumber, sourceHead) {
+  demand(integer(prNumber) && SHA.test(sourceHead), 'source receipt target is invalid');
+  const listing = await api.get(`/repos/${REPOSITORY}/actions/artifacts?name=native-review-pr-${prNumber}-${sourceHead}&per_page=100`);
+  demand(Array.isArray(listing.artifacts) && listing.total_count <= 100 && listing.artifacts.length === listing.total_count, 'receipt artifact pagination is incomplete');
+  for (const artifact of listing.artifacts.filter(artifact => !artifact.expired).sort((a, b) => b.id - a.id)) {
+    let receipt;
+    try { receipt = await readTrustedReceipt(api, artifact); } catch { continue; }
+    if (receipt?.input?.version === 2 && receipt.input.target?.prNumber === prNumber && receipt.input.target.sourceHead === sourceHead) return receipt;
+  }
+  return null;
+}
+async function readTrustedReceipt(api, artifact) {
+  const run = await api.get(`/repos/${REPOSITORY}/actions/runs/${artifact.workflow_run.id}`);
+  if (run.status !== 'completed') return null;
+  const workflow = await api.get(`/repos/${REPOSITORY}/actions/workflows/native-review-admission.yml`);
+  demand(workflow.path === DISPATCH && workflow.state === 'active' && workflow.id === run.workflow_id && run.repository?.id === REPOSITORY_ID && run.event === 'workflow_dispatch' && run.path === DISPATCH && run.head_branch === 'main' && run.head_sha === artifact.workflow_run.head_sha && run.status === 'completed' && run.conclusion === 'success' && run.run_attempt === 1, 'receipt is not from successful trusted-main dispatch; dispatch reruns are refused');
+  demand(integer(artifact.id) && artifact.size_in_bytes > 0 && artifact.size_in_bytes <= 128000 && /^sha256:[a-f0-9]{64}$/u.test(artifact.digest), 'artifact identity/bounds are invalid');
+  const directory = await mkdtemp(join(tmpdir(), 'native-review-'));
+  try {
+    const archive = join(directory, 'receipt.zip');
+    const bytes = await api.download(`/repos/${REPOSITORY}/actions/artifacts/${artifact.id}/zip`);
+    demand(Buffer.isBuffer(bytes) && bytes.length <= 128000 && `sha256:${digest(bytes)}` === artifact.digest, 'downloaded artifact digest differs');
+    await writeFile(archive, bytes);
+    const names = await execute('unzip', ['-Z1', archive], { timeout: 5000, maxBuffer: 1024 });
+    demand(names.stdout.trim() === 'receipt.json', 'artifact contains unexpected entries');
+    const output = await execute('unzip', ['-p', archive, 'receipt.json'], { timeout: 5000, maxBuffer: ARTIFACT_LIMIT });
+    const receipt = JSON.parse(output.stdout);
+    demand(receipt && Object.keys(receipt).sort().join(',') === 'binding,input', 'artifact target is stale');
+    return receipt;
+  } finally { await rm(directory, { recursive: true, force: true }); }
 }
 async function main() {
   const [verb, ...args] = process.argv.slice(2); const cwd = process.cwd();
@@ -144,36 +195,61 @@ async function main() {
     const input = { version: 1, targetRunId: Number(runId), targetAttempt: Number(attempt), prNumber: Number(pr), source: JSON.parse(await readFile(sourcePath, 'utf8')), integration: integrationPath ? JSON.parse(await readFile(integrationPath, 'utf8')) : null };
     const receipt = JSON.stringify(input); parseNativeAdmission(receipt); console.log(JSON.stringify({ receipt })); return;
   }
+  if (verb === 'input-source') {
+    const [pr, sourcePath] = args; const source = JSON.parse(await readFile(sourcePath, 'utf8'));
+    const input = { version: 2, target: { event: 'pull_request', prNumber: Number(pr), sourceHead: source.request?.candidate?.head }, source, integration: null };
+    const receipt = JSON.stringify(input); parseNativeAdmission(receipt); console.log(JSON.stringify({ receipt })); return;
+  }
   const api = apiTransport();
   if (verb === 'submit') {
     demand(process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' && process.env.GITHUB_REF === 'refs/heads/main' && process.env.GITHUB_REPOSITORY === REPOSITORY, 'submission must execute trusted main');
     const input = parseNativeAdmission(process.env.NATIVE_REVIEW_RECEIPT);
+    if (input.version === 2) {
+      await fetchObjects(cwd, input, {});
+      const binding = await verifySourceAdmission({ cwd, api, input });
+      await writeFile('receipt.json', JSON.stringify({ input, binding }));
+      await writeFile(process.env.GITHUB_OUTPUT, `artifact=native-review-pr-${input.target.prNumber}-${input.target.sourceHead}\n`, { flag: 'a' }); return;
+    }
     const first = await observeNativeAdmission(api, input); await fetchObjects(cwd, input, first);
     const binding = await verifyNativeAdmission({ cwd, api, input, expected: first });
     await writeFile('receipt.json', JSON.stringify({ input, binding }));
     await writeFile(process.env.GITHUB_OUTPUT, `artifact=native-review-${input.targetRunId}-${input.targetAttempt}\n`, { flag: 'a' }); return;
   }
-  demand(verb === 'wait' && process.env.GITHUB_REPOSITORY === REPOSITORY, 'use input, trusted submit, or admission wait');
+  demand(verb === 'wait', 'use input, input-source, trusted submit, or admission wait');
   const event = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, 'utf8'));
-  const runId = Number(process.env.GITHUB_RUN_ID); const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
+  await waitNativeAdmission({ event, env: process.env, api, cwd });
+}
+export async function waitNativeAdmission({ event, env, api, cwd, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 20 * 60 * 1000, fetchObjects: fetch = fetchObjects }) {
+  demand(env.GITHUB_REPOSITORY === REPOSITORY, 'use input, input-source, trusted submit, or admission wait');
+  const runId = Number(env.GITHUB_RUN_ID); const attempt = Number(env.GITHUB_RUN_ATTEMPT);
   demand(integer(runId) && integer(attempt) && event.repository?.private === false, 'hosted target is invalid');
-  const target = process.env.GITHUB_EVENT_NAME;
+  const target = env.GITHUB_EVENT_NAME;
   const pr = target === 'pull_request' ? event.number : 0;
   demand(['pull_request', 'merge_group'].includes(target), 'event is unsupported');
-  const start = Date.now();
-  while (Date.now() - start < 20 * 60 * 1000) {
+  const start = now();
+  while (now() - start < deadlineMs) {
     // A group has no PR number in the event. The artifact input is only a hint;
     // authenticated queue membership below independently verifies it.
     const seed = { targetRunId: runId, targetAttempt: attempt, prNumber: pr };
     const receipt = await readNativeAdmissionArtifact(api, seed);
     if (receipt) {
       const input = parseNativeAdmission(JSON.stringify(receipt.input));
-      demand(target === receipt.binding.event && (target !== 'pull_request' || event.pull_request?.head?.sha === receipt.binding.sourceHead) && (target !== 'merge_group' || event.action === 'checks_requested' && event.merge_group?.base_ref === 'refs/heads/main' && event.merge_group.base_sha === receipt.binding.base && event.merge_group.head_sha === receipt.binding.head && event.merge_group.head_ref === receipt.binding.ref && process.env.GITHUB_SHA === receipt.binding.head && process.env.GITHUB_REF === receipt.binding.ref), 'receipt differs from hosted event');
-      await fetchObjects(cwd, input, receipt.binding);
-      await verifyNativeAdmission({ cwd, api, input, expected: receipt.binding }); console.log('Native review admission verified for this exact run/attempt.'); return;
+      demand(target === receipt.binding.event && (target !== 'pull_request' || event.pull_request?.head?.sha === receipt.binding.sourceHead) && (target !== 'merge_group' || event.action === 'checks_requested' && event.merge_group?.base_ref === 'refs/heads/main' && event.merge_group.base_sha === receipt.binding.base && event.merge_group.head_sha === receipt.binding.head && event.merge_group.head_ref === receipt.binding.ref && env.GITHUB_SHA === receipt.binding.head && env.GITHUB_REF === receipt.binding.ref), 'receipt differs from hosted event');
+      await fetch(cwd, input, receipt.binding);
+      await verifyNativeAdmission({ cwd, api, input, expected: receipt.binding, now }); console.log('Native review admission verified for this exact run/attempt.'); return;
+    }
+    if (target === 'pull_request') {
+      // One source receipt serves every run and attempt of the reviewed PR head.
+      const source = await readSourceAdmissionArtifact(api, pr, event.pull_request?.head?.sha);
+      if (source) {
+        const input = parseNativeAdmission(JSON.stringify(source.input));
+        demand(input.version === 2 && input.target.prNumber === event.number && input.target.sourceHead === event.pull_request?.head?.sha, 'receipt differs from hosted event');
+        await fetch(cwd, input, {});
+        await verifySourceAdmission({ cwd, api, input, target: { runId, attempt }, now }); console.log('Native review admission verified for this reviewed PR head.'); return;
+      }
     }
     console.log(`needs_agent_review: submit native receipt for run ${runId}/${attempt}; no maintainer action required`);
-    await new Promise(resolve => setTimeout(resolve, 15000));
+    await sleep(15000);
   }
   throw new Error('Native admission refused: bounded receipt wait expired; regroup, do not retry indefinitely');
 }

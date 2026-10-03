@@ -205,16 +205,29 @@ The configured local verification mirror must exercise these same steps.
 The additional optional `native-review` job is active only when the separately
 approved repository variable `OPENLUP_NATIVE_QUEUE` is `enabled`. It runs after
 all six actual mechanical successes and waits at most twenty minutes for a
-receipt targeting its current run and attempt. Missing, stale, incomplete or
-mismatched evidence fails. Turning on that variable, requiring the context and
+receipt. A pull-request run accepts a receipt for its current run and attempt,
+or a source receipt for its PR number and exact reviewed head and tree; a
+merge-group run accepts only a receipt for its current run and attempt. Missing,
+stale, incomplete or mismatched evidence fails. Turning on that variable, requiring the context and
 enabling the queue are separate settings actions; merging the foundation does
 not perform them. A skipped inactive job is not evidence of admission.
 
 The supervisor obtains source reviews through fresh native agents in the same
-task, then selects the observed Published Tree CI run, attempt and PR number.
-From the task worktree, with `RUN`, `ATTEMPT` and `PR` set to those computed
-values and `source-session.json` holding complete native state, create the
-transport input:
+task. For the pull request itself, one source receipt covers every Published
+Tree CI run and attempt of the reviewed head, so it can be submitted as soon as
+the pull request is open and ready, before any run exists. With `PR` set to the
+pull request number and `source-session.json` holding complete native state:
+
+```bash
+node scripts/agent-review-queue.mjs input-source "$PR" \
+  source-session.json > native-review-input.json
+gh workflow run native-review-admission.yml --ref main --json < native-review-input.json
+```
+
+Admission re-verifies that receipt against the live pull request, the exact run
+and the review's freshness each time. A new head needs a new review and a new
+receipt. For a merge-group run, select the observed run, attempt and PR number
+and use the run-keyed form:
 
 ```bash
 node scripts/agent-review-queue.mjs input "$RUN" "$ATTEMPT" "$PR" \
@@ -634,13 +647,18 @@ records why these rules exist.
   configured author email, only under actual merge authority. Do it after the
   required checks, the native review and any required maintainer read.
 - **Receipts.** While native admission is active, a supervisor with task
-  delivery authority submits the run-keyed native receipt as soon as each
-  pull-request or merge-group run exists. A group whose tree differs from the reviewed tree
-  also needs the two integration reviews described above.
+  delivery authority does two things:
+  - submits one source receipt per reviewed pull-request head, as soon as the
+    pull request is open and ready;
+  - submits the run-keyed receipt as soon as each merge-group run exists.
+
+  A group whose tree differs from the reviewed tree also needs the two
+  integration reviews described above.
 - **Flakes.** A removal counts as a flake only when the same job passed on the
   same tree, or a `gh run rerun` passed without a code change. One requeue for a
   flake uses the existing two-retry budget. A second removal of the same head
-  stops for diagnosis.
+  stops for diagnosis. A `native-review` red caused by a missing or late receipt
+  is not a flake.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned
