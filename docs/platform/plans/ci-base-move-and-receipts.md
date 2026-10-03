@@ -204,8 +204,7 @@ No release, repository setting, ruleset, secret or npm action is included.
 - W0, W2, W1 and the W3 follow-up merged with green required contexts;
 - the W2 live proof recorded;
 - the step 4 self-test green;
-- W4 and W5 merged, and W4's unchanged-tree live proof recorded. The
-  disjoint-base-move live proof stays open and does not gate completion.
+- W4 and W5 merged, and both W4 live proofs and the W5 live proof recorded.
 
 A report of required reds by class over the next 30 merges follows, but does not
 gate completion.
@@ -256,9 +255,16 @@ changes an approved admission rule.
 **Live proof:**
 - **Unchanged tree, observed 2026-10-03.** #122's merge group was admitted by
   its source receipt alone, with no run-keyed receipt or live session.
-- **Disjoint base move.** Planned: two independent pull requests armed
-  together, the second admitted by its source receipt after the first merged.
-  Not yet observed live when this was written.
+- **Disjoint base move, observed 2026-10-03.** #123 changed only documentation
+  outside the listed machinery, and #124's paths, which included the policy
+  under `.github/`, were disjoint from #123's. Only the base move must avoid the
+  machinery. #123 merged first. #124's merge group, on #123's merge commit and
+  with a tree different from the reviewed one, logged "admission verified for this merge group by its source
+  receipt (disjoint base move)". No run-keyed receipt, integration review or
+  live session was involved.
+- **W5, observed the same day.** #124 was reviewed on its fork point before
+  #123 merged, and was then verified locally and pushed without a rebase or a
+  new review.
 
 **Stop and report instead of repairing** if any of these happens:
 - a receipt timeout on a pull request whose v2 receipt was submitted in time;
@@ -546,3 +552,36 @@ the refusal wording.
 - **More than one queue build:** measured queue wait.
 - **Conflict replay:** a merge-group removal caused by a textual conflict.
 - **Parallel local checks:** a local verification time that blocks delivery.
+
+## 7. Concurrent documentation-receipt reconciliation
+
+[PR #126](https://github.com/openlup/openlup/pull/126) clarified the S5 test
+comment and recorded the live W4/W5 proof. Its merge at
+`07e646057acdffec0e5dcf274c94af246a1d9820` replaced the tooling no-impact marker
+in `CONTRIBUTING.md`. The independently reviewed transport candidate in
+[PR #119](https://github.com/openlup/openlup/pull/119),
+`855470a89e6023674180b7a7a6fda16a50102561`, replaced the same marker against
+`5ba29458965f31f7312d7a5d523f67899a75d3fe`. The single conflicting line was
+receipt metadata; their source changes remain separate.
+
+This documentation-only reconciliation restores the marker from that shared
+base and preserves PR #126's displaced receipt below as historical evidence.
+It retains the clarified test comment and all of the live proof record. Neither
+marker is blanket approval of a newer tree: each binds only its recorded delta.
+The transport marker still needs to validate against the actual integration.
+
+PR #119's source, reports and complete cycle-3 history remain unchanged. This
+reconciliation introduces no source continuation, budget reset or exception to
+ordinary conflict-resolution rules. The incoming change to the native session
+test is protected machinery, so W4's disjoint-move carry-over must refuse. The
+actual queue base, head and tree require two fresh full integration reviews
+under the unchanged source criteria, plus the required checks. Missing or
+expired source evidence, a mismatched documentation digest or an unreviewed
+group remains a delivery blocker.
+
+The following receipt belongs specifically to PR #126's comment-only delta;
+it is archived here, outside the active owner section:
+
+```text
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-e02d8b01138bf98503ad51a3977f8627544741975dae26491415f10eacc25fd0","reason":"Comment-only test change. The S5 rebase case in the native session test now says that prepare refuses with needs_rescope and keeps the state, and that only state prepared from scratch binds the new fork point; test behaviour, contributor commands, required checks and the documented review protocol are unchanged."} -->
+```

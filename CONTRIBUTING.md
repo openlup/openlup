@@ -80,7 +80,7 @@ handling.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-273eae4d56b178424a6413a7f232b683602ac5700563a62fa645d26bc34716c0","reason":"The native session protocol adds only one explicit owner-bound full third review after two automatic cycles, preserving history, findings and two fresh roles. The contribution commands, existing required contexts and refusal requirements in this checks section remain unchanged; the manual continuation contract is explained in the native review section and protocol plan."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-8a6540540597c3a675981b05eb538db6263b367c3c2a60a93e121453a52a5590","reason":"The queue transport losslessly encodes complete large review state for both CLI forms, trusted submission artifacts and all admission consumers, including source carry-over into merge groups. The protocol owner documents the bounded envelope and refusal conditions. Contributor commands, required contexts and the current native identity, freshness, scope, history, reviewer counts and owner-continuation controls in this checks section remain unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -93,7 +93,6 @@ anywhere but the repository root or a package root. It also refuses an adopter
 kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
 published `@openlup/*` package. Move such a file or extend the pattern; do not
 add an exception.
-
 
 ### Optional SonarQube Cloud diagnostics
 
@@ -214,7 +213,14 @@ does not cover, so do not commit them.
 
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
-evidence expiry and the two-cycle repair/review budget. Its review base is the
+evidence expiry and the two-cycle automatic repair/review budget. Separately
+bound fresh owner decisions can permit full cycles 3 and 4. Only cycle 4 may
+pair an exact regroup decision adding the two consumer-check paths specified
+in the native session interface, preserving every previous path, criteria,
+risk, roles and author. Cycle 5 refuses. Each owner cycle retains every prior round and
+finding and requires two fresh full reviewers. See the
+[native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
+for the exact request/candidate bindings. Its review base is the
 candidate's fork point, `git merge-base HEAD origin/main`: a review stays current
 while `main` moves ahead, and verify refuses it once that fork point changes. A
 bounded routine code change gets one cold correctness review only when its
@@ -853,12 +859,17 @@ textual conflict by merging `main`: that moves the fork point and gets fresh
 full-scope review within the same budget. A rebase discards that lineage and
 reports `needs_rescope`; it never restarts the budget or drops findings.
 
-A fresh explicit owner decision may authorize exactly one additional full review
-at cycle 3 after the two automatic cycles. This retains every prior round and
-finding, the same approved intent and author, and a clean ancestor-preserving
-committed candidate. It requires two fresh full reviewers. No fourth cycle or
-automatic extension is permitted; unchanged prepare preserves evidence and
-expiry. This decision grants no publication, merge or settings authority.
+A fresh explicit owner decision may authorize one additional full review at
+cycle 3 after the two automatic cycles. A separate fresh decision bound to that
+third request and the next candidate may authorize one final full review at
+cycle 4. Each retains every prior round and finding, the same criteria, risk,
+roles and author, and a clean ancestor-preserving committed candidate. Both
+require two fresh full reviewers. Only cycle 4 may also pair an exact owner
+regroup decision with a bounded scope expansion: retain every previous path and
+add exactly `packages/core/scripts/core-package-consumer-audit.ts` and
+`packages/core/test/consumerTooling.test.ts`. No other scope expansion, fifth
+cycle or automatic extension is permitted; unchanged prepare preserves evidence
+and expiry. These decisions grant no publication, merge or settings authority.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
