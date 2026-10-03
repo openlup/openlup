@@ -438,7 +438,7 @@ admission.
   freshness each time.
 - Several receipts for one head are allowed. An artifact failing provenance is
   skipped rather than fatal.
-- Merge-group runs keep the run-keyed receipt above unchanged.
+- Merge-group runs keep the run-keyed receipt above unchanged (until W4, below).
 - W3 follow-up: on a pull-request run, an unreadable or untrusted run-keyed
   artifact no longer blocks the source receipt. Both pull-request paths require an integer head
   repository ID.

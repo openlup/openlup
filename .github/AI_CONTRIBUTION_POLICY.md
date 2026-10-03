@@ -141,9 +141,10 @@ The source review carries over to a merge group when either:
   review scripts, the identity fence, package manifests and lockfiles,
   migrations).
 
-Admission checks both conditions; the author declares nothing. The mechanical
-checks on the group tree then cover behavioural interaction. Every other group
-requires two fresh independent integration reviewers, with unchanged approved
+Admission checks these conditions itself; the author declares nothing. The
+mechanical checks on the group tree are then relied on for behavioural
+interaction. Every other group requires two fresh independent integration
+reviewers, with unchanged approved
 criteria and separate group identity. An author-written approval cannot excuse
 an interaction. Nonqueue base
 integration still requires fresh full-scope review under the existing protocol.

@@ -276,8 +276,8 @@ A source review carries over to a merge group when either:
   configuration is not on this list; the group's mechanical checks run with it.
 
 Then the pull request's source receipt admits the group, with no new receipt
-and no live session. The six mechanical checks on the group tree cover
-behavioural interaction. Otherwise the run-keyed receipt with two fresh
+and no live session. The six mechanical checks on the group tree are relied on
+for behavioural interaction. Otherwise the run-keyed receipt with two fresh
 independent full integration reviews applies, under the same approved
 criteria.
 
