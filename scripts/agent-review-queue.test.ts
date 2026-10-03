@@ -3,9 +3,10 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { agentReviewReportBinding, captureCommittedReviewCandidate, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState } from './agent-review-session.mjs';
-import { observeNativeAdmission, parseNativeAdmission, readNativeAdmissionArtifact, readSourceAdmissionArtifact, verifyNativeAdmission, verifySourceAdmission, waitNativeAdmission } from './agent-review-queue.mjs';
+import { encodeNativeReceipt, observeNativeAdmission, parseNativeAdmission, readNativeAdmissionArtifact, readSourceAdmissionArtifact, verifyNativeAdmission, verifySourceAdmission, waitNativeAdmission } from './agent-review-queue.mjs';
 
 const roots: string[] = [];
 afterEach(async () => { for (const cwd of roots.splice(0)) await rm(cwd, { recursive: true, force: true }); });
@@ -46,6 +47,52 @@ async function fixture() {
 }
 
 describe('native review queue admission', () => {
+  it('losslessly transports large source and run receipts with retained history', async () => {
+    const f = await fixture(); const prior = structuredClone(f.input.source);
+    const retained = { ...f.input.source, history: [prior, structuredClone(prior)] };
+    retained.request.intent.criteria = 'Complete retained review lineage '.repeat(4000);
+    const run = { ...f.input, source: retained };
+    const source = { version: 2, target: { event: 'pull_request', prNumber: 5, sourceHead: f.head }, source: retained, integration: null };
+    for (const input of [run, source]) {
+      expect(Buffer.byteLength(JSON.stringify(input))).toBeGreaterThan(56000);
+      const wire = encodeNativeReceipt(input); expect(Buffer.byteLength(wire)).toBeLessThanOrEqual(56000);
+      expect(parseNativeAdmission(wire)).toEqual(input);
+      expect(() => parseNativeAdmission(JSON.stringify(input))).toThrow('transport bound');
+    }
+  });
+  it('both CLI forms encode complete large native observations without dropping fields', async () => {
+    const f = await fixture();
+    f.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
+    const sourcePath = join(f.cwd, 'source-session.json'); await writeFile(sourcePath, JSON.stringify(f.input.source));
+    const script = join(process.cwd(), 'scripts/agent-review-queue.mjs');
+    for (const args of [['input', '10', '1', '5', sourcePath], ['input-source', '5', sourcePath]]) {
+      const output = JSON.parse(execFileSync(process.execPath, [script, ...args], { encoding: 'utf8' }));
+      expect(JSON.parse(output.receipt).version).toBe(3);
+      const restored = parseNativeAdmission(output.receipt);
+      expect(restored.source).toEqual(f.input.source);
+      expect(restored.version).toBe(args[0] === 'input' ? 1 : 2);
+    }
+  });
+  it('keeps small receipts compatible and refuses expanded or incompressible evidence', async () => {
+    const f = await fixture(); expect(encodeNativeReceipt(f.input)).toBe(JSON.stringify(f.input));
+    expect(() => encodeNativeReceipt({ bytes: 'x'.repeat(512001) })).toThrow('expanded bound');
+    expect(() => encodeNativeReceipt({ bytes: randomBytes(60000).toString('base64') })).toThrow('transport bound');
+  });
+  it.each(['digest', 'encoding', 'schema', 'base64', 'gzip', 'expanded', 'nested', 'utf8'])('refuses malformed compressed evidence: %s', async (probe) => {
+    const f = await fixture(); f.input.source.request.intent.criteria = 'Complete retained review lineage '.repeat(4000);
+    const wire = JSON.parse(encodeNativeReceipt(f.input));
+    if (probe === 'digest') wire.sha256 = '0'.repeat(64);
+    if (probe === 'encoding') wire.encoding = 'zip';
+    if (probe === 'schema') wire.extra = true;
+    if (probe === 'base64') wire.data += '\n';
+    if (probe === 'gzip') wire.data = Buffer.from('not gzip').toString('base64');
+    if (probe === 'expanded' || probe === 'nested' || probe === 'utf8') {
+      const bytes = probe === 'utf8' ? Buffer.from([0xc3, 0x28]) : Buffer.from(probe === 'expanded' ? 'x'.repeat(512001) : JSON.stringify(wire));
+      wire.sha256 = createHash('sha256').update(bytes).digest('hex'); wire.data = gzipSync(bytes).toString('base64');
+    }
+    expect(() => parseNativeAdmission(JSON.stringify(wire))).toThrow();
+  });
+
   it('reconstructs exact clean local evidence while refusing dirty local bytes', async () => {
     const f = await fixture(); expect(await captureSessionCandidate(f.cwd, f.base)).toEqual(f.candidate);
     await writeFile(join(f.cwd, 'code.ts'), 'dirty\n'); expect(await captureSessionCandidate(f.cwd, f.base)).not.toEqual(f.candidate);
@@ -117,9 +164,10 @@ describe('native review queue admission', () => {
 
 
 describe('immutable native artifact transport', () => {
-  async function artifactFixture() {
+  async function artifactFixture(large = false) {
     const f = await fixture(); const binding = await observeNativeAdmission(f.api, f.input);
-    await writeFile(join(f.cwd, 'receipt.json'), JSON.stringify({ input: f.input, binding }));
+    if (large) f.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
+    await writeFile(join(f.cwd, 'receipt.json'), encodeNativeReceipt({ input: f.input, binding }));
     execFileSync('zip', ['-q', 'receipt.zip', 'receipt.json'], { cwd: f.cwd });
     const bytes = await readFile(join(f.cwd, 'receipt.zip'));
     const artifact = { id: 123, expired: false, workflow_run: { id: 20, head_sha: f.base }, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, size_in_bytes: bytes.length };
@@ -130,6 +178,15 @@ describe('immutable native artifact transport', () => {
     };
     return { f, api, run, artifact, binding };
   }
+  it('reads compressed immutable artifacts without changing target or native evidence', async () => {
+    const { f, api, binding } = await artifactFixture(true);
+    expect(await readNativeAdmissionArtifact(api, f.input)).toEqual({ input: f.input, binding });
+  });
+  it('refuses a compressed immutable artifact whose ZIP digest differs', async () => {
+    const { f, api, artifact } = await artifactFixture(true); artifact.digest = `sha256:${'0'.repeat(64)}`;
+    await expect(readNativeAdmissionArtifact(api, f.input)).rejects.toThrow('downloaded artifact digest differs');
+  });
+
   it('reads immutable exact target artifact with archive digest verification', async () => {
     const { f, api, binding } = await artifactFixture(); expect((await readNativeAdmissionArtifact(api, f.input)).binding).toEqual(binding);
   });
@@ -160,7 +217,7 @@ describe('source-keyed pull-request receipts', () => {
     const listings = new Map<string, Array<Record<string, unknown>>>(); const downloads = new Map<number, Buffer>();
     let calls: string[] = [];
     async function upload(name: string, receipt: unknown, id: number, mutate: (artifact: Record<string, unknown>) => void = () => {}) {
-      const dir = await mkdtemp(join(f.cwd, `artifact-${id}-`)); await writeFile(join(dir, 'receipt.json'), JSON.stringify(receipt));
+      const dir = await mkdtemp(join(f.cwd, `artifact-${id}-`)); await writeFile(join(dir, 'receipt.json'), encodeNativeReceipt(receipt));
       execFileSync('zip', ['-q', 'receipt.zip', 'receipt.json'], { cwd: dir }); const bytes = await readFile(join(dir, 'receipt.zip'));
       const artifact: Record<string, unknown> = { id, expired: false, workflow_run: { id: 20, head_sha: f.base }, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, size_in_bytes: bytes.length };
       mutate(artifact); downloads.set(id, bytes); listings.set(name, [...(listings.get(name) ?? []), artifact]);
@@ -186,6 +243,26 @@ describe('source-keyed pull-request receipts', () => {
     const sourceName = (pr = 5, head = f.head) => `native-review-pr-${pr}-${head}`;
     return { f, input, dispatch, upload, api, event, env, submit, wait, sourceName, setClock: (value: number) => { clock = value; }, calls: () => calls, resetCalls: () => { calls = []; } };
   }
+  it.each(['source', 'run'])('admits a large compressed %s receipt through immutable artifact and full native verification', async (kind) => {
+    const s = await sourceFixture();
+    s.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
+    if (kind === 'run') {
+      const tree = s.f.git('rev-parse', 'HEAD^{tree}');
+      const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'synthetic group'); s.f.group(s.f.base, head);
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
+    }
+    const input = kind === 'source' ? s.input : s.f.input;
+    const binding = kind === 'source' ? await verifySourceAdmission({ cwd: s.f.cwd, api: s.api, input, now: () => 1000 }) : await verifyNativeAdmission({ cwd: s.f.cwd, api: s.api, input, now: () => 1000 });
+    const receipt = { input, binding };
+    expect(Buffer.byteLength(JSON.stringify(receipt))).toBeGreaterThan(56000);
+    expect(JSON.parse(encodeNativeReceipt(receipt)).version).toBe(3);
+    await s.upload(kind === 'source' ? s.sourceName() : 'native-review-10-1', receipt, 123);
+    const restored = kind === 'source' ? await readSourceAdmissionArtifact(s.api, 5, s.f.head) : await readNativeAdmissionArtifact(s.api, s.f.input);
+    expect(restored).toEqual(receipt);
+    await expect(s.wait()).resolves.toBeUndefined();
+    s.setClock(86401001); await expect(s.wait()).rejects.toThrow('Native admission refused');
+  });
   it('R1 admits a later run of the reviewed head with a receipt submitted before any run existed', async () => {
     const s = await sourceFixture(); s.resetCalls(); const receipt = await s.submit();
     expect(s.calls().some(path => path.includes('/actions/runs/'))).toBe(false);
@@ -232,6 +309,16 @@ describe('source-keyed pull-request receipts', () => {
       Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
       return { main2, head };
     }
+    it('carries a complete large compressed source receipt over an unrelated merge-group base move', async () => {
+      const s = await sourceFixture();
+      s.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
+      const receipt = await s.submit();
+      expect(Buffer.byteLength(JSON.stringify(receipt))).toBeGreaterThan(56000);
+      expect(JSON.parse(encodeNativeReceipt(receipt)).version).toBe(3);
+      await s.upload(s.sourceName(), receipt, 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n');
+      await expect(s.wait()).resolves.toBeUndefined();
+    });
     it('G1 admits a behind group whose base moved only on unrelated paths', async () => {
       const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
       await behindGroup(s, 'other.ts', 'unrelated\n'); await expect(s.wait()).resolves.toBeUndefined();

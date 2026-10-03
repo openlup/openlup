@@ -48,7 +48,7 @@ handling.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-273eae4d56b178424a6413a7f232b683602ac5700563a62fa645d26bc34716c0","reason":"The native session protocol adds only one explicit owner-bound full third review after two automatic cycles, preserving history, findings and two fresh roles. The contribution commands, existing required contexts and refusal requirements in this checks section remain unchanged; the manual continuation contract is explained in the native review section and protocol plan."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-8a6540540597c3a675981b05eb538db6263b367c3c2a60a93e121453a52a5590","reason":"The queue transport losslessly encodes complete large review state for both CLI forms, trusted submission artifacts and all admission consumers, including source carry-over into merge groups. The protocol owner documents the bounded envelope and refusal conditions. Contributor commands, required contexts and the current native identity, freshness, scope, history, reviewer counts and owner-continuation controls in this checks section remain unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

@@ -418,6 +418,24 @@ mode; it does not silently change that rule or authorize cross-base repair reuse
 
 ### Native transport and admission
 
+Large complete native state uses a lossless version-3 transport envelope with
+exactly `version`, `encoding: gzip-base64`, the SHA256 of the expanded JSON bytes,
+and canonical base64 `data`. Inputs at or below 56,000 bytes retain their existing
+plain JSON form. Larger inputs compress without dropping history, findings,
+criteria, scopes or observations. Both CLI input forms and both trusted-main
+submission paths use this same codec; immutable artifacts carry the encoded
+`input` and `binding` wrapper, and every admission consumer, including source carry-over into a merge group,
+decodes before the existing native verification.
+
+The wire bound remains 56,000 bytes, artifact JSON remains at most 60,000 bytes,
+and expanded JSON is bounded at 512,000 bytes. Decoding refuses invalid gzip,
+noncanonical base64, digest mismatch, invalid UTF-8, extra envelope fields and
+nested envelopes. Incompressible or oversized complete evidence refuses rather
+than being truncated. Existing artifact ZIP provenance and digest checks, target
+bindings, live identity, freshness, scope, reviewer counts and lineage validation
+remain authoritative. Compression provides transport capacity, not review or
+publication authority.
+
 For a merge-group run that the source review does not carry over to (W4, in the
 amendment below), the supervisor creates input from the task worktree with
 `node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json group-session.json`.
