@@ -621,11 +621,13 @@ points to its detailed rule.
 
      ```json
      { "authorSessionId": "<your session id>",
-       "intent": { "risk": "behavior", "scope": ["<changed paths>"], "criteria": "<approved criteria>", "requiredRoles": [] } }
+       "intent": { "risk": "<prose|routine|behavior|unknown>", "scope": ["<changed paths>"], "criteria": "<approved criteria>", "requiredRoles": [] } }
      ```
 
-     Codex supplies `authorSessionId` itself; every other supervisor must set
-     it;
+     - `risk` sets the reviewer floor: one reviewer for `prose` or `routine`,
+       two for `behavior` or `unknown`.
+     - Codex may omit `authorSessionId`, which is then taken from
+       `CODEX_THREAD_ID`. Every other supervisor sets it to its own session ID.
    - run `node scripts/agent-review-session.mjs prepare`;
    - launch fresh reviewers and `record` each report;
    - repeat until `verify` reports `reviewed`.
@@ -651,8 +653,9 @@ points to its detailed rule.
    **Expiry.** Review evidence expires 24 hours after the earliest round since
    the last full review was prepared. A receipt artifact expires one day after
    upload, so by then the review has expired too. To recover:
-   - re-review the same candidate with `"fullRefresh": true` in `intent.json`,
-     which uses one repair cycle;
+   - re-review the same candidate: run `prepare` once with
+     `"fullRefresh": true` in `intent.json`, then remove the key. The refresh
+     uses one repair cycle;
    - then resubmit the receipt.
 8. **Hosted checks.** The six required contexts and `native-review` must pass.
    Compare raw `test-full` and `pgtap` failures with the exact base.
@@ -662,8 +665,8 @@ points to its detailed rule.
 10. **Arm auto-merge** under merge authority, following the
     [Merge queue](#merge-queue) rules.
 11. **Submit the merge-group receipt** as soon as the group run exists, with
-    `input "$RUN" "$ATTEMPT" "$PR"` in place of `input-source` (finding the run
-    is described below). A changed group tree also needs two integration
+    `input "$RUN" "$ATTEMPT" "$PR"` in place of `input-source`. How to find the
+    run is described under [Required and raw checks](#required-and-raw-checks). A changed group tree also needs two integration
     reviews.
 12. **Confirm the merge**: the squash commit on `main` and its push run.
 
