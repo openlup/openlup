@@ -1,6 +1,6 @@
 # Plan: autonomous reviewed delivery
 
-Status: native-session implementation; optional queue foundation is inactive until separately approved live proof.
+Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts amended on 2026-10-03.
 Audience: contributors implementing and verifying the development workflow.
 
 ## Approved convergence implementation wave
@@ -244,7 +244,9 @@ The supervisor writes approved intent data to the ignored
 `criteria` and `requiredRoles`; an adapter may supply an observed
 `authorSessionId`. `node scripts/agent-review-session.mjs prepare` computes the
 candidate, role floor and request binding, then stores bounded session state in
-`.context/scratch/agent-review/session.json`. An unchanged candidate retains its
+`.context/scratch/agent-review/session.json`. The candidate's base is its fork
+point, `git merge-base HEAD origin/main`; evidence stays current while `main`
+moves ahead and that fork point is unchanged. An unchanged candidate retains its
 request and reports. A committed repair adds a bounded `history` round and a
 version-2 request with `continuation`: cycle, review mode, prior-round digest,
 actual delta paths, neutral finding cards and repair risk. The optional top-level `repairRisk`
@@ -400,8 +402,9 @@ mode; it does not silently change that rule or authorize cross-base repair reuse
 
 ### Native transport and admission
 
-From the task worktree, the supervisor creates input with
+For a merge-group run, the supervisor creates input from the task worktree with
 `node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`.
+Pull-request runs use the source receipt described in the amendment below.
 Replace `RUN`, `ATTEMPT` and `PR` with tool-observed positive numeric identities;
 the bracketed group-state argument is supplied only when the group tree differs.
 The command outputs JSON for
@@ -437,7 +440,18 @@ admission.
   freshness each time.
 - Several receipts for one head are allowed. An artifact failing provenance is
   skipped rather than fatal.
-- Merge-group runs keep the run-keyed receipt above unchanged.
+- Merge-group runs keep the run-keyed receipt above unchanged (until W4, below).
+- W3 follow-up: on a pull-request run, an unreadable or untrusted run-keyed
+  artifact no longer blocks the source receipt. Both pull-request paths require an integer head
+  repository ID.
+- The activation proof below is the record of the activation decision. The
+  same-SHA property it names now holds for merge-group runs only.
+- W4, approved 2026-10-03: item 4 above is amended. The source review carries
+  over to a merge group whose tree is the reviewed tree, or that is exactly the
+  reviewed change on its queue base, when the base's net change avoids the
+  change's paths and the admission, identity-binding, dependency and migration
+  machinery. Then the pull request's source
+  receipt admits the group. Other groups keep the two integration reviews.
 The configured local mirror retains all six jobs and refuses workflow drift;
 local verification does not assert hosted queue activation.
 

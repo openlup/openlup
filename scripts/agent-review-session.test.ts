@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
@@ -513,5 +513,65 @@ describe('actual source snapshot without candidate execution', () => {
     const { cwd, base } = await fixture(); await writeFile(join(cwd, '.gitattributes'), 'source.txt filter=trap\n');
     await writeFile(join(cwd, 'source.txt'), 'dirty\n');
     const result = await captureSessionCandidate(cwd, base); expect(result.changedPaths).toEqual(['.gitattributes', 'source.txt']);
+  });
+});
+
+describe('fork-point review base (S5)', () => {
+  const finding = { mechanism: 'wrong bytes', precondition: 'read', requirement: 'right bytes', effect: 'wrong result', risk: 'ordinary' };
+  // The reviewed base B is the branch's fork point; origin/main later moves while HEAD stays put.
+  async function reviewedAtB(failFirst = false) {
+    const { cwd, git } = await fixture(); await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
+    const reviewedBase = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', reviewedBase); const branch = git('symbolic-ref', '--short', 'HEAD');
+    await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
+    const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true }); const statePath = join(directory, 'session.json');
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent, authorSessionId: 'author', repairRisk: 'ordinary' }));
+    const script = resolve('scripts/agent-review-session.mjs');
+    const invoke = (...args: string[]) => { const run = spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' }); return { code: run.status, result: run.stdout ? JSON.parse(run.stdout) : undefined, stderr: run.stderr }; };
+    const record = async (name: string, observation: object) => { const path = join(directory, `${name}.json`); await writeFile(path, JSON.stringify(observation)); return invoke('record', path); };
+    const moveMain = async (from: string, file: string) => { git('checkout', '-q', '--detach', from); await writeFile(join(cwd, file), 'main\n'); git('add', file); git('commit', '-qm', `main ${file}`); const moved = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', moved); git('checkout', '-q', branch); return moved; };
+    expect(invoke('prepare').result.status).toBe('needs_agent_review'); const first = JSON.parse(await readFile(statePath, 'utf8'));
+    for (const index of [0, 1]) await record(`first-${index}`, { ...report(first.request, index), completedAt: Date.now(), ...(failFirst && index === 0 ? { verdict: 'fail', materialFindings: [finding] } : {}) });
+    return { cwd, git, reviewedBase, statePath, invoke, record, moveMain };
+  }
+  it('(a) keeps verify reviewed when origin/main advances past the unchanged reviewed base', async () => {
+    const { reviewedBase, invoke, moveMain } = await reviewedAtB(); expect(invoke('verify').result.status).toBe('reviewed');
+    await moveMain(reviewedBase, 'unrelated.txt');
+    const verified = invoke('verify'); expect(verified.result.status).toBe('reviewed'); expect(verified.code).toBe(0); expect(verified.result.candidate.base).toBe(reviewedBase);
+    expect(invoke('status').result.status).toBe('reviewed');
+  });
+  it('(b) refuses once main is rewritten so the reviewed base is no longer an ancestor', async () => {
+    const { git, reviewedBase, invoke, moveMain } = await reviewedAtB();
+    await moveMain(git('rev-parse', `${reviewedBase}~1`), 'rewritten.txt');
+    const verified = invoke('verify'); expect(verified.code).toBe(1); expect(verified.result.status).toBe('needs_agent_review'); expect(verified.result.reason).toContain('fork point');
+  });
+  it('(c) preserves unchanged evidence at prepare after main advanced, with no new round', async () => {
+    const { reviewedBase, statePath, invoke, moveMain } = await reviewedAtB(); const reviewed = await readFile(statePath, 'utf8');
+    await moveMain(reviewedBase, 'unrelated.txt');
+    const prepared = invoke('prepare'); expect(prepared.result.status).toBe('reviewed'); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
+  });
+  it('(d) keeps base B and the closure lineage for a repair commit on the un-rebased branch', async () => {
+    const { cwd, git, reviewedBase, statePath, invoke, record, moveMain } = await reviewedAtB(true);
+    await moveMain(reviewedBase, 'unrelated.txt');
+    await writeFile(join(cwd, 'source.txt'), 'repaired\n'); git('add', 'source.txt'); git('commit', '-qm', 'repair');
+    expect(invoke('prepare').result.request.roles).toEqual(['closure']); const state = JSON.parse(await readFile(statePath, 'utf8'));
+    expect(state.request.candidate.base).toBe(reviewedBase); expect(state.request.continuation).toMatchObject({ cycle: 1, mode: 'closure', deltaPaths: ['source.txt'] }); expect(state.history).toHaveLength(1);
+    const closed = await record('closure', { ...report(state.request), reviewerId: 'fresh-closure', sessionId: 'fresh-closure-session', completedAt: Date.now(), closure: { coveredDelta: ['source.txt'], interactionsChecked: true, ordinarySemantics: true, resolvedFindings: state.request.continuation.findings.map(card => card.id) } });
+    expect(closed.result.status).toBe('reviewed'); expect(invoke('verify').result.status).toBe('reviewed');
+  });
+  it('(e) moves the base to M and requires full review when the author integrates main', async () => {
+    const { git, reviewedBase, statePath, invoke, moveMain } = await reviewedAtB(); const reviewedHead = git('rev-parse', 'HEAD'); const reviewed = await readFile(statePath, 'utf8');
+    const moved = await moveMain(reviewedBase, 'unrelated.txt');
+    git('merge', '-q', '--no-edit', 'refs/remotes/origin/main'); expect(invoke('verify').result.reason).toContain('fork point');
+    const prepared = invoke('prepare'); expect(prepared.result.status).toBe('needs_agent_review'); const state = JSON.parse(await readFile(statePath, 'utf8'));
+    expect(state.request.candidate.base).toBe(moved); expect(state.request.continuation).toMatchObject({ cycle: 1, mode: 'full', deltaPaths: ['unrelated.txt'] }); expect(state.request.roles).toHaveLength(2); expect(state.history[0].request.candidate.base).toBe(reviewedBase);
+    // A rebase rewrites the reviewed head: as before, it needs a changed execution approach (a fresh session) at the new fork point.
+    git('reset', '-q', '--hard', reviewedHead); await writeFile(statePath, reviewed); git('rebase', '-q', 'refs/remotes/origin/main');
+    expect(invoke('prepare').result).toMatchObject({ status: 'needs_rescope' }); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
+    await rm(statePath); invoke('prepare'); expect(JSON.parse(await readFile(statePath, 'utf8')).request.candidate.base).toBe(moved);
+  });
+  it('keeps a pristine checkout pristine when main moves ahead of it', async () => {
+    const { cwd, base, git } = await fixture(); const branch = git('symbolic-ref', '--short', 'HEAD');
+    git('checkout', '-q', '--detach'); await writeFile(join(cwd, 'later.txt'), 'main\n'); git('add', 'later.txt'); git('commit', '-qm', 'later main'); git('update-ref', 'refs/remotes/origin/main', git('rev-parse', 'HEAD')); git('checkout', '-q', branch);
+    const baseline = await pristineAgentReviewBaseline(cwd); expect(baseline.pristine).toBe(true); expect(baseline.candidate.base).toBe(base);
   });
 });

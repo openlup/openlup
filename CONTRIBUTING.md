@@ -60,6 +60,8 @@ kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
 published `@openlup/*` package. Move such a file or extend the pattern; do not
 add an exception.
 
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-39e7c011f725884003d0afdf00ddeedb805c8e703e1271121fbe7b83cc20d0f2","reason":"The native session protocol accepts an explicitly owner-bound scope expansion while preserving prior history, findings, the two-cycle budget and two fresh full reviews. Its updated protocol owner documents that transition; contributor commands, required check contexts and existing refusal boundaries in this section remain unchanged."} -->
+
 ### Optional SonarQube Cloud diagnostics
 
 The SonarQube Cloud OSS pilot uses one public project and automatic analysis of
@@ -187,9 +189,12 @@ does not cover, so do not commit them.
 
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
-evidence expiry and the two-cycle repair/review budget. A bounded routine code
-change gets one cold correctness review only when its actual paths avoid known
-control and trust boundaries and that reviewer confirms ordinary semantics.
+evidence expiry and the two-cycle repair/review budget. Its review base is the
+candidate's fork point, `git merge-base HEAD origin/main`: a review stays current
+while `main` moves ahead, and verify refuses it once that fork point changes. A
+bounded routine code change gets one cold correctness review only when its
+actual paths avoid known control and trust boundaries and that reviewer
+confirms ordinary semantics.
 Sensitive, material or unknown changes still get two; a false routine assessment
 requires two full reviews of the same committed candidate within the existing
 budget. Run the focused
@@ -199,7 +204,9 @@ workflow drift before expensive checks or replacement of prior logs, and acquire
 a shared heavy-verification lock before running those checks. An existing lock
 is refused without stealing it or disturbing another task's checks. The required
 six-job commands remain unchanged; exact-candidate review evidence may be reused
-by pre-push, but this process adds no general test-result cache. Prove actual
+by pre-push, but this process adds no general test-result cache. The local
+verification stamp records that one exact clean tree passed. Pre-push requires
+it, and it never lets a check be skipped. Prove actual
 CLI and hook refusal paths in two dogfooding passes, batch material repairs, and
 repeat affected scenarios before claiming live activation.
 
@@ -213,46 +220,80 @@ so it stays valid in a group whose base moved for unrelated reasons. A
 pull-request checkout is identified by `GITHUB_SHA` and its exact event base and
 head parents; the payload's `merge_commit_sha` is not compared, because a
 `synchronize` payload can carry a lagging value.
-The configured local verification mirror must exercise these same steps.
+The configured local verification mirror runs these required steps on every
+run. It runs the raw diagnostics only on request, or pgTAP alone when the range
+reaches database inputs.
 
-The additional optional `native-review` job is active only when the separately
-approved repository variable `OPENLUP_NATIVE_QUEUE` is `enabled`. It runs after
-all six actual mechanical successes and waits at most twenty minutes for a
-receipt. A pull-request run accepts a receipt for its current run and attempt,
-or a source receipt for its PR number and exact reviewed head and tree; a
-merge-group run accepts only a receipt for its current run and attempt. Missing,
-stale, incomplete or mismatched evidence fails. Turning on that variable, requiring the context and
-enabling the queue are separate settings actions; merging the foundation does
-not perform them. A skipped inactive job is not evidence of admission.
+**When the job runs.** The `native-review` job runs when the repository
+variable `OPENLUP_NATIVE_QUEUE` is `enabled`. At the
+[dated inspection](docs/platform/DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering),
+the variable was enabled and the ruleset required the context. Changing either
+remains a separate settings action. A skipped job is not evidence of admission.
+
+The job runs after all six actual mechanical successes and waits at most twenty
+minutes for a receipt.
+
+**What each run accepts:**
+- A pull-request run accepts a receipt for its current run and attempt, or a
+  source receipt for its PR number and exact reviewed head and tree.
+- A merge-group run accepts a receipt for its current run and attempt. It also
+  accepts the pull request's source receipt when the source review carries
+  over, as defined below; then no further receipt and no live session are
+  needed.
+- Both pull-request paths require an integer head repository ID, so a pull
+  request whose head repository was deleted cannot be admitted.
+
+Missing, stale, incomplete or mismatched evidence fails.
 
 The supervisor obtains source reviews through fresh native agents in the same
 task. For the pull request itself, one source receipt covers every Published
 Tree CI run and attempt of the reviewed head, so it can be submitted as soon as
 the pull request is open and ready, before any run exists. With `PR` set to the
-pull request number and `source-session.json` holding complete native state:
+pull request number, and `source-session.json` the complete native state
+(`.context/scratch/agent-review/session.json` once `verify` reports `reviewed`):
 
 ```bash
 node scripts/agent-review-queue.mjs input-source "$PR" \
-  source-session.json > native-review-input.json
-gh workflow run native-review-admission.yml --ref main --json < native-review-input.json
+  source-session.json > .context/scratch/agent-review/input.json
+gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
 ```
 
 Admission re-verifies that receipt against the live pull request, the exact run
 and the review's freshness each time. A new head needs a new review and a new
-receipt. On a pull-request run, a run-keyed artifact that fails its checks does
-not block the source receipt; a merge-group run still refuses it. For a merge-group run, select the observed run, attempt and PR number
-and use the run-keyed form:
+receipt. On a pull-request run, an unreadable or untrusted run-keyed artifact
+does not block the source receipt; a merge-group run still refuses it.
+
+For a merge-group run, use the run-keyed form with the observed run, attempt and
+PR number. To find the run, use
+`gh run list --workflow published-tree-ci.yml --event merge_group --json databaseId,attempt,headBranch`;
+its branch is `gh-readonly-queue/main/pr-<PR>-…`.
 
 ```bash
 node scripts/agent-review-queue.mjs input "$RUN" "$ATTEMPT" "$PR" \
-  source-session.json > native-review-input.json
-gh workflow run native-review-admission.yml --ref main --json < native-review-input.json
+  source-session.json > .context/scratch/agent-review/input.json
+gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
 ```
 
 The second command is a GitHub write and requires the task's delivery authority.
-The input command only creates JSON; it does not dispatch. For a queue tree that
-differs from the reviewed source tree, append `group-session.json` to the input
-command. That state carries two fresh full integration reviews of the exact
+The input command only creates JSON; it does not dispatch.
+
+A source review carries over to a merge group when either:
+- the group tree equals the reviewed tree; or
+- the group is exactly the reviewed change on its queue base, which admission
+  checks with `git merge-tree`, and the base's net change since the reviewed
+  base touches neither the change's paths nor the admission, identity-binding,
+  dependency and migration machinery (`.github/`, the review scripts, the
+  identity fence, package manifests and lockfiles, migrations). Other check
+  configuration is not on this list; the group's mechanical checks run with it.
+
+Then the pull request's source receipt admits the group, with no new receipt
+and no live session. The six mechanical checks on the group tree are relied on
+for behavioural interaction. Otherwise the run-keyed receipt with two fresh
+independent full integration reviews applies, under the same approved
+criteria.
+
+When the review does not carry over, append `group-session.json` to the
+run-keyed input command. That state carries two fresh full integration reviews of the exact
 group base, head and tree with the same approved criteria. Do not copy a source
 PASS or change the source branch to manufacture group evidence. Entire-tree
 equality needs no additional review. The supervisor submits the receipt and
@@ -427,7 +468,10 @@ target, which stays under `./src/`. It is either `private: true` or carries
 exactly the public, provenance-backed publication settings and a `repository`
 entry. Its `publishConfig.tag` stays `preview`, so only the release workflow's
 explicit `--tag latest` moves `latest`. An unreleased package is always
-`private: true`.
+`private: true`. A new package stays unreleased through its module's pull
+requests and becomes publishable only in the module's final one, where the
+reference application composes it, so a set never republishes a half-built
+package.
 
 `npm run packages:check -- --pack` also builds and packs each released package
 into a temporary directory, from a package directory with no uncommitted
@@ -492,6 +536,15 @@ The source contract continues to bind the manifest bytes, and the portable
 runner compares `objectInventorySha256` with the selected database catalogue
 after applying migrations (falsified by
 `server/adapters/postgres/migrationRunner.test.ts`).
+Against the same base, `--policy` refuses a change that removes or changes a
+line of a publishable package's API snapshot (`release-gates.json`
+`packageSurface`) unless that package's single `## [Unreleased]` changelog
+section carries a `Migration:` block; the base decides which packages and
+snapshots are checked, and removing or renaming a subpath counts as a removal.
+A pure addition, such as a name added to an export list, has no "before", so it
+needs none; a comment that opens a line is ignored, the code on its lines is
+not, and the head must keep each publishable package's gates file and snapshots
+readable.
 
 The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
 measured failing or aborted files, reasons, incomplete obligations and triage
@@ -501,7 +554,8 @@ with the exact PR base, normalizing log timestamps and ANSI formatting first.
 `test-full` and `pgtap` expose raw failures in separate diagnostic
 jobs. They do not suppress tests or normalize exits. Installation, database
 start/replay/cleanup and unexplained new failures block delivery; naming those
-failures does not waive broken CI. The six existing required contexts retain
+failures does not waive broken CI. Use the hosted pull-request run's raw logs
+for this comparison, or a local run with `--diagnostics`. The six existing required contexts retain
 their coverage, with blocking lint and neutrality. Promoting diagnostic jobs to
 required checks is the maintainer's ruleset decision; this contribution changes
 no repository settings. Release workflows still check those six contexts, so a
@@ -601,13 +655,84 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-b587272f4dbd372c62d9932fdec4d038949c76a97689a6b1c7dc035b8ef39f25","reason":"The split-root manifest check now also requires AGENTS.md in the core files list, so the extracted package ships its agent guide. Lint rules, contributor commands, development-preview checks and required CI jobs described here keep their behavior."} -->
-
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-904e5646a70769415ea7e72029532a9f05ecde4dc7e882101d00424043ac4f57","reason":"The root lockfile changes only the core workspace version from 0.10.0 to 0.11.0. Dependency resolution, development-preview checks, and required contributor commands remain unchanged."} -->
 
 <!-- openlup-doc-impact {"unit":"tests","digest":"sha256-e23f5b124da515a37baee7ec68971f347f56f2e0c3a38fe498e0e293bb3565dc","reason":"Test-only delta. The neutral catalog extension fixture adds a second installed type whose count pack dimension declares the net-content role, and asserts that an option differing from the SKU net content refuses. The file stays in the complete root Vitest diagnostic scope and outside the required test selectors; the test commands and CI jobs described here are unchanged."} -->
 
 ## Pull requests
+
+### Deliver a change
+
+This is the order for one authorized task, from first edit to merge. Each step
+points to its detailed rule.
+
+1. **Worktree.** One task, one worktree and one branch, as in
+   [AGENTS.md](AGENTS.md).
+2. **Commit.** Run `npx --no -- ast-grep scan` after each change and
+   `npm run lint` before committing. Commit with `git commit -s`.
+3. **Native review** of the exact committed candidate, by the rules in
+   [AGENTS.md](AGENTS.md) and in this section:
+   - write `.context/scratch/agent-review/intent.json` in the shape the
+     [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
+     defines:
+
+     ```json
+     { "authorSessionId": "<your session id>",
+       "intent": { "risk": "<prose|routine|behavior|unknown>", "scope": ["<changed paths>"], "criteria": "<approved criteria>", "requiredRoles": [] } }
+     ```
+
+     - `risk` sets the reviewer floor: one reviewer for `prose` or `routine`,
+       two for `behavior` or `unknown`.
+     - Codex may omit `authorSessionId`, which is then taken from
+       `CODEX_THREAD_ID`. Every other supervisor sets it to its own session ID.
+   - run `node scripts/agent-review-session.mjs prepare`;
+   - launch fresh reviewers and `record` each report;
+   - repeat until `verify` reports `reviewed`.
+
+   The session state is `.context/scratch/agent-review/session.json`.
+4. **Local verification.**
+   - Where the maintainer-local layer is installed, run `openlup-dev verify` on
+     the clean committed tree. It must report `REQUIRED PASS`, and it writes the
+     stamp that the pre-push hook requires.
+   - Elsewhere, run the [required check commands](#required-and-raw-checks).
+5. **Push** with `git push -u origin HEAD`. A push is publication, within your
+   delivery authority.
+6. **Open a ready pull request** within your delivery authority, using the
+   template.
+7. **Submit the source receipt** right away. `PR` is the pull request number,
+   and the dispatch is a GitHub write within your delivery authority:
+
+   ```bash
+   node scripts/agent-review-queue.mjs input-source "$PR" .context/scratch/agent-review/session.json > .context/scratch/agent-review/input.json
+   gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
+   ```
+
+   **Expiry.** Review evidence expires 24 hours after the earliest round since
+   the last full review was prepared. A receipt artifact expires one day after
+   upload, so by then the review has expired too. To recover:
+   - re-review the same candidate: run `prepare` once with
+     `"fullRefresh": true` in `intent.json`, then remove the key. The refresh
+     uses one repair cycle;
+   - then resubmit the receipt.
+8. **Hosted checks.** The six required contexts and `native-review` must pass.
+   Compare raw `test-full` and `pgtap` failures with the exact base.
+9. **Maintainer read**, when the task's authority requires one before sign-off
+   (the pull request states its sign-off class): wait for the maintainer to
+   confirm the exact candidate SHA, within the review's 24-hour validity.
+10. **Arm auto-merge** under merge authority, following the
+    [Merge queue](#merge-queue) rules.
+11. **Merge group.** When the source review carries over (see
+    [Required and raw checks](#required-and-raw-checks)), the source receipt
+    from step 7 admits the group and nothing more is needed. Otherwise the
+    group's `native-review` waits for a run-keyed receipt: submit it as soon as
+    the group run exists, with `input "$RUN" "$ATTEMPT" "$PR"` in place of
+    `input-source`. That receipt carries two integration reviews. How to find
+    the run is described in the same section.
+12. **Confirm the merge**: the squash commit on `main` and its push run.
+
+A repair commit restarts from step 3 for the new candidate.
+
+### Native review and accountability
 
 The [autonomous delivery plan](docs/platform/plans/autonomous-reviewed-delivery.md)
 uses the supervisor in the current conversation to launch independent
@@ -664,30 +789,43 @@ Read the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) before
 submitting material AI-assisted work. Human accountability and DCO, independent
 native review, and actual task publication authority remain required.
 
-**Merge queue.** `main` takes squash merges through GitHub's merge queue, which
+### Merge queue
+
+`main` takes squash merges through GitHub's merge queue, which
 builds and checks the fresh integration tree itself. The
 [base-move and receipt plan](docs/platform/plans/ci-base-move-and-receipts.md)
 records why these rules exist.
 
 - **No rebasing for freshness.** Do not rebase a pull request, or merge `main`
-  into it, only because it is behind. Rebase only for a textual conflict, and
-  then obtain a fresh full review.
-- **Arming.** Arm `gh pr merge --auto --squash`, with the maintainer's
-  configured author email, only under actual merge authority. Do it after the
-  required checks, the native review and any required maintainer read.
+  into it, only because it is behind. A review is bound to the branch's fork
+  point, so verify and pre-push keep accepting it while the branch is behind.
+  Rebase only for a textual conflict, and then obtain a fresh full review.
+- **Arming.** Arm auto-merge only under actual merge authority, and only after
+  the required checks, the native review and any required maintainer read:
+  `gh pr merge <PR> --auto --squash --author-email <address>`. Use the
+  maintainer's configured author address.
 - **Receipts.** While native admission is active, a supervisor with task
   delivery authority does two things:
   - submits one source receipt per reviewed pull-request head, as soon as the
     pull request is open and ready;
-  - submits the run-keyed receipt as soon as each merge-group run exists.
-
-  A group whose tree differs from the reviewed tree also needs the two
-  integration reviews described above.
+  - when the source review does not carry over to the merge group, submits the
+    run-keyed receipt with two integration reviews as soon as the group run
+    exists.
 - **Flakes.** A removal counts as a flake only when the same job passed on the
   same tree, or a `gh run rerun` passed without a code change. One requeue for a
   flake uses the existing two-retry budget. A second removal of the same head
   stops for diagnosis. A `native-review` red caused by a missing or late receipt
   is not a flake.
+- **Receipt timeout.**
+  - On a pull-request run, submit or check the source receipt, then rerun the
+    failed `native-review` job. The rerun is a GitHub write; it requires
+    authority that covers reruns.
+  - In a merge group, requeue under merge authority and submit the receipt for
+    the new group run. The requeue uses the same two-retry budget, and a second
+    timeout on the same head stops for diagnosis.
+  - A timeout although a current source receipt was submitted in time is a
+    defect: stop and report it. An expired receipt or review needs the
+    re-review and resubmission described in step 7.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned

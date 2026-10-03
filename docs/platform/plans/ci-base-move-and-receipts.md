@@ -1,6 +1,6 @@
 # Plan: checks that survive a moving `main`, and pull-request receipts without a race
 
-Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114; local steps 0b and 4 applied); follow-up hardening W3 approved the same day.
+Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121; local steps 0b and 4 applied); W5 (fork-point review base) approved the same day.
 Audience: the agents executing it, their reviewers and the maintainer.
 
 ## 1. Why: recorded failures only
@@ -42,9 +42,9 @@ would reopen each item.
   and report; no scope growth. Test files that pin old behaviour are part of the
   step's scope.
 - **Receipts.**
-  - **Merge-group runs, always:** submit the run-keyed (v1) receipt as soon as
-    the run exists. Add integration evidence when the group tree differs from the
-    reviewed tree.
+  - **Merge-group runs:** when the source review carries over (S4), the pull
+    request's source receipt admits the group. Otherwise submit the run-keyed
+    (v1) receipt with integration evidence as soon as the run exists.
   - **Pull-request runs:** one source-keyed (v2) receipt per reviewed head
     (S3), submitted as soon as the pull request is open and ready. Before W2
     merged, this was a run-keyed receipt per run.
@@ -61,8 +61,8 @@ would reopen each item.
   - Once the required checks, the native review and any owner read are done,
     arm auto-merge with
     `gh pr merge --auto --squash` and the maintainer's configured author email.
-  - Never rebase only because the branch is behind. If `main` moved and the
-    merge-group tree differs, the existing two integration reviews apply.
+  - Never rebase only because the branch is behind. If `main` moved, S4 decides
+    whether the source review carries over or two integration reviews apply.
   - Rebase only on a textual conflict, followed by a fresh full review.
 - **Stop and report**, with no repair attempted, on any of:
   - two repair cycles exhausted;
@@ -89,7 +89,13 @@ The maintainer approves, once:
   receipt". Under W2, a receipt bound to the reviewed head and tree admits any
   run of that exact head. Several receipts for one head are allowed, where v1
   refused several for one run and attempt, because each receipt is re-verified
-  at admission. Merge groups stay unchanged.
+  at admission. Merge groups stay unchanged until W4.
+- W4 (approved on 2026-10-03, after W0–W3): a source review carries over to a
+  merge group as S4 defines. Merge groups that do not qualify keep the run-keyed
+  route.
+- W5 (approved on 2026-10-03, after W4): the local review base is the
+  candidate's fork point, as S5 defines. The maintainer reads it before
+  sign-off and alone reinstalls the maintainer-local copy.
 - The sign-off classes:
   - W2 changes an admission control, so the owner reads it. That read of the
     final candidate before merge certifies the sign-offs the agent wrote on its
@@ -194,7 +200,7 @@ No release, repository setting, ruleset, secret or npm action is included.
 ### Done, and the regroup rule
 
 **Done:**
-- W0, W2 and W1 merged with green required contexts;
+- W0, W2, W1 and the W3 follow-up merged with green required contexts;
 - the W2 live proof recorded;
 - the step 4 self-test green.
 
@@ -204,8 +210,8 @@ gate completion.
 ### Step 5, W3: follow-up hardening
 
 From the review advice and dogfooding of W0–W1:
-- **Admission.** On a pull-request run, a run-keyed artifact that fails its checks
-  no longer blocks the source receipt; merge groups still refuse it. A pull
+- **Admission.** On a pull-request run, an unreadable or untrusted run-keyed
+  artifact no longer blocks the source receipt; merge groups still refuse it. A pull
   request and its run must carry an integer head repository ID. Source
   submission observes the pull request before fetching objects.
 - **Tests.** A live PR head that moved while the event head did not. P1 also
@@ -219,10 +225,64 @@ From the review advice and dogfooding of W0–W1:
 Sign-off: the maintainer reads the candidate before sign-off, because it
 changes an admission control.
 
+### Step 6, W4: review carry-over in the merge queue
+
+**Why.** On 2026-10-03, #118 entered the queue right after another pull request
+merged. Its group tree therefore differed from the reviewed tree, and admission
+needed two integration reviews from a live session within the 20-minute wait.
+With several pull requests in flight, every merge into `main` repeats that cost
+for each waiting pull request.
+
+**What.** Specification S4: a source review carries over to a merge group that
+is exactly the reviewed change on a base whose net change avoids its paths and
+the admission, identity-binding, dependency and migration machinery. The pull
+request's source receipt then admits the group. A refused carry-over is logged,
+and the group keeps waiting for the run-keyed receipt.
+
+**Scope:**
+- `scripts/agent-review-queue.mjs` and its tests;
+- the AI contribution policy, plus a dated change entry;
+- the delivery plan and its intent;
+- `AGENTS.md` and the agent guide;
+- `CONTRIBUTING.md` and the development and release guide;
+- this plan.
+
+**Sign-off:** the maintainer reads the candidate before sign-off, because this
+changes an approved admission rule.
+
+**Live proof:** two independent pull requests armed together, both admitted in
+the queue by their source receipts alone.
+
 **Stop and report instead of repairing** if any of these happens:
 - a receipt timeout on a pull request whose v2 receipt was submitted in time;
 - a base-SHA or fence red after W1;
 - a step that needs a file outside its scope.
+
+### Step 7, W5: a local review survives a moving `main` (spec S5)
+
+**Status:** approved 2026-10-03.
+
+**Why.** The local review session bound a review to `origin/main` itself. When
+another pull request merged before the author pushed, verify and pre-push
+refused the exact reviewed commit, and the author had to rebase and obtain a
+fresh full review. That contradicts the no-rebase-for-freshness rule of
+section 2, and is the local twin of the queue cost W4 removed.
+
+**What.** Specification S5: the review base is the candidate's fork point.
+
+**Scope:**
+- `scripts/agent-review-session.mjs` and its tests;
+- the review-base sentences in `AGENTS.md` and the agent guide,
+  `CONTRIBUTING.md` and the delivery plan;
+- this plan.
+
+**Sign-off:** the maintainer reads the candidate before sign-off, because this
+changes the review gate that verify and pre-push run.
+
+**Installed copy.** Verify and pre-push run the maintainer-local installed copy
+of the session script, and add no base check of their own. S5 takes effect
+locally only after the maintainer reinstalls that copy from `main`; until then,
+including for this step's own push, the base must still equal `origin/main`.
 
 ## 5. Specifications
 
@@ -367,6 +427,101 @@ unchanged:
 - **R10.** An artifact with the v2 name that fails provenance is skipped. A
   valid older one still admits.
 
+### S4. Review carry-over in the merge queue
+
+**Contract.** For a `merge_group` run with no usable run-keyed receipt,
+`waitNativeAdmission` first finds the queue entry whose head is `GITHUB_SHA`. It
+reads that entry's PR number and reviewed head as a hint, then reads the source
+receipt for that PR and head (S3).
+
+`verifyGroupSourceAdmission` then admits the group in four steps:
+1. Observe the group exactly as the run-keyed route does: run identity, queue
+   membership (first position), entry, ref, base and tree. This is reused from
+   `observeNativeAdmission`.
+2. Verify the source review and its freshness.
+3. Require `carryOverSourceReview`, which passes when either condition holds:
+   - **Unchanged tree:** the group tree equals the reviewed tree.
+   - **Disjoint base move:** all three of these hold:
+     - the source base is an ancestor of the group base;
+     - `git merge-tree --write-tree --merge-base=<source base> <group base> <source head>`
+       equals the group tree, so the group is exactly the reviewed change;
+     - no path changed between the source base and the group base is a
+       reviewed path, or matches this machinery: `.github/`,
+       `scripts/agent-review-*`, `scripts/documentation-git.ts`, root or
+       package `package.json` and `package-lock.json`, `supabase/migrations/`,
+       `config/platform-migration-manifest.json`.
+4. Repeat the observation and compare it with the first.
+
+The hosted event's base, head and ref must match the binding. When the
+carry-over refuses, the refusal is logged and the wait continues, so every other
+group still reaches the unchanged run-keyed route with two integration reviews.
+The merge-tree prediction runs with a clean git configuration and rename
+detection off.
+
+**Falsifiers** (`scripts/agent-review-queue.test.ts`, merge groups admitted by
+their source receipt):
+- **G1.** A behind group whose base moved only on unrelated paths is admitted.
+- **G2–G4, G7, G8.** The carry-over is refused with a logged reason, and the wait
+  continues, in each of these cases:
+  - **G2:** a reviewed path moved;
+  - **G3:** each listed machinery path changed;
+  - **G4:** the group has an unreviewed extra change;
+  - **G7:** the review has expired;
+  - **G8:** the change conflicts with the base.
+- **G5.** A group with the unchanged tree is admitted.
+- **G6.** An entry that names another head waits.
+- **Run-keyed route still reachable.** A run-keyed receipt with two integration
+  reviews, uploaded during the wait, still admits a group that does not carry
+  over.
+
+G1 and G5 fail on the implementation before W4.
+
+### S5. Fork-point review base
+
+**Contract.** In `scripts/agent-review-session.mjs`:
+- the fork point is the single merge base of `HEAD` and the observed
+  `origin/main` (`git merge-base --all`, commit graph off). None, or several,
+  refuses;
+- `captureSessionCandidate` defaults its base to the fork point and requires a
+  given base to equal it, in place of equality with `origin/main`. Prepare,
+  record, verify, status and the pristine baseline all bind through it;
+- `prepare` defaults `base` to the fork point instead of `origin/main`.
+
+So:
+- `main` moving ahead leaves the fork point, and the evidence, current;
+- a repair commit on the un-rebased branch keeps its base and lineage;
+- merging `main` into the branch moves the fork point, and the existing
+  ancestor-preserving base integration with fresh full review applies;
+- a rebase rewrites the reviewed head: as before, prepare reports
+  `needs_rescope`, and a fresh session starts at the new fork point;
+- a rewritten `main` on which the reviewed base is no longer the fork point
+  refuses.
+
+**Unchanged:** exact head, tree, working and index digests; the authenticated
+object graph; 24-hour freshness; lineage, delta and the two-cycle budget; hosted
+admission, which already verifies a review against its own base; S4.
+
+**Known limit.** Locally, the review covers the change against its fork point,
+not the current `main`. The merge queue checks the integration: S4 carries the
+review over only on an unrelated base move, and otherwise two integration
+reviews apply.
+
+**Falsifiers** (`scripts/agent-review-session.test.ts`, "fork-point review base
+(S5)"):
+- **(a)** Reviewed at base B, `origin/main` advances on an unrelated path, and
+  the unchanged candidate still verifies as reviewed.
+- **(b)** `main` rewritten so that B is not an ancestor: verify refuses (guard).
+- **(c)** Prepare after `main` advanced, on the unchanged candidate, preserves
+  the evidence byte for byte.
+- **(d)** A repair commit on the un-rebased branch gets a closure continuation
+  at base B.
+- **(e)** Merging `main` moves the base to M with a full continuation. A rebase
+  reports `needs_rescope`, and a fresh session takes base M (guard).
+- A pristine checkout stays pristine when `main` moves ahead of it.
+
+(a), (c), (d) and the pristine case fail before W5; (b) and (e) differ only in
+the refusal wording.
+
 ## 6. Deferred, with the evidence that would reopen each
 
 - **Diagnostics off the pull-request and merge-group events:** runner-slot
@@ -376,9 +531,6 @@ unchanged:
 - **Changelog fragments:** a recorded conflict removal on a changelog.
 - **Merge-preview local checks:** a required red that a check on the merged tree
   would have caught.
-- **Review carry-over and receipt-free merge groups:** measured integration
-  reviews per entry after this plan. These would also amend the AI contribution
-  policy.
 - **More than one queue build:** measured queue wait.
 - **Conflict replay:** a merge-group removal caused by a textual conflict.
 - **Parallel local checks:** a local verification time that blocks delivery.

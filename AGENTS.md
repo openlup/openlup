@@ -126,35 +126,61 @@ Handle `needs_agent_review` within the active task. Unchanged prepare preserves
 evidence; at most two automatic repair/review continuation cycles are allowed,
 including full-review escalation. Exhaustion remains blocked while the supervisor regroups
 the execution approach within existing authority; no reset, bypass or automatic
-merge follows. Changed intent requires explicit regrouping. An ancestor-preserving base
-integration requires fresh full-scope review, preserving history and budget. When criteria,
+merge follows. Changed intent requires explicit regrouping. The review base is the
+candidate's fork point (`git merge-base HEAD origin/main`), so verify and pre-push keep
+accepting a reviewed candidate while `main` moves ahead. An ancestor-preserving base
+integration requires fresh full-scope review, preserving history and budget. Do not rebase
+or merge `main` only to catch up: the merge queue integrates, and a rebase is for a textual
+conflict. When criteria,
 required review and checks pass, stop optional edits and continue only authorized
 delivery steps. Missing, stale, dirty, partial or unclosed evidence refuses verify
-and pre-push once installed enforcement passes its live refusal tests. Native
+and pre-push once installed enforcement passes its live refusal tests. Where the
+maintainer-local layer is installed, pre-push also refuses a task-worktree push
+whose exact clean tree has no stamp from a passing `openlup-dev verify`. Native
 session receipts are process evidence, not cryptographic remote attestation or
 hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
 The optional [native queue admission](docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
-keeps reviewers in this same task and subscription. When explicitly activated,
-the supervisor supplies current source evidence for the reviewed PR head, or
+keeps reviewers in this same task and subscription. It was active at the dated
+inspection in [Development and release](docs/platform/DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
+The supervisor supplies current source evidence for the reviewed PR head, or
 for the exact merge-group run/attempt, then observes the queue's actual base,
-head, tree and source identity. An entire
-group tree equal to the reviewed source tree needs no additional review. A
-different tree needs two fresh independent full integration reviews under the
-same approved criteria; filenames or an author statement cannot establish
-noninteraction. Keep the source branch unchanged and record group evidence
+head, tree and source identity.
+
+A source review carries over to a merge group when either:
+- the group tree equals the reviewed tree; or
+- the group is exactly the reviewed change on its queue base, which admission
+  checks with `git merge-tree`, and the base's net change since the reviewed
+  base touches neither the change's paths nor the admission, identity-binding,
+  dependency and migration machinery (`.github/`, the review scripts, the
+  identity fence, package manifests and lockfiles, migrations). Other check
+  configuration is not on this list; the group's mechanical checks run with it.
+
+Then the pull request's source receipt admits the group, with no new receipt
+and no live session. The six mechanical checks on the group tree are relied on
+for behavioural interaction. Otherwise the run-keyed receipt with two fresh
+independent full integration reviews applies, under the same approved
+criteria.
+
+An author statement cannot establish that the change does not interact with the
+base. Keep the source branch unchanged and record group evidence
 separately. The existing nonqueue base-integration and repair-budget rules remain.
 The supervisor creates the bounded transport input with
 `node scripts/agent-review-queue.mjs input-source PR source-session.json` for the
 pull request, or
 `node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`
-for a merge-group run,
+for a merge-group run whose source review does not carry over,
 submits it through the main-only workflow within authorized delivery, and waits
 for actual admission in this conversation. The script does not dispatch or
 authorize delivery. Missing evidence remains blocked; no maintainer handoff is
 needed for routine review. Queue rebuild recovery is bounded at two retries and
-does not reset repair cycles. Foundation code does not activate queue settings.
+does not reset repair cycles. Changing queue settings remains a maintainer action.
+Submit the source receipt as soon as the pull request is open and ready, and,
+when the source review does not carry over, the run-keyed receipt as soon as the
+merge-group run exists. The complete order, with
+both commands, is in [Deliver a change](CONTRIBUTING.md#deliver-a-change). The arming, receipt-timeout and flake rules are in
+[Merge queue](CONTRIBUTING.md#merge-queue).
 
 Run `npm run oss:published-tree -- --policy` during implementation. Its report
 names the owner section for each changed source responsibility. Update that

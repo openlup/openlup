@@ -18,14 +18,16 @@ Never edit, install or test in a maintainer's coordination checkout.
 
 The stages below are sequential, but CI jobs and Sonar analysis run in parallel.
 Local success is preparation, not proof that a hosted run or release succeeded.
+The step-by-step order for one change is
+[Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
 
 | Stage | Trigger and executor | Checks and next step |
 | --- | --- | --- |
 | Local iteration | Contributor edits in the task worktree | Run a focused structural scan and tests for changed behavior; run whole-tree lint before committing. |
-| Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate. Run required local checks or installed `openlup-dev verify` before an authorized push. |
+| Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate. Where installed, run `openlup-dev verify` on the clean committed tree; pre-push refuses a task-worktree push without its stamp. Elsewhere, run the required check commands. |
 | Draft PR | Authorized branch push and PR creation | Sonar can analyze it. Published Tree CI jobs skip drafts; skipped jobs are not passing evidence. |
-| Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Active native admission waits for six actual successes and current review evidence. |
-| Merge queue | Authorized enqueue requests a merge group | Mechanical checks run on the actual group. Native admission binds group identity and review evidence; a changed whole tree requires fresh integration review. |
+| Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Submit the source receipt as soon as the PR is open and ready. Native admission waits for six actual successes and that receipt. |
+| Merge queue | Auto-merge armed under merge authority requests a merge group; no rebase for freshness | Mechanical checks run on the actual group. The source receipt admits the group when the review carries over: an unchanged tree, or a group that is exactly the reviewed change on its base (checked with `git merge-tree`) whose net base change avoids the change's paths and the admission, identity-binding, dependency and migration machinery. Otherwise submit the run-keyed receipt with two integration reviews as soon as the group run exists. |
 | Main | Squash merge produces a main push | Mechanical checks and raw diagnostics run again; Sonar updates its main analysis. Native admission does not run on main pushes. A merge is not a release. |
 | Package release | Authorized dispatch of `publish-package.yml` for a reviewed main SHA, package `all` (the set) or one package, the version, and exact notes | Unprivileged preflight refuses while any package release or publication is in flight, checks ancestry, contexts and versions, packs and scans every tarball, and decides each package by its tag, release and npm state before protected release approval. One approval covers the set; the release App creates each annotated tag `openlup-<package>-v<version>` on the target and its immutable release. |
 | npm | Published package-release event from the release App | Package workflow independently checks identity, tag and tarball, re-reads npm, then publishes with OIDC provenance under `latest`. Verify its observed result; publication does not update an adopter. |
@@ -77,15 +79,23 @@ not become mandatory per-PR execution just because their files exist; follow
 
 Where installed, `openlup-dev doctor` diagnoses prerequisites and installation
 or workflow-mirror drift. It is not a substitute for candidate verification.
-After committing and recording required native reviews, `openlup-dev verify`
-checks the workflow mirror and shared lock, runs the mechanical equivalents,
-observes complete Vitest/pgTAP diagnostics, and adds publication leak checks and
-advisory release eligibility. Its logs identify each command and exit code.
-Read `REQUIRED PASS` separately from `DIAGNOSTICS RED`.
+After committing and recording required native reviews, `openlup-dev verify`:
+- checks the workflow mirror and the shared lock;
+- runs the mechanical equivalents locally, in an environment like a hosted
+  runner's: a temporary directory outside every checkout, four Vitest workers
+  and no global Git identity;
+- runs the raw `test-full` and pgTAP diagnostics only with `--diagnostics`, or
+  pgTAP alone when the range reaches database inputs;
+- adds publication leak checks and advisory release eligibility.
+
+Its logs identify each command and exit code. Read `REQUIRED PASS` separately
+from `DIAGNOSTICS RED`. A pass on a worktree that stayed clean for the whole run
+records a stamp of that exact tree.
 
 Installed pre-commit checks staged structural violations; commit-message checks
 require the configured identity and sign-off. Pre-push rechecks current review
-and publication leak evidence; it does not rerun full verification. A hook pass
+and publication leak evidence. In a task worktree it also requires the
+verification stamp of the exact pushed tree; it does not rerun verification. A hook pass
 is not a hosted CI pass. `leak-check` inspects what the range would publish;
 `release-check` is advisory and can report `CANNOT-DECIDE`. Neither replaces
 release prepare or release attestation. Installation and changes to this local
@@ -108,11 +118,14 @@ waiver. Compare failures with the exact base; disclose new failures and missing
 execution. Required success is not complete-suite success.
 
 Fix named local violations rather than bypass hooks. A busy verification lock
-belongs to another run; wait without removing it. Workflow-mirror drift needs
+belongs to another run; wait without removing it. A pre-push refusal for a
+missing stamp needs `openlup-dev verify` on the clean committed tree. Workflow-mirror drift needs
 maintainer recovery, not an alternate verifier. The supervisor handles missing
 native-review evidence in the active task with fresh independent reviewers;
 retain lineage and the existing two-cycle budget. Optional review advice does
-not add acceptance obligations. See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
+not add acceptance obligations. A `native-review` timeout is a missing or late
+receipt, not a review failure. For its recovery, see the receipt-timeout rule in
+[Merge queue](../../CONTRIBUTING.md#merge-queue). See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
 for the complete protocol.
 
 For Sonar, fix confirmed new defects in the PR and inspect the next analysis.
