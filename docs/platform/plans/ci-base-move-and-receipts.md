@@ -89,7 +89,10 @@ The maintainer approves, once:
   receipt". Under W2, a receipt bound to the reviewed head and tree admits any
   run of that exact head. Several receipts for one head are allowed, where v1
   refused several for one run and attempt, because each receipt is re-verified
-  at admission. Merge groups stay unchanged.
+  at admission. Merge groups stay unchanged until W4.
+- W4 (approved on 2026-10-03, after W0–W3): a source review carries over to a
+  merge group as S4 defines. Merge groups that do not qualify keep the run-keyed
+  route.
 - The sign-off classes:
   - W2 changes an admission control, so the owner reads it. That read of the
     final candidate before merge certifies the sign-offs the agent wrote on its
@@ -228,8 +231,10 @@ With several pull requests in flight, every merge into `main` repeats that cost
 for each waiting pull request.
 
 **What.** Specification S4: a source review carries over to a merge group that
-is exactly the reviewed change on a base whose new commits avoid its paths and
-the trust machinery. The pull request's source receipt then admits the group.
+is exactly the reviewed change on a base whose net change avoids its paths and
+the admission, identity-binding, dependency and migration machinery. The pull
+request's source receipt then admits the group. A refused carry-over is logged,
+and the group keeps waiting for the run-keyed receipt.
 
 **Scope:**
 - `scripts/agent-review-queue.mjs` and its tests;
@@ -412,26 +417,35 @@ receipt for that PR and head (S3).
      - `git merge-tree --write-tree --merge-base=<source base> <group base> <source head>`
        equals the group tree, so the group is exactly the reviewed change;
      - no path changed between the source base and the group base is a
-       reviewed path, or matches the trust machinery: `.github/`,
+       reviewed path, or matches this machinery: `.github/`,
        `scripts/agent-review-*`, `scripts/documentation-git.ts`, root or
        package `package.json` and `package-lock.json`, `supabase/migrations/`,
        `config/platform-migration-manifest.json`.
 4. Repeat the observation and compare it with the first.
 
-The hosted event's base, head and ref must match the binding. Every other group
-waits for the unchanged run-keyed route, with two integration reviews.
+The hosted event's base, head and ref must match the binding. When the
+carry-over refuses, the refusal is logged and the wait continues, so every other
+group still reaches the unchanged run-keyed route with two integration reviews.
+The merge-tree prediction runs with a clean git configuration and rename
+detection off.
 
 **Falsifiers** (`scripts/agent-review-queue.test.ts`, merge groups admitted by
 their source receipt):
 - **G1.** A behind group whose base moved only on unrelated paths is admitted.
-- **G2.** A base change to a reviewed path is refused.
-- **G3.** A base change to `.github/` is refused.
-- **G4.** A group with an unreviewed extra change is refused.
+- **G2–G4, G7, G8.** The carry-over is refused with a logged reason, and the wait
+  continues, in each of these cases:
+  - **G2:** a reviewed path moved;
+  - **G3:** each listed machinery path changed;
+  - **G4:** the group has an unreviewed extra change;
+  - **G7:** the review has expired;
+  - **G8:** the change conflicts with the base.
 - **G5.** A group with the unchanged tree is admitted.
 - **G6.** An entry that names another head waits.
-- **G7.** An expired review is refused.
+- **Run-keyed route still reachable.** A run-keyed receipt with two integration
+  reviews, uploaded during the wait, still admits a group that does not carry
+  over.
 
-G1–G5 fail on the implementation before W4; G6 and G7 are guards.
+G1 and G5 fail on the implementation before W4.
 
 ## 6. Deferred, with the evidence that would reopen each
 

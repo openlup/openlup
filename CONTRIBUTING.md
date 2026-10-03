@@ -269,9 +269,11 @@ The input command only creates JSON; it does not dispatch.
 A source review carries over to a merge group when either:
 - the group tree equals the reviewed tree; or
 - the group is exactly the reviewed change on its queue base, which admission
-  checks with `git merge-tree`, and the base's new commits touch neither the
-  change's paths nor the trust machinery: `.github/`, the review scripts, the
-  identity fence, package manifests and lockfiles, and migrations.
+  checks with `git merge-tree`, and the base's net change since the reviewed
+  base touches neither the change's paths nor the admission, identity-binding,
+  dependency and migration machinery (`.github/`, the review scripts, the
+  identity fence, package manifests and lockfiles, migrations). Other check
+  configuration is not on this list; the group's mechanical checks run with it.
 
 Then the pull request's source receipt admits the group, with no new receipt
 and no live session. The six mechanical checks on the group tree cover

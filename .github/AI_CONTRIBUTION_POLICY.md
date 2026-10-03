@@ -135,8 +135,9 @@ and attempt.
 
 The source review carries over to a merge group when either:
 - the group tree is the reviewed tree; or
-- the group is exactly the reviewed change on its queue base, and the base's new
-  commits touch neither the change's paths nor the trust machinery (workflows,
+- the group is exactly the reviewed change on its queue base, and the base's net
+  change since the reviewed base touches neither the change's paths nor the
+  admission, identity-binding, dependency and migration machinery (workflows,
   review scripts, the identity fence, package manifests and lockfiles,
   migrations).
 
@@ -226,7 +227,7 @@ attempt".
 
 - **What changed.** A source review now carries over, and the pull request's source receipt admits the group, in two cases:
   - the group tree is the reviewed tree;
-  - admission proves the group is exactly the reviewed change on its queue base, and the base's new commits touch neither the change's paths nor the trust machinery.
+  - admission proves the group is exactly the reviewed change on its queue base, and the base's net change since the reviewed base touches neither the change's paths nor the admission, identity-binding, dependency and migration machinery.
 - **The reason.** Each merge into `main` invalidated the reviews of every waiting pull request. With several pull requests in flight, that grew quadratically in reviews and needed a live session within a 20-minute window per group. Gated open-source projects rely on mechanical checks of the exact merged tree in the same way.
-- **Unchanged.** Overlapping or trust-machinery changes keep two integration reviewers.
+- **Unchanged.** Overlapping changes, and changes to that machinery, keep two integration reviewers.
 - **Wrong if:** a carried-over merge admits an interaction that the mechanical checks on the group tree could not have caught, and that a reviewer would have.
