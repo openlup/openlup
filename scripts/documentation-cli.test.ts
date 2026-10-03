@@ -44,6 +44,10 @@ function seed(root: string): string {
   write(root, "src/lib/coreDomains.ts", 'export const CORE_DOMAINS = Object.freeze(["demo"] as const);\n');
   write(root, "src/domains/demo/main.ts", "export const value = 1;\n");
   write(root, "src/domains/demo/README.md", "# Demo\n");
+  write(root, "config/openlup-packages.json", JSON.stringify({ schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish: true }], unreleased: [] }));
+  write(root, "packages/core/release-gates.json", JSON.stringify({ packageSurface: { "./demo": { snapshot: "api/demo.api.md" } } }));
+  write(root, "packages/core/api/demo.api.md", "# ./demo API declaration snapshot\n\n## dist/demo.d.ts\n\n```ts\nexport declare const a: number;\nexport declare const b: number;\n```\n");
+  write(root, "packages/core/CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n- A change.\n");
   const portable = "db/platform/migrations/00000000000000_platform_baseline.sql", sql = "select 1;\n";
   write(root, portable, sql);
   write(root, "supabase/migrations/00000000000000_platform_schema_baseline.sql", sql);
@@ -88,6 +92,14 @@ describe("documentation CLI on the bare public runtime", () => {
           head_commit: { id: changed, tree_id: git(checkout, ["rev-parse", "HEAD^{tree}"]) } } }));
       const rejected = execute({ GITHUB_SHA: changed });
       expect(rejected.status).toBe(1); expect(rejected.stderr).toContain("migration history refuses an edit");
+      write(checkout, "packages/core/api/demo.api.md", readFileSync(join(checkout, "packages/core/api/demo.api.md"), "utf8").replace("export declare const b: number;\n", ""));
+      write(checkout, "README.md", readFileSync(join(checkout, "README.md"), "utf8").replace("preserves replay safety", "preserves replay safety and its published API"));
+      const unmigrated = commit(checkout);
+      writeFileSync(event, JSON.stringify({ repository: { full_name: "openlup/openlup", private: false }, action: "checks_requested",
+        merge_group: { base_sha: changed, base_ref: "refs/heads/main", head_sha: unmigrated, head_ref: ref,
+          head_commit: { id: unmigrated, tree_id: git(checkout, ["rev-parse", "HEAD^{tree}"]) } } }));
+      const unmigratedApi = execute({ GITHUB_SHA: unmigrated });
+      expect(unmigratedApi.status).toBe(1); expect(unmigratedApi.stderr).toContain("migration-block @openlup/core: packages/core/api/demo.api.md removes or changes a declaration line");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   });
   it("runs in a shallow checkout without node_modules, enforces source impact and trusts hosted attribution", () => {
