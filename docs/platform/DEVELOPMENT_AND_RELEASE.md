@@ -24,10 +24,10 @@ The step-by-step order for one change is
 | Stage | Trigger and executor | Checks and next step |
 | --- | --- | --- |
 | Local iteration | Contributor edits in the task worktree | Run a focused structural scan and tests for changed behavior; run whole-tree lint before committing. |
-| Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate. Where installed, run `openlup-dev verify` on the clean committed tree; pre-push refuses a task-worktree push without its stamp. Elsewhere, run the required check commands. |
+| Candidate preparation | Contributor commits with DCO sign-off | Native agent tasks obtain independent review of the exact committed candidate, bound to its fork point (`git merge-base HEAD origin/main`); a branch behind `main` stays verifiable and pushable without a rebase. Where installed, run `openlup-dev verify` on the clean committed tree; pre-push refuses a task-worktree push without its stamp. Elsewhere, run the required check commands. |
 | Draft PR | Authorized branch push and PR creation | Sonar can analyze it. Published Tree CI jobs skip drafts; skipped jobs are not passing evidence. |
 | Ready PR | Open/reopen a non-draft PR, push updates, or mark ready | Published Tree CI runs six mechanical checks and separate raw diagnostics. Submit the source receipt as soon as the PR is open and ready. Native admission waits for six actual successes and that receipt. |
-| Merge queue | Auto-merge armed under merge authority requests a merge group; no rebase for freshness | Mechanical checks run on the actual group. Submit the run-keyed receipt as soon as the group run exists. Native admission binds group identity and review evidence; a changed whole tree requires fresh integration review. |
+| Merge queue | Auto-merge armed under merge authority requests a merge group; no rebase for freshness | Mechanical checks run on the actual group. The source receipt admits the group when the review carries over: an unchanged tree, or a group that is exactly the reviewed change on its base (checked with `git merge-tree`) whose net base change avoids the change's paths and the admission, identity-binding, dependency and migration machinery. Otherwise submit the run-keyed receipt with two integration reviews as soon as the group run exists. |
 | Main | Squash merge produces a main push | Mechanical checks and raw diagnostics run again; Sonar updates its main analysis. Native admission does not run on main pushes. A merge is not a release. |
 | Package release | Authorized dispatch of `publish-package.yml` for a reviewed main SHA, package `all` (the set) or one package, the version, and exact notes | Unprivileged preflight refuses while any package release or publication is in flight, checks ancestry, contexts and versions, packs and scans every tarball, and decides each package by its tag, release and npm state before protected release approval. One approval covers the set; the release App creates each annotated tag `openlup-<package>-v<version>` on the target and its immutable release. |
 | npm | Published package-release event from the release App | Package workflow independently checks identity, tag and tarball, re-reads npm, then publishes with OIDC provenance under `latest`. Verify its observed result; publication does not update an adopter. |
@@ -124,7 +124,8 @@ maintainer recovery, not an alternate verifier. The supervisor handles missing
 native-review evidence in the active task with fresh independent reviewers;
 retain lineage and the existing two-cycle budget. Optional review advice does
 not add acceptance obligations. A `native-review` timeout is a missing or late
-receipt, not a review failure. For its recovery, see the receipt-timeout rule in
+receipt, not a review failure; in a merge group, the job log names why the
+source receipt did not carry over. For its recovery, see the receipt-timeout rule in
 [Merge queue](../../CONTRIBUTING.md#merge-queue). See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
 for the complete protocol.
 

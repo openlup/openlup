@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -239,7 +239,7 @@ describe('source-keyed pull-request receipts', () => {
     const event: { number?: number; repository: { private: boolean }; pull_request: { head: { sha: string } }; action?: string; merge_group?: Record<string, string> } = { number: 5, repository: { private: false }, pull_request: { head: { sha: f.head } } };
     const env: Record<string, string> = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_RUN_ID: '10', GITHUB_RUN_ATTEMPT: '1', GITHUB_EVENT_NAME: 'pull_request' };
     const submit = async () => ({ input, binding: await verifySourceAdmission({ cwd: f.cwd, api, input, now: () => clock }) });
-    const wait = () => waitNativeAdmission({ event, env, api, cwd: f.cwd, now: () => clock, sleep: async (ms: number) => { clock += ms; }, fetchObjects: async () => {} });
+    const wait = (onSleep?: () => Promise<void>, deadlineMs?: number) => waitNativeAdmission({ event, env, api, cwd: f.cwd, now: () => clock, sleep: async (ms: number) => { clock += ms; await onSleep?.(); }, deadlineMs, fetchObjects: async () => {} });
     const sourceName = (pr = 5, head = f.head) => `native-review-pr-${pr}-${head}`;
     return { f, input, dispatch, upload, api, event, env, submit, wait, sourceName, setClock: (value: number) => { clock = value; }, calls: () => calls, resetCalls: () => { calls = []; } };
   }
@@ -296,12 +296,92 @@ describe('source-keyed pull-request receipts', () => {
     const s = await sourceFixture(); const binding = await observeNativeAdmission(s.api, s.f.input);
     await s.upload('native-review-10-1', { input: s.f.input, binding }, 123); await expect(s.wait()).resolves.toBeUndefined();
   });
-  it('R8 merge groups ignore source receipts', async () => {
-    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-    const tree = s.f.git('rev-parse', 'HEAD^{tree}'); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'synthetic group'); s.f.group(s.f.base, head);
-    s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
-    Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
-    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
+  describe('merge groups admitted by their source receipt', () => {
+    // Builds main2 = base + <path>=<contents>, then the queue's squash of the reviewed change on main2.
+    async function behindGroup(s: Awaited<ReturnType<typeof sourceFixture>>, path: string, contents: string, extra?: [string, string]) {
+      const f = s.f; f.git('checkout', '-q', '--detach', f.base);
+      await mkdir(join(f.cwd, path, '..'), { recursive: true }); await writeFile(join(f.cwd, path), contents); f.git('add', '.'); f.git('commit', '-qm', 'new main');
+      const main2 = f.git('rev-parse', 'HEAD');
+      let tree = f.git('merge-tree', '--write-tree', `--merge-base=${f.base}`, main2, f.head);
+      if (extra) { f.git('checkout', '-q', '--detach', main2); f.git('read-tree', tree); f.git('checkout-index', '-a', '-f'); await writeFile(join(f.cwd, extra[0]), extra[1]); f.git('add', extra[0]); tree = f.git('write-tree'); }
+      const head = f.git('commit-tree', tree, '-p', main2, '-m', 'queue group'); f.group(main2, head);
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      return { main2, head };
+    }
+    it('carries a complete large compressed source receipt over an unrelated merge-group base move', async () => {
+      const s = await sourceFixture();
+      s.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
+      const receipt = await s.submit();
+      expect(Buffer.byteLength(JSON.stringify(receipt))).toBeGreaterThan(56000);
+      expect(JSON.parse(encodeNativeReceipt(receipt)).version).toBe(3);
+      await s.upload(s.sourceName(), receipt, 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n');
+      await expect(s.wait()).resolves.toBeUndefined();
+    });
+    it('G1 admits a behind group whose base moved only on unrelated paths', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n'); await expect(s.wait()).resolves.toBeUndefined();
+    });
+    // A refused carry-over is logged and the wait continues for the run-keyed route.
+    // Two polls (a 30 s deadline) prove the continuation without 80 full polls.
+    async function refusedThenExpired(s: Awaited<ReturnType<typeof sourceFixture>>, reason: string) {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await expect(s.wait(undefined, 30_000)).rejects.toThrow('bounded receipt wait expired');
+        expect(log.mock.calls.filter(([line]) => String(line).includes('source receipt does not admit this merge group') && String(line).includes(reason))).toHaveLength(2);
+      } finally { log.mockRestore(); }
+    }
+    it('G2 does not carry over when the base moved under a reviewed path', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'code.ts', 'export const n = 2;\n'); await refusedThenExpired(s, 'the base moved under a reviewed path');
+    });
+    for (const path of ['.github/workflows/extra.yml', 'package.json', 'packages/core/package-lock.json', 'supabase/migrations/0001_extra.sql', 'scripts/agent-review-extra.mjs', 'scripts/documentation-git.ts', 'config/platform-migration-manifest.json']) it(`G3 does not carry over when the base changed ${path}`, async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, path, 'changed\n'); await refusedThenExpired(s, 'machinery');
+    });
+    it('G4 does not carry over a group that is not exactly the reviewed change on its base', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n', ['smuggled.ts', 'not reviewed\n']); await refusedThenExpired(s, 'not exactly the reviewed change');
+    });
+    it('G8 does not carry over when the reviewed change conflicts with the base', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      // main2 conflicts on code.ts and adds other.ts; the group keeps the reviewed code.ts, so its tree is neither the reviewed tree nor a clean merge.
+      const f = s.f; f.git('checkout', '-q', '--detach', f.base); await writeFile(join(f.cwd, 'code.ts'), 'export const n = 3;\n'); await writeFile(join(f.cwd, 'other.ts'), 'unrelated\n'); f.git('add', '.'); f.git('commit', '-qm', 'conflicting main');
+      const main2 = f.git('rev-parse', 'HEAD'); await writeFile(join(f.cwd, 'code.ts'), 'export const n = 2;\n'); f.git('add', '.'); const tree = f.git('write-tree');
+      const head = f.git('commit-tree', tree, '-p', main2, '-m', 'queue group'); f.group(main2, head);
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      await refusedThenExpired(s, 'not exactly the reviewed change');
+    });
+    it('a run-keyed receipt with integration reviews still admits a group that does not carry over', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      const { main2, head } = await behindGroup(s, '.github/workflows/extra.yml', 'name: extra\n');
+      const integration = await s.f.state(await captureCommittedReviewCandidate(s.f.cwd, main2, head));
+      const input = { ...s.f.input, targetRunId: s.f.run.id, targetAttempt: s.f.run.run_attempt, integration };
+      const binding = await observeNativeAdmission(s.api, input);
+      let uploaded = false; const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await expect(s.wait(async () => { if (!uploaded) { uploaded = true; await s.upload('native-review-10-1', { input, binding }, 124); } })).resolves.toBeUndefined();
+        expect(log.mock.calls.some(([line]) => String(line).includes('machinery'))).toBe(true);
+      } finally { log.mockRestore(); }
+    });
+    it('G5 admits a group with the unchanged reviewed tree', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      const tree = s.f.git('rev-parse', `${s.f.head}^{tree}`); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-m', 'queue group'); s.f.group(s.f.base, head);
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      await expect(s.wait()).resolves.toBeUndefined();
+    });
+    it('G6 waits when the queue entry names another reviewed head', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n'); s.f.entry.pullRequest.headRefOid = s.f.base;
+      await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
+    });
+    it('G7 does not carry over an expired source review', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      await behindGroup(s, 'other.ts', 'unrelated\n'); s.setClock(86401001); await refusedThenExpired(s, 'expired');
+    });
   });
   for (const mutation of ['head-repository', 'workflow-file'] as const) it(`R9 refuses a run with a different ${mutation}`, async () => {
     const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);

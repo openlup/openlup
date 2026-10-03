@@ -23,7 +23,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PACKAGES_CONFIG_PATH, SET_VERSION, checkPackageDirectories, checkPackageManifest, checkSetVersions, checkUnreleasedManifest, parsePackageReleaseTag, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.ts";
@@ -106,6 +106,90 @@ function setSelection(version: string, packages: readonly PackageEntry[], versio
   if (publishable.length === 0) return refuse(`${PACKAGES_CONFIG_PATH} lists no publishable package`);
   const behind = publishable.filter(({ name }) => versions.get(name) !== version).map(({ name }) => `${name} is at ${String(versions.get(name))}`);
   return behind.length === 0 ? publishable : refuse(`${behind.join(", ")}; this set needs ${version} for every publishable package`);
+}
+
+/** A one-line export list as `tsc` emits it: `export { … } from "…";`, `export type { … } from "…";` or `export { … };`. */
+const EXPORT_LIST = /^(\s*export (?:type )?)\{([^{}]*)\}((?: from "[^"]*")?;)$/u;
+
+/** The comments that open a line and close on it, with the whitespace before and after them. */
+const LEADING_COMMENTS = /^\s*(?:\/\*.*?\*\/\s*)+/u;
+
+/**
+ * An API snapshot's declaration lines: everything from its first `## <declaration file>` section, without the
+ * generated header. A comment that opens a line is removed, never the code after it: a line inside an unclosed
+ * comment reads as if the comment opened at its start, the code after the comment's close is kept with its leading
+ * whitespace trimmed, and a line left empty is dropped. A comment after code stays as written. A one-line export list
+ * becomes one line per specifier, as written, so adding a name or a comment is an addition.
+ */
+function declarationLines(text: string | undefined): string[] {
+  const lines = text?.split("\n") ?? [];
+  const start = lines.findIndex((line) => line.startsWith("## "));
+  let comment = false;
+  return (start < 0 ? [] : lines.slice(start)).flatMap((line) => {
+    const code = (comment ? `/*${line}` : line).replace(LEADING_COMMENTS, "");
+    comment = code.trimStart().startsWith("/*");
+    if (comment || (code === "" && line !== "")) return [];
+    const list = EXPORT_LIST.exec(code);
+    return list ? list[2]!.split(",").map((specifier) => specifier.trim()).filter(Boolean).map((specifier) => `${list[1]}{ ${specifier} }${list[3]}`) : [code];
+  });
+}
+
+/** Whether `after` keeps every line of `before`, in order, so the change only added lines. */
+function onlyAdds(before: readonly string[], after: readonly string[]): boolean {
+  let kept = 0;
+  for (const line of after) if (kept < before.length && line === before[kept]) kept += 1;
+  return kept === before.length;
+}
+
+/**
+ * Refuses a change from `base` to `head` that removes or changes a declaration line in an API
+ * snapshot of a package publishable at `base`, unless the package's single `## [Unreleased]`
+ * changelog section at `head` carries a `Migration:` block. The base decides what is checked:
+ * its packages config, and each subpath its `release-gates.json` `packageSurface` lists. Each is
+ * compared with the snapshot the head's `packageSurface` lists for the same subpath; a subpath,
+ * gates file or snapshot missing at the head reads as empty, so removing or renaming a subpath
+ * is a removal. A base file that cannot be read, or a snapshot path outside its package, refuses.
+ * A pure addition keeps every old line in order and has no "before", so it needs none. The head
+ * must stay readable as the next base, block or not: its config parses, and each package
+ * publishable there keeps a gates file with a `packageSurface` object and every snapshot it lists.
+ * The published-tree `--policy` check runs this against a pull request's or merge group's base.
+ */
+export function assertMigrationBlocks(root: string, base: string, head: string): void {
+  for (const commit of [base, head]) capture(root, "git", ["rev-parse", "--verify", `${commit}^{commit}`]);
+  const refuse = (detail: string): never => { throw new Error(`migration-block: ${detail}`); };
+  const atBase = (path: string): string => { try { return capture(root, "git", ["show", `${base}:${path}`]); } catch { return refuse(`${path} cannot be read at the base ${base}`); } };
+  const atHead = (path: string): string | undefined => { try { return capture(root, "git", ["show", `${head}:${path}`]); } catch { return undefined; } };
+  const surface = (commit: string, path: string, text: string | undefined): Record<string, unknown> => {
+    let found: unknown = {};
+    try { if (text !== undefined) found = (JSON.parse(text) as { packageSurface?: unknown }).packageSurface; } catch { found = undefined; }
+    return found !== null && typeof found === "object" && !Array.isArray(found) ? found as Record<string, unknown> : refuse(`${path} at ${commit} has no packageSurface object`);
+  };
+  /** A snapshot entry's path, normalised against its package directory. */
+  const snapshotPath = (directory: string, entry: unknown): string => {
+    const snapshot = (entry as { snapshot?: unknown } | null)?.snapshot;
+    const path = typeof snapshot === "string" && !posix.isAbsolute(snapshot) ? posix.join(directory, snapshot) : "";
+    return path.startsWith(`${directory}/`) ? path : refuse(`${directory}/release-gates.json lists the snapshot ${String(snapshot)}, which is not a path inside ${directory}`);
+  };
+  const refusals: string[] = [];
+  for (const { name, directory } of parsePackagesConfig(atBase(PACKAGES_CONFIG_PATH)).packages.filter(({ publish }) => publish)) {
+    const gates = `${directory}/release-gates.json`, before = surface(base, gates, atBase(gates)), after = surface(head, gates, atHead(gates));
+    const changed = Object.entries(before).flatMap(([key, entry]) => {
+      const path = snapshotPath(directory, entry), next = Object.hasOwn(after, key) ? atHead(snapshotPath(directory, after[key])) : undefined;
+      return onlyAdds(declarationLines(atBase(path)), declarationLines(next)) ? [] : [path];
+    });
+    if (changed.length === 0) continue;
+    const unreleased = (atHead(`${directory}/CHANGELOG.md`) ?? "").split(/^(?=## )/mu).filter((section) => section.startsWith("## [Unreleased]"));
+    const missing = unreleased.length !== 1 ? `${directory}/CHANGELOG.md has ${unreleased.length} "## [Unreleased]" sections, not one`
+      : /^\s*Migration:/mu.test(unreleased[0]!) ? undefined : `its "## [Unreleased]" section has no Migration: block`;
+    if (missing) refusals.push(`migration-block ${name}: ${changed.join(", ")} removes or changes a declaration line since ${base}, and ${missing}; add a Migration: block with the code or SQL before and after`);
+  }
+  let publishable: readonly PackageEntry[] = [];
+  try { publishable = parsePackagesConfig(atHead(PACKAGES_CONFIG_PATH) ?? "").packages.filter(({ publish }) => publish); } catch { refusals.push(`migration-block: ${PACKAGES_CONFIG_PATH} cannot be read or parsed at the head ${head}`); }
+  for (const { directory } of publishable) {
+    const gates = `${directory}/release-gates.json`, readable = (path: string): string => atHead(path) ?? refuse(`${path} cannot be read at the head ${head}`);
+    try { for (const entry of Object.values(surface(head, gates, readable(gates)))) readable(snapshotPath(directory, entry)); } catch (error) { refusals.push((error as Error).message); }
+  }
+  if (refusals.length > 0) throw new Error(refusals.join("\n"));
 }
 
 export function runPackagesCheck(root: string, args: readonly string[]): number {

@@ -16,6 +16,7 @@ const REPOSITORY_ID = 1376035358;
 const WORKFLOW = '.github/workflows/published-tree-ci.yml';
 const DISPATCH = '.github/workflows/native-review-admission.yml';
 const SHA = /^[a-f0-9]{40}$/u;
+const GIT_ENV = { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '0' };
 const LIMIT = 56000; // Reserve room for binding and JSON transport below 65,535.
 const ARTIFACT_LIMIT = 60000;
 const EXPANDED_LIMIT = 512000; // Bounded complete lineage; never truncate review evidence.
@@ -97,14 +98,45 @@ async function verifyReviewState(cwd, state, now) {
   demand(result.status === 'reviewed', result.reason ?? 'complete independent native review is missing');
   return candidate;
 }
+// A base move into admission, identity-binding, dependency or migration machinery never carries a review over.
+const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?package(?:-lock)?\.json$/u, /^supabase\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
+async function git(cwd, ...args) {
+  // The same clean configuration as the object fetch keeps the prediction purely path-based on any runner.
+  return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', ...args], { timeout: 30000, maxBuffer: 16 * 1024 * 1024, env: GIT_ENV })).stdout;
+}
+/** A source review carries over to a merge group that is exactly the reviewed change on a base whose net change since the reviewed base avoids its paths and that machinery. */
+export async function carryOverSourceReview(cwd, candidate, group) {
+  if (group.tree === candidate.tree) return 'unchanged tree';
+  let predicted;
+  try { await git(cwd, 'merge-base', '--is-ancestor', candidate.base, group.base); predicted = (await git(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predicted = null; }
+  demand(predicted === group.tree, 'group is not exactly the reviewed change on its queue base; integration review required');
+  const moved = (await git(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
+  const own = new Set(candidate.changedPaths);
+  demand(!moved.some(path => own.has(path)), 'the base moved under a reviewed path; integration review required');
+  demand(!moved.some(path => TRUST_PATHS.some(pattern => pattern.test(path))), 'the base changed review, workflow, dependency or migration machinery; integration review required');
+  return 'disjoint base move';
+}
+/** Admits a merge group with its PR's source receipt when the source review carries over; otherwise the run-keyed route applies. */
+export async function verifyGroupSourceAdmission({ cwd, api, input, target, now = Date.now }) {
+  const view = { version: 1, targetRunId: target.runId, targetAttempt: target.attempt, prNumber: input.target.prNumber, source: input.source, integration: null };
+  const first = await observeNativeAdmission(api, view);
+  demand(first.event === 'merge_group' && first.sourceHead === input.target.sourceHead, 'source receipt does not name this merge group');
+  const candidate = await verifyReviewState(cwd, input.source, now);
+  const basis = await carryOverSourceReview(cwd, candidate, first);
+  const final = await observeNativeAdmission(api, view);
+  demand(equal(first, final), 'candidate, queue entry or workflow attempt changed during verification');
+  assertAgentReviewFreshness(input.source, now());
+  return { ...final, basis };
+}
 export async function verifyNativeAdmission({ cwd, api, input, expected, now = Date.now }) {
   const first = await observeNativeAdmission(api, input);
   if (expected) demand(equal(first, expected), 'target event/request binding changed');
   const verify = state => verifyReviewState(cwd, state, now);
   await verify(input.source);
   if (first.event === 'merge_group') {
-    // Entire-tree equality is an objective unchanged-code proof. Path disjointness
-    // alone cannot exclude behavioural interactions with new main.
+    // Entire-tree equality is an objective unchanged-code proof. Groups that the
+    // source-receipt carry-over does not admit (see carryOverSourceReview) need
+    // two integration reviews here.
     if (first.tree === first.sourceTree) demand(input.integration === null, 'unchanged tree needs no extra review');
     else {
       const state = input.integration;
@@ -166,7 +198,7 @@ async function fetchObjects(cwd, input, identity) {
   const refs = [...new Set([input.source, ...(input.source.history ?? []), ...(input.integration ? [input.integration, ...(input.integration.history ?? [])] : [])].flatMap(state => [state.request.candidate.base, state.request.candidate.head]).concat(identity.base ?? []))];
   demand(refs.length <= 14 && refs.every(ref => SHA.test(ref)), 'review object roots exceed bounds');
   // A literal public remote, no credential helpers, candidate hooks or filters.
-  await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'credential.helper=', '-c', 'core.askPass=', '-c', 'http.extraHeader=', '-c', 'http.followRedirects=false', 'fetch', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head', '--no-auto-maintenance', 'https://github.com/openlup/openlup.git', ...refs], { timeout: 120000, maxBuffer: 1024 * 1024, env: { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '0' } });
+  await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'credential.helper=', '-c', 'core.askPass=', '-c', 'http.extraHeader=', '-c', 'http.followRedirects=false', 'fetch', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head', '--no-auto-maintenance', 'https://github.com/openlup/openlup.git', ...refs], { timeout: 120000, maxBuffer: 1024 * 1024, env: GIT_ENV });
 }
 export async function readNativeAdmissionArtifact(api, input) {
   const name = `native-review-${input.targetRunId}-${input.targetAttempt}`;
@@ -268,6 +300,24 @@ export async function waitNativeAdmission({ event, env, api, cwd, now = Date.now
       demand(target === receipt.binding.event && (target !== 'pull_request' || event.pull_request?.head?.sha === receipt.binding.sourceHead) && (target !== 'merge_group' || event.action === 'checks_requested' && event.merge_group?.base_ref === 'refs/heads/main' && event.merge_group.base_sha === receipt.binding.base && event.merge_group.head_sha === receipt.binding.head && event.merge_group.head_ref === receipt.binding.ref && env.GITHUB_SHA === receipt.binding.head && env.GITHUB_REF === receipt.binding.ref), 'receipt differs from hosted event');
       await fetch(cwd, input, receipt.binding);
       await verifyNativeAdmission({ cwd, api, input, expected: receipt.binding, now }); console.log('Native review admission verified for this exact run/attempt.'); return;
+    }
+    if (target === 'merge_group') {
+      // The queue entry names the PR and its reviewed head; authenticated membership is re-checked during verification.
+      const entries = (await api.graphql(`query { repository(owner:"openlup",name:"openlup") { mergeQueue(branch:"main") { entries(first:100) { nodes { headCommit { oid } pullRequest { number headRefOid } } } } } }`))?.repository?.mergeQueue?.entries?.nodes ?? [];
+      const hint = entries.find(entry => entry?.headCommit?.oid === env.GITHUB_SHA)?.pullRequest;
+      const source = integer(hint?.number) && SHA.test(hint?.headRefOid ?? '') ? await readSourceAdmissionArtifact(api, hint.number, hint.headRefOid) : null;
+      if (source) {
+        const input = parseNativeAdmission(encodeNativeReceipt(source.input));
+        demand(input.version === 2 && input.target.prNumber === hint.number && input.target.sourceHead === hint.headRefOid && event.action === 'checks_requested' && event.merge_group?.base_ref === 'refs/heads/main' && event.merge_group.head_sha === env.GITHUB_SHA && event.merge_group.head_ref === env.GITHUB_REF, 'receipt differs from hosted event');
+        await fetch(cwd, input, { base: event.merge_group.base_sha });
+        let binding = null;
+        try { binding = await verifyGroupSourceAdmission({ cwd, api, input, target: { runId, attempt }, now }); }
+        catch (error) { console.log(`source receipt does not admit this merge group; waiting for a run-keyed receipt: ${error.message}`); }
+        if (binding) {
+          demand(binding.base === event.merge_group.base_sha && binding.head === env.GITHUB_SHA && binding.ref === env.GITHUB_REF, 'receipt differs from hosted event');
+          console.log(`Native review admission verified for this merge group by its source receipt (${binding.basis}).`); return;
+        }
+      }
     }
     if (target === 'pull_request') {
       // One source receipt serves every run and attempt of the reviewed PR head.

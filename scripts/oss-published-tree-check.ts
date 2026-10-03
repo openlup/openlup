@@ -20,6 +20,7 @@ import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-n
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
+import { assertMigrationBlocks } from "./packages/packages-check.ts";
 export { assertMaterializedOutputInventory, materializedOutputPaths } from "./oss-published-tree-output.ts";
 
 /** Append-only migration history at the PR or merge-group boundary. */
@@ -370,6 +371,8 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
     const head = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
     assertAppendOnlyMigrationHistory(root, base.base, head);
     log(`- append-only migration history: ${base.base}..${head}`);
+    assertMigrationBlocks(root, base.base, head);
+    log(`- package API changes carry Migration blocks: ${base.base}..${head}`);
   }
   const result = checkDocumentationImpact(root, state, base.base);
   for (const line of renderDocumentationImpact(result)) log(line);
