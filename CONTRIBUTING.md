@@ -181,9 +181,12 @@ does not cover, so do not commit them.
 
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
-evidence expiry and the two-cycle repair/review budget. A bounded routine code
-change gets one cold correctness review only when its actual paths avoid known
-control and trust boundaries and that reviewer confirms ordinary semantics.
+evidence expiry and the two-cycle repair/review budget. Its review base is the
+candidate's fork point, `git merge-base HEAD origin/main`: a review stays current
+while `main` moves ahead, and verify refuses it once that fork point changes. A
+bounded routine code change gets one cold correctness review only when its
+actual paths avoid known control and trust boundaries and that reviewer
+confirms ordinary semantics.
 Sensitive, material or unknown changes still get two; a false routine assessment
 requires two full reviews of the same committed candidate within the existing
 budget. Run the focused
@@ -771,8 +774,9 @@ builds and checks the fresh integration tree itself. The
 records why these rules exist.
 
 - **No rebasing for freshness.** Do not rebase a pull request, or merge `main`
-  into it, only because it is behind. Rebase only for a textual conflict, and
-  then obtain a fresh full review.
+  into it, only because it is behind. A review is bound to the branch's fork
+  point, so verify and pre-push keep accepting it while the branch is behind.
+  Rebase only for a textual conflict, and then obtain a fresh full review.
 - **Arming.** Arm auto-merge only under actual merge authority, and only after
   the required checks, the native review and any required maintainer read:
   `gh pr merge <PR> --auto --squash --author-email <address>`. Use the
