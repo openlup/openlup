@@ -1,6 +1,6 @@
 # Plan: checks that survive a moving `main`, and pull-request receipts without a race
 
-Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121; local steps 0b and 4 applied); W5 (fork-point review base) approved the same day.
+Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121, W5 #122; local steps 0b and 4 applied; the maintainer-local copy reinstalled with W5).
 Audience: the agents executing it, their reviewers and the maintainer.
 
 ## 1. Why: recorded failures only
@@ -63,7 +63,8 @@ would reopen each item.
     `gh pr merge --auto --squash` and the maintainer's configured author email.
   - Never rebase only because the branch is behind. If `main` moved, S4 decides
     whether the source review carries over or two integration reviews apply.
-  - Rebase only on a textual conflict, followed by a fresh full review.
+  - Integrate `main` only on a textual conflict, by merging it, followed by a
+    fresh full review.
 - **Stop and report**, with no repair attempted, on any of:
   - two repair cycles exhausted;
   - a required red that the step did not cause and that is not an objective
@@ -202,7 +203,8 @@ No release, repository setting, ruleset, secret or npm action is included.
 **Done:**
 - W0, W2, W1 and the W3 follow-up merged with green required contexts;
 - the W2 live proof recorded;
-- the step 4 self-test green.
+- the step 4 self-test green;
+- W4 and W5 merged, and both W4 live proofs and the W5 live proof recorded.
 
 A report of required reds by class over the next 30 merges follows, but does not
 gate completion.
@@ -250,8 +252,19 @@ and the group keeps waiting for the run-keyed receipt.
 **Sign-off:** the maintainer reads the candidate before sign-off, because this
 changes an approved admission rule.
 
-**Live proof:** two independent pull requests armed together, both admitted in
-the queue by their source receipts alone.
+**Live proof:**
+- **Unchanged tree, observed 2026-10-03.** #122's merge group was admitted by
+  its source receipt alone, with no run-keyed receipt or live session.
+- **Disjoint base move, observed 2026-10-03.** #123 changed only documentation
+  outside the listed machinery, and #124's paths, which included the policy
+  under `.github/`, were disjoint from #123's. Only the base move must avoid the
+  machinery. #123 merged first. #124's merge group, on #123's merge commit and
+  with a tree different from the reviewed one, logged "admission verified for this merge group by its source
+  receipt (disjoint base move)". No run-keyed receipt, integration review or
+  live session was involved.
+- **W5, observed the same day.** #124 was reviewed on its fork point before
+  #123 merged, and was then verified locally and pushed without a rebase or a
+  new review.
 
 **Stop and report instead of repairing** if any of these happens:
 - a receipt timeout on a pull request whose v2 receipt was submitted in time;
@@ -260,7 +273,7 @@ the queue by their source receipts alone.
 
 ### Step 7, W5: a local review survives a moving `main` (spec S5)
 
-**Status:** approved 2026-10-03.
+**Status:** executed 2026-10-03 (#122).
 
 **Why.** The local review session bound a review to `origin/main` itself. When
 another pull request merged before the author pushed, verify and pre-push
@@ -280,9 +293,12 @@ section 2, and is the local twin of the queue cost W4 removed.
 changes the review gate that verify and pre-push run.
 
 **Installed copy.** Verify and pre-push run the maintainer-local installed copy
-of the session script, and add no base check of their own. S5 takes effect
-locally only after the maintainer reinstalls that copy from `main`; until then,
-including for this step's own push, the base must still equal `origin/main`.
+of the session script, and add no base check of their own. The maintainer
+reinstalled it from `main` after #122 merged, so S5 is in effect locally;
+#122's own push predated the reinstall and still needed its base to equal
+`origin/main`. The same day, the maintainer-local verify began comparing tree
+neutrality with the fork point too, so a branch behind `main` gets no false
+ratchet red.
 
 ## 5. Specifications
 
@@ -493,7 +509,8 @@ So:
 - merging `main` into the branch moves the fork point, and the existing
   ancestor-preserving base integration with fresh full review applies;
 - a rebase rewrites the reviewed head: as before, prepare reports
-  `needs_rescope`, and a fresh session starts at the new fork point;
+  `needs_rescope`, and the supervisor regroups within existing authority,
+  keeping the repair budget and findings;
 - a rewritten `main` on which the reviewed base is no longer the fork point
   refuses.
 
@@ -516,7 +533,8 @@ reviews apply.
 - **(d)** A repair commit on the un-rebased branch gets a closure continuation
   at base B.
 - **(e)** Merging `main` moves the base to M with a full continuation. A rebase
-  reports `needs_rescope`, and a fresh session takes base M (guard).
+  reports `needs_rescope`; a session prepared from scratch would bind base M
+  (guard).
 - A pristine checkout stays pristine when `main` moves ahead of it.
 
 (a), (c), (d) and the pristine case fail before W5; (b) and (e) differ only in
@@ -534,3 +552,36 @@ the refusal wording.
 - **More than one queue build:** measured queue wait.
 - **Conflict replay:** a merge-group removal caused by a textual conflict.
 - **Parallel local checks:** a local verification time that blocks delivery.
+
+## 7. Concurrent documentation-receipt reconciliation
+
+[PR #126](https://github.com/openlup/openlup/pull/126) clarified the S5 test
+comment and recorded the live W4/W5 proof. Its merge at
+`07e646057acdffec0e5dcf274c94af246a1d9820` replaced the tooling no-impact marker
+in `CONTRIBUTING.md`. The independently reviewed transport candidate in
+[PR #119](https://github.com/openlup/openlup/pull/119),
+`855470a89e6023674180b7a7a6fda16a50102561`, replaced the same marker against
+`5ba29458965f31f7312d7a5d523f67899a75d3fe`. The single conflicting line was
+receipt metadata; their source changes remain separate.
+
+This documentation-only reconciliation restores the marker from that shared
+base and preserves PR #126's displaced receipt below as historical evidence.
+It retains the clarified test comment and all of the live proof record. Neither
+marker is blanket approval of a newer tree: each binds only its recorded delta.
+The transport marker still needs to validate against the actual integration.
+
+PR #119's source, reports and complete cycle-3 history remain unchanged. This
+reconciliation introduces no source continuation, budget reset or exception to
+ordinary conflict-resolution rules. The incoming change to the native session
+test is protected machinery, so W4's disjoint-move carry-over must refuse. The
+actual queue base, head and tree require two fresh full integration reviews
+under the unchanged source criteria, plus the required checks. Missing or
+expired source evidence, a mismatched documentation digest or an unreviewed
+group remains a delivery blocker.
+
+The following receipt belongs specifically to PR #126's comment-only delta;
+it is archived here, outside the active owner section:
+
+```text
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-e02d8b01138bf98503ad51a3977f8627544741975dae26491415f10eacc25fd0","reason":"Comment-only test change. The S5 rebase case in the native session test now says that prepare refuses with needs_rescope and keeps the state, and that only state prepared from scratch binds the new fork point; test behaviour, contributor commands, required checks and the documented review protocol are unchanged."} -->
+```

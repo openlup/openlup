@@ -1,6 +1,6 @@
 # Intent: autonomous delivery with accountable review
 
-Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts amended on 2026-10-03.
+Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts (W2), merge-group carry-over (W4, #121) and the fork-point review base (W5, #122) amended on 2026-10-03.
 Audience: maintainers and contributors designing the development workflow.
 
 ## Outcome
@@ -83,7 +83,7 @@ must satisfy the same review contract. No model API, backend, new host, account
 or transfer of subscription authentication is required.
 
 The supervisor records observed native execution identities and complete results
-for the exact committed base, head, tree, scope and criteria. Local verify and
+for the exact committed base (the candidate's fork point), head, tree, scope and criteria. Local verify and
 pre-push require fresh matching review evidence; missing, stale, incomplete,
 bypassed or unresolved material evidence refuses. A `needs_agent_review` response
 returns control to the active agent, which launches reviews and retries the gate
@@ -103,8 +103,8 @@ independence against a dishonest actor with control of the entire session.
 Extend that same native process to an optional GitHub merge queue without a
 model API, reviewer host, new secret or transfer of subscription authentication.
 The active supervisor retains source-review evidence and transports it through
-a main-only dispatch artifact for the reviewed PR head, or for the exact
-merge-group CI run/attempt.
+a main-only dispatch artifact for the reviewed PR head, and for the exact
+merge-group CI run/attempt only when the source review does not carry over (W4).
 All six mechanical jobs remain required. Activated queue admission adds a
 seventh bounded job which rechecks current source, group, artifact and native
 review identity before success. A source-head change after auto-merge was armed
@@ -124,7 +124,7 @@ exhaustion or unknown membership returns honest blocked evidence to the supervis
 Foundation implementation and authorized delivery through merge do not activate
 settings. Activation needs an exact separately approved proposal and live refusal
 proof, including changed heads, rebuilt groups, same-SHA attempt replay (for
-merge-group runs since the 2026-10-03 pull-request receipt amendment), and
+merge-group runs the source review does not carry over to, since W2 and W4), and
 synthetic-tip DCO. Fixture success or unavailable sandbox evidence does not
 establish activation. Review freshness is checked at admission, not guaranteed
 at the later GitHub merge; Actions source attribution cannot isolate a workflow

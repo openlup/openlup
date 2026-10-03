@@ -128,25 +128,36 @@ including full-review escalation. Exhaustion remains blocked while the superviso
 the execution approach within existing authority; no reset, bypass or automatic
 merge follows. Changed intent requires explicit regrouping. The review base is the
 candidate's fork point (`git merge-base HEAD origin/main`), so verify and pre-push keep
-accepting a reviewed candidate while `main` moves ahead. An ancestor-preserving base
-integration requires fresh full-scope review, preserving history and budget. Do not rebase
-or merge `main` only to catch up: the merge queue integrates, and a rebase is for a textual
-conflict. When criteria,
+accepting a reviewed candidate while `main` moves ahead. Do not rebase or merge
+`main` only to catch up: the merge queue integrates. Resolve a textual conflict by
+merging `main`: that moves the fork point and requires fresh full-scope review,
+preserving history and budget. A rebase discards that lineage, so `prepare` reports
+`needs_rescope`; regroup within existing authority without restarting the counter or
+dropping findings. When criteria,
 required review and checks pass, stop optional edits and continue only authorized
-delivery steps. Missing, stale, dirty, partial or unclosed evidence refuses verify
-and pre-push once installed enforcement passes its live refusal tests. Where the
+delivery steps. Missing, stale, expired, dirty, partial or unclosed evidence, including
+evidence whose fork point has changed, refuses verify and pre-push once installed enforcement passes its live refusal tests. Where the
 maintainer-local layer is installed, pre-push also refuses a task-worktree push
 whose exact clean tree has no stamp from a passing `openlup-dev verify`. Native
 session receipts are process evidence, not cryptographic remote attestation or
 hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
+
+A fresh explicit owner decision may authorize exactly one additional full review
+at cycle 3 after the two automatic cycles. This retains every prior round and
+finding, the same approved intent and author, and a clean ancestor-preserving
+committed candidate. It requires two fresh full reviewers. No fourth cycle or
+automatic extension is permitted; unchanged prepare preserves evidence and
+expiry. This decision grants no publication, merge or settings authority.
+
 The optional [native queue admission](plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
 keeps reviewers in this same task and subscription. It was active at the dated
 inspection in [Development and release](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
-The supervisor supplies current source evidence for the reviewed PR head, or
-for the exact merge-group run/attempt, then observes the queue's actual base,
-head, tree and source identity.
+The supervisor supplies current source evidence for the reviewed PR head and,
+only for a merge group the source review does not carry over to, integration
+evidence for the exact merge-group run/attempt. Admission observes the queue's
+actual base, head, tree and source identity.
 
 A source review carries over to a merge group when either:
 - the group tree equals the reviewed tree; or
@@ -169,10 +180,13 @@ separately. The existing nonqueue base-integration and repair-budget rules remai
 The supervisor creates the bounded transport input with
 `node scripts/agent-review-queue.mjs input-source PR source-session.json` for the
 pull request, or
-`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`
-for a merge-group run whose source review does not carry over,
-submits it through the main-only workflow within authorized delivery, and waits
-for actual admission in this conversation. The script does not dispatch or
+`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json group-session.json`
+for a merge-group run whose source review does not carry over, where
+`group-session.json` is a new native session, not a continuation of the source
+session, with two fresh full integration reviews of the exact group base, head
+and tree, prepared as [Required and raw checks](../../CONTRIBUTING.md#required-and-raw-checks) describes. The supervisor submits the input
+through the main-only workflow within authorized delivery and waits for actual
+admission in this conversation. The script does not dispatch or
 authorize delivery. Missing evidence remains blocked; no maintainer handoff is
 needed for routine review. Queue rebuild recovery is bounded at two retries and
 does not reset repair cycles. Changing queue settings remains a maintainer action.
