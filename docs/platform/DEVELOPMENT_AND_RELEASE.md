@@ -81,9 +81,9 @@ Where installed, `openlup-dev doctor` diagnoses prerequisites and installation
 or workflow-mirror drift. It is not a substitute for candidate verification.
 After committing and recording required native reviews, `openlup-dev verify`:
 - checks the workflow mirror and the shared lock;
-- runs the mechanical equivalents in a hosted-runner environment: a temporary
-  directory outside every checkout, four Vitest workers and no global Git
-  identity;
+- runs the mechanical equivalents locally, in an environment like a hosted
+  runner's: a temporary directory outside every checkout, four Vitest workers
+  and no global Git identity;
 - runs the raw `test-full` and pgTAP diagnostics only with `--diagnostics`, or
   pgTAP alone when the range reaches database inputs;
 - adds publication leak checks and advisory release eligibility.
@@ -125,7 +125,7 @@ native-review evidence in the active task with fresh independent reviewers;
 retain lineage and the existing two-cycle budget. Optional review advice does
 not add acceptance obligations. A `native-review` timeout is a missing or late
 receipt, not a review failure. For its recovery, see the receipt-timeout rule in
-[Deliver a change](../../CONTRIBUTING.md#deliver-a-change). See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
+[Merge queue](../../CONTRIBUTING.md#merge-queue). See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
 for the complete protocol.
 
 For Sonar, fix confirmed new defects in the PR and inspect the next analysis.

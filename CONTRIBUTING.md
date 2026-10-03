@@ -238,8 +238,8 @@ pull request number, and `source-session.json` the complete native state
 
 ```bash
 node scripts/agent-review-queue.mjs input-source "$PR" \
-  source-session.json > native-review-input.json
-gh workflow run native-review-admission.yml --ref main --json < native-review-input.json
+  source-session.json > .context/scratch/agent-review/input.json
+gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
 ```
 
 Admission re-verifies that receipt against the live pull request, the exact run
@@ -254,8 +254,8 @@ its branch is `gh-readonly-queue/main/pr-<PR>-…`.
 
 ```bash
 node scripts/agent-review-queue.mjs input "$RUN" "$ATTEMPT" "$PR" \
-  source-session.json > native-review-input.json
-gh workflow run native-review-admission.yml --ref main --json < native-review-input.json
+  source-session.json > .context/scratch/agent-review/input.json
+gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
 ```
 
 The second command is a GitHub write and requires the task's delivery authority.
@@ -615,9 +615,18 @@ points to its detailed rule.
    `npm run lint` before committing. Commit with `git commit -s`.
 3. **Native review** of the exact committed candidate, by the rules in
    [AGENTS.md](AGENTS.md) and in this section:
-   - write the approved intent (`risk`, `scope`, `criteria`, `requiredRoles`)
-     to `.context/scratch/agent-review/intent.json`, then run
-     `node scripts/agent-review-session.mjs prepare`;
+   - write `.context/scratch/agent-review/intent.json` in the shape the
+     [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
+     defines:
+
+     ```json
+     { "authorSessionId": "<your session id>",
+       "intent": { "risk": "behavior", "scope": ["<changed paths>"], "criteria": "<approved criteria>", "requiredRoles": [] } }
+     ```
+
+     Codex supplies `authorSessionId` itself; every other supervisor must set
+     it;
+   - run `node scripts/agent-review-session.mjs prepare`;
    - launch fresh reviewers and `record` each report;
    - repeat until `verify` reports `reviewed`.
 
@@ -627,26 +636,31 @@ points to its detailed rule.
      the clean committed tree. It must report `REQUIRED PASS`, and it writes the
      stamp that the pre-push hook requires.
    - Elsewhere, run the [required check commands](#required-and-raw-checks).
-5. **Push** with `git push -u origin HEAD`.
+5. **Push** with `git push -u origin HEAD`. A push is publication, within your
+   delivery authority.
 6. **Open a ready pull request** within your delivery authority, using the
    template.
-7. **Submit the source receipt** right away:
+7. **Submit the source receipt** right away. `PR` is the pull request number,
+   and the dispatch is a GitHub write within your delivery authority:
 
    ```bash
-   node scripts/agent-review-queue.mjs input-source "$PR" .context/scratch/agent-review/session.json > native-review-input.json
-   gh workflow run native-review-admission.yml --ref main --json < native-review-input.json
+   node scripts/agent-review-queue.mjs input-source "$PR" .context/scratch/agent-review/session.json > .context/scratch/agent-review/input.json
+   gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
    ```
 
-   Review evidence expires 24 hours after it was prepared, and a receipt
-   artifact one day after upload. Re-review the same candidate or resubmit
-   before relying on older evidence.
+   **Expiry.** Review evidence expires 24 hours after the earliest round since
+   the last full review was prepared. A receipt artifact expires one day after
+   upload, so by then the review has expired too. To recover:
+   - re-review the same candidate with `"fullRefresh": true` in `intent.json`,
+     which uses one repair cycle;
+   - then resubmit the receipt.
 8. **Hosted checks.** The six required contexts and `native-review` must pass.
    Compare raw `test-full` and `pgtap` failures with the exact base.
 9. **Maintainer read**, when the task's authority requires one before sign-off
    (the pull request states its sign-off class): wait for the maintainer to
    confirm the exact candidate SHA, within the review's 24-hour validity.
-10. **Arm auto-merge** under merge authority, following the Merge queue rules
-    below.
+10. **Arm auto-merge** under merge authority, following the
+    [Merge queue](#merge-queue) rules.
 11. **Submit the merge-group receipt** as soon as the group run exists, with
     `input "$RUN" "$ATTEMPT" "$PR"` in place of `input-source` (finding the run
     is described below). A changed group tree also needs two integration
@@ -654,6 +668,8 @@ points to its detailed rule.
 12. **Confirm the merge**: the squash commit on `main` and its push run.
 
 A repair commit restarts from step 3 for the new candidate.
+
+### Native review and accountability
 
 The [autonomous delivery plan](docs/platform/plans/autonomous-reviewed-delivery.md)
 uses the supervisor in the current conversation to launch independent
@@ -710,7 +726,9 @@ Read the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) before
 submitting material AI-assisted work. Human accountability and DCO, independent
 native review, and actual task publication authority remain required.
 
-**Merge queue.** `main` takes squash merges through GitHub's merge queue, which
+### Merge queue
+
+`main` takes squash merges through GitHub's merge queue, which
 builds and checks the fresh integration tree itself. The
 [base-move and receipt plan](docs/platform/plans/ci-base-move-and-receipts.md)
 records why these rules exist.
@@ -737,14 +755,14 @@ records why these rules exist.
   is not a flake.
 - **Receipt timeout.**
   - On a pull-request run, submit or check the source receipt, then rerun the
-    failed `native-review` job. The rerun is a GitHub write under delivery
-    authority.
+    failed `native-review` job. The rerun is a GitHub write; it requires
+    authority that covers reruns.
   - In a merge group, requeue under merge authority and submit the receipt for
     the new group run. The requeue uses the same two-retry budget, and a second
     timeout on the same head stops for diagnosis.
   - A timeout although a current source receipt was submitted in time is a
-    defect: stop and report it. A receipt older than a day has expired and
-    needs resubmission.
+    defect: stop and report it. An expired receipt or review needs the
+    re-review and resubmission described in step 7.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned

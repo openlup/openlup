@@ -162,8 +162,8 @@ needed for routine review. Queue rebuild recovery is bounded at two retries and
 does not reset repair cycles. Changing queue settings remains a maintainer action.
 Submit the source receipt as soon as the pull request is open and ready, and the
 run-keyed receipt as soon as the merge-group run exists. The complete order, with
-both commands, is in [Deliver a change](../../CONTRIBUTING.md#deliver-a-change), followed by the arming,
-receipt-timeout and flake rules.
+both commands, is in [Deliver a change](../../CONTRIBUTING.md#deliver-a-change). The arming, receipt-timeout and flake rules are in
+[Merge queue](../../CONTRIBUTING.md#merge-queue).
 
 Run `npm run oss:published-tree -- --policy` during implementation. Its report
 names the owner section for each changed source responsibility. Update that
