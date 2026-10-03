@@ -204,8 +204,8 @@ gate completion.
 ### Step 5, W3: follow-up hardening
 
 From the review advice and dogfooding of W0–W1:
-- **Admission.** On a pull-request run, a run-keyed artifact that fails its checks
-  no longer blocks the source receipt; merge groups still refuse it. A pull
+- **Admission.** On a pull-request run, an unreadable or untrusted run-keyed
+  artifact no longer blocks the source receipt; merge groups still refuse it. A pull
   request and its run must carry an integer head repository ID. Source
   submission observes the pull request before fetching objects.
 - **Tests.** A live PR head that moved while the event head did not. P1 also

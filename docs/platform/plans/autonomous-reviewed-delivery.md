@@ -424,8 +424,8 @@ admission.
 - Several receipts for one head are allowed. An artifact failing provenance is
   skipped rather than fatal.
 - Merge-group runs keep the run-keyed receipt above unchanged.
-- W3 follow-up: on a pull-request run, an unusable run-keyed artifact no longer
-  blocks the source receipt. Both pull-request paths require an integer head
+- W3 follow-up: on a pull-request run, an unreadable or untrusted run-keyed
+  artifact no longer blocks the source receipt. Both pull-request paths require an integer head
   repository ID.
 - The activation proof below is the record of the activation decision. The
   same-SHA property it names now holds for merge-group runs only.

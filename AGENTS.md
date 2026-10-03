@@ -140,8 +140,8 @@ hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
 The optional [native queue admission](docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
-keeps reviewers in this same task and subscription. It is active; see the dated
-evidence in [Development and release](docs/platform/DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
+keeps reviewers in this same task and subscription. It was active at the dated
+inspection in [Development and release](docs/platform/DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
 The supervisor supplies current source evidence for the reviewed PR head, or
 for the exact merge-group run/attempt, then observes the queue's actual base,
 head, tree and source identity. An entire
@@ -161,9 +161,9 @@ authorize delivery. Missing evidence remains blocked; no maintainer handoff is
 needed for routine review. Queue rebuild recovery is bounded at two retries and
 does not reset repair cycles. Changing queue settings remains a maintainer action.
 Submit the source receipt as soon as the pull request is open and ready, and the
-run-keyed receipt as soon as the merge-group run exists. The complete order is in
-[Deliver a change](CONTRIBUTING.md#deliver-a-change): dispatch command, arming,
-receipt timeouts and flakes.
+run-keyed receipt as soon as the merge-group run exists. The complete order, with
+both commands, is in [Deliver a change](CONTRIBUTING.md#deliver-a-change), followed by the arming,
+receipt-timeout and flake rules.
 
 Run `npm run oss:published-tree -- --policy` during implementation. Its report
 names the owner section for each changed source responsibility. Update that

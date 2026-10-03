@@ -208,7 +208,8 @@ pull-request checkout is identified by `GITHUB_SHA` and its exact event base and
 head parents; the payload's `merge_commit_sha` is not compared, because a
 `synchronize` payload can carry a lagging value.
 The configured local verification mirror runs these required steps on every
-run, and runs the raw diagnostics only on request.
+run. It runs the raw diagnostics only on request, or pgTAP alone when the range
+reaches database inputs.
 
 **When the job runs.** The `native-review` job runs when the repository
 variable `OPENLUP_NATIVE_QUEUE` is `enabled`. At the
@@ -243,8 +244,8 @@ gh workflow run native-review-admission.yml --ref main --json < native-review-in
 
 Admission re-verifies that receipt against the live pull request, the exact run
 and the review's freshness each time. A new head needs a new review and a new
-receipt. On a pull-request run, a run-keyed artifact that fails its checks does
-not block the source receipt; a merge-group run still refuses it.
+receipt. On a pull-request run, an unreadable or untrusted run-keyed artifact
+does not block the source receipt; a merge-group run still refuses it.
 
 For a merge-group run, use the run-keyed form with the observed run, attempt and
 PR number. To find the run, use
@@ -614,7 +615,9 @@ points to its detailed rule.
    `npm run lint` before committing. Commit with `git commit -s`.
 3. **Native review** of the exact committed candidate, by the rules in
    [AGENTS.md](AGENTS.md) and in this section:
-   - prepare the request with `node scripts/agent-review-session.mjs prepare`;
+   - write the approved intent (`risk`, `scope`, `criteria`, `requiredRoles`)
+     to `.context/scratch/agent-review/intent.json`, then run
+     `node scripts/agent-review-session.mjs prepare`;
    - launch fresh reviewers and `record` each report;
    - repeat until `verify` reports `reviewed`.
 
@@ -627,16 +630,27 @@ points to its detailed rule.
 5. **Push** with `git push -u origin HEAD`.
 6. **Open a ready pull request** within your delivery authority, using the
    template.
-7. **Submit the source receipt** right away (`input-source`, then the admission
-   dispatch; see the native-review commands above).
+7. **Submit the source receipt** right away:
+
+   ```bash
+   node scripts/agent-review-queue.mjs input-source "$PR" .context/scratch/agent-review/session.json > native-review-input.json
+   gh workflow run native-review-admission.yml --ref main --json < native-review-input.json
+   ```
+
+   Review evidence expires 24 hours after it was prepared, and a receipt
+   artifact one day after upload. Re-review the same candidate or resubmit
+   before relying on older evidence.
 8. **Hosted checks.** The six required contexts and `native-review` must pass.
    Compare raw `test-full` and `pgtap` failures with the exact base.
-9. **Maintainer read**, when the change needs one before sign-off: wait for the
-   maintainer to confirm the exact candidate SHA.
+9. **Maintainer read**, when the task's authority requires one before sign-off
+   (the pull request states its sign-off class): wait for the maintainer to
+   confirm the exact candidate SHA, within the review's 24-hour validity.
 10. **Arm auto-merge** under merge authority, following the Merge queue rules
     below.
-11. **Submit the merge-group receipt** as soon as the group run exists. A
-    changed group tree also needs two integration reviews.
+11. **Submit the merge-group receipt** as soon as the group run exists, with
+    `input "$RUN" "$ATTEMPT" "$PR"` in place of `input-source` (finding the run
+    is described below). A changed group tree also needs two integration
+    reviews.
 12. **Confirm the merge**: the squash commit on `main` and its push run.
 
 A repair commit restarts from step 3 for the new candidate.
@@ -723,10 +737,14 @@ records why these rules exist.
   is not a flake.
 - **Receipt timeout.**
   - On a pull-request run, submit or check the source receipt, then rerun the
-    failed `native-review` job.
-  - In a merge group, requeue and submit the receipt for the new group run.
-  - A timeout although the source receipt was submitted in time is a defect:
-    stop and report it.
+    failed `native-review` job. The rerun is a GitHub write under delivery
+    authority.
+  - In a merge group, requeue under merge authority and submit the receipt for
+    the new group run. The requeue uses the same two-retry budget, and a second
+    timeout on the same head stops for diagnosis.
+  - A timeout although a current source receipt was submitted in time is a
+    defect: stop and report it. A receipt older than a day has expired and
+    needs resubmission.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned
