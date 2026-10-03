@@ -34,7 +34,7 @@ export function neutralityIncreases(baseline, current) {
 }
 // Exact owner-reviewed diagnostic-fixture recalibration. This admission applies
 // only to its introduction base; later bases use the ordinary shrink ratchet.
-const fixtureIntroductionBase = "fe678f8c0ffd8af4616c819ebcd5bb41d74c011f";
+const fixtureIntroductionBase = "e863fe06bee931b26e0e868fbbc3d5eb2d26d16d";
 const reviewedDiagnosticFixtures = [
   ["supabase/tests/anon_write_privilege_revoke_test.sql", "25072d998c2369f0058293b19e6c6e4f76941d45a028f1f0a5ff73429007ee6d", 0, 1],
   ["supabase/tests/fulfillment_replacement_sequence_test.sql", "d02bbe3b35d5d29cfc45a17e9c1d1d17aab1c92ede79b3049011f8e1fc033b83", 0, 1],

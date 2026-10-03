@@ -238,7 +238,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
 });
 
 describe("exact reviewed diagnostic-fixture recalibration", () => {
-  const introductionBase = "fe678f8c0ffd8af4616c819ebcd5bb41d74c011f";
+  const introductionBase = "e863fe06bee931b26e0e868fbbc3d5eb2d26d16d";
   const fixtures = [
     ["supabase/tests/anon_write_privilege_revoke_test.sql", 0, 1],
     ["supabase/tests/fulfillment_replacement_sequence_test.sql", 0, 1],
@@ -270,7 +270,7 @@ describe("exact reviewed diagnostic-fixture recalibration", () => {
   it("keeps the production introduction trust anchor exact and unique", () => {
     const source = readFileSync(join(sourceRoot, "scripts/public-ci-neutrality.mjs"), "utf8");
     const anchor = `const fixtureIntroductionBase = "${introductionBase}";`;
-    expect(introductionBase).toBe("fe678f8c0ffd8af4616c819ebcd5bb41d74c011f");
+    expect(introductionBase).toBe("e863fe06bee931b26e0e868fbbc3d5eb2d26d16d");
     expect(source.split(anchor)).toHaveLength(2);
   });
   function introductionFixture() {

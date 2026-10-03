@@ -1,6 +1,6 @@
 # Public CI diagnostic obligations
 
-Status: measured narrowed development-preview tree; both full diagnostics retain raw failing exits.
+Status: historical development-preview measurements. These dated raw failing exits describe the recorded sources below; current diagnostic debt must be established by fresh execution of the exact candidate.
 Audience: contributors repairing published tests and runtime contracts.
 
 Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-up family identifies repair scope, not an assigned person's commitment. These records introduce no skip, exception, assertion budget or waiver. Failed behavior and ACL checks are unresolved defects or contract mismatches; calling a test fixture incomplete does not prove the runtime safe.
