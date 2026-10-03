@@ -95,8 +95,9 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
     const changedPaths = [...paths].sort();
     const priorSection = ownerSection(before, owner); const section = ownerSection(after, owner);
     const normalized = normalizeDocumentation(section ?? "");
+    // The answer binds the change and the section, not the base commit, so an unrelated move of main keeps it valid.
     const digest = documentationDigest(JSON.stringify({
-      version: 1, base: baseSHA, unit: owner.unit, doc: owner.doc, anchor: owner.anchor,
+      version: 2, unit: owner.unit, doc: owner.doc, anchor: owner.anchor,
       source: changedPaths.map((path) => ({ path, before: binding(before.get(path)), after: binding(after.get(path)), ownership: owners.get(path) })),
       section: documentationDigest(normalized),
     }));
