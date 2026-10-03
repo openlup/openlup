@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { assertAgentReviewFreshness, captureCommittedReviewCandidate, verifyAgentReview } from './agent-review-session.mjs';
 
 const execute = promisify(execFile);
@@ -17,13 +18,38 @@ const DISPATCH = '.github/workflows/native-review-admission.yml';
 const SHA = /^[a-f0-9]{40}$/u;
 const LIMIT = 56000; // Reserve room for binding and JSON transport below 65,535.
 const ARTIFACT_LIMIT = 60000;
+const EXPANDED_LIMIT = 512000; // Bounded complete lineage; never truncate review evidence.
 function demand(ok, message) { if (!ok) throw new Error(`Native admission refused: ${message}`); }
 function integer(n) { return Number.isSafeInteger(n) && n > 0; }
 function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function digest(bytes) { return createHash('sha256').update(bytes).digest('hex'); }
-export function parseNativeAdmission(bytes) {
-  demand(typeof bytes === 'string' && Buffer.byteLength(bytes) <= LIMIT, 'receipt exceeds transport bound; do not truncate evidence');
+export function encodeNativeReceipt(value) {
+  const bytes = Buffer.from(JSON.stringify(value));
+  demand(bytes.length <= EXPANDED_LIMIT, 'receipt exceeds expanded bound; do not truncate evidence');
+  if (bytes.length <= LIMIT) return bytes.toString('utf8');
+  const receipt = JSON.stringify({ version: 3, encoding: 'gzip-base64', sha256: digest(bytes), data: gzipSync(bytes).toString('base64') });
+  demand(Buffer.byteLength(receipt) <= LIMIT, 'receipt exceeds transport bound; do not truncate evidence');
+  return receipt;
+}
+function decodeNativeReceipt(bytes, limit = LIMIT) {
+  demand(typeof bytes === 'string' && Buffer.byteLength(bytes) <= limit, 'receipt exceeds transport bound; do not truncate evidence');
   const value = JSON.parse(bytes);
+  if (value?.version !== 3) return value;
+  demand(Object.keys(value).sort().join(',') === 'data,encoding,sha256,version' && value.encoding === 'gzip-base64'
+    && typeof value.data === 'string' && /^[A-Za-z0-9+/]+={0,2}$/u.test(value.data)
+    && typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(value.sha256), 'compressed receipt schema differs');
+  const compressed = Buffer.from(value.data, 'base64');
+  demand(compressed.toString('base64') === value.data, 'compressed receipt encoding is not canonical');
+  let expanded;
+  try { expanded = gunzipSync(compressed, { maxOutputLength: EXPANDED_LIMIT }); }
+  catch { throw new Error('Native admission refused: compressed receipt is invalid or exceeds expanded bound'); }
+  demand(digest(expanded) === value.sha256, 'compressed receipt digest differs');
+  const decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(expanded));
+  demand(decoded?.version !== 3, 'nested compressed receipt is refused');
+  return decoded;
+}
+export function parseNativeAdmission(bytes) {
+  const value = decodeNativeReceipt(bytes);
   if (value?.version === 2) {
     // Pull-request receipts bind the reviewed PR head and tree, not one run/attempt.
     demand(Object.keys(value).sort().join(',') === 'integration,source,target,version' && value.target && Object.keys(value.target).sort().join(',') === 'event,prNumber,sourceHead', 'receipt schema differs');
@@ -183,7 +209,7 @@ async function readTrustedReceipt(api, artifact) {
     const names = await execute('unzip', ['-Z1', archive], { timeout: 5000, maxBuffer: 1024 });
     demand(names.stdout.trim() === 'receipt.json', 'artifact contains unexpected entries');
     const output = await execute('unzip', ['-p', archive, 'receipt.json'], { timeout: 5000, maxBuffer: ARTIFACT_LIMIT });
-    const receipt = JSON.parse(output.stdout);
+    const receipt = decodeNativeReceipt(output.stdout, ARTIFACT_LIMIT);
     demand(receipt && Object.keys(receipt).sort().join(',') === 'binding,input', 'artifact target is stale');
     return receipt;
   } finally { await rm(directory, { recursive: true, force: true }); }
@@ -193,12 +219,12 @@ async function main() {
   if (verb === 'input') {
     const [runId, attempt, pr, sourcePath, integrationPath] = args;
     const input = { version: 1, targetRunId: Number(runId), targetAttempt: Number(attempt), prNumber: Number(pr), source: JSON.parse(await readFile(sourcePath, 'utf8')), integration: integrationPath ? JSON.parse(await readFile(integrationPath, 'utf8')) : null };
-    const receipt = JSON.stringify(input); parseNativeAdmission(receipt); console.log(JSON.stringify({ receipt })); return;
+    const receipt = encodeNativeReceipt(input); parseNativeAdmission(receipt); console.log(JSON.stringify({ receipt })); return;
   }
   if (verb === 'input-source') {
     const [pr, sourcePath] = args; const source = JSON.parse(await readFile(sourcePath, 'utf8'));
     const input = { version: 2, target: { event: 'pull_request', prNumber: Number(pr), sourceHead: source.request?.candidate?.head }, source, integration: null };
-    const receipt = JSON.stringify(input); parseNativeAdmission(receipt); console.log(JSON.stringify({ receipt })); return;
+    const receipt = encodeNativeReceipt(input); parseNativeAdmission(receipt); console.log(JSON.stringify({ receipt })); return;
   }
   const api = apiTransport();
   if (verb === 'submit') {
@@ -207,12 +233,12 @@ async function main() {
     if (input.version === 2) {
       await observeSourceAdmission(api, input); await fetchObjects(cwd, input, {});
       const binding = await verifySourceAdmission({ cwd, api, input });
-      await writeFile('receipt.json', JSON.stringify({ input, binding }));
+      await writeFile('receipt.json', encodeNativeReceipt({ input, binding }));
       await writeFile(process.env.GITHUB_OUTPUT, `artifact=native-review-pr-${input.target.prNumber}-${input.target.sourceHead}\n`, { flag: 'a' }); return;
     }
     const first = await observeNativeAdmission(api, input); await fetchObjects(cwd, input, first);
     const binding = await verifyNativeAdmission({ cwd, api, input, expected: first });
-    await writeFile('receipt.json', JSON.stringify({ input, binding }));
+    await writeFile('receipt.json', encodeNativeReceipt({ input, binding }));
     await writeFile(process.env.GITHUB_OUTPUT, `artifact=native-review-${input.targetRunId}-${input.targetAttempt}\n`, { flag: 'a' }); return;
   }
   demand(verb === 'wait', 'use input, input-source, trusted submit, or admission wait');
@@ -238,7 +264,7 @@ export async function waitNativeAdmission({ event, env, api, cwd, now = Date.now
       console.log(`run-keyed receipt unusable, trying the source receipt: ${error.message}`); receipt = null;
     }
     if (receipt) {
-      const input = parseNativeAdmission(JSON.stringify(receipt.input));
+      const input = parseNativeAdmission(encodeNativeReceipt(receipt.input));
       demand(target === receipt.binding.event && (target !== 'pull_request' || event.pull_request?.head?.sha === receipt.binding.sourceHead) && (target !== 'merge_group' || event.action === 'checks_requested' && event.merge_group?.base_ref === 'refs/heads/main' && event.merge_group.base_sha === receipt.binding.base && event.merge_group.head_sha === receipt.binding.head && event.merge_group.head_ref === receipt.binding.ref && env.GITHUB_SHA === receipt.binding.head && env.GITHUB_REF === receipt.binding.ref), 'receipt differs from hosted event');
       await fetch(cwd, input, receipt.binding);
       await verifyNativeAdmission({ cwd, api, input, expected: receipt.binding, now }); console.log('Native review admission verified for this exact run/attempt.'); return;
@@ -247,7 +273,7 @@ export async function waitNativeAdmission({ event, env, api, cwd, now = Date.now
       // One source receipt serves every run and attempt of the reviewed PR head.
       const source = await readSourceAdmissionArtifact(api, pr, event.pull_request?.head?.sha);
       if (source) {
-        const input = parseNativeAdmission(JSON.stringify(source.input));
+        const input = parseNativeAdmission(encodeNativeReceipt(source.input));
         demand(input.version === 2 && input.target.prNumber === event.number && input.target.sourceHead === event.pull_request?.head?.sha, 'receipt differs from hosted event');
         await fetch(cwd, input, {});
         await verifySourceAdmission({ cwd, api, input, target: { runId, attempt }, now }); console.log('Native review admission verified for this reviewed PR head.'); return;

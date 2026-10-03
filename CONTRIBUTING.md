@@ -60,7 +60,7 @@ kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
 published `@openlup/*` package. Move such a file or extend the pattern; do not
 add an exception.
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-39e7c011f725884003d0afdf00ddeedb805c8e703e1271121fbe7b83cc20d0f2","reason":"The native session protocol accepts an explicitly owner-bound scope expansion while preserving prior history, findings, the two-cycle budget and two fresh full reviews. Its updated protocol owner documents that transition; contributor commands, required check contexts and existing refusal boundaries in this section remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-4bee5c40170c5c22452a86191a9d604c9b069ce99990b613fe1a01386ed08465","reason":"The queue transport now losslessly encodes complete large review state for both CLI forms, trusted submission artifacts and both admission paths. The protocol owner documents the bounded envelope and refusal conditions. Contributor command names, required contexts, native identity/freshness/scope/history validation and reviewer counts described here remain unchanged."} -->
 
 ### Optional SonarQube Cloud diagnostics
 
