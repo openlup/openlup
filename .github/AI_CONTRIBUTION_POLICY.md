@@ -97,7 +97,8 @@ ordinary semantics and the simplicity perspective. Uncertainty or a discovered
 higher-risk interaction blocks the single-review route. Two fresh full reviews
 of the same committed candidate can resolve that uncertainty without a
 gratuitous code edit; prior evidence and the two-cycle budget remain visible.
-The changed-tree merge-queue integration route still requires two full reviews.
+A merge group that the source review does not carry over to (below) still
+requires two full integration reviews.
 
 A committed narrow repair within unchanged approved intent, scope and base may
 use one fresh cold closure reviewer after the complete initial floor and prior
@@ -114,10 +115,14 @@ Unchanged prepare preserves complete evidence. The task has at most two automati
 repair/review continuation cycles across prepare and full-review escalation. Exhaustion
 stays blocked while the supervisor regroups the execution approach within actual
 authority; it cannot restart the counter, bypass review or merge automatically.
-Changed intent requires explicit regrouping. An ancestor-preserving base
-integration requires fresh full-scope review within the same budget; this route admits no
-cross-base reuse. Once criteria, required review and checks pass, stop optional
-edits and continue only authorized delivery steps.
+Changed intent requires explicit regrouping. The review base is the candidate's
+fork point (`git merge-base HEAD origin/main`), so `main` moving ahead does not
+by itself make a review stale. An ancestor-preserving base integration, such as
+merging `main` to resolve a textual conflict, requires fresh full-scope review
+within the same budget; a rebase discards that lineage and never restarts the
+counter or drops findings. This nonqueue route admits no cross-base reuse; the
+merge-queue carry-over below is the only one. Once criteria, required review and
+checks pass, stop optional edits and continue only authorized delivery steps.
 
 Planning and review ask whether a simpler solution delivers the outcome faster,
 with less maintenance and stronger evidence. New abstractions, dependencies,
@@ -130,14 +135,14 @@ perspective never waives existing controls or acceptance evidence.
 The approved [native queue follow-up](../docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
 adds an optional GitHub admission transport, not another reviewer host. The
 active supervisor retains actual native source-review observations and submits
-them for the reviewed pull-request head, or for the exact hosted merge-group run
-and attempt.
+them for the reviewed pull-request head and, only for a merge group the source
+review does not carry over to, for the exact hosted merge-group run and attempt.
 
 The source review carries over to a merge group when either:
 - the group tree is the reviewed tree; or
 - the group is exactly the reviewed change on its queue base, and the base's net
   change since the reviewed base touches neither the change's paths nor the
-  admission, identity-binding, dependency and migration machinery (workflows,
+  admission, identity-binding, dependency and migration machinery (`.github/`,
   review scripts, the identity fence, package manifests and lockfiles,
   migrations).
 
@@ -215,7 +220,8 @@ the supervisor submits review observations "for the exact hosted run and
 attempt".
 - Pull-request runs now also accept one receipt bound to the pull request number
   and the exact reviewed head and tree, which admits every run and attempt of
-  that head. Merge-group runs are unchanged.
+  that head. Merge-group runs were unchanged by this decision; see "Review
+  carry-over in the merge queue" below.
 - The reason: six required reds in the native-review window were receipt
   timeouts. A run-keyed receipt can only be submitted after the run exists, and
   again for every rerun, although it carries the same evidence.
@@ -224,7 +230,7 @@ attempt".
 - The decision is wrong if a source receipt ever admits a head, tree or pull
   request other than the one its reviewers covered.
 
-**Review carry-over in the merge queue, decided 2026-10-03.** The rule read: "Unknown or sensitive interactions cannot be excused by filenames, path separation or an author-written approval". It also required two integration reviewers for every merge group whose tree differed from the reviewed source.
+**Review carry-over in the merge queue, decided 2026-10-03 (#121).** The rule read: "Unknown or sensitive interactions cannot be excused by filenames, path separation or an author-written approval". It also required two integration reviewers for every merge group whose tree differed from the reviewed source.
 
 - **What changed.** A source review now carries over, and the pull request's source receipt admits the group, in two cases:
   - the group tree is the reviewed tree;

@@ -1,6 +1,6 @@
 # Plan: checks that survive a moving `main`, and pull-request receipts without a race
 
-Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121; local steps 0b and 4 applied); W5 (fork-point review base) approved the same day.
+Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121, W5 #122; local steps 0b and 4 applied; the maintainer-local copy reinstalled with W5).
 Audience: the agents executing it, their reviewers and the maintainer.
 
 ## 1. Why: recorded failures only
@@ -202,7 +202,8 @@ No release, repository setting, ruleset, secret or npm action is included.
 **Done:**
 - W0, W2, W1 and the W3 follow-up merged with green required contexts;
 - the W2 live proof recorded;
-- the step 4 self-test green.
+- the step 4 self-test green;
+- W4 and W5 merged, and W4's unchanged-tree live proof recorded.
 
 A report of required reds by class over the next 30 merges follows, but does not
 gate completion.
@@ -250,8 +251,12 @@ and the group keeps waiting for the run-keyed receipt.
 **Sign-off:** the maintainer reads the candidate before sign-off, because this
 changes an approved admission rule.
 
-**Live proof:** two independent pull requests armed together, both admitted in
-the queue by their source receipts alone.
+**Live proof:**
+- **Unchanged tree, observed 2026-10-03.** #122's merge group was admitted by
+  its source receipt alone, with no run-keyed receipt or live session.
+- **Disjoint base move.** Planned: two independent pull requests armed
+  together, the second admitted by its source receipt after the first merged.
+  Not yet observed live when this was written.
 
 **Stop and report instead of repairing** if any of these happens:
 - a receipt timeout on a pull request whose v2 receipt was submitted in time;
@@ -260,7 +265,7 @@ the queue by their source receipts alone.
 
 ### Step 7, W5: a local review survives a moving `main` (spec S5)
 
-**Status:** approved 2026-10-03.
+**Status:** executed 2026-10-03 (#122).
 
 **Why.** The local review session bound a review to `origin/main` itself. When
 another pull request merged before the author pushed, verify and pre-push
@@ -280,9 +285,12 @@ section 2, and is the local twin of the queue cost W4 removed.
 changes the review gate that verify and pre-push run.
 
 **Installed copy.** Verify and pre-push run the maintainer-local installed copy
-of the session script, and add no base check of their own. S5 takes effect
-locally only after the maintainer reinstalls that copy from `main`; until then,
-including for this step's own push, the base must still equal `origin/main`.
+of the session script, and add no base check of their own. The maintainer
+reinstalled it from `main` after #122 merged, so S5 is in effect locally;
+#122's own push predated the reinstall and still needed its base to equal
+`origin/main`. The same day, the maintainer-local verify began comparing tree
+neutrality with the fork point too, so a branch behind `main` gets no false
+ratchet red.
 
 ## 5. Specifications
 
