@@ -178,6 +178,18 @@ describe("API snapshot Migration blocks", () => {
     expect(from(listed().replace(declarations[0]!, "export declare const a: string;")), "a declaration changed under an unchanged comment").toThrow(red);
     expect(from(listed().replace(`${declarations[1]} /* trailing */`, "export declare const b: string; /* trailing */")), "a declaration with a trailing comment changed").toThrow(red);
   }, 120_000);
+  it("removes a comment that opens a line, never the code after it", () => {
+    const from = (before: readonly string[], after: readonly string[]) => compare((write) => write(SNAPSHOT, snapshot(after)), { [SNAPSHOT]: snapshot(before) });
+    const constant = "/** @beta */ export declare const x: A;", fn = "/** @beta */ export declare function f(request: A): B;";
+    const closing = (code: string) => ["/**", " * Over three lines.", ` */ ${code}`];
+    const real = ["/** @beta */ export declare class InvalidFulfillmentFactError extends Error {", "    readonly reason: string;", "    constructor(reason: string);", "}"];
+    expect(from([constant], [constant.replace("x: A", "x: B")]), "a constant's type after a same-line comment").toThrow(red);
+    expect(from([fn], [fn.replace("request: A", "request: C")]), "a parameter type after a same-line comment").toThrow(red);
+    expect(from(closing("export declare const y: A;"), closing("export declare const y: B;")), "the code after a multi-line comment's close").toThrow(red);
+    expect(from(real, [real[0]!.replace("extends Error", "extends RangeError"), ...real.slice(1)]), "a real fulfillment line's extends").toThrow(red);
+    expect(from([constant], [constant.replace("@beta", "@public")]), "only the tag changed").not.toThrow();
+    expect(from([constant], ["/** @beta */", "export declare const x: A;"]), "the comment moved onto its own line").not.toThrow();
+  }, 60_000);
   it("refuses, block or not, a head the next pull request could not read as its base", () => {
     const both = JSON.stringify({ schemaVersion: 2, packages: ["demo", "pub"].map((name) => ({ name: `@openlup/${name}`, directory: `packages/${name}`, publish: true })), unreleased: [] });
     const blocked = (write: (path: string, contents: string) => void) => { write(SNAPSHOT, removed); for (const name of ["demo", "pub"]) write(`packages/${name}/CHANGELOG.md`, changelog(BLOCK)); };

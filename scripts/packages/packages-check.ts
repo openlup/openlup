@@ -111,20 +111,26 @@ function setSelection(version: string, packages: readonly PackageEntry[], versio
 /** A one-line export list as `tsc` emits it: `export { … } from "…";`, `export type { … } from "…";` or `export { … };`. */
 const EXPORT_LIST = /^(\s*export (?:type )?)\{([^{}]*)\}((?: from "[^"]*")?;)$/u;
 
+/** The comments that open a line and close on it, with the whitespace before and after them. */
+const LEADING_COMMENTS = /^\s*(?:\/\*.*?\*\/\s*)+/u;
+
 /**
  * An API snapshot's declaration lines: everything from its first `## <declaration file>` section, without the
- * generated header. Doc comments are dropped, from a line starting `/*` through the line closing it, and a one-line
- * export list becomes one line per specifier, as written, so adding a name or a comment is an addition.
+ * generated header. A comment that opens a line is removed, never the code after it: a line inside an unclosed
+ * comment reads as if the comment opened at its start, the code after the comment's close is kept with its leading
+ * whitespace trimmed, and a line left empty is dropped. A comment after code stays as written. A one-line export list
+ * becomes one line per specifier, as written, so adding a name or a comment is an addition.
  */
 function declarationLines(text: string | undefined): string[] {
   const lines = text?.split("\n") ?? [];
   const start = lines.findIndex((line) => line.startsWith("## "));
   let comment = false;
   return (start < 0 ? [] : lines.slice(start)).flatMap((line) => {
-    if (line.trimStart().startsWith("/*")) comment = true;
-    if (comment) { comment = !line.includes("*/"); return []; }
-    const list = EXPORT_LIST.exec(line);
-    return list ? list[2]!.split(",").map((specifier) => specifier.trim()).filter(Boolean).map((specifier) => `${list[1]}{ ${specifier} }${list[3]}`) : [line];
+    const code = (comment ? `/*${line}` : line).replace(LEADING_COMMENTS, "");
+    comment = code.trimStart().startsWith("/*");
+    if (comment || (code === "" && line !== "")) return [];
+    const list = EXPORT_LIST.exec(code);
+    return list ? list[2]!.split(",").map((specifier) => specifier.trim()).filter(Boolean).map((specifier) => `${list[1]}{ ${specifier} }${list[3]}`) : [code];
   });
 }
 

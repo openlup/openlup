@@ -502,8 +502,9 @@ line of a publishable package's API snapshot (`release-gates.json`
 section carries a `Migration:` block; the base decides which packages and
 snapshots are checked, and removing or renaming a subpath counts as a removal.
 A pure addition, such as a name added to an export list, has no "before", so it
-needs none; doc comments are ignored, and the head must keep each publishable
-package's gates file and snapshots readable.
+needs none; a comment that opens a line is ignored, the code on its lines is
+not, and the head must keep each publishable package's gates file and snapshots
+readable.
 
 The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
 measured failing or aborted files, reasons, incomplete obligations and triage
