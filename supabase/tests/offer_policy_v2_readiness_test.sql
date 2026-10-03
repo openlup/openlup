@@ -35,20 +35,22 @@ INSERT INTO public.price_entries (
 INSERT INTO public.promotions (
   code, name, trigger_type, discount_type, discount_value,
   applies_to_kind, applies_to_payload, stacking_rule,
-  eligibility, redemption_limit_per_customer, status
+  eligibility, redemption_limit_per_customer, status, region_availability, valid_from
 ) VALUES (
   NULL, 'First Subscription 50%', 'automatic', 'percentage', 44.404,
   'order_total', '{"cart_mode":"subscription"}'::jsonb, 'exclusive',
-  '{"first_subscription_purchase":true}'::jsonb, 1, 'active'
+  '{"first_subscription_purchase":true}'::jsonb, 1, 'active',
+  ARRAY['ZZ'], statement_timestamp() - interval '1 day'
 );
 INSERT INTO public.promotions (
   code, name, trigger_type, discount_type, discount_value,
   applies_to_kind, applies_to_payload, stacking_rule, eligibility, status,
-  benefit_lane, benefit_kind, benefit_value_bps
+  benefit_lane, benefit_kind, benefit_value_bps, region_availability, valid_from
 ) VALUES (
   NULL, 'Fixture bundle', 'automatic', 'percentage', 5,
   'order_total', '{"cart_mode":"one_time"}'::jsonb, 'stackable_with_any',
-  '{"min_cart_minor":12000}'::jsonb, 'active', 'product', 'percentage', 500
+  '{"min_cart_minor":12000}'::jsonb, 'active', 'product', 'percentage', 500,
+  ARRAY['ZZ'], statement_timestamp() - interval '1 day'
 );
 
 INSERT INTO public.platform_job_controls (

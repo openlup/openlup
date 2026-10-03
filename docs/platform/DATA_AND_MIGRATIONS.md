@@ -192,7 +192,7 @@ Code rollback must remain compatible with the expanded schema. A destructive
 down migration is not a rollback plan. Each stage needs a clear readback and
 failure boundary; a backfill that cannot be safely retried is incomplete.
 
-<!-- openlup-doc-impact {"unit":"data","digest":"sha256-593ab984c75f76fe299d05c77ec86f5971efcaa78a6000c93cf62a156b636eac","reason":"Only database tests and synthetic inputs change. Settlement, location, provider and stock fixtures select cases explicitly; actual runtime RPC roles remain distinct from owner readback witnesses. Missing managed seam/seed transport tests are withdrawn. No baseline, forward migration, privilege or compatibility lifecycle changes; current runtime-role failures remain unresolved. Changed-command inventory replay runs under service_role and retains persisted-row and lease conservation independently of the removed known-gap response goldens."} -->
+<!-- openlup-doc-impact {"unit":"data","digest":"sha256-ef387c93a5c4a6dcef9deea476256f95675f2059ba77cbf900d34d813381f094","reason":"Only database tests and synthetic inputs change. Current managed membership commands now execute as authenticated, while forged service-role DML, replay and audit witnesses remain. Synthetic readiness promotions explicitly select their region and validity. Legacy catalog handlers refuse before SQL: tests retain service/browser/PUBLIC denial and separate owner-body fences. Internal quote and chargeability helpers are checked through actual service RPC callers rather than inherited helper grants. Existing inventory replay still preserves rows and leases. No database baseline, forward or runtime privilege changes; real runtime capability and control-row failures remain visible."} -->
 
 ## Contract changes
 

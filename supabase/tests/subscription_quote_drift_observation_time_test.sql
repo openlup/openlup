@@ -304,6 +304,7 @@ INSERT INTO public.subscription_quote_previews (
   '2026-09-03T09:55:00Z'::timestamptz, '2026-09-03T09:55:00Z'::timestamptz
 );
 
+SET LOCAL ROLE service_role;
 SELECT throws_ok(
   $q$
     SELECT public.customer_self_service_apply_subscription_action(
@@ -316,7 +317,7 @@ SELECT throws_ok(
         'expectedTemplateVersion', 1,
         'variantId', '55559000-0000-0000-0000-000000000002',
         'qty', 2,
-        'repricedLines', pg_temp.repriced_lines(to_jsonb('quote-line-scalar'::text))
+        'repricedLines', jsonb_build_array(jsonb_build_object('lineId', '51609000-0000-0000-0000-000000000001', 'quoteLine', 'quote-line-scalar'))
       ),
       '2026-09-03T10:00:00Z'::timestamptz
     )
@@ -325,22 +326,61 @@ SELECT throws_ok(
   'a scalar quoteLine causes apply-level quote drift before mutation'
 );
 
-SELECT is(
-  (SELECT status FROM public.subscription_quote_previews WHERE quote_hash = repeat('9', 64)),
-  'previewed',
-  'a scalar quoteLine apply leaves the preview unaccepted'
+RESET ROLE;
+
+-- The variant helper is reached through the same real service apply entrypoint.
+-- A different positive cadence avoids the no-op wrapper; matching planDays
+-- and a malformed recipe quote force the variant normalizer comparison.
+INSERT INTO public.subscription_quote_previews (
+  subscription_id, client_id, created_by_auth_user_id, action, quote_hash, template_version,
+  expires_at, request_payload, quote_snapshot, totals, metadata, created_at, updated_at
+) VALUES (
+  '5b609000-0000-0000-0000-000000000001', 'c6090000-0000-0000-0000-000000000001',
+  'a6090000-0000-0000-0000-000000000001', 'update_plan_length', repeat('8', 64), 1,
+  '2026-09-04T10:00:00Z'::timestamptz,
+  '{"action":"update_plan_length","planDays":14}'::jsonb,
+  jsonb_build_object(
+    'recipeLines', jsonb_build_array(jsonb_build_object(
+      'variantId', '55559000-0000-0000-0000-000000000001', 'qty', 4,
+      'quoteLine', pg_temp.strict_v2_quote_line(to_jsonb('2026-09-03T10:00:00Z'::text))
+    )),
+    'addonLines', '[]'::jsonb
+  ),
+  '{}'::jsonb, '{"source":"pgtap"}'::jsonb,
+  '2026-09-03T09:55:00Z'::timestamptz, '2026-09-03T09:55:00Z'::timestamptz
 );
 
-SELECT is(
-  (SELECT qty FROM public.subscription_lines WHERE id = '51609000-0000-0000-0000-000000000002'),
-  1,
-  'a scalar quoteLine apply leaves the subscription template line unchanged'
+SET LOCAL ROLE service_role;
+SELECT throws_ok(
+  $q$ SELECT public.customer_self_service_apply_subscription_action(
+    'a6090000-0000-0000-0000-000000000001', 'quote-observation-variant-scalar-apply',
+    '5b609000-0000-0000-0000-000000000001', 'update_plan_length',
+    jsonb_build_object(
+      'acceptedQuoteHash', repeat('8', 64), 'expectedTemplateVersion', 1, 'planDays', 14,
+      'recipeLines', jsonb_build_array(jsonb_build_object(
+        'variantId', '55559000-0000-0000-0000-000000000001', 'qty', 4, 'quoteLine', 'quote-line-scalar'
+      )), 'repricedLines', '[]'::jsonb
+    ), '2026-09-03T10:00:00Z'::timestamptz
+  ) $q$,
+  'customer_self_service_quote_drift',
+  'service apply reaches the variant quote helper and rejects scalar quote drift'
 );
+RESET ROLE;
 
 SELECT is(
-  (SELECT template_version FROM public.subscriptions WHERE id = '5b609000-0000-0000-0000-000000000001'),
-  1,
-  'a scalar quoteLine apply leaves the subscription template version unchanged'
+  (SELECT string_agg(status, ',' ORDER BY quote_hash) FROM public.subscription_quote_previews
+    WHERE quote_hash IN (repeat('8', 64), repeat('9', 64))),
+  'previewed,previewed', 'both service quote drift refusals leave previews unaccepted'
+);
+SELECT is(
+  (SELECT string_agg(qty::text, ',' ORDER BY id) FROM public.subscription_lines
+    WHERE id IN ('51609000-0000-0000-0000-000000000001', '51609000-0000-0000-0000-000000000002')),
+  '4,1', 'both service quote drift refusals leave recipe and addon quantities unchanged'
+);
+SELECT is(
+  (SELECT cadence_days::text || '/' || template_version::text FROM public.subscriptions
+    WHERE id = '5b609000-0000-0000-0000-000000000001'),
+  '28/1', 'both service quote drift refusals leave cadence and template version unchanged'
 );
 
 SELECT is(
@@ -380,7 +420,9 @@ SELECT ok(
       format('%s|%s|%s|%s', procedure.proname,
         has_function_privilege('anon', procedure.oid, 'EXECUTE'),
         has_function_privilege('authenticated', procedure.oid, 'EXECUTE'),
-        has_function_privilege('service_role', procedure.oid, 'EXECUTE')
+        (has_function_privilege(pg_get_userbyid(procedure.proowner), procedure.oid, 'EXECUTE')
+          AND NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(procedure.proacl, acldefault('f', procedure.proowner))) acl
+            WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'))
       ),
       '|' ORDER BY procedure.proname
     )
@@ -388,20 +430,8 @@ SELECT ok(
     JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
     WHERE namespace.nspname = 'public'
       AND procedure.proname IN ('customer_self_service_quote_repriced_lines', 'customer_self_service_quote_variant_qty_lines')
-  ) = 'customer_self_service_quote_repriced_lines|t|t|t|customer_self_service_quote_variant_qty_lines|t|t|t',
-  'effective ACLs retain the inherited browser and service-role execution without migration ACL churn'
-);
-
-SELECT ok(
-  NOT EXISTS (
-    SELECT 1
-    FROM pg_proc AS procedure
-    JOIN pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
-    WHERE namespace.nspname = 'public'
-      AND procedure.proname IN ('customer_self_service_quote_repriced_lines', 'customer_self_service_quote_variant_qty_lines')
-      AND NOT has_function_privilege('service_role', procedure.oid, 'EXECUTE')
-  ),
-  'effective ACLs retain service-role execution for both quote-line helpers'
+  ) = 'customer_self_service_quote_repriced_lines|f|f|t|customer_self_service_quote_variant_qty_lines|f|f|t',
+  'quote helpers are browser/PUBLIC closed and callable by their owner dependency context'
 );
 
 SELECT * FROM finish();

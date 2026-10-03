@@ -305,17 +305,22 @@ SELECT is(
     || ' 4-absent-on-card=healthy/true',
   'W3.5: the view verdict and the chargeable-unattended function agree on every mandate shape');
 
--- Both objects were replaced in place rather than dropped, so their existing
--- grants must have survived. Asserted rather than restated in the migration:
--- a restated GRANT would prove only that the migration ran.
+-- The helper is an owner dependency of definer-rights resume operations, not a
+-- direct service RPC. Keep its browser denial and prove its actual caller below.
 SELECT ok(
-  has_function_privilege('service_role',
+  has_function_privilege('postgres',
     'public.subscription_method_chargeable_unattended(uuid, timestamptz)', 'EXECUTE')
   AND NOT has_function_privilege('anon',
     'public.subscription_method_chargeable_unattended(uuid, timestamptz)', 'EXECUTE')
   AND NOT has_function_privilege('authenticated',
-    'public.subscription_method_chargeable_unattended(uuid, timestamptz)', 'EXECUTE'),
-  'W3.5: replacing the function in place kept its service-role-only execution');
+    'public.subscription_method_chargeable_unattended(uuid, timestamptz)', 'EXECUTE')
+  AND NOT EXISTS (
+    SELECT 1 FROM pg_proc p
+    CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+    WHERE p.oid = 'public.subscription_method_chargeable_unattended(uuid,timestamptz)'::regprocedure
+      AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+  ),
+  'W3.5: the internal arbiter is owner-callable and browser/PUBLIC closed');
 
 -- W2 (PR-2b): the lifecycle rail's consumption, proved against the state the
 -- watchdog actually reads. A view cannot call the TypeScript that consumes an

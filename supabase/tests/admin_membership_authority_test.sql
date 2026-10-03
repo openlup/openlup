@@ -1,12 +1,12 @@
 -- pgTAP: current-panel membership authority and retained revoke.
 --
--- Proves the managed forward's compatibility defaults, authenticated revoke
+-- Proves the selected baseline's compatibility defaults, authenticated revoke
 -- transaction, idempotent audit, active-only role/RLS semantics, and the
 -- serialized last-active-human-admin refusal. This fixture starts after the
--- migration; the migration itself owns the one-time pre-existing-row backfill.
+-- selected baseline; it does not prove an unpublished historical upgrade.
 
 BEGIN;
-SELECT plan(46);
+SELECT plan(49);
 
 INSERT INTO public.admin_users (id, email, role, is_machine_actor) VALUES
   ('ab100000-0000-4000-8000-000000000001', 'membership-actor@example.invalid', 'admin', false),
@@ -223,10 +223,28 @@ SELECT set_config(
   true
 );
 
+SET LOCAL ROLE authenticated;
+SELECT lives_ok(
+  $$ SELECT public.admin_update_admin_user_role('ab100000-0000-4000-8000-000000000002', 'admin') $$,
+  'an authenticated administrator changes another active membership role'
+);
+RESET ROLE;
+SELECT is(
+  (SELECT role FROM public.admin_users WHERE id = 'ab100000-0000-4000-8000-000000000002'),
+  'admin', 'role mutation persists under the runtime executor'
+);
+SELECT is(
+  (SELECT count(*)::integer FROM public.admin_audit_events
+   WHERE action = 'role_change' AND target_admin_id = 'ab100000-0000-4000-8000-000000000002'),
+  1, 'role mutation appends one audit event under the runtime executor'
+);
+
+SET LOCAL ROLE authenticated;
 SELECT lives_ok(
   $$ SELECT public.admin_revoke_admin_user('ab100000-0000-4000-8000-000000000002', 'offboarding') $$,
   'an active administrator revokes another current membership'
 );
+RESET ROLE;
 
 SELECT is(
   (SELECT count(*)::integer FROM public.admin_users WHERE id = 'ab100000-0000-4000-8000-000000000002'),
@@ -266,10 +284,12 @@ SELECT is(
   'revoke audit records the after-state'
 );
 
+SET LOCAL ROLE authenticated;
 SELECT lives_ok(
   $$ SELECT public.admin_revoke_admin_user('ab100000-0000-4000-8000-000000000002', 'different replay reason') $$,
   'replaying a completed revoke returns the retained target without failure'
 );
+RESET ROLE;
 
 SELECT is(
   (SELECT count(*)::integer FROM public.admin_audit_events
@@ -278,6 +298,7 @@ SELECT is(
   'replayed revoke appends no second audit event'
 );
 
+SET LOCAL ROLE authenticated;
 SELECT throws_ok(
   $$ SELECT public.admin_revoke_admin_user('ab100000-0000-4000-8000-000000000001', NULL) $$,
   'P0001', 'self_revoke_forbidden', 'an administrator cannot revoke their own membership'
@@ -292,6 +313,8 @@ SELECT throws_ok(
   $$ SELECT public.admin_update_admin_user_role('ab100000-0000-4000-8000-000000000002', 'admin') $$,
   'P0001', 'target_membership_inactive', 'role mutation refuses a revoked target'
 );
+
+RESET ROLE;
 
 SELECT lives_ok(
   $$ UPDATE public.admin_users SET role = 'distributor'

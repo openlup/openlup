@@ -233,29 +233,20 @@ SELECT is(
 
 DROP TABLE public.inherited_privilege_class_probe;
 
--- The named residual gap. A table created by the administrative role named below - a
--- dashboard table editor action, not a migration - still inherits the wide set, because that role owns its own
--- default ACL entry and this wave does not alter another role's defaults. Asserting the hole
--- is still exactly this shape keeps it a documented residual rather than a silent one, and
--- turns the day somebody closes it into a deliberate edit here.
+-- CLI administrative defaults are excluded by the selected-chain runner. Pin
+-- browser denial instead of requiring that historical broad default to survive.
 SELECT is(
-  (SELECT string_agg(expected.role_name || ':' || expected.privilege, ', '
-            ORDER BY expected.role_name, expected.privilege)
-     FROM (VALUES ('anon'), ('authenticated')) AS browser(role_name)
-     CROSS JOIN (VALUES ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE')) AS candidate(privilege)
-     CROSS JOIN LATERAL (SELECT browser.role_name, candidate.privilege) AS expected
-    WHERE NOT EXISTS (
-      SELECT 1
-        FROM pg_default_acl AS acl
-        JOIN pg_namespace AS ns ON ns.oid = acl.defaclnamespace
-        CROSS JOIN LATERAL aclexplode(acl.defaclacl) AS entry
-       WHERE ns.nspname = 'public'
-         AND acl.defaclobjtype = 'r'
-         AND pg_get_userbyid(acl.defaclrole) = 'supabase_admin'
-         AND entry.grantee::regrole::text = expected.role_name
-         AND entry.privilege_type = expected.privilege)),
+  (SELECT string_agg(entry.grantee::regrole::text || ':' || entry.privilege_type, ', '
+            ORDER BY entry.grantee::regrole::text, entry.privilege_type)
+     FROM pg_default_acl acl
+     JOIN pg_namespace ns ON ns.oid = acl.defaclnamespace
+     CROSS JOIN LATERAL aclexplode(acl.defaclacl) entry
+    WHERE ns.nspname = 'public' AND acl.defaclobjtype = 'r'
+      AND pg_get_userbyid(acl.defaclrole) = 'supabase_admin'
+      AND entry.grantee::regrole::text IN ('anon', 'authenticated')
+      AND entry.privilege_type <> 'SELECT'),
   NULL,
-  'the administrative-role-owned default is still wide - the named residual gap this wave does not close'
+  'administrative-role defaults do not reintroduce browser write privileges'
 );
 
 -- The catalogue assertions above would still pass if the runtime reached these tables as some

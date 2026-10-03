@@ -207,8 +207,12 @@ AS $$
       OR pg_get_function_result(proc.oid) IS DISTINCT FROM expected.result
       OR proc.prosecdef IS DISTINCT FROM true
       OR proc.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, public']::text[]
-      OR proc.proacl IS DISTINCT FROM ARRAY['postgres=X/postgres'::aclitem, 'service_role=X/postgres'::aclitem]
-      OR has_function_privilege('service_role', proc.oid, 'EXECUTE') IS DISTINCT FROM true
+      OR proc.proowner IS DISTINCT FROM 'postgres'::regrole
+      OR EXISTS (
+        SELECT 1 FROM aclexplode(coalesce(proc.proacl, acldefault('f', proc.proowner))) acl
+        WHERE acl.grantee <> proc.proowner AND acl.privilege_type = 'EXECUTE'
+      )
+      OR has_function_privilege('service_role', proc.oid, 'EXECUTE') IS DISTINCT FROM false
       OR has_function_privilege('anon', proc.oid, 'EXECUTE') IS DISTINCT FROM false
       OR has_function_privilege('authenticated', proc.oid, 'EXECUTE') IS DISTINCT FROM false
       OR EXISTS (
@@ -258,6 +262,7 @@ SELECT throws_ok(
   $$ SELECT public.admin_set_subscription_band_percent(12) $$,
   '42501', 'legacy_catalog_mutation_fenced', 'admin_set_subscription_band_percent refuses');
 
+
 SELECT is(
   (SELECT (snapshot -> 'catalog')::text FROM _before),
   (pg_temp.catalog_legacy_mutation_fence_snapshot() -> 'catalog')::text,
@@ -285,7 +290,7 @@ SELECT is(
 SELECT is(
   pg_temp.catalog_legacy_mutation_fence_contract_mismatches()::text,
   '[]',
-  'all eight fenced functions retain exact signatures/defaults, definer/search-path and service-role-only execute ACLs');
+  'all eight fenced functions retain exact signatures/defaults, definer/search-path and owner-only execute ACLs with direct service and browser denial');
 -- Managed draft persistence is installed; proposal/publication seams are separate.
 SELECT ok(
   to_regprocedure('public.catalog_draft_apply(text,text)') IS NOT NULL

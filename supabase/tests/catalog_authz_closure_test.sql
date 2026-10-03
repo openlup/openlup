@@ -403,10 +403,10 @@ SELECT is(
          FROM aclexplode(proc.proacl) AS entry
      ) AS g
     WHERE EXISTS (SELECT 1 FROM aclexplode(coalesce(proc.proacl, acldefault('f', proc.proowner))) acl
-       WHERE acl.grantee = 0 OR acl.grantee::regrole::text NOT IN ('postgres', 'service_role'))
-       OR has_function_privilege('service_role', proc.oid, 'EXECUTE') IS NOT TRUE),
+       WHERE acl.grantee = 0 OR acl.grantee::regrole::text NOT IN ('postgres'))
+       OR has_function_privilege('service_role', proc.oid, 'EXECUTE') IS NOT FALSE),
   NULL,
-  'every fenced catalog RPC rejects unexpected execute principals and remains callable by its real service adapter'
+  'every legacy-fenced catalog RPC rejects unexpected principals and direct service execution'
 );
 
 SELECT is(
