@@ -200,6 +200,11 @@ jobs run against the queue's actual group checkout. DCO checks the complete
 event-base-to-group range, including the synthetic tip; missing sign-off fails
 without an exemption. Documentation impact uses the event's exact group base,
 head, ref and tree, rather than inferring a PR head or using a stale local base.
+A no-impact record binds the change and its owner section, not the base commit,
+so it stays valid in a group whose base moved for unrelated reasons. A
+pull-request checkout is identified by `GITHUB_SHA` and its exact event base and
+head parents; the payload's `merge_commit_sha` is not compared, because a
+`synchronize` payload can carry a lagging value.
 The configured local verification mirror must exercise these same steps.
 
 The additional optional `native-review` job is active only when the separately
