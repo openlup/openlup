@@ -48,6 +48,8 @@ handling.
 
 ## Development-preview checks
 
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-273eae4d56b178424a6413a7f232b683602ac5700563a62fa645d26bc34716c0","reason":"The native session protocol adds only one explicit owner-bound full third review after two automatic cycles, preserving history, findings and two fresh roles. The contribution commands, existing required contexts and refusal requirements in this checks section remain unchanged; the manual continuation contract is explained in the native review section and protocol plan."} -->
+
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
 diagnostic results, and the source-to-npm handoff. This section owns the detailed
@@ -772,6 +774,14 @@ within existing authority. Changed intent requires explicit regrouping. Resolve 
 textual conflict by merging `main`: that moves the fork point and gets fresh
 full-scope review within the same budget. A rebase discards that lineage and
 reports `needs_rescope`; it never restarts the budget or drops findings.
+
+A fresh explicit owner decision may authorize exactly one additional full review
+at cycle 3 after the two automatic cycles. This retains every prior round and
+finding, the same approved intent and author, and a clean ancestor-preserving
+committed candidate. It requires two fresh full reviewers. No fourth cycle or
+automatic extension is permitted; unchanged prepare preserves evidence and
+expiry. This decision grants no publication, merge or settings authority.
+
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
 and proceed only through authorized delivery steps.
