@@ -163,4 +163,37 @@ describe("API snapshot Migration blocks", () => {
     expect(compare((write) => { write(SNAPSHOT, removed); write("config/openlup-packages.json", config(false, false)); }), "un-admitted at the head").toThrow(red);
     expect(compare((write) => { write("packages/demo/api/a.api.md", removed); write("config/openlup-packages.json", config(true, true)); }), "admitted at the head").not.toThrow();
   }, 60_000);
+  it("ignores doc comments and reads each specifier of a one-line export list as its own line", () => {
+    const listed = (names = "a, b, c", doc = "/** The first. */", added: readonly string[] = []) => snapshot([doc, declarations[0]!, `${declarations[1]} /* trailing */`, ...added, `export { ${names}, } from "./x.js";`, 'export type { T } from "./t.js";']);
+    const from = (after: string) => compare((write) => write(SNAPSHOT, after), { [SNAPSHOT]: listed() });
+    expect(from(listed("a, b, c, d")), "a name added at the end").not.toThrow();
+    expect(from(listed("a, d, b, c")), "a name added in the middle").not.toThrow();
+    expect(from(listed(undefined, "/** The first, reworded. */")), "a reworded doc comment").not.toThrow();
+    expect(from(listed(undefined, "/**\n * The first,\n * over three lines.\n */", ["/** @beta */"])), "doc comments added").not.toThrow();
+    expect(from(listed("a, b, normalize, c", "/** The first, reworded. */", ["/** Normalises a request. */", "export declare function normalize(request: string): string;"])), "a reworded comment, a new declaration and its name in the list").not.toThrow();
+    for (const names of ["a, c", "a, b"]) expect(from(listed(names)), `a name removed: ${names}`).toThrow(red);
+    expect(from(listed("a as d, b, c")), "a specifier renamed").toThrow(red);
+    expect(from(listed().replace('export type { T } from "./t.js";', 'export { T } from "./t.js";')), "the type keyword dropped").toThrow(red);
+    expect(from(listed().replace('"./x.js"', '"./y.js"')), "the from clause changed").toThrow(red);
+    expect(from(listed().replace(declarations[0]!, "export declare const a: string;")), "a declaration changed under an unchanged comment").toThrow(red);
+    expect(from(listed().replace(`${declarations[1]} /* trailing */`, "export declare const b: string; /* trailing */")), "a declaration with a trailing comment changed").toThrow(red);
+  }, 120_000);
+  it("refuses, block or not, a head the next pull request could not read as its base", () => {
+    const both = JSON.stringify({ schemaVersion: 2, packages: ["demo", "pub"].map((name) => ({ name: `@openlup/${name}`, directory: `packages/${name}`, publish: true })), unreleased: [] });
+    const blocked = (write: (path: string, contents: string) => void) => { write(SNAPSHOT, removed); for (const name of ["demo", "pub"]) write(`packages/${name}/CHANGELOG.md`, changelog(BLOCK)); };
+    const admitted = (write: (path: string, contents: string) => void) => { blocked(write); write("config/openlup-packages.json", both); };
+    expect(compare((write, root) => { blocked(write); rmSync(join(root, "config/openlup-packages.json")); }), "no config at the head").toThrow(/^migration-block: config\/openlup-packages\.json cannot be read or parsed at the head [0-9a-f]{40}$/u);
+    expect(compare((write, root) => { admitted(write); rmSync(join(root, "packages/demo/release-gates.json")); }), "newly publishable without a gates file").toThrow(/^migration-block: packages\/demo\/release-gates\.json cannot be read at the head [0-9a-f]{40}$/u);
+    expect(compare((write) => { admitted(write); write("packages/demo/release-gates.json", "{}"); }), "newly publishable without packageSurface").toThrow(/^migration-block: packages\/demo\/release-gates\.json at [0-9a-f]{40} has no packageSurface object$/u);
+    expect(compare((write) => { blocked(write); write("packages/pub/release-gates.json", gates({ ".": "api/a.api.md", "./more": "api/more.api.md" })); }), "a head snapshot missing").toThrow(/^migration-block: packages\/pub\/api\/more\.api\.md cannot be read at the head [0-9a-f]{40}$/u);
+    expect(compare((write) => { blocked(write); write("packages/pub/release-gates.json", gates({ ".": "api/a.api.md", "./out": "../demo/api/a.api.md" })); }), "a head snapshot outside the package").toThrow(/^migration-block: packages\/pub\/release-gates\.json lists the snapshot \.\.\/demo\/api\/a\.api\.md, which is not a path inside packages\/pub$/u);
+    expect(compare(blocked), "the same removal with its block, the head readable").not.toThrow();
+  }, 60_000);
+  it("admits a package with its gates file and snapshots, and reads a withdrawn package's missing files as a removal", () => {
+    const listing = (publishable: readonly string[], unreleased: readonly string[]) => JSON.stringify({ schemaVersion: 2, packages: publishable.map((name) => ({ name: `@openlup/${name}`, directory: `packages/${name}`, publish: true })), unreleased: unreleased.map((name) => ({ directory: `packages/${name}`, reason: "a module in progress" })) });
+    expect(compare((write) => write("config/openlup-packages.json", listing(["demo", "pub"], [])), { "config/openlup-packages.json": listing(["pub"], ["demo"]) }), "the module's final pull request").not.toThrow();
+    const withdraw = (write: (path: string, contents: string) => void, root: string) => { write("config/openlup-packages.json", listing(["demo"], ["pub"])); rmSync(join(root, "packages/pub/release-gates.json")); };
+    expect(compare(withdraw), "withdrawn, its gates file removed").toThrow(red);
+    expect(compare((write, root) => { withdraw(write, root); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); }), "the same with a block").not.toThrow();
+  }, 60_000);
 });

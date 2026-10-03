@@ -537,7 +537,9 @@ one set:
   snapshot unless the package's single `## [Unreleased]` changelog section
   carries a `Migration:` block; the base decides which packages and snapshots
   are checked, and removing or renaming a subpath counts as a removal. A pure
-  addition has no "before", so it needs none.
+  addition, such as a name added to an export list, has no "before", so it
+  needs none; doc comments are ignored, and the head must keep each publishable
+  package's gates file and snapshots readable.
 
 [`config/openlup-packages.json`](../config/openlup-packages.json) lists the
 packages, and `publish: true` marks one that may be published. A new package

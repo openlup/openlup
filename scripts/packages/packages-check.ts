@@ -108,11 +108,24 @@ function setSelection(version: string, packages: readonly PackageEntry[], versio
   return behind.length === 0 ? publishable : refuse(`${behind.join(", ")}; this set needs ${version} for every publishable package`);
 }
 
-/** An API snapshot's declaration lines: everything from its first `## <declaration file>` section, without the generated header. */
+/** A one-line export list as `tsc` emits it: `export { … } from "…";`, `export type { … } from "…";` or `export { … };`. */
+const EXPORT_LIST = /^(\s*export (?:type )?)\{([^{}]*)\}((?: from "[^"]*")?;)$/u;
+
+/**
+ * An API snapshot's declaration lines: everything from its first `## <declaration file>` section, without the
+ * generated header. Doc comments are dropped, from a line starting `/*` through the line closing it, and a one-line
+ * export list becomes one line per specifier, as written, so adding a name or a comment is an addition.
+ */
 function declarationLines(text: string | undefined): string[] {
   const lines = text?.split("\n") ?? [];
   const start = lines.findIndex((line) => line.startsWith("## "));
-  return start < 0 ? [] : lines.slice(start);
+  let comment = false;
+  return (start < 0 ? [] : lines.slice(start)).flatMap((line) => {
+    if (line.trimStart().startsWith("/*")) comment = true;
+    if (comment) { comment = !line.includes("*/"); return []; }
+    const list = EXPORT_LIST.exec(line);
+    return list ? list[2]!.split(",").map((specifier) => specifier.trim()).filter(Boolean).map((specifier) => `${list[1]}{ ${specifier} }${list[3]}`) : [line];
+  });
 }
 
 /** Whether `after` keeps every line of `before`, in order, so the change only added lines. */
@@ -130,8 +143,10 @@ function onlyAdds(before: readonly string[], after: readonly string[]): boolean 
  * compared with the snapshot the head's `packageSurface` lists for the same subpath; a subpath,
  * gates file or snapshot missing at the head reads as empty, so removing or renaming a subpath
  * is a removal. A base file that cannot be read, or a snapshot path outside its package, refuses.
- * A pure addition keeps every old line in order and has no "before", so it needs none. The
- * published-tree `--policy` check runs this against a pull request's or merge group's base.
+ * A pure addition keeps every old line in order and has no "before", so it needs none. The head
+ * must stay readable as the next base, block or not: its config parses, and each package
+ * publishable there keeps a gates file with a `packageSurface` object and every snapshot it lists.
+ * The published-tree `--policy` check runs this against a pull request's or merge group's base.
  */
 export function assertMigrationBlocks(root: string, base: string, head: string): void {
   for (const commit of [base, head]) capture(root, "git", ["rev-parse", "--verify", `${commit}^{commit}`]);
@@ -161,6 +176,12 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
     const missing = unreleased.length !== 1 ? `${directory}/CHANGELOG.md has ${unreleased.length} "## [Unreleased]" sections, not one`
       : /^\s*Migration:/mu.test(unreleased[0]!) ? undefined : `its "## [Unreleased]" section has no Migration: block`;
     if (missing) refusals.push(`migration-block ${name}: ${changed.join(", ")} removes or changes a declaration line since ${base}, and ${missing}; add a Migration: block with the code or SQL before and after`);
+  }
+  let publishable: readonly PackageEntry[] = [];
+  try { publishable = parsePackagesConfig(atHead(PACKAGES_CONFIG_PATH) ?? "").packages.filter(({ publish }) => publish); } catch { refusals.push(`migration-block: ${PACKAGES_CONFIG_PATH} cannot be read or parsed at the head ${head}`); }
+  for (const { directory } of publishable) {
+    const gates = `${directory}/release-gates.json`, readable = (path: string): string => atHead(path) ?? refuse(`${path} cannot be read at the head ${head}`);
+    try { for (const entry of Object.values(surface(head, gates, readable(gates)))) readable(snapshotPath(directory, entry)); } catch (error) { refusals.push((error as Error).message); }
   }
   if (refusals.length > 0) throw new Error(refusals.join("\n"));
 }
