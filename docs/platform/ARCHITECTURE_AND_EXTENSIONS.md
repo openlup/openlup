@@ -115,10 +115,12 @@ The placement rules:
 - **The kernel grows only for shared contracts.** It gains a contract only when a second package
   reads it. A contract that one package reads stays in that package.
 - **Default stores need no driver** (from the first rail or capability package). A default store is
-  a subpath over a structural SQL executor, which the kernel adds with that package. A
-  provider-specific store is an implementation package or application code.
-- **New kernel validation contracts are typed as `StandardSchemaV1`,** not as types of one schema
-  library. The kernel's existing exports are `zod` schemas today.
+  a subpath over the kernel's structural SQL executor, `SqlExecutor` in
+  `@openlup/core/platform-runtime`. A provider-specific store is an implementation package or
+  application code.
+- **New kernel validation contracts are typed as `StandardSchemaV1`** from
+  `@openlup/core/standard-schema`, not as types of one schema library. The kernel's existing
+  exports are `zod` schemas today.
 - **Composition stays in the application.** Runtime assembly, handler manifests, readiness
   wiring, scheduled-job files and HTTP entries belong to the application, never to a package.
   The reference application ships its own.
@@ -130,7 +132,8 @@ a brand or an industry.
 ### Contributions, seams and readiness
 
 These rules take effect with the first rail or capability package. The kernel
-does not yet export the readiness check.
+exports their shapes and the readiness check from `@openlup/core/readiness`, and
+the outbox handler contract and platform event types from `@openlup/core/outbox`.
 
 - **The factory.** A rail or capability exposes a factory taking ports and options. It returns
   a contribution, `{ handlers, schedules, routes, manifest }`; a field that does not apply is
@@ -148,6 +151,7 @@ does not yet export the readiness check.
   once, with a stable `OPENLUP_E_*` code, the package, the subject and a fix. It covers:
   - unwired ports;
   - unhandled event types;
+  - an event type that two packages claim to emit;
   - unbound schedules;
   - a schema behind the package;
   - a mixed package set;

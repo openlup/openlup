@@ -142,6 +142,30 @@
       "entrypoint": "dist/platform-runtime/index.d.ts",
       "snapshot": "api/platform-runtime.api.md"
     },
+    "./outbox": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/outboxStandalone.test.ts"],
+      "entrypoint": "dist/outbox/index.d.ts",
+      "snapshot": "api/outbox.api.md"
+    },
+    "./readiness": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/readinessStandalone.test.ts"],
+      "entrypoint": "dist/readiness/index.d.ts",
+      "snapshot": "api/readiness.api.md"
+    },
+    "./standard-schema": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": ["smoke/standardSchemaStandalone.test.ts"],
+      "entrypoint": "dist/standard-schema/index.d.ts",
+      "snapshot": "api/standard-schema.api.md"
+    },
     "./testing": {
       "role": "testing",
       "maturity": "testing",
@@ -203,17 +227,18 @@
   },
   "pack": {
     "$budgetReason": "2026-10-02, owner-approved at the patch read: the pack budget splits into classes so that documentation and metadata cannot crowd out code, and code growth stays visible. Code counts dist JavaScript, declarations and src TypeScript; docs counts the documentation and metadata files at the package root; anything else counts only toward the total. A class's packed bytes are its files gzipped together. Measured, not estimated: clean origin/main packs 131062 packed bytes, 572032 unpacked bytes and 192 files against caps of 131072, 573440 and 192. With AGENTS.md this change packs about 132.1 thousand packed and 575.7 thousand unpacked bytes and 193 files: code exactly 113573 packed bytes in 183 files, docs about 17.9 thousand packed bytes in 10 files (rounded, because this note's own text moves the last digits). The code caps of 114688 bytes and 183 files admit no new code file without a raise. The docs caps are 24576 bytes and 12 files. The total backstop is the sum of the class caps, 139264 packed bytes and 195 files, with 614400 unpacked bytes.",
+    "$raiseReason": "2026-10-02, the owner's act, read in this patch: the outbox kernel additions (./outbox, ./readiness, ./standard-schema, and the job lease port and SQL executor in ./platform-runtime) add 5 source files, so 15 code files. Measured, not estimated: clean origin/main packs code 112657 packed bytes in 177 files, docs 18621 packed bytes in 10 files, and 131749 packed bytes, 573626 unpacked bytes and 187 files in all. This change packs code exactly 134974 packed bytes in 192 files, docs about 20.3 thousand packed bytes in 10 files, and about 157.2 thousand packed bytes, 662.4 thousand unpacked bytes and 202 files in all (rounded, because this note's own text moves the last digits). The code caps rise from 114688 bytes and 183 files to 137216 bytes and 192 files: 192 admits no new code file without a raise, and 137216 keeps the 2031 bytes of headroom the code cap had before this change, rounded up to a KiB. The docs caps stay at 24576 bytes and 12 files. The total backstop stays the sum of the class caps, now 161792 packed bytes and 204 files; the unpacked cap rises from 614400 to 703488 bytes, keeping the 40774 bytes of headroom it had before this change, rounded up to a KiB.",
     "code": {
-      "maxPackedBytes": 114688,
-      "maxFiles": 183
+      "maxPackedBytes": 137216,
+      "maxFiles": 192
     },
     "docs": {
       "maxPackedBytes": 24576,
       "maxFiles": 12
     },
-    "maxPackedBytes": 139264,
-    "maxUnpackedBytes": 614400,
-    "maxFiles": 195,
+    "maxPackedBytes": 161792,
+    "maxUnpackedBytes": 703488,
+    "maxFiles": 204,
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",

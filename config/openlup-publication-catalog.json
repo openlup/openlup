@@ -1390,6 +1390,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/api/outbox.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/api/partners.api.md",
       "class": "public-output"
     },
@@ -1410,11 +1414,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/api/readiness.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/api/risk.api.md",
       "class": "public-output"
     },
     {
       "path": "packages/core/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/api/standard-schema.api.md",
       "class": "public-output"
     },
     {
@@ -1550,6 +1562,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/smoke/outboxStandalone.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/smoke/partnersStandalone.test.ts",
       "class": "public-output"
     },
@@ -1570,6 +1586,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/smoke/readinessStandalone.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/smoke/riskStandalone.test.ts",
       "class": "public-output"
     },
@@ -1583,6 +1603,10 @@
     },
     {
       "path": "packages/core/smoke/standaloneImportGraph.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/smoke/standardSchemaStandalone.test.ts",
       "class": "public-output"
     },
     {
@@ -1651,6 +1675,14 @@
     },
     {
       "path": "packages/core/src/marketing/research/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/outbox/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/outbox/vocabulary.ts",
       "class": "public-output"
     },
     {
@@ -1766,6 +1798,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/readiness/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/readiness/schemaProbe.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/risk/core/evaluator.ts",
       "class": "public-output"
     },
@@ -1795,6 +1835,10 @@
     },
     {
       "path": "packages/core/src/shipping/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/standard-schema/index.ts",
       "class": "public-output"
     },
     {
@@ -1855,6 +1899,10 @@
     },
     {
       "path": "packages/core/test/fulfillmentFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/hostNeutralDeclarations.test.ts",
       "class": "public-output"
     },
     {

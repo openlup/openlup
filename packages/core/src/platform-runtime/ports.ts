@@ -41,6 +41,81 @@ export interface SchedulerPort {
   verifyInvocation(req: PlatformHttpRequest): boolean;
 }
 
+/**
+ * Who started a job run. Persisted by the lease as the run's trigger kind.
+ * @beta
+ */
+export type PlatformJobTriggerKind = "worker" | "scheduler" | "operator";
+
+/**
+ * Deployment evidence for one job run, supplied by the host entry. It is
+ * observational and never grants execution authority. `invocationSource` is
+ * persisted as given.
+ * @beta
+ */
+export interface PlatformJobInvocation {
+  triggerKind: PlatformJobTriggerKind;
+  invocationSource: string;
+}
+
+/**
+ * The lease's answer. `reason` is the lease's persisted reason, such as its
+ * refusal of a disabled job, carried as data.
+ * @beta
+ */
+export interface PlatformJobClaim {
+  acquired: boolean;
+  runId: string | null;
+  reason: string;
+}
+
+/** @beta */
+export type PlatformJobFinishStatus = "success" | "failed";
+
+/** @beta */
+export interface PlatformJobFinishSummary {
+  checked: number;
+  updated: number;
+  failures: number;
+  skipped: boolean;
+  reason?: string;
+}
+
+/**
+ * Job lease: claim a run of a named job, then finish it. A schedule's run takes
+ * its lease through this port, so job control is the lease's own refusal. The
+ * job name, invocation and metadata keys are persisted as given.
+ * @beta
+ */
+export interface JobRunLeasePort {
+  claimJobRun(
+    jobName: string,
+    invocation: PlatformJobInvocation,
+    leaseSeconds?: number,
+  ): Promise<PlatformJobClaim>;
+  finishJobRun(
+    jobName: string,
+    runId: string,
+    invocation: PlatformJobInvocation,
+    status: PlatformJobFinishStatus,
+    result: PlatformJobFinishSummary,
+    extraMetadata?: Record<string, unknown>,
+  ): Promise<boolean>;
+}
+
+/**
+ * Structural SQL executor: one parameterised query, returning its rows. A
+ * PostgreSQL pool or client satisfies it as is, so a default store needs no
+ * driver dependency.
+ * @beta
+ */
+export interface SqlExecutor {
+  query(
+    text: string,
+    values?: ReadonlyArray<unknown>,
+  ): PromiseLike<{ readonly rows: ReadonlyArray<Record<string, unknown>> }>;
+}
+
 /** Object storage. */
 /** @beta */
 export interface BlobStoragePort {
