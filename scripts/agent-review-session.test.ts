@@ -231,6 +231,45 @@ describe('bounded repair convergence', () => {
     const state = await advance(await initial(), repaired(), { now: () => 2000 }); const observation = closure(state, 0, { completedAt: 2000 });
     expect((await check({ ...state, reports: [observation] }, { now: () => 2001, maxAgeMs: 1000 })).reason).toContain('expired');
   });
+  const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const ownerDecision = 'Synthetic explicit owner authorization for one additional full review';
+  async function exhausted() {
+    const first = await advance(await initial(), repaired(1), { fullRefresh: true });
+    return advance(first, repaired(2), { fullRefresh: true });
+  }
+  function ownerApproval(previous, next) { return { priorRequestDigest: digest(previous.request), candidateDigest: digest(next), ownerDecision }; }
+  async function manual(previous, next = repaired(3), extra = {}) {
+    return advance(previous, next, { fullRefresh: true, ownerContinuation: ownerApproval(previous, next), ...extra });
+  }
+  it('retains every round and finding for exactly one owner-bound third full review', async () => {
+    const prior = await exhausted(); const state = await manual(prior);
+    expect(state.history).toEqual([...prior.history, { request: prior.request, reports: prior.reports }]);
+    expect(state.request.continuation).toMatchObject({ cycle: 3, mode: 'full', ownerContinuation: ownerApproval(prior, repaired(3)), findings: prior.request.continuation.findings });
+    expect(state.request.roles).toEqual(['correctness', 'security']);
+    expect((await check(state)).status).toBe('needs_agent_review');
+    state.reports = [closure(state), closure(state, 1)]; expect((await check(state)).status).toBe('reviewed');
+    expect(await manual(state, repaired(3), { ownerContinuation: state.request.continuation.ownerContinuation })).toEqual(state);
+    expect(await advance(state, repaired(3))).toEqual(state);
+    await expect(manual(state, { ...repaired(3), head: 'f'.repeat(40) })).rejects.toThrow('exhausted automatic budget');
+    await expect(advance(state, { ...repaired(3), head: 'f'.repeat(40) })).rejects.toThrow('two automatic repair cycles');
+    expect((await check(state, { now: () => 86401001 })).reason).toContain('expired');
+    expect((await check(state, { snapshot: async () => ({ ...repaired(3), head: 'f'.repeat(40) }) })).status).toBe('needs_rescope');
+    for (const mutate of [s => { delete s.request.continuation.ownerContinuation; }, s => { s.request.continuation.mode = 'focused'; }, s => { s.request.continuation.cycle = 4; }, s => { s.history[0].reports[0].materialFindings = []; }]) {
+      const changed = structuredClone(state); mutate(changed); expect((await check(changed)).status).not.toBe('reviewed');
+    }
+  });
+  it('refuses missing, mismatched, premature, changed-intent and nonfull owner continuation', async () => {
+    const prior = await exhausted(); const next = repaired(3); const approval = ownerApproval(prior, next);
+    await expect(advance(prior, next, { fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
+    for (const field of ['priorRequestDigest', 'candidateDigest']) await expect(manual(prior, next, { ownerContinuation: { ...approval, [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
+    await expect(manual(prior, next, { fullRefresh: false })).rejects.toThrow('explicit full refresh');
+    await expect(manual(await initial(), next)).rejects.toThrow('exhausted automatic budget');
+    await expect(manual(prior, next, { authorSessionId: 'other' })).rejects.toThrow('author changed');
+    await expect(manual(prior, next, { intent: { ...intent, criteria: 'Changed intent' } })).rejects.toThrow('approved intent');
+    await expect(manual(prior, next, { delta: async (_cwd, before, after) => { if (before.head === prior.request.candidate.head) throw new Error('not an authenticated ancestor'); return delta(_cwd, before, after); } })).rejects.toThrow('nonancestor integration');
+    await expect(manual(prior, { ...next, clean: false })).rejects.toThrow('clean committed');
+  });
+
 });
 
 describe('explicit owner regroup without reset', () => {
@@ -368,6 +407,42 @@ describe('explicit owner regroup without reset', () => {
 });
 
 describe('actual source snapshot without candidate execution', () => {
+  it('runs owner continuation through actual Git and CLI without resetting or permitting a fourth round', async () => {
+    const { cwd, git } = await fixture();
+    await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
+    const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
+    const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
+    const specPath = join(directory, 'intent.json'), statePath = join(directory, 'session.json');
+    const spec = { intent, base: baseline, authorSessionId: 'author', fullRefresh: true };
+    const script = resolve('scripts/agent-review-session.mjs');
+    const invoke = (...args: string[]) => spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
+    const commit = async number => { await writeFile(join(cwd, 'source.txt'), `candidate ${number}\n`); git('add', 'source.txt'); git('commit', '-qm', `candidate ${number}`); };
+    await writeFile(specPath, JSON.stringify(spec));
+    for (const number of [0, 1, 2]) { await commit(number); expect(invoke('prepare').status).toBe(0); }
+    const priorBytes = await readFile(statePath, 'utf8'), prior = JSON.parse(priorBytes);
+    await commit(3); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(priorBytes);
+    const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+    const ownerContinuation = { priorRequestDigest: digest(prior.request), candidateDigest: digest(await captureSessionCandidate(cwd, baseline)), ownerDecision: 'Synthetic explicit approval for this exact fixture candidate' };
+    await writeFile(specPath, JSON.stringify({ ...spec, ownerContinuation: { ...ownerContinuation, candidateDigest: 'f'.repeat(64) } }));
+    expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(priorBytes);
+    await writeFile(specPath, JSON.stringify({ ...spec, ownerContinuation })); expect(invoke('prepare').status).toBe(0);
+    const state = JSON.parse(await readFile(statePath, 'utf8'));
+    expect(state.history).toEqual([...prior.history, { request: prior.request, reports: prior.reports }]);
+    expect(state.request.continuation).toMatchObject({ cycle: 3, mode: 'full', ownerContinuation, deltaPaths: ['source.txt'] });
+    expect(state.request.roles).toEqual(['correctness', 'security']);
+    for (const index of [0, 1]) {
+      const reportPath = join(directory, `manual-${index}.json`);
+      await writeFile(reportPath, JSON.stringify({ ...report(state.request, index), reviewerId: `manual-${index}`, sessionId: `manual-session-${index}`, completedAt: Date.now(), closure: { coveredDelta: ['source.txt'], interactionsChecked: true, ordinarySemantics: false, resolvedFindings: [] } }));
+      expect(invoke('record', reportPath).status).toBe(0);
+    }
+    expect(invoke('verify').status).toBe(0); const reviewed = await readFile(statePath, 'utf8');
+    expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
+    await commit(4); const current = JSON.parse(reviewed);
+    await writeFile(specPath, JSON.stringify({ ...spec, ownerContinuation: { ...ownerContinuation, priorRequestDigest: digest(current.request), candidateDigest: digest(await captureSessionCandidate(cwd, baseline)) } }));
+    expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
+    expect(invoke('verify').status).not.toBe(0);
+  });
+
   it('authenticates actual repair ancestry and deletions and refuses forked prior lineage', async () => {
     const { cwd, base, git } = await fixture(); await writeFile(join(cwd, 'source.txt'), 'first\n'); git('add', 'source.txt'); git('commit', '-qm', 'first'); const before = await captureSessionCandidate(cwd, base);
     await rm(join(cwd, 'source.txt')); await writeFile(join(cwd, 'new.txt'), 'replacement\n'); git('add', '-A'); git('commit', '-qm', 'repair'); const after = await captureSessionCandidate(cwd, base);
