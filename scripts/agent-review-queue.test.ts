@@ -68,9 +68,10 @@ describe('native review queue admission', () => {
     const f = await fixture(); f.input.source.reports[0].advisoryFindings = ['Optional future polish'];
     expect((await verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).sourceHead).toBe(f.head);
   });
-  for (const mutation of ['head', 'attempt', 'source-role', 'expired', 'dirty'] as const) it(`refuses ${mutation} before automatic merge`, async () => {
+  for (const mutation of ['head', 'attempt', 'source-role', 'expired', 'dirty', 'head-repository-missing'] as const) it(`refuses ${mutation} before automatic merge`, async () => {
     const f = await fixture();
     if (mutation === 'head') f.pr.head.sha = f.base;
+    if (mutation === 'head-repository-missing') { delete (f.pr.head as { repo?: unknown }).repo; delete (f.run as { head_repository?: unknown }).head_repository; }
     if (mutation === 'attempt') f.run.run_attempt = 2;
     if (mutation === 'source-role') f.input.source.reports.pop();
     if (mutation === 'dirty') f.input.source.request.candidate.clean = false;
@@ -241,6 +242,29 @@ describe('source-keyed pull-request receipts', () => {
     await s.upload(s.sourceName(), receipt, 123); await s.upload(s.sourceName(), receipt, 124, artifact => { artifact.digest = `sha256:${'0'.repeat(64)}`; });
     expect((await readSourceAdmissionArtifact(s.api, 5, s.f.head))?.input.target.sourceHead).toBe(s.f.head);
     await expect(s.wait()).resolves.toBeUndefined();
+  });
+  it('admits the source receipt when a run-keyed artifact for this pull-request run fails its checks', async () => {
+    const s = await sourceFixture(); const binding = await observeNativeAdmission(s.api, s.f.input);
+    await s.upload('native-review-10-1', { input: s.f.input, binding }, 122, artifact => { artifact.digest = `sha256:${'0'.repeat(64)}`; });
+    await s.upload(s.sourceName(), await s.submit(), 123); await expect(s.wait()).resolves.toBeUndefined();
+  });
+  it('still refuses a merge group whose run-keyed artifact fails its checks', async () => {
+    const s = await sourceFixture();
+    const tree = s.f.git('rev-parse', 'HEAD^{tree}'); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'synthetic group'); s.f.group(s.f.base, head);
+    const binding = await observeNativeAdmission(s.api, s.f.input);
+    await s.upload('native-review-10-1', { input: s.f.input, binding }, 122, artifact => { artifact.digest = `sha256:${'0'.repeat(64)}`; });
+    s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
+    Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
+    await expect(s.wait()).rejects.toThrow('downloaded artifact digest differs');
+  });
+  it('refuses a source receipt when the pull request and its run carry no head repository id', async () => {
+    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+    delete (s.f.pr.head as { repo?: unknown }).repo; delete (s.f.run as { head_repository?: unknown }).head_repository;
+    await expect(s.wait()).rejects.toThrow('Native admission refused');
+  });
+  it('refuses when the live PR head moved although the event still names the reviewed head', async () => {
+    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123); s.f.pr.head.sha = s.f.base;
+    await expect(s.wait()).rejects.toThrow('PR head changed after source review');
   });
   it('refuses an incomplete listing of more than 100 source receipts', async () => {
     const s = await sourceFixture(); const receipt = await s.submit();

@@ -210,6 +210,8 @@ describe("attributable source and owner impact", () => {
     it("P1 stays valid when the base gains an unrelated change", () => {
       const { root } = answered(); write(root, "README.md", `[Owner](${OWNER})\n\nAn unrelated base change.\n`);
       const moved = commitOnly(root, "README.md"); expect(impact(root, moved).failures).toEqual([]);
+      write(root, "src/domains/demo/other.ts", "export const other = 2;\n");
+      const movedAgain = commitOnly(root, "src/domains/demo/other.ts"); expect(impact(root, movedAgain).failures).toEqual([]);
     });
     it("P2 is stale when the base changes a path the answer covers", () => {
       const { root } = answered(); write(root, SOURCE, "export const value = 3;\n"); const moved = commitOnly(root, SOURCE);
@@ -231,7 +233,7 @@ describe("attributable source and owner impact", () => {
       const { root, marked } = answered(); const surfaces = JSON.parse(readFileSync(join(root, "config/doc-routing.json"), "utf8")).surfaces as DocumentationSurface[];
       surfaces.push({ id: "domain-demo-main", when: "The demo main entry", paths: [SOURCE], doc: OWNER, anchor: "#canonical" });
       write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces })); const moved = commitOnly(root, "config/doc-routing.json");
-      write(root, OWNER, marked); expect(impact(root, moved).failures.length).toBeGreaterThan(0);
+      write(root, OWNER, marked); expect(impact(root, moved).failures).toHaveLength(1);
     });
   });
   it("does not read a receipt inside fenced, indented or inline code as a review", () => {

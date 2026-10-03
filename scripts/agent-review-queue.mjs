@@ -48,7 +48,7 @@ export async function observeNativeAdmission(api, input) {
   const commit = await api.get(`${root}/git/commits/${source.head}`);
   demand(commit.sha === source.head && commit.tree?.sha === source.tree, 'reviewed source tree differs');
   if (run.event === 'pull_request') {
-    demand(run.head_sha === source.head && run.head_branch === pr.head.ref && run.head_repository?.id === pr.head.repo?.id && input.integration === null, 'PR run is not the source review target');
+    demand(run.head_sha === source.head && run.head_branch === pr.head.ref && integer(pr.head.repo?.id) && run.head_repository?.id === pr.head.repo.id && input.integration === null, 'PR run is not the source review target');
     return { event: run.event, workflowId: run.workflow_id, runId: run.id, attempt: run.run_attempt, prNumber: pr.number, sourceHead: source.head, sourceTree: source.tree };
   }
   const result = await api.graphql(`query { repository(owner:"openlup",name:"openlup") { mergeQueue(branch:"main") { entries(first:100) { totalCount pageInfo { hasNextPage } nodes { id position enqueuedAt baseCommit { oid } headCommit { oid } pullRequest { number headRefOid baseRefName } } } } } }`);
@@ -114,7 +114,7 @@ export async function observeSourceAdmission(api, input, target = null) {
   const run = await api.get(`${root}/actions/runs/${target.runId}`);
   demand(run.id === target.runId && run.run_attempt === target.attempt && run.repository?.id === REPOSITORY_ID && run.path === WORKFLOW && integer(run.workflow_id) && run.event === 'pull_request', 'target workflow identity or attempt differs');
   demand(run.status !== 'completed' || run.conclusion === 'success', 'target run has already failed');
-  demand(run.head_sha === source.head && run.head_branch === pr.head.ref && run.head_repository?.id === pr.head.repo?.id, 'PR run is not the source review target');
+  demand(run.head_sha === source.head && run.head_branch === pr.head.ref && integer(pr.head.repo?.id) && run.head_repository?.id === pr.head.repo.id, 'PR run is not the source review target');
   return { ...binding, runId: run.id, attempt: run.run_attempt, workflowId: run.workflow_id };
 }
 export async function verifySourceAdmission({ cwd, api, input, target = null, now = Date.now }) {
@@ -205,7 +205,7 @@ async function main() {
     demand(process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' && process.env.GITHUB_REF === 'refs/heads/main' && process.env.GITHUB_REPOSITORY === REPOSITORY, 'submission must execute trusted main');
     const input = parseNativeAdmission(process.env.NATIVE_REVIEW_RECEIPT);
     if (input.version === 2) {
-      await fetchObjects(cwd, input, {});
+      await observeSourceAdmission(api, input); await fetchObjects(cwd, input, {});
       const binding = await verifySourceAdmission({ cwd, api, input });
       await writeFile('receipt.json', JSON.stringify({ input, binding }));
       await writeFile(process.env.GITHUB_OUTPUT, `artifact=native-review-pr-${input.target.prNumber}-${input.target.sourceHead}\n`, { flag: 'a' }); return;
@@ -231,7 +231,12 @@ export async function waitNativeAdmission({ event, env, api, cwd, now = Date.now
     // A group has no PR number in the event. The artifact input is only a hint;
     // authenticated queue membership below independently verifies it.
     const seed = { targetRunId: runId, targetAttempt: attempt, prNumber: pr };
-    const receipt = await readNativeAdmissionArtifact(api, seed);
+    let receipt;
+    try { receipt = await readNativeAdmissionArtifact(api, seed); } catch (error) {
+      // The run-keyed name is predictable; on a pull-request run an unusable artifact must not block the source receipt.
+      if (target !== 'pull_request') throw error;
+      console.log(`run-keyed receipt unusable, trying the source receipt: ${error.message}`); receipt = null;
+    }
     if (receipt) {
       const input = parseNativeAdmission(JSON.stringify(receipt.input));
       demand(target === receipt.binding.event && (target !== 'pull_request' || event.pull_request?.head?.sha === receipt.binding.sourceHead) && (target !== 'merge_group' || event.action === 'checks_requested' && event.merge_group?.base_ref === 'refs/heads/main' && event.merge_group.base_sha === receipt.binding.base && event.merge_group.head_sha === receipt.binding.head && event.merge_group.head_ref === receipt.binding.ref && env.GITHUB_SHA === receipt.binding.head && env.GITHUB_REF === receipt.binding.ref), 'receipt differs from hosted event');
