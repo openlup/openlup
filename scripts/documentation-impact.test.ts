@@ -333,7 +333,7 @@ describe("strict documentation base attribution", () => {
       const { root, base, source } = merged(); expect(resolveDocumentationBase(root, { env: pullRequest(root, base, source, base) }).provenance).toBe("pull-request");
     });
     it("F2 refuses swapped parents", () => {
-      const { root, base, source } = merged(); const swapped = git(root, "commit-tree", git(root, "rev-parse", "HEAD^{tree}"), "-p", source, "-p", base, "-m", "swapped");
+      const { root, base, source } = merged(); const swapped = git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "commit-tree", git(root, "rev-parse", "HEAD^{tree}"), "-p", source, "-p", base, "-m", "swapped");
       git(root, "checkout", "-q", "--detach", swapped); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, base, source, swapped) })).toThrow(/base\/head merge/);
     });
     it("F3 refuses a one-parent checkout", () => {
