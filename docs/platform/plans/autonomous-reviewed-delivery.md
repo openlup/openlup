@@ -438,12 +438,18 @@ admission.
   freshness each time.
 - Several receipts for one head are allowed. An artifact failing provenance is
   skipped rather than fatal.
-- Merge-group runs keep the run-keyed receipt above unchanged.
+- Merge-group runs keep the run-keyed receipt above unchanged (until W4, below).
 - W3 follow-up: on a pull-request run, an unreadable or untrusted run-keyed
   artifact no longer blocks the source receipt. Both pull-request paths require an integer head
   repository ID.
 - The activation proof below is the record of the activation decision. The
   same-SHA property it names now holds for merge-group runs only.
+- W4, approved 2026-10-03: item 4 above is amended. The source review carries
+  over to a merge group whose tree is the reviewed tree, or that is exactly the
+  reviewed change on its queue base, when the base's net change avoids the
+  change's paths and the admission, identity-binding, dependency and migration
+  machinery. Then the pull request's source
+  receipt admits the group. Other groups keep the two integration reviews.
 The configured local mirror retains all six jobs and refuses workflow drift;
 local verification does not assert hosted queue activation.
 
