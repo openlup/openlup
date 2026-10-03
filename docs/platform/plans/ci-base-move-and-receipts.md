@@ -552,3 +552,36 @@ the refusal wording.
 - **More than one queue build:** measured queue wait.
 - **Conflict replay:** a merge-group removal caused by a textual conflict.
 - **Parallel local checks:** a local verification time that blocks delivery.
+
+## 7. Concurrent documentation-receipt reconciliation
+
+[PR #126](https://github.com/openlup/openlup/pull/126) clarified the S5 test
+comment and recorded the live W4/W5 proof. Its merge at
+`07e646057acdffec0e5dcf274c94af246a1d9820` replaced the tooling no-impact marker
+in `CONTRIBUTING.md`. The independently reviewed transport candidate in
+[PR #119](https://github.com/openlup/openlup/pull/119),
+`855470a89e6023674180b7a7a6fda16a50102561`, replaced the same marker against
+`5ba29458965f31f7312d7a5d523f67899a75d3fe`. The single conflicting line was
+receipt metadata; their source changes remain separate.
+
+This documentation-only reconciliation restores the marker from that shared
+base and preserves PR #126's displaced receipt below as historical evidence.
+It retains the clarified test comment and all of the live proof record. Neither
+marker is blanket approval of a newer tree: each binds only its recorded delta.
+The transport marker still needs to validate against the actual integration.
+
+PR #119's source, reports and complete cycle-3 history remain unchanged. This
+reconciliation introduces no source continuation, budget reset or exception to
+ordinary conflict-resolution rules. The incoming change to the native session
+test is protected machinery, so W4's disjoint-move carry-over must refuse. The
+actual queue base, head and tree require two fresh full integration reviews
+under the unchanged source criteria, plus the required checks. Missing or
+expired source evidence, a mismatched documentation digest or an unreviewed
+group remains a delivery blocker.
+
+The following receipt belongs specifically to PR #126's comment-only delta;
+it is archived here, outside the active owner section:
+
+```text
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-e02d8b01138bf98503ad51a3977f8627544741975dae26491415f10eacc25fd0","reason":"Comment-only test change. The S5 rebase case in the native session test now says that prepare refuses with needs_rescope and keeps the state, and that only state prepared from scratch binds the new fork point; test behaviour, contributor commands, required checks and the documented review protocol are unchanged."} -->
+```
