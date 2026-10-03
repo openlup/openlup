@@ -182,7 +182,7 @@ describe('source-keyed pull-request receipts', () => {
     const event: { number?: number; repository: { private: boolean }; pull_request: { head: { sha: string } }; action?: string; merge_group?: Record<string, string> } = { number: 5, repository: { private: false }, pull_request: { head: { sha: f.head } } };
     const env: Record<string, string> = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_RUN_ID: '10', GITHUB_RUN_ATTEMPT: '1', GITHUB_EVENT_NAME: 'pull_request' };
     const submit = async () => ({ input, binding: await verifySourceAdmission({ cwd: f.cwd, api, input, now: () => clock }) });
-    const wait = (onSleep?: () => Promise<void>) => waitNativeAdmission({ event, env, api, cwd: f.cwd, now: () => clock, sleep: async (ms: number) => { clock += ms; await onSleep?.(); }, fetchObjects: async () => {} });
+    const wait = (onSleep?: () => Promise<void>, deadlineMs?: number) => waitNativeAdmission({ event, env, api, cwd: f.cwd, now: () => clock, sleep: async (ms: number) => { clock += ms; await onSleep?.(); }, deadlineMs, fetchObjects: async () => {} });
     const sourceName = (pr = 5, head = f.head) => `native-review-pr-${pr}-${head}`;
     return { f, input, dispatch, upload, api, event, env, submit, wait, sourceName, setClock: (value: number) => { clock = value; }, calls: () => calls, resetCalls: () => { calls = []; } };
   }
@@ -237,11 +237,12 @@ describe('source-keyed pull-request receipts', () => {
       await behindGroup(s, 'other.ts', 'unrelated\n'); await expect(s.wait()).resolves.toBeUndefined();
     });
     // A refused carry-over is logged and the wait continues for the run-keyed route.
+    // Two polls (a 30 s deadline) prove the continuation without 80 full polls.
     async function refusedThenExpired(s: Awaited<ReturnType<typeof sourceFixture>>, reason: string) {
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       try {
-        await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
-        expect(log.mock.calls.some(([line]) => String(line).includes('source receipt does not admit this merge group') && String(line).includes(reason))).toBe(true);
+        await expect(s.wait(undefined, 30_000)).rejects.toThrow('bounded receipt wait expired');
+        expect(log.mock.calls.filter(([line]) => String(line).includes('source receipt does not admit this merge group') && String(line).includes(reason))).toHaveLength(2);
       } finally { log.mockRestore(); }
     }
     it('G2 does not carry over when the base moved under a reviewed path', async () => {
