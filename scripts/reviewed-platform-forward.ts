@@ -13,41 +13,9 @@ const creations = new Set([
   "public.catalog_price_setup_apply(text,text)",
 ]);
 type FunctionBinding = { signature: string; beforeSha256: string | null; afterSha256: string };
-type RuntimeForwardBinding = ForwardBinding & { privileges: string[] };
 type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding[] };
-export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[] };
+export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
-const runtimeReplacements = new Set([
-  "public.admin_clients_search_v3(text,integer,integer,text)",
-  "public.subscription_list_due_for_renewal(integer,timestamp with time zone)",
-]);
-const runtimeExecutions = new Set([
-  "public.record_admin_audit_event(uuid,text,text,text,text,jsonb,jsonb,text,text,uuid,text)",
-  "public.subscription_current_template_snapshot(uuid)",
-]);
-// These column sets are fixed by the current installed readers, never supplied by the registry.
-const runtimeColumns: Record<string, ReadonlySet<string>> = {
-  admin_users: new Set(["id", "membership_state", "role", "is_machine_actor"]),
-  platform_communication_operators: new Set(["principal_id", "active"]),
-  email_sends: new Set(["status", "template_slug"]),
-  email_events: new Set(["event_type"]),
-  subscriptions: new Set(["id", "client_id", "cadence_days", "template_version", "currency", "region_code", "payment_method_kind", "status", "next_cycle_at", "updated_at"]),
-  clients: new Set(["id", "email", "first_name", "last_name", "phone", "identity_kind", "lifecycle_stage", "created_at", "updated_at"]),
-  commerce_payment_method_refs: new Set(["subscription_id", "provider_kind", "provider_customer_ref", "provider_method_ref", "method_kind", "status", "active", "expires_at", "client_id", "updated_at", "created_at"]),
-  subscription_cycles: new Set(["subscription_id", "status", "next_retry_at", "scheduled_at", "renewal_quarantined_until"]),
-  commerce_orders: new Set(["id", "client_id", "order_number", "status", "created_at", "updated_at"]),
-};
-function runtimePrivilegeKeys(statement: string): string[] {
-  const select = /^GRANT SELECT \(([a-z_, ]+)\) ON public\.([a-z_]+) TO service_role;$/u.exec(statement);
-  if (select) {
-    const columns = select[1]!.split(",").map((column) => column.trim());
-    const allowed = runtimeColumns[select[2]!];
-    if (allowed && columns.length > 0 && new Set(columns).size === columns.length && columns.every((column) => allowed.has(column))) return columns.map((column) => `${select[2]}.${column}`);
-  }
-  const execute = /^GRANT EXECUTE ON FUNCTION (public\.[a-z_]+\([^)]*\)) TO service_role;$/u.exec(statement);
-  if (execute && runtimeExecutions.has(execute[1]!)) return [`EXECUTE ${execute[1]}`];
-  throw new Error("reviewed replacement runtime privilege is outside the fixed reader allowlist");
-}
 const hash = (value: unknown) => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
 
 export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegistry {
@@ -66,19 +34,6 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
   }
   if (replaced.size !== replacements.size || [...replacements].some((signature) => !replaced.has(signature))) throw new Error("reviewed replacement registry must bind exactly the three approved existing signatures");
   if (signatures.size !== replacements.size + creations.size || [...creations].some((signature) => !signatures.has(signature) || replaced.has(signature))) throw new Error("reviewed replacement registry must also bind exactly the two companion creations");
-  if (raw.runtimeForwards !== undefined) {
-    if (!Array.isArray(raw.runtimeForwards) || raw.runtimeForwards.length !== 1) throw new Error("reviewed replacement runtime registry requires exactly one forward");
-    const forward = raw.runtimeForwards[0]!;
-    if (!/^supabase\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== runtimeReplacements.size || !Array.isArray(forward.privileges) || forward.privileges.length === 0) throw new Error("reviewed replacement runtime registry has an invalid forward");
-    const runtimeSignatures = new Set<string>();
-    for (const binding of forward.functions) {
-      if (!runtimeReplacements.has(binding.signature) || runtimeSignatures.has(binding.signature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed replacement runtime registry has an invalid or duplicate existing signature");
-      runtimeSignatures.add(binding.signature);
-    }
-    if (new Set(forward.privileges).size !== forward.privileges.length) throw new Error("reviewed replacement runtime registry has duplicate privileges");
-    const privilegeKeys = forward.privileges.flatMap(runtimePrivilegeKeys);
-    if (new Set(privilegeKeys).size !== privilegeKeys.length) throw new Error("reviewed replacement runtime registry has duplicate privilege capabilities");
-  }
   return raw;
 }
 
@@ -130,24 +85,19 @@ function sqlStatements(sql: string, dump = false): string[] {
 /** Hash the raw CREATE statement, including its terminating semicolon; argument names/defaults are not identity. */
 function functionSignature(name: string, argumentsText: string): string {
   const types = argumentsText.trim() === "" ? [] : argumentsText.split(",").map((argument) => {
-    const match = /^(?:[a-z_][a-z0-9_]* )?(uuid|text|jsonb|integer|timestamp with time zone)(?: DEFAULT [\s\S]+)?$/iu.exec(argument.trim());
+    const match = /^(?:[a-z_][a-z0-9_]* )?(uuid|text|jsonb|integer)(?: DEFAULT [\s\S]+)?$/iu.exec(argument.trim());
     if (!match) throw new Error("reviewed replacement has an unsupported argument identity");
     return match[1]!.toLowerCase();
   });
-  const signature = `${name.toLowerCase()}(${types.join(",")})`;
-  if (types.includes("timestamp with time zone") && signature !== "public.subscription_list_due_for_renewal(integer,timestamp with time zone)") throw new Error("reviewed replacement has an unsupported timestamp identity");
-  return signature;
+  return `${name.toLowerCase()}(${types.join(",")})`;
 }
-
-// The newly admitted due-reader alone has a timestamp default containing parentheses.
-const identityHeaderSql = (statement: string) => statement.replace(/(public\.subscription_list_due_for_renewal\([^;]*timestamp with time zone DEFAULT )now\(\)/iu, "$1now");
 
 export function reviewedFunctionDefinitions(bytes: Buffer, names?: Set<string>): Map<string, string> {
   const result = new Map<string, string>();
   for (const statement of sqlStatements(bytes.toString("utf8"), names !== undefined)) {
     const prefix = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(/iu.exec(statement);
     if (!prefix || (names && !names.has(prefix[1]!.toLowerCase()))) continue;
-    const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) RETURNS /iu.exec(identityHeaderSql(statement));
+    const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) RETURNS /iu.exec(statement);
     if (!header) throw new Error("reviewed replacement has an unsupported function header");
     const signature = functionSignature(header[1]!, header[2]!);
     if (result.has(signature)) throw new Error(`reviewed replacement has a duplicate signature: ${signature}`);
@@ -192,7 +142,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const targetRegistry = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);
-  const forward = [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? [])].find((entry) => entry.path === path);
+  const forward = [...registry.replacementForwards, ...registry.creationForwards].find((entry) => entry.path === path);
   if (!forward || sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   let approval = base;
   if (release) {
@@ -208,45 +158,10 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (!baseline || sqlSha256(baseline) !== registry.baselineSha256) throw new Error("reviewed replacement immutable baseline drifted");
   const names = new Set(forward.functions.map(({ signature }) => signature.split("(")[0]!));
   const prior = reviewedFunctionDefinitions(baseline, names);
-  const priorStatements = new Map<string, string>();
-  const collectPriorStatements = (source: Buffer) => {
-    for (const statement of sqlStatements(source.toString("utf8"), true)) {
-      const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) RETURNS /iu.exec(identityHeaderSql(statement));
-      if (header && names.has(header[1]!.toLowerCase())) priorStatements.set(functionSignature(header[1]!, header[2]!), statement);
-    }
-  };
-  collectPriorStatements(baseline);
   const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", "supabase/migrations/"]).toString("utf8").trim().split("\n").filter((item) => item !== MANAGED_BASELINE && item < path).sort();
-  for (const priorPath of paths) {
-    const source = blob(root, head, priorPath)!;
-    for (const [signature, sha256] of reviewedFunctionDefinitions(source, names)) prior.set(signature, sha256);
-    collectPriorStatements(source);
-  }
+  for (const priorPath of paths) for (const [signature, sha256] of reviewedFunctionDefinitions(blob(root, head, priorPath)!, names)) prior.set(signature, sha256);
   const definitions = reviewedFunctionDefinitions(bytes);
-  if (registry.runtimeForwards?.includes(forward as RuntimeForwardBinding)) {
-    const runtime = forward as RuntimeForwardBinding;
-    const privileges: string[] = [];
-    const headerAttributes = (statement: string) => {
-      const opening = /\bAS (\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/u.exec(statement);
-      if (!opening) throw new Error("reviewed replacement runtime requires a dollar body");
-      const closing = statement.indexOf(opening[1]!, opening.index + opening[0].length);
-      if (closing < 0 || !/^\s*;\s*$/u.test(statement.slice(closing + opening[1]!.length))) throw new Error("reviewed replacement runtime refuses attributes after its dollar body");
-      return statement.slice(0, opening.index).replace(/^CREATE OR REPLACE /u, "CREATE ");
-    };
-    for (const statement of sqlStatements(bytes.toString("utf8"))) {
-      if (/^(?:BEGIN|COMMIT);$/iu.test(statement)) continue;
-      const header = /^CREATE OR REPLACE FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) RETURNS /iu.exec(identityHeaderSql(statement));
-      if (header) {
-        const signature = functionSignature(header[1]!, header[2]!);
-        const preceding = priorStatements.get(signature);
-        if (!runtimeReplacements.has(signature) || !preceding || headerAttributes(statement) !== headerAttributes(preceding)) throw new Error("reviewed replacement runtime function attributes drifted");
-        continue;
-      }
-      runtimePrivilegeKeys(statement);
-      privileges.push(statement);
-    }
-    if (privileges.length !== runtime.privileges.length || privileges.some((statement, index) => statement !== runtime.privileges[index])) throw new Error("reviewed replacement runtime privileges differ from exact statement pins");
-  } else assertFunctionStatements(bytes, definitions);
+  assertFunctionStatements(bytes, definitions);
   if (definitions.size !== forward.functions.length) throw new Error("reviewed replacement has missing or additional function signatures");
   for (const binding of forward.functions) {
     if (definitions.get(binding.signature) !== binding.afterSha256 || (prior.get(binding.signature) ?? null) !== binding.beforeSha256) throw new Error(`reviewed replacement definition drifted: ${binding.signature}`);

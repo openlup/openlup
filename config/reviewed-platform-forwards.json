@@ -47,36 +47,5 @@
         }
       ]
     }
-  ],
-  "runtimeForwards": [
-    {
-      "path": "supabase/migrations/20261002100000_runtime_reader_capabilities.sql",
-      "sha256": "91ed621578c651f1ee12175aec04a33f80f07d52daeef98fd4c93623f7cebeab",
-      "functions": [
-        {
-          "signature": "public.admin_clients_search_v3(text,integer,integer,text)",
-          "beforeSha256": "e5a10571dbd64a37ea078d21872cc56baecb1b0bdc4207f5629d0b164d2d5f51",
-          "afterSha256": "7a15ad2e922f46769d215f6aaf0bd1a70a0154a777feda57d17e28c959c0c415"
-        },
-        {
-          "signature": "public.subscription_list_due_for_renewal(integer,timestamp with time zone)",
-          "beforeSha256": "b77f71a4893601a0e3498eb6a138947fe8c8c567d1ec8ed339c53bdf0277cc25",
-          "afterSha256": "c38fe4587ccadf7e8da8ba8cfeba62a288649130b6cacb359ea8f9dabf2fd030"
-        }
-      ],
-      "privileges": [
-        "GRANT EXECUTE ON FUNCTION public.record_admin_audit_event(uuid,text,text,text,text,jsonb,jsonb,text,text,uuid,text) TO service_role;",
-        "GRANT EXECUTE ON FUNCTION public.subscription_current_template_snapshot(uuid) TO service_role;",
-        "GRANT SELECT (id, membership_state, role, is_machine_actor) ON public.admin_users TO service_role;",
-        "GRANT SELECT (principal_id, active) ON public.platform_communication_operators TO service_role;",
-        "GRANT SELECT (status, template_slug) ON public.email_sends TO service_role;",
-        "GRANT SELECT (event_type) ON public.email_events TO service_role;",
-        "GRANT SELECT (id, email, first_name, last_name, phone, identity_kind, lifecycle_stage, created_at, updated_at) ON public.clients TO service_role;",
-        "GRANT SELECT (id, client_id, order_number, status, created_at, updated_at) ON public.commerce_orders TO service_role;",
-        "GRANT SELECT (id, client_id, updated_at, cadence_days, template_version, currency, region_code, payment_method_kind, status, next_cycle_at) ON public.subscriptions TO service_role;",
-        "GRANT SELECT (subscription_id, status, next_retry_at, scheduled_at, renewal_quarantined_until) ON public.subscription_cycles TO service_role;",
-        "GRANT SELECT (subscription_id, provider_kind, provider_customer_ref, provider_method_ref, method_kind, status, active, expires_at, client_id, updated_at, created_at) ON public.commerce_payment_method_refs TO service_role;"
-      ]
-    }
   ]
 }
