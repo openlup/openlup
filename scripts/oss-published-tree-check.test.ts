@@ -16,6 +16,7 @@ import "./documentation-cli.test.ts";
 import "./ast-grep/check-filewide-ignore.test.ts";
 import "./ast-grep/rule-tests/portable-no-industry-contracts.test.ts";
 
+import { REQUIRED_CONTEXTS, contextPassed } from "./packages/release-gate.ts";
 import {
   PUBLIC_EXECUTION_ENTRYPOINTS,
   createPublicPublicationCatalog,
@@ -64,12 +65,40 @@ describe("maintainer-controlled source preview workflow", () => {
     expect(sourcePreviewWorkflow).not.toContain("${{ inputs.target_commit }}\"\n");
   });
 
-  it("reuses the package workflow's required-context check exactly", () => {
-    const packages = readFileSync(join(ROOT, ".github/workflows/publish-packages.yml"), "utf8");
-    const loop = (text: string) => / {10}for context in [\s\S]*? {10}done/u.exec(text)?.[0];
-    expect(loop(sourcePreviewWorkflow)).toBe(loop(packages)?.replaceAll("GITHUB_SHA", "TARGET_COMMIT"));
+  it("decides the required contexts exactly as the package release gate does", () => {
+    // The source preview keeps a shell copy of the package release gate's required-check decision,
+    // once per job. Run that copy against stubbed GitHub answers and compare every verdict with the gate's.
+    const loops = [...sourcePreviewWorkflow.matchAll(/^ {10}for context in [\s\S]*? {10}done\n/gmu)].map((match) => match[0].replace(/^ {10}/gmu, ""));
+    expect(loops).toHaveLength(2);
+    expect(loops[1]).toBe(loops[0]);
+    expect(loops[0]).toContain(`for context in ${REQUIRED_CONTEXTS.join(" ")}; do\n`);
     expect(sourcePreviewWorkflow).toContain('git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD');
     expect(sourcePreviewWorkflow).toContain('test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"');
+    const directory = mkdtempSync(join(tmpdir(), "openlup-preview-checks-"));
+    try {
+      const gh = join(directory, "gh");
+      writeFileSync(gh, '#!/bin/sh\n[ "$1" = api ] && [ "$3" = --jq ] || exit 1\ncontext=${2#*check_name=}\ncontext=${context%%&*}\nexec jq -r "$4" "$ANSWERS/$context.json"\n');
+      chmodSync(gh, 0o755);
+      const run = (conclusion: string | null, slug: string | null = "github-actions") => ({ name: "test", status: "completed", app: slug === null ? null : { slug }, conclusion });
+      const states: Array<[string, unknown[]]> = [
+        ["one success", [run("success")]], ["two successes", [run("success"), run("success")]], ["another app's failure next to a success", [run("success"), run("failure", "another-ci")]],
+        ["no run", []], ["another app's success only", [run("success", "another-ci")]], ["a run without an app", [run("success", null)]],
+        ["a failure among successes", [run("success"), run("failure")]], ["a failure next to another app's success", [run("failure"), run("success", "another-ci")]],
+        ["an unfinished run", [run(null)]], ["a skipped run", [run("skipped")]], ["a cancelled run", [run("cancelled")]],
+      ];
+      const environment = Reflect.get(process, "env") as NodeJS.ProcessEnv;
+      const verdicts = states.map(([name, testRuns]) => {
+        const answers = Object.fromEntries(REQUIRED_CONTEXTS.map((context) => [context, context === "test" ? testRuns : [run("success")]]));
+        for (const [context, runs] of Object.entries(answers)) writeFileSync(join(directory, `${context}.json`), JSON.stringify({ total_count: runs.length, check_runs: runs }));
+        const shell = spawnSync("bash", ["-e", "-o", "pipefail", "-c", loops[0]!], { env: { ...environment, PATH: `${directory}:${environment.PATH}`, ANSWERS: directory, GITHUB_REPOSITORY: "openlup/openlup", TARGET_COMMIT: "a".repeat(40) }, encoding: "utf8", timeout: 10_000 });
+        const gate = Object.values(answers).every((runs) => contextPassed({ total_count: runs.length, check_runs: runs }));
+        expect(shell.status === 0, `${name}: ${shell.stderr}`).toBe(gate);
+        return gate;
+      });
+      expect(new Set(verdicts), "the states cover both verdicts").toEqual(new Set([true, false]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("checks the target before the approval request and cuts a source snapshot with no package", () => {

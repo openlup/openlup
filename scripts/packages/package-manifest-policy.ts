@@ -2,9 +2,11 @@
  * The release shape of every `@openlup/*` package, checked from its manifest alone.
  *
  * `config/openlup-packages.json` lists every package directory, as released or
- * as unreleased. Each released package carries its own `MAJOR.MINOR.PATCH`
- * version in its own manifest and is released on its own, under the tag
- * `openlup-<directory name>-v<version>`. A released package is either not yet
+ * as unreleased. Each released package carries a `MAJOR.MINOR.PATCH` version in
+ * its own manifest and is released under the tag
+ * `openlup-<directory name>-v<version>`. While `@openlup/core` is below 1.0 the
+ * publishable packages form one set: all carry the same set version `0.N.P`
+ * (`checkSetVersions`). A released package is either not yet
  * publishable (`publish: false`, and then its manifest says `private: true`) or
  * publishable, and then its manifest carries exactly the public,
  * provenance-backed publication settings. An unreleased package is always
@@ -25,6 +27,10 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 /** A release version: `MAJOR.MINOR.PATCH` without leading zeros or a prerelease, because every release moves npm `latest`. */
 export const RELEASE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u;
+/** A set version `0.N.P`, N from 1: below 1.0 every publishable package carries the same one. The version model at 1.0 is undecided, so 1.0.0 is refused. */
+export const SET_VERSION = /^0\.[1-9]\d*\.(?:0|[1-9]\d*)$/u;
+/** The package value of a release dispatch that names the whole set, so no package directory may take it. */
+export const SET_DISPATCH = "all";
 /** The one tag a package release carries, `openlup-<directory name>-v<release version>`, anchored at both ends. */
 export const PACKAGE_RELEASE_TAG = /^openlup-([a-z0-9][a-z0-9-]*)-v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/u;
 const DIRECTORY = /^packages\/[a-z0-9][a-z0-9-]*$/;
@@ -87,9 +93,28 @@ export function parsePackagesConfig(source: string): PackagesConfig {
     return { directory: row.directory, reason: row.reason };
   });
   const directories = [...packages.map(({ directory }) => directory), ...unreleased.map(({ directory }) => directory)];
+  // A package's name is @openlup/<directory name>, so a name listed twice is a directory listed twice.
   if (new Set(directories).size !== directories.length) fail("a package directory is listed twice");
-  if (new Set(packages.map(({ name }) => name)).size !== packages.length) fail("a package name is listed twice");
+  if (directories.includes(`packages/${SET_DISPATCH}`)) fail(`packages/${SET_DISPATCH} is reserved: a release dispatch names the whole set with ${SET_DISPATCH}`);
   return { schemaVersion: 2, packages, unreleased };
+}
+
+/**
+ * The publishable packages form one set: each carries a set version `0.N.P`, and all carry the
+ * same one. A version that is not `MAJOR.MINOR.PATCH` at all is the per-package `version` finding.
+ */
+export function checkSetVersions(config: PackagesConfig, versions: PackageVersions): Finding[] {
+  const publishable = config.packages.filter(({ publish }) => publish);
+  const findings: Finding[] = [];
+  for (const { name } of publishable) {
+    const version = versions.get(name);
+    if (typeof version === "string" && RELEASE_VERSION.test(version) && !SET_VERSION.test(version)) findings.push({ subject: name, rule: "set-version", detail: `${version} is not a set version 0.N.P below 1.0` });
+  }
+  if (new Set(publishable.map(({ name }) => versions.get(name))).size > 1) {
+    const listed = publishable.map(({ name }) => `${name}@${String(versions.get(name))}`).join(", ");
+    findings.push({ subject: PACKAGES_CONFIG_PATH, rule: "set-version", detail: `every publishable package carries one set version, not ${listed}; run npm run release:bump -- --set <version>` });
+  }
+  return findings;
 }
 
 /** Every `packages/<name>/package.json` in the tree is listed exactly once, as released or as unreleased. */

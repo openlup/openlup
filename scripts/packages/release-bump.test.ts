@@ -11,6 +11,8 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 const lock = (packages: Record<string, unknown>) => `${JSON.stringify({ name: "fixture", version: "0.0.0", lockfileVersion: 3, requires: true, packages }, null, 2)}\n`;
 const changelog = "# Changelog\n\n## [Unreleased]\n\n- Publishable on the npm `preview` dist-tag as `0.7.0`, for source preview\n  `openlup-source-preview/7`.\n- Publishable on the npm `preview` dist-tag as `0.6.0`, for source preview\n  `openlup-source-preview/6`.\n";
 const line = (version: string, name = "core") => `- Publishable on the npm \`latest\` dist-tag as \`${version}\`, from tag\n  \`openlup-${name}-v${version}\`.\n`;
+/** The version's section, which opens with its "Publishable" line, directly below the Unreleased heading. */
+const section = (version: string, name = "core") => `## [${version}]\n\n${line(version, name)}\n`;
 
 /** Two released packages with their own versions; core's lock and the root lock also hold an unrelated dependency at 0.7.0. */
 function fixture(): { root: string; files: Record<string, string> } {
@@ -31,7 +33,7 @@ const read = (root: string, files: Record<string, string>) => Object.fromEntries
 const changedLines = (before: string, after: string) => before.split("\n").map((text, index) => [text, after.split("\n")[index]]).filter(([was, now]) => was !== now);
 
 describe("release:bump", () => {
-  it("rewrites exactly the one package's version strings and adds its CHANGELOG line", () => {
+  it("rewrites exactly the one package's version strings and opens its CHANGELOG section", () => {
     const { root, files } = fixture();
     expect(bumpRelease(root, "core", "0.9.0").sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/package-lock.json", "packages/core/package.json"]);
     const after = read(root, files);
@@ -42,9 +44,9 @@ describe("release:bump", () => {
     expect(JSON.parse(after["package-lock.json"]!).packages).toMatchObject({ "node_modules/unrelated": { version: "0.7.0" }, "packages/core": { version: "0.9.0" }, "packages/kit": { version: "2.1.0" } });
     expect(JSON.parse(after["packages/core/package-lock.json"]!)).toMatchObject({ version: "0.9.0", packages: { "": { version: "0.9.0" }, "node_modules/unrelated": { version: "0.7.0" } } });
     expect(JSON.parse(after["packages/core/package.json"]!).dependencies).toEqual({ unrelated: "0.7.0" });
-    expect(after["packages/core/CHANGELOG.md"]).toBe(changelog.replace("- Publishable on the npm `preview` dist-tag as `0.7.0`", `${line("0.9.0")}$&`));
+    expect(after["packages/core/CHANGELOG.md"]).toBe(changelog.replace("## [Unreleased]\n\n", `$&${section("0.9.0")}`));
     expect(bumpRelease(root, "core", "0.9.1")).toContain("packages/core/CHANGELOG.md");
-    expect(readFileSync(join(root, "packages/core/CHANGELOG.md"), "utf8")).toBe(changelog.replace("- Publishable on the npm `preview` dist-tag as `0.7.0`", `${line("0.9.1")}${line("0.9.0")}$&`));
+    expect(readFileSync(join(root, "packages/core/CHANGELOG.md"), "utf8")).toBe(changelog.replace("## [Unreleased]\n\n", `$&${section("0.9.1")}${section("0.9.0")}`));
   });
 
   it("versions each package on its own and writes no CHANGELOG line for an unpublishable one", () => {
@@ -56,7 +58,7 @@ describe("release:bump", () => {
     for (const path of ["packages/core/package.json", "packages/core/package-lock.json", "packages/core/CHANGELOG.md", "config/openlup-packages.json"]) expect(after[path], path).toBe(files[path]);
   });
 
-  it("refuses a version that does not advance, an unknown package, a skewed carrier and a missing CHANGELOG line, and writes nothing", () => {
+  it("refuses a version that does not advance, an unknown package, a skewed carrier and a CHANGELOG without its Unreleased heading, and writes nothing", () => {
     const { root, files } = fixture();
     for (const version of ["0.7.0", "0.6.9", "0.0.1"]) expect(() => bumpRelease(root, "core", version), version).toThrow(/^@openlup\/core is at 0\.7\.0; the next version must be a release version above it$/u);
     for (const version of ["0.9.0-rc.1", "09.0.0", "0.9", "latest"]) expect(() => bumpRelease(root, "core", version), version).toThrow(/is not a MAJOR\.MINOR\.PATCH release version/u);
@@ -67,7 +69,7 @@ describe("release:bump", () => {
     expect(() => bumpRelease(root, "core", "0.9.0")).toThrow(/^packages\/core\/package-lock\.json: version is "0\.6\.0", not the current 0\.7\.0$/u);
     writeFileSync(join(root, "packages/core/package-lock.json"), files["packages/core/package-lock.json"]!);
     writeFileSync(join(root, "packages/core/CHANGELOG.md"), "# Changelog\n");
-    expect(() => bumpRelease(root, "core", "0.9.0")).toThrow(/CHANGELOG\.md: has no "Publishable on the npm" line/u);
+    expect(() => bumpRelease(root, "core", "0.9.0")).toThrow(/CHANGELOG\.md: has no "## \[Unreleased\]" heading followed by a blank line/u);
     expect(read(root, files)).toEqual({ ...files, "packages/core/CHANGELOG.md": "# Changelog\n" });
   });
 
