@@ -247,9 +247,15 @@ function markdownFiles(root: string): string[] {
 }
 
 function markdownLinkTargets(source: string): string[] {
-  const inline = [...source.matchAll(/!?\[[^\]]*\]\(\s*/g)]
+  // Inspect destination delimiters conservatively; nested/escaped label text
+  // and blockquote/list containers must not hide a package-local target.
+  const inline = [...source.matchAll(/\]\(\s*/g)]
     .map((match) => inlineLinkTarget(source.slice(match.index + match[0].length)));
-  const references = [...source.matchAll(/^ {0,3}\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))/gm)]
+  // Generated declarations contain index signatures, not link definitions.
+  const referenceSource = source
+    .replace(/^ {0,3}(`{3,})[^`\r\n]*\r?\n[\s\S]*?^ {0,3}\1`*[ \t]*\r?$/gm, "")
+    .replace(/^ {0,3}(~{3,})[^\r\n]*\r?\n[\s\S]*?^ {0,3}\1~*[ \t]*\r?$/gm, "");
+  const references = [...referenceSource.matchAll(/\[(?:\\.|[^\]\\])+\]:\s*(?:<([^>]+)>|(\S+))/g)]
     .map((match) => match[1] ?? match[2]);
   return [...inline, ...references].filter((target): target is string => Boolean(target));
 }

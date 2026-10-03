@@ -244,7 +244,9 @@ The supervisor writes approved intent data to the ignored
 `criteria` and `requiredRoles`; an adapter may supply an observed
 `authorSessionId`. `node scripts/agent-review-session.mjs prepare` computes the
 candidate, role floor and request binding, then stores bounded session state in
-`.context/scratch/agent-review/session.json`. An unchanged candidate retains its
+`.context/scratch/agent-review/session.json`. The candidate's base is its fork
+point, `git merge-base HEAD origin/main`; evidence stays current while `main`
+moves ahead and that fork point is unchanged. An unchanged candidate retains its
 request and reports. A committed repair adds a bounded `history` round and a
 version-2 request with `continuation`: cycle, review mode, prior-round digest,
 actual delta paths, neutral finding cards and repair risk. The optional top-level `repairRisk`

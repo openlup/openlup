@@ -1,6 +1,6 @@
 # Plan: checks that survive a moving `main`, and pull-request receipts without a race
 
-Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115; local steps 0b and 4 applied); W4 (review carry-over in the merge queue) approved the same day.
+Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121; local steps 0b and 4 applied); W5 (fork-point review base) approved the same day.
 Audience: the agents executing it, their reviewers and the maintainer.
 
 ## 1. Why: recorded failures only
@@ -93,6 +93,9 @@ The maintainer approves, once:
 - W4 (approved on 2026-10-03, after W0–W3): a source review carries over to a
   merge group as S4 defines. Merge groups that do not qualify keep the run-keyed
   route.
+- W5 (approved on 2026-10-03, after W4): the local review base is the
+  candidate's fork point, as S5 defines. The maintainer reads it before
+  sign-off and alone reinstalls the maintainer-local copy.
 - The sign-off classes:
   - W2 changes an admission control, so the owner reads it. That read of the
     final candidate before merge certifies the sign-offs the agent wrote on its
@@ -254,6 +257,32 @@ the queue by their source receipts alone.
 - a receipt timeout on a pull request whose v2 receipt was submitted in time;
 - a base-SHA or fence red after W1;
 - a step that needs a file outside its scope.
+
+### Step 7, W5: a local review survives a moving `main` (spec S5)
+
+**Status:** approved 2026-10-03.
+
+**Why.** The local review session bound a review to `origin/main` itself. When
+another pull request merged before the author pushed, verify and pre-push
+refused the exact reviewed commit, and the author had to rebase and obtain a
+fresh full review. That contradicts the no-rebase-for-freshness rule of
+section 2, and is the local twin of the queue cost W4 removed.
+
+**What.** Specification S5: the review base is the candidate's fork point.
+
+**Scope:**
+- `scripts/agent-review-session.mjs` and its tests;
+- the review-base sentences in `AGENTS.md` and the agent guide,
+  `CONTRIBUTING.md` and the delivery plan;
+- this plan.
+
+**Sign-off:** the maintainer reads the candidate before sign-off, because this
+changes the review gate that verify and pre-push run.
+
+**Installed copy.** Verify and pre-push run the maintainer-local installed copy
+of the session script, and add no base check of their own. S5 takes effect
+locally only after the maintainer reinstalls that copy from `main`; until then,
+including for this step's own push, the base must still equal `origin/main`.
 
 ## 5. Specifications
 
@@ -446,6 +475,52 @@ their source receipt):
   over.
 
 G1 and G5 fail on the implementation before W4.
+
+### S5. Fork-point review base
+
+**Contract.** In `scripts/agent-review-session.mjs`:
+- the fork point is the single merge base of `HEAD` and the observed
+  `origin/main` (`git merge-base --all`, commit graph off). None, or several,
+  refuses;
+- `captureSessionCandidate` defaults its base to the fork point and requires a
+  given base to equal it, in place of equality with `origin/main`. Prepare,
+  record, verify, status and the pristine baseline all bind through it;
+- `prepare` defaults `base` to the fork point instead of `origin/main`.
+
+So:
+- `main` moving ahead leaves the fork point, and the evidence, current;
+- a repair commit on the un-rebased branch keeps its base and lineage;
+- merging `main` into the branch moves the fork point, and the existing
+  ancestor-preserving base integration with fresh full review applies;
+- a rebase rewrites the reviewed head: as before, prepare reports
+  `needs_rescope`, and a fresh session starts at the new fork point;
+- a rewritten `main` on which the reviewed base is no longer the fork point
+  refuses.
+
+**Unchanged:** exact head, tree, working and index digests; the authenticated
+object graph; 24-hour freshness; lineage, delta and the two-cycle budget; hosted
+admission, which already verifies a review against its own base; S4.
+
+**Known limit.** Locally, the review covers the change against its fork point,
+not the current `main`. The merge queue checks the integration: S4 carries the
+review over only on an unrelated base move, and otherwise two integration
+reviews apply.
+
+**Falsifiers** (`scripts/agent-review-session.test.ts`, "fork-point review base
+(S5)"):
+- **(a)** Reviewed at base B, `origin/main` advances on an unrelated path, and
+  the unchanged candidate still verifies as reviewed.
+- **(b)** `main` rewritten so that B is not an ancestor: verify refuses (guard).
+- **(c)** Prepare after `main` advanced, on the unchanged candidate, preserves
+  the evidence byte for byte.
+- **(d)** A repair commit on the un-rebased branch gets a closure continuation
+  at base B.
+- **(e)** Merging `main` moves the base to M with a full continuation. A rebase
+  reports `needs_rescope`, and a fresh session takes base M (guard).
+- A pristine checkout stays pristine when `main` moves ahead of it.
+
+(a), (c), (d) and the pristine case fail before W5; (b) and (e) differ only in
+the refusal wording.
 
 ## 6. Deferred, with the evidence that would reopen each
 

@@ -129,7 +129,9 @@ Handle `needs_agent_review` within the active task. Unchanged prepare preserves
 evidence; at most two automatic repair/review continuation cycles are allowed,
 including full-review escalation. Exhaustion remains blocked while the supervisor regroups
 the execution approach within existing authority; no reset, bypass or automatic
-merge follows. Changed intent requires explicit regrouping. An ancestor-preserving base
+merge follows. Changed intent requires explicit regrouping. The review base is the
+candidate's fork point (`git merge-base HEAD origin/main`), so verify and pre-push keep
+accepting a reviewed candidate while `main` moves ahead. An ancestor-preserving base
 integration requires fresh full-scope review, preserving history and budget. Do not rebase
 or merge `main` only to catch up: the merge queue integrates, and a rebase is for a textual
 conflict. When criteria,

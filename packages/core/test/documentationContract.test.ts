@@ -135,6 +135,38 @@ describe("extracted-root documentation contract", () => {
     expect(() => check(root)).not.toThrow();
   });
 
+  it.each(["Guide [subscription]", "Guide \\] subscription", "Guide [nested [label]]"])("checks packed destinations with the inline label %s", (label) => {
+    const root = fixture(`[${label}](docs/guide.md)\n[${label}](https://example.invalid/guide)\n[${label}](#setup)\n`);
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
+      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    );
+    expect(() => check(root)).not.toThrow();
+  });
+
+  it.each(["> ", "- ", "1. ", "> - ", "- Parent\n\n    "])("checks packed reference destinations in the container %s", (prefix) => {
+    const root = fixture(`[Guide][target]\n[Website][url]\n[Section][anchor]\n\n${prefix}[target]: docs/guide.md\n${prefix}[url]: https://example.invalid/guide\n${prefix}[anchor]: #setup\n`);
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
+      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    );
+    expect(() => check(root)).not.toThrow();
+  });
+
+  it("checks packed reference destinations with an escaped bracket in the label", () => {
+    const root = fixture("[Guide][tar\\]get]\n\n> [tar\\]get]: docs/guide.md\n");
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
+      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    );
+    expect(() => check(root)).not.toThrow();
+  });
+
+  it.each(["```", "~~~"])("does not read index signatures as link definitions inside %s fences", (fence) => {
+    const root = fixture(`${fence}ts\nexport type Data = {\n    [key: string]: MissingType;\n};\n${fence}\n[Guide][target]\n\n> [target]: docs/guide.md\n`);
+    expect(() => check(root)).not.toThrow();
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
+      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    );
+  });
+
   it.each(["docs/guide(extra).md", "docs/guide(extra(details)).md"])("preserves the balanced-parentheses destination %s", (target) => {
     const root = fixture(`[Guide](${target})\n`);
     writeFileSync(join(root, target), "# Guide\n");
