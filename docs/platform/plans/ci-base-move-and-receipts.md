@@ -63,7 +63,8 @@ would reopen each item.
     `gh pr merge --auto --squash` and the maintainer's configured author email.
   - Never rebase only because the branch is behind. If `main` moved, S4 decides
     whether the source review carries over or two integration reviews apply.
-  - Rebase only on a textual conflict, followed by a fresh full review.
+  - Integrate `main` only on a textual conflict, by merging it, followed by a
+    fresh full review.
 - **Stop and report**, with no repair attempted, on any of:
   - two repair cycles exhausted;
   - a required red that the step did not cause and that is not an objective
@@ -203,7 +204,8 @@ No release, repository setting, ruleset, secret or npm action is included.
 - W0, W2, W1 and the W3 follow-up merged with green required contexts;
 - the W2 live proof recorded;
 - the step 4 self-test green;
-- W4 and W5 merged, and W4's unchanged-tree live proof recorded.
+- W4 and W5 merged, and W4's unchanged-tree live proof recorded. The
+  disjoint-base-move live proof stays open and does not gate completion.
 
 A report of required reds by class over the next 30 merges follows, but does not
 gate completion.
@@ -501,7 +503,8 @@ So:
 - merging `main` into the branch moves the fork point, and the existing
   ancestor-preserving base integration with fresh full review applies;
 - a rebase rewrites the reviewed head: as before, prepare reports
-  `needs_rescope`, and a fresh session starts at the new fork point;
+  `needs_rescope`, and the supervisor regroups within existing authority,
+  keeping the repair budget and findings;
 - a rewritten `main` on which the reviewed base is no longer the fork point
   refuses.
 
@@ -524,7 +527,8 @@ reviews apply.
 - **(d)** A repair commit on the un-rebased branch gets a closure continuation
   at base B.
 - **(e)** Merging `main` moves the base to M with a full continuation. A rebase
-  reports `needs_rescope`, and a fresh session takes base M (guard).
+  reports `needs_rescope`; a session prepared from scratch would bind base M
+  (guard).
 - A pristine checkout stays pristine when `main` moves ahead of it.
 
 (a), (c), (d) and the pristine case fail before W5; (b) and (e) differ only in

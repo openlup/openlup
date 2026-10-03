@@ -116,7 +116,7 @@ repair/review continuation cycles across prepare and full-review escalation. Exh
 stays blocked while the supervisor regroups the execution approach within actual
 authority; it cannot restart the counter, bypass review or merge automatically.
 Changed intent requires explicit regrouping. The review base is the candidate's
-fork point (`git merge-base HEAD origin/main`), so `main` moving ahead does not
+fork point, the single `git merge-base HEAD origin/main`, so `main` moving ahead does not
 by itself make a review stale. An ancestor-preserving base integration, such as
 merging `main` to resolve a textual conflict, requires fresh full-scope review
 within the same budget; a rebase discards that lineage and never restarts the
