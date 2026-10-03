@@ -204,8 +204,7 @@ No release, repository setting, ruleset, secret or npm action is included.
 - W0, W2, W1 and the W3 follow-up merged with green required contexts;
 - the W2 live proof recorded;
 - the step 4 self-test green;
-- W4 and W5 merged, and W4's unchanged-tree live proof recorded. The
-  disjoint-base-move live proof stays open and does not gate completion.
+- W4 and W5 merged, and both W4 live proofs and the W5 live proof recorded.
 
 A report of required reds by class over the next 30 merges follows, but does not
 gate completion.
@@ -256,9 +255,16 @@ changes an approved admission rule.
 **Live proof:**
 - **Unchanged tree, observed 2026-10-03.** #122's merge group was admitted by
   its source receipt alone, with no run-keyed receipt or live session.
-- **Disjoint base move.** Planned: two independent pull requests armed
-  together, the second admitted by its source receipt after the first merged.
-  Not yet observed live when this was written.
+- **Disjoint base move, observed 2026-10-03.** #123 changed only documentation
+  outside the listed machinery, and #124's paths, which included the policy
+  under `.github/`, were disjoint from #123's. Only the base move must avoid the
+  machinery. #123 merged first. #124's merge group, on #123's merge commit and
+  with a tree different from the reviewed one, logged "admission verified for this merge group by its source
+  receipt (disjoint base move)". No run-keyed receipt, integration review or
+  live session was involved.
+- **W5, observed the same day.** #124 was reviewed on its fork point before
+  #123 merged, and was then verified locally and pushed without a rebase or a
+  new review.
 
 **Stop and report instead of repairing** if any of these happens:
 - a receipt timeout on a pull request whose v2 receipt was submitted in time;

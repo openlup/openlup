@@ -48,7 +48,7 @@ handling.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-273eae4d56b178424a6413a7f232b683602ac5700563a62fa645d26bc34716c0","reason":"The native session protocol adds only one explicit owner-bound full third review after two automatic cycles, preserving history, findings and two fresh roles. The contribution commands, existing required contexts and refusal requirements in this checks section remain unchanged; the manual continuation contract is explained in the native review section and protocol plan."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-e02d8b01138bf98503ad51a3977f8627544741975dae26491415f10eacc25fd0","reason":"Comment-only test change. The S5 rebase case in the native session test now says that prepare refuses with needs_rescope and keeps the state, and that only state prepared from scratch binds the new fork point; test behaviour, contributor commands, required checks and the documented review protocol are unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -61,7 +61,6 @@ anywhere but the repository root or a package root. It also refuses an adopter
 kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
 published `@openlup/*` package. Move such a file or extend the pattern; do not
 add an exception.
-
 
 ### Optional SonarQube Cloud diagnostics
 

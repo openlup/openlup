@@ -639,7 +639,8 @@ describe('fork-point review base (S5)', () => {
     git('merge', '-q', '--no-edit', 'refs/remotes/origin/main'); expect(invoke('verify').result.reason).toContain('fork point');
     const prepared = invoke('prepare'); expect(prepared.result.status).toBe('needs_agent_review'); const state = JSON.parse(await readFile(statePath, 'utf8'));
     expect(state.request.candidate.base).toBe(moved); expect(state.request.continuation).toMatchObject({ cycle: 1, mode: 'full', deltaPaths: ['unrelated.txt'] }); expect(state.request.roles).toHaveLength(2); expect(state.history[0].request.candidate.base).toBe(reviewedBase);
-    // A rebase rewrites the reviewed head: as before, it needs a changed execution approach (a fresh session) at the new fork point.
+    // A rebase rewrites the reviewed head: as before, prepare refuses with needs_rescope and keeps the state; the supervisor regroups
+    // without restarting the budget. Only state prepared from scratch, as below, binds the new fork point.
     git('reset', '-q', '--hard', reviewedHead); await writeFile(statePath, reviewed); git('rebase', '-q', 'refs/remotes/origin/main');
     expect(invoke('prepare').result).toMatchObject({ status: 'needs_rescope' }); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
     await rm(statePath); invoke('prepare'); expect(JSON.parse(await readFile(statePath, 'utf8')).request.candidate.base).toBe(moved);
