@@ -1,6 +1,6 @@
 # Plan: autonomous reviewed delivery
 
-Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts amended on 2026-10-03.
+Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts (W2), merge-group carry-over (W4, #121) and the fork-point review base (W5, #122) amended on 2026-10-03.
 Audience: contributors implementing and verifying the development workflow.
 
 ## Approved convergence implementation wave
@@ -62,7 +62,9 @@ cannot corrupt or overlap its heavy checks. Report observed reviewer counts,
 dogfooding findings and remaining limitations. Historical-red Draft publication,
 general selective-test caching, merge queues and cross-base review reuse were
 outside that convergence wave. The separately approved queue follow-up below
-does not expand its repair protocol or supply a general cross-base reuse rule.
+does not expand its repair protocol. Its W4 amendment adds only a bounded,
+mechanically checked carry-over for merge groups, not a general cross-base reuse
+rule.
 
 ## Outcome, scope and authority
 
@@ -292,6 +294,18 @@ not reset the two-cycle budget. An identical repeated prepare preserves partial
 or complete evidence and its original expiry; later unchanged-intent rounds may
 carry only the exact transition already present in their preserved lineage.
 
+For the single explicit owner continuation after exhaustion, `prepare` accepts
+`ownerContinuation` with exactly `priorRequestDigest`, `candidateDigest` and
+`ownerDecision`, alongside `fullRefresh: true`. Both digests are computed SHA256
+of `JSON.stringify` of the preserved request and actual candidate respectively;
+they are computed evidence, not owner quotations. Record the actual fresh human
+decision in `ownerDecision`. This process evidence is not an authenticated owner
+signature. Only cycle 3 is accepted, with unchanged intent and author, complete
+preserved lineage, actual ancestor delta and two fresh full reviews. The
+automatic limit remains two. Wrong bindings, early use, changed intent, missing
+history, reduced coverage and a fourth round refuse. An unchanged repeat retains
+the manual round and its original expiry; expired evidence still blocks delivery.
+
 The supervisor launches fresh native agents and uses their actual execution IDs
 and complete structured results. `agentReviewReportBinding(request)` supplies
 the exact request digest and candidate fields for each report; `record
@@ -386,7 +400,9 @@ condition only after separate activation.
    exact source context and criteria without author history or prior verdicts,
    and their execution identities cannot reuse the source reviewers' contexts.
    Keep the source branch unchanged and do not turn integration evidence into a
-   rewritten source approval.
+   rewritten source approval. (Amended by W4, below: a group that is exactly the
+   reviewed change on a base whose net change avoids its paths and the listed
+   machinery also carries the source review over.)
 5. The active supervisor submits and follows admission within this conversation.
    Missing or invalid evidence is an agent recovery condition within authorized
    scope, not a request for the maintainer to move reports or repeat approval.
@@ -402,11 +418,14 @@ mode; it does not silently change that rule or authorize cross-base repair reuse
 
 ### Native transport and admission
 
-For a merge-group run, the supervisor creates input from the task worktree with
-`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`.
-Pull-request runs use the source receipt described in the amendment below.
-Replace `RUN`, `ATTEMPT` and `PR` with tool-observed positive numeric identities;
-the bracketed group-state argument is supplied only when the group tree differs.
+For a merge-group run that the source review does not carry over to (W4, in the
+amendment below), the supervisor creates input from the task worktree with
+`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json group-session.json`.
+Pull-request runs, and carried-over groups, use the source receipt described in
+the amendment below. Replace `RUN`, `ATTEMPT` and `PR` with tool-observed
+positive numeric identities. A group whose tree equals the reviewed tree carries
+over, so in practice the run-keyed route serves changed trees, which require the
+group state.
 The command outputs JSON for
 `gh workflow run native-review-admission.yml --ref main --json`, passed on stdin.
 Input creation does not dispatch automatically. Dispatch is a GitHub write and
@@ -445,13 +464,19 @@ admission.
   artifact no longer blocks the source receipt. Both pull-request paths require an integer head
   repository ID.
 - The activation proof below is the record of the activation decision. The
-  same-SHA property it names now holds for merge-group runs only.
-- W4, approved 2026-10-03: item 4 above is amended. The source review carries
+  same-SHA and changed-group properties it names now hold only for merge groups
+  the source review does not carry over to (W4).
+- W4, approved 2026-10-03 (#121): item 4 above is amended. The source review carries
   over to a merge group whose tree is the reviewed tree, or that is exactly the
   reviewed change on its queue base, when the base's net change avoids the
   change's paths and the admission, identity-binding, dependency and migration
   machinery. Then the pull request's source
   receipt admits the group. Other groups keep the two integration reviews.
+  Live proof: #122's merge group was admitted by its source receipt alone
+  (unchanged tree), with no run-keyed receipt or live session.
+- W5, approved 2026-10-03 (#122): the local review base is the candidate's
+  fork point (see [Native session interface](#native-session-interface)).
+  Hosted admission is unchanged.
 The configured local mirror retains all six jobs and refuses workflow drift;
 local verification does not assert hosted queue activation.
 

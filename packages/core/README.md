@@ -85,6 +85,10 @@ Focused proofs are `npm run api:check`, `npm run release:check`, and
 `npm run test:consumer`. The root test script skips this suite.
 `npm run docs:check` requires relative links in shipped Markdown to resolve to
 files actually packed in the tarball; a target present only in source refuses.
+Ambiguous destinations refuse explicitly: use literal punctuation or
+percent-encoded filenames, with ASCII whitespace before an optional title.
+Raw ampersands, angle characters and Unicode whitespace in local destinations
+require a canonical rewrite rather than passing an incomplete link check.
 
 The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks)
 reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative

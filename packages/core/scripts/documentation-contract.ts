@@ -80,9 +80,22 @@ export function assertDocumentationContract(
     for (const [pattern, description] of forbiddenExtractedRootReferences) {
       if ((pattern as RegExp).test(source)) violations.push(`${label}: ${description}`);
     }
-    for (const target of markdownLinkTargets(source)) {
+    for (const target of markdownLinkTargets(source, (reason) => violations.push(`${label}: ${reason}`))) {
       if (isExternalOrAnchor(target)) continue;
-      const cleanTarget = decodeURI((target.split(/[?#]/, 1)[0] ?? "").replace(/\\([!-/:-@[-`{-~])/g, "$1"));
+      // Do not interpret an entity or Unicode separator as a different packed
+      // destination. Authors can use literal punctuation or percent encoding.
+      if (/[&<>]|[^\S \t\r\n]/u.test(target)) {
+        violations.push(`${label}: unsupported local link destination ${target}; use literal punctuation or percent encoding, and ASCII title separators`);
+        continue;
+      }
+      const unescaped = target.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+      let cleanTarget: string;
+      try {
+        cleanTarget = decodeURIComponent(unescaped.split(/[?#]/, 1)[0] ?? "");
+      } catch {
+        violations.push(`${label}: malformed percent encoding in local link ${target}`);
+        continue;
+      }
       const resolvedTarget = resolve(dirname(file), cleanTarget);
       const insidePackage = resolvedTarget === packageRoot || resolvedTarget.startsWith(`${packageRoot}${sep}`);
       if (!insidePackage) {
@@ -246,43 +259,48 @@ function markdownFiles(root: string): string[] {
   });
 }
 
-function markdownLinkTargets(source: string): string[] {
+function markdownLinkTargets(source: string, refuse: (reason: string) => void): string[] {
   // Inspect destination delimiters conservatively; nested/escaped label text
   // and blockquote/list containers must not hide a package-local target.
-  const inline = [...source.matchAll(/\]\(\s*/g)]
-    .map((match) => inlineLinkTarget(source.slice(match.index + match[0].length)));
+  const inline = [...source.matchAll(/\]\([ \t\r\n]*/g)]
+    .map((match) => linkDestination(source.slice(match.index + match[0].length), refuse));
   // Generated declarations contain index signatures, not link definitions.
   const referenceSource = source
     .replace(/^ {0,3}(`{3,})[^`\r\n]*\r?\n[\s\S]*?^ {0,3}\1`*[ \t]*\r?$/gm, "")
     .replace(/^ {0,3}(~{3,})[^\r\n]*\r?\n[\s\S]*?^ {0,3}\1~*[ \t]*\r?$/gm, "");
-  const references = [...referenceSource.matchAll(/\[(?:\\.|[^\]\\])+\]:\s*(?:<([^>]+)>|(\S+))/g)]
-    .map((match) => match[1] ?? match[2]);
-  return [...inline, ...references].filter((target): target is string => Boolean(target));
+  const references = [...referenceSource.matchAll(/\[(?:\\.|[^\]\\])+\]:[ \t\r\n]*/g)]
+    .map((match) => linkDestination(referenceSource.slice(match.index + match[0].length), refuse));
+  return [...inline, ...references].filter((target): target is string => target !== undefined);
 }
 
-function inlineLinkTarget(source: string): string | undefined {
-  const angleTarget = source.match(/^<([^>]+)>/);
-  let end = angleTarget?.[0].length ?? 0;
-  if (!angleTarget) {
-    let depth = 0;
-    for (; end < source.length; end++) {
-      const character = source[end];
-      if (character === "\\" && end + 1 < source.length) { end++; continue; }
+function linkDestination(source: string, refuse: (reason: string) => void): string | undefined {
+  // Inspect the destination independently of optional title syntax. Unknown
+  // boundaries refuse explicitly instead of disappearing from the inventory.
+  const angle = source.startsWith("<");
+  let depth = 0;
+  const start = angle ? 1 : 0;
+  for (let end = start; end < source.length; end++) {
+    const character = source[end];
+    if (character === "\\" && end + 1 < source.length) { end++; continue; }
+    if (angle) {
+      if (character === ">") return source.slice(start, end);
+      if (character === "\r" || character === "\n") break;
+    } else {
       if (character === "(") depth++;
-      else if (character === ")") {
-        if (depth === 0) break;
-        depth--;
-      } else if (/\s/.test(character ?? "")) break;
+      else if (character === ")" && depth > 0) depth--;
+      else if (character === ")" || /[ \t\r\n]/.test(character ?? "")) {
+        if (depth === 0) return source.slice(start, end);
+        break;
+      }
     }
-    if (end === 0 || depth !== 0) return undefined;
   }
-  const suffix = source.slice(end);
-  if (!/^(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?\s*\)/.test(suffix)) return undefined;
-  return angleTarget?.[1] ?? source.slice(0, end);
+  if (!angle && depth === 0 && source.length > 0) return source;
+  refuse("unsupported Markdown link destination boundary; use a balanced destination or an angle-delimited path");
+  return undefined;
 }
 
 function isExternalOrAnchor(target: string): boolean {
-  return target.startsWith("#") || target.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(target);
+  return target === "" || target.startsWith("#") || target.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(target);
 }
 
 function assert(condition: unknown, message: string): asserts condition {

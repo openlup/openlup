@@ -186,6 +186,43 @@ describe("extracted-root documentation contract", () => {
     expect(() => check(root, [...packed, target])).not.toThrow();
   });
 
+  it.each([
+    "<docs/guide\\>extra.md>",
+    "docs/guide.md\u00a0'Title'",
+    "docs/guide&#46;md",
+    "docs/guide&period;md",
+  ])("explicitly refuses the ambiguous destination %s even with a packed decoy", (destination) => {
+    const root = fixture(`[Guide](${destination})\n[Guide][ref]\n\n> [ref]: ${destination}\n`);
+    writeFileSync(join(root, "docs", "guide>extra.md"), "# Guide\n");
+    writeFileSync(join(root, "docs", "guide&"), "# Decoy\n");
+    const packed = ["AGENTS.md", "README.md", "package.json", "docs/guide.md", "docs/guide&"];
+    expect(() => check(root, packed)).toThrow("unsupported local link destination");
+  });
+
+  it.each(["docs/guide.md", "<docs/guide.md>"])("checks inline and reference targets before optional titles for %s", (destination) => {
+    const root = fixture(`[Guide](${destination} 'Title')\n[Guide][ref]\n\n[ref]: ${destination} "Title"\n`);
+    expect(() => check(root)).not.toThrow();
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow("targets a file missing from npm pack");
+  });
+
+  it.each(["<docs/guide.md", "docs/guide(unbalanced.md"])("explicitly refuses an unsupported destination boundary %s", (destination) => {
+    const root = fixture(`[Guide](${destination} 'Title')\n`);
+    expect(() => check(root)).toThrow("unsupported Markdown link destination boundary");
+  });
+
+  it("resolves encoded reserved filename characters before checking the packed inventory", () => {
+    const root = fixture("[Guide](docs/a%23b%26c%3Ed.md#section)\n[Guide][ref]\n\n[ref]: docs/a%23b%26c%3Ed.md\n");
+    const target = "docs/a#b&c>d.md";
+    writeFileSync(join(root, target), "# Guide\n");
+    expect(() => check(root)).toThrow("targets a file missing from npm pack");
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json", target])).not.toThrow();
+  });
+
+  it("reports malformed local percent encoding as an actionable contract violation", () => {
+    const root = fixture("[Guide](docs/guide%ZZ.md)\n");
+    expect(() => check(root)).toThrow("malformed percent encoding in local link");
+  });
+
   it("checks nested shipped Markdown and resolves reference links relative to that file", () => {
     const root = fixture("[Guide](docs/guide.md)\n");
     writeFileSync(join(root, "docs", "guide.md"), "[Back][readme]\n\n[readme]: ../README.md#package-surface-maturity\n\n[Upgrade](SPLIT_AND_UPGRADE.md)\n");
