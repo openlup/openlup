@@ -294,17 +294,20 @@ not reset the two-cycle budget. An identical repeated prepare preserves partial
 or complete evidence and its original expiry; later unchanged-intent rounds may
 carry only the exact transition already present in their preserved lineage.
 
-For the single explicit owner continuation after exhaustion, `prepare` accepts
+For an explicit owner continuation after exhaustion, `prepare` accepts
 `ownerContinuation` with exactly `priorRequestDigest`, `candidateDigest` and
 `ownerDecision`, alongside `fullRefresh: true`. Both digests are computed SHA256
 of `JSON.stringify` of the preserved request and actual candidate respectively;
 they are computed evidence, not owner quotations. Record the actual fresh human
 decision in `ownerDecision`. This process evidence is not an authenticated owner
-signature. Only cycle 3 is accepted, with unchanged intent and author, complete
-preserved lineage, actual ancestor delta and two fresh full reviews. The
-automatic limit remains two. Wrong bindings, early use, changed intent, missing
-history, reduced coverage and a fourth round refuse. An unchanged repeat retains
-the manual round and its original expiry; expired evidence still blocks delivery.
+signature. Cycle 3 requires a fresh decision. One final cycle 4 requires a
+separate fresh decision bound to the exact third request and next candidate.
+Both require unchanged intent and author, complete preserved lineage, actual
+ancestor delta and two fresh full reviews. Neither decision can be reused for a
+changed request or candidate. The automatic limit remains two. Wrong bindings,
+early use, changed intent, missing history, reduced coverage and a fifth round
+refuse. An unchanged repeat retains the manual round and its original expiry;
+expired evidence still blocks delivery.
 
 The supervisor launches fresh native agents and uses their actual execution IDs
 and complete structured results. `agentReviewReportBinding(request)` supplies
