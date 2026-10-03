@@ -411,8 +411,9 @@ amendment below), the supervisor creates input from the task worktree with
 `node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json group-session.json`.
 Pull-request runs, and carried-over groups, use the source receipt described in
 the amendment below. Replace `RUN`, `ATTEMPT` and `PR` with tool-observed
-positive numeric identities. A group whose tree equals the reviewed tree always
-carries over, so the run-keyed route always needs the group state.
+positive numeric identities. A group whose tree equals the reviewed tree carries
+over, so in practice the run-keyed route serves changed trees, which require the
+group state.
 The command outputs JSON for
 `gh workflow run native-review-admission.yml --ref main --json`, passed on stdin.
 Input creation does not dispatch automatically. Dispatch is a GitHub write and

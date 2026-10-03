@@ -282,14 +282,29 @@ receipt" with the reason.
 When the review does not carry over, use the run-keyed form with the observed
 run, attempt and PR number. To find the run, use
 `gh run list --workflow published-tree-ci.yml --event merge_group --json databaseId,attempt,headBranch`;
-its branch is `gh-readonly-queue/main/pr-<PR>-…`. `group-session.json` is
-separate native state, prepared for the exact group head with the same approved
-criteria and supervisor session, that carries two fresh full integration reviews
-of the exact group base, head and tree:
+its branch is `gh-readonly-queue/main/pr-<PR>-…`. `group-session.json` is a new
+native session for the group, not a continuation of the source session:
+- prepare it where no source `session.json` is present: move the source state
+  aside (step 3 of [Deliver a change](#deliver-a-change) keeps a copy) or use a
+  separate checkout;
+- check out the exact group head detached, with `origin/main` fetched to the
+  group base;
+- write an intent with the source's scope, criteria and supervisor session ID,
+  and `risk` `behavior` or `unknown`, so that it requires two roles;
+- obtain two fresh full reviews from reviewers who did not review the source,
+  run `verify` until it reports `reviewed`, and save `session.json` as
+  `group-session.json`;
+- restore the source state afterwards.
+
+Integration reviews help only when the logged reason is the group itself: the
+base moved under the change's paths or the listed machinery, or the group is not
+exactly the reviewed change. An expired source review needs a refresh and a new
+source receipt instead. A log that shows only `needs_agent_review`, with neither
+line above, means no usable source receipt was found.
 
 ```bash
 node scripts/agent-review-queue.mjs input "$RUN" "$ATTEMPT" "$PR" \
-  source-session.json group-session.json > .context/scratch/agent-review/input.json
+  .context/scratch/agent-review/source-session.json group-session.json > .context/scratch/agent-review/input.json
 gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
 ```
 
@@ -701,7 +716,7 @@ points to its detailed rule.
    - re-review the same candidate: run `prepare` once with
      `"fullRefresh": true` in `intent.json`, then remove the key. The refresh
      uses one repair cycle;
-   - then resubmit the receipt.
+   - then update the source-state copy and resubmit the receipt.
 8. **Hosted checks.** The six required contexts and `native-review` must pass.
    Compare raw `test-full` and `pgtap` failures with the exact base.
 9. **Maintainer read**, when the task's authority requires one before sign-off
@@ -713,14 +728,16 @@ points to its detailed rule.
     [Required and raw checks](#required-and-raw-checks)).
     - If it reports admission by the source receipt ("unchanged tree" or
       "disjoint base move"), nothing more is needed.
-    - If it logs that the source receipt does not admit the group, it waits at
-      most twenty minutes for a run-keyed receipt. Prepare native state for
-      the exact group head with the same criteria and supervisor session,
-      obtain two fresh full integration reviews from new reviewers, then submit
-      `input "$RUN" "$ATTEMPT" "$PR" source-session.json group-session.json`.
+    - If it logs that the source receipt does not admit the group because of
+      the group itself, it waits at most twenty minutes for a run-keyed
+      receipt. Prepare `group-session.json` as that section describes, then
+      submit `input "$RUN" "$ATTEMPT" "$PR"
+      .context/scratch/agent-review/source-session.json group-session.json`.
       The same section shows how to find the run.
     - Carry-over also needs the source review within its 24-hour validity. If
       it has expired, refresh it and resubmit the source receipt (step 7).
+    - If the log shows neither line, no usable source receipt was found:
+      submit it (step 7).
 12. **Confirm the merge**: the squash commit on `main` and its push run.
 
 A repair commit restarts from step 3 for the new candidate.
@@ -751,10 +768,10 @@ two focused reviews regardless of filenames. Account for every prior material
 finding and preserve inherited expiry; unavailable or expired coverage requires
 two fresh full-scope reviews. Carry the two-cycle repair/review budget through
 prepare and full-review escalation. Exhaustion stays blocked while the supervisor regroups
-within existing authority. Changed intent requires explicit regrouping. Merging
-`main` into the branch moves its fork point and gets fresh full-scope review
-within the same budget; a rebase rewrites the reviewed head and needs a fresh
-session.
+within existing authority. Changed intent requires explicit regrouping. Resolve a
+textual conflict by merging `main`: that moves the fork point and gets fresh
+full-scope review within the same budget. A rebase discards that lineage and
+reports `needs_rescope`; it never restarts the budget or drops findings.
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
 and proceed only through authorized delivery steps.
@@ -793,7 +810,8 @@ records why these rules exist.
 - **No rebasing for freshness.** Do not rebase a pull request, or merge `main`
   into it, only because it is behind. A review is bound to the branch's fork
   point, so verify and pre-push keep accepting it while the branch is behind.
-  Rebase only for a textual conflict, and then obtain a fresh full review.
+  Integrate `main` only for a textual conflict, by merging it, and then obtain a
+  fresh full review.
 - **Arming.** Arm auto-merge only under actual merge authority, and only after
   the required checks, the native review and any required maintainer read:
   `gh pr merge <PR> --auto --squash --author-email <address>`. Use the

@@ -129,13 +129,14 @@ the execution approach within existing authority; no reset, bypass or automatic
 merge follows. Changed intent requires explicit regrouping. The review base is the
 candidate's fork point (`git merge-base HEAD origin/main`), so verify and pre-push keep
 accepting a reviewed candidate while `main` moves ahead. Do not rebase or merge
-`main` only to catch up: the merge queue integrates. Integrate `main` only for a textual
-conflict. Merging `main` moves the fork point and requires fresh full-scope review,
-preserving history and budget; a rebase rewrites the reviewed head, so `prepare` reports
-`needs_rescope` and a fresh session starts at the new fork point. When criteria,
+`main` only to catch up: the merge queue integrates. Resolve a textual conflict by
+merging `main`: that moves the fork point and requires fresh full-scope review,
+preserving history and budget. A rebase discards that lineage, so `prepare` reports
+`needs_rescope`; regroup within existing authority without restarting the counter or
+dropping findings. When criteria,
 required review and checks pass, stop optional edits and continue only authorized
-delivery steps. Missing, expired, dirty, partial or unclosed evidence, or evidence whose
-fork point has changed, refuses verify and pre-push once installed enforcement passes its live refusal tests. Where the
+delivery steps. Missing, stale, expired, dirty, partial or unclosed evidence, including
+evidence whose fork point has changed, refuses verify and pre-push once installed enforcement passes its live refusal tests. Where the
 maintainer-local layer is installed, pre-push also refuses a task-worktree push
 whose exact clean tree has no stamp from a passing `openlup-dev verify`. Native
 session receipts are process evidence, not cryptographic remote attestation or
@@ -173,8 +174,9 @@ The supervisor creates the bounded transport input with
 pull request, or
 `node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json group-session.json`
 for a merge-group run whose source review does not carry over, where
-`group-session.json` is separate native state with two fresh full integration
-reviews of the exact group base, head and tree. The supervisor submits the input
+`group-session.json` is a new native session, not a continuation of the source
+session, with two fresh full integration reviews of the exact group base, head
+and tree, prepared as [Required and raw checks](CONTRIBUTING.md#required-and-raw-checks) describes. The supervisor submits the input
 through the main-only workflow within authorized delivery and waits for actual
 admission in this conversation. The script does not dispatch or
 authorize delivery. Missing evidence remains blocked; no maintainer handoff is
