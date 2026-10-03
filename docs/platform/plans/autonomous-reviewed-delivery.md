@@ -270,10 +270,25 @@ Only actual complete full coverage establishes a new validity interval. Neither
 file grants publication authority or creates another planning document.
 
 `status` reports admission or `needs_agent_review`; missing roles include exact
-request data for native review. Exhausted repair cycles, changed intent or nonancestor integration
-produce `needs_rescope`, preserving the existing evidence rather than accepting
-a new root. The supervisor regroups the execution approach within existing
-authority; this CLI provides no automatic rescope admission or merge.
+request data for native review. Exhausted repair cycles, changed intent without
+an explicitly approved transition, or nonancestor integration produce
+`needs_rescope`, preserving the existing evidence rather than accepting a new
+root. The supervisor regroups the execution approach within actual authority;
+this CLI grants no owner approval or merge authority.
+
+For an owner-approved scope expansion, `prepare` accepts top-level `regroup`
+with exactly `priorRequestDigest`, `priorIntentDigest`, `nextIntentDigest` and
+`ownerDecision`, alongside `fullRefresh: true`. The digests bind the preserved
+request and both intents; `ownerDecision` records the actual human decision,
+not a cryptographic owner signature. The same author, every previous scope path
+and at least one additional path are required, with behavior or unknown risk
+and a clean ancestor-preserving committed candidate. Criteria-only replacement,
+scope shrink and a new root refuse. The existing version-2 continuation retains
+the transition, all history and findings, consumes the next existing cycle and
+requires two fresh full reviews even when the source SHA is unchanged. It does
+not reset the two-cycle budget. An identical repeated prepare preserves partial
+or complete evidence and its original expiry; later unchanged-intent rounds may
+carry only the exact transition already present in their preserved lineage.
 
 The supervisor launches fresh native agents and uses their actual execution IDs
 and complete structured results. `agentReviewReportBinding(request)` supplies
