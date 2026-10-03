@@ -202,12 +202,12 @@ npm install --save-exact --ignore-scripts --no-audit --fund=false "@openlup/core
 npm view "@openlup/core@$OPENLUP_VERSION" dist --json > registry-dist.json
 npm pack "@openlup/core@$OPENLUP_VERSION" --ignore-scripts --json > registry-pack.json
 npm audit signatures --json --include-attestations > signatures.json
-node --input-type=module <<'JS'
+node --input-type=module - "$OPENLUP_VERSION" "$OPENLUP_COMMIT" <<'JS'
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
-const version = process.env.OPENLUP_VERSION, commit = process.env.OPENLUP_COMMIT;
+const [version, commit] = process.argv.slice(2);
 const dist = json('registry-dist.json'), audit = json('signatures.json');
 assert.deepEqual(audit.invalid, []); assert.deepEqual(audit.missing, []);
 const digest = createHash('sha512').update(readFileSync(json('registry-pack.json')[0].filename)).digest();
