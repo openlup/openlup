@@ -29,17 +29,28 @@ async function git(cwd, ...args) {
   return stdout;
 }
 
+/** The review base is the candidate's fork point: the single merge base of HEAD
+ * and the observed origin/main. It stays put while main moves ahead, and moves
+ * when HEAD integrates main or main is rewritten.
+ */
+async function forkPoint(cwd) {
+  let bases;
+  try { bases = (await git(cwd, '-c', 'core.commitGraph=false', 'merge-base', '--all', 'HEAD', 'origin/main^{commit}')).split('\n').filter(Boolean); } catch { bases = []; }
+  demand(bases.length === 1 && SHA.test(bases[0]), 'HEAD has no single fork point with observed origin/main');
+  return bases[0];
+}
+
 /** Snapshot actual source bytes without executing candidate filters or tools.
  * Ignored local artifacts are outside the source inventory. Dirty tracked and
  * ordinary untracked source is included, including staged changes and deletes.
  */
 export async function captureSessionCandidate(cwd, base) {
   cwd = await realpath(cwd);
-  base ??= (await git(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
+  base ??= await forkPoint(cwd);
   demand(SHA.test(base), 'base must be a full commit digest');
   const head = (await git(cwd, 'rev-parse', '--verify', 'HEAD^{commit}')).trim();
   const tree = (await git(cwd, 'rev-parse', '--verify', 'HEAD^{tree}')).trim();
-  demand((await git(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim() === base, 'base differs from observed origin/main');
+  demand(await forkPoint(cwd) === base, 'base is no longer the fork point of HEAD and observed origin/main; prepare again');
   const graph = await verifyReviewObjectGraph(cwd, { head, tree, base });
   const flags = (await git(cwd, 'ls-files', '-v', '-z')).split('\0').filter(Boolean);
   demand(flags.every(entry => entry[0] !== 'S' && entry[0] === entry[0].toUpperCase()), 'index flags conceal source');
@@ -431,7 +442,7 @@ async function main() {
   if (verb === 'prepare') {
     const spec = await boundedJson(input ?? join(directory, 'intent.json'));
     demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base', 'repairRisk', 'fullRefresh', 'regroup'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
-    spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= (await git(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
+    spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= await forkPoint(cwd);
     let previous; try { previous = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     let state;
     try { state = await prepareAgentReviewState({ cwd, ...spec, previous }); }
