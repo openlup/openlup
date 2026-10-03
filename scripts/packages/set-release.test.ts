@@ -89,7 +89,7 @@ function world(name: string, version: string, { tag = false, release = false, np
     table[`${API}/git/ref/tags/${tagName}`] = Response.json({ ref: `refs/tags/${tagName}`, object: { type: "tag", sha: tagObject } });
     table[`${API}/git/tags/${tagObject}`] = Response.json({ sha: tagObject, tag: tagName, message: `OpenLup package @openlup/${name} ${version}.\n`, object: { type: "commit", sha: target }, ...tagPatch });
   }
-  if (release) table[`${API}/releases/tags/${tagName}`] = Response.json({ id: 7, tag_name: tagName, immutable: true, draft: false, prerelease: false, author: APP, assets: [], ...releasePatch });
+  if (release) table[`${API}/releases/tags/${tagName}`] = Response.json({ id: 7, tag_name: tagName, immutable: true, draft: false, prerelease: false, body: "Set note.\n", author: APP, assets: [], ...releasePatch });
   return table;
 }
 const input = (version = "0.4.1", name = "core", target = TARGET) => release.packageReleaseInputs(name, version, target, "Set note.\n");
@@ -188,6 +188,15 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     expect(await m.release.packageState(input(), PACKED, undefined, routes(world("core", "0.4.1", { tag: true, release: true, npm: ["0.4.0"] })))).toBe("resume");
     expect(await m.release.packageState(input(), PACKED, undefined, routes(world("core", "0.4.1", { tag: true, release: true, npm: ["0.4.0"], held: PUBLISHED })))).toBe("skip");
     expect(await m.release.packageState(input("0.4.0", "kit"), PACKED, undefined, routes({})), "a name npm never held").toBe("full");
+  },
+  "skip and resume preserve the exact reviewed release-note bytes": async (m) => {
+    for (const [state, held] of [["resume", undefined], ["skip", PUBLISHED]] as const) {
+      const options = { tag: true, release: true, held };
+      expect(await m.release.packageState(input(), PACKED, undefined, routes(world("core", "0.4.1", options))), `same notes allow ${state}`).toBe(state);
+      for (const body of ["Changed note.\n", "Set note.", "Set note.\n\n", undefined]) {
+        await expect(m.release.packageState(input(), PACKED, undefined, routes(world("core", "0.4.1", { ...options, releasePatch: { body } }))), `different note bytes refuse ${state}`).rejects.toThrow("completed release body differs from the prepared note");
+      }
+    }
   },
   "every other state stops the set": async (m) => {
     const state = (options: Parameters<typeof world>[2], version = "0.4.1") => m.release.packageState(input(version), PACKED, undefined, routes(world("core", version, options)));
@@ -307,7 +316,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     const kitResumes = {
       [`${API}/git/ref/tags/${kitTag}`]: { ref: `refs/tags/${kitTag}`, object: { type: "tag", sha: kitObject } },
       [`${API}/git/tags/${kitObject}`]: { sha: kitObject, tag: kitTag, message: "OpenLup package @openlup/kit 0.4.0.\n", object: { type: "commit", sha: repository.a } },
-      [`${API}/releases/tags/${kitTag}`]: { id: 7, tag_name: kitTag, immutable: true, draft: false, prerelease: false, author: APP, assets: [] },
+      [`${API}/releases/tags/${kitTag}`]: { id: 7, tag_name: kitTag, immutable: true, draft: false, prerelease: false, body: "Set note.\n", author: APP, assets: [] },
     };
     for (const [packageName, table, expected] of [["all", {}, '["core","kit"]'], ["all", kitResumes, '["core"]'], ["core", {}, '["core"]']] as const) {
       const output = join(scratch, `output-${++outputs}`);
@@ -340,6 +349,7 @@ const quiet = () => { vi.spyOn(console, "log").mockImplementation(() => undefine
 type Defect = { control: string; plant: string; in: keyof Modules; from: string; to: string };
 /** One or more planted defects per control. Each replaces committed text that occurs once, so a stale anchor fails too. */
 const DEFECTS: Defect[] = [
+  { control: "skip and resume preserve the exact reviewed release-note bytes", plant: "a completed release ignores reviewed note bytes", in: "release", from: '  assertReleaseBody(release, input.note, "completed");\n', to: "" },
   { control: "publishable packages carry one set version", plant: "two versions admitted", in: "policy", from: "if (new Set(publishable.map(({ name }) => versions.get(name))).size > 1) {", to: "if (false) {" },
   { control: "publishable packages carry one set version", plant: "a private package held to the set", in: "policy", from: "  const publishable = config.packages.filter(({ publish }) => publish);\n  const findings: Finding[] = [];", to: "  const publishable = config.packages;\n  const findings: Finding[] = [];" },
   { control: "a publishable package carries a set version 0.N.P below 1.0", plant: "any release version admitted", in: "policy", from: "&& !SET_VERSION.test(version)) findings.push", to: "&& false) findings.push" },

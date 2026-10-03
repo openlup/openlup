@@ -235,11 +235,12 @@ async function sameTarball(name: string, version: string, packument: Json, local
   return tar(published) === tar(local);
 }
 
-/** The tag and release exist as the release workflow leaves them: annotated at the target, immutable, App-authored, assetless. */
+/** The tag and release exist as the release workflow leaves them: annotated at the target, immutable, App-authored, exact, assetless. */
 function assertCompletedRelease(input: PackageRelease, tag: { commit: string; message: string }, release: Json): void {
   if (tag.commit !== input.target || tag.message !== `${input.message}\n`) throw new Error(`${input.tag} names another commit or message than this release at ${input.target}`);
   const author = record(release.author, "release author");
   if (release.tag_name !== input.tag || release.immutable !== true || release.draft !== false || release.prerelease !== false || author.id !== RELEASE_APP.id || author.login !== RELEASE_APP.login || !Array.isArray(release.assets) || release.assets.length !== 0) throw new Error(`${input.tag} is not an immutable, published, App-authored release without assets`);
+  assertReleaseBody(release, input.note, "completed");
 }
 
 /**

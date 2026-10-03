@@ -95,6 +95,7 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
     "SECURITY.md",
     "package.json",
     "release-gates.json",
+    "docs/SUBSCRIPTION_ENGINE.md",
   ]);
 
   for (const [subpath, entry] of Object.entries(packageJson.exports)) {
@@ -113,7 +114,7 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
   const forbiddenFiles = packFiles.filter(
     (path) =>
       path.startsWith("smoke/") ||
-      path.startsWith("docs/") ||
+      (path.startsWith("docs/") && path !== "docs/SUBSCRIPTION_ENGINE.md") ||
       path.startsWith(".context/") ||
       path === "vitest.config.ts" ||
       path.startsWith("tsconfig."),

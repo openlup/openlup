@@ -57,6 +57,9 @@ testing, then operate in that worktree. Recognize an already assigned task
 worktree and continue there; do not create another for the same task. Keep the
 coordination checkout clean and leave other tasks' worktrees, branches and
 processes alone. Read-only reviewers do not need their own worktree.
+If no maintainer helper is configured, use an ordinary dedicated `git worktree`;
+[CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-shape) owns that setup and the
+handoff to an authorized submission supervisor.
 
 Keep one compact task record of a finite observable outcome, smallest complete
 scope, exclusions, authority and delivery boundary, acceptance and sufficient
@@ -144,12 +147,17 @@ hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
 
-A fresh explicit owner decision may authorize exactly one additional full review
-at cycle 3 after the two automatic cycles. This retains every prior round and
-finding, the same approved intent and author, and a clean ancestor-preserving
-committed candidate. It requires two fresh full reviewers. No fourth cycle or
-automatic extension is permitted; unchanged prepare preserves evidence and
-expiry. This decision grants no publication, merge or settings authority.
+A fresh explicit owner decision may authorize one additional full review at
+cycle 3 after the two automatic cycles. A separate fresh decision bound to that
+third request and the next candidate may authorize one final full review at
+cycle 4. Each retains every prior round and finding, the same criteria, risk,
+roles and author, and a clean ancestor-preserving committed candidate. Both
+require two fresh full reviewers. Only cycle 4 may also pair an exact owner
+regroup decision with a bounded scope expansion: retain every previous path and
+add exactly `packages/core/scripts/core-package-consumer-audit.ts` and
+`packages/core/test/consumerTooling.test.ts`. No other scope expansion, fifth
+cycle or automatic extension is permitted; unchanged prepare preserves evidence
+and expiry. These decisions grant no publication, merge or settings authority.
 
 The optional [native queue admission](plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
 keeps reviewers in this same task and subscription. It was active at the dated
