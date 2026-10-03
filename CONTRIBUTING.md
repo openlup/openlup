@@ -438,7 +438,10 @@ target, which stays under `./src/`. It is either `private: true` or carries
 exactly the public, provenance-backed publication settings and a `repository`
 entry. Its `publishConfig.tag` stays `preview`, so only the release workflow's
 explicit `--tag latest` moves `latest`. An unreleased package is always
-`private: true`.
+`private: true`. A new package stays unreleased through its module's pull
+requests and becomes publishable only in the module's final one, where the
+reference application composes it, so a set never republishes a half-built
+package.
 
 `npm run packages:check -- --pack` also builds and packs each released package
 into a temporary directory, from a package directory with no uncommitted
@@ -493,6 +496,12 @@ The source contract continues to bind the manifest bytes, and the portable
 runner compares `objectInventorySha256` with the selected database catalogue
 after applying migrations (falsified by
 `server/adapters/postgres/migrationRunner.test.ts`).
+Against the same base, `--policy` refuses a change that removes or changes a
+line of a publishable package's API snapshot (`release-gates.json`
+`packageSurface`) unless that package's single `## [Unreleased]` changelog
+section carries a `Migration:` block; the base decides which packages and
+snapshots are checked, and removing or renaming a subpath counts as a removal.
+A pure addition has no "before", so it needs none.
 
 The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
 measured failing or aborted files, reasons, incomplete obligations and triage

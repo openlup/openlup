@@ -532,9 +532,19 @@ one set:
   Any API, behaviour or schema change makes a minor set, and so does any SQL a
   package ships. A change to subscription, renewal or payment objects is always
   a minor set with a `Migration:` block in the package's changelog.
+- For a pull request or merge group, the `--policy` self-check refuses a change
+  since its base that removes or changes a line of a publishable package's API
+  snapshot unless the package's single `## [Unreleased]` changelog section
+  carries a `Migration:` block; the base decides which packages and snapshots
+  are checked, and removing or renaming a subpath counts as a removal. A pure
+  addition has no "before", so it needs none.
 
 [`config/openlup-packages.json`](../config/openlup-packages.json) lists the
-packages, and `publish: true` marks one that may be published. `@openlup/core`
+packages, and `publish: true` marks one that may be published. A new package
+stays under `unreleased`, always private, through its module's pull requests,
+and moves to `packages` with `publish: true` only in the module's final pull
+request, the one where the reference application composes it, so a set never
+republishes a half-built package. `@openlup/core`
 is currently the only one, so today a set has one package. Each publishable
 package's own `package.json` carries the set version: `packages:check` refuses
 publishable packages at different versions, or at a version that is not `0.N.P`
