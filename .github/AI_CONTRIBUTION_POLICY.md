@@ -130,7 +130,8 @@ perspective never waives existing controls or acceptance evidence.
 The approved [native queue follow-up](../docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
 adds an optional GitHub admission transport, not another reviewer host. The
 active supervisor retains actual native source-review observations and submits
-them for the exact hosted run and attempt. A queue group with the same complete
+them for the reviewed pull-request head, or for the exact hosted merge-group run
+and attempt. A queue group with the same complete
 tree as the reviewed source needs no new review; a different tree requires two
 fresh independent integration reviewers with unchanged approved criteria and
 separate group identity. Unknown or sensitive interactions cannot be excused by
@@ -197,3 +198,17 @@ maintainer-authorized agent tasks while retaining human accountability, DCO and
 actual publication/merge authority. The earlier mandatory protected-root and
 GitHub model API routes are superseded. Installed enforcement must still pass
 its real refusal tests; process receipts are not cryptographic remote attestation.
+
+**Source-keyed pull-request receipts, decided 2026-10-03.** The rule read that
+the supervisor submits review observations "for the exact hosted run and
+attempt".
+- Pull-request runs now also accept one receipt bound to the pull request number
+  and the exact reviewed head and tree, which admits every run and attempt of
+  that head. Merge-group runs are unchanged.
+- The reason: six required reds in the native-review window were receipt
+  timeouts. A run-keyed receipt can only be submitted after the run exists, and
+  again for every rerun, although it carries the same evidence.
+- Admission still re-verifies the live pull request, the run identity and the
+  review's freshness each time.
+- The decision is wrong if a source receipt ever admits a head, tree or pull
+  request other than the one its reviewers covered.

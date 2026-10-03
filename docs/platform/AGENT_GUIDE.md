@@ -137,15 +137,19 @@ is required. Review grants no publication, merge, secret or settings authority.
 
 The optional [native queue admission](plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
 keeps reviewers in this same task and subscription. When explicitly activated,
-the supervisor supplies current source evidence for the exact CI run/attempt,
-then observes the queue's actual base, head, tree and source identity. An entire
+the supervisor supplies current source evidence for the reviewed PR head, or
+for the exact merge-group run/attempt, then observes the queue's actual base,
+head, tree and source identity. An entire
 group tree equal to the reviewed source tree needs no additional review. A
 different tree needs two fresh independent full integration reviews under the
 same approved criteria; filenames or an author statement cannot establish
 noninteraction. Keep the source branch unchanged and record group evidence
 separately. The existing nonqueue base-integration and repair-budget rules remain.
 The supervisor creates the bounded transport input with
-`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`,
+`node scripts/agent-review-queue.mjs input-source PR source-session.json` for the
+pull request, or
+`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`
+for a merge-group run,
 submits it through the main-only workflow within authorized delivery, and waits
 for actual admission in this conversation. The script does not dispatch or
 authorize delivery. Missing evidence remains blocked; no maintainer handoff is

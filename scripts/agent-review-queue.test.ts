@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { agentReviewReportBinding, captureCommittedReviewCandidate, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState } from './agent-review-session.mjs';
-import { observeNativeAdmission, parseNativeAdmission, readNativeAdmissionArtifact, verifyNativeAdmission } from './agent-review-queue.mjs';
+import { observeNativeAdmission, parseNativeAdmission, readNativeAdmissionArtifact, readSourceAdmissionArtifact, verifyNativeAdmission, verifySourceAdmission, waitNativeAdmission } from './agent-review-queue.mjs';
 
 const roots: string[] = [];
 afterEach(async () => { for (const cwd of roots.splice(0)) await rm(cwd, { recursive: true, force: true }); });
@@ -58,7 +58,7 @@ describe('native review queue admission', () => {
     await writeFile(join(f.cwd, 'code.ts'), 'small change\n'); f.git('add', '.'); f.git('commit', '-qm', 'small task');
     const candidate = await captureCommittedReviewCandidate(f.cwd, base, f.git('rev-parse', 'HEAD'));
     expect(candidate.changedPaths).toEqual(['code.ts']); expect(candidate).toEqual(await captureSessionCandidate(f.cwd, base));
-  });
+  }, 30_000); // 4,100 fixture writes and a commit exceed 10 s under a full parallel local run.
   it('samples freshness after the final live observation', async () => {
     const f = await fixture(); let clock = 1000; let reads = 0; const get = f.api.get;
     f.api.get = async path => { const value = await get(path); if (path.endsWith('/actions/runs/10') && ++reads === 2) clock = 86401001; return value; };
@@ -148,5 +148,108 @@ describe('immutable native artifact transport', () => {
       const bytes = await readFile(join(f.cwd, 'receipt.zip')); artifact.digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`; artifact.size_in_bytes = bytes.length; api.download = async () => bytes;
     }
     await expect(readNativeAdmissionArtifact(api, f.input)).rejects.toThrow('Native admission refused');
+  });
+});
+
+describe('source-keyed pull-request receipts', () => {
+  async function sourceFixture() {
+    const f = await fixture();
+    const input = { version: 2, target: { event: 'pull_request', prNumber: 5, sourceHead: f.head }, source: f.input.source, integration: null };
+    const dispatch = { id: 20, workflow_id: 200, repository: { id: 1376035358 }, path: '.github/workflows/native-review-admission.yml', event: 'workflow_dispatch', head_branch: 'main', head_sha: f.base, status: 'completed', conclusion: 'success', run_attempt: 1 };
+    const listings = new Map<string, Array<Record<string, unknown>>>(); const downloads = new Map<number, Buffer>();
+    let calls: string[] = [];
+    async function upload(name: string, receipt: unknown, id: number, mutate: (artifact: Record<string, unknown>) => void = () => {}) {
+      const dir = await mkdtemp(join(f.cwd, `artifact-${id}-`)); await writeFile(join(dir, 'receipt.json'), JSON.stringify(receipt));
+      execFileSync('zip', ['-q', 'receipt.zip', 'receipt.json'], { cwd: dir }); const bytes = await readFile(join(dir, 'receipt.zip'));
+      const artifact: Record<string, unknown> = { id, expired: false, workflow_run: { id: 20, head_sha: f.base }, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, size_in_bytes: bytes.length };
+      mutate(artifact); downloads.set(id, bytes); listings.set(name, [...(listings.get(name) ?? []), artifact]);
+    }
+    const api = {
+      get: async (path: string) => {
+        calls.push(path);
+        const name = /[?&]name=([^&]+)/u.exec(path)?.[1];
+        if (name) { const artifacts = listings.get(name) ?? []; return { total_count: artifacts.length, artifacts: structuredClone(artifacts) }; }
+        if (path.endsWith('/actions/runs/20')) return structuredClone(dispatch);
+        if (path.endsWith('/actions/workflows/native-review-admission.yml')) return { id: 200, path: dispatch.path, state: 'active' };
+        if (path.endsWith(`/actions/runs/${f.run.id}`)) return structuredClone(f.run);
+        return f.api.get(path.replace(`/actions/runs/${f.run.id}`, '/actions/runs/10'));
+      },
+      graphql: f.api.graphql,
+      download: async (path: string) => downloads.get(Number(path.split('/').at(-2)))!,
+    };
+    let clock = 1000;
+    const event: { number?: number; repository: { private: boolean }; pull_request: { head: { sha: string } }; action?: string; merge_group?: Record<string, string> } = { number: 5, repository: { private: false }, pull_request: { head: { sha: f.head } } };
+    const env: Record<string, string> = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_RUN_ID: '10', GITHUB_RUN_ATTEMPT: '1', GITHUB_EVENT_NAME: 'pull_request' };
+    const submit = async () => ({ input, binding: await verifySourceAdmission({ cwd: f.cwd, api, input, now: () => clock }) });
+    const wait = () => waitNativeAdmission({ event, env, api, cwd: f.cwd, now: () => clock, sleep: async (ms: number) => { clock += ms; }, fetchObjects: async () => {} });
+    const sourceName = (pr = 5, head = f.head) => `native-review-pr-${pr}-${head}`;
+    return { f, input, dispatch, upload, api, event, env, submit, wait, sourceName, setClock: (value: number) => { clock = value; }, calls: () => calls, resetCalls: () => { calls = []; } };
+  }
+  it('R1 admits a later run of the reviewed head with a receipt submitted before any run existed', async () => {
+    const s = await sourceFixture(); s.resetCalls(); const receipt = await s.submit();
+    expect(s.calls().some(path => path.includes('/actions/runs/'))).toBe(false);
+    await s.upload(s.sourceName(), receipt, 123); await expect(s.wait()).resolves.toBeUndefined();
+  });
+  it('R2 admits a new attempt and a later run of the same head without resubmission', async () => {
+    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+    s.f.run.run_attempt = 2; s.env.GITHUB_RUN_ATTEMPT = '2'; await expect(s.wait()).resolves.toBeUndefined();
+    s.f.run.id = 11; s.f.run.run_attempt = 1; s.env.GITHUB_RUN_ID = '11'; s.env.GITHUB_RUN_ATTEMPT = '1'; await expect(s.wait()).resolves.toBeUndefined();
+  });
+  it('R3 refuses a receipt for a different head of the same PR', async () => {
+    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+    s.event.pull_request.head.sha = s.f.base; s.f.pr.head.sha = s.f.base; s.f.run.head_sha = s.f.base;
+    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
+  });
+  it('R4 refuses the same head under another PR number', async () => {
+    const s = await sourceFixture(); const receipt = await s.submit();
+    await s.upload(s.sourceName(6), receipt, 123); s.event.number = 6;
+    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
+  });
+  it('R5 refuses a review that has expired by admission', async () => {
+    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123); s.setClock(86401001);
+    await expect(s.wait()).rejects.toThrow('Native admission refused');
+  });
+  it('R6 refuses submission for a draft PR, and admission once the PR is closed', async () => {
+    const s = await sourceFixture(); s.f.pr.draft = true; await expect(s.submit()).rejects.toThrow('not the current open main candidate');
+    s.f.pr.draft = false; await s.upload(s.sourceName(), await s.submit(), 123); s.f.pr.state = 'closed';
+    await expect(s.wait()).rejects.toThrow('not the current open main candidate');
+  });
+  it('R7 still admits a run-keyed receipt for its exact run and attempt', async () => {
+    const s = await sourceFixture(); const binding = await observeNativeAdmission(s.api, s.f.input);
+    await s.upload('native-review-10-1', { input: s.f.input, binding }, 123); await expect(s.wait()).resolves.toBeUndefined();
+  });
+  it('R8 merge groups ignore source receipts', async () => {
+    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+    const tree = s.f.git('rev-parse', 'HEAD^{tree}'); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'synthetic group'); s.f.group(s.f.base, head);
+    s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
+    Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
+    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
+  });
+  for (const mutation of ['head-repository', 'workflow-file'] as const) it(`R9 refuses a run with a different ${mutation}`, async () => {
+    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+    if (mutation === 'head-repository') s.f.run.head_repository.id = 999;
+    if (mutation === 'workflow-file') s.f.run.path = '.github/workflows/other.yml';
+    await expect(s.wait()).rejects.toThrow('Native admission refused');
+  });
+  it('skips a receipt under this PR head name whose target names another PR', async () => {
+    const s = await sourceFixture(); const receipt = await s.submit();
+    await s.upload(s.sourceName(), { ...receipt, input: { ...receipt.input, target: { ...receipt.input.target, prNumber: 7 } } }, 124);
+    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
+  });
+  it('R10 skips a newer artifact that fails provenance and admits an older valid one', async () => {
+    const s = await sourceFixture(); const receipt = await s.submit();
+    await s.upload(s.sourceName(), receipt, 123); await s.upload(s.sourceName(), receipt, 124, artifact => { artifact.digest = `sha256:${'0'.repeat(64)}`; });
+    expect((await readSourceAdmissionArtifact(s.api, 5, s.f.head))?.input.target.sourceHead).toBe(s.f.head);
+    await expect(s.wait()).resolves.toBeUndefined();
+  });
+  it('refuses an incomplete listing of more than 100 source receipts', async () => {
+    const s = await sourceFixture(); const receipt = await s.submit();
+    for (let id = 200; id < 301; id++) await s.upload(s.sourceName(), receipt, id);
+    await expect(readSourceAdmissionArtifact(s.api, 5, s.f.head)).rejects.toThrow('pagination is incomplete');
+  }, 30_000);
+  it('parses only the exact source receipt schema', async () => {
+    const s = await sourceFixture(); expect(parseNativeAdmission(JSON.stringify(s.input)).target.prNumber).toBe(5);
+    expect(() => parseNativeAdmission(JSON.stringify({ ...s.input, integration: s.input.source }))).toThrow('source target is invalid');
+    expect(() => parseNativeAdmission(JSON.stringify({ ...s.input, targetRunId: 10 }))).toThrow('schema');
   });
 });

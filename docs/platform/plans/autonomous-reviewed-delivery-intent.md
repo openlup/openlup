@@ -103,7 +103,8 @@ independence against a dishonest actor with control of the entire session.
 Extend that same native process to an optional GitHub merge queue without a
 model API, reviewer host, new secret or transfer of subscription authentication.
 The active supervisor retains source-review evidence and transports it through
-a main-only dispatch artifact for the exact PR or merge-group CI run/attempt.
+a main-only dispatch artifact for the reviewed PR head, or for the exact
+merge-group CI run/attempt.
 All six mechanical jobs remain required. Activated queue admission adds a
 seventh bounded job which rechecks current source, group, artifact and native
 review identity before success. A source-head change after auto-merge was armed
