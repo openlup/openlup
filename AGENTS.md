@@ -127,17 +127,22 @@ evidence; at most two automatic repair/review continuation cycles are allowed,
 including full-review escalation. Exhaustion remains blocked while the supervisor regroups
 the execution approach within existing authority; no reset, bypass or automatic
 merge follows. Changed intent requires explicit regrouping. An ancestor-preserving base
-integration requires fresh full-scope review, preserving history and budget. When criteria,
+integration requires fresh full-scope review, preserving history and budget. Do not rebase
+or merge `main` only to catch up: the merge queue integrates, and a rebase is for a textual
+conflict. When criteria,
 required review and checks pass, stop optional edits and continue only authorized
 delivery steps. Missing, stale, dirty, partial or unclosed evidence refuses verify
-and pre-push once installed enforcement passes its live refusal tests. Native
+and pre-push once installed enforcement passes its live refusal tests. Where the
+maintainer-local layer is installed, pre-push also refuses a task-worktree push
+whose exact clean tree has no stamp from a passing `openlup-dev verify`. Native
 session receipts are process evidence, not cryptographic remote attestation or
 hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
 The optional [native queue admission](docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
-keeps reviewers in this same task and subscription. When explicitly activated,
-the supervisor supplies current source evidence for the reviewed PR head, or
+keeps reviewers in this same task and subscription. It is active; see the dated
+evidence in [Development and release](docs/platform/DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
+The supervisor supplies current source evidence for the reviewed PR head, or
 for the exact merge-group run/attempt, then observes the queue's actual base,
 head, tree and source identity. An entire
 group tree equal to the reviewed source tree needs no additional review. A
@@ -154,7 +159,11 @@ submits it through the main-only workflow within authorized delivery, and waits
 for actual admission in this conversation. The script does not dispatch or
 authorize delivery. Missing evidence remains blocked; no maintainer handoff is
 needed for routine review. Queue rebuild recovery is bounded at two retries and
-does not reset repair cycles. Foundation code does not activate queue settings.
+does not reset repair cycles. Changing queue settings remains a maintainer action.
+Submit the source receipt as soon as the pull request is open and ready, and the
+run-keyed receipt as soon as the merge-group run exists. The complete order is in
+[Deliver a change](CONTRIBUTING.md#deliver-a-change): dispatch command, arming,
+receipt timeouts and flakes.
 
 Run `npm run oss:published-tree -- --policy` during implementation. Its report
 names the owner section for each changed source responsibility. Update that

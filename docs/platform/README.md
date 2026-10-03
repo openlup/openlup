@@ -20,6 +20,8 @@ This is the public documentation set for the OpenLup platform. It describes the 
 ## Implementation plans
 
 - [Published CI completeness](plans/public-ci-completeness.md) — complete CI observation, preserved required coverage and separate repair work.
+- [Autonomous reviewed delivery](plans/autonomous-reviewed-delivery.md) — native review, its evidence and queue admission.
+- [Base-move tolerance and pull-request receipts](plans/ci-base-move-and-receipts.md) — the executed CI-parity programme and its deferred items.
 
 ## Preview boundary
 

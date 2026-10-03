@@ -1,6 +1,6 @@
 # Intent: autonomous delivery with accountable review
 
-Status: native-session implementation; optional queue foundation is inactive until separately approved live proof.
+Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts amended on 2026-10-03.
 Audience: maintainers and contributors designing the development workflow.
 
 ## Outcome
@@ -120,7 +120,8 @@ exhaustion or unknown membership returns honest blocked evidence to the supervis
 
 Foundation implementation and authorized delivery through merge do not activate
 settings. Activation needs an exact separately approved proposal and live refusal
-proof, including changed heads, rebuilt groups, same-SHA attempt replay, and
+proof, including changed heads, rebuilt groups, same-SHA attempt replay (for
+merge-group runs since the 2026-10-03 pull-request receipt amendment), and
 synthetic-tip DCO. Fixture success or unavailable sandbox evidence does not
 establish activation. Review freshness is checked at admission, not guaranteed
 at the later GitHub merge; Actions source attribution cannot isolate a workflow
