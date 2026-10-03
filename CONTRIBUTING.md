@@ -231,7 +231,8 @@ gh workflow run native-review-admission.yml --ref main --json < native-review-in
 
 Admission re-verifies that receipt against the live pull request, the exact run
 and the review's freshness each time. A new head needs a new review and a new
-receipt. For a merge-group run, select the observed run, attempt and PR number
+receipt. On a pull-request run, a run-keyed artifact that fails its checks does
+not block the source receipt; a merge-group run still refuses it. For a merge-group run, select the observed run, attempt and PR number
 and use the run-keyed form:
 
 ```bash

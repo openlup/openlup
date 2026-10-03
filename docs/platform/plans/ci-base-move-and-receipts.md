@@ -1,11 +1,11 @@
 # Plan: checks that survive a moving `main`, and pull-request receipts without a race
 
-Status: approved by the maintainer on 2026-10-03 as bounded delivery authority for section 3; in execution.
+Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114; local steps 0b and 4 applied); follow-up hardening W3 approved the same day.
 Audience: the agents executing it, their reviewers and the maintainer.
 
 ## 1. Why: recorded failures only
 
-**Window.** The window is the 110 pull-request and merge-group runs of
+**Window.** The window is the 110 non-skipped pull-request and merge-group runs of
 Published Tree CI from the first native-review run (2026-09-27) to 2026-10-02.
 Counts below are completed runs. In that window, required contexts went red in
 14 completed runs (15 attempts). None was caused by a check that local
@@ -45,8 +45,9 @@ would reopen each item.
   - **Merge-group runs, always:** submit the run-keyed (v1) receipt as soon as
     the run exists. Add integration evidence when the group tree differs from the
     reviewed tree.
-  - **Pull-request runs:** the run-keyed receipt as soon as the run exists, until
-    W2 merges. After that, one source-keyed (v2) receipt per reviewed head (S3).
+  - **Pull-request runs:** one source-keyed (v2) receipt per reviewed head
+    (S3), submitted as soon as the pull request is open and ready. Before W2
+    merged, this was a run-keyed receipt per run.
   - To submit: `agent-review-queue.mjs input` (or `input-source`), then a
     dispatch of `native-review-admission.yml`.
 - **Owner read** (W2 only).
@@ -199,6 +200,24 @@ No release, repository setting, ruleset, secret or npm action is included.
 
 A report of required reds by class over the next 30 merges follows, but does not
 gate completion.
+
+### Step 5, W3: follow-up hardening
+
+From the review advice and dogfooding of W0–W1:
+- **Admission.** On a pull-request run, a run-keyed artifact that fails its checks
+  no longer blocks the source receipt; merge groups still refuse it. A pull
+  request and its run must carry an integer head repository ID. Source
+  submission observes the pull request before fetching objects.
+- **Tests.** A live PR head that moved while the event head did not. P1 also
+  moves an untouched path of the same unit. P6 expects exactly one failure.
+- **Documentation.** Record binding covers content and mode; freshness compares
+  with the base only. This plan's status, window and receipt rules.
+- **Local mirror (maintainer-local).** The verify temporary directory takes an
+  override, so the mirror's self-test leaves nothing in the home directory.
+  Doctor accepts every workflow blob that verify mirrors.
+
+Sign-off: the maintainer reads the candidate before sign-off, because it
+changes an admission control.
 
 **Stop and report instead of repairing** if any of these happens:
 - a receipt timeout on a pull request whose v2 receipt was submitted in time;
@@ -361,3 +380,5 @@ unchanged:
   reviews per entry after this plan. These would also amend the AI contribution
   policy.
 - **More than one queue build:** measured queue wait.
+- **Conflict replay:** a merge-group removal caused by a textual conflict.
+- **Parallel local checks:** a local verification time that blocks delivery.

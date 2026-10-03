@@ -160,14 +160,16 @@ owner section using the reported unit and digest:
 Examples inside fenced blocks do not count as records.
 
 **What a record's digest binds:** the unit, the owner document and anchor, the
-before and after content and ownership of each changed path, and the normalized
-owner section. It does not bind the comparison base commit.
+before and after content, mode and ownership of each changed path, and the
+normalized owner section. It does not bind the comparison base commit.
 
 **When a record expires:** when the source delta, the mapping or the normalized
 owner section changes. An unrelated move of `main` keeps it valid, so a pull
 request is checked the same way on its merge ref and in a merge group. A base
 change to a path the record covers, or to its owner section, still expires it.
-A record identical to one already in the base is not fresh.
+A record identical to one already in the base is not fresh. Freshness compares
+with the base only: a record that left the section can answer the identical
+change again.
 The checker also keeps the previous owner's obligation when routing changes or
 a source disappears. Cosmetic edits, records and generated/provenance blocks
 are excluded from the substantive comparison. Adding irrelevant prose can still
