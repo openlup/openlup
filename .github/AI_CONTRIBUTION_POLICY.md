@@ -138,11 +138,22 @@ The approved [native queue follow-up](../docs/platform/plans/autonomous-reviewed
 adds an optional GitHub admission transport, not another reviewer host. The
 active supervisor retains actual native source-review observations and submits
 them for the reviewed pull-request head, or for the exact hosted merge-group run
-and attempt. A queue group with the same complete
-tree as the reviewed source needs no new review; a different tree requires two
-fresh independent integration reviewers with unchanged approved criteria and
-separate group identity. Unknown or sensitive interactions cannot be excused by
-filenames, path separation or an author-written approval. Nonqueue base
+and attempt.
+
+The source review carries over to a merge group when either:
+- the group tree is the reviewed tree; or
+- the group is exactly the reviewed change on its queue base, and the base's net
+  change since the reviewed base touches neither the change's paths nor the
+  admission, identity-binding, dependency and migration machinery (workflows,
+  review scripts, the identity fence, package manifests and lockfiles,
+  migrations).
+
+Admission checks these conditions itself; the author declares nothing. The
+mechanical checks on the group tree are then relied on for behavioural
+interaction. Every other group requires two fresh independent integration
+reviewers, with unchanged approved
+criteria and separate group identity. An author-written approval cannot excuse
+an interaction. Nonqueue base
 integration still requires fresh full-scope review under the existing protocol.
 
 Activation requires separate explicit maintainer approval of the exact settings
@@ -219,3 +230,12 @@ attempt".
   review's freshness each time.
 - The decision is wrong if a source receipt ever admits a head, tree or pull
   request other than the one its reviewers covered.
+
+**Review carry-over in the merge queue, decided 2026-10-03.** The rule read: "Unknown or sensitive interactions cannot be excused by filenames, path separation or an author-written approval". It also required two integration reviewers for every merge group whose tree differed from the reviewed source.
+
+- **What changed.** A source review now carries over, and the pull request's source receipt admits the group, in two cases:
+  - the group tree is the reviewed tree;
+  - admission proves the group is exactly the reviewed change on its queue base, and the base's net change since the reviewed base touches neither the change's paths nor the admission, identity-binding, dependency and migration machinery.
+- **The reason.** Each merge into `main` invalidated the reviews of every waiting pull request. With several pull requests in flight, that grew quadratically in reviews and needed a live session within a 20-minute window per group. Gated open-source projects rely on mechanical checks of the exact merged tree in the same way.
+- **Unchanged.** Overlapping changes, and changes to that machinery, keep two integration reviewers.
+- **Wrong if:** a carried-over merge admits an interaction that the mechanical checks on the group tree could not have caught, and that a reviewer would have.

@@ -82,7 +82,7 @@ export function assertDocumentationContract(
     }
     for (const target of markdownLinkTargets(source)) {
       if (isExternalOrAnchor(target)) continue;
-      const cleanTarget = decodeURI(target.split(/[?#]/, 1)[0] ?? "");
+      const cleanTarget = decodeURI((target.split(/[?#]/, 1)[0] ?? "").replace(/\\([!-/:-@[-`{-~])/g, "$1"));
       const resolvedTarget = resolve(dirname(file), cleanTarget);
       const insidePackage = resolvedTarget === packageRoot || resolvedTarget.startsWith(`${packageRoot}${sep}`);
       if (!insidePackage) {
@@ -247,11 +247,32 @@ function markdownFiles(root: string): string[] {
 }
 
 function markdownLinkTargets(source: string): string[] {
-  const inline = [...source.matchAll(/!?\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)/g)]
-    .map((match) => match[1] ?? match[2]);
-  const references = [...source.matchAll(/^\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))/gm)]
+  const inline = [...source.matchAll(/!?\[[^\]]*\]\(\s*/g)]
+    .map((match) => inlineLinkTarget(source.slice(match.index + match[0].length)));
+  const references = [...source.matchAll(/^ {0,3}\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))/gm)]
     .map((match) => match[1] ?? match[2]);
   return [...inline, ...references].filter((target): target is string => Boolean(target));
+}
+
+function inlineLinkTarget(source: string): string | undefined {
+  const angleTarget = source.match(/^<([^>]+)>/);
+  let end = angleTarget?.[0].length ?? 0;
+  if (!angleTarget) {
+    let depth = 0;
+    for (; end < source.length; end++) {
+      const character = source[end];
+      if (character === "\\" && end + 1 < source.length) { end++; continue; }
+      if (character === "(") depth++;
+      else if (character === ")") {
+        if (depth === 0) break;
+        depth--;
+      } else if (/\s/.test(character ?? "")) break;
+    }
+    if (end === 0 || depth !== 0) return undefined;
+  }
+  const suffix = source.slice(end);
+  if (!/^(?:\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^()\\])*\)))?\s*\)/.test(suffix)) return undefined;
+  return angleTarget?.[1] ?? source.slice(0, end);
 }
 
 function isExternalOrAnchor(target: string): boolean {

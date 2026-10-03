@@ -118,6 +118,42 @@ describe("extracted-root documentation contract", () => {
     );
   });
 
+  it.each(['"Guide title"', "'Guide title'", "(Guide title)"])("checks packed inline links with the title %s", (title) => {
+    const root = fixture(`[Guide](docs/guide.md ${title})\n[Website](https://example.invalid/guide ${title})\n[Section](#setup ${title})\n`);
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
+      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    );
+    expect(() => check(root)).not.toThrow();
+  });
+
+  it.each([0, 1, 2, 3])("checks packed reference links with %s spaces before the definition", (indent) => {
+    const spaces = " ".repeat(indent);
+    const root = fixture(`[Guide][target]\n[Website][url]\n[Section][anchor]\n\n${spaces}[target]: docs/guide.md\n${spaces}[url]: https://example.invalid/guide\n${spaces}[anchor]: #setup\n`);
+    expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
+      "README.md: local link docs/guide.md targets a file missing from npm pack",
+    );
+    expect(() => check(root)).not.toThrow();
+  });
+
+  it.each(["docs/guide(extra).md", "docs/guide(extra(details)).md"])("preserves the balanced-parentheses destination %s", (target) => {
+    const root = fixture(`[Guide](${target})\n`);
+    writeFileSync(join(root, target), "# Guide\n");
+    const packed = ["AGENTS.md", "README.md", "package.json"];
+    expect(() => check(root, packed)).toThrow(
+      `README.md: local link ${target} targets a file missing from npm pack`,
+    );
+    expect(() => check(root, [...packed, target])).not.toThrow();
+  });
+
+  it("resolves escaped parentheses without treating them as destination nesting", () => {
+    const target = "docs/guide(extra.md";
+    const root = fixture("[Guide](docs/guide\\(extra.md 'Guide')\n");
+    writeFileSync(join(root, target), "# Guide\n");
+    const packed = ["AGENTS.md", "README.md", "package.json"];
+    expect(() => check(root, packed)).toThrow(`README.md: local link docs/guide\\(extra.md targets a file missing from npm pack`);
+    expect(() => check(root, [...packed, target])).not.toThrow();
+  });
+
   it("checks nested shipped Markdown and resolves reference links relative to that file", () => {
     const root = fixture("[Guide](docs/guide.md)\n");
     writeFileSync(join(root, "docs", "guide.md"), "[Back][readme]\n\n[readme]: ../README.md#package-surface-maturity\n\n[Upgrade](SPLIT_AND_UPGRADE.md)\n");

@@ -18,8 +18,8 @@ npm install --save-exact @openlup/core@0.12.0
 
 In an existing application, run only the install command from its root, within
 that application's task authority. Read
-`node_modules/@openlup/core/AGENTS.md`, especially **Wiring example** and
-**Using this package in an application**, then its `README.md` and `CHANGELOG.md`.
+`node_modules/@openlup/core/AGENTS.md`, especially **Wiring example**, then its
+`README.md` and `CHANGELOG.md`.
 The guide's TypeScript example composes `@openlup/core/platform-runtime` through
 application-owned descriptors; it performs no I/O. Use the installed `src/` and
 `dist/*.d.ts` files to inspect the exact port or option you need. Keep providers,
