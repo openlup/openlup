@@ -1,6 +1,6 @@
 # Plan: checks that survive a moving `main`, and pull-request receipts without a race
 
-Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114; local steps 0b and 4 applied); follow-up hardening W3 approved the same day.
+Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115; local steps 0b and 4 applied).
 Audience: the agents executing it, their reviewers and the maintainer.
 
 ## 1. Why: recorded failures only
@@ -194,7 +194,7 @@ No release, repository setting, ruleset, secret or npm action is included.
 ### Done, and the regroup rule
 
 **Done:**
-- W0, W2 and W1 merged with green required contexts;
+- W0, W2, W1 and the W3 follow-up merged with green required contexts;
 - the W2 live proof recorded;
 - the step 4 self-test green.
 
@@ -204,8 +204,8 @@ gate completion.
 ### Step 5, W3: follow-up hardening
 
 From the review advice and dogfooding of W0–W1:
-- **Admission.** On a pull-request run, a run-keyed artifact that fails its checks
-  no longer blocks the source receipt; merge groups still refuse it. A pull
+- **Admission.** On a pull-request run, an unreadable or untrusted run-keyed
+  artifact no longer blocks the source receipt; merge groups still refuse it. A pull
   request and its run must carry an integer head repository ID. Source
   submission observes the pull request before fetching objects.
 - **Tests.** A live PR head that moved while the event head did not. P1 also

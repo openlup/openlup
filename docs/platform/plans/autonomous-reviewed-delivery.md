@@ -1,6 +1,6 @@
 # Plan: autonomous reviewed delivery
 
-Status: native-session implementation; optional queue foundation is inactive until separately approved live proof.
+Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts amended on 2026-10-03.
 Audience: contributors implementing and verifying the development workflow.
 
 ## Approved convergence implementation wave
@@ -400,8 +400,9 @@ mode; it does not silently change that rule or authorize cross-base repair reuse
 
 ### Native transport and admission
 
-From the task worktree, the supervisor creates input with
+For a merge-group run, the supervisor creates input from the task worktree with
 `node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json [group-session.json]`.
+Pull-request runs use the source receipt described in the amendment below.
 Replace `RUN`, `ATTEMPT` and `PR` with tool-observed positive numeric identities;
 the bracketed group-state argument is supplied only when the group tree differs.
 The command outputs JSON for
@@ -438,6 +439,11 @@ admission.
 - Several receipts for one head are allowed. An artifact failing provenance is
   skipped rather than fatal.
 - Merge-group runs keep the run-keyed receipt above unchanged.
+- W3 follow-up: on a pull-request run, an unreadable or untrusted run-keyed
+  artifact no longer blocks the source receipt. Both pull-request paths require an integer head
+  repository ID.
+- The activation proof below is the record of the activation decision. The
+  same-SHA property it names now holds for merge-group runs only.
 The configured local mirror retains all six jobs and refuses workflow drift;
 local verification does not assert hosted queue activation.
 

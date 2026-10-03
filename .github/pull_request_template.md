@@ -26,7 +26,9 @@ one-time public-root projection is not an ongoing authoring route. -->
 
 ## Checks
 
-- [ ] `npm ci`, `npm test`, and `npm run build` pass in a clean clone.
+- [ ] `npm ci`, `npm run lint`, `npm run test:required` and `npm run build` pass
+      in a clean clone (or `openlup-dev verify` reports `REQUIRED PASS` where
+      installed). Raw `npm test` and pgTAP failures are compared with the base.
 - [ ] `npm run oss:published-tree -- --policy`, `--inventory`, and `--typecheck`
       pass, or every failure is explained above.
 - [ ] Contributor-facing behaviour or commands changed here are documented in
@@ -47,3 +49,5 @@ one-time public-root projection is not an ongoing authoring route. -->
 - Publication authority (actual maintainer task or bounded delivery scope):
 - Native review evidence for the exact committed candidate, as required by the
   AI contribution policy; no claim that the maintainer personally read the diff:
+- Source receipt submitted for the reviewed head, and the maintainer read if the
+  change needs one before sign-off:
