@@ -182,8 +182,10 @@ does not cover, so do not commit them.
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
 evidence expiry and the two-cycle automatic repair/review budget. Separately
-bound fresh owner decisions can permit full cycles 3 and 4 with unchanged intent
-and author; cycle 5 refuses. Each owner cycle retains every prior round and
+bound fresh owner decisions can permit full cycles 3 and 4. Only cycle 4 may
+pair an exact regroup decision adding the two consumer-check paths specified
+in the native session interface, preserving every previous path, criteria,
+risk, roles and author. Cycle 5 refuses. Each owner cycle retains every prior round and
 finding and requires two fresh full reviewers. See the
 [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
 for the exact request/candidate bindings. Its review base is the
@@ -781,11 +783,14 @@ reports `needs_rescope`; it never restarts the budget or drops findings.
 A fresh explicit owner decision may authorize one additional full review at
 cycle 3 after the two automatic cycles. A separate fresh decision bound to that
 third request and the next candidate may authorize one final full review at
-cycle 4. Each retains every prior round and finding, the same approved intent
-and author, and a clean ancestor-preserving committed candidate. Both require
-two fresh full reviewers. No fifth cycle or automatic extension is permitted;
-unchanged prepare preserves evidence and expiry. These decisions grant no
-publication, merge or settings authority.
+cycle 4. Each retains every prior round and finding, the same criteria, risk,
+roles and author, and a clean ancestor-preserving committed candidate. Both
+require two fresh full reviewers. Only cycle 4 may also pair an exact owner
+regroup decision with a bounded scope expansion: retain every previous path and
+add exactly `packages/core/scripts/core-package-consumer-audit.ts` and
+`packages/core/test/consumerTooling.test.ts`. No other scope expansion, fifth
+cycle or automatic extension is permitted; unchanged prepare preserves evidence
+and expiry. These decisions grant no publication, merge or settings authority.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits

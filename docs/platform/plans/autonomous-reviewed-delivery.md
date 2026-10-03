@@ -302,12 +302,20 @@ they are computed evidence, not owner quotations. Record the actual fresh human
 decision in `ownerDecision`. This process evidence is not an authenticated owner
 signature. Cycle 3 requires a fresh decision. One final cycle 4 requires a
 separate fresh decision bound to the exact third request and next candidate.
-Both require unchanged intent and author, complete preserved lineage, actual
-ancestor delta and two fresh full reviews. Neither decision can be reused for a
-changed request or candidate. The automatic limit remains two. Wrong bindings,
-early use, changed intent, missing history, reduced coverage and a fifth round
-refuse. An unchanged repeat retains the manual round and its original expiry;
-expired evidence still blocks delivery.
+Both require complete preserved lineage, actual ancestor delta and two fresh
+full reviews. Cycle 3 retains unchanged intent and author. Cycle 4 has one
+bounded exception: it may combine its decision with `regroup` to retain every
+previous scope path and add exactly
+`packages/core/scripts/core-package-consumer-audit.ts` and
+`packages/core/test/consumerTooling.test.ts`. Criteria, risk, required roles and
+author must remain unchanged. No generic scope expansion is accepted. The
+regroup digests bind the previous request and both intents; the continuation
+digests independently bind the previous request and actual candidate. Neither
+decision can be reused for a changed request or candidate. The automatic limit
+remains two. Wrong bindings, early use, missing, extra or replacement scope
+paths, changed criteria, risk, roles or author, missing history, reduced
+coverage and a fifth round refuse. An unchanged repeat retains the manual round
+and its original expiry; expired evidence still blocks delivery.
 
 The supervisor launches fresh native agents and uses their actual execution IDs
 and complete structured results. `agentReviewReportBinding(request)` supplies

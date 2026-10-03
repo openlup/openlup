@@ -283,6 +283,41 @@ describe('bounded repair convergence', () => {
       const changed = structuredClone(fourth); mutate(changed); expect((await check(changed)).status).not.toBe('reviewed');
     }
   });
+  it('pairs only the exact two consumer-check additions with a separately bound fourth full review', async () => {
+    const additions = ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts'];
+    const third = await manual(await exhausted()); const expanded = { ...intent, scope: [...intent.scope, ...additions] }; const next = { ...repaired(4), changedPaths: expanded.scope };
+    const decision = approved => ({ priorRequestDigest: digest(third.request), priorIntentDigest: digest(third.request.intent), nextIntentDigest: digest(approved), ownerDecision: 'Synthetic exact two-path owner approval' });
+    const expandedDelta = async (_cwd, before, after) => before.head === third.request.candidate.head && after.head === next.head ? expanded.scope : delta(_cwd, before, after);
+    const combine = (extra = {}) => manual(third, next, { intent: expanded, regroup: decision(expanded), delta: expandedDelta, ...extra });
+    await expect(combine({ regroup: undefined })).rejects.toThrow('approved intent');
+    await expect(advance(third, next, { intent: expanded, regroup: decision(expanded), fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
+    for (const field of ['priorRequestDigest', 'priorIntentDigest', 'nextIntentDigest']) await expect(combine({ regroup: { ...decision(expanded), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
+    for (const change of [{ criteria: 'Changed goal' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }]) {
+      const changed = { ...expanded, ...change }; await expect(combine({ intent: changed, regroup: decision(changed) })).rejects.toThrow('unchanged criteria, risk, roles');
+    }
+    await expect(combine({ authorSessionId: 'other' })).rejects.toThrow('author changed');
+    for (const scope of [['source.txt', additions[0]], ['source.txt', ...additions, 'extra.txt'], ['source.txt', additions[0], 'replacement.txt'], additions]) {
+      const approved = { ...intent, scope }; await expect(manual(third, { ...next, changedPaths: scope }, { intent: approved, regroup: decision(approved), delta: expandedDelta })).rejects.toThrow();
+    }
+    await expect(manual(third, repaired(4), { regroup: decision(intent) })).rejects.toThrow('not the preserved transition');
+    const second = await exhausted(); const prematureRegroup = { ...decision(expanded), priorRequestDigest: digest(second.request), priorIntentDigest: digest(second.request.intent) };
+    await expect(manual(second, next, { intent: expanded, regroup: prematureRegroup, delta: expandedDelta })).rejects.toThrow('exhausted automatic budget');
+    await expect(combine({ fullRefresh: false })).rejects.toThrow('explicit full refresh');
+    await expect(manual(third, { ...next, clean: false }, { intent: expanded, regroup: decision(expanded), delta: expandedDelta })).rejects.toThrow('clean committed');
+    await expect(combine({ delta: async (_cwd, before, after) => { if (before.head === third.request.candidate.head) throw new Error('not an authenticated ancestor'); return delta(_cwd, before, after); } })).rejects.toThrow('nonancestor integration');
+    const fourth = await combine(); expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full', regroup: decision(expanded), ownerContinuation: ownerApproval(third, next), findings: third.request.continuation.findings });
+    expect(fourth.history).toEqual([...third.history, { request: third.request, reports: third.reports }]);
+    expect(fourth.request.roles).toEqual(['correctness', 'security']);
+    fourth.reports = [closure(fourth)]; expect((await check(fourth, { delta: expandedDelta })).status).toBe('needs_agent_review');
+    fourth.reports.push(closure(fourth, 1)); expect((await check(fourth, { delta: expandedDelta })).status).toBe('reviewed');
+    expect(await manual(fourth, next, { intent: expanded, regroup: decision(expanded), ownerContinuation: fourth.request.continuation.ownerContinuation, delta: expandedDelta })).toEqual(fourth);
+    expect((await check(fourth, { delta: expandedDelta, now: () => 86401001 })).reason).toContain('expired');
+    expect((await check(fourth, { delta: expandedDelta, snapshot: async () => ({ ...next, clean: false }) })).status).not.toBe('reviewed');
+    for (const mutate of [value => { value.history = []; }, value => { value.request.continuation.findings = []; }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.continuation.regroup.nextIntentDigest = 'f'.repeat(64); }, value => { value.request.continuation.ownerContinuation.priorRequestDigest = 'f'.repeat(64); }]) {
+      const changed = structuredClone(fourth); mutate(changed); expect((await check(changed, { delta: expandedDelta })).status).not.toBe('reviewed');
+    }
+    await expect(manual(fourth, { ...repaired(5), changedPaths: expanded.scope }, { intent: expanded, delta: expandedDelta })).rejects.toThrow('remaining owner cycle');
+  });
   it('refuses missing, mismatched, premature, changed-intent and nonfull owner continuation', async () => {
     const prior = await exhausted(); const next = repaired(3); const approval = ownerApproval(prior, next);
     await expect(advance(prior, next, { fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
@@ -474,24 +509,31 @@ describe('actual source snapshot without candidate execution', () => {
     expect(invoke('verify').status).toBe(0); const reviewed = await readFile(statePath, 'utf8');
     expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
     await commit(4); const current = JSON.parse(reviewed);
-    await writeFile(specPath, JSON.stringify(spec)); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
-    await writeFile(specPath, JSON.stringify({ ...spec, ownerContinuation })); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
+    const additions = ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts'];
+    for (const path of additions) { await mkdir(join(cwd, path.substring(0, path.lastIndexOf('/'))), { recursive: true }); await writeFile(join(cwd, path), 'export {};\n'); }
+    git('add', ...additions); git('commit', '-qm', 'exact consumer-check scope');
+    const expanded = { ...intent, scope: [...intent.scope, ...additions] };
+    const fourthSpec = { ...spec, intent: expanded };
+    await writeFile(specPath, JSON.stringify(fourthSpec)); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
+    await writeFile(specPath, JSON.stringify({ ...fourthSpec, ownerContinuation })); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
     const fourthApproval = { ...ownerContinuation, priorRequestDigest: digest(current.request), candidateDigest: digest(await captureSessionCandidate(cwd, baseline)), ownerDecision: 'Synthetic separate fresh approval for the fourth fixture candidate' };
-    await writeFile(specPath, JSON.stringify({ ...spec, ownerContinuation: fourthApproval })); expect(invoke('prepare').status).toBe(0);
+    const regroup = { priorRequestDigest: digest(current.request), priorIntentDigest: digest(current.request.intent), nextIntentDigest: digest(expanded), ownerDecision: 'Synthetic separate exact two-path fixture approval' };
+    await writeFile(specPath, JSON.stringify({ ...fourthSpec, ownerContinuation: fourthApproval, regroup: { ...regroup, nextIntentDigest: 'f'.repeat(64) } })); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
+    await writeFile(specPath, JSON.stringify({ ...fourthSpec, ownerContinuation: fourthApproval, regroup })); expect(invoke('prepare').status).toBe(0);
     const fourth = JSON.parse(await readFile(statePath, 'utf8'));
     expect(fourth.history).toEqual([...current.history, { request: current.request, reports: current.reports }]);
     expect(fourth.history[0].reports[0].materialFindings).toEqual([finding]);
-    expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full', ownerContinuation: fourthApproval });
+    expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full', ownerContinuation: fourthApproval, regroup });
     expect(fourth.request.roles).toEqual(['correctness', 'security']);
     for (const index of [0, 1]) {
       const reportPath = join(directory, `fourth-${index}.json`);
-      await writeFile(reportPath, JSON.stringify({ ...report(fourth.request, index), reviewerId: `fourth-${index}`, sessionId: `fourth-session-${index}`, completedAt: Date.now(), closure: { coveredDelta: ['source.txt'], interactionsChecked: true, ordinarySemantics: false, resolvedFindings: fourth.request.continuation.findings.map(card => card.id) } }));
+      await writeFile(reportPath, JSON.stringify({ ...report(fourth.request, index), coveredScope: expanded.scope, reviewerId: `fourth-${index}`, sessionId: `fourth-session-${index}`, completedAt: Date.now(), closure: { coveredDelta: [...expanded.scope].sort(), interactionsChecked: true, ordinarySemantics: false, resolvedFindings: fourth.request.continuation.findings.map(card => card.id) } }));
       expect(invoke('record', reportPath).status).toBe(0);
       expect(invoke('verify').status === 0).toBe(index === 1);
     }
     const finalBytes = await readFile(statePath, 'utf8'); expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(finalBytes);
     await commit(5); const final = JSON.parse(finalBytes);
-    await writeFile(specPath, JSON.stringify({ ...spec, ownerContinuation: { ...fourthApproval, priorRequestDigest: digest(final.request), candidateDigest: digest(await captureSessionCandidate(cwd, baseline)) } }));
+    await writeFile(specPath, JSON.stringify({ ...fourthSpec, ownerContinuation: { ...fourthApproval, priorRequestDigest: digest(final.request), candidateDigest: digest(await captureSessionCandidate(cwd, baseline)) } }));
     expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(finalBytes);
     expect(invoke('verify').status).not.toBe(0);
   }, 30000);
