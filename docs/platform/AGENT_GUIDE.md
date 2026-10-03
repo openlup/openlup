@@ -57,6 +57,9 @@ testing, then operate in that worktree. Recognize an already assigned task
 worktree and continue there; do not create another for the same task. Keep the
 coordination checkout clean and leave other tasks' worktrees, branches and
 processes alone. Read-only reviewers do not need their own worktree.
+If no maintainer helper is configured, use an ordinary dedicated `git worktree`;
+[CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-shape) owns that setup and the
+handoff to an authorized submission supervisor.
 
 Keep one compact task record of a finite observable outcome, smallest complete
 scope, exclusions, authority and delivery boundary, acceptance and sufficient

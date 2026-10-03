@@ -72,6 +72,7 @@ export function assertDocumentationContract(
     packageSurface?: Record<string, SurfaceContract>;
   };
   const violations: string[] = [];
+  const packed = new Set(packedFiles());
 
   for (const file of markdownFiles(packageRoot)) {
     const source = readFileSync(file, "utf8");
@@ -79,15 +80,30 @@ export function assertDocumentationContract(
     for (const [pattern, description] of forbiddenExtractedRootReferences) {
       if ((pattern as RegExp).test(source)) violations.push(`${label}: ${description}`);
     }
-    for (const target of markdownLinkTargets(source)) {
+    for (const target of markdownLinkTargets(source, (reason) => violations.push(`${label}: ${reason}`))) {
       if (isExternalOrAnchor(target)) continue;
-      const cleanTarget = decodeURI(target.split(/[?#]/, 1)[0] ?? "");
+      // Do not interpret an entity or Unicode separator as a different packed
+      // destination. Authors can use literal punctuation or percent encoding.
+      if (/[&<>]|[^\S \t\r\n]/u.test(target)) {
+        violations.push(`${label}: unsupported local link destination ${target}; use literal punctuation or percent encoding, and ASCII title separators`);
+        continue;
+      }
+      const unescaped = target.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+      let cleanTarget: string;
+      try {
+        cleanTarget = decodeURIComponent(unescaped.split(/[?#]/, 1)[0] ?? "");
+      } catch {
+        violations.push(`${label}: malformed percent encoding in local link ${target}`);
+        continue;
+      }
       const resolvedTarget = resolve(dirname(file), cleanTarget);
       const insidePackage = resolvedTarget === packageRoot || resolvedTarget.startsWith(`${packageRoot}${sep}`);
       if (!insidePackage) {
         violations.push(`${label}: local link escapes package ${target}`);
       } else if (!cleanTarget || !existsSync(resolvedTarget)) {
         violations.push(`${label}: dangling local link ${target}`);
+      } else if (packed.has(label) && !packed.has(relative(packageRoot, resolvedTarget).split(sep).join("/"))) {
+        violations.push(`${label}: local link ${target} targets a file missing from npm pack`);
       }
     }
     for (const match of source.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)) {
@@ -99,7 +115,7 @@ export function assertDocumentationContract(
   const exports = manifest.exports ?? {};
   const surface = gates.packageSurface ?? {};
   assertSurfaceTable(packageRoot, "README.md", "Package Surface Maturity", true, exports, surface, violations);
-  assertAgentGuide(packageRoot, gates.kind, exports, surface, packedFiles, violations);
+  assertAgentGuide(packageRoot, gates.kind, exports, surface, packed, violations);
   assertSingleUnreleasedSection(packageRoot, violations);
   assertPackageHygiene(packageRoot, violations);
   assertGeneratedOutputIgnores(packageRoot, violations);
@@ -115,13 +131,13 @@ function assertAgentGuide(
   kind: unknown,
   exports: Record<string, unknown>,
   surface: Record<string, SurfaceContract>,
-  packedFiles: () => string[],
+  packedFiles: ReadonlySet<string>,
   violations: string[],
 ): void {
   if (typeof kind !== "string" || !packageKinds.includes(kind)) {
     violations.push(`release-gates.json: package kind must be one of ${packageKinds.join(", ")}`);
   }
-  if (!packedFiles().includes("AGENTS.md")) violations.push("npm pack: tarball is missing AGENTS.md");
+  if (!packedFiles.has("AGENTS.md")) violations.push("npm pack: tarball is missing AGENTS.md");
   const guidePath = join(packageRoot, "AGENTS.md");
   if (!existsSync(guidePath)) {
     violations.push("AGENTS.md: missing agent guide");
@@ -243,16 +259,48 @@ function markdownFiles(root: string): string[] {
   });
 }
 
-function markdownLinkTargets(source: string): string[] {
-  const inline = [...source.matchAll(/!?\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)/g)]
-    .map((match) => match[1] ?? match[2]);
-  const references = [...source.matchAll(/^\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))/gm)]
-    .map((match) => match[1] ?? match[2]);
-  return [...inline, ...references].filter((target): target is string => Boolean(target));
+function markdownLinkTargets(source: string, refuse: (reason: string) => void): string[] {
+  // Inspect destination delimiters conservatively; nested/escaped label text
+  // and blockquote/list containers must not hide a package-local target.
+  const inline = [...source.matchAll(/\]\([ \t\r\n]*/g)]
+    .map((match) => linkDestination(source.slice(match.index + match[0].length), refuse));
+  // Generated declarations contain index signatures, not link definitions.
+  const referenceSource = source
+    .replace(/^ {0,3}(`{3,})[^`\r\n]*\r?\n[\s\S]*?^ {0,3}\1`*[ \t]*\r?$/gm, "")
+    .replace(/^ {0,3}(~{3,})[^\r\n]*\r?\n[\s\S]*?^ {0,3}\1~*[ \t]*\r?$/gm, "");
+  const references = [...referenceSource.matchAll(/\[(?:\\.|[^\]\\])+\]:[ \t\r\n]*/g)]
+    .map((match) => linkDestination(referenceSource.slice(match.index + match[0].length), refuse));
+  return [...inline, ...references].filter((target): target is string => target !== undefined);
+}
+
+function linkDestination(source: string, refuse: (reason: string) => void): string | undefined {
+  // Inspect the destination independently of optional title syntax. Unknown
+  // boundaries refuse explicitly instead of disappearing from the inventory.
+  const angle = source.startsWith("<");
+  let depth = 0;
+  const start = angle ? 1 : 0;
+  for (let end = start; end < source.length; end++) {
+    const character = source[end];
+    if (character === "\\" && end + 1 < source.length) { end++; continue; }
+    if (angle) {
+      if (character === ">") return source.slice(start, end);
+      if (character === "\r" || character === "\n") break;
+    } else {
+      if (character === "(") depth++;
+      else if (character === ")" && depth > 0) depth--;
+      else if (character === ")" || /[ \t\r\n]/.test(character ?? "")) {
+        if (depth === 0) return source.slice(start, end);
+        break;
+      }
+    }
+  }
+  if (!angle && depth === 0 && source.length > 0) return source;
+  refuse("unsupported Markdown link destination boundary; use a balanced destination or an angle-delimited path");
+  return undefined;
 }
 
 function isExternalOrAnchor(target: string): boolean {
-  return target.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(target);
+  return target === "" || target.startsWith("#") || target.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(target);
 }
 
 function assert(condition: unknown, message: string): asserts condition {

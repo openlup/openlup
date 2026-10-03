@@ -55,9 +55,26 @@ promise.
 - `externalConsumerEvidence`: not yet evaluated; a first-party packed consumer
   remains package smoke, not external adoption.
 
-## Local verification
+## Use in an application
 
-From this package directory:
+From your application's root, with Node 24 and npm 11.19.0:
+
+```sh
+npm install --save-exact @openlup/core@0.12.0
+```
+
+Read the installed `AGENTS.md`, then compose the [typed wiring example](AGENTS.md#wiring-example)
+with your application's own ports and options. Inspect the shipped sources and
+declarations for the exact version you installed. A missing seam needs an
+upstream proposal under your application's submission authority; the dependency
+guide grants no permission to publish an issue or change your application.
+Keep every installed `@openlup/*` package on the same exact set version.
+
+## Local verification from source
+
+The following developer commands require a source checkout of this package;
+the npm tarball omits its development scripts and tests. From the source package
+directory:
 
 ```sh
 npm ci
@@ -66,10 +83,17 @@ npm run ci
 
 Focused proofs are `npm run api:check`, `npm run release:check`, and
 `npm run test:consumer`. The root test script skips this suite.
+`npm run docs:check` requires relative links in shipped Markdown to resolve to
+files actually packed in the tarball; a target present only in source refuses.
+Ambiguous destinations refuse explicitly: use literal punctuation or
+percent-encoded filenames, with ASCII whitespace before an optional title.
+Raw ampersands, angle characters and Unicode whitespace in local destinations
+require a canonical rewrite rather than passing an incomplete link check.
 
-Repository neutrality checks reuse the existing source scanner through
-[the tree counting interface](./scripts/neutrality-tree-counts.ts). This
-process interface reads JSON containing source paths, contents and a policy
+The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks)
+reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative
+to this source package. This process interface reads JSON containing source paths,
+contents and a policy
 from standard input, then emits finding counts for each path. Shell sources
 retain the scanner's existing shell handling. The interface adds no package
 export and changes no matcher or kernel behavior.
@@ -77,7 +101,7 @@ export and changes no matcher or kernel behavior.
 Repository lint keeps this package's production source independent of configured
 provider SDKs and explicit industry contract names. Adopter adapters compose
 providers; generic ports can forward opaque extension data. See the
-[syntax scope and exceptions](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
+[syntax scope and exceptions](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#development-preview-checks).
 
 The repository checker also calls the UI neutrality counting process with
 `--counts-json` to count its existing patterns over the supplied sources. Running that checker without

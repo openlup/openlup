@@ -23,6 +23,21 @@ The intended topology is one platform monorepo plus separately owned adopter
 applications. Adopters keep their own brand, content, catalogue, local policy,
 and integrations; platform code remains generic and evolves upstream.
 
+## Use a package in your application
+
+Install an exact npm version from your application's root, using Node 24 and
+npm 11.19.0. For example:
+
+```sh
+npm install --save-exact @openlup/core@0.12.0
+```
+
+Read `node_modules/@openlup/core/AGENTS.md` and its typed wiring example before
+composing the package's ports and options. The [adopter route](docs/platform/adopter-kit/README.md)
+starts without cloning OpenLup; your application owns its instructions,
+permissions and integrations. Upgrade every installed `@openlup/*` package to
+the same exact set version. These packages remain a development preview.
+
 ## Platform documentation
 
 - [Explore all domains, packages and source responsibilities](docs/platform/SOURCE_MAP.md)
@@ -39,16 +54,18 @@ same-change impact checks and a reproducible Markdown/search bundle for website
 consumers. Repository pages are the canonical source; presentation consumes the
 checked bundle from a deliberately selected public revision.
 
-## Evaluate the public reference
+## Evaluate the public reference from a source checkout
 
 Choose an immutable tag from the [OpenLup releases](https://github.com/openlup/openlup/releases)
 and review its release-specific upgrade notes before changing a pinned checkout.
-For example, `openlup-source-preview/4` was the latest release at the
-2026-09-23 documentation review. From a fresh public checkout at that tag, use
-Node and npm versions recorded in [.nvmrc](.nvmrc) and `package.json`:
+Use the commands and profiles supplied by the selected revision; older previews
+may have different setup steps. In a source revision with the current package
+workspace, use Node and npm versions recorded in [.nvmrc](.nvmrc) and
+`package.json`, from the repository root:
 
 ```sh
 npm ci
+npm --workspace @openlup/core run build
 npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
 npm run oss:published-tree -- --typecheck

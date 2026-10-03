@@ -30,6 +30,7 @@
     "MAINTAINERS.md",
     "README.md",
     "SECURITY.md",
+    "docs/SUBSCRIPTION_ENGINE.md",
     "release-gates.json"
   ],
   "scripts": {

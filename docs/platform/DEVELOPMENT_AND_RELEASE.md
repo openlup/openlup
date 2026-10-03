@@ -182,8 +182,61 @@ retag, rewrite an immutable release or republish a version. A failed publish job
 may be rerun: it re-reads npm and refuses once npm holds that version or a later
 one, so `latest` never moves backwards; otherwise correct forward with a new
 version. Dispatching the set again resumes it: it skips a package npm holds with
-the same tarball, leaves a package whose release exists but npm lacks the
+the same tarball and reviewed notes, leaves a package whose release exists with
+those notes but npm lacks the
 version to that rerun, releases the rest, and stops on any other state. No step deploys production or changes an adopter's dependency pin.
+
+### Verify the published npm artifact
+
+Use a disposable directory outside any checkout, Node 24, npm 11.19.0 and an
+authenticated `gh`. Select the package/version and full commit from the reviewed
+release. This example verifies the first core set; replace both values together
+for a later release. Repeat for each package before offering the whole set.
+
+```sh
+export OPENLUP_VERSION=0.12.0
+export OPENLUP_COMMIT=5a851a6db5483fe1c754445ab837429f108dfd75
+gh release verify "openlup-core-v$OPENLUP_VERSION" --repo openlup/openlup
+npm init -y
+npm install --save-exact --ignore-scripts --no-audit --fund=false "@openlup/core@$OPENLUP_VERSION"
+npm view "@openlup/core@$OPENLUP_VERSION" dist --json > registry-dist.json
+npm pack "@openlup/core@$OPENLUP_VERSION" --ignore-scripts --json > registry-pack.json
+npm audit signatures --json --include-attestations > signatures.json
+node --input-type=module - "$OPENLUP_VERSION" "$OPENLUP_COMMIT" <<'JS'
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+const json = path => JSON.parse(readFileSync(path, 'utf8'));
+const [version, commit] = process.argv.slice(2);
+const dist = json('registry-dist.json'), audit = json('signatures.json');
+assert.deepEqual(audit.invalid, []); assert.deepEqual(audit.missing, []);
+const digest = createHash('sha512').update(readFileSync(json('registry-pack.json')[0].filename)).digest();
+assert.equal(dist.integrity, `sha512-${digest.toString('base64')}`);
+const verified = audit.verified.find(row => row.name === '@openlup/core' && row.version === version);
+const provenance = verified.attestationBundles.find(row => row.predicateType === 'https://slsa.dev/provenance/v1');
+const statement = JSON.parse(Buffer.from(provenance.bundle.dsseEnvelope.payload, 'base64'));
+assert(statement.subject.some(row => row.name === `pkg:npm/%40openlup/core@${version}` && row.digest.sha512 === digest.toString('hex')));
+const build = statement.predicate.buildDefinition, tag = `refs/tags/openlup-core-v${version}`;
+assert.deepEqual(build.externalParameters.workflow, {
+  ref: tag, repository: 'https://github.com/openlup/openlup', path: '.github/workflows/publish-packages.yml',
+});
+assert(build.resolvedDependencies.some(row => row.uri === `git+https://github.com/openlup/openlup@${tag}` && row.digest.gitCommit === commit));
+console.log('PASS: registry integrity and verified provenance match the reviewed package, tag, commit and workflow');
+JS
+npm view @openlup/core dist-tags.latest
+```
+
+Require each command to succeed; the final `latest` value must equal the selected
+version when confirming a newly published set. `npm audit signatures` verifies
+the signatures before the snippet inspects its verified bundles; decoding a raw
+registry attestation alone is not signature verification. See the
+[npm verification contract](https://docs.npmjs.com/cli/audit/).
+Missing bundles, unsupported npm options, network/authentication failures or
+unavailable release verification mean **verification unavailable**: record the
+failed command, fix that prerequisite and rerun it before offering adoption.
+A digest or identity mismatch is a refusal requiring maintainer investigation.
+Compare the downloaded registry tarball with registry integrity and the signed
+subject digest; a local preflight tarball can differ and is not that evidence.
 
 ## Cutting an optional source preview
 

@@ -67,6 +67,23 @@ describe("packages:check", () => {
     expect(runPackagesCheck(root, ["--out", "out", "--release-tag", "openlup-pub-v1.5.0"])).toBe(1);
     expect(existsSync(join(root, "out"))).toBe(false);
   }, 60_000);
+  it.each(["dist/a.js", "dist/a.d.ts", "src/a.ts"])("refuses to keep a pack missing the concrete export target %s", (missing) => {
+    const errors = quiet();
+    const root = fixture();
+    const path = join(root, "packages/pub/package.json");
+    const manifest = JSON.parse(readFileSync(path, "utf8"));
+    manifest.exports = { ".": { "core-source": "./src/a.ts", types: "./dist/a.d.ts", default: "./dist/a.js" } };
+    manifest.files = ["dist/a.js", "dist/a.d.ts", "src/a.ts"].filter((target) => target !== missing);
+    manifest.scripts.build = "node -e \"const fs=require('node:fs');fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/a.js','export const a = 1;\\n');fs.writeFileSync('dist/a.d.ts','export declare const a = 1;\\n')\"";
+    writeFileSync(path, JSON.stringify(manifest));
+    git(root, "add", "--all");
+    git(root, "commit", "-qm", "omit an export from the pack");
+
+    expect(runPackagesCheck(root, ["--out", "out", "--release-tag", "openlup-pub-v0.4.0"])).toBe(1);
+    expect(errors.mock.calls.flat().join("\n")).toContain(`missing-export @openlup/pub:${missing}:`);
+    expect(errors.mock.calls.flat().join("\n")).toContain(`target ./${missing} is not packed`);
+    expect(existsSync(join(root, "out"))).toBe(false);
+  }, 60_000);
   it("packs only the package a release tag names", () => {
     const logs = vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);

@@ -133,7 +133,7 @@ export function checkUnreleasedManifest(entry: UnreleasedEntry, manifest: unknow
 }
 
 /** Walk an `exports` value and return every string target with the condition path that led to it. */
-function exportTargets(value: unknown, conditions: string[] = []): Array<{ conditions: string[]; target: string }> {
+export function exportTargets(value: unknown, conditions: string[] = []): Array<{ conditions: string[]; target: string }> {
   if (typeof value === "string") return [{ conditions, target: value }];
   if (Array.isArray(value)) return value.flatMap((item) => exportTargets(item, conditions));
   if (isObject(value)) return Object.entries(value).flatMap(([key, item]) => exportTargets(item, [...conditions, key]));

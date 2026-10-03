@@ -542,6 +542,15 @@ one set:
   not, and the head must keep each publishable package's gates file and
   snapshots readable.
 
+This snapshot comparison is syntactic. It does not certify marker meaning,
+behaviour/schema compatibility, or package withdrawal and later re-admission.
+A fenced or reused `Migration:` line may pass, and text reappearing in order can
+look additive. Reviewers still inspect the semantic change, classification and
+before/after upgrade steps; declaration checks and tests retain their role.
+Merge an API change with its `Unreleased` migration notes before the separate
+release-preparation bump, which moves notes under the version and creates a new
+empty `Unreleased` section.
+
 [`config/openlup-packages.json`](../config/openlup-packages.json) lists the
 packages, and `publish: true` marks one that may be published. A new package
 stays under `unreleased`, always private, through its module's pull requests,
@@ -747,8 +756,9 @@ package by its state:
 | absent | no, and never did | releases it in full |
 
 "Exist" means the annotated tag names the target with the exact message and the
-release is immutable, published, App-authored and without assets. "The same
-tarball" means npm's bytes match npm's integrity and unpack to the same tar as
+release is immutable, published, App-authored and without assets, with the exact
+reviewed release-note body. Both skip and resume refuse changed note bytes.
+"The same tarball" means npm's bytes match npm's integrity and unpack to the same tar as
 the preflight's pack of the target; the gzip bytes themselves depend on the
 packing machine. Any other state stops the set: a tag at another commit, a tag
 without its release, npm holding the version with another tarball or without a

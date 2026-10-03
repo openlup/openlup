@@ -17,6 +17,7 @@ const requiredPackFiles = [
   "SECURITY.md",
   "package.json",
   "release-gates.json",
+  "docs/SUBSCRIPTION_ENGINE.md",
   "dist/index.js",
 ];
 
@@ -31,7 +32,7 @@ function assertArtifactRefused(path: string, source: string, reason: RegExp, man
 }
 
 // Without a reason, the audit must accept the packed fixture.
-function auditPackedFixture(path: string, source: string, manifest: Record<string, unknown>, reason?: RegExp): void {
+function auditPackedFixture(path: string, source: string, manifest: Record<string, unknown>, reason?: RegExp, packFiles = requiredPackFiles): void {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "core-package-audit-"));
   const sourceRoot = join(temporaryRoot, "source", "package");
   const extractedRoot = join(temporaryRoot, "extracted");
@@ -73,7 +74,7 @@ function auditPackedFixture(path: string, source: string, manifest: Record<strin
         "| `./bundle` | kernel | candidate |",
         "| `./pricing` | kernel | candidate |",
       ].join("\n"),
-      packFiles: requiredPackFiles,
+      packFiles,
     });
     if (reason) expect(audit).toThrow(reason);
     else expect(audit).not.toThrow();
@@ -125,6 +126,9 @@ describe("packed consumer dependency roots", () => {
     ],
   ])("rejects packed artifact %s leakage", (_kind, path, source) => {
     assertArtifactRefused(path, source, /packed core tarball contains downstream leakage/);
+    if (_kind === "environment") {
+      assertArtifactRefused("docs/SUBSCRIPTION_ENGINE.md", source, /packed core tarball contains downstream leakage/);
+    }
   });
 
   it.each([
@@ -143,6 +147,15 @@ describe("packed consumer dependency roots", () => {
     ["missing repository", { repository: undefined }, /repository must be exactly/],
   ])("refuses a packed manifest that is not publishable as declared: %s", (_kind, manifest, reason) => {
     assertArtifactRefused("none", "", reason, manifest);
+  });
+
+  it("requires the shipped subscription guide", () => {
+    auditPackedFixture("none", "", {}, /missing required files: docs\/SUBSCRIPTION_ENGINE\.md/,
+      requiredPackFiles.filter(path => path !== "docs/SUBSCRIPTION_ENGINE.md"));
+  });
+
+  it.each(["docs/development.md", "smoke/fixture.ts", ".context/scratch/proof.md"])("keeps unapproved packed files refused: %s", path => {
+    auditPackedFixture("none", "", {}, /contains non-runtime files/, [...requiredPackFiles, path]);
   });
 
   it.each(["0.12.0", "0.12.1", "0.13.0"])("accepts a packed manifest at the set version %s", (version) => {
