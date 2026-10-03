@@ -60,6 +60,8 @@ kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
 published `@openlup/*` package. Move such a file or extend the pattern; do not
 add an exception.
 
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-39e7c011f725884003d0afdf00ddeedb805c8e703e1271121fbe7b83cc20d0f2","reason":"The native session protocol accepts an explicitly owner-bound scope expansion while preserving prior history, findings, the two-cycle budget and two fresh full reviews. Its updated protocol owner documents that transition; contributor commands, required check contexts and existing refusal boundaries in this section remain unchanged."} -->
+
 ### Optional SonarQube Cloud diagnostics
 
 The SonarQube Cloud OSS pilot uses one public project and automatic analysis of
@@ -595,8 +597,6 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
-
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-b587272f4dbd372c62d9932fdec4d038949c76a97689a6b1c7dc035b8ef39f25","reason":"The split-root manifest check now also requires AGENTS.md in the core files list, so the extracted package ships its agent guide. Lint rules, contributor commands, development-preview checks and required CI jobs described here keep their behavior."} -->
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-904e5646a70769415ea7e72029532a9f05ecde4dc7e882101d00424043ac4f57","reason":"The root lockfile changes only the core workspace version from 0.10.0 to 0.11.0. Dependency resolution, development-preview checks, and required contributor commands remain unchanged."} -->
 

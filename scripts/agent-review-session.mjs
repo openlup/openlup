@@ -120,6 +120,17 @@ const REPAIR_RISKS = ['ordinary', 'security', 'control', 'schema', 'instructions
 const MAX_REPAIRS = 2;
 class NeedsRescope extends Error {}
 function rescope(value, message) { if (!value) throw new NeedsRescope(`Agent review needs rescope: ${message}`); }
+// Explicit owner regrouping is process evidence, not an authenticated owner signature.
+function validateRegroup(regroup) {
+  exact(regroup, ['priorRequestDigest', 'priorIntentDigest', 'nextIntentDigest', 'ownerDecision'], 'owner regroup');
+  demand(['priorRequestDigest', 'priorIntentDigest', 'nextIntentDigest'].every(field => DIGEST.test(regroup[field])), 'owner regroup digest is invalid');
+  text(regroup.ownerDecision, 'owner regroup decision', 4096);
+}
+function assertRegroup(regroup, previous, request) {
+  validateRegroup(regroup);
+  demand(regroup.priorRequestDigest === digest(previous) && regroup.priorIntentDigest === digest(previous.intent) && regroup.nextIntentDigest === digest(request.intent), 'owner regroup differs from exact previous request or approved intent');
+  demand(!equal(previous.intent, request.intent) && previous.authorSessionId === request.authorSessionId && ['behavior', 'unknown'].includes(request.intent.risk) && previous.intent.scope.every(path => request.intent.scope.includes(path)) && request.intent.scope.some(path => !previous.intent.scope.includes(path)), 'owner regroup requires same author, expanded scope and full review risk');
+}
 function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
     /(?:^|\/)(?:AGENTS|CLAUDE)(?:\.local)?\.(?:md|txt|rst)$/iu.test(path) ||
@@ -163,7 +174,10 @@ function validateRequest(request) {
   demand(Number.isSafeInteger(request.preparedAt) && request.preparedAt >= 0, 'request time is invalid');
   if (request.version === 2) {
     const continuation = request.continuation;
-    exact(continuation, ['cycle', 'mode', 'priorDigest', 'deltaPaths', 'findings', 'repairRisk'], 'continuation');
+    const fields = ['cycle', 'mode', 'priorDigest', 'deltaPaths', 'findings', 'repairRisk'];
+    if (Object.hasOwn(continuation, 'regroup')) fields.push('regroup');
+    exact(continuation, fields, 'continuation');
+    if (Object.hasOwn(continuation, 'regroup')) { validateRegroup(continuation.regroup); demand(continuation.mode === 'full', 'owner regroup requires full coverage'); }
     demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= MAX_REPAIRS && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
     paths(continuation.deltaPaths, continuation.mode === 'full'); demand(continuation.mode === 'full' || continuation.deltaPaths.every(path => request.intent.scope.includes(path)), 'repair delta exceeds approved scope');
     demand(REPAIR_RISKS.includes(continuation.repairRisk), 'repair risk is invalid');
@@ -262,7 +276,8 @@ function validateLineage(state, time, maxAgeMs) {
       const previous = history[index - 1].request;
       demand(request.version === 2 && request.continuation.cycle === index && request.continuation.priorDigest === digest(history.slice(0, index)), 'repair lineage digest or cycle differs');
       demand(equal(request.continuation.findings, unresolvedCards(history.slice(0, index))), 'material finding cards were erased or altered');
-      demand(equal(request.intent, previous.intent) && request.authorSessionId === previous.authorSessionId && (request.continuation.mode === 'full' || request.candidate.base === previous.candidate.base) && request.candidate.clean && (request.continuation.mode === 'full' || previous.candidate.clean) && (request.continuation.mode === 'full' || request.candidate.head !== previous.candidate.head && request.candidate.workingDigest !== previous.candidate.workingDigest) && request.preparedAt >= previous.preparedAt && history[index - 1].reports.every(report => report.completedAt <= request.preparedAt), 'repair criteria, scope, base, or committed lineage differs');
+      if (request.continuation.regroup) assertRegroup(request.continuation.regroup, previous, request);
+      demand((equal(request.intent, previous.intent) || request.continuation.regroup) && request.authorSessionId === previous.authorSessionId && (request.continuation.mode === 'full' || request.candidate.base === previous.candidate.base) && request.candidate.clean && (request.continuation.mode === 'full' || previous.candidate.clean) && (request.continuation.mode === 'full' || request.candidate.head !== previous.candidate.head && request.candidate.workingDigest !== previous.candidate.workingDigest) && request.preparedAt >= previous.preparedAt && history[index - 1].reports.every(report => report.completedAt <= request.preparedAt), 'repair criteria, scope, base, or committed lineage differs');
     }
     validateRound(request, round.reports, { complete: index < history.length && (index + 1 < history.length ? history[index + 1].request : state.request).continuation.mode !== 'full', time, maxAgeMs: index < anchor ? Infinity : maxAgeMs, identities });
   }
@@ -282,15 +297,20 @@ async function currentLineage(cwd, state, delta) {
   for (let index = 1; index < rounds.length; index += 1) demand(equal(await delta(cwd, rounds[index - 1].request.candidate, rounds[index].request.candidate), rounds[index].request.continuation.deltaPaths), 'actual committed repair delta differs from lineage');
 }
 /** Prepare is idempotent; continuation never erases findings or restarts its budget. */
-export async function prepareAgentReviewState({ previous, repairRisk = 'unknown', fullRefresh = false, delta = captureAgentReviewDelta, maxAgeMs = 86400000, ...options }) {
+export async function prepareAgentReviewState({ previous, repairRisk = 'unknown', fullRefresh = false, regroup, delta = captureAgentReviewDelta, maxAgeMs = 86400000, ...options }) {
   demand(REPAIR_RISKS.includes(repairRisk) && typeof fullRefresh === 'boolean', 'repair risk or refresh is invalid');
   const request = await prepareAgentReview(options);
-  if (!previous) return { request, reports: [] };
+  if (!previous) { demand(regroup === undefined, 'owner regroup requires preserved previous state'); return { request, reports: [] }; }
   const now = options.now ?? Date.now; const time = now();
   // Validate bindings before reusing any state, including failed/partial unchanged rounds.
   validateLineage(previous, time, Infinity); await currentLineage(options.cwd, previous, delta);
-  rescope(equal(previous.request.intent, request.intent) && previous.request.authorSessionId === request.authorSessionId, 'approved intent or author changed; a changed execution approach is required');
-  if (equal(previous.request.candidate, request.candidate)) {
+  const intentChanged = !equal(previous.request.intent, request.intent);
+  rescope(previous.request.authorSessionId === request.authorSessionId && (!intentChanged || regroup !== undefined), 'approved intent or author changed; a changed execution approach is required');
+  if (intentChanged) { assertRegroup(regroup, previous.request, request); demand(fullRefresh, 'owner regroup requires explicit full refresh'); }
+  const preservedRegroup = regroup !== undefined && [...(previous.history ?? []), previous].some(round => equal(regroup, round.request.continuation?.regroup) && equal(round.request.intent, request.intent));
+  if (!intentChanged && regroup !== undefined) demand(preservedRegroup, 'owner regroup is not the preserved transition');
+  if (!intentChanged && equal(previous.request.candidate, request.candidate)) {
+    if (preservedRegroup) return structuredClone(previous);
     if (!fullRefresh) return structuredClone(previous);
     // Recovery is unnecessary for a terminal current pass, even if requested.
     let reviewed = true;
@@ -307,7 +327,8 @@ export async function prepareAgentReviewState({ previous, repairRisk = 'unknown'
   const findings = unresolvedCards(history);
   const mode = fullRefresh || !priorComplete || previous.request.candidate.base !== request.candidate.base ? 'full' : repairRisk === 'ordinary' && !deltaPaths.some(sensitivePath) && findings.every(card => card.finding.risk === 'ordinary') ? 'closure' : 'focused';
   paths(deltaPaths, mode === 'full');
-  request.version = 2; request.continuation = { cycle: history.length, mode, priorDigest: digest(history), deltaPaths, findings, repairRisk }; request.roles = requestRoles(request.intent, request.continuation);
+  request.version = 2; request.continuation = { cycle: history.length, mode, priorDigest: digest(history), deltaPaths, findings, repairRisk }; if (intentChanged) request.continuation.regroup = structuredClone(regroup);
+  request.roles = requestRoles(request.intent, request.continuation);
   const state = { request, reports: [], history: structuredClone(history) }; validateLineage(state, time, maxAgeMs); return state;
 }
 export async function recordAgentReview({ cwd, request, reports = [], history, report, snapshot = captureSessionCandidate, delta = captureAgentReviewDelta, now = Date.now }) {
@@ -409,7 +430,7 @@ async function main() {
   const operation = async () => {
   if (verb === 'prepare') {
     const spec = await boundedJson(input ?? join(directory, 'intent.json'));
-    demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base', 'repairRisk', 'fullRefresh'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
+    demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base', 'repairRisk', 'fullRefresh', 'regroup'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
     spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= (await git(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
     let previous; try { previous = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     let state;
