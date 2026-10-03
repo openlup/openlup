@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "sourceCommit": "d32e224a75516f9e0d6bfe5afd967be4199f6a57",
+  "sourceCommit": "fe678f8c0ffd8af4616c819ebcd5bb41d74c011f",
   "scannerPins": {
     "packages/core/scripts/neutrality-source-scanner.ts": "ed0158a9149f9bdb53b70f9698e17ceff5f1181c",
     "packages/core/scripts/neutrality-shell-fold.ts": "8821a4797bf2988cf2904bc094ef2658ecbcd5ad",
@@ -276,10 +276,6 @@
     "0a9379f5e3260a6955215573cd9676df8fd347d92dead2c71e323bb9b7b462b5": {
       "ui-17": 3
     },
-    "0a95b7faf879c80f4327d0b9cbd310569cdbd87818f176a66f750c2ab991ac23": {
-      "ui-5": 1,
-      "ui-6": 1
-    },
     "0aa4c3b837fb4fa787f8dc7d7cc735ffbb01c14057a0754666522a5eabbf9e71": {
       "ui-11": 1
     },
@@ -520,10 +516,6 @@
     "14567ac2dec2cd67c05edb339f9d9ffb972948dee06004f741558660c1a66e6b": {
       "ui-13": 8
     },
-    "146c7cd78ef665171521516aa498ff2007b37939deef93d484f4e0738f58a2ae": {
-      "ui-13": 1,
-      "ui-14": 2
-    },
     "1497c56a1dbe077e121f49758f242264626f3ac551b436a3a2e0350acaa785a1": {
       "ui-6": 2,
       "ui-13": 10,
@@ -554,7 +546,7 @@
     },
     "15948b272056e4276f9adf0f0f9e7d4c880744b6995ec8456af8a1f1b34ec21c": {
       "ui-9": 2,
-      "ui-13": 8,
+      "ui-13": 5,
       "ui-14": 3
     },
     "15aaba4b02b06294080719bc689d794b55ae6c305b6924bd37c7dead85f44645": {
@@ -573,9 +565,6 @@
     },
     "162c5182e2efaa8e67410c4d957b5c6ddc62a2ee29579b9620291354a9651fbc": {
       "ui-9": 1
-    },
-    "162ef156080dcf76de7edc573567bcca3f49ccae8f02e6f6c1cd8d953efc1ef7": {
-      "ui-13": 2
     },
     "162fa5ccc3df7a45b7fe677ba8276da4bbf932d67a3ff6e6ac08877a54e14180": {
       "ui-13": 4
@@ -894,9 +883,6 @@
     "25343a0cc0d1983f2a329c09f8416b2d47453a61ad08ca4aa0ce25c664e77da1": {
       "ui-15": 18
     },
-    "25600f9d768ba98070639d7fef24d3c862c70653938a2e5a27c387462e6a7c4e": {
-      "ui-13": 3
-    },
     "258f0c5d9abf26cab72e6b3b2078af41baac2d5f8b43465199a33bcde7d510b1": {
       "ui-9": 7
     },
@@ -1085,9 +1071,6 @@
     },
     "2da3dab084f54806744154fdb2927d211b94c4db6b08fbc8c91ae810894a70c9": {
       "ui-16": 1
-    },
-    "2dbf6117bdbf6af3d4272437cf4dd1379a468f193325fd683b630a180d536fa5": {
-      "ui-5": 1
     },
     "2de20cdedb18bda6ce28bf6e7a98df3e0fb925fabbe964132bc4625ec1dc3c33": {
       "ui-9": 1,
@@ -1395,9 +1378,6 @@
       "ui-9": 1,
       "ui-12": 4
     },
-    "3bf8672722b8cebf6e0acc486c4635d4ffea81b324a1db7ea25f4c213fbb4044": {
-      "ui-13": 4
-    },
     "3c3dcf2bfc7c2cf6dfb4e64da02302a29673bb1d0a33505f1b008cc7fefcd822": {
       "ui-13": 2,
       "ui-14": 3
@@ -1495,7 +1475,7 @@
       "ui-9": 1
     },
     "41da50ff0d7e1b6ddb4df240a797bdeed9d62382a9bce36d94470d0c02ad29f8": {
-      "ui-5": 15,
+      "ui-5": 1,
       "ui-13": 2
     },
     "4203bfcd1545e86a8f17251279370c30792ee318e33e930636766bf47c860cf6": {
@@ -1527,9 +1507,6 @@
     },
     "43213f74f3080324b15f224e4c2b981ceca5297f2ed60105a1df848bae54806a": {
       "ui-15": 16
-    },
-    "4339ed28894cc15a6714c9021d7ef9227062317630e4b3ea6e3e6d58189e3646": {
-      "ui-9": 1
     },
     "43483a066bc4042bc1a487f11ec3dce1c41870c423d139824962977094d01ab6": {
       "ui-11": 1,
@@ -1901,9 +1878,6 @@
     "5766d79b9cbd1f14b4fde673e2d029d31e15b493fc9f01a775b1980995cfeeea": {
       "ui-12": 1
     },
-    "5774026a42a959815dbb7b23619aa50f676f21aef8af4191f545362055c81e10": {
-      "ui-5": 4
-    },
     "578a503a6e49a9517c4af6001c80b047b82317fc0d4f8ad550e81de64410e5dc": {
       "ui-6": 1
     },
@@ -2117,7 +2091,7 @@
       "ui-5": 1
     },
     "61b323c72cfac64417532107b6d9e64ad6f3be7f479a38453635c3edbe324f62": {
-      "ui-15": 7
+      "ui-15": 1
     },
     "61c6a16ca1d79faad66edcffd8aaae823526e269b0dc0935009738b01773844f": {
       "ui-13": 12
@@ -2194,9 +2168,6 @@
     },
     "640a7f52586b7cac04a4e2a9a1c4833eaad4df3682726b1b882d4eccd4f84784": {
       "ui-13": 1
-    },
-    "640ba599412739d15d09eb791d2a70a6ea8b14b1f497522ad3b0956df5b0990a": {
-      "ui-13": 7
     },
     "64162e5cecbc960e33be0e463fce6aff9ba5edef8065df6f94ed894129b1b1ec": {
       "ui-9": 1
@@ -2275,7 +2246,7 @@
       "ui-15": 1
     },
     "686e4001a6b1d43c80e2296a44ca2b26b5f066266ab2900b2ae4c810e8c8690c": {
-      "ui-9": 13
+      "ui-9": 9
     },
     "68719e615cd85d04d2c9173d16879856e1d3ae178b4427bf16087a662f4951e8": {
       "ui-14": 1
@@ -2328,9 +2299,6 @@
       "ui-6": 2,
       "ui-13": 2,
       "ui-17": 3
-    },
-    "6aef30b5b03a7cbc26ca7422c0844dfa195b8ed3f6750e056ac2158315d42be5": {
-      "ui-5": 11
     },
     "6baedd061ec787ef2677e161616b6ace94002b4de4721845879fb105b2bed777": {
       "ui-12": 2
@@ -2508,7 +2476,6 @@
       "ui-15": 4
     },
     "744ae32a90388a6441fd9fc2ab35673ca625d851f6e8051266f10a2e2c20a977": {
-      "ui-5": 46,
       "ui-14": 2
     },
     "74702c122a10ccde6af825bee898b5fb9fd3334b70a103f8b2417fedc51a340c": {
@@ -2627,7 +2594,7 @@
       "ui-6": 1
     },
     "7987b1aff477d4811e1d2ce261fa99b7612b8ff06761fd2f44adf8247eed473d": {
-      "ui-15": 22
+      "ui-15": 2
     },
     "7998c87b0dd4e072f94072c4fe91186c20ea1b61c1b409395509326040196acf": {
       "ui-10": 1,
@@ -2783,7 +2750,7 @@
     "80f5cee36cda25102ea8ce5eeb3615eace998ac2ac3c7ae11a32b312adc52f89": {
       "ui-9": 11,
       "ui-11": 1,
-      "ui-14": 5
+      "ui-14": 2
     },
     "80f7dc6ee74ab4621232b120d31e3b3091789c3658f2f5f02d3e885a863fe389": {
       "ui-5": 2
@@ -2817,7 +2784,7 @@
     "839f9ebcfe5d7cfaa567041de34eee67f8c228e2b800f2dbb5659a9534560805": {
       "ui-5": 4,
       "ui-6": 2,
-      "ui-15": 10
+      "ui-15": 6
     },
     "83e67f066cebaa6786e309aebe28874d9d883f77102a2c94dbfa96af643e18ab": {
       "ui-5": 3,
@@ -3101,7 +3068,6 @@
       "ui-6": 10
     },
     "90d64de55d1a333c2269ccf98fab7a4da1500f5763f092098ac297b453644241": {
-      "ui-5": 6,
       "ui-6": 2,
       "ui-13": 2,
       "ui-15": 2
@@ -3114,8 +3080,7 @@
       "ui-13": 1
     },
     "914ee0d0a2fe7552686adcb5a7c3db2474459b2b49c585fb83ba25698c7586c4": {
-      "ui-5": 19,
-      "ui-6": 3,
+      "ui-6": 1,
       "ui-15": 2
     },
     "916e03c8b35d8cfc598692e76633292b83c80a299a5b6735dcc40145dc106246": {
@@ -3206,9 +3171,6 @@
     },
     "95a311d561e98890b049de084b8249e73129625b4813d2233589a84e2e319e4b": {
       "ui-5": 1
-    },
-    "95cc1700bc335f30d2f9dae6d32ccbc3bc891fad412b5c61dc005095e619e9c8": {
-      "ui-5": 5
     },
     "95ccc69606a571a368df2b20d629558ae4f9e35ccc88841b6601c8122032419b": {
       "ui-5": 3,
@@ -3305,9 +3267,6 @@
     },
     "9b47e403dbce0d1a44337a6c5f48813f23f50e72de28c4548e2525383ad11d72": {
       "ui-6": 1
-    },
-    "9b52d4bed15afaebe0d91afe099b5a20ae5686a7492bc4da2a929c9e5e714f07": {
-      "ui-9": 3
     },
     "9b87621039ffd6c2a4fb44c6581fa1f0509102354b697d089376d546cd2896dc": {
       "ui-11": 1
@@ -3419,9 +3378,6 @@
     "a07f8d0fdbab7555026d8ed3ca111ca157760cbc2395610b40fc9cb80eedb12f": {
       "ui-15": 1
     },
-    "a10aadbca405c612b54f4155afe5606d951493028bca6d6a3b9a27c9611877d1": {
-      "ui-13": 15
-    },
     "a15b4fe15be4f8c52ab5855529fc48e37a2b6c19cf11f1bdbc37d716e2ccfa7b": {
       "ui-5": 3,
       "ui-11": 1
@@ -3470,9 +3426,6 @@
     },
     "a3ed98dec9ca2ed4f492382214185865f7d7388e817d1a224c5d86a04e7bfd6f": {
       "ui-11": 1
-    },
-    "a4564c56aeeed6683458f54102c76f3833070e31b8a3506244d4c479f159cc04": {
-      "ui-13": 3
     },
     "a507561b1de3bc9e83f484166bea620915ad6f0dece57c6d056923d483e84a87": {
       "ui-13": 2
@@ -3621,7 +3574,7 @@
     },
     "ab65d615d16c49c81d34b3e22e7db29e179f77bc809f8cd60ef6c23a4c38b958": {
       "ui-12": 1,
-      "ui-13": 8,
+      "ui-13": 7,
       "ui-14": 3
     },
     "ab6cabc27cd63717c61b479fb951b2c81116fe48dbdcfcdb2f3bebfa28a397cc": {
@@ -3647,6 +3600,9 @@
     "ac14a85eec4f7b0634c4292869ccfc53bf0df716b86dd04a4dd3d729e2406c1a": {
       "ui-9": 1,
       "ui-12": 1
+    },
+    "ac1fe9ee1f29c5466f5694e63f1f825c7a4a48374de87c625b5b2f92b2385777": {
+      "ui-15": 1
     },
     "ac23190462406a70e3518a310e50a49eb6e3beaafeabb6f811cae55d7f7286d8": {
       "ui-6": 3,
@@ -3843,9 +3799,6 @@
       "ui-10": 1,
       "ui-13": 8
     },
-    "b4de9e42e3d35ca422cbf97016475d7a2a1a9bff4ffc37faf22c839a309fcd65": {
-      "ui-5": 33
-    },
     "b52100d0c332e607e17aeecd8539ff44d39a7c4b48f9bf39c0540f0cd99267d3": {
       "ui-5": 11,
       "ui-13": 12,
@@ -4003,7 +3956,7 @@
       "ui-13": 3
     },
     "bd0016b6dbc7fb6f2f50eca0ee0d59a7c2b765d79d32a514bb35673a227c14f3": {
-      "ui-5": 11
+      "ui-5": 10
     },
     "bd75e7907cc886bd5952904968d43eaca1695d0424d606aa40db1d06118e1e33": {
       "ui-5": 3,
@@ -4071,8 +4024,6 @@
       "ui-13": 3
     },
     "c02d3395e2c2bc7eb5e17c257a42f6bb015b39b1b3eded5d48997b36b9fc459b": {
-      "ui-5": 65,
-      "ui-6": 1,
       "ui-8": 1,
       "ui-13": 3,
       "ui-15": 2
@@ -4768,7 +4719,7 @@
       "ui-5": 3,
       "ui-6": 3,
       "ui-14": 1,
-      "ui-15": 6
+      "ui-15": 4
     },
     "e45ebbd50b261b4f80058c2a8177fce1d56c2a1d237f94d7e32e555fb9d17db3": {
       "ui-5": 1,
@@ -4792,10 +4743,6 @@
       "ui-12": 1,
       "ui-13": 2,
       "ui-17": 5
-    },
-    "e50310b4da6ca652c7896bf8d66e890596e8616f1c7ce5bb94b4743f366a5b36": {
-      "ui-5": 16,
-      "ui-6": 3
     },
     "e503e6b242990da1cc244424a2da38ee30172e5d36ebdf27ced06ff148076fe9": {
       "ui-5": 1,
@@ -4854,17 +4801,12 @@
     "e819ca4a59ccc7a560fd60faec2291b57f038f231570cb1e17e811821c2ed403": {
       "ui-5": 2,
       "ui-6": 3,
-      "ui-15": 31
+      "ui-15": 30
     },
     "e833129ba515685ce93a21166ce5f5dc2da175f4f855bba0264af1c52c3a144b": {
       "ui-5": 10,
       "ui-13": 10,
       "ui-14": 1
-    },
-    "e85a9bded8f8d747defc3894c7448af535039f5203ecc8ee93742a5f63449388": {
-      "ui-9": 1,
-      "ui-13": 2,
-      "ui-14": 2
     },
     "e8619c49279fda10645946d76c25ee577aa75203a8bc6f1ca7a704ecf2fb4ccf": {
       "ui-10": 1,
@@ -4910,9 +4852,6 @@
     "ea3733b7fbb3c766935385a09aaf99bd8d7289611dd2bf439862ea538f71bc13": {
       "ui-15": 10,
       "ui-16": 18
-    },
-    "ea4abca77c453dc678b61ada9c1827bf8314afddcf0a05bd4d8040aac16ad58e": {
-      "ui-13": 3
     },
     "ea778795d35bd0b8953c9e46c6d4f7977c7dae04a0140a2d55b9f759bcd915ca": {
       "ui-5": 1
@@ -5252,6 +5191,9 @@
       "ui-13": 1,
       "ui-14": 2
     },
+    "fb374696e092dbdd55672cc02edea361ebe1b7dac429c97e9a0e4f5c7092f351": {
+      "ui-15": 1
+    },
     "fb74b1b8db3a7446497e9c09e7c9bb251db98314b648e5c276949765263fcc9d": {
       "ui-14": 1
     },
@@ -5322,10 +5264,6 @@
       "ui-5": 3,
       "ui-6": 4
     },
-    "fe60374816e884ce6d563ff6299cd477d3fdae27600f3390f5d410e7ea6eced5": {
-      "ui-13": 2,
-      "ui-14": 1
-    },
     "fe764246e5b0d41d4eb1dc473929e02d0718eb87766461cbdf14309337f71d43": {
       "ui-14": 6
     },
@@ -5354,12 +5292,6 @@
     "fffa43b0cbd70b967b22b749a2370094fe988c1e7340dea4122357473e8b05fc": {
       "ui-5": 2,
       "ui-6": 3
-    },
-    "fb374696e092dbdd55672cc02edea361ebe1b7dac429c97e9a0e4f5c7092f351": {
-      "ui-15": 1
-    },
-    "ac1fe9ee1f29c5466f5694e63f1f825c7a4a48374de87c625b5b2f92b2385777": {
-      "ui-15": 1
     }
   }
 }

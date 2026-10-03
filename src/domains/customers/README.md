@@ -70,4 +70,4 @@ at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
 
-<!-- openlup-doc-impact {"unit":"domain-customers","digest":"sha256-e64b661a5be602b6516974b1299ce903ef01541051cf1595741da089110f6bc3","reason":"The order-history schema test resolves current installed table statements instead of a removed historical managed forward filename. Customer-owned reads, shipment tracking projection, authorization and route availability described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"domain-customers","digest":"sha256-8c38e8ee26d1d87ed2d482ae2f59edb9738544501e74ff8928f0f4089addcd92","reason":"The order-history schema test resolves current installed table statements instead of a removed historical managed forward filename. Customer-owned reads, shipment tracking projection, authorization and route availability described here are unchanged."} -->

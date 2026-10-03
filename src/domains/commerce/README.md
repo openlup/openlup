@@ -91,4 +91,4 @@ Domain-boundary rules, including the Domain Map and the feature trace, live in
 the maintainer canon `DOMAIN_ARCHITECTURE.md`, which belongs to the private
 overlay and is not part of the published tree.
 
-<!-- openlup-doc-impact {"unit":"domain-commerce","digest":"sha256-6b50a0273cc00d636733bf9fdd44d3e5c73c64f75595cb6216c18f268eeb746c","reason":"Email tests select neutral content and explicit presentation fixtures; operational-ladder checks resolve current installed state instead of historical source spelling. Money, idempotency, durable order ownership and email composition code described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"domain-commerce","digest":"sha256-15184f329b4fe030b39576c81ba9a65157669e5595f94ca7db217406b4a9241d","reason":"Email tests select neutral content and explicit presentation fixtures; operational-ladder checks resolve current installed state instead of historical source spelling. Money, idempotency, durable order ownership and email composition code described here are unchanged."} -->
