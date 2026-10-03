@@ -193,7 +193,7 @@ describe("attributable source and owner impact", () => {
     for (const bad of ['<!-- openlup-doc-impact {"unit":"domain-demo"} -->', "<!-- openlup-doc-impact bad JSON -->", "<!-- openlup-doc-impact unterminated"])
       { write(root, OWNER, ownerText.replace("## Other", `${bad}\n## Other`)); expect(impact(root, base).failures.join("\n")).toMatch(/comment|JSON/); }
   });
-  it("binds source modes, the exact base, and unchanged section content", () => {
+  it("binds source modes and unchanged section content, not the base commit", () => {
     const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); review(root, base);
     chmodSync(join(root, SOURCE), 0o755); expect(impact(root, base).failures).toHaveLength(1); chmodSync(join(root, SOURCE), 0o644);
     const oldDigest = impact(root, base).obligations[0]!.digest;
@@ -202,7 +202,39 @@ describe("attributable source and owner impact", () => {
     expect(impact(root, base).obligations[0]?.status).toBe("updated");
     git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "commit", "--allow-empty", "-qm", "new base");
     const nextBase = git(root, "rev-parse", "HEAD"); write(root, OWNER, ownerText); review(root, base);
-    expect(impact(root, nextBase).failures).toHaveLength(1);
+    expect(impact(root, nextBase).failures).toEqual([]);
+  });
+  describe("a no-impact answer across a moved base", () => {
+    const commitOnly = (root: string, ...paths: string[]) => { git(root, "add", ...paths); git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "commit", "-qm", "base move", "--", ...paths); return git(root, "rev-parse", "HEAD"); };
+    const answered = () => { const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); review(root, base); return { root, base, marked: readFileSync(join(root, OWNER), "utf8") }; };
+    it("P1 stays valid when the base gains an unrelated change", () => {
+      const { root } = answered(); write(root, "README.md", `[Owner](${OWNER})\n\nAn unrelated base change.\n`);
+      const moved = commitOnly(root, "README.md"); expect(impact(root, moved).failures).toEqual([]);
+      write(root, "src/domains/demo/other.ts", "export const other = 2;\n");
+      const movedAgain = commitOnly(root, "src/domains/demo/other.ts"); expect(impact(root, movedAgain).failures).toEqual([]);
+    });
+    it("P2 is stale when the base changes a path the answer covers", () => {
+      const { root } = answered(); write(root, SOURCE, "export const value = 3;\n"); const moved = commitOnly(root, SOURCE);
+      write(root, SOURCE, "export const value = 2;\n"); expect(impact(root, moved).failures).toHaveLength(1);
+    });
+    it("P3 is stale when the base edits the answered section", () => {
+      const { root, marked } = answered(); write(root, OWNER, ownerText.replace("preserves replay safety", "preserves replay safety for every event")); const moved = commitOnly(root, OWNER);
+      write(root, OWNER, marked.replace("preserves replay safety", "preserves replay safety for every event")); expect(impact(root, moved).failures).toHaveLength(1);
+    });
+    it("P4 is not fresh when the same answer is already in the base", () => {
+      const { root } = answered(); const moved = commitOnly(root, OWNER); expect(impact(root, moved).failures).toHaveLength(1);
+    });
+    it("P5 refuses two answers for one unit", () => {
+      const { root, marked } = answered(); const comment = /<!-- openlup-doc-impact.*?-->/u.exec(marked)![0];
+      write(root, OWNER, marked.replace("Updated: 2026-09-26", `${comment}\n\nUpdated: 2026-09-26`));
+      expect(impact(root, git(root, "rev-parse", "HEAD")).failures).toHaveLength(1);
+    });
+    it("P6 is stale when the base reroutes a covered path", () => {
+      const { root, marked } = answered(); const surfaces = JSON.parse(readFileSync(join(root, "config/doc-routing.json"), "utf8")).surfaces as DocumentationSurface[];
+      surfaces.push({ id: "domain-demo-main", when: "The demo main entry", paths: [SOURCE], doc: OWNER, anchor: "#canonical" });
+      write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces })); const moved = commitOnly(root, "config/doc-routing.json");
+      write(root, OWNER, marked); expect(impact(root, moved).failures).toHaveLength(1);
+    });
   });
   it("does not read a receipt inside fenced, indented or inline code as a review", () => {
     for (const example of ["```text\n```json\nRECEIPT\n```", "    RECEIPT", "`RECEIPT`", "`first line\nRECEIPT\nlast line`"]) {
@@ -291,6 +323,31 @@ describe("strict documentation base attribution", () => {
     expect(resolveDocumentationBase(root, { env }).provenance).toBe("pull-request");
     git(root, "checkout", "-q", "--detach", source); env.GITHUB_SHA = source;
     expect(() => resolveDocumentationBase(root, { env })).toThrow(/base\/head merge/);
+  });
+  describe("the pull-request identity fence", () => {
+    function merged() {
+      const { root, base } = fixture(); git(root, "checkout", "-qb", "topic"); write(root, SOURCE, "export const value = 2;\n"); const source = commit(root);
+      git(root, "checkout", "-qb", "merge", base); git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "merge", "--no-ff", "-qm", "merge fixture", "topic");
+      return { root, base, source, merge: git(root, "rev-parse", "HEAD") };
+    }
+    const pullRequest = (root: string, base: string, source: string, mergeCommit: string) => hostedEvent(root, base, "pull_request", { pull_request: { base: { sha: base }, head: { sha: source }, merge_commit_sha: mergeCommit } });
+    it("F1 accepts exact parents when the payload's merge_commit_sha lags", () => {
+      const { root, base, source } = merged(); expect(resolveDocumentationBase(root, { env: pullRequest(root, base, source, base) }).provenance).toBe("pull-request");
+    });
+    it("F2 refuses swapped parents", () => {
+      const { root, base, source } = merged(); const swapped = git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "commit-tree", git(root, "rev-parse", "HEAD^{tree}"), "-p", source, "-p", base, "-m", "swapped");
+      git(root, "checkout", "-q", "--detach", swapped); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, base, source, swapped) })).toThrow(/base\/head merge/);
+    });
+    it("F3 refuses a one-parent checkout", () => {
+      const { root, base, source } = merged(); git(root, "checkout", "-q", "--detach", source); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, base, source, source) })).toThrow(/base\/head merge/);
+    });
+    it("F4 refuses a first parent other than the event base", () => {
+      const { root, source, merge } = merged(); expect(() => resolveDocumentationBase(root, { env: pullRequest(root, source, source, merge) })).toThrow(/base\/head merge/);
+    });
+    it("F5 refuses a checkout other than GITHUB_SHA", () => {
+      const { root, base, source, merge } = merged(); const env = pullRequest(root, base, source, merge); env.GITHUB_SHA = source;
+      expect(() => resolveDocumentationBase(root, { env })).toThrow(/hosted checkout identity/);
+    });
   });
   it("attributes a complete merge batch to its exact event base, head, ref and checkout", () => {
     const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);

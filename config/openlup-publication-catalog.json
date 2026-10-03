@@ -1194,6 +1194,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/ci-base-move-and-receipts.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/documentation-maintenance.md",
       "class": "platform-documentation"
     },

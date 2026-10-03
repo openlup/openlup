@@ -63,7 +63,7 @@ function hostedBase(root: string, env: NodeJS.ProcessEnv, head: string): { base:
     throw new Error("documentation: hosted checkout identity does not match the public event");
   const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, "utf8")) as {
     repository?: { full_name?: string; private?: boolean }; before?: string; after?: string; action?: string;
-    pull_request?: { base?: { sha?: string }; head?: { sha?: string }; merge_commit_sha?: string };
+    pull_request?: { base?: { sha?: string }; head?: { sha?: string } };
     merge_group?: { base_sha?: string; base_ref?: string; head_sha?: string; head_ref?: string; head_commit?: { id?: string; tree_id?: string } };
   };
   if (event.repository?.full_name !== "openlup/openlup" || event.repository.private !== false)
@@ -71,8 +71,8 @@ function hostedBase(root: string, env: NodeJS.ProcessEnv, head: string): { base:
   if (env.GITHUB_EVENT_NAME === "pull_request") {
     const base = event.pull_request?.base?.sha; const source = event.pull_request?.head?.sha;
     const parents = [...documentationGit(root, ["cat-file", "-p", head]).toString("utf8").matchAll(/^parent ([0-9a-f]{40})$/gmu)].map((match) => match[1]!);
-    if (!SHA.test(base ?? "") || !SHA.test(source ?? "") || parents.length !== 2 || parents[0] !== base || parents[1] !== source
-      || (event.pull_request?.merge_commit_sha && event.pull_request.merge_commit_sha !== head))
+    // GITHUB_SHA and the exact parents identify the merge; a synchronize payload's merge_commit_sha can lag it.
+    if (!SHA.test(base ?? "") || !SHA.test(source ?? "") || parents.length !== 2 || parents[0] !== base || parents[1] !== source)
       throw new Error("documentation: pull-request checkout is not the event's base/head merge");
     return { base: base!, provenance: "pull-request" };
   }

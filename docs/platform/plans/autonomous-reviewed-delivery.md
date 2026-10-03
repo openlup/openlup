@@ -423,8 +423,21 @@ merge-group events after the existing six jobs finish. It requires six actual
 successes, then waits at most twenty minutes for the target receipt. It checks
 artifact digest, trusted dispatch workflow/run provenance, native completeness,
 lineage and expiry, current PR head and live queue tuple; final observation must
-match the initial binding. A different run or attempt cannot reuse the artifact.
-Missing, malformed, stale, partial, failed or changed evidence refuses admission.
+match the initial binding. A different run or attempt cannot reuse a run-keyed
+artifact. Missing, malformed, stale, partial, failed or changed evidence refuses
+admission.
+
+**Amendment, approved 2026-10-03** (base-move and receipt plan, W2).
+- For pull-request events, a source receipt keyed to the PR number and the exact
+  reviewed head and tree also admits. It is created with
+  `agent-review-queue.mjs input-source`, and its artifact is named
+  `native-review-pr-<PR>-<head>`.
+- One such receipt admits every run and attempt of that head. Admission
+  re-verifies the live pull request, the run identity and the review's
+  freshness each time.
+- Several receipts for one head are allowed. An artifact failing provenance is
+  skipped rather than fatal.
+- Merge-group runs keep the run-keyed receipt above unchanged.
 The configured local mirror retains all six jobs and refuses workflow drift;
 local verification does not assert hosted queue activation.
 
