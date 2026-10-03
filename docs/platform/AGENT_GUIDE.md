@@ -141,6 +141,14 @@ session receipts are process evidence, not cryptographic remote attestation or
 hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
+
+A fresh explicit owner decision may authorize exactly one additional full review
+at cycle 3 after the two automatic cycles. This retains every prior round and
+finding, the same approved intent and author, and a clean ancestor-preserving
+committed candidate. It requires two fresh full reviewers. No fourth cycle or
+automatic extension is permitted; unchanged prepare preserves evidence and
+expiry. This decision grants no publication, merge or settings authority.
+
 The optional [native queue admission](plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
 keeps reviewers in this same task and subscription. It was active at the dated
 inspection in [Development and release](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).

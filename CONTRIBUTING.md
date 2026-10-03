@@ -48,6 +48,8 @@ handling.
 
 ## Development-preview checks
 
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-b3e4ff5d584d5291776029a61d38a889f5a88155dc0178fe3b3d8468a694bea2","reason":"The native session protocol adds only one explicit owner-bound full third review after two automatic cycles, preserving history, findings and two fresh roles. The contribution commands, existing required contexts and refusal requirements in this checks section remain unchanged; the manual continuation contract is explained in the native review section and protocol plan."} -->
+
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
 diagnostic results, and the source-to-npm handoff. This section owns the detailed
@@ -60,7 +62,6 @@ kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
 published `@openlup/*` package. Move such a file or extend the pattern; do not
 add an exception.
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-39e7c011f725884003d0afdf00ddeedb805c8e703e1271121fbe7b83cc20d0f2","reason":"The native session protocol accepts an explicitly owner-bound scope expansion while preserving prior history, findings, the two-cycle budget and two fresh full reviews. Its updated protocol owner documents that transition; contributor commands, required check contexts and existing refusal boundaries in this section remain unchanged."} -->
 
 ### Optional SonarQube Cloud diagnostics
 
@@ -738,6 +739,14 @@ prepare and full-review escalation. Exhaustion stays blocked while the superviso
 within existing authority. Changed intent requires explicit regrouping; an
 ancestor-preserving base integration gets fresh full-scope review within the
 same budget.
+
+A fresh explicit owner decision may authorize exactly one additional full review
+at cycle 3 after the two automatic cycles. This retains every prior round and
+finding, the same approved intent and author, and a clean ancestor-preserving
+committed candidate. It requires two fresh full reviewers. No fourth cycle or
+automatic extension is permitted; unchanged prepare preserves evidence and
+expiry. This decision grants no publication, merge or settings authority.
+
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
 and proceed only through authorized delivery steps.
