@@ -15,6 +15,7 @@ const REPOSITORY_ID = 1376035358;
 const WORKFLOW = '.github/workflows/published-tree-ci.yml';
 const DISPATCH = '.github/workflows/native-review-admission.yml';
 const SHA = /^[a-f0-9]{40}$/u;
+const GIT_ENV = { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '0' };
 const LIMIT = 56000; // Reserve room for binding and JSON transport below 65,535.
 const ARTIFACT_LIMIT = 60000;
 function demand(ok, message) { if (!ok) throw new Error(`Native admission refused: ${message}`); }
@@ -74,9 +75,8 @@ async function verifyReviewState(cwd, state, now) {
 // A base move into admission, identity-binding, dependency or migration machinery never carries a review over.
 const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?package(?:-lock)?\.json$/u, /^supabase\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
 async function git(cwd, ...args) {
-  // A clean configuration keeps the prediction purely path-based on any runner.
-  const env = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' };
-  return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', ...args], { timeout: 30000, maxBuffer: 16 * 1024 * 1024, env })).stdout;
+  // The same clean configuration as the object fetch keeps the prediction purely path-based on any runner.
+  return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', ...args], { timeout: 30000, maxBuffer: 16 * 1024 * 1024, env: GIT_ENV })).stdout;
 }
 /** A source review carries over to a merge group that is exactly the reviewed change on a base whose net change since the reviewed base avoids its paths and that machinery. */
 export async function carryOverSourceReview(cwd, candidate, group) {
@@ -172,7 +172,7 @@ async function fetchObjects(cwd, input, identity) {
   const refs = [...new Set([input.source, ...(input.source.history ?? []), ...(input.integration ? [input.integration, ...(input.integration.history ?? [])] : [])].flatMap(state => [state.request.candidate.base, state.request.candidate.head]).concat(identity.base ?? []))];
   demand(refs.length <= 14 && refs.every(ref => SHA.test(ref)), 'review object roots exceed bounds');
   // A literal public remote, no credential helpers, candidate hooks or filters.
-  await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'credential.helper=', '-c', 'core.askPass=', '-c', 'http.extraHeader=', '-c', 'http.followRedirects=false', 'fetch', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head', '--no-auto-maintenance', 'https://github.com/openlup/openlup.git', ...refs], { timeout: 120000, maxBuffer: 1024 * 1024, env: { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '0' } });
+  await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'credential.helper=', '-c', 'core.askPass=', '-c', 'http.extraHeader=', '-c', 'http.followRedirects=false', 'fetch', '--no-tags', '--no-recurse-submodules', '--no-write-fetch-head', '--no-auto-maintenance', 'https://github.com/openlup/openlup.git', ...refs], { timeout: 120000, maxBuffer: 1024 * 1024, env: GIT_ENV });
 }
 export async function readNativeAdmissionArtifact(api, input) {
   const name = `native-review-${input.targetRunId}-${input.targetAttempt}`;
