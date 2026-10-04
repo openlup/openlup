@@ -84,8 +84,12 @@ The bounded SQL RLS recovery uses existing owner cycles only: a separately
 reviewed contraction control precedes the corrected managed forward. Its exact
 regroup preserves every previous report and finding, keeps the automatic limit
 at two and the owner ceiling at five, and requires fresh candidate-bound owner
-decisions plus two full independent reviews for each sensitive phase. It
-grants no general scope extension, policy operation or publication authority.
+decisions plus two full independent reviews for each sensitive phase. If the
+separately merged bootstrap absorbs the control's documentation delta, the fifth
+cycle may finish that control recovery and one final sixth cycle may introduce
+the exact corrected SQL. The sixth refuses if the fifth already introduced that
+SQL; unrelated owner routes remain capped at five and a seventh always refuses.
+It grants no general scope extension, policy operation or publication authority.
 
 
 The runtime-forward checker also binds eight exact legacy policy retirements
