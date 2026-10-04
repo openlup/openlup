@@ -80,6 +80,14 @@ handling.
 
 ## Development-preview checks
 
+The bounded SQL RLS recovery uses existing owner cycles only: a separately
+reviewed contraction control precedes the corrected managed forward. Its exact
+regroup preserves every previous report and finding, keeps the automatic limit
+at two and the owner ceiling at five, and requires fresh candidate-bound owner
+decisions plus two full independent reviews for each sensitive phase. It
+grants no general scope extension, policy operation or publication authority.
+
+
 The reviewed runtime-forward checker admits one exact pinned SQL file and a
 fixed set of current capabilities. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,
