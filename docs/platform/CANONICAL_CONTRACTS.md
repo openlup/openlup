@@ -161,6 +161,10 @@ unchanged at the feature comparison base and the forward introduction parent.
 Control approval installs no database permission and cannot stand in for the
 corrected forward's actual-role tests.
 
+The publication catalogue now includes the ordered runtime capability forward
+and its actual-role and renewal-lock witnesses. The derived source contract
+binds that inventory and its classifications; it does not grant permissions or
+change package APIs. Runtime authority comes from the separately admitted SQL.
 
 The optional runtime-forward registry is a finite security admission: it pins
 one file, five unchanged existing function identities and ordered exact grants.
