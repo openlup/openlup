@@ -22,9 +22,11 @@ SELECT ok(
   NOT (SELECT enabled FROM public.platform_job_controls WHERE job_name = 'accounting-ksef-status'),
   'KSeF control remains disabled by default');
 
+SET LOCAL ROLE service_role;
 CREATE TEMP TABLE _disabled AS
 SELECT * FROM public.platform_claim_job_run_v3(
   'accounting-invoice-issue', 'worker', 'node_worker', 60, '{}'::jsonb);
+RESET ROLE;
 SELECT ok(NOT (SELECT acquired FROM _disabled), 'disabled accounting issue does not acquire');
 SELECT is((SELECT reason FROM _disabled), 'job_disabled', 'disabled accounting issue reports job_disabled');
 SELECT is(
@@ -44,9 +46,11 @@ UPDATE public.platform_job_controls
        lease_expires_at = NULL
  WHERE job_name = 'accounting-invoice-issue';
 
+SET LOCAL ROLE service_role;
 CREATE TEMP TABLE _worker AS
 SELECT * FROM public.platform_claim_job_run_v3(
   'accounting-invoice-issue', 'worker', 'node_worker', 60, '{"test":true}'::jsonb);
+RESET ROLE;
 SELECT ok((SELECT acquired FROM _worker), 'enabled worker claim acquires');
 SELECT is(
   (SELECT trigger_kind FROM public.platform_job_runs WHERE id = (SELECT run_id FROM _worker)),
@@ -57,15 +61,19 @@ SELECT is(
   'node_worker',
   'running ledger row stores node worker source');
 
+SET LOCAL ROLE service_role;
 CREATE TEMP TABLE _scheduler_during_worker AS
 SELECT * FROM public.platform_claim_job_run_v3(
   'accounting-invoice-issue', 'scheduler', 'vercel_cron', 60, '{}'::jsonb);
+RESET ROLE;
 SELECT ok(NOT (SELECT acquired FROM _scheduler_during_worker), 'scheduler cannot duplicate an active worker lease');
 SELECT is((SELECT reason FROM _scheduler_during_worker), 'lease_active', 'worker lease fences scheduler backstop');
 
+SET LOCAL ROLE service_role;
 SELECT ok(public.platform_finish_job_run_v3(
   'accounting-invoice-issue', (SELECT run_id FROM _worker), 'success', 1, 1, NULL, NULL, '{}'::jsonb),
   'v3 finish releases the owned lease');
+RESET ROLE;
 SELECT is(
   (SELECT status FROM public.platform_job_runs WHERE id = (SELECT run_id FROM _worker)),
   'success',
@@ -75,9 +83,11 @@ SELECT is(
   NULL::uuid,
   'v3 finish clears the shared lease token');
 
+SET LOCAL ROLE service_role;
 CREATE TEMP TABLE _operator AS
 SELECT * FROM public.platform_claim_job_run_v3(
   'accounting-invoice-issue', 'operator', 'admin_requeue', 60, '{}'::jsonb);
+RESET ROLE;
 SELECT ok(NOT (SELECT acquired FROM _operator), 'operator is not an implicit bypass');
 SELECT is((SELECT reason FROM _operator), 'trigger_kind_not_allowed', 'operator is rejected by accounting allowlist');
 
@@ -88,18 +98,22 @@ UPDATE public.platform_job_controls
        lease_until = NULL,
        lease_expires_at = NULL
  WHERE job_name = 'accounting-ksef-status';
+SET LOCAL ROLE service_role;
 CREATE TEMP TABLE _ksef_worker AS
 SELECT * FROM public.platform_claim_job_run_v3(
   'accounting-ksef-status', 'worker', 'node_worker', 60, '{}'::jsonb);
+RESET ROLE;
 SELECT ok(NOT (SELECT acquired FROM _ksef_worker), 'KSeF worker invocation is rejected');
 SELECT is((SELECT reason FROM _ksef_worker), 'trigger_kind_not_allowed', 'KSeF allows scheduler only');
 
+SET LOCAL ROLE service_role;
 SELECT throws_ok(
   $$ SELECT * FROM public.platform_claim_job_run_v3('accounting-invoice-issue', 'scheduler', '', 60, '{}'::jsonb) $$,
   '22023', 'platform_job_invocation_source_required', 'v3 requires an auditable invocation source');
 SELECT throws_ok(
   $$ SELECT * FROM public.platform_claim_job_run_v3('unknown-v3-job', 'scheduler', 'node_cron', 60, '{}'::jsonb) $$,
   '22023', 'platform_job_v3_control_not_configured', 'v3 fails closed for a job without explicit trigger policy');
+RESET ROLE;
 SELECT ok(
   NOT has_function_privilege('anon', 'public.platform_claim_job_run_v3(text,text,text,integer,jsonb)', 'EXECUTE')
   AND NOT has_function_privilege('authenticated', 'public.platform_claim_job_run_v3(text,text,text,integer,jsonb)', 'EXECUTE'),

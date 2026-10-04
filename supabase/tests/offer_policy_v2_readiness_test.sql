@@ -1,6 +1,11 @@
 -- pgTAP: fail-closed assignment readiness and legacy-money invariants.
 
 BEGIN;
+INSERT INTO public.commerce_settings (key,value_text,value_minor) VALUES
+ ('settlement_currency','XTS',NULL),('settlement_region','ZZ',NULL),('min_product_payable_minor',NULL,1)
+ON CONFLICT (key) DO UPDATE SET value_text=EXCLUDED.value_text,value_minor=EXCLUDED.value_minor;
+INSERT INTO public.variant_formats (code, display_name) VALUES ('can', 'Synthetic can') ON CONFLICT (code) DO NOTHING;
+INSERT INTO public.variant_unit_forms (code, display_name) VALUES ('can', 'Synthetic can') ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO public.catalog_products (
   id, slug, status, name, description, ingredients, allergens, marketing_content
@@ -20,7 +25,7 @@ INSERT INTO public.catalog_skus (
   'can', 'can', 492, 400, false, true, true, false, 1
 );
 INSERT INTO public.price_lists (id, name, region_code, currency, status)
-VALUES ('f2400000-0000-0000-0000-000000000001', 'readiness_pl', 'PL', 'PLN', 'active');
+VALUES ('f2400000-0000-0000-0000-000000000001', 'readiness_pl', 'ZZ', 'XTS', 'active');
 INSERT INTO public.price_entries (
   price_list_id, variant_id, mode, min_qty, unit_price_minor, amount_kind, active
 ) VALUES
@@ -30,20 +35,22 @@ INSERT INTO public.price_entries (
 INSERT INTO public.promotions (
   code, name, trigger_type, discount_type, discount_value,
   applies_to_kind, applies_to_payload, stacking_rule,
-  eligibility, redemption_limit_per_customer, status
+  eligibility, redemption_limit_per_customer, status, region_availability, valid_from
 ) VALUES (
   NULL, 'First Subscription 50%', 'automatic', 'percentage', 44.404,
   'order_total', '{"cart_mode":"subscription"}'::jsonb, 'exclusive',
-  '{"first_subscription_purchase":true}'::jsonb, 1, 'active'
+  '{"first_subscription_purchase":true}'::jsonb, 1, 'active',
+  ARRAY['ZZ'], statement_timestamp() - interval '1 day'
 );
 INSERT INTO public.promotions (
   code, name, trigger_type, discount_type, discount_value,
   applies_to_kind, applies_to_payload, stacking_rule, eligibility, status,
-  benefit_lane, benefit_kind, benefit_value_bps
+  benefit_lane, benefit_kind, benefit_value_bps, region_availability, valid_from
 ) VALUES (
   NULL, 'Fixture bundle', 'automatic', 'percentage', 5,
   'order_total', '{"cart_mode":"one_time"}'::jsonb, 'stackable_with_any',
-  '{"min_cart_minor":12000}'::jsonb, 'active', 'product', 'percentage', 500
+  '{"min_cart_minor":12000}'::jsonb, 'active', 'product', 'percentage', 500,
+  ARRAY['ZZ'], statement_timestamp() - interval '1 day'
 );
 
 INSERT INTO public.platform_job_controls (
@@ -130,7 +137,7 @@ INSERT INTO public.subscriptions (
 ) VALUES (
   'f2100000-0000-0000-0000-000000000010',
   'f2000000-0000-0000-0000-000000000010',
-  30, 'PLN', 'active', 'legacy_frozen'
+  30, 'XTS', 'active', 'legacy_frozen'
 );
 INSERT INTO public.subscription_lines (
   id, subscription_id, variant_id, qty, line_metadata
@@ -138,7 +145,7 @@ INSERT INTO public.subscription_lines (
   'f2600000-0000-0000-0000-000000000010',
   'f2100000-0000-0000-0000-000000000010',
   'f2300000-0000-0000-0000-000000000001', 14,
-  '{"productSnapshot":{"quoteLine":{"quantity":14,"unitPriceGross":{"amountMinor":1340,"currency":"PLN"},"lineSubtotalGross":{"amountMinor":18760,"currency":"PLN"}}}}'::jsonb
+  '{"productSnapshot":{"quoteLine":{"quantity":14,"unitPriceGross":{"amountMinor":1340,"currency":"XTS"},"lineSubtotalGross":{"amountMinor":18760,"currency":"XTS"}}}}'::jsonb
 );
 INSERT INTO public.subscription_price_agreements (
   id, subscription_id, subscription_line_id, variant_id, currency,
@@ -148,8 +155,8 @@ INSERT INTO public.subscription_price_agreements (
   'f2700000-0000-0000-0000-000000000010',
   'f2100000-0000-0000-0000-000000000010',
   'f2600000-0000-0000-0000-000000000010',
-  'f2300000-0000-0000-0000-000000000001', 'PLN', 1340,
-  '{"quantity":14,"unitPriceGross":{"amountMinor":1340,"currency":"PLN"},"lineSubtotalGross":{"amountMinor":18760,"currency":"PLN"}}'::jsonb,
+  'f2300000-0000-0000-0000-000000000001', 'XTS', 1340,
+  '{"quantity":14,"unitPriceGross":{"amountMinor":1340,"currency":"XTS"},"lineSubtotalGross":{"amountMinor":18760,"currency":"XTS"}}'::jsonb,
   1, 'readiness_fixture', 'readiness-valid-agreement'
 );
 
@@ -161,7 +168,7 @@ INSERT INTO public.subscriptions (
 ) VALUES (
   'f2100000-0000-0000-0000-000000000011',
   'f2000000-0000-0000-0000-000000000011',
-  30, 'PLN', 'active', 'legacy_frozen', true
+  30, 'XTS', 'active', 'legacy_frozen', true
 );
 
 SELECT is(
@@ -384,7 +391,7 @@ SELECT ok(
   'Bundle 5 region drift emits a closed diagnostic reason'
 );
 UPDATE public.promotions
-SET region_availability = ARRAY['PL']::text[]
+SET region_availability = ARRAY['ZZ']::text[]
 WHERE name = 'Fixture bundle';
 
 UPDATE public.promotions
@@ -459,18 +466,18 @@ INSERT INTO public.commerce_orders (
   id, status, currency, subtotal_cents, discount_cents, shipping_cents,
   shipping_discount_cents, tax_cents, total_cents, metadata
 ) VALUES (
-  'f2500000-0000-4000-8000-000000000001', 'paid', 'PLN', 1490, 745, 0,
+  'f2500000-0000-4000-8000-000000000001', 'paid', 'XTS', 1490, 745, 0,
   0, 55, 745,
   jsonb_build_object('quoteSnapshot', jsonb_build_object('quote', jsonb_build_object(
     'context', jsonb_build_object('pricingPolicy', jsonb_build_object(
       'offerPolicyVersion', 'commerce.offer-policy.v2',
       'promotionEngineVersion', 'promotion-engine.v2'
     )),
-    'subtotalGross', jsonb_build_object('amountMinor', 1490, 'currency', 'PLN'),
-    'discountTotalGross', jsonb_build_object('amountMinor', 745, 'currency', 'PLN'),
-    'shippingGross', jsonb_build_object('amountMinor', 0, 'currency', 'PLN'),
-    'shippingDiscountGross', jsonb_build_object('amountMinor', 0, 'currency', 'PLN'),
-    'totalGross', jsonb_build_object('amountMinor', 744, 'currency', 'PLN')
+    'subtotalGross', jsonb_build_object('amountMinor', 1490, 'currency', 'XTS'),
+    'discountTotalGross', jsonb_build_object('amountMinor', 745, 'currency', 'XTS'),
+    'shippingGross', jsonb_build_object('amountMinor', 0, 'currency', 'XTS'),
+    'shippingDiscountGross', jsonb_build_object('amountMinor', 0, 'currency', 'XTS'),
+    'totalGross', jsonb_build_object('amountMinor', 744, 'currency', 'XTS')
   )))
 );
 
@@ -515,7 +522,7 @@ WHERE entry.id = (
   FROM public.price_entries candidate
   JOIN public.price_lists list ON list.id = candidate.price_list_id
   JOIN public.catalog_skus sku ON sku.id = candidate.variant_id
-  WHERE list.region_code = 'PL' AND list.currency = 'PLN' AND list.status = 'active'
+  WHERE list.region_code = 'ZZ' AND list.currency = 'XTS' AND list.status = 'active'
     AND sku.status = 'active' AND sku.is_addon = false
     AND candidate.mode = 'subscription' AND candidate.min_qty = 1 AND candidate.active = true
   ORDER BY candidate.id LIMIT 1
@@ -542,7 +549,7 @@ INSERT INTO public.subscriptions (
 ) VALUES (
   'f2100000-0000-0000-0000-000000000001',
   'f2000000-0000-0000-0000-000000000001',
-  30, 'PLN', 'active', 'legacy_frozen'
+  30, 'XTS', 'active', 'legacy_frozen'
 );
 
 CREATE TEMP TABLE _readiness_invalid_legacy AS

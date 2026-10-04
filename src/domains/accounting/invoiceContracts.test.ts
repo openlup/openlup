@@ -19,7 +19,6 @@ import {
   neutralTaxIdRouting,
   routeInvoiceByTaxId,
 } from "./invoiceContracts.js";
-import { APP_DEFAULT_SELLER } from "../../lib/brand/appBrand.js";
 
 describe("accounting invoice contracts", () => {
   it("models local invoice and KSeF state without provider coupling", () => {
@@ -93,7 +92,7 @@ describe("accounting invoice contracts", () => {
   });
 
   it("reads seller config defaults without provider secrets", () => {
-    expect(readAccountingSellerConfig({}, APP_DEFAULT_SELLER)).toMatchObject({
+    const fallback = {
       name: "Example Company Sp. z o.o.",
       street: "Ul. Example Street 11",
       postalCode: "32-091",
@@ -102,7 +101,9 @@ describe("accounting invoice contracts", () => {
       krs: "0000000000",
       bankAccount: "21 1600 1462 1711 3485 9000 0008",
       departmentId: null,
-    });
+    };
+    expect(readAccountingSellerConfig({}, fallback)).toEqual(fallback);
+    expect(readAccountingSellerConfig({ ACCOUNTING_SELLER_NAME: "Synthetic Seller", ACCOUNTING_SELLER_NIP: "123-456-32-18" }, fallback)).toEqual({ ...fallback, name: "Synthetic Seller" });
   });
 
   it("rejects unsafe fiscal policy defaults", () => {

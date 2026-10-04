@@ -254,6 +254,8 @@ SELECT extensions.dblink_connect(
 SELECT extensions.dblink_exec(
   'provider_chronology_race_one',
   $setup$
+    CREATE TEMP TABLE pgtap_provider_before AS SELECT kind FROM public.providers WHERE kind='pgtap-chronology';
+    INSERT INTO public.providers (kind,capability,display_name,status) VALUES ('pgtap-chronology','fulfillment','Synthetic chronology','active') ON CONFLICT (kind) DO NOTHING;
     INSERT INTO public.clients (id, email, first_name, last_name)
     VALUES (
       '72000000-0000-0000-0000-000000000101',
@@ -288,20 +290,20 @@ SELECT extensions.dblink_exec(
         '72000000-0000-0000-0000-000000000111',
         '72000000-0000-0000-0000-000000000101',
         '72000000-0000-0000-0000-000000000102',
-        'provider-chronology-race-fulfillment-1', 'handed_over', 'omnipack', '{}'::jsonb, now()
+        'provider-chronology-race-fulfillment-1', 'handed_over', 'pgtap-chronology', '{}'::jsonb, now()
       ),
       (
         '72000000-0000-0000-0000-000000000122',
         '72000000-0000-0000-0000-000000000112',
         '72000000-0000-0000-0000-000000000101',
         '72000000-0000-0000-0000-000000000102',
-        'provider-chronology-race-fulfillment-2', 'handed_over', 'omnipack', '{}'::jsonb, now()
+        'provider-chronology-race-fulfillment-2', 'handed_over', 'pgtap-chronology', '{}'::jsonb, now()
       );
     INSERT INTO public.shipment_external_refs (
       order_id, provider_kind, provider_tracking_id, active
     ) VALUES
-      ('72000000-0000-0000-0000-000000000111', 'omnipack', 'CHRONOLOGY-RACE-1', true),
-      ('72000000-0000-0000-0000-000000000112', 'omnipack', 'CHRONOLOGY-RACE-2', true);
+      ('72000000-0000-0000-0000-000000000111', 'pgtap-chronology', 'CHRONOLOGY-RACE-1', true),
+      ('72000000-0000-0000-0000-000000000112', 'pgtap-chronology', 'CHRONOLOGY-RACE-2', true);
     CREATE OR REPLACE FUNCTION public.pgtap_provider_chronology_race(
       p_fulfillment_order_id uuid,
       p_provider_tracking_id text
@@ -431,6 +433,8 @@ SELECT extensions.dblink_exec(
       );
     DELETE FROM public.addresses WHERE id = '72000000-0000-0000-0000-000000000102';
     DELETE FROM public.clients WHERE id = '72000000-0000-0000-0000-000000000101';
+    DELETE FROM public.providers WHERE kind='pgtap-chronology' AND NOT EXISTS (SELECT 1 FROM pgtap_provider_before);
+    DROP TABLE pgtap_provider_before;
   $cleanup$
 );
 SELECT extensions.dblink_disconnect('provider_chronology_race_one');

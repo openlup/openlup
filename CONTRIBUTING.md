@@ -198,6 +198,14 @@ as a package consumer does. Rebuild core after editing `packages/core/src`, or
 those checks read the previous build. Published Tree CI runs `lint` after install
 and before `--typecheck`; its `prelint` script builds core in that same job.
 
+The managed pgTAP diagnostic replays the committed baseline and every ordered
+forward in an owned disposable project. Only after replay does it materialize
+those same committed SQL bytes as `.inc` files in the CLI-mounted tests directory
+for relative test includes. These files are not additional pgTAP tests. Policy-data tests
+read installed rows before setup, replay the actual forward and verify operator
+choices survive. Runtime operations use their declared role; owner readback is
+an observer. No test grant or scheduler activation is part of this transport.
+
 The three `oss:published-tree` modes are distinct checks. `--policy` verifies
 the public policy, catalogue, documentation ownership, generated navigation and
 same-change documentation impact boundary; `--inventory` verifies the selected
@@ -210,6 +218,11 @@ and exits 1 on a range that contains no commit. In a fork, use the remote that
 tracks `openlup/openlup` in place of `origin`. The subscription profile build
 writes `dist-subscription/` and `dist-subscription-ssr/`, which `.gitignore`
 does not cover, so do not commit them.
+
+The required and full-root hosted test jobs fetch complete Git history so their
+neutrality CLI falsifiers can read the exact pinned prior fixture blobs. This
+preserves their selectors and refusal assertions while supplying the history
+those assertions require.
 
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
@@ -555,6 +568,16 @@ Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
 including `src/lib/*Boundary*` and `*Guardrails*`. Playwright specifications
 retain their separate browser/profile runners; the root Vitest command does not
 claim browser journey evidence.
+
+Keep executable tests tied to a current offered contract, installed safety
+boundary or selected reference behaviour. Historical migration spellings,
+withheld commands, deployment inventory counts and adopter presentation are not
+platform acceptance requirements. Removing an obsolete assertion requires its
+ended duty or equivalent surviving proof; a similar test name is insufficient.
+Unmounted UI may defer interaction proof until that exact UI is selected, while
+installed authorization, money, persistence and replay controls remain tested.
+Retire dormant scenarios from the source tree rather than adding skips or
+runner exclusions; reintroduce neutral scenarios when their contract is selected.
 
 The `pgtap` job uses Supabase CLI **2.98.2** and a fresh local database stack,
 replays the shipped managed baseline and every published forward in filename

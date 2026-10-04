@@ -3,7 +3,7 @@
 -- as explicit literals — commerce.return.approved / commerce.return.rejected — exactly
 -- once via return_<status>:<id>. The other lifecycle statuses (requested/label_issued/
 -- received/refunded) are NOT emitted until their handlers land in R2+. The legacy
--- dynamic 'commerce.return.' prefix stays registered as a dormant producer.
+-- dynamic catch-all prefix is not emitted by these current producer calls.
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
@@ -64,9 +64,12 @@ SELECT is(
     AND aggregate_id = (SELECT id FROM public.commerce_return_requests WHERE idempotency_key = 'ret-emit-0000010')),
   1, 'reject emits commerce.return.rejected');
 
--- the producer is registered DORMANT (no handler yet).
+-- A legacy registration row cannot prove current producer safety.
 SELECT is(
-  (SELECT count(*)::int FROM public.outbox_dormant_event_types WHERE event_type = 'commerce.return.'),
-  1, 'commerce.return. producer is registered dormant');
+  (SELECT count(*)::int FROM public.outbox_events
+    WHERE event_type = 'commerce.return.'
+      AND aggregate_id IN (SELECT id FROM public.commerce_return_requests
+        WHERE idempotency_key IN ('ret-emit-0000001', 'ret-emit-0000010'))),
+  0, 'current return commands never emit the unsupported legacy catch-all event');
 
 ROLLBACK;

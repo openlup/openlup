@@ -32,6 +32,22 @@ export function neutralityIncreases(baseline, current) {
   }
   return increases;
 }
+// Exact owner-reviewed diagnostic-fixture recalibration. This admission applies
+// only to its introduction base; later bases use the ordinary shrink ratchet.
+const fixtureIntroductionBase = "c3a6c96c0ce6291a4554d51f9162dc261deed743";
+const reviewedDiagnosticFixtures = [
+  ["supabase/tests/anon_write_privilege_revoke_test.sql", "25072d998c2369f0058293b19e6c6e4f76941d45a028f1f0a5ff73429007ee6d", 0, 1],
+  ["supabase/tests/fulfillment_replacement_sequence_test.sql", "d02bbe3b35d5d29cfc45a17e9c1d1d17aab1c92ede79b3049011f8e1fc033b83", 0, 1],
+  ["supabase/tests/channel_order_reaches_the_dispatch_gate_test.sql", "426a6c565cadcd0ed32d870bdfab1818479a8e0e1adc7da310c6ea5b59484f82", 1, 2],
+  ["supabase/tests/payment_recovery_sha256_test.sql", "a7ba80b2c3b367ed17bb1fd69a4c49e07252b6b04363f3b24d9fa8b19dbb9919", 1, 2],
+  ["supabase/tests/subscription_starter_cycle_order_discount_test.sql", "c8452657e76f50d245a19e96acee781813fba4f1c6923fe07a285205a7a94da6", 1, 2],
+];
+export function unreviewedDiagnosticFixtureIncreases(increases, snapshots, sourceBase) {
+  if (sourceBase !== fixtureIntroductionBase) return increases;
+  return increases.filter((row) => !reviewedDiagnosticFixtures.some(([path, digest, before, after]) =>
+    row.path === hash(path) && row.category === "ui-15" && row.before === before && row.after === after
+      && snapshots.has(path) && hash(snapshots.get(path)) === digest));
+}
 export function validateBaseline(baseline) {
   if (!record(baseline) || baseline.schemaVersion !== 2 || !/^[a-f0-9]{40}$/.test(baseline.sourceCommit) || !record(baseline.counts)) throw new Error("invalid neutrality baseline");
   if (!record(baseline.scannerPins) || JSON.stringify(Object.keys(baseline.scannerPins).sort()) !== JSON.stringify([...scannerPaths].sort())) throw new Error("invalid neutrality scanner pins");
@@ -188,10 +204,10 @@ function main() {
   const measuredBase = scanSnapshots(baseBytes);
   const current = scanSnapshots(currentBytes);
   for (const path of current.binary) if (Object.keys(measuredBase.rows[hash(path)] ?? {}).length) throw new Error(`contaminated text became binary: ${label(path)}`);
-  const baseIncreases = neutralityIncreases(measuredBase.rows, current.rows);
+  const baseIncreases = unreviewedDiagnosticFixtureIncreases(neutralityIncreases(measuredBase.rows, current.rows), currentBytes, base);
   if (options[0] === "--write-baseline") {
     const counts = parent ? current.rows : measuredBase.rows;
-    const raised = parent ? neutralityIncreases(parent.counts, counts) : [];
+    const raised = parent ? unreviewedDiagnosticFixtureIncreases(neutralityIncreases(parent.counts, counts), currentBytes, base) : [];
     if (baseIncreases.length || raised.length) {
       report([...baseIncreases, ...raised], { ...measuredBase.paths, ...current.paths });
       throw new Error("baseline regeneration would increase accepted debt");
@@ -204,7 +220,8 @@ function main() {
     const baseline = parseBaseline(currentBytes.get(baselinePath));
     for (const path of scannerPaths) if (baseline.scannerPins[path] !== scannerPins[path]) throw new Error(`baseline scanner pin drift: ${label(path)}`);
     if (!parent && (baseline.sourceCommit !== base || JSON.stringify(baseline.counts) !== JSON.stringify(measuredBase.rows))) throw new Error("initial neutrality baseline must equal the measured base tree");
-    const raised = parent ? neutralityIncreases(parent.counts, baseline.counts) : [];
+    const raised = parent ? unreviewedDiagnosticFixtureIncreases(neutralityIncreases(parent.counts, baseline.counts), currentBytes, base) : [];
+    // The candidate must fit the explicitly recalibrated baseline, even at introduction.
     const increases = neutralityIncreases(baseline.counts, current.rows);
     report([...baseIncreases, ...raised, ...increases], { ...measuredBase.paths, ...current.paths });
     console.log(`Neutrality: ${current.textFiles} text files, ${current.binaryFiles} binary files inventoried; ${baseIncreases.length + raised.length + increases.length} increases. Base ${base}; candidate ${git(["rev-parse", "HEAD"], { encoding: "utf8" }).trim()}; path keys are SHA-256 hashes of exact relative paths.`);

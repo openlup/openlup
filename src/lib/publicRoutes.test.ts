@@ -1,49 +1,37 @@
-import { describe, expect, it } from "vitest";
-import {
-  canonicalizeLegacyPublicPathname,
-  publicLegacyRedirects,
-  publicStaticRoutes,
-} from "./publicRoutes";
+import { describe, expect, it, vi } from "vitest";
+import { canonicalizeLegacyPublicPathname, normalizePublicPathname, publicLegacyRedirects, publicStaticRoutes } from "./publicRoutes";
 
 describe("public route manifest", () => {
-  it("keeps static route paths unique", () => {
-    const paths = publicStaticRoutes.map((route) => route.path);
-    expect(new Set(paths).size).toBe(paths.length);
+  it("projects the selected static item route once and excludes the root", () => {
+    expect(publicStaticRoutes.map(({ path }) => path)).toEqual(["items/field-notes"]);
+    expect(publicStaticRoutes[0]).toMatchObject({ locale: "en", seoPath: ["reference", "item"] });
   });
-
-  it("excludes retired free-samples routes from static generation", () => {
-    const paths = publicStaticRoutes.map((route) => route.path);
-    expect(paths).not.toContain("free-samples");
-    expect(paths).not.toContain("darmowe-probki");
+  it("has no historical redirects in the selected public profile", () => {
+    expect(publicLegacyRedirects).toEqual([]);
+    expect(canonicalizeLegacyPublicPathname("/en/legacy/")).toBeNull();
   });
-
-  it("drives legacy EN alias canonicalization", () => {
-    expect(canonicalizeLegacyPublicPathname("/en/free-samples")).toBe("/waitlist-en");
-    expect(canonicalizeLegacyPublicPathname("/en/how-it-works/")).toBe("/how-it-works");
-    expect(canonicalizeLegacyPublicPathname("/en/dogs/lamb/nutrition")).toBe(
-      "/dogs/lamb/nutrition",
-    );
-    // Free-samples retired: /free-samples now canonicalizes to the waitlist.
-    expect(canonicalizeLegacyPublicPathname("/free-samples")).toBe("/waitlist-en");
-    expect(canonicalizeLegacyPublicPathname("/darmowe-probki")).toBe("/waitlist");
-    expect(canonicalizeLegacyPublicPathname("/en")).toBeNull();
+  it("normalizes root, leading slash and a trailing slash", () => {
+    expect(normalizePublicPathname("/")).toBe("/");
+    expect(normalizePublicPathname("items/field-notes/")).toBe("/items/field-notes");
   });
-
-  it("marks all legacy redirects as permanent", () => {
-    expect(publicLegacyRedirects.length).toBeGreaterThan(0);
-    expect(publicLegacyRedirects.every((redirect) => redirect.permanent)).toBe(true);
-  });
-
-  it("preserves retired free-samples reachability through legacy redirects", () => {
-    const redirects = new Map(
-      publicLegacyRedirects.map(({ source, destination }) => [source, destination]),
-    );
-
-    expect(redirects.get("/darmowe-probki")).toBe("/waitlist");
-    expect(redirects.get("/darmowe-probki/dziekujemy")).toBe("/waitlist");
-    expect(redirects.get("/free-samples")).toBe("/waitlist-en");
-    expect(redirects.get("/free-samples/thank-you")).toBe("/waitlist-en");
-    expect(redirects.get("/en/free-samples")).toBe("/waitlist-en");
-    expect(redirects.get("/en/free-samples/thank-you")).toBe("/waitlist-en");
+  it("canonicalizes exact and prefix redirects from an explicitly supplied manifest", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/siteRoutes", () => ({
+      siteRoutes: [],
+      siteRedirects: [
+        { source: "/old", destination: "/new", permanent: true },
+        { source: "/legacy/:path*", destination: "/items/:path*", permanent: true, clientPrefix: { from: "/legacy/", to: "/items/" } },
+      ],
+    }));
+    try {
+      const { canonicalizeLegacyPublicPathname: canonicalize } = await import("./publicRoutes");
+      expect(canonicalize("old/")).toBe("/new");
+      expect(canonicalize("/legacy/field-notes/")).toBe("/items/field-notes");
+      expect(canonicalize("/legacyish/field-notes")).toBeNull();
+      expect(canonicalize("/unknown")).toBeNull();
+    } finally {
+      vi.doUnmock("@/lib/siteRoutes");
+      vi.resetModules();
+    }
   });
 });

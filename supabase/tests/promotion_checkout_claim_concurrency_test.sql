@@ -14,6 +14,13 @@ SELECT extensions.dblink_connect(
 );
 
 SELECT extensions.dblink_exec('promo_checkout_a', $setup$
+
+  CREATE TEMP TABLE pgtap_settlement_before AS SELECT * FROM public.commerce_settings
+   WHERE key IN ('settlement_currency','settlement_region','min_product_payable_minor');
+  -- Both dblink sessions see the same committed synthetic settlement settings.
+  INSERT INTO public.commerce_settings (key,value_text,value_minor) VALUES
+   ('settlement_currency','XTS',NULL),('settlement_region','ZZ',NULL),('min_product_payable_minor',NULL,1)
+  ON CONFLICT (key) DO UPDATE SET value_text=EXCLUDED.value_text,value_minor=EXCLUDED.value_minor;
   INSERT INTO public.clients (id, email) VALUES
     ('b1410000-0000-4000-8000-000000000001', 'promotion-race-a@example.invalid'),
     ('b1410000-0000-4000-8000-000000000002', 'promotion-race-b@example.invalid');
@@ -78,27 +85,27 @@ SELECT extensions.dblink_exec('promo_checkout_a', $setup$
       'source', 'commerce.order_draft.bff.v0',
       'status', 'draft',
       'paymentStatus', 'not_started',
-      'currency', 'PLN',
+      'currency', 'XTS',
       'taxIncluded', true,
       'lines', jsonb_build_array(jsonb_build_object(
         'sku', p_idempotency_key,
         'productSlug', 'promotion-race',
         'quantity', 1,
-        'unitPriceGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
-        'lineSubtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
+        'unitPriceGross', jsonb_build_object('amountMinor', 10000, 'currency', 'XTS'),
+        'lineSubtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'XTS'),
         'tax', jsonb_build_object(
           'vatRateBps', 800,
-          'netAmount', jsonb_build_object('amountMinor', 9259, 'currency', 'PLN'),
-          'vatAmount', jsonb_build_object('amountMinor', 741, 'currency', 'PLN'),
-          'grossAmount', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN')
+          'netAmount', jsonb_build_object('amountMinor', 9259, 'currency', 'XTS'),
+          'vatAmount', jsonb_build_object('amountMinor', 741, 'currency', 'XTS'),
+          'grossAmount', jsonb_build_object('amountMinor', 10000, 'currency', 'XTS')
         )
       )),
       'totals', jsonb_build_object(
-        'subtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
-        'discountTotalGross', jsonb_build_object('amountMinor', 8000, 'currency', 'PLN'),
-        'netTotal', jsonb_build_object('amountMinor', 1852, 'currency', 'PLN'),
-        'taxTotal', jsonb_build_object('amountMinor', 148, 'currency', 'PLN'),
-        'totalGross', jsonb_build_object('amountMinor', 2000, 'currency', 'PLN')
+        'subtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'XTS'),
+        'discountTotalGross', jsonb_build_object('amountMinor', 8000, 'currency', 'XTS'),
+        'netTotal', jsonb_build_object('amountMinor', 1852, 'currency', 'XTS'),
+        'taxTotal', jsonb_build_object('amountMinor', 148, 'currency', 'XTS'),
+        'totalGross', jsonb_build_object('amountMinor', 2000, 'currency', 'XTS')
       )
     );
     PERFORM public.commerce_create_order_draft_with_outbox(
@@ -167,6 +174,9 @@ SELECT is(
   'the losing transaction leaves no partial canonical order graph');
 
 SELECT extensions.dblink_exec('promo_checkout_a', $cleanup$
+  DELETE FROM public.commerce_settings WHERE key IN ('settlement_currency','settlement_region','min_product_payable_minor');
+  INSERT INTO public.commerce_settings SELECT * FROM pgtap_settlement_before;
+  DROP TABLE pgtap_settlement_before;
   DROP FUNCTION public.pgtap_try_promotion_order(text,uuid,numeric);
   DELETE FROM public.promotion_code_claims
    WHERE promotion_code_id = 'b1430000-0000-4000-8000-000000000001';

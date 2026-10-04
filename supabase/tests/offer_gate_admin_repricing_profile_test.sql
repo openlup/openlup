@@ -6,6 +6,12 @@
 -- readiness paths below remain deliberately unchanged in behaviour.
 
 BEGIN;
+-- Explicit synthetic settlement coordinates; these rows are rolled back with this test.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('settlement_currency', 'XTS', NULL), ('settlement_region', 'ZZ', NULL),
+  ('min_product_payable_minor', NULL, 1)
+ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
+
 SELECT plan(19);
 
 -- ---- Fixtures ---------------------------------------------------------------
@@ -30,15 +36,23 @@ SELECT set_config('request.jwt.claims',
   '{"sub":"c3100000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 
 -- ---- The reach question, asked of the privilege system directly ---------------
--- Fenced functions retain their existing execute/definer boundary so callers
--- receive the stable refusal rather than a missing-function or ACL surprise.
+-- Live profile readers remain service-callable; dormant legacy repricers
+-- are closed to service and browser roles. Owner-body fences are proved
+-- separately by catalog_legacy_mutation_fence_test.sql.
 SELECT ok(
-  (SELECT bool_and(has_function_privilege('service_role', p.oid, 'execute'))
+  (SELECT bool_and(CASE
+       WHEN p.proname IN ('admin_set_subscription_band_percent', 'admin_set_catalog_price')
+         THEN NOT has_function_privilege('service_role', p.oid, 'execute')
+           AND NOT has_function_privilege('anon', p.oid, 'execute')
+           AND NOT has_function_privilege('authenticated', p.oid, 'execute')
+           AND NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+             WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE')
+       ELSE has_function_privilege('service_role', p.oid, 'execute') END)
      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.proname IN (
       'commerce_offer_policy_v2_readiness', 'admin_set_subscription_band_percent',
       'admin_set_catalog_price', 'admin_promotion_code_create')),
-  'service_role may execute the two fenced identities and the two live profile readers');
+  'service_role executes the live profile readers; legacy repricers deny service/browser/PUBLIC execution');
 
 SELECT ok(
   (SELECT bool_and(p.prosecdef)
@@ -59,18 +73,20 @@ SELECT jsonb_agg(to_jsonb(price) ORDER BY price.id) AS prices
 SET LOCAL ROLE service_role;
 SELECT throws_ok(
   $$ SELECT public.admin_set_subscription_band_percent(10) $$,
-  '42501', 'legacy_catalog_mutation_fenced',
-  'a service_role call to the legacy subscription-band repricer is fenced before profile lookup');
+  '42501', 'permission denied for function admin_set_subscription_band_percent',
+  'direct service execution of the dormant subscription-band repricer is denied');
 RESET ROLE;
 
+SET LOCAL ROLE service_role;
 SELECT throws_ok(
   $$ SELECT public.admin_set_catalog_price(
        'c3100000-0000-4000-8000-000000000001', 'PROFILE-FIXTURE-400G', 'one_time',
-       1200, (SELECT list.currency FROM public.price_lists AS list
-                WHERE list.id = 'c3400000-0000-4000-8000-000000000001'), 'commit',
+       1200, 'XTS', 'commit',
        'f3c-price-key-0001', NULL, 'agent_catalog') $$,
-  '42501', 'legacy_catalog_mutation_fenced',
-  'the legacy catalog-price writer is fenced before profile lookup');
+  '42501', 'permission denied for function admin_set_catalog_price',
+  'direct service execution of the dormant catalog-price writer is denied');
+
+RESET ROLE;
 
 SELECT is(
   (SELECT prices::text FROM _before_repricing),
@@ -106,7 +122,7 @@ SELECT is(
   ARRAY[public.platform_region_code()],
   'the per-lane evaluator row is scoped to the market the mirror names');
 
-UPDATE public.commerce_settings SET value_text = 'ZZ' WHERE key = 'settlement_region';
+UPDATE public.commerce_settings SET value_text = 'XY' WHERE key = 'settlement_region';
 SELECT lives_ok(
   $$ SELECT public.admin_promotion_code_create(
        'c3100000-0000-4000-8000-000000000001', 'f3c-second', 'F3c Second', NULL::text,
@@ -120,7 +136,7 @@ SELECT is(
      JOIN public.promotion_code_bindings pcb ON pcb.promotion_id = p.id
      JOIN public.promotion_codes pc ON pc.id = pcb.promotion_code_id
     WHERE pc.code_normalized = 'F3C-SECOND'),
-  ARRAY['ZZ'],
+  ARRAY['XY'],
   'and it is scoped to the new market, so the value is read per call and not compiled in');
 UPDATE public.commerce_settings AS settings SET value_text = (
   SELECT list.region_code FROM public.price_lists AS list
@@ -175,7 +191,7 @@ SELECT is(
 
 RESET ROLE;
 
-UPDATE public.commerce_settings SET value_text = 'XTS' WHERE key = 'settlement_currency';
+UPDATE public.commerce_settings SET value_text = 'XXX' WHERE key = 'settlement_currency';
 SELECT is(
   (SELECT public.commerce_offer_policy_v2_readiness()#>>'{evidence,activePriceListCount}'),
   '0',
@@ -189,7 +205,7 @@ UPDATE public.commerce_settings AS settings SET value_text = (
    WHERE list.id = 'c3400000-0000-4000-8000-000000000001')
  WHERE settings.key = 'settlement_currency';
 
-UPDATE public.commerce_settings SET value_text = 'ZZ' WHERE key = 'settlement_region';
+UPDATE public.commerce_settings SET value_text = 'XY' WHERE key = 'settlement_region';
 SELECT is(
   (SELECT public.commerce_offer_policy_v2_readiness()#>>'{evidence,activePriceListCount}'),
   '0',

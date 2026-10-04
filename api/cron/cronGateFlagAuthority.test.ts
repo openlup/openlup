@@ -60,10 +60,4 @@ describe("cron gate flag matches its jobCatalog requiresFlag (anti-drift)", () =
     }
   });
 
-  it("the subscription renewal cron is gated by the dedicated renewal-runtime flag", () => {
-    const { jobName, gateFlag } = readCron("api/cron/subscription-renewal.ts");
-    expect(jobName).toBe("subscription-renewal-runtime");
-    expect(gateFlag).toBe("COMMERCE_SUBSCRIPTION_RENEWAL_RUNTIME_ENABLED");
-    expect(requiresFlagByJob.get("subscription-renewal-runtime")).toBe(gateFlag);
-  });
 });

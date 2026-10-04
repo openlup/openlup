@@ -11,7 +11,7 @@
 --      wave exists to prevent is a money function that returns a plausible default instead of
 --      raising, so the absence of a fallback is asserted rather than read.
 --
--- This file names no currency and no country. It asserts the seeded values' shape and their
+-- This file names no currency and no country. It explicitly configures sample values and their
 -- agreement with the functions, and uses the ISO 4217 code reserved for testing (XTS) and a
 -- user-assigned ISO 3166-1 code (ZZ) wherever a concrete code is needed. That keeps the proof
 -- honest about what it is proving: the mirror is correct for whatever this deployment settles
@@ -20,25 +20,14 @@
 -- Run via: npm run test:db:local
 
 BEGIN;
-SELECT plan(17);
+SELECT plan(15);
 
--- ---- The migration seeded all three rows, in the right lanes ---------------
-SELECT is(
-  (SELECT count(*)::int FROM public.commerce_settings
-    WHERE key IN ('settlement_currency', 'settlement_region', 'min_product_payable_minor')),
-  3, 'the migration seeded all three settlement rows');
-
-SELECT matches(
-  (SELECT value_text FROM public.commerce_settings WHERE key = 'settlement_currency'),
-  '^[A-Z]{3}$', 'the seeded settlement currency is a well-formed ISO 4217 code');
-
-SELECT matches(
-  (SELECT value_text FROM public.commerce_settings WHERE key = 'settlement_region'),
-  '^[A-Z]{2}$', 'the seeded settlement region is a well-formed ISO 3166-1 alpha-2 code');
-
-SELECT ok(
-  (SELECT value_minor >= 1 FROM public.commerce_settings WHERE key = 'min_product_payable_minor'),
-  'the seeded payable floor is at least one minor unit');
+-- An unconfigured schema refuses before the example supplies its profile.
+DELETE FROM public.commerce_settings WHERE key IN ('settlement_currency','settlement_region','min_product_payable_minor');
+SELECT throws_ok($$ SELECT public.platform_settlement_currency() $$,'55000',NULL,'unconfigured currency refuses');
+SELECT throws_ok($$ SELECT public.platform_region_code() $$,'55000',NULL,'unconfigured region refuses');
+INSERT INTO public.commerce_settings (key,value_text,value_minor) VALUES
+ ('settlement_currency','XTS',NULL),('settlement_region','ZZ',NULL),('min_product_payable_minor',NULL,1);
 
 -- ---- The readers return exactly what is stored -----------------------------
 SELECT is(
@@ -53,12 +42,12 @@ SELECT is(
 
 -- The readers follow the row rather than a compiled-in answer: change the row inside this
 -- transaction and the function must change with it.
-UPDATE public.commerce_settings SET value_text = 'XTS' WHERE key = 'settlement_currency';
-SELECT is(public.platform_settlement_currency(), 'XTS',
+UPDATE public.commerce_settings SET value_text = 'XXX' WHERE key = 'settlement_currency';
+SELECT is(public.platform_settlement_currency(), 'XXX',
   'platform_settlement_currency follows the row, not a compiled-in answer');
 
-UPDATE public.commerce_settings SET value_text = 'ZZ' WHERE key = 'settlement_region';
-SELECT is(public.platform_region_code(), 'ZZ',
+UPDATE public.commerce_settings SET value_text = 'XY' WHERE key = 'settlement_region';
+SELECT is(public.platform_region_code(), 'XY',
   'platform_region_code follows the row, not a compiled-in answer');
 
 -- ---- Fail-closed: no row, no answer ----------------------------------------

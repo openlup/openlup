@@ -12,6 +12,12 @@
 -- Run via: supabase test db
 
 BEGIN;
+-- Explicit synthetic settlement coordinates; these rows are rolled back with this test.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('settlement_currency', 'XTS', NULL), ('settlement_region', 'ZZ', NULL),
+  ('min_product_payable_minor', NULL, 1)
+ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
+
 SELECT plan(10);
 
 -- ---- Fixture --------------------------------------------------------------
@@ -34,29 +40,29 @@ SELECT public.commerce_create_order_draft_with_outbox(
      "source": "commerce.order_draft.bff.v0",
      "status": "draft",
      "paymentStatus": "not_started",
-     "currency": "PLN",
+     "currency": "XTS",
      "taxIncluded": "true",
      "lines": [
        {
          "sku": "ORG-SKU-1",
          "productSlug": "organic-prod",
          "quantity": 2,
-         "unitPriceGross": {"amountMinor": 1340, "currency": "PLN"},
-         "lineSubtotalGross": {"amountMinor": 2680, "currency": "PLN"},
+         "unitPriceGross": {"amountMinor": 1340, "currency": "XTS"},
+         "lineSubtotalGross": {"amountMinor": 2680, "currency": "XTS"},
          "tax": {
            "vatRateBps": 800,
-           "netAmount": {"amountMinor": 2481, "currency": "PLN"},
-           "vatAmount": {"amountMinor": 199, "currency": "PLN"},
-           "grossAmount": {"amountMinor": 2680, "currency": "PLN"}
+           "netAmount": {"amountMinor": 2481, "currency": "XTS"},
+           "vatAmount": {"amountMinor": 199, "currency": "XTS"},
+           "grossAmount": {"amountMinor": 2680, "currency": "XTS"}
          }
        }
      ],
      "totals": {
-       "subtotalGross": {"amountMinor": 2680, "currency": "PLN"},
-       "discountTotalGross": {"amountMinor": 0, "currency": "PLN"},
-       "netTotal": {"amountMinor": 2481, "currency": "PLN"},
-       "taxTotal": {"amountMinor": 199, "currency": "PLN"},
-       "totalGross": {"amountMinor": 2680, "currency": "PLN"}
+       "subtotalGross": {"amountMinor": 2680, "currency": "XTS"},
+       "discountTotalGross": {"amountMinor": 0, "currency": "XTS"},
+       "netTotal": {"amountMinor": 2481, "currency": "XTS"},
+       "taxTotal": {"amountMinor": 199, "currency": "XTS"},
+       "totalGross": {"amountMinor": 2680, "currency": "XTS"}
      }
    }'::jsonb,
   '11111111-1111-1111-1111-111111111111'::uuid
@@ -72,29 +78,29 @@ SELECT public.commerce_create_order_draft_with_outbox(
      "source": "commerce.order_draft.bff.v0",
      "status": "draft",
      "paymentStatus": "not_started",
-     "currency": "PLN",
+     "currency": "XTS",
      "taxIncluded": "true",
      "lines": [
        {
          "sku": "ANON-SKU-1",
          "productSlug": "anon-prod",
          "quantity": 1,
-         "unitPriceGross": {"amountMinor": 990, "currency": "PLN"},
-         "lineSubtotalGross": {"amountMinor": 990, "currency": "PLN"},
+         "unitPriceGross": {"amountMinor": 990, "currency": "XTS"},
+         "lineSubtotalGross": {"amountMinor": 990, "currency": "XTS"},
          "tax": {
            "vatRateBps": 800,
-           "netAmount": {"amountMinor": 917, "currency": "PLN"},
-           "vatAmount": {"amountMinor": 73, "currency": "PLN"},
-           "grossAmount": {"amountMinor": 990, "currency": "PLN"}
+           "netAmount": {"amountMinor": 917, "currency": "XTS"},
+           "vatAmount": {"amountMinor": 73, "currency": "XTS"},
+           "grossAmount": {"amountMinor": 990, "currency": "XTS"}
          }
        }
      ],
      "totals": {
-       "subtotalGross": {"amountMinor": 990, "currency": "PLN"},
-       "discountTotalGross": {"amountMinor": 0, "currency": "PLN"},
-       "netTotal": {"amountMinor": 917, "currency": "PLN"},
-       "taxTotal": {"amountMinor": 73, "currency": "PLN"},
-       "totalGross": {"amountMinor": 990, "currency": "PLN"}
+       "subtotalGross": {"amountMinor": 990, "currency": "XTS"},
+       "discountTotalGross": {"amountMinor": 0, "currency": "XTS"},
+       "netTotal": {"amountMinor": 917, "currency": "XTS"},
+       "taxTotal": {"amountMinor": 73, "currency": "XTS"},
+       "totalGross": {"amountMinor": 990, "currency": "XTS"}
      }
    }'::jsonb
 ) AS r;
@@ -151,29 +157,29 @@ SELECT public.commerce_create_order_draft_with_outbox(
      "source": "commerce.order_draft.bff.v0",
      "status": "draft",
      "paymentStatus": "not_started",
-     "currency": "PLN",
+     "currency": "XTS",
      "taxIncluded": "true",
      "lines": [
        {
          "sku": "ORG-SKU-1",
          "productSlug": "organic-prod",
          "quantity": 2,
-         "unitPriceGross": {"amountMinor": 1340, "currency": "PLN"},
-         "lineSubtotalGross": {"amountMinor": 2680, "currency": "PLN"},
+         "unitPriceGross": {"amountMinor": 1340, "currency": "XTS"},
+         "lineSubtotalGross": {"amountMinor": 2680, "currency": "XTS"},
          "tax": {
            "vatRateBps": 800,
-           "netAmount": {"amountMinor": 2481, "currency": "PLN"},
-           "vatAmount": {"amountMinor": 199, "currency": "PLN"},
-           "grossAmount": {"amountMinor": 2680, "currency": "PLN"}
+           "netAmount": {"amountMinor": 2481, "currency": "XTS"},
+           "vatAmount": {"amountMinor": 199, "currency": "XTS"},
+           "grossAmount": {"amountMinor": 2680, "currency": "XTS"}
          }
        }
      ],
      "totals": {
-       "subtotalGross": {"amountMinor": 2680, "currency": "PLN"},
-       "discountTotalGross": {"amountMinor": 0, "currency": "PLN"},
-       "netTotal": {"amountMinor": 2481, "currency": "PLN"},
-       "taxTotal": {"amountMinor": 199, "currency": "PLN"},
-       "totalGross": {"amountMinor": 2680, "currency": "PLN"}
+       "subtotalGross": {"amountMinor": 2680, "currency": "XTS"},
+       "discountTotalGross": {"amountMinor": 0, "currency": "XTS"},
+       "netTotal": {"amountMinor": 2481, "currency": "XTS"},
+       "taxTotal": {"amountMinor": 199, "currency": "XTS"},
+       "totalGross": {"amountMinor": 2680, "currency": "XTS"}
      }
    }'::jsonb,
   '11111111-1111-1111-1111-111111111111'::uuid

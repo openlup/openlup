@@ -1,17 +1,14 @@
-import { readFileSync } from "node:fs";
+import { effectiveFunctionBody } from "../src/test/effectiveMigration";
+import { currentTableStatements, currentTrigger, explicitFunctionExecuteRoles, explicitTablePrivileges } from "../src/test/historicalBoundarySchema";
 import { describe, expect, it } from "vitest";
 
-const FILE = "supabase/migrations/20260815130100_customer_recovery_console.sql";
-const sql = readFileSync(FILE, "utf8");
-const statements = sql.replace(/^\s*--.*$/gm, "");
-
-function routine(name: string): string {
-  const start = statements.indexOf(`CREATE FUNCTION public.${name}`);
-  if (start < 0) throw new Error(`missing routine ${name}`);
-  const end = statements.indexOf("\n$$;", start);
-  if (end < 0) throw new Error(`unterminated routine ${name}`);
-  return statements.slice(start, end + 4);
-}
+const routines = ["customer_support_issue_recovery", "subscription_rotate_payment_recovery_token", "customer_support_refuse_recovery_ledger_mutation"];
+const statements = [
+  ...routines.map(effectiveFunctionBody),
+  currentTableStatements("clients"), currentTableStatements("subscription_dunning_notifications"),
+  currentTrigger("customer_support_recovery_commands_append_only"), currentTrigger("customer_support_recovery_audit_append_only"),
+].join("\n");
+const routine = effectiveFunctionBody;
 
 describe("managed customer recovery console forward", () => {
   it("admits waitlist as an earlier stage of the same managed subject", () => {
@@ -19,7 +16,7 @@ describe("managed customer recovery console forward", () => {
   });
 
   it("matches the managed adapter's named eight-argument RPC", () => {
-    expect(statements).toMatch(/CREATE FUNCTION public\.customer_support_issue_recovery\(\s*p_operator_id uuid,\s*p_subject_id uuid,\s*p_case_id uuid,\s*p_idempotency_key text,\s*p_payload_fingerprint text,\s*p_token_hash text,\s*p_expires_at timestamptz,\s*p_recovery_path text/);
+    expect(statements).toMatch(/CREATE FUNCTION public\.customer_support_issue_recovery\(\s*p_operator_id uuid,\s*p_subject_id uuid,\s*p_case_id uuid,\s*p_idempotency_key text,\s*p_payload_fingerprint text,\s*p_token_hash text,\s*p_expires_at timestamp with time zone,\s*p_recovery_path text/);
     expect(statements).not.toContain("CREATE FUNCTION public.customer_support_journey");
   });
 
@@ -107,10 +104,19 @@ describe("managed customer recovery console forward", () => {
   });
 
   it("grants only service_role and fixes both function search paths", () => {
-    expect(statements).not.toMatch(/GRANT .* TO (?:PUBLIC|anon|authenticated)/);
-    expect(statements).toMatch(/GRANT SELECT, INSERT ON TABLE[\s\S]+TO service_role/);
-    expect(statements).toMatch(/GRANT EXECUTE ON FUNCTION public\.customer_support_issue_recovery[\s\S]+TO service_role/);
-    expect([...statements.matchAll(/SET search_path = pg_catalog/g)]).toHaveLength(3);
-    expect(statements).not.toMatch(/SECURITY DEFINER|CREATE POLICY/);
+    for (const name of ["customer_support_issue_recovery", "subscription_rotate_payment_recovery_token"]) {
+      const body = routine(name);
+      expect(body).toContain("SET search_path TO 'pg_catalog'");
+      expect(body).not.toContain("SECURITY DEFINER");
+      for (const roles of explicitFunctionExecuteRoles(name).values()) {
+        expect(roles.has("service_role")).toBe(true);
+        for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+      }
+    }
+    for (const table of ["customer_support_recovery_commands", "customer_support_recovery_audit_events"]) {
+      const roles = explicitTablePrivileges(table);
+      expect([...roles.get("service_role") ?? []].sort()).toEqual(["INSERT", "SELECT"]);
+      for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.get(role)?.size ?? 0).toBe(0);
+    }
   });
 });

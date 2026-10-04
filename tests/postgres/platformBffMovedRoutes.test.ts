@@ -44,14 +44,19 @@ describe("moved Platform BFF adapters", () => {
     ["pipeline", "../../server/bff/admin/platform/pipeline.js", "GET"],
     ["settings", "../../server/bff/admin/platform/settings.js", "GET"],
     ["settings update", "../../server/bff/admin/platform/settings/update.js", "POST"],
-  ] as const)("executes %s and fails closed without managed runtime config", async (_name, modulePath, method) => {
+  ] as const)("public default refuses %s before reading request data", async (_name, modulePath, method) => {
     const res = mockRes();
     const route = (await import(modulePath)).default as Route;
 
-    await route({ method, headers: {}, body: {} } as unknown as VercelRequest, res);
+    const touched = vi.fn(() => { throw new Error("request body read"); });
+    const req = { method, headers: {} };
+    Object.defineProperty(req, "body", { get: touched });
+    await route(req as unknown as VercelRequest, res);
+    expect(touched).not.toHaveBeenCalled();
 
-    expect(res.statusCode).toBe(500);
+    expect(res.statusCode).toBe(503);
     expect(res.body.ok).toBe(false);
-    expect(res.body.error?.code).toBe("INTERNAL");
+    expect(res.body.error?.code).toBe("UPSTREAM_UNAVAILABLE");
+    expect(res.body.error).toMatchObject({ details: { reason: "adopter_policy_required" } });
   });
 });

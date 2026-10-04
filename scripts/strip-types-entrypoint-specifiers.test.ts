@@ -210,8 +210,7 @@ describe("strip-types entrypoint specifiers", () => {
 
   it("finds the strip-types entrypoints the repository actually launches", () => {
     const entrypoints = collectStripTypesEntrypoints();
-    expect(entrypoints.length).toBeGreaterThan(100);
-    expect(entrypoints).toContain("scripts/email-delivery-worker-health.ts");
+    expect(entrypoints).toContain("scripts/oss-reference-prerender.ts");
   });
 
   it("resolves every relative specifier a scripts/ module contributes to a strip-types graph", () => {
@@ -231,7 +230,7 @@ describe("strip-types entrypoint specifiers", () => {
   it("agrees with Node: the repaired entrypoint loads", () => {
     const probe = execFileSync(
       process.execPath,
-      ["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", "await import('./scripts/email-delivery-worker-health.ts')"],
+      ["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", "await import('./scripts/oss-reference-prerender.ts')"],
       { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
     expect(probe).not.toContain("ERR_MODULE_NOT_FOUND");

@@ -14,6 +14,25 @@ import {
 } from "./form";
 import { Input } from "./input";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => {
+    const messages: Record<string, string> = {
+      "forms:fields.name.label": "Synthetic name",
+      "forms:fields.name.placeholder": "Example Person",
+      "forms:fields.name.required": "Name required",
+      "forms:fields.email.label": "Synthetic email",
+      "forms:fields.email.placeholder": "person@example.test",
+      "forms:fields.email.required": "Email required",
+      "forms:fields.company.label": "Synthetic company",
+      "forms:fields.company.placeholder": "Example Company",
+      "forms:fields.company.required": "Company required",
+      "forms:fields.consent.label": "Synthetic consent",
+      "forms:fields.consent.required": "Consent required"
+};
+    return messages[key] ?? key;
+  } }),
+}));
+
 const schema = z.object({
   email: z.string().trim().min(1, "forms:fields.email.required"),
 });
@@ -30,7 +49,7 @@ describe("Form infrastructure", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
-    expect(await screen.findByText("Podaj adres email")).toBeInTheDocument();
+    expect(await screen.findByText("Email required")).toBeInTheDocument();
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input).toHaveAttribute("aria-describedby", expect.stringContaining("message"));
   });

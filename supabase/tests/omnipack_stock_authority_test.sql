@@ -1,13 +1,21 @@
--- pgTAP: OmniPack external stock-master reservation lifecycle.
+-- pgTAP: the provider external stock-master reservation lifecycle.
 --
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['PL'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(17);
 
-INSERT INTO public.providers (kind, capability, display_name, status)
-VALUES ('omnipack', 'fulfillment', 'OmniPack Fulfillment', 'experimental')
-ON CONFLICT (kind) DO NOTHING;
 
 INSERT INTO public.clients (id, email, first_name, last_name, lifecycle_stage)
 VALUES (
@@ -27,7 +35,7 @@ VALUES (
   'Prosta 1',
   'Warszawa',
   '00-001',
-  'PL',
+  (SELECT enabled_for_region[1] FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
   true
 );
 

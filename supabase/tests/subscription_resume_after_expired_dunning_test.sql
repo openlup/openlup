@@ -189,6 +189,7 @@ SELECT ok(
     'ed200000-0000-4000-8000-000000000001', '2026-07-01T10:00:00Z'::timestamptz),
   'a revoked method is not chargeable unattended');
 
+SET LOCAL ROLE service_role;
 SELECT throws_like(
   $$ SELECT public.customer_self_service_apply_subscription_action(
        'ed000000-0000-4000-8000-000000000001', 'expired-resume-nomethod',
@@ -197,6 +198,8 @@ SELECT throws_like(
        '2026-07-01T10:00:00Z'::timestamptz) $$,
   '%customer_self_service_payment_method_not_chargeable%',
   'resume refuses a stored method the renewal lane cannot charge');
+
+RESET ROLE;
 
 SELECT is(
   (SELECT status FROM public.subscriptions WHERE id = 'ed200000-0000-4000-8000-000000000001'),

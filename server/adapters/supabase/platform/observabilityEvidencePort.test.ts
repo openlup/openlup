@@ -6,6 +6,41 @@ import { createSupabaseObservabilityEvidencePort as createEvidencePort } from ".
 import { DUNNING_CASE_COLUMNS } from "./dunningObservabilityEvidence.js";
 
 describe("supabase observability evidence port", () => {
+  it("reads only event evidence fields while retaining the 24-hour window and row cap", async () => {
+    const calls: Array<{ operation: string; args: unknown[] }> = [];
+    const client = fakeClient({
+      subscriptions: [
+        { id: "old-notice", status: "active", next_cycle_at: "2026-06-07T10:00:00Z" },
+        { id: "recent-notice", status: "active", next_cycle_at: "2026-06-07T10:00:00Z" },
+      ],
+      subscription_events: [
+        { subscription_id: "old-notice", event_type: "subscription.delivery_reminder_queued", occurred_at: "2026-06-05T09:59:59Z" },
+        { subscription_id: "recent-notice", event_type: "subscription.delivery_reminder_queued", occurred_at: "2026-06-06T09:00:00Z" },
+      ],
+    });
+    const observed = {
+      from(table: string) {
+        const builder = client.from(table);
+        if (table === "subscription_events") {
+          const select = builder.select;
+          const gte = builder.gte;
+          const limit = builder.limit;
+          builder.select = (...args) => { calls.push({ operation: "select", args }); return select(...args); };
+          builder.gte = (...args) => { calls.push({ operation: "gte", args }); return gte(...args); };
+          builder.limit = (...args) => { calls.push({ operation: "limit", args }); return limit(...args); };
+        }
+        return builder;
+      },
+    };
+    const snapshot = await createEvidencePort(observed as never, {}).collectSnapshot(new Date("2026-06-06T10:00:00Z"));
+    expect(calls).toEqual([
+      { operation: "select", args: ["subscription_id,event_type"] },
+      { operation: "gte", args: ["occurred_at", "2026-06-05T10:00:00.000Z"] },
+      { operation: "limit", args: [2000] },
+    ]);
+    expect(snapshot.subscriptions.upcomingDeliveryReminderMissingCount).toBe(1);
+  });
+
   it("maps database rows into a vendor-neutral watchdog snapshot", async () => {
     const queriedTables: string[] = [];
     const port = createEvidencePort(fakeClient({

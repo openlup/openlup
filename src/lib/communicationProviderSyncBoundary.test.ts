@@ -1,27 +1,23 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-
-const migration = readFileSync(
-  "supabase/migrations/20260613231000_communications_provider_sync_foundation.sql",
-  "utf8",
-);
-
-describe("communication provider sync boundary", () => {
-  it("adds provider profiles, inbound events, and per-provider deliveries", () => {
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.communication_provider_profiles");
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.communication_provider_events");
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.communication_sync_deliveries");
-    expect(migration).toContain("UNIQUE (provider_kind, provider_event_id)");
-    expect(migration).toContain("UNIQUE (outbox_event_id, provider_kind)");
+import { currentTableStatements, explicitTablePrivileges } from "../test/historicalBoundarySchema";
+const tables = ["communication_provider_profiles", "communication_provider_events", "communication_sync_deliveries"];
+describe("installed communication provider sync boundary", () => {
+  it("retains independent provider-event and outbox-delivery replay identities", () => {
+    expect(currentTableStatements("communication_provider_events")).toContain("UNIQUE (provider_kind, provider_event_id)");
+    expect(currentTableStatements("communication_sync_deliveries")).toContain("UNIQUE (outbox_event_id, provider_kind)");
   });
-
-  it("keeps sync workers disabled by default through platform job controls", () => {
-    expect(migration).toContain("('communication-sync-dispatch', false, 'vercel_cron'");
-    expect(migration).toContain("('communication-sync-reconcile', false, 'vercel_cron'");
+  it("retains RLS and server-only explicit table privileges", () => {
+    for (const table of tables) {
+      expect(currentTableStatements(table)).toContain("ENABLE ROW LEVEL SECURITY");
+      const acl = explicitTablePrivileges(table);
+      expect(acl.get("service_role")?.has("SELECT")).toBe(true);
+      for (const role of ["PUBLIC", "anon", "authenticated"]) expect(acl.get(role)?.size ?? 0).toBe(0);
+    }
   });
-
-  it("keeps provider sync scoped to marketing purposes", () => {
-    expect(migration).toContain("purpose text NOT NULL CHECK (purpose IN ('marketing_launch_offer', 'marketing_newsletter'))");
-    expect(migration).not.toContain("purpose text NOT NULL CHECK (purpose IN ('transactional'");
+  it("limits persisted provider profiles to the approved marketing purpose families", () => {
+    const schema = currentTableStatements("communication_provider_profiles");
+    expect(schema).toContain("marketing_launch_offer");
+    expect(schema).toContain("marketing_newsletter");
+    expect(schema).not.toContain("'transactional'");
   });
 });

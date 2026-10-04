@@ -21,7 +21,7 @@ public selection is the neutral example. A host selecting another presentation
 must make its import-map target available to its runtime; source-level
 selection alone does not establish function packaging or deployment behavior.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-d39e61e4ed325cfba327ccc69cc2be29cfe8b629feff42459774deeabeaf45ef","reason":"Thirteen BFF tests replace repeated SDK and database-reference regex assertions with the structural rule in required lint, retaining their distinct composition and authorization assertions. Customer diagnostics gains two reasoned line suppressions for validated from/to date-range destructuring, with no executable change. Request handling, durable-write contracts, runtime composition and hosting behavior described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-7788098979c46ed1078d805f50d6928427d19d9ab28facfe4ad24acd6a628110","reason":"Handler tests distinguish real default adopter-policy refusal from explicit unit compositions. Concrete GET/POST requests retain bearer validation, production pg_cron refusal, configured claim driver mapping and default unconfigured refusal; they no longer reconstruct unpublished scheduler migrations. No runtime route, policy or scheduler installation changes."} -->
 
 ## Self-host boundary
 
@@ -70,7 +70,7 @@ supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
 
-<!-- openlup-doc-impact {"unit": "reference", "digest": "sha256-6d10c65b4b6cc9671df8319935d333b80952deb2bd82c91553db802d46de22f7", "reason": "Test seam delta. validateSubscriptionProfile takes an optional baseline path whose default is the managed baseline, so the marker still binds the generated configuration and that baseline hash as described. The test writes its own baseline fixture and builds each setup outside the refusal assertion, so a missing file can no longer satisfy an expected refusal."} -->
+<!-- openlup-doc-impact {"unit":"reference","digest":"sha256-8e1cfb83fb47995080c878d4e8a542eae8d0f06f7b4dcddb22ca1e1b6ae5ed4b","reason":"The prerender refusal test supplies an invalid lifecycle route manifest at the existing seam. Public reference selection, fail-closed availability and installation boundary described here are unchanged."} -->
 
 ## Customer diagnostic history preview
 
@@ -185,7 +185,7 @@ presentation argument for callers. A host that changes the selection must
 verify its server module resolution and rendered output. The public source
 does not declare a managed serverless packaging rule for this alias.
 
-<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-a8ea848ddf32378c31fa3a2e51f37230f7a0abda5b2adade6a6d4ced6f01b6ca","reason":"The paid-order renderer forwards an optional adopter-formatted parcel note to the existing commerce content module; the new regression checks that absent and null notes render equally and a supplied note reaches both output formats. The import-map presentation selection, provider activation and host boundaries described here remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"infrastructure","digest":"sha256-2b0421c680adfaa93b6ea03f7da109126065fa9b89a550ca027f21bf63b3157a","reason":"Transactional renderer tests now exercise neutral default presentation plus explicit synthetic presentation/content inputs, retaining rendered transport outcomes and refusal assertions. No renderer, provider, host or import-map implementation changes."} -->
 
 Canonical production hostnames come from
 `config/site-routes.json.productionHosts`. Configure this list for an adopting

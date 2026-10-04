@@ -26,6 +26,12 @@
 -- Run via: npm run test:db:local
 
 BEGIN;
+-- Explicit synthetic settlement coordinates; these rows are rolled back with this test.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('settlement_currency', 'XTS', NULL), ('settlement_region', 'ZZ', NULL),
+  ('min_product_payable_minor', NULL, 1)
+ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
+
 SELECT plan(22);
 
 -- The deployment's own code, captured once. It has to be captured rather than
@@ -124,6 +130,10 @@ SELECT ok(NOT has_function_privilege('authenticated',
   'EXECUTE'),
   'authenticated still cannot execute the cycle-order writer');
 
+-- Helpers are sample builders, not installed runtime RPCs.
+GRANT EXECUTE ON FUNCTION pg_temp.checkout_snapshot(text) TO service_role;
+GRANT EXECUTE ON FUNCTION pg_temp.renewal_snapshot(text) TO service_role;
+
 -- ---- 2. the happy path still works, executed as the principal the app uses ----
 -- This is the case that settles the wave's riskiest assumption: the RPC is
 -- definer-rights and the settlement reader it now calls is invoker-rights with
@@ -162,9 +172,9 @@ SELECT throws_ok(
       '{"contractVersion":"commerce.v0"}'::jsonb,
       jsonb_set(
         pg_temp.checkout_snapshot((SELECT code FROM _platform)),
-        '{totals,shippingGross,currency}', '"XTS"'))$$,
+        '{totals,shippingGross,currency}', '"XXX"'))$$,
   '22023',
-  pg_temp.mixed_message('commerce_order_draft', 'XTS'),
+  pg_temp.mixed_message('commerce_order_draft', 'XXX'),
   'checkout refuses a snapshot whose subtotal and shipping are in different currencies');
 
 SELECT is(
@@ -182,9 +192,9 @@ SELECT throws_ok(
       '{"contractVersion":"commerce.v0"}'::jsonb,
       jsonb_set(
         pg_temp.checkout_snapshot((SELECT code FROM _platform)),
-        '{lines,0,tax,vatAmount,currency}', '"XTS"'))$$,
+        '{lines,0,tax,vatAmount,currency}', '"XXX"'))$$,
   '22023',
-  pg_temp.mixed_message('commerce_order_draft', 'XTS'),
+  pg_temp.mixed_message('commerce_order_draft', 'XXX'),
   'checkout refuses a line money node in a different currency from the totals');
 
 -- A money node carrying no currency at all is the same violation, and says so.
@@ -204,9 +214,9 @@ SELECT throws_ok(
   $$SELECT public.commerce_create_order_draft_with_outbox(
       'currency-invariant-foreign-1',
       '{"contractVersion":"commerce.v0"}'::jsonb,
-      pg_temp.checkout_snapshot('XTS'))$$,
+      pg_temp.checkout_snapshot('XXX'))$$,
   '22023',
-  'commerce_order_draft_currency_not_accepted: XTS',
+  'commerce_order_draft_currency_not_accepted: XXX',
   'checkout refuses a self-consistent order in a currency this deployment does not settle');
 
 -- ---- 5. renewal writer, same three rules ------------------------------------
@@ -242,9 +252,9 @@ SELECT throws_ok(
       '{"source":"checkout_order_currency_invariant_test"}'::jsonb,
       jsonb_set(
         pg_temp.renewal_snapshot((SELECT code FROM _platform)),
-        '{totals,shippingGross,currency}', '"XTS"'))$$,
+        '{totals,shippingGross,currency}', '"XXX"'))$$,
   '22023',
-  pg_temp.mixed_message('subscription_cycle_order', 'XTS'),
+  pg_temp.mixed_message('subscription_cycle_order', 'XXX'),
   'renewal refuses a cycle order whose subtotal and shipping are in different currencies');
 
 SELECT is(
@@ -265,9 +275,9 @@ SELECT throws_ok(
       '{"source":"checkout_order_currency_invariant_test"}'::jsonb,
       jsonb_set(
         pg_temp.renewal_snapshot((SELECT code FROM _platform)),
-        '{lines,1,lineSubtotalGross,currency}', '"XTS"'))$$,
+        '{lines,1,lineSubtotalGross,currency}', '"XXX"'))$$,
   '22023',
-  pg_temp.mixed_message('subscription_cycle_order', 'XTS'),
+  pg_temp.mixed_message('subscription_cycle_order', 'XXX'),
   'renewal refuses a line money node in a different currency from the totals');
 
 SELECT throws_ok(
@@ -278,9 +288,9 @@ SELECT throws_ok(
       '2026-09-01T10:00:00Z'::timestamptz,
       '{"cadence_days":14,"lines":[{"sku":"CURINV-A","quantity":1}]}'::jsonb,
       '{"source":"checkout_order_currency_invariant_test"}'::jsonb,
-      pg_temp.renewal_snapshot('XTS'))$$,
+      pg_temp.renewal_snapshot('XXX'))$$,
   '22023',
-  'subscription_cycle_order_currency_not_accepted: XTS',
+  'subscription_cycle_order_currency_not_accepted: XXX',
   'renewal refuses a self-consistent cycle order in a currency this deployment does not settle');
 
 -- ---- 6. the shape gate on the envelope still refuses pre-idempotency ---------

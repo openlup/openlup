@@ -63,4 +63,8 @@ at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
 
-<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-3e08e9667da6cadf102121c7d6123fd5be1984ac82b5a4bc420b337cc0c4c21a","reason":"Comment and deletion delta. Comments in the Node HTTP adapter, the selected-catalog projection, the sandbox payment execution adapter, the admin catalog document adapter, commerce settings and three adapter tests stop naming files of a downstream deployment and name them by role, and an unused synthetic stock seed model that nothing in this tree imported is deleted. No adapter contract, port, capability or refusal described here changes."} -->
+The managed observability event reader projects only `subscription_id` and
+`event_type`, filtered on `occurred_at` within the preceding 24 hours and capped
+at 2,000 rows. It needs SELECT on those three columns, not event payload access
+or direct INSERT. The unbound winback adapter does not establish a runtime
+writer requirement. Tests retain the window's old-versus-recent reminder signal.

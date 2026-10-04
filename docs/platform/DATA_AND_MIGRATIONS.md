@@ -54,6 +54,20 @@ Rows that platform behaviour depends on must ship as idempotent statements in a
 forward, rather than relying on a reference fixture or process startup. A missing
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
+## Database test fixtures and witnesses
+
+A selected test may supply neutral settlement, format, provider, location and
+stock rows in its own transaction. Concurrency connections need the same declared
+inputs. Those rows model configured examples; they must not replace policy or
+control data the offered runtime requires the platform chain to install.
+
+Execute a domain operation as its documented runtime role. A result or no-write
+witness may use the database owner when direct table reads are deliberately
+closed, but that observer must not become the executor of an invoker RPC.
+Test-only grants, broader table access and owner execution cannot establish that
+a service call works. Assert negative browser permissions and runtime behavior
+separately from historical grant spellings or inherited CLI defaults.
+
 ## Exact reviewed function forwards
 
 Reviewed replacement is a separate admission class, not expand-only. The fixed
@@ -109,7 +123,7 @@ apply the separate `db/platform/migrations` portable PostgreSQL chain or claim
 that the two installation paths are interchangeable. The public setup creates
 one owned local Supabase project, adds `pg_trgm` in `public` and the non-login,
 non-RLS-bypass `openlup_mcp_reader` role required by that baseline, and replays
-the baseline transactionally, then applies the managed alignment seed forward.
+the baseline transactionally, then applies the managed alignment and required policy-data forwards.
 Its synthetic seed supplies only the recurring catalog item, prices, stock and
 settlement settings. The compatibility alignment seed is now a no-op. Setup
 does not insert a paid order or active subscription.
@@ -165,7 +179,25 @@ Code rollback must remain compatible with the expanded schema. A destructive
 down migration is not a rollback plan. Each stage needs a clear readback and
 failure boundary; a backfill that cannot be safely retried is incomplete.
 
-<!-- openlup-doc-impact {"unit":"data","digest":"sha256-d915406b81907bb044829233faec2bebfaf66b6176c4b4f7ec8c836d240d1c86","reason":"Comment-only delta in five pgTAP test files. Comments stop naming downstream scripts and documents and name the runner by its public command. No SQL statement, assertion, migration or compatibility rule described here changes."} -->
+The managed forward `20261003110000_required_platform_policy_data.sql` supplies
+configuration omitted by the schema-only baseline. It classifies all 27 current
+relations referencing clients: four marketing relations carry, account-event
+history stays on the archived lead, and the other 22 block absorption. Unknown
+future relations still refuse. Existing classifications survive replay.
+
+The same forward installs seven disabled job controls, the four exact declared
+dormant command identities and four message controls. Message controls begin
+enabled to preserve the sender's existing missing-row behavior; a prior disabled
+operator choice stays disabled. No job, provider or scheduler is activated.
+Existing driver, metadata, note and dormant-reason choices also survive replay.
+The dormant insert uses the frozen five-column relation order and literal UTC
+migration timestamps; the managed regression checks that order before replaying
+the actual forward. No portable twin or installation-path parity is claimed.
+
+Database proofs execute order writing, accounting and dispatch claims as
+`service_role`, and membership commands as `authenticated`. Owner readback
+observes persisted state and denied writes. Legacy catalog commands stay denied;
+no broader raw table DML is required to reach an otherwise inert handler.
 
 ## Contract changes
 

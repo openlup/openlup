@@ -3,6 +3,17 @@
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['PL'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(10);
 
 INSERT INTO public.clients (id, email)
@@ -14,7 +25,7 @@ VALUES ('b2222222-2222-4222-8222-222222222221', 'generic-preflight', 'Generic Pr
 INSERT INTO public.catalog_skus (id, product_id, sku, title, pet_type, status, net_weight_g, kcal_per_unit)
 VALUES ('b3333333-3333-4333-8333-333333333331', 'b2222222-2222-4222-8222-222222222221', 'GENERIC-PREFLT', 'Generic Preflight', 'other', 'active', 1, 1);
 
--- OmniPack provider stock oracle: 8 sellable.
+-- the provider provider stock oracle: 8 sellable.
 SELECT public.fulfillment_provider_upsert_stock_current(
   'renewal-preflight-stock-1', 'omnipack', 'GENERIC-PREFLT', 10, 8, 0,
   now(), now() + interval '6 hours', 'renewal-preflight-run-1', '{"source":"pgtap"}'::jsonb
@@ -28,12 +39,12 @@ VALUES ('b6666666-6666-4666-8666-666666666661', 'b6666666-6666-4666-8666-6666666
 
 INSERT INTO public.commerce_orders (id, client_id, status, currency, region_code, mode, subscription_id, subscription_cycle_id, size_constraint, total_cents, subtotal_cents)
 VALUES ('b7777777-7777-4777-8777-777777777771', 'b1111111-1111-4111-8111-111111111111',
-        'pending_payment', 'PLN', 'PL', 'subscription_cycle',
+        'pending_payment', 'PLN', (SELECT enabled_for_region[1] FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'subscription_cycle',
         'b6666666-6666-4666-8666-666666666660', 'b6666666-6666-4666-8666-666666666661',
         '{"kind":"unit_count","value":3}'::jsonb, 3000, 3000);
 
 -- Item insert fires subscription_cycle_order_item_reserve_inventory → a live
--- 72h subscription_retry_window hold via the OmniPack oracle.
+-- 72h subscription_retry_window hold via the the provider oracle.
 INSERT INTO public.commerce_order_items (id, order_id, sku_id, quantity, unit_price_cents, total_cents, discount_allocated_cents, effective_total_cents, effective_net_cents, product_snapshot)
 VALUES ('b8888888-8888-4888-8888-888888888881', 'b7777777-7777-4777-8777-777777777771',
         'b3333333-3333-4333-8333-333333333331', 3, 1000, 3000, 0, 3000, round((3000)::numeric * 10000 / (10000 + (800)::integer))::integer, '{"sku":"GENERIC-PREFLT"}'::jsonb);

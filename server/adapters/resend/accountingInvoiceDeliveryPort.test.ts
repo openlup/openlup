@@ -42,7 +42,7 @@ describe("accounting invoice delivery email adapter", () => {
       html: expect.stringContaining('href="https://preview.example.test/konto?sekcja=orders"'),
     }));
     const sent = transport.send.mock.calls[0]?.[0];
-    expect(sent?.html).toContain('<img src="https://preview.example.test/email-logo-wordmark.png"');
+    expect(sent?.html).not.toContain("<img");
     expect(sent?.html).not.toContain("email-banner");
   });
 

@@ -1,6 +1,6 @@
 -- pgTAP: append-only, privacy-safe promotion claim transition evidence.
 BEGIN;
-SELECT plan(74);
+SELECT plan(83);
 
 SELECT has_table('public', 'promotion_code_claim_events',
   'promotion claim transition ledger exists');
@@ -293,6 +293,13 @@ SELECT ok(EXISTS (
   SELECT 1 FROM public.promotion_code_claims
    WHERE id = 'e6300000-0000-4000-8000-000000000003'
 ), 'preview event cleanup does not mutate claim lifecycle state');
+-- Test-local fingerprint/identity profile: runtime compares these exact current values.
+INSERT INTO private.platform_cron_environment
+ (id,environment_label,expected_system_identifier,expected_server_addr,expected_server_port,external_cron_enabled,expected_abandoned_cart_runtime_url)
+VALUES (true,'synthetic',(pg_control_system()).system_identifier::text,inet_server_addr(),inet_server_port(),false,'https://production.example.supabase.co')
+ON CONFLICT (id) DO UPDATE SET expected_system_identifier=EXCLUDED.expected_system_identifier,
+ expected_server_addr=EXCLUDED.expected_server_addr,expected_server_port=EXCLUDED.expected_server_port,
+ external_cron_enabled=EXCLUDED.external_cron_enabled,expected_abandoned_cart_runtime_url=EXCLUDED.expected_abandoned_cart_runtime_url;
 UPDATE private.platform_cron_environment
 SET expected_system_identifier = (pg_control_system()).system_identifier::text,
     expected_server_addr = inet_server_addr(),
@@ -353,19 +360,97 @@ SELECT ok(
   ),
   'browser roles cannot execute the private v2-evidence index predicate'
 );
+-- The installed order writer, not direct table DML, owns index maintenance.
+-- Owner setup supplies a real code definition; both writer calls use service_role.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('settlement_currency', 'XTS', NULL), ('settlement_region', 'ZZ', NULL),
+  ('min_product_payable_minor', NULL, 1)
+ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
+INSERT INTO public.promotion_codes (id, code, name, scopes, valid_from, valid_to, status)
+VALUES ('e6100000-0000-4000-8000-000000000099', 'SERVICE-INDEX',
+  'Service index fixture', ARRAY['one_time'], now() - interval '1 hour',
+  now() + interval '1 day', 'active');
+INSERT INTO public.promotions (
+  id, code, name, trigger_type, discount_type, discount_value,
+  applies_to_kind, stacking_rule, status, promotion_engine_version,
+  benefit_lane, benefit_kind, benefit_value_minor, region_availability
+) VALUES ('e6500000-0000-4000-8000-000000000099', 'V2:SERVICE:INDEX',
+  'Service index definition', 'coupon_code', 'fixed_amount', 100,
+  'order_total', 'exclusive', 'draft', 'promotion-engine.v2',
+  'product', 'fixed_amount', 100, ARRAY['ZZ']);
+INSERT INTO public.promotion_code_bindings (promotion_code_id, promotion_id, lane)
+VALUES ('e6100000-0000-4000-8000-000000000099',
+  'e6500000-0000-4000-8000-000000000099', 'product');
+
 SET LOCAL ROLE service_role;
-SELECT lives_ok(
-  $$INSERT INTO public.commerce_orders (
-      id, order_number, status, currency, subtotal_cents, discount_cents,
-      shipping_cents, shipping_discount_cents, tax_cents, total_cents
-    ) VALUES (
-      'e6200000-0000-4000-8000-000000000099',
-      'PROMO-SERVICE-ROLE-INDEX',
-      'draft', 'PLN', 1000, 0, 0, 0, 0, 1000
-    )$$,
-  'service-role order insert can maintain the promotion v2 health index'
-);
+CREATE TEMP TABLE _service_index_inputs (quote jsonb, draft jsonb);
 RESET ROLE;
+INSERT INTO _service_index_inputs (quote, draft)
+SELECT jsonb_build_object('contractVersion', 'commerce.v0', 'quote', jsonb_build_object(
+  'context', jsonb_build_object('mode', 'one_time'),
+  'discounts', jsonb_build_array(jsonb_build_object(
+    'promotionEngineVersion', 'promotion-engine.v2', 'reasonCode', 'promotion_code_v2',
+    'code', 'SERVICE-INDEX', 'promotionId', 'e6500000-0000-4000-8000-000000000099',
+    'promotionCodeId', 'e6100000-0000-4000-8000-000000000099',
+    'promotionCodeRevision', (SELECT revision FROM public.promotion_codes
+      WHERE id = 'e6100000-0000-4000-8000-000000000099'),
+    'promotionDefinitionFingerprint', private.commerce_promotion_definition_fingerprint(
+      'e6100000-0000-4000-8000-000000000099', 'e6500000-0000-4000-8000-000000000099'),
+    'appliesTo', 'order_total', 'amountOffMinor', 100
+  )))),
+  '{"contractVersion":"commerce.v0","source":"commerce.order_draft.bff.v0","status":"draft","paymentStatus":"not_started","currency":"XTS","taxIncluded":"true","lines":[{"sku":"PROMO-SERVICE-RPC-INDEX","productSlug":"promo-service-rpc-index","quantity":2,"unitPriceGross":{"amountMinor":1340,"currency":"XTS"},"lineSubtotalGross":{"amountMinor":2680,"currency":"XTS"},"tax":{"vatRateBps":800,"netAmount":{"amountMinor":2481,"currency":"XTS"},"vatAmount":{"amountMinor":199,"currency":"XTS"},"grossAmount":{"amountMinor":2680,"currency":"XTS"}}}],"totals":{"subtotalGross":{"amountMinor":2680,"currency":"XTS"},"discountTotalGross":{"amountMinor":100,"currency":"XTS"},"netTotal":{"amountMinor":2389,"currency":"XTS"},"taxTotal":{"amountMinor":191,"currency":"XTS"},"totalGross":{"amountMinor":2580,"currency":"XTS"}}}'::jsonb;
+
+SET LOCAL ROLE service_role;
+SELECT throws_ok(
+  $$INSERT INTO public.commerce_orders (id, order_number, status, currency,
+    subtotal_cents, discount_cents, shipping_cents, shipping_discount_cents, tax_cents, total_cents)
+  VALUES ('e6200000-0000-4000-8000-000000000099', 'PROMO-RAW-DENIED',
+    'draft', 'XTS', 1000, 0, 0, 0, 0, 1000)$$,
+  '42501', 'permission denied for table commerce_orders',
+  'service role cannot bypass the selected order writer with raw order DML');
+CREATE TEMP TABLE _service_index_first AS
+SELECT public.commerce_create_order_draft_with_outbox(
+  'service-index-order-0001', quote, draft, NULL::uuid) AS result
+FROM _service_index_inputs;
+CREATE TEMP TABLE _service_index_replay AS
+SELECT public.commerce_create_order_draft_with_outbox(
+  'service-index-order-0001', quote, draft, NULL::uuid) AS result
+FROM _service_index_inputs;
+SELECT is((SELECT result#>>'{orderDraft,replayed}' FROM _service_index_first), 'false',
+  'service order RPC makes a fresh index-eligible order');
+SELECT is((SELECT result#>>'{orderDraft,replayed}' FROM _service_index_replay), 'true',
+  'service order RPC replays the same frozen request');
+SELECT is((SELECT result#>>'{orderDraft,orderId}' FROM _service_index_first),
+  (SELECT result#>>'{orderDraft,orderId}' FROM _service_index_replay),
+  'replay returns the same persisted order identity');
+RESET ROLE;
+CREATE TEMP TABLE _service_index_id AS
+SELECT replace(result#>>'{orderDraft,orderId}', 'order_', '')::uuid AS id
+FROM _service_index_first;
+SELECT is((SELECT count(*)::integer FROM public.commerce_orders
+  WHERE id = (SELECT id FROM _service_index_id)
+    AND private.promotion_order_has_v2_evidence(metadata)
+    AND metadata#>'{quoteSnapshot,quote,discounts}' =
+      (SELECT quote#>'{quote,discounts}' FROM _service_index_inputs)
+    AND currency = 'XTS' AND total_cents = 2580), 1,
+  'owner observes the real writer persisted exact v2 discounts and true partial-index predicate');
+SELECT is((SELECT count(*)::integer FROM public.commerce_orders
+  WHERE metadata#>>'{orderDraftSnapshot,lines,0,sku}' = 'PROMO-SERVICE-RPC-INDEX'), 1,
+  'same-key service replay creates no duplicate indexed order');
+SELECT is((SELECT count(*)::integer FROM public.commerce_order_items
+  WHERE order_id = (SELECT id FROM _service_index_id)), 1,
+  'same-key service replay creates no duplicate order line');
+SELECT is((SELECT count(*)::integer FROM public.outbox_events
+  WHERE aggregate_id = (SELECT id FROM _service_index_id)
+    AND event_type = 'commerce.order_draft.created'), 1,
+  'same-key service replay creates no duplicate saved-draft outbox event');
+SELECT is((SELECT count(*)::integer FROM public.promotion_code_claims
+  WHERE order_id = (SELECT id FROM _service_index_id)
+    AND promotion_code_id = 'e6100000-0000-4000-8000-000000000099'), 1,
+  'same-key service replay creates no duplicate promotion capacity claim');
+SELECT is((SELECT count(*)::integer FROM public.commerce_orders
+  WHERE id = 'e6200000-0000-4000-8000-000000000099'), 0,
+  'denied raw service write leaves no order behind');
 
 INSERT INTO public.promotion_codes (
   id, code, name, scopes, valid_from, valid_to, status,

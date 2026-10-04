@@ -7,13 +7,13 @@
 --     replay with audit trail + processing-aggregate guard
 --   * queue_stats: all keys, expired-processing stall detection, malformed
 --     discardedAt survival; grants deny anon/authenticated
---   * platform_job_controls seed (R-2): disabled-by-default skip, enabled
---     vercel_cron claim acquires (driver pin), pg_cron refused inactive_driver
+--   * actual dormant/prune prerequisites; synthetic global job control proof:
+--     disabled skip, driver pin, shared lease, worker cutover and finish replay
 --
 -- Run via: supabase db reset && supabase test db
 
 BEGIN;
-SELECT no_plan();
+SELECT plan(143);
 
 -- ===========================================================================
 -- claim: allowlist validation
@@ -730,66 +730,86 @@ SELECT ok(
   'authenticated lacks EXECUTE on all outbox dispatch functions');
 
 -- ===========================================================================
--- platform_job_controls seed (R-3): ENABLED-by-default posture + vercel_cron pin
--- ===========================================================================
--- The activation migration (20260710120000_outbox_dispatch_enable) flips the
--- seed enabled=true so production go-live needs no manual toggle; the env var
--- COMMERCE_OUTBOX_DISPATCH_ENABLED is the only opt-out (kill-switch).
-SELECT ok(EXISTS (
-    SELECT 1 FROM public.platform_job_controls
-     WHERE job_name = 'outbox-dispatch'
-       AND enabled = true
-       AND active_driver = 'vercel_cron'),
-  'outbox-dispatch control row seeded enabled (activation migration) with the vercel_cron driver');
+-- Synthetic global-job control proof. The selected preview has no dispatch
+-- endpoint or cron registration; no deployment-enabled dispatch seed is assumed.
+-- Required real dormant registry and prune seeds above remain checked unchanged.
+CREATE TEMP TABLE _dispatch_inventory_before AS
+SELECT coalesce(jsonb_agg(to_jsonb(control) ORDER BY control.job_name), '[]'::jsonb) AS rows
+FROM public.platform_job_controls control WHERE job_name = 'outbox-dispatch';
+INSERT INTO public.platform_job_controls (job_name, enabled, active_driver)
+VALUES ('test-outbox-dispatch-control', true, 'vercel_cron');
+SELECT ok(EXISTS (SELECT 1 FROM public.platform_job_controls
+  WHERE job_name = 'test-outbox-dispatch-control' AND enabled AND active_driver = 'vercel_cron'),
+  'explicit synthetic control starts enabled with a selected scheduler driver');
 
--- Kill-switch path: a disabled row skips as job_disabled (no lease yet to mask it).
-UPDATE public.platform_job_controls SET enabled = false
- WHERE job_name = 'outbox-dispatch';
-CREATE TEMP TABLE _job AS
-SELECT * FROM public.platform_claim_job_run('outbox-dispatch', 'vercel_cron', 120, '{}'::jsonb);
-SELECT ok(NOT (SELECT acquired FROM _job),
-  'kill-switched outbox-dispatch claim does not acquire');
-SELECT is((SELECT reason FROM _job),
-  'job_disabled', 'disabled control row skips as job_disabled (kill-switch posture pinned)');
-
--- Re-enable: only an ACQUIRED vercel_cron claim pins the seed driver (a row
--- mis-seeded active_driver='pg_cron' would also have skipped as job_disabled
--- above — the enabled check precedes the driver check in platform_claim_job_run).
-UPDATE public.platform_job_controls SET enabled = true
- WHERE job_name = 'outbox-dispatch';
-CREATE TEMP TABLE _job2 AS
-SELECT * FROM public.platform_claim_job_run('outbox-dispatch', 'vercel_cron', 120, '{}'::jsonb);
-SELECT ok((SELECT acquired FROM _job2),
-  'enabled outbox-dispatch claim acquires for vercel_cron (seed driver pinned)');
--- Driver mismatch is checked BEFORE the active lease in platform_claim_job_run,
--- so the lease taken by _job2 does not mask the inactive_driver reason.
-CREATE TEMP TABLE _job3 AS
-SELECT * FROM public.platform_claim_job_run('outbox-dispatch', 'pg_cron', 120, '{}'::jsonb);
-SELECT ok(NOT (SELECT acquired FROM _job3),
-  'pg_cron claim against the vercel_cron row does not acquire');
-SELECT is((SELECT reason FROM _job3),
-  'inactive_driver', 'pg_cron claim is refused as inactive_driver (wrong-driver posture pinned)');
-
--- Worker cutover path: the migration only teaches the shared ledger about the
--- worker driver. Operators still switch the row explicitly after staging
--- evidence; once switched, the same job lease fences cron as the inactive
--- driver.
-UPDATE public.platform_job_controls
-   SET active_driver = 'worker',
-       lease_token = NULL,
-       lease_until = NULL,
-       lease_expires_at = NULL
- WHERE job_name = 'outbox-dispatch';
-CREATE TEMP TABLE _job4 AS
-SELECT * FROM public.platform_claim_job_run('outbox-dispatch', 'worker', 120, '{}'::jsonb);
-SELECT ok((SELECT acquired FROM _job4),
-  'enabled outbox-dispatch claim acquires for worker after explicit control-row cutover');
-CREATE TEMP TABLE _job5 AS
-SELECT * FROM public.platform_claim_job_run('outbox-dispatch', 'vercel_cron', 120, '{}'::jsonb);
-SELECT ok(NOT (SELECT acquired FROM _job5),
-  'vercel_cron claim against the worker row does not acquire');
-SELECT is((SELECT reason FROM _job5),
-  'inactive_driver', 'vercel_cron claim is refused as inactive_driver after worker cutover');
+-- v3 explicitly refuses an unregistered job, without creating a dispatch row.
+SET LOCAL ROLE service_role;
+SELECT throws_ok($$SELECT * FROM public.platform_claim_job_run_v3(
+  'test-outbox-dispatch-unknown', 'scheduler', 'vercel_cron', 120, '{}'::jsonb)$$,
+  '22023', 'platform_job_v3_control_not_configured', 'unknown v3 job has no implicit execution authority');
+RESET ROLE;
+SELECT is((SELECT count(*)::integer FROM public.platform_job_controls
+  WHERE job_name = 'test-outbox-dispatch-unknown'), 0,
+  'unknown v3 refusal installs no control row');
+UPDATE public.platform_job_controls SET enabled = false WHERE job_name = 'test-outbox-dispatch-control';
+SET LOCAL ROLE service_role;
+CREATE TEMP TABLE _job AS SELECT * FROM public.platform_claim_job_run(
+  'test-outbox-dispatch-control', 'vercel_cron', 120, '{}'::jsonb);
+SELECT ok(NOT (SELECT acquired FROM _job), 'disabled synthetic job does not acquire');
+SELECT is((SELECT reason FROM _job), 'job_disabled', 'disabled control skips as job_disabled');
+RESET ROLE;
+UPDATE public.platform_job_controls SET enabled = true WHERE job_name = 'test-outbox-dispatch-control';
+SET LOCAL ROLE service_role;
+CREATE TEMP TABLE _job2 AS SELECT * FROM public.platform_claim_job_run(
+  'test-outbox-dispatch-control', 'vercel_cron', 120, '{}'::jsonb);
+SELECT ok((SELECT acquired FROM _job2), 'matching scheduler driver acquires');
+CREATE TEMP TABLE _job3 AS SELECT * FROM public.platform_claim_job_run(
+  'test-outbox-dispatch-control', 'pg_cron', 120, '{}'::jsonb);
+SELECT ok(NOT (SELECT acquired FROM _job3), 'wrong scheduler driver does not acquire');
+SELECT is((SELECT reason FROM _job3), 'inactive_driver', 'driver mismatch precedes active-lease refusal');
+CREATE TEMP TABLE _job_replay AS SELECT * FROM public.platform_claim_job_run(
+  'test-outbox-dispatch-control', 'vercel_cron', 120, '{}'::jsonb);
+SELECT ok(NOT (SELECT acquired FROM _job_replay), 'matching driver cannot duplicate an active lease');
+SELECT is((SELECT reason FROM _job_replay), 'lease_active', 'same-driver replay reports the active lease');
+RESET ROLE;
+SELECT is((SELECT lease_token FROM public.platform_job_controls
+  WHERE job_name = 'test-outbox-dispatch-control'), (SELECT run_id FROM _job2),
+  'owner observes rejected claims preserve the winning scheduler lease');
+-- Explicit owner setup models driver cutover; it never executes a subject RPC.
+UPDATE public.platform_job_controls SET active_driver = 'worker', lease_token = NULL,
+  lease_until = NULL, lease_expires_at = NULL WHERE job_name = 'test-outbox-dispatch-control';
+SET LOCAL ROLE service_role;
+CREATE TEMP TABLE _job4 AS SELECT * FROM public.platform_claim_job_run(
+  'test-outbox-dispatch-control', 'worker', 120, '{}'::jsonb);
+SELECT ok((SELECT acquired FROM _job4), 'worker acquires after explicit synthetic cutover');
+CREATE TEMP TABLE _job5 AS SELECT * FROM public.platform_claim_job_run(
+  'test-outbox-dispatch-control', 'vercel_cron', 120, '{}'::jsonb);
+SELECT ok(NOT (SELECT acquired FROM _job5), 'scheduler does not acquire the worker control');
+SELECT is((SELECT reason FROM _job5), 'inactive_driver', 'scheduler is inactive after worker cutover');
+SELECT ok(NOT public.platform_finish_job_run_v2('test-outbox-dispatch-control',
+  'ee900000-0000-4000-8000-000000000099', 'success', 0, 0, NULL, NULL, '{}'::jsonb),
+  'unknown completion token cannot release the worker lease');
+RESET ROLE;
+SELECT is((SELECT lease_token FROM public.platform_job_controls
+  WHERE job_name = 'test-outbox-dispatch-control'), (SELECT run_id FROM _job4),
+  'owner observes wrong-token finish leaves the winning worker lease');
+SET LOCAL ROLE service_role;
+SELECT ok(public.platform_finish_job_run_v2('test-outbox-dispatch-control',
+  (SELECT run_id FROM _job4), 'success', 1, 1, NULL, NULL, '{}'::jsonb),
+  'matching service finish releases the worker lease');
+SELECT ok(NOT public.platform_finish_job_run_v2('test-outbox-dispatch-control',
+  (SELECT run_id FROM _job4), 'success', 1, 1, NULL, NULL, '{}'::jsonb),
+  'completion replay reports no lease released');
+RESET ROLE;
+SELECT ok((SELECT lease_token IS NULL AND lease_until IS NULL AND lease_expires_at IS NULL
+  FROM public.platform_job_controls WHERE job_name = 'test-outbox-dispatch-control'),
+  'owner observes complete lease clearing after matching finish');
+SELECT is((SELECT status FROM public.platform_job_runs WHERE id = (SELECT run_id FROM _job4)),
+  'success', 'owner observes the matching worker run completed');
+SELECT is((SELECT coalesce(jsonb_agg(to_jsonb(control) ORDER BY control.job_name), '[]'::jsonb)
+  FROM public.platform_job_controls control WHERE job_name = 'outbox-dispatch'),
+  (SELECT rows FROM _dispatch_inventory_before),
+  'synthetic service control proof neither installs nor changes a global dispatch registration');
 
 SELECT * FROM finish();
 ROLLBACK;

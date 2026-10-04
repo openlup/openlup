@@ -16,7 +16,8 @@ SELECT plan(6);
 
 CREATE TEMP TABLE browser_closed_rpc (
   ident text PRIMARY KEY,
-  cohort text NOT NULL
+  cohort text NOT NULL,
+  direct_server_entrypoint boolean NOT NULL DEFAULT true
 ) ON COMMIT DROP;
 
 INSERT INTO browser_closed_rpc (ident, cohort) VALUES
@@ -75,6 +76,16 @@ INSERT INTO browser_closed_rpc (ident, cohort) VALUES
   ('public.fulfillment_provider_upsert_stock_current(text, text, text, integer, integer, integer, timestamp with time zone, timestamp with time zone, text, jsonb, text)', 'unauthorized-definers'),
   ('public.subscription_self_service_line_set_matches(uuid, jsonb, boolean)', 'unauthorized-definers');
 
+-- Internal helpers run inside existing owner/definer contexts; they do not require
+-- service_role as a second direct entrypoint. Their browser/PUBLIC denial remains.
+UPDATE browser_closed_rpc SET direct_server_entrypoint = false WHERE ident IN (
+  'public.platform_settlement_currency()', 'public.platform_region_code()',
+  'public.commerce_guard_no_split_fulfillment_order(uuid)',
+  'public.commerce_validate_fulfillment_provider_kind(text, uuid)',
+  'public.commerce_fulfillment_order_reservation_location_count(uuid)',
+  'public.subscription_self_service_line_set_matches(uuid, jsonb, boolean)'
+);
+
 -- Resolution runs first: `has_function_privilege` yields NULL rather than an error for an
 -- unresolvable identity, so a renamed or dropped function would let the privilege
 -- assertions below pass vacuously.
@@ -113,9 +124,10 @@ SELECT is(
 SELECT is(
   (SELECT coalesce(string_agg(ident, E'\n' ORDER BY ident), '')
      FROM browser_closed_rpc
-    WHERE has_function_privilege('service_role', to_regprocedure(ident)::oid, 'execute') IS NOT TRUE),
+    WHERE direct_server_entrypoint
+      AND has_function_privilege('service_role', to_regprocedure(ident)::oid, 'execute') IS NOT TRUE),
   '',
-  'service_role retains execute on every pinned function'
+  'service_role retains execute on standalone server RPCs; browser denial still covers all 19 functions'
 );
 
 SELECT is(

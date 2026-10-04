@@ -9,12 +9,12 @@ describe("communications packaging digest test admin BFF route", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps the retired route mounted through the observed admin wrapper", () => {
+  it("exports the retired route through the observed admin wrapper", () => {
     expect(handler).toBeTypeOf("function");
   });
 
   it.each(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])(
-    "keeps the actual observed export terminal for %s without reading body or calling fetch",
+    "public default refuses %s before reading body or calling fetch",
     async (method) => {
       vi.stubEnv("APP_ENVIRONMENT", "development");
       vi.stubEnv("HIDDEN_SANDBOX_PREVIEW_TEST_ENFORCE", "false");
@@ -30,11 +30,13 @@ describe("communications packaging digest test admin BFF route", () => {
 
       await handler(req as never, res as never);
 
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.end).toHaveBeenCalledOnce();
-      expect(res.json).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.end).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        ok: false, error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }),
+      }));
       expect(res.send).not.toHaveBeenCalled();
-      expect(res.setHeader).not.toHaveBeenCalled();
+      expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
       expect(touched).not.toHaveBeenCalled();
       expect(fetchTouched).not.toHaveBeenCalled();
     },

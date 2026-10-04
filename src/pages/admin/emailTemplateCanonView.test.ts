@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildTemplateCanonRows } from "./emailTemplateCanonView";
 import type { AdminEmailTemplate } from "@/domains/communications/contracts";
 
@@ -17,26 +17,36 @@ function dbRow(overrides: Partial<AdminEmailTemplate> & { slug: string; id: stri
 }
 
 describe("buildTemplateCanonRows", () => {
-  it("keeps eligible DB rows editable and suppresses terminal no-send editor debt", () => {
+  it("keeps eligible DB rows editable and suppresses terminal no-send editor debt under an explicit canon", async () => {
+    vi.resetModules();
+    vi.doMock("@/domains/communications/emailCanon", async () => {
+      const actual = await vi.importActual<typeof import("@/domains/communications/emailCanon")>("@/domains/communications/emailCanon");
+      const terminal = { ...actual.EMAIL_CANON_REGISTRY[0]!, slug: "synthetic-terminal", renderer: "no_send_decision" as const };
+      return { ...actual, EMAIL_CANON_REGISTRY: [...actual.EMAIL_CANON_REGISTRY, terminal],
+        findEmailCanonEntry: (slug: string) => slug === terminal.slug ? terminal : actual.findEmailCanonEntry(slug),
+      };
+    });
+    try {
+      const { buildTemplateCanonRows: buildSelectedRows } = await import("./emailTemplateCanonView");
     const dbRows = [
       dbRow({ id: "1", slug: "commerce-order-confirmation", name: "Order confirmation" }),
-      dbRow({ id: "2", slug: "packaging-digest-daily", name: "Packaging digest" }),
+      dbRow({ id: "2", slug: "synthetic-terminal", name: "Synthetic terminal" }),
       dbRow({ id: "3", slug: "totally-custom", name: "Custom" }),
     ];
 
-    const rows = buildTemplateCanonRows(dbRows);
+    const rows = buildSelectedRows(dbRows);
 
-    // The terminal packaging row is replaced by its read-only canon envelope.
+    // The explicit terminal row is replaced by its read-only canon envelope.
     const editable = rows.filter((r) => r.editable);
     expect(editable).toHaveLength(dbRows.length - 1);
     expect(editable.every((r) => r.dbRow !== null)).toBe(true);
 
     // Every eligible DB slug remains present and editable.
-    for (const db of dbRows.filter((row) => row.slug !== "packaging-digest-daily")) {
+    for (const db of dbRows.filter((row) => row.slug !== "synthetic-terminal")) {
       const match = rows.find((r) => r.slug === db.slug && r.editable);
       expect(match).toBeDefined();
     }
-    expect(rows.find((r) => r.slug === "packaging-digest-daily")).toMatchObject({
+    expect(rows.find((r) => r.slug === "synthetic-terminal")).toMatchObject({
       editable: false,
       dbRow: null,
       rendererLabel: "Nieaktywny",
@@ -46,6 +56,10 @@ describe("buildTemplateCanonRows", () => {
     const custom = rows.find((r) => r.slug === "totally-custom");
     expect(custom?.editable).toBe(true);
     expect(custom?.rendererLabel).toBe("Edytowalny (DB)");
+    } finally {
+      vi.doUnmock("@/domains/communications/emailCanon");
+      vi.resetModules();
+    }
   });
 
   it("surfaces code-rendered canon kinds as read-only", () => {

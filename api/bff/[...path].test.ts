@@ -1,35 +1,40 @@
-/**
- * Smoke test for the BFF routing aggregator.
- *
- * This file exists as a companion test so the CI changed-runtime coverage
- * guard does not flag the aggregator as
- * lacking coverage. The aggregator is auto-generated and cannot be
- * meaningfully unit-tested by importing the whole route graph; doing so pulls
- * every BFF handler into local V8 coverage and has repeatedly produced 120s
- * weak-machine hangs for a near-zero-signal assertion. The functional dispatch
- * contract is exercised by the dispatch golden-master test;
- * this companion stays static and pins only the generated entrypoint shape.
- */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import handler, { routes } from "./[...path].js";
+import { dispatch } from "../../server/runtime/bffDispatch.js";
+const preflight = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("../../server/runtime/auth/adminAuthBinding.js", () => ({ preflightAdminBffRoute: preflight }));
 
-import { describe, expect, it } from "vitest";
-
-describe("api/bff/[...path] — routing aggregator", () => {
-  const sourcePath = join(process.cwd(), "api/bff/[...path].ts");
-
-  it("keeps the generated default handler wired to the route table", () => {
-    const source = readFileSync(sourcePath, "utf8");
-
-    expect(source).toContain("export const routes: RouteEntry[] = [");
-    expect(source).toContain("import { dispatch, type RouteEntry } from");
-    expect(source).toMatch(
-      /export default function bffRouter\(req: VercelRequest, res: VercelResponse\): Promise<unknown> \{ return dispatch\(routes, req, res\); \}/,
-    );
+afterEach(() => { vi.unstubAllEnvs(); preflight.mockClear(); });
+function response() {
+  const res = { status: vi.fn(), json: vi.fn(), setHeader: vi.fn() };
+  res.status.mockReturnValue(res);
+  return res;
+}
+describe("bounded public BFF route composition", () => {
+  it("exposes no BFF routes and returns404 for an unknown request", async () => {
+    expect(routes).toEqual([]);
+    const res = response();
+    await handler({ method: "GET", url: "/api/bff/example", headers: {}, query: {} } as never, res as never);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(preflight).not.toHaveBeenCalled();
   });
-
-  it("marks both direct-only order-review admin routes for pre-auth availability refusal", () => {
-    const source = readFileSync(sourcePath, "utf8");
-    expect(source.match(/admin\/order-review[^\n]+availability: "direct-postgres"/g)).toHaveLength(2);
+  it("refuses an explicitly composed direct-only entry before auth or handler on a managed bundle", async () => {
+    vi.stubEnv("PLATFORM_BUNDLE", "vercel-supabase");
+    const work = vi.fn();
+    const res = response();
+    await dispatch([{ route: "/api/bff/example", pattern: /^\/api\/bff\/example$/, params: [], handler: work, availability: "direct-postgres" }],
+      { method: "GET", url: "/api/bff/example", headers: {}, query: {} } as never, res as never);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(preflight).not.toHaveBeenCalled();
+    expect(work).not.toHaveBeenCalled();
+  });
+  it("dispatches the same explicit entry under the supported direct bundle", async () => {
+    vi.stubEnv("PLATFORM_BUNDLE", "node-postgres");
+    const work = vi.fn();
+    const req = { method: "GET", url: "/api/bff/example", headers: {}, query: {} };
+    const res = response();
+    await dispatch([{ route: "/api/bff/example", pattern: /^\/api\/bff\/example$/, params: [], handler: work, availability: "direct-postgres" }], req as never, res as never);
+    expect(preflight).toHaveBeenCalledWith(req, res, "/api/bff/example");
+    expect(work).toHaveBeenCalledWith(req, res);
   });
 });

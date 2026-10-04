@@ -1,16 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import handler from "./shipments-overview.js";
 
+const auth = vi.hoisted(() => ({ context: vi.fn(() => null), authorize: vi.fn() }));
 vi.mock("./shared.js", () => ({
-  createFulfillmentAdminAuthContext: () => null,
-  authorizeFulfillmentAdmin: vi.fn(),
+  createFulfillmentAdminAuthContext: auth.context,
+  authorizeFulfillmentAdmin: auth.authorize,
 }));
 
 describe("fulfillment shipments overview admin BFF route", () => {
-  it("executes the observed route and fails closed before persistence without managed auth env", async () => {
+  it("public default refuses before resolving operator authorization", async () => {
     const { req, res, output } = routeFixture();
     await handler(req as never, res as never);
-    expect(output).toMatchObject({ status: 500, body: { ok: false, error: { code: "INTERNAL" } } });
+    expect(auth.context).not.toHaveBeenCalled();
+    expect(auth.authorize).not.toHaveBeenCalled();
+    expect(output).toMatchObject({ status: 503, body: { ok: false, error: { code: "UPSTREAM_UNAVAILABLE", details: { reason: "adopter_policy_required" } } } });
   });
 });
 

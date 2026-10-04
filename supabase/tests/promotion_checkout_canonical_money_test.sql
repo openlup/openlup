@@ -1,5 +1,11 @@
 -- pgTAP: v2 promotion claims are part of the canonical order/payment transaction.
 BEGIN;
+-- Explicit synthetic settlement coordinates; these rows are rolled back with this test.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('settlement_currency', 'XTS', NULL), ('settlement_region', 'ZZ', NULL),
+  ('min_product_payable_minor', NULL, 1)
+ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
+
 SELECT plan(54);
 
 CREATE TEMP TABLE _promotion_checkout_bootstrap (ready boolean);
@@ -55,34 +61,34 @@ AS $$
     'source', 'commerce.order_draft.bff.v0',
     'status', 'draft',
     'paymentStatus', 'not_started',
-    'currency', 'PLN',
+    'currency', 'XTS',
     'taxIncluded', true,
     'lines', jsonb_build_array(jsonb_build_object(
       'sku', p_sku,
       'productSlug', 'promotion-test',
       'quantity', 1,
-      'unitPriceGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
-      'lineSubtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
+      'unitPriceGross', jsonb_build_object('amountMinor', 10000, 'currency', 'XTS'),
+      'lineSubtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'XTS'),
       'tax', jsonb_build_object(
         'vatRateBps', 800,
-        'netAmount', jsonb_build_object('amountMinor', 9259, 'currency', 'PLN'),
-        'vatAmount', jsonb_build_object('amountMinor', 741, 'currency', 'PLN'),
-        'grossAmount', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN')
+        'netAmount', jsonb_build_object('amountMinor', 9259, 'currency', 'XTS'),
+        'vatAmount', jsonb_build_object('amountMinor', 741, 'currency', 'XTS'),
+        'grossAmount', jsonb_build_object('amountMinor', 10000, 'currency', 'XTS')
       )
     )),
     'totals', jsonb_build_object(
-      'subtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'PLN'),
-      'discountTotalGross', jsonb_build_object('amountMinor', p_discount, 'currency', 'PLN'),
+      'subtotalGross', jsonb_build_object('amountMinor', 10000, 'currency', 'XTS'),
+      'discountTotalGross', jsonb_build_object('amountMinor', p_discount, 'currency', 'XTS'),
       'netTotal', jsonb_build_object(
         'amountMinor', round((10000 - p_discount)::numeric * 10000 / 10800)::integer,
-        'currency', 'PLN'
+        'currency', 'XTS'
       ),
       'taxTotal', jsonb_build_object(
         'amountMinor', (10000 - p_discount)
           - round((10000 - p_discount)::numeric * 10000 / 10800)::integer,
-        'currency', 'PLN'
+        'currency', 'XTS'
       ),
-      'totalGross', jsonb_build_object('amountMinor', 10000 - p_discount, 'currency', 'PLN')
+      'totalGross', jsonb_build_object('amountMinor', 10000 - p_discount, 'currency', 'XTS')
     )
   )
 $$;
@@ -530,7 +536,7 @@ INSERT INTO public.commerce_payments (
   id, order_id, provider, provider_payment_id, status, amount_cents, currency
 ) VALUES (
   'a1500000-0000-4000-8000-000000000001', (SELECT order_id FROM _payment_guard_id),
-  'stripe', 'promotion-payment-guard', 'pending', 2000, 'PLN'
+  'stripe', 'promotion-payment-guard', 'pending', 2000, 'XTS'
 );
 SELECT is(
   public.commerce_cancel_unstarted_promotion_order(
@@ -550,14 +556,14 @@ INSERT INTO public.commerce_payments (
   id, order_id, provider, provider_payment_id, status, amount_cents, currency
 ) VALUES (
   'a1500000-0000-4000-8000-000000000002', (SELECT order_id FROM _intent_guard_id),
-  'stripe', 'promotion-intent-guard', 'pending', 2000, 'PLN'
+  'stripe', 'promotion-intent-guard', 'pending', 2000, 'XTS'
 );
 INSERT INTO public.commerce_payment_intents (
   id, target_kind, order_id, payment_id, status, amount_cents, currency
 ) VALUES (
   'a1510000-0000-4000-8000-000000000001', 'one_time_order',
   (SELECT order_id FROM _intent_guard_id), 'a1500000-0000-4000-8000-000000000002',
-  'created', 2000, 'PLN'
+  'created', 2000, 'XTS'
 );
 SELECT is(
   public.commerce_cancel_unstarted_promotion_order(
@@ -667,8 +673,8 @@ SELECT is(
   (SELECT enabled::text || ':' || active_driver
      FROM public.platform_job_controls
     WHERE job_name = 'promotion-claim-sweep'),
-  'true:vercel_cron',
-  'the sweep has an explicit scheduler control row independent from its default-off flag');
+  'false:vercel_cron',
+  'the sweep installs a disabled scheduler control independent from its default-off flag');
 
 CREATE TEMP TABLE _legacy_unchanged AS
 SELECT pg_temp.create_promotion_order(

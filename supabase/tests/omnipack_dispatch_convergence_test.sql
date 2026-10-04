@@ -1,8 +1,19 @@
--- pgTAP: minimal OmniPack dispatch submission fence and atomic local ACK.
+-- pgTAP: minimal the provider dispatch submission fence and atomic local ACK.
 -- The suite intentionally starts at fulfillment.created and does not model
 -- tracking ownership, address freeze, accounting, or provider-command execution.
 
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['PL'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(132);
 
 INSERT INTO public.clients (id, email, first_name, last_name, phone)
@@ -17,7 +28,7 @@ INSERT INTO public.addresses (
 ) VALUES (
   '71000000-0000-0000-0000-0000000000a2',
   '71000000-0000-0000-0000-0000000000a1',
-  'shipping', 'ul. Atomowa 1', 'Warszawa', '00-001', 'PL'
+  'shipping', 'ul. Atomowa 1', 'Warszawa', '00-001', (SELECT enabled_for_region[1] FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment')
 );
 
 INSERT INTO public.commerce_orders (
@@ -141,7 +152,7 @@ INSERT INTO public.omnipack_dispatch_refs (
   '{"providerOrderId":"provider-order-unpaid-repair"}'::jsonb
 );
 
--- Historical incident: OmniPack accepted and the ref was persisted, but the
+-- Historical incident: the provider accepted and the ref was persisted, but the
 -- local fulfillment remained created. This is repair work, never POST authority.
 INSERT INTO public.omnipack_dispatch_refs (
   id, fulfillment_order_id, order_id, provider_order_id, dispatch_mode, status,

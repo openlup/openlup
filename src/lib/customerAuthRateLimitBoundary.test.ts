@@ -1,25 +1,25 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { currentTableStatements, explicitTablePrivileges, explicitFunctionExecuteRoles } from "../test/historicalBoundarySchema";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
 
-const migration = readFileSync(
-  "supabase/migrations/20260606150000_customer_auth_and_checkout_rate_limit_hardening.sql",
-  "utf8",
-);
-
-describe("customer auth and checkout rate-limit hardening migration", () => {
-  it("adds advisory locks and cleanup to checkout attempts", () => {
-    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.public_record_checkout_attempt");
-    expect(migration).toContain("pg_advisory_xact_lock");
-    expect(migration).toContain("hashtextextended");
-    expect(migration).toContain("DELETE FROM public.public_checkout_attempts");
-    expect(migration).toContain("interval '24 hours'");
+describe("current customer auth and checkout limiter", () => {
+  it("serializes checkout attempts and cleans the bounded retention window", () => {
+    const body = effectiveFunctionBody("public_record_checkout_attempt");
+    expect(body).toContain("pg_advisory_xact_lock");
+    expect(body).toContain("hashtextextended");
+    expect(body).toContain("DELETE FROM public.public_checkout_attempts");
+    expect(body).toContain("interval '24 hours'");
   });
-
-  it("adds a service-role-only customer magic-link rate-limit ledger", () => {
-    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.customer_magic_link_attempts");
-    expect(migration).toContain("public_record_customer_magic_link_attempt");
-    expect(migration).toContain("ALTER TABLE public.customer_magic_link_attempts ENABLE ROW LEVEL SECURITY");
-    expect(migration).toContain("REVOKE ALL ON TABLE public.customer_magic_link_attempts FROM anon");
-    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.public_record_customer_magic_link_attempt");
+  it("keeps the customer magic-link ledger and RPC server-only", () => {
+    expect(currentTableStatements("customer_magic_link_attempts")).toContain("ENABLE ROW LEVEL SECURITY");
+    const table = explicitTablePrivileges("customer_magic_link_attempts");
+    for (const role of ["PUBLIC", "anon", "authenticated"]) expect(table.get(role)?.size ?? 0).toBe(0);
+    expect(table.get("service_role")?.has("INSERT")).toBe(true);
+    const body = effectiveFunctionBody("public_record_customer_magic_link_attempt");
+    expect(body).toContain("pg_advisory_xact_lock");
+    for (const roles of explicitFunctionExecuteRoles("public_record_customer_magic_link_attempt").values()) {
+      expect(roles.has("service_role")).toBe(true);
+      for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+    }
   });
 });

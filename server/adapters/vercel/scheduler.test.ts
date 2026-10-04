@@ -56,7 +56,7 @@ describe("createVercelScheduler", () => {
     ).toThrow(/not declared/);
   });
 
-  it("exposes the jobs derived from the single source", () => {
-    expect(createVercelScheduler({ env: {} }).jobs.length).toBeGreaterThan(0);
+  it("exposes no active jobs from the selected public configuration", () => {
+    expect(createVercelScheduler({ env: {} }).jobs).toEqual([]);
   });
 });

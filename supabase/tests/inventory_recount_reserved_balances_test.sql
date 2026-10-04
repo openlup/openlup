@@ -193,6 +193,13 @@ SELECT ok(NOT has_function_privilege('authenticated',
   'authenticated cannot reach the private projection');
 
 -- ------------------------------------------------- production fingerprint ----
+-- Test-local fingerprint/identity profile: runtime compares these exact current values.
+INSERT INTO private.platform_cron_environment
+ (id,environment_label,expected_system_identifier,expected_server_addr,expected_server_port,external_cron_enabled,expected_abandoned_cart_runtime_url)
+VALUES (true,'synthetic',(pg_control_system()).system_identifier::text,inet_server_addr(),inet_server_port(),false,'https://production.example.supabase.co')
+ON CONFLICT (id) DO UPDATE SET expected_system_identifier=EXCLUDED.expected_system_identifier,
+ expected_server_addr=EXCLUDED.expected_server_addr,expected_server_port=EXCLUDED.expected_server_port,
+ external_cron_enabled=EXCLUDED.external_cron_enabled,expected_abandoned_cart_runtime_url=EXCLUDED.expected_abandoned_cart_runtime_url;
 UPDATE private.platform_cron_environment
 SET expected_system_identifier = (pg_control_system()).system_identifier::text,
     expected_server_addr = inet_server_addr(),

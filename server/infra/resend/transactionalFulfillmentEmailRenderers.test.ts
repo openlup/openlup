@@ -49,8 +49,8 @@ describe("transactionalFulfillmentEmailRenderers", () => {
       exampleEmailPresentation,
     );
 
-    expect(out.html).toContain("Paczka w drodze");
-    expect(out.html).toContain(`href="${BASE}/porady/pliki/przewodnik-po-koncie-klienta.pdf"`);
+    expect(out.html).toContain("Przesyłka jest w drodze");
+    expect(out.html).toContain(`href="${BASE}/guides/account.pdf"`);
     expect(out.html).not.toContain(`href="${BASE}/konto"`);
     expect(out.html).toContain('href="https://track.example/JD0123456789"');
     expect(out.html).toContain("Śledź przesyłkę");
@@ -72,13 +72,13 @@ describe("transactionalFulfillmentEmailRenderers", () => {
       exampleEmailPresentation,
     );
 
-    expect(out.subject).toContain("dotarła");
-    expect(out.html).toContain("Paczka dostarczona");
-    expect(out.html).toContain(`href="${BASE}/porady/pliki/jak-wprowadzic-nowa-karme.pdf"`);
+    expect(out.subject).toContain("została dostarczona");
+    expect(out.html).toContain("Przesyłka dostarczona");
+    expect(out.html).toContain(`href="${BASE}/guides/getting-started.pdf"`);
     expect(out.html).not.toContain(`href="${BASE}/skomponuj-pakiet"`);
-    expect(out.html).toContain(`<img src="${BASE}/porady/pliki/okladka-jak-wprowadzic-nowa-karme.jpg"`);
+    expect(out.html).not.toContain("<img");
     expectCustomerOrderReference(out);
-    expectStagingAssets(out, 1);
+    expectStagingAssets(out);
   });
 
   it("renders shipment exception with reassurance copy only", () => {

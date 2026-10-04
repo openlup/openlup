@@ -1,11 +1,18 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { currentTrigger } from "../test/historicalBoundarySchema";
 
-const migration = read("supabase/migrations/20260605152000_fulfillment_no_split_guard.sql");
-const preflightMigration = read(
-  "supabase/migrations/20260701130001_fulfillment_split_shipment_preflight_guard.sql",
-);
+const migration = [
+  effectiveFunctionBody("commerce_guard_no_split_fulfillment_order"),
+  effectiveFunctionBody("commerce_guard_handoff_no_split"),
+  currentTrigger("trg_commerce_guard_handoff_no_split"),
+].join("\n");
+const preflightMigration = [
+  effectiveFunctionBody("commerce_fulfillment_preflight_split_shipment"),
+  effectiveFunctionBody("commerce_fulfillment_order_reservation_location_count"),
+].join("\n");
 const port = read("server/adapters/supabase/orderPaidFulfillmentPort.ts");
 
 describe("fulfillment no-split boundary", () => {

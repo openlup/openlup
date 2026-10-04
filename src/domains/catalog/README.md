@@ -43,6 +43,16 @@ never supplied as draft data, and absent facts stay readiness issues.
 - A SKU without a unit-level `gs1:gtin` reports `unit_trade_identifier_missing`
   in commercial readiness.
 
+## Draft persistence proof
+
+The managed baseline includes its draft command and storage independently of
+storefront mounting. Validate isolation, fingerprint replay, idempotency and
+privilege boundaries against that installed API. A missing publication ledger
+is not a reason to omit those draft guarantees or create publication machinery
+as a fixture. The managed document-proposal/publication composition needs its
+own installation and acceptance evidence when selected; it is distinct from the
+portable draft and publication ports.
+
 ## Where the code lives
 - Engine: `packages/core/src/catalog/identifiers.ts`, exposed as
   `@openlup/core/catalog` — the slug, SKU, product-id and variant-id primitives.

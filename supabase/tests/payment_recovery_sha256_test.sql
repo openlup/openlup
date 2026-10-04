@@ -12,7 +12,19 @@
 --
 -- Run via: supabase test db
 BEGIN;
+-- Explicit synthetic provider/oracle location; no live provider is contacted.
+WITH fixture_provider AS (
+INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
+VALUES ('omnipack', 'fulfillment', 'Synthetic fulfillment', 'active', ARRAY['PL','ZZ'])
+ON CONFLICT (kind) DO UPDATE SET enabled_for_region = EXCLUDED.enabled_for_region
+RETURNING kind
+)
+INSERT INTO public.inventory_locations (code, display_name, kind, status, region, fulfillable, provider_kind)
+SELECT 'omnipack-stock-master', 'Synthetic provider stock', 'third_party_logistics', 'active', 'ZZ', true, kind FROM fixture_provider
+ON CONFLICT (code) DO NOTHING;
+
 SELECT plan(39);
+INSERT INTO public.commerce_settings (key,value_text,value_minor) VALUES ('settlement_currency','XTS',NULL),('settlement_region','ZZ',NULL),('min_product_payable_minor',NULL,1) ON CONFLICT (key) DO UPDATE SET value_text=EXCLUDED.value_text,value_minor=EXCLUDED.value_minor;
 
 -- ---------------------------------------------------------------------------
 -- 1. Node<->DB hash parity (deparser-independent anchor for the cutover).
@@ -33,7 +45,7 @@ VALUES ('d0000000-0000-0000-0000-000000000001', 'recovery-sha256@example.invalid
 -- OPEN case (repair_payment) — record RPC SHA-256 lookup
 -- ===========================================================================
 INSERT INTO public.subscriptions (id, client_id, cadence_days, currency, status, started_at, next_cycle_at)
-VALUES ('d1000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 30, 'PLN', 'active',
+VALUES ('d1000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 30, 'XTS', 'active',
         '2026-05-01T00:00:00Z', '2026-06-01T00:00:00Z');
 CREATE TEMP TABLE _fixture_money_unit AS
 SELECT currency AS value
@@ -42,14 +54,14 @@ SELECT currency AS value
 INSERT INTO public.subscription_cycles (id, subscription_id, cycle_number, scheduled_at, status, engine_idempotency_key, retry_attempt)
 VALUES ('d1c00000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000001', 2, '2026-06-01T00:00:00Z', 'planned', 'recovery-sha256-open', 1);
 INSERT INTO public.commerce_orders (id, client_id, currency, region_code, size_constraint, status, total_cents, subtotal_cents, mode, subscription_id, subscription_cycle_id)
-VALUES ('d10d0000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 'PLN', 'PL',
+VALUES ('d10d0000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 'XTS', (SELECT enabled_for_region[1] FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'),
         '{"kind":"feeding_days","value":21}'::jsonb, 'draft', 2680, 2680, 'subscription_cycle',
         'd1000000-0000-0000-0000-000000000001', 'd1c00000-0000-0000-0000-000000000001');
 
 CREATE TEMP TABLE _open_intent AS
 SELECT (public.commerce_payment_control_create_intent(
   'recovery-sha256-open-intent', 'subscription_cycle', 'd10d0000-0000-0000-0000-000000000001',
-  'd1000000-0000-0000-0000-000000000001', 'd1c00000-0000-0000-0000-000000000001', 2680, 'PLN', '{}'::jsonb
+  'd1000000-0000-0000-0000-000000000001', 'd1c00000-0000-0000-0000-000000000001', 2680, 'XTS', '{}'::jsonb
 ) -> 'paymentIntent' ->> 'id')::uuid AS intent_id;
 
 -- next_retry_at NOT NULL -> 'open' case + 'repair_payment' SHA-256 token.
@@ -198,7 +210,7 @@ SELECT throws_like(
 -- EXPIRED case (resume_subscription) — resume RPC SHA-256 lookup
 -- ===========================================================================
 INSERT INTO public.subscriptions (id, client_id, cadence_days, currency, status, started_at, next_cycle_at)
-VALUES ('d2000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 30, 'PLN', 'active',
+VALUES ('d2000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 30, 'XTS', 'active',
         '2026-05-01T00:00:00Z', '2026-06-01T00:00:00Z');
 INSERT INTO public.subscription_cycles (id, subscription_id, cycle_number, scheduled_at, status, engine_idempotency_key, retry_attempt)
 VALUES
@@ -209,7 +221,7 @@ VALUES
   ('d20d0000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000001', (SELECT value FROM _fixture_money_unit), 'ZZ',
         '{"kind":"feeding_days","value":21}'::jsonb, 'pending_payment', 2680, 2680, 'subscription_cycle',
         'd2000000-0000-0000-0000-000000000001', 'd2c00000-0000-0000-0000-000000000002'),
-  ('d20d0000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 'PLN', 'PL',
+  ('d20d0000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001', 'XTS', 'PL',
         '{"kind":"feeding_days","value":21}'::jsonb, 'draft', 2680, 2680, 'subscription_cycle',
         'd2000000-0000-0000-0000-000000000001', 'd2c00000-0000-0000-0000-000000000001');
 
@@ -222,7 +234,7 @@ SELECT (public.commerce_payment_control_create_intent(
 CREATE TEMP TABLE _exp_intent AS
 SELECT (public.commerce_payment_control_create_intent(
   'recovery-sha256-expired-intent', 'subscription_cycle', 'd20d0000-0000-0000-0000-000000000001',
-  'd2000000-0000-0000-0000-000000000001', 'd2c00000-0000-0000-0000-000000000001', 2680, 'PLN', '{}'::jsonb
+  'd2000000-0000-0000-0000-000000000001', 'd2c00000-0000-0000-0000-000000000001', 2680, 'XTS', '{}'::jsonb
 ) -> 'paymentIntent' ->> 'id')::uuid AS intent_id;
 
 -- next_retry_at NULL at the ladder's last rung -> 'expired' case +
@@ -400,7 +412,7 @@ INSERT INTO public.subscription_lines (
 
 -- Fresh-cycle order items reserve through the provider stock oracle.
 SELECT public.fulfillment_provider_upsert_stock_current(
-  'direct-resume-stock-current', 'omnipack', 'RESUME-TOKEN-SKU',
+  'direct-resume-stock-current', (SELECT kind FROM public.providers WHERE capability = 'fulfillment' AND display_name = 'Synthetic fulfillment'), 'RESUME-TOKEN-SKU',
   100, 100, 0, now(), now() + interval '6 hours',
   'direct-resume-stock-run',
   '{"source":"payment_recovery_sha256_test"}'::jsonb

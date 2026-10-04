@@ -1,5 +1,11 @@
 -- pgTAP: additive promotion-code control plane, admin idempotency and claims.
 BEGIN;
+-- Explicit synthetic settlement coordinates; these rows are rolled back with this test.
+INSERT INTO public.commerce_settings (key, value_text, value_minor) VALUES
+  ('settlement_currency', 'XTS', NULL), ('settlement_region', 'ZZ', NULL),
+  ('min_product_payable_minor', NULL, 1)
+ON CONFLICT (key) DO UPDATE SET value_text = EXCLUDED.value_text, value_minor = EXCLUDED.value_minor;
+
 SELECT plan(102);
 
 INSERT INTO public.admin_users (id,email,role,is_machine_actor) VALUES
@@ -147,8 +153,8 @@ INSERT INTO public.commerce_orders
   (id,order_number,status,currency,subtotal_cents,discount_cents,shipping_cents,
    shipping_discount_cents,tax_cents,total_cents)
 VALUES
-  ('ac300000-0000-4000-8000-000000000001','PROMO-CLAIM-1','draft','PLN',1000,0,0,0,0,1000),
-  ('ac300000-0000-4000-8000-000000000002','PROMO-CLAIM-2','draft','PLN',1000,0,0,0,0,1000);
+  ('ac300000-0000-4000-8000-000000000001','PROMO-CLAIM-1','draft','XTS',1000,0,0,0,0,1000),
+  ('ac300000-0000-4000-8000-000000000002','PROMO-CLAIM-2','draft','XTS',1000,0,0,0,0,1000);
 
 SELECT is((public.commerce_promotion_code_claim(
   'ac200000-0000-4000-8000-000000000001','ac300000-0000-4000-8000-000000000001',
@@ -181,11 +187,11 @@ INSERT INTO public.commerce_orders
   (id,client_id,order_number,status,currency,subtotal_cents,discount_cents,shipping_cents,
    shipping_discount_cents,tax_cents,total_cents)
 VALUES ('ac610000-0000-4000-8000-000000000001','ac600000-0000-4000-8000-000000000001',
-  'PROMO-LEGACY-1','paid','PLN',1000,100,0,0,0,900),
+  'PROMO-LEGACY-1','paid','XTS',1000,100,0,0,0,900),
   ('ac610000-0000-4000-8000-000000000002','ac600000-0000-4000-8000-000000000001',
-  'PROMO-LEGACY-2','draft','PLN',1000,100,0,0,0,900),
+  'PROMO-LEGACY-2','draft','XTS',1000,100,0,0,0,900),
   ('ac610000-0000-4000-8000-000000000003','ac600000-0000-4000-8000-000000000001',
-  'PROMO-LEGACY-3','draft','PLN',1000,100,0,0,0,900);
+  'PROMO-LEGACY-3','draft','XTS',1000,100,0,0,0,900);
 INSERT INTO public.promotions (
   id,code,name,trigger_type,discount_type,discount_value,applies_to_kind,eligibility,
   status,promotion_engine_version,benefit_lane,benefit_kind,benefit_value_bps

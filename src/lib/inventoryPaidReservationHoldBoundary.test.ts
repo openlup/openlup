@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { effectiveFunctionBody } from "../test/effectiveMigration";
+import { currentTrigger } from "../test/historicalBoundarySchema";
 import { describe, expect, it } from "vitest";
 
-const migration = read("supabase/migrations/20260605150000_inventory_paid_order_reservation_hold.sql");
+const migration = [effectiveFunctionBody("commerce_pin_paid_order_reservations"), currentTrigger("trg_commerce_pin_paid_order_reservations")].join("\n");
 
 describe("inventory paid reservation hold boundary", () => {
   it("pins reserved stock when an order becomes paid", () => {
@@ -19,7 +19,3 @@ describe("inventory paid reservation hold boundary", () => {
     }
   });
 });
-
-function read(path: string): string {
-  return readFileSync(join(process.cwd(), path), "utf8");
-}

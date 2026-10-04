@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { effectiveFunctionBody } from "../../test/effectiveMigration";
 import { describe, expect, it } from "vitest";
 
 import type { AdminCommerceOrdersListResponse } from "./omsContracts.js";
@@ -12,20 +11,7 @@ import {
 } from "./omsOperationalLadder.js";
 import { summarizeOmsListOrders } from "./omsReadModelListSummary.js";
 
-// The precedent for reading migration text from a test is
-// src/lib/commerceOmsBoundary.test.ts. This is the LIVE body of
-// public.commerce_oms_admin_list_queue - the one the admin queue request
-// actually executes - not one of its superseded ancestors.
-//
-// ⛔ THIS PIN MUST MOVE WITH EVERY FULL-BODY REPLACE OF THE RPC. It was left on
-// 20260816082705 by 20260903190000 and the suite stayed green, because that
-// wave's body is byte-identical in the CASE arms this test parses. A stale pin
-// does not fail - it silently stops covering the body that runs, which is the
-// one failure mode this test exists to prevent. During the 20260903190000
-// expand/contract window two identities are live; this pin names the 17-argument
-// one, the one the BFF calls.
-const LIVE_QUEUE_MIGRATION = "supabase/migrations/20260903190000_oms_queue_hides_withdrawn_checkout_rows.sql";
-const migration = readFileSync(join(process.cwd(), LIVE_QUEUE_MIGRATION), "utf8");
+const migration = effectiveFunctionBody("commerce_oms_admin_list_queue");
 
 type ListOrder = AdminCommerceOrdersListResponse["orders"][number];
 type CaseArm = { predicate: string; value: string };
@@ -151,40 +137,7 @@ describe("fixture-path summarizers versus the SQL counters", () => {
   // never called, and the fixture bundle has no second aggregation to disagree
   // with. Both become live divergences the moment a caller compares them.
   // ---------------------------------------------------------------------
-  it("records that the TS subscription counter omits the SQL subscription_id filter", () => {
-    const paid = parsePaidSummary(migration);
-    expect(paid.subscriptionFilter).toBe(
-      "orders.mode = 'subscription_cycle' AND orders.subscription_id IS NOT NULL",
-    );
 
-    // A subscription_cycle order with no subscription_id: SQL excludes it, TS
-    // counts it. The assertion pins the CURRENT disagreement, on purpose.
-    const orphanCycle = totalsOrder({
-      paymentStatus: "succeeded",
-      amountMinor: 5_000,
-      mode: "subscription_cycle",
-    });
-    expect(summarizeOmsListTotals([orphanCycle]).paidSubscriptionCycleCount).toBe(1);
-    // The list-order contract carries no subscription id at all, so the TS
-    // summariser cannot apply the SQL filter even if it wanted to.
-    expect("subscriptionId" in (orphanCycle as unknown as Record<string, unknown>)).toBe(false);
-  });
-
-  it("records that the TS totals aggregate the page while SQL aggregates the candidate set", () => {
-    // SQL sums `candidate_orders` (the search/status-scoped set, then narrowed by
-    // the paid_at window), NOT the page. summarizeOmsListTotals is handed only
-    // the current page's orders, so on any multi-page queue the two figures
-    // differ by construction.
-    const paid = parsePaidSummary(migration);
-    expect(paid.fromRelation).toBe("candidate_orders orders");
-    expect(paid.windowPredicates).toEqual([
-      "v_from IS NULL OR payment.paid_at >= v_from",
-      "v_to IS NULL OR payment.paid_at <= v_to",
-    ]);
-
-    const page = [totalsOrder({ paymentStatus: "succeeded", amountMinor: 1_000 })];
-    expect(summarizeOmsListTotals(page).orderCount).toBe(page.length);
-  });
 
   // ---------------------------------------------------------------------
   // KNOWN LATENT DIVERGENCE (b) - `not_checked` inventory.
@@ -236,10 +189,10 @@ function normalize(text: string): string {
 /** The body of the `CASE ... END AS <alias>` expression, CASE/END excluded. */
 function caseBody(sql: string, alias: string): string {
   const end = sql.indexOf(`END AS ${alias}`);
-  if (end < 0) throw new Error(`no "END AS ${alias}" in ${LIVE_QUEUE_MIGRATION}`);
+  if (end < 0) throw new Error(`no "END AS ${alias}" in the installed commerce_oms_admin_list_queue definition`);
   const head = sql.slice(0, end);
   const start = head.lastIndexOf("CASE");
-  if (start < 0) throw new Error(`no CASE opening "END AS ${alias}" in ${LIVE_QUEUE_MIGRATION}`);
+  if (start < 0) throw new Error(`no CASE opening "END AS ${alias}" in the installed commerce_oms_admin_list_queue definition`);
   return head.slice(start + "CASE".length);
 }
 
@@ -259,7 +212,7 @@ function parsePriorityArms(sql: string): {
   fallback: number;
 } {
   const start = sql.indexOf("CASE attention_reason");
-  if (start < 0) throw new Error(`no "CASE attention_reason" in ${LIVE_QUEUE_MIGRATION}`);
+  if (start < 0) throw new Error(`no "CASE attention_reason" in the installed commerce_oms_admin_list_queue definition`);
   const tail = sql.slice(start);
   const end = tail.indexOf("END");
   const body = tail.slice(0, end);

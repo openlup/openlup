@@ -6,6 +6,16 @@ import {
   LEGACY_APPLICATION_ENVIRONMENT_KEY,
 } from "../../_lib/observability/environment.js";
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const { mockCreateClient, mockRpc, mockSignInWithOtp } = vi.hoisted(() => ({
   mockCreateClient: vi.fn(),
   mockRpc: vi.fn(),
@@ -483,6 +493,21 @@ describe("POST /api/bff/customers/magic-link", () => {
       }),
     );
   });
+  it("public default refuses before constructing clients, consuming limits or sending OTP", async () => {
+    unitComposition.enabled = false;
+    enableEnv();
+    try {
+      const { default: handler } = await import("./magic-link.js");
+      const res = createResponse();
+      await handler(request({ email: "synthetic@example.test" }), res);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }) }));
+      for (const effect of [mockCreateClient, mockRpc, mockSignInWithOtp]) expect(effect).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 function enableEnv(options: { origin?: boolean } = {}) {

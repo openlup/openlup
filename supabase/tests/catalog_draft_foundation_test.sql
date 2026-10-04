@@ -14,7 +14,6 @@ CREATE TEMP TABLE draft_witness AS SELECT jsonb_build_object(
   'skus',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM public.catalog_skus x),
   'documents',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM public.catalog_product_document_revisions x),
   'prices',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM public.catalog_prices x),
-  'events',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY event_no),'[]') FROM public.catalog_publication_events x),
   'subscriptions',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM public.subscriptions x)) value;
 INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES
   ('f2000000-0000-4000-8000-000000000010','draft-admin@example.invalid','admin',false),
@@ -68,7 +67,6 @@ SELECT is(jsonb_build_object(
   'skus',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM public.catalog_skus x),
   'documents',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM public.catalog_product_document_revisions x),
   'prices',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM public.catalog_prices x),
-  'events',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY event_no),'[]') FROM public.catalog_publication_events x),
   'subscriptions',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY id),'[]') FROM public.subscriptions x)),
   (SELECT value FROM draft_witness),'all managed live witnesses remain unchanged');
 SELECT is((SELECT count(*)::integer FROM public.catalog_draft_command_receipts),3,'only three admitted commands own receipts');

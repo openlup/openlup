@@ -208,32 +208,55 @@ SELECT is(
 -- role hold"; this answers "who holds anything at all", which is the half that
 -- catches a grant arriving for a role nobody thought to enumerate.
 SELECT is(
-  (SELECT string_agg(rel.ident || ' -> ' || coalesce(g.grantees, '(none)'), E'\n' ORDER BY rel.ident)
-     FROM catalog_authz_relation AS rel
-     CROSS JOIN LATERAL (
-       SELECT string_agg(DISTINCT entry.grantee::regrole::text, ',' ORDER BY entry.grantee::regrole::text) AS grantees
-         FROM pg_class AS c
-         CROSS JOIN LATERAL aclexplode(c.relacl) AS entry
-        WHERE c.oid = rel.ident::regclass
-     ) AS g),
-  'public.catalog_bundle_components -> postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_bundle_prices -> postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_bundles -> postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_prices -> authenticated,postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_products -> authenticated,postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_sku_eans -> postgres,service_role,openlup_mcp_reader' || E'\n' ||
-  'public.catalog_skus -> authenticated,postgres,service_role,openlup_mcp_reader',
-  'exactly the four expected roles hold anything on the closed tables and exactly three on the inert ones, so no unenumerated grantee appeared'
+  (SELECT string_agg(rel.ident || ':' || entry.grantee::regrole::text || ':' || entry.privilege_type, ', '
+     ORDER BY rel.ident, entry.grantee, entry.privilege_type)
+   FROM catalog_authz_relation rel JOIN pg_class c ON c.oid = rel.ident::regclass
+   CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) entry
+   WHERE entry.grantee = 0
+      OR entry.grantee::regrole::text NOT IN ('postgres', 'service_role', 'authenticated', 'openlup_mcp_reader')
+      OR (entry.grantee::regrole::text IN ('authenticated', 'openlup_mcp_reader') AND entry.privilege_type <> 'SELECT')),
+  NULL,
+  'no PUBLIC, unknown principal or browser/reader writer is hidden by ACL ordering'
 );
 
--- The roles this wave is not allowed to touch, asserted rather than assumed.
+-- The selected checkout reads exact catalog columns, not whole-table SELECT.
 SELECT is(
-  (SELECT string_agg(rel.ident || ':' || priv.privilege, ', ' ORDER BY rel.ident, priv.privilege)
-     FROM catalog_authz_relation AS rel
-     CROSS JOIN catalog_authz_privilege AS priv
-    WHERE has_table_privilege('service_role', rel.ident, priv.privilege) IS NOT TRUE),
+  (SELECT string_agg(missing.capability, ', ' ORDER BY missing.capability) FROM (
+    SELECT ident || ':' || column_name AS capability
+      FROM (VALUES
+       ('public.catalog_products', 'id'),
+       ('public.catalog_products', 'slug'),
+       ('public.catalog_products', 'status'),
+       ('public.catalog_products', 'name'),
+       ('public.catalog_products', 'description'),
+       ('public.catalog_products', 'ingredients'),
+       ('public.catalog_products', 'allergens'),
+       ('public.catalog_products', 'marketing_content'),
+       ('public.catalog_products', 'primary_sku_id'),
+       ('public.catalog_skus', 'id'),
+       ('public.catalog_skus', 'product_id'),
+       ('public.catalog_skus', 'sku'),
+       ('public.catalog_skus', 'title'),
+       ('public.catalog_skus', 'pet_type'),
+       ('public.catalog_skus', 'status'),
+       ('public.catalog_skus', 'net_weight_g'),
+       ('public.catalog_skus', 'format_code'),
+       ('public.catalog_skus', 'unit_form_code'),
+       ('public.catalog_skus', 'is_addon'),
+       ('public.catalog_skus', 'sellable_standalone'),
+       ('public.catalog_skus', 'sellable_in_subscription'),
+       ('public.catalog_skus', 'requires_pet_profile'),
+       ('public.catalog_skus', 'min_order_qty')
+      ) expected(ident,column_name)
+     WHERE has_column_privilege('service_role', ident, column_name, 'SELECT') IS NOT TRUE
+    UNION ALL
+    SELECT rel.ident || ':SELECT'
+      FROM catalog_authz_relation rel
+     WHERE rel.ident NOT IN ('public.catalog_products','public.catalog_skus','public.catalog_prices')
+       AND has_table_privilege('service_role', rel.ident, 'SELECT') IS NOT TRUE
+  ) missing),
   NULL,
-  'the runtime role keeps the whole privilege set on all seven catalog tables, so no server read or write path was narrowed by this wave'
+  'the selected checkout retains exact product/SKU projections; remaining catalog reader privileges are unchanged'
 );
 
 SELECT is(
@@ -407,9 +430,11 @@ SELECT is(
        SELECT string_agg(DISTINCT entry.grantee::regrole::text, ',' ORDER BY entry.grantee::regrole::text) AS grantees
          FROM aclexplode(proc.proacl) AS entry
      ) AS g
-    WHERE coalesce(g.grantees, '(none)') <> 'postgres,service_role'),
+    WHERE EXISTS (SELECT 1 FROM aclexplode(coalesce(proc.proacl, acldefault('f', proc.proowner))) acl
+       WHERE acl.grantee = 0 OR acl.grantee::regrole::text NOT IN ('postgres'))
+       OR has_function_privilege('service_role', proc.oid, 'EXECUTE') IS NOT FALSE),
   NULL,
-  'every fenced catalog RPC still holds EXECUTE for exactly postgres and service_role, so a browser-role grant coming back is red rather than invisible'
+  'every legacy-fenced catalog RPC rejects unexpected principals and direct service execution'
 );
 
 SELECT is(

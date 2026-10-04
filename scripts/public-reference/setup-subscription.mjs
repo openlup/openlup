@@ -137,6 +137,7 @@ try {
   else if (schemaExists !== "t") fail("Owned schema readback failed");
   // Apply the managed prerequisite on fresh installs and owned setup reruns.
   sql(password, readManagedForward(root, MANAGED_ALIGNMENT_FORWARD), ["-1"]);
+  sql(password, readManagedForward(root, "supabase/migrations/20261003110000_required_platform_policy_data.sql"), ["-1"]);
   const seeded = sql(password, "", ["-Atqc", "SELECT EXISTS (SELECT 1 FROM public.catalog_products WHERE slug = 'p5-neutral-refill')"]).trim();
   if (seeded === "f") sql(password, readFileSync(seed), ["-1"]);
   else if (seeded !== "t") fail("Owned seed readback failed");

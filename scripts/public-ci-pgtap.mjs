@@ -131,6 +131,9 @@ async function main() {
     ].join("\n");
     // This is the CLI's fixed disposable-development password, not a stored credential.
     must("docker", ["exec", "-e", "PGPASSWORD=postgres", "-i", `supabase_db_${projectId}`, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "supabase_admin", "-d", "postgres", "-1"], { input: sql });
+    // The CLI mounts only the tests directory. Preserve committed replay bytes
+    // there as includes; pg_prove discovers .sql/.pg tests, never .inc files.
+    for (const { name, contents } of migrations) writeFileSync(join(directory, "supabase/tests", `${name}.inc`), contents);
     console.log("Managed baseline replayed transactionally; running every shipped pgTAP test");
     // Explicit SET ROLE assertions still test the baseline's browser/runtime ACLs.
     const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${base + 2}/postgres`;

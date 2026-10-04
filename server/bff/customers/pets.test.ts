@@ -5,6 +5,16 @@ const { mockCreateClient } = vi.hoisted(() => ({ mockCreateClient: vi.fn() }));
 
 vi.mock("@supabase/supabase-js", () => ({ createClient: mockCreateClient }));
 
+const unitComposition = vi.hoisted(() => ({ enabled: true }));
+vi.mock("#deployment-route-policy", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#deployment-route-policy")>();
+  return {
+    ...actual,
+    enforceDeploymentRoutePolicy: (...args: Parameters<typeof actual.enforceDeploymentRoutePolicy>) =>
+      unitComposition.enabled || actual.enforceDeploymentRoutePolicy(...args),
+  };
+});
+
 const ENV_KEYS = [
   "COMMERCE_V2_W12_CUSTOMER_AUTH_UI",
   "COMMERCE_CUSTOMER_SELF_SERVICE_ENABLED",
@@ -63,6 +73,22 @@ describe("/api/bff/customers/pets route", () => {
     expect(mockCreateClient).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(500);
   });
+  it("public default refuses before constructing any client", async () => {
+    unitComposition.enabled = false;
+    try {
+      const { default: handler } = await import("./pets.js");
+      const res = createResponse();
+      await handler(request("PATCH"), res);
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        ok: false, error: expect.objectContaining({ details: expect.objectContaining({ reason: "adopter_policy_required" }) }),
+      }));
+      expect(mockCreateClient).not.toHaveBeenCalled();
+    } finally {
+      unitComposition.enabled = true;
+    }
+  });
+
 });
 
 function request(method: string): VercelRequest {
