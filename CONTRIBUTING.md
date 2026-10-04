@@ -219,6 +219,11 @@ tracks `openlup/openlup` in place of `origin`. The subscription profile build
 writes `dist-subscription/` and `dist-subscription-ssr/`, which `.gitignore`
 does not cover, so do not commit them.
 
+The required and full-root hosted test jobs fetch complete Git history so their
+neutrality CLI falsifiers can read the exact pinned prior fixture blobs. This
+preserves their selectors and refusal assertions while supplying the history
+those assertions require.
+
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
 evidence expiry and the two-cycle automatic repair/review budget. Separately
