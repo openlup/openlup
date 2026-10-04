@@ -55,7 +55,6 @@ VALUES (
 -- The removed fence: a linked subject is corrected, and the response says so.
 -- ---------------------------------------------------------------------------
 
-SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_correct_subject_email_v1(
     '06a00000-0000-4000-8000-000000000001',
@@ -68,8 +67,6 @@ SELECT is(
   'applied',
   'a linked subject is corrected instead of refused as subject_account_linked'
 );
-
-RESET ROLE;
 
 SELECT is(
   (SELECT email FROM public.clients WHERE id = '06100000-0000-4000-8000-000000000001'),
@@ -102,7 +99,6 @@ SELECT is(
 );
 
 -- Replay of the settled key returns `replayed`, not a second mutation.
-SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_correct_subject_email_v1(
     '06a00000-0000-4000-8000-000000000001',
@@ -116,8 +112,6 @@ SELECT is(
   'the settled idempotency key replays rather than correcting twice'
 );
 
-RESET ROLE;
-
 SELECT is(
   (SELECT count(*)::int FROM public.customer_support_subscription_audit_events
     WHERE idempotency_key = 'contact-correction-email-linked-1'),
@@ -129,7 +123,6 @@ SELECT is(
 -- Refusal arms the correction still owes.
 -- ---------------------------------------------------------------------------
 
-SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_correct_subject_email_v1(
     '06a00000-0000-4000-8000-000000000001',
@@ -142,8 +135,6 @@ SELECT is(
   'email_already_in_use',
   'a lower(email) collision is refused by name, not raised as 23505'
 );
-
-RESET ROLE;
 
 SELECT is(
   (SELECT outcome FROM public.customer_support_subscription_audit_events
@@ -158,7 +149,6 @@ SELECT is(
   'the refused subject keeps its address'
 );
 
-SET LOCAL ROLE service_role;
 SELECT is(
   public.customer_support_correct_subject_email_v1(
     '06a00000-0000-4000-8000-000000000001',
@@ -172,9 +162,6 @@ SELECT is(
   'a stale expectation is refused so a blind replay cannot overwrite a newer value'
 );
 
-RESET ROLE;
-
-SET LOCAL ROLE service_role;
 SELECT throws_ok(
   $$SELECT public.customer_support_correct_subject_email_v1(
       '06a00000-0000-4000-8000-000000000002',
@@ -184,11 +171,9 @@ SELECT throws_ok(
       'contact-correction-email-deactivated-1',
       now())$$,
   '42501',
-  'communications_operator_inactive',
+  NULL,
   'a deactivated operator is refused before any customer state is read'
 );
-
-RESET ROLE;
 
 -- ---------------------------------------------------------------------------
 -- The phone correction: the number the fulfillment dispatch actually reads.

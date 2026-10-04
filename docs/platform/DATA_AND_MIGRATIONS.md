@@ -70,10 +70,15 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ## Exact reviewed function forwards
 
-The managed runtime capability forward is shipped after its separate control
-approval. It changes no baseline bytes or function signature. Required service
-and authenticated column/helper permissions are explicit in that ordered file;
-no portable twin or live upgrade compatibility is claimed.
+The runtime admission class can bind a corrected forward that retires exactly
+eight legacy id-only browser policies. Membership reads would otherwise
+activate cross-customer access through those policies. The fixed policy names,
+tables, preceding statement hashes and ordered DROP statements are checked
+separately from the finite function and privilege pins. Customer-own policies
+and own membership reads stay outside the retirement set. Other policy
+operations refuse. This control must precede the corrected SQL comparison base
+and introduction parent; control approval alone installs no runtime permission
+or proves the later SQL suite green.
 
 Reviewed replacement is a separate admission class, not expand-only. The fixed
 [allowlist](../../config/reviewed-platform-forwards.json) pins three managed
@@ -202,15 +207,6 @@ forward establishes neither installation-path parity nor the complete
 late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
-
-Runtime capability regressions execute operator and support gates as
-`service_role`, including exact inactive-operator and machine-actor refusals,
-missing subjects and prohibited unrelated column access. Two independent
-service transactions prove renewal selection skips locked normal and retry rows
-and admits them after release. The database owner only creates fixtures and
-observes refused mutations. A proposed SQL overlay in a disposable database is
-local behavior evidence; committed-chain replay and delivery checks remain
-separate requirements.
 
 
 Every production-shaped schema change follows this order:

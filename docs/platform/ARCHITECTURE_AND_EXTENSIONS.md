@@ -16,8 +16,6 @@ assets or business policy to the platform.
 
 ## Runtime boundaries
 
-<!-- openlup-doc-impact {"unit": "browser", "digest": "sha256-b68539ca9e5cdab8feab5ac48dfc0db2126a646411197ed5c12121700b42b506", "reason": "The changed source is a static renewal SQL boundary test. It now requires both existing SKIP LOCKED clauses and accepts CREATE OR REPLACE. No browser imports, application composition, extension seam or production boundary changes in this source delta."} -->
-
 Browser-facing modules own portable types, validation, clients, and pure logic.
 Server modules own HTTP composition, use cases, authorization decisions, and
 persistence ports. Infrastructure modules translate provider protocols and
@@ -51,6 +49,7 @@ extension-data forwarding remain available to adopters. The rule has no claim
 of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
+<!-- openlup-doc-impact {"unit":"browser","digest":"sha256-b996a227ee733246f1524edd5db6cbc7f06f015de64c978b0ec71549c791b359","reason":"Test-only changes select current schema definitions and explicit ACL statements instead of absent historical forwards, retain current import and UI boundary scans, use neutral presentation fixtures, and withdraw unmounted legacy-view scenarios. No production import, browser contract or runtime composition changes; active subscription modal behavior and callable server/data guarantees remain separate obligations."} -->
 
 <!-- openlup-doc-impact {"unit":"server","digest":"sha256-677c8943f9ff430a5c5c104f7b6414a5f70c9cb0f35013a78e4b4b423776d8f1","reason":"Server-library comment delta. The admin-domain kit, feature flag, observability and service comments name downstream files by role or by their path in this tree, the rate limiter test title names its callers generically, and the payment adapter registry comment names an adapter folder generically. No server boundary described here changes."} -->
 

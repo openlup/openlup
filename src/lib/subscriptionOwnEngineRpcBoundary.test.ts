@@ -59,15 +59,8 @@ describe("subscription own-engine RPC boundary", () => {
   });
 
   it("keeps renewal due selection from creating duplicate open cycles", () => {
-    expect(renewalDue).toMatch(/CREATE (?:OR REPLACE )?FUNCTION public\.subscription_list_due_for_renewal/u);
-    const retryLane = renewalDue.split("WITH retry_due AS (")[1]!.split("normal_due AS (")[0]!;
-    const normalLane = renewalDue.split("normal_due AS (")[1]!.split("SELECT *\n      FROM (")[0]!;
-    for (const lane of [retryLane, normalLane]) {
-      expect(lane.match(/FOR UPDATE OF s SKIP LOCKED/gu)).toHaveLength(1);
-      expect(lane).toMatch(/LIMIT p_limit\s+FOR UPDATE OF s SKIP LOCKED/u);
-    }
     for (const required of [
-
+      "CREATE FUNCTION public.subscription_list_due_for_renewal",
       "c.status = 'retry_scheduled'",
       "c.next_retry_at <= p_as_of",
       // The open-cycle guard, and it is strictly wider than the retry/pending pair

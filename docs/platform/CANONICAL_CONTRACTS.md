@@ -153,10 +153,14 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
-The publication catalogue now includes the ordered runtime capability forward
-and its actual-role and renewal-lock witnesses. The derived source contract
-binds that inventory and its classifications; it does not grant permissions or
-change package APIs. Runtime authority comes from the separately admitted SQL.
+The runtime forward registry may pin exactly eight legacy browser-policy
+retirements alongside its fixed function and privilege bindings. Retirement
+checks exact names, tables, preceding statement hashes and ordered DROP
+statements; it does not admit arbitrary RLS changes. The approval must exist
+unchanged at the feature comparison base and the forward introduction parent.
+Control approval installs no database permission and cannot stand in for the
+corrected forward's actual-role tests.
+
 
 The optional runtime-forward registry is a finite security admission: it pins
 one file, five unchanged existing function identities and ordered exact grants.

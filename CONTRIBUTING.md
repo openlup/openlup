@@ -80,6 +80,14 @@ handling.
 
 ## Development-preview checks
 
+The bounded SQL RLS recovery uses existing owner cycles only: a separately
+reviewed contraction control precedes the corrected managed forward. Its exact
+regroup preserves every previous report and finding, keeps the automatic limit
+at two and the owner ceiling at five, and requires fresh candidate-bound owner
+decisions plus two full independent reviews for each sensitive phase. It
+grants no general scope extension, policy operation or publication authority.
+
+
 The reviewed runtime-forward checker admits one exact pinned SQL file and a
 fixed set of current capabilities. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,
@@ -641,8 +649,8 @@ release-bump pull request: the bump moves those notes into the version section
 and opens a fresh empty `Unreleased` section.
 
 The [diagnostic debt record](docs/platform/plans/public-ci-known-red.md#current-checkpoint) separates the measured current checkpoint from archived failures.
-It records closure of the twelve SQL files and keeps earlier failures archived;
-full-root and managed SQL diagnostics are expected green. Matching named debt is not
+It names the twelve remaining SQL files, reasons, unexecuted obligations and
+triage owner; the full-root checkpoint is green. Matching named debt is not
 permission to ignore a red run. When triaging a change, compare fresh
 Vitest failure identities and per-file assertion counts, and pgTAP file summaries,
 with the exact PR base, normalizing log timestamps and ANSI formatting first.

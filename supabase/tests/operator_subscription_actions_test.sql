@@ -813,8 +813,6 @@ INSERT INTO public.admin_users (id, email, role, is_machine_actor) VALUES
   -- quietly reversed into a second axis.
   ('05b00000-0000-4000-8000-000000000004', 'operator-axis-machine@example.invalid', 'admin', true);
 
-SET LOCAL ROLE service_role;
-
 SELECT is(
   public.communications_operator_is_active('05b00000-0000-4000-8000-000000000001'),
   true,
@@ -841,7 +839,7 @@ SELECT is(
 SELECT throws_ok(
   $$SELECT public.communications_require_active_operator('05b00000-0000-4000-8000-000000000003')$$,
   '42501',
-  'communications_operator_inactive',
+  NULL,
   'the distributor is refused by the fence, not merely absent from the predicate'
 );
 
@@ -854,7 +852,7 @@ SELECT is(
 SELECT throws_ok(
   $$SELECT public.communications_require_active_operator('05b00000-0000-4000-8000-000000000009')$$,
   '42501',
-  'communications_operator_inactive',
+  NULL,
   'an unknown principal keeps raising 42501, the code the routes map to FORBIDDEN'
 );
 
@@ -867,7 +865,7 @@ SELECT is(
 SELECT throws_ok(
   $$SELECT public.communications_require_active_operator(NULL)$$,
   '42501',
-  'communications_operator_inactive',
+  NULL,
   'a NULL principal is refused by the fence'
 );
 
@@ -911,7 +909,9 @@ SELECT is(
   'authenticated still holds no EXECUTE on the gate'
 );
 
--- All gate arms above execute as service_role; keep the actual-caller witness.
+-- Everything above ran as the superuser owner, which reads `admin_users` regardless of
+-- row-level security. The gate is invoker-rights, so the assertion that matters is
+-- whether the role the runtime actually connects as can read the roster through it.
 SET LOCAL ROLE service_role;
 
 SELECT is(
