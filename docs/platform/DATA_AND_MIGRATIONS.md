@@ -70,6 +70,11 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ## Exact reviewed function forwards
 
+The managed runtime capability forward is shipped after its separate control
+approval. It changes no baseline bytes or function signature. Required service
+and authenticated column/helper permissions are explicit in that ordered file;
+no portable twin or live upgrade compatibility is claimed.
+
 Reviewed replacement is a separate admission class, not expand-only. The fixed
 [allowlist](../../config/reviewed-platform-forwards.json) pins three managed
 forward paths and their whole-file SHA-256 hashes in separate replacement and
@@ -197,6 +202,15 @@ forward establishes neither installation-path parity nor the complete
 late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
+
+Runtime capability regressions execute operator and support gates as
+`service_role`, including exact inactive-operator and machine-actor refusals,
+missing subjects and prohibited unrelated column access. Two independent
+service transactions prove renewal selection skips locked normal and retry rows
+and admits them after release. The database owner only creates fixtures and
+observes refused mutations. A proposed SQL overlay in a disposable database is
+local behavior evidence; committed-chain replay and delivery checks remain
+separate requirements.
 
 
 Every production-shaped schema change follows this order:

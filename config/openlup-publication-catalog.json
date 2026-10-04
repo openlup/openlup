@@ -17710,6 +17710,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261004120000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -18258,6 +18262,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/runtime_capability_boundary_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/shipment_dispatched_state_based_test.sql",
       "class": "public-output"
     },
@@ -18423,6 +18431,10 @@
     },
     {
       "path": "supabase/tests/subscription_renewal_due_as_of_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/subscription_renewal_due_lock_runtime_test.sql",
       "class": "public-output"
     },
     {
