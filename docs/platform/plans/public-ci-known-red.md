@@ -1,6 +1,6 @@
 # Public CI diagnostic obligations
 
-Status: measured development-preview checkpoint with twelve unresolved SQL obligations. Earlier measurements are archived below; refresh current claims from exact-source execution.
+Status: the managed runtime repair closes the twelve SQL obligations recorded below. Historical measurements are archived; both unrestricted diagnostics must remain visible and new failures require triage.
 Audience: contributors repairing published tests and runtime contracts.
 
 Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-up family identifies repair scope, not an assigned person's commitment. These records introduce no skip, exception, assertion budget or waiver. Failed behavior and ACL checks are unresolved defects or contract mismatches; calling a test fixture incomplete does not prove the runtime safe.
@@ -8,6 +8,44 @@ Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-
 Retired test rows below link to their archived source at the repair base. These dated results remain historical evidence; current test scope follows [contribution checks](../../../CONTRIBUTING.md#development-preview-checks).
 
 ## Current checkpoint
+
+The managed forward `20261004123000_runtime_capability_rls_closure.sql` closes the twelve
+failing or aborted SQL files from the earlier checkpoint. It repairs the
+installed trigram operator schema, narrows unnecessary client/payment-method
+projections and admits only the existing callers' required columns and helpers.
+The separately approved control must precede this forward's comparison base
+and introduction parent. The immutable baseline remains unchanged.
+
+The complete SQL suite retains all 205 existing files and adds two capability
+and renewal-lock regressions: 207 files and 4,626 assertions. The repaired support/operator
+invoker paths execute as `service_role`; authenticated profile proofs retain
+RLS isolation. No existing SQL assertion was removed or skipped. Those runtime
+witnesses use the owner only for fixtures and state observation. Supplementary
+owner-only characterization is not proof of service execution, and test-only
+application grants do not supply missing runtime permissions. Replaying the committed baseline and ordered forwards into a fresh owned database preserves this result.
+
+Unrestricted npm verification must pass without new skips. The one skipped
+file and two skipped cases described in the archived checkpoint are unchanged.
+Local committed-chain verification and hosted source/group/main checks are
+separate evidence; the delivery PR records the exact commit and CI runs. A
+proposed SQL overlay alone does not prove the committed chain or hosted CI.
+
+Direct service-role UPDATE admission is real table-column permission, usable
+outside operator RPC gates. In particular `subscriptions.updated_at` can be
+written directly; it is the single-column capability required to preserve both
+existing `FOR UPDATE OF s SKIP LOCKED` clauses. Eight legacy id-only browser policies are retired before membership reads can
+activate cross-customer access. Customer-own policies and own membership reads
+remain; actual distributor, administrator, machine, revoked and customer roles
+prove the boundary. Browser writes, anonymous permissions and operator RPC
+execution do not expand. Existing RLS, human
+fences, idempotency, refusals and row/advisory locks remain required.
+
+A green diagnostic checkpoint does not establish production safety, stable
+framework readiness or historical migration compatibility. A future red
+`test-full` or `pgtap` result is a new failure to classify, not debt waived by the
+archived inventory below.
+
+## Archived merged checkpoint: twelve SQL obligations
 
 Measurement date: 2026-10-04. [PR #130](https://github.com/openlup/openlup/pull/130) was squash-merged as
 `e7f352bd788c6f2557316c3abde5e000772d583d`. Its comparison base was
