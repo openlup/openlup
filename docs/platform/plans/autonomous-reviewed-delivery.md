@@ -300,7 +300,7 @@ For an explicit owner continuation after exhaustion, `prepare` accepts
 of `JSON.stringify` of the preserved request and actual candidate respectively;
 they are computed evidence, not owner quotations. Record the actual fresh human
 decision in `ownerDecision`. This process evidence is not an authenticated owner
-signature. Cycle 3 requires a fresh decision. One final cycle 4 requires a
+signature. Cycle 3 requires a fresh decision. Cycle 4 requires a
 separate fresh decision bound to the exact third request and next candidate.
 Both require complete preserved lineage, actual ancestor delta and two fresh
 full reviews. Cycle 3 retains unchanged intent and author. Cycle 4 has one
@@ -314,8 +314,19 @@ digests independently bind the previous request and actual candidate. Neither
 decision can be reused for a changed request or candidate. The automatic limit
 remains two. Wrong bindings, early use, missing, extra or replacement scope
 paths, changed criteria, risk, roles or author, missing history, reduced
-coverage and a fifth round refuse. An unchanged repeat retains the manual round
+coverage and an unscoped fifth round refuse. An unchanged repeat retains the manual round
 and its original expiry; expired evidence still blocks delivery.
+
+A separately approved checkout-history recovery may use cycle 5 only with
+`regroup` adding exactly `.github/workflows/published-tree-ci.yml`. Its current
+obligation is to supply the pinned prior Git objects to the required and full
+root test jobs; this does not authorize weakening their selectors or assertions.
+The prior fourth request, both intents and actual candidate need new decision
+bindings. Criteria, risk, required roles, author, every prior scope path and all
+history/findings remain. Two fresh full reviews cover the complete source and
+ancestor integration. An unchanged-intent fifth, any other or additional scope
+path, reuse of the fourth decision and a sixth cycle refuse. This is one bounded
+recovery of the hosted checkout mismatch, not a reset of the automatic budget.
 
 The supervisor launches fresh native agents and uses their actual execution IDs
 and complete structured results. `agentReviewReportBinding(request)` supplies

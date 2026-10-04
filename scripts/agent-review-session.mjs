@@ -129,7 +129,7 @@ function validateCandidate(candidate) {
 }
 const REPAIR_RISKS = ['ordinary', 'security', 'control', 'schema', 'instructions', 'unknown'];
 const MAX_REPAIRS = 2;
-const MAX_OWNER_CYCLES = MAX_REPAIRS + 2;
+const MAX_OWNER_CYCLES = MAX_REPAIRS + 3;
 class NeedsRescope extends Error {}
 function rescope(value, message) { if (!value) throw new NeedsRescope(`Agent review needs rescope: ${message}`); }
 // Explicit owner regrouping is process evidence, not an authenticated owner signature.
@@ -149,12 +149,14 @@ function validateOwnerContinuation(approval) {
   demand(DIGEST.test(approval.priorRequestDigest) && DIGEST.test(approval.candidateDigest), 'owner continuation digest is invalid');
   text(approval.ownerDecision, 'owner continuation decision', 4096);
 }
-function assertOwnerContinuation(approval, previous, request, regroup) {
+function assertOwnerContinuation(approval, previous, request, regroup, cycle) {
   validateOwnerContinuation(approval);
   demand(approval.priorRequestDigest === digest(previous) && approval.candidateDigest === digest(request.candidate), 'owner continuation differs from exact previous request or candidate');
   const additions = request.intent.scope.filter(path => !previous.intent.scope.includes(path)).sort();
-  const scopeOnly = regroup && equal(additions, ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts']) && equal(previous.intent.criteria, request.intent.criteria) && previous.intent.risk === request.intent.risk && equal(previous.intent.requiredRoles, request.intent.requiredRoles);
-  demand((equal(previous.intent, request.intent) || scopeOnly) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; scope expansion is limited to the two consumer-check paths');
+  const consumerScope = cycle !== 5 && equal(additions, ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts']);
+  const checkoutScope = cycle === 5 && equal(additions, ['.github/workflows/published-tree-ci.yml']);
+  const scopeOnly = regroup && (consumerScope || checkoutScope) && equal(previous.intent.criteria, request.intent.criteria) && previous.intent.risk === request.intent.risk && equal(previous.intent.requiredRoles, request.intent.requiredRoles);
+  demand((cycle !== 5 && equal(previous.intent, request.intent) || scopeOnly) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
 }
 function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
@@ -207,8 +209,8 @@ function validateRequest(request) {
     demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= MAX_OWNER_CYCLES && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
     if (Object.hasOwn(continuation, 'ownerContinuation')) {
       validateOwnerContinuation(continuation.ownerContinuation);
-      demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || continuation.cycle === MAX_OWNER_CYCLES) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact third or fourth full candidate; scope expansion is fourth-cycle only');
-    } else demand(continuation.cycle <= MAX_REPAIRS, 'third or fourth cycle requires explicit owner continuation');
+      demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || [4, 5].includes(continuation.cycle)) && (continuation.cycle !== 5 || continuation.regroup !== undefined) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact full candidate; scope expansion is fourth-cycle consumer or fifth-cycle checkout only');
+    } else demand(continuation.cycle <= MAX_REPAIRS, 'third, fourth or checkout fifth cycle requires explicit owner continuation');
     paths(continuation.deltaPaths, continuation.mode === 'full'); demand(continuation.mode === 'full' || continuation.deltaPaths.every(path => request.intent.scope.includes(path)), 'repair delta exceeds approved scope');
     demand(REPAIR_RISKS.includes(continuation.repairRisk), 'repair risk is invalid');
     demand(Array.isArray(continuation.findings) && continuation.findings.length <= 384, 'finding cards exceed bounds');
@@ -307,7 +309,7 @@ function validateLineage(state, time, maxAgeMs) {
       demand(request.version === 2 && request.continuation.cycle === index && request.continuation.priorDigest === digest(history.slice(0, index)), 'repair lineage digest or cycle differs');
       demand(equal(request.continuation.findings, unresolvedCards(history.slice(0, index))), 'material finding cards were erased or altered');
       if (request.continuation.regroup) assertRegroup(request.continuation.regroup, previous, request);
-      if (request.continuation.ownerContinuation) assertOwnerContinuation(request.continuation.ownerContinuation, previous, request, request.continuation.regroup);
+      if (request.continuation.ownerContinuation) assertOwnerContinuation(request.continuation.ownerContinuation, previous, request, request.continuation.regroup, request.continuation.cycle);
       demand((equal(request.intent, previous.intent) || request.continuation.regroup) && request.authorSessionId === previous.authorSessionId && (request.continuation.mode === 'full' || request.candidate.base === previous.candidate.base) && request.candidate.clean && (request.continuation.mode === 'full' || previous.candidate.clean) && (request.continuation.mode === 'full' || request.candidate.head !== previous.candidate.head && request.candidate.workingDigest !== previous.candidate.workingDigest) && request.preparedAt >= previous.preparedAt && history[index - 1].reports.every(report => report.completedAt <= request.preparedAt), 'repair criteria, scope, base, or committed lineage differs');
     }
     validateRound(request, round.reports, { complete: index < history.length && (index + 1 < history.length ? history[index + 1].request : state.request).continuation.mode !== 'full', time, maxAgeMs: index < anchor ? Infinity : maxAgeMs, identities });
@@ -342,8 +344,8 @@ export async function prepareAgentReviewState({ previous, repairRisk = 'unknown'
   if (!intentChanged && regroup !== undefined) demand(preservedRegroup, 'owner regroup is not the preserved transition');
   const preservedOwnerContinuation = ownerContinuation !== undefined && equal(ownerContinuation, previous.request.continuation?.ownerContinuation) && equal(previous.request.candidate, request.candidate);
   if (ownerContinuation !== undefined && !preservedOwnerContinuation) {
-    assertOwnerContinuation(ownerContinuation, previous.request, request, intentChanged ? regroup : undefined);
-    demand((previous.history?.length ?? 0) >= MAX_REPAIRS && (previous.history?.length ?? 0) < MAX_OWNER_CYCLES && fullRefresh && (regroup === undefined || intentChanged && (previous.history?.length ?? 0) === MAX_OWNER_CYCLES - 1), 'owner continuation requires exhausted automatic budget, a remaining owner cycle and explicit full refresh');
+    assertOwnerContinuation(ownerContinuation, previous.request, request, intentChanged ? regroup : undefined, (previous.history?.length ?? 0) + 1);
+    demand((previous.history?.length ?? 0) >= MAX_REPAIRS && (previous.history?.length ?? 0) < MAX_OWNER_CYCLES && fullRefresh && (regroup === undefined || intentChanged && [3, 4].includes(previous.history?.length ?? 0)), 'owner continuation requires exhausted automatic budget, a remaining owner cycle and explicit full refresh');
   }
   if (!intentChanged && equal(previous.request.candidate, request.candidate)) {
     if (preservedOwnerContinuation) return structuredClone(previous);
