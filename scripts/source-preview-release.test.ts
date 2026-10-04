@@ -338,17 +338,26 @@ describe("exact reviewed replacement admission in both gates", () => {
   const baseline = functions.map((signature) => definition(signature, 1)).join("\n");
   const paths = ["supabase/migrations/20261001000001_readiness.sql", "supabase/migrations/20261001000002_price_setup.sql", "supabase/migrations/20261001000003_starter.sql"];
   const sql = [definition(functions[0]!, 2, true), definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 2) + "\n" + definition("public.catalog_price_setup_apply(p_command text, p_fingerprint text)", 2), functions.slice(1).map((signature) => definition(signature, 2, true)).join("\n")];
-  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null) {
+  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null, runtime = false) {
     const existing = definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 1);
-    const selectedBaseline = history === "baseline" ? `${baseline}\n${existing}` : baseline;
+    const runtimeFunctions = ["public.admin_clients_search_v3(p_query text, p_page integer, p_page_size integer, p_stage text)", "public.subscription_list_due_for_renewal(p_limit integer, p_as_of timestamp with time zone DEFAULT now())", "public.customer_support_absorb_lead_v1(p_operator uuid, p_customer uuid, p_lead uuid, p_expected text, p_key text, p_now timestamp with time zone)", "public.marketing_rehome_client_lead_v1(p_client uuid, p_now timestamp with time zone DEFAULT NULL::timestamp with time zone)", "public.customer_support_correct_subject_email_v1(p_operator uuid, p_subject uuid, p_expected text, p_new text, p_key text, p_now timestamp with time zone)"];
+    const runtimeBaseline = runtime ? runtimeFunctions.map((signature) => definition(signature, 1)).join("\n") : "";
+    const selectedBaseline = (history === "baseline" ? `${baseline}\n${existing}` : baseline) + (runtime ? `\n${runtimeBaseline}` : "");
     const sample = syntheticRelease({ extraFiles: { [MANAGED_BASELINE]: selectedBaseline, ...(history === "forward" ? { "supabase/migrations/20261001000000_existing_function.sql": existing } : {}) } });
-    const prior = reviewedFunctionDefinitions(Buffer.from(baseline)), bytes = [...sql];
+    const prior = reviewedFunctionDefinitions(Buffer.from(`${baseline}\n${runtimeBaseline}`)), bytes = [...sql];
     const forwards = paths.map((path, index) => ({ path, sha256: sqlSha256(bytes[index]!), functions: [...reviewedFunctionDefinitions(Buffer.from(bytes[index]!))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: prior.get(signature) ?? null })) }));
     const registry: ReviewedForwardRegistry = { schemaVersion: 1, baselineSha256: sqlSha256(selectedBaseline), replacementForwards: [forwards[0]!, forwards[2]!], creationForwards: [forwards[1]!] };
+    const runtimePath = "supabase/migrations/20261001000004_runtime_readers.sql";
+    if (runtime) {
+      const privilege = "GRANT SELECT (id,membership_state,role) ON public.admin_users TO service_role;";
+      bytes.push(runtimeFunctions.map((signature) => definition(signature, 2, true)).join("\n") + `\n${privilege}`);
+      registry.runtimeForwards = [{ path: runtimePath, sha256: sqlSha256(bytes[3]!), functions: [...reviewedFunctionDefinitions(Buffer.from(bytes[3]!))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: prior.get(signature)! })), privileges: [privilege] }];
+    }
     edit?.(registry, bytes);
     sample.apply({ [REVIEWED_FORWARD_PATH]: json(registry) });
     const approval = sample.commit("Separate reviewed control");
     const change = Object.fromEntries(paths.map((path, index) => [path, bytes[index]!]));
+    if (runtime) change[runtimePath] = bytes[3]!;
     return { ...sample, approval, registry, change };
   }
   const gates = (sample: ReturnType<typeof fixture>, head: string) => [
@@ -406,6 +415,166 @@ describe("exact reviewed replacement admission in both gates", () => {
     const sample = fixture((registry, bytes) => { bytes[0] += `\n${addition}`; registry.replacementForwards[0]!.sha256 = sqlSha256(bytes[0]!); });
     try {
       sample.apply(sample.change); const head = sample.commit("Unsupported statement");
+      for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
+    } finally { sample.cleanup(); }
+  });
+  it("admits the one exact runtime capability forward after separate approval in both gates", () => {
+    const sample = fixture((registry, bytes) => {
+      const forward = registry.runtimeForwards![0]!;
+      const privileges = [
+        "GRANT EXECUTE ON FUNCTION public.record_admin_audit_event(uuid,text,text,text,text,jsonb,jsonb,text,text,uuid,text) TO service_role;",
+        "GRANT EXECUTE ON FUNCTION public.subscription_current_template_snapshot(uuid) TO service_role;",
+        "GRANT SELECT (principal_id, active) ON public.platform_communication_operators TO service_role;",
+        "GRANT SELECT (status, template_slug) ON public.email_sends TO service_role;",
+        "GRANT SELECT (event_type) ON public.email_events TO service_role;",
+        "GRANT SELECT (id, email, first_name, last_name, phone, identity_kind, lifecycle_stage, created_at, updated_at, acquisition_source, auth_user_id, metadata, marketing_contact_id) ON public.clients TO service_role;",
+        "GRANT SELECT (id, client_id, order_number, status, created_at, updated_at) ON public.commerce_orders TO service_role;",
+        "GRANT SELECT (id, client_id, updated_at, cadence_days, template_version, currency, region_code, payment_method_kind, status, next_cycle_at) ON public.subscriptions TO service_role;",
+        "GRANT SELECT (subscription_id, status, next_retry_at, scheduled_at, renewal_quarantined_until) ON public.subscription_cycles TO service_role;",
+        "GRANT SELECT (subscription_id, provider_kind, provider_customer_ref, provider_method_ref, method_kind, status, active, expires_at, client_id, updated_at, created_at) ON public.commerce_payment_method_refs TO service_role;",
+        "GRANT SELECT (id, slug, status, name, description, ingredients, allergens, marketing_content, primary_sku_id) ON public.catalog_products TO service_role;",
+        "GRANT SELECT (id, product_id, sku, title, pet_type, status, net_weight_g, format_code, unit_form_code, is_addon, sellable_standalone, sellable_in_subscription, requires_pet_profile, min_order_qty) ON public.catalog_skus TO service_role;",
+        "GRANT SELECT (subscription_id, event_type, occurred_at) ON public.subscription_events TO service_role;",
+        "GRANT UPDATE (email, identity_kind, marketing_contact_id, metadata, updated_at) ON public.clients TO service_role;",
+        "GRANT SELECT (client_id) ON public.commerce_carts TO service_role;",
+        "GRANT SELECT (client_id) ON public.commerce_checkout_sessions TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_delivery_preferences TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_external_refs TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_orderer_profiles TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_payment_preferences TO service_role;",
+        "GRANT SELECT (client_id) ON public.pets TO service_role;",
+        "GRANT SELECT (client_id) ON public.promotion_code_claims TO service_role;",
+        "GRANT SELECT (client_id) ON public.promotion_redemptions TO service_role;",
+        "GRANT SELECT (client_id, consent_type, captured_at) ON public.client_consents TO service_role;",
+        "GRANT SELECT (client_id) ON public.client_source_links TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_personalization TO service_role;",
+        "GRANT UPDATE (client_id) ON public.client_consents TO service_role;",
+        "GRANT UPDATE (client_id) ON public.client_source_links TO service_role;",
+        "GRANT UPDATE (client_id) ON public.customer_personalization TO service_role;",
+        "GRANT UPDATE (updated_at) ON public.subscriptions TO service_role;",
+        "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_text(text) TO service_role;",
+        "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_digits(text) TO service_role;",
+        "GRANT SELECT (id, auth_user_id, email, first_name, last_name, phone, lifecycle_stage) ON public.clients TO authenticated;",
+        "GRANT SELECT (id, role, membership_state, email, is_machine_actor, created_at) ON public.admin_users TO authenticated;",
+        "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_text(text) TO authenticated;",
+        "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_digits(text) TO authenticated;",
+
+      ];
+      bytes[3] += `\n${privileges.join("\n")}`;
+      forward.privileges.push(...privileges);
+      forward.sha256 = sqlSha256(bytes[3]!);
+    }, null, true);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Runtime reader feature");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
+  });
+  it("refuses runtime control introduced with SQL across a later release commit", () => {
+    const sample = fixture(undefined, null, true);
+    try {
+      sample.run(["reset", "--hard", sample.rootCommit]);
+      sample.apply({ ...sample.change, [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.commit("Self-authorized runtime feature"); const head = sample.commit("Later unrelated runtime commit");
+      expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+      expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+    } finally { sample.cleanup(); }
+  });
+  it("allows a tagged runtime body mentioning attribute keywords without treating them as attributes", () => {
+    const sample = fixture((registry, bytes) => {
+      bytes[3] = bytes[3]!.replace(/SELECT '2'::jsonb;/gu, "SELECT jsonb_build_object('note', 'SECURITY DEFINER SET search_path STABLE');").replace(/\$\$/gu, "$reader$");
+      const forward = registry.runtimeForwards![0]!;
+      forward.sha256 = sqlSha256(bytes[3]!);
+      const definitions = reviewedFunctionDefinitions(Buffer.from(bytes[3]!));
+      for (const binding of forward.functions) binding.afterSha256 = definitions.get(binding.signature)!;
+    }, null, true);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Runtime body literals");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
+  });
+  it.each([
+    "same feature approval", "byte drift", "prior function drift", "header drift", "trailing SECURITY DEFINER", "trailing SET search_path", "trailing STABLE", "tagged trailing SECURITY DEFINER", "duplicate runtime forward", "duplicate privilege", "duplicate update capability", "wrong runtime function", "unknown column", "missing privilege pin", "null prior definition", "duplicate runtime signature",
+    "GRANT SELECT (id) ON public.unrelated TO service_role;",
+    "GRANT SELECT ON public.admin_users TO service_role;",
+    "GRANT SELECT (membership_provenance) ON public.admin_users TO authenticated;",
+    "GRANT SELECT (id) ON public.admin_users TO anon;",
+    "GRANT SELECT (id) ON public.admin_users TO PUBLIC;",
+    "GRANT UPDATE (id) ON public.subscriptions TO service_role;",
+    "GRANT INSERT ON public.admin_users TO service_role;",
+    "GRANT ALL ON public.admin_users TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.admin_clients_search_v3(text,integer,integer,text) TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.unrelated() TO service_role;",
+    "UPDATE public.admin_users SET role = 'admin';",
+    "CREATE TABLE public.unrelated (id integer);",
+    "CREATE POLICY unrelated ON public.admin_users USING (true);",
+    "REVOKE SELECT (id) ON public.admin_users FROM service_role;",
+    "GRANT SELECT (id,id) ON public.admin_users TO service_role;",
+    "GRANT SELECT (id) ON public.admin_users TO service_role;",
+    "GRANT SELECT (current_document_revision_id) ON public.catalog_products TO service_role;",
+    "GRANT SELECT (kcal_per_unit) ON public.catalog_skus TO service_role;",
+    "GRANT SELECT (payload) ON public.subscription_events TO service_role;",
+    "GRANT SELECT (country) ON public.clients TO service_role;",
+    "GRANT UPDATE (auth_user_id) ON public.clients TO service_role;",
+    "GRANT UPDATE (id) ON public.subscriptions TO service_role;",
+    "GRANT UPDATE (status) ON public.subscriptions TO service_role;",
+    "GRANT UPDATE (next_cycle_at) ON public.subscriptions TO service_role;",
+    "GRANT UPDATE (updated_at) ON public.subscriptions TO authenticated;",
+    "GRANT UPDATE ON public.subscriptions TO service_role;",
+    "GRANT UPDATE (email) ON public.client_consents TO service_role;",
+    "GRANT UPDATE (client_id) ON public.commerce_carts TO service_role;",
+    "GRANT UPDATE (client_id) ON public.client_source_links TO authenticated;",
+    "GRANT UPDATE (client_id) ON public.client_source_links TO PUBLIC;",
+    "GRANT UPDATE ON public.clients TO service_role;",
+    "GRANT SELECT (metadata) ON public.clients TO authenticated;",
+    "GRANT SELECT (membership_revoked_by) ON public.admin_users TO authenticated;",
+    "GRANT SELECT (id) ON public.admin_users TO anon;",
+    "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_alnum(text) TO authenticated;",
+
+    "GRANT SELECT ON public.catalog_products TO service_role;",
+    "GRANT INSERT (client_id) ON public.client_consents TO service_role;",
+    "GRANT DELETE ON public.clients TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.customer_support_absorb_lead_v1(uuid,uuid,uuid,text,text,timestamp with time zone) TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.admin_set_subscription_band_percent(numeric) TO service_role;",
+    "GRANT EXECUTE ON FUNCTION public.subscription_current_template_snapshot(uuid) TO authenticated;",
+    "SELECT 1;",
+  ])("refuses runtime admission %s in both gates even when independently repinned", (probe) => {
+    const sample = fixture((registry, bytes) => {
+      const forward = registry.runtimeForwards![0]!;
+      if (probe === "prior function drift") forward.functions[0]!.beforeSha256 = "0".repeat(64);
+      else if (probe === "null prior definition") forward.functions[0]!.beforeSha256 = null;
+      else if (probe === "duplicate runtime signature") forward.functions[1] = { ...forward.functions[0]! };
+      else if (probe === "duplicate runtime forward") registry.runtimeForwards!.push(forward);
+      else if (probe === "duplicate privilege") { bytes[3] += `\n${forward.privileges[0]}`; forward.privileges.push(forward.privileges[0]!); }
+      else if (probe === "duplicate update capability") {
+        const grants = ["GRANT UPDATE (email,metadata) ON public.clients TO service_role;", "GRANT UPDATE (metadata) ON public.clients TO service_role;"];
+        bytes[3] += `\n${grants.join("\n")}`; forward.privileges.push(...grants);
+      }
+      else if (probe === "wrong runtime function") {
+        bytes[3] = bytes[3]!.replace(/public\.admin_clients_search_v3/gu, "public.unrelated_reader_v1");
+        forward.functions[0]!.signature = "public.unrelated_reader_v1(text,integer,integer,text)";
+      }
+      else if (probe === "header drift") { bytes[3] = bytes[3]!.replace("LANGUAGE sql", "LANGUAGE sql SECURITY DEFINER"); }
+      else if (probe.startsWith("trailing ") || probe === "tagged trailing SECURITY DEFINER") {
+        const attribute = probe.endsWith("SET search_path") ? "SET search_path TO public" : probe.endsWith("STABLE") ? "STABLE" : "SECURITY DEFINER";
+        bytes[3] = bytes[3]!.replace("$$;", () => `$$ ${attribute};`);
+        if (probe.startsWith("tagged ")) bytes[3] = bytes[3]!.replace(/\$\$/gu, "$reader$");
+      }
+      else if (probe === "unknown column") { bytes[3] += "\nGRANT SELECT (secret) ON public.admin_users TO service_role;"; forward.privileges.push("GRANT SELECT (secret) ON public.admin_users TO service_role;"); }
+      else if (probe === "missing privilege pin") forward.privileges.push("GRANT SELECT (id) ON public.clients TO service_role;");
+      else if (probe.includes(";")) { bytes[3] += `\n${probe}`; forward.privileges.push(probe); }
+      forward.sha256 = sqlSha256(bytes[3]!);
+      const definitions = reviewedFunctionDefinitions(Buffer.from(bytes[3]!));
+      for (const binding of forward.functions) binding.afterSha256 = definitions.get(binding.signature)!;
+    }, null, true);
+    try {
+      const path = sample.registry.runtimeForwards![0]!.path;
+      if (probe === "byte drift") sample.change[path] += "\n";
+      if (probe === "same feature approval") {
+        sample.change[path] += "\n";
+        sample.registry.runtimeForwards![0]!.sha256 = sqlSha256(sample.change[path]!);
+        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
+      }
+      sample.apply(sample.change); const head = sample.commit("Refused runtime feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
   });
@@ -508,13 +677,9 @@ describe("descendant source release check", () => {
     try { expect(() => sample.release(change, seal)).toThrow(expected); } finally { sample.cleanup(); }
   });
 
-  it.each([
-    ["alignment", MANAGED_ALIGNMENT_FORWARD],
-    ["required policy data", "supabase/migrations/20261003110000_required_platform_policy_data.sql"],
-  ])("admits the real managed %s forward", (_label, path) => {
+  it("admits the real managed alignment seed forward", () => {
+    const path = MANAGED_ALIGNMENT_FORWARD;
     const sql = readManagedForward(fileURLToPath(new URL("..", import.meta.url)), path);
-    expect(isExpandOnlyPlatformForward(sql)).toBe(true);
-    expect(isExpandOnlyPlatformForward(`${sql}\nUPDATE public.platform_job_controls SET enabled = true;`)).toBe(false);
     const sample = syntheticRelease({ extraFiles: { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n" } });
     try { expect(() => sample.release({ [path]: sql })).not.toThrow(); } finally { sample.cleanup(); }
   });

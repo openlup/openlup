@@ -153,6 +153,15 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+The optional runtime-forward registry is a finite security admission: it pins
+one file, five unchanged existing function identities and ordered exact grants.
+The checker independently limits service columns and four existing callable
+functions, plus authenticated profile/membership reads and two pure index helpers.
+It does not authorize arbitrary runtime grants. Approval must precede the SQL
+feature's comparison base and introducing commit; registry installation alone
+does not change database permissions.
+
+
 Stable status, idempotency, and provider-extension commitments wait for `P1-SF`.
 Before then, changes must still preserve the contracts above and state their
 preview compatibility boundary explicitly.
