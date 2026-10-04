@@ -318,6 +318,40 @@ describe('bounded repair convergence', () => {
     }
     await expect(manual(fourth, { ...repaired(5), changedPaths: expanded.scope }, { intent: expanded, delta: expandedDelta })).rejects.toThrow('remaining owner cycle');
   });
+  it('admits only one owner-bound checkout scope regroup after four cycles, preserving lineage and refusing a sixth', async () => {
+    const third = await manual(await exhausted()); const fourth = await manual(third, repaired(4));
+    fourth.reports = [closure(fourth), closure(fourth, 1)];
+    const path = '.github/workflows/published-tree-ci.yml';
+    const expanded = { ...intent, scope: [...intent.scope, path] }; const next = { ...repaired(5), changedPaths: expanded.scope };
+    const decision = approved => ({ priorRequestDigest: digest(fourth.request), priorIntentDigest: digest(fourth.request.intent), nextIntentDigest: digest(approved), ownerDecision: 'Synthetic explicit checkout-history regroup' });
+    const repairDelta = async (_cwd, before, after) => before.head === fourth.request.candidate.head && after.head === next.head ? [path] : delta(_cwd, before, after);
+    const combine = (extra = {}) => manual(fourth, next, { intent: expanded, regroup: decision(expanded), delta: repairDelta, ...extra });
+    await expect(combine({ regroup: undefined })).rejects.toThrow('approved intent');
+    await expect(combine({ fullRefresh: false })).rejects.toThrow('explicit full refresh');
+    await expect(combine({ ownerContinuation: fourth.request.continuation.ownerContinuation })).rejects.toThrow('differs from exact');
+    for (const field of ['priorRequestDigest', 'priorIntentDigest', 'nextIntentDigest']) await expect(combine({ regroup: { ...decision(expanded), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
+    for (const change of [{ criteria: 'changed goal' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }]) {
+      const changed = { ...expanded, ...change }; await expect(combine({ intent: changed, regroup: decision(changed) })).rejects.toThrow('unchanged criteria, risk, roles');
+    }
+    for (const scope of [[path], ['source.txt', path, 'extra.txt'], ['source.txt', 'other.txt']]) {
+      const approved = { ...intent, scope }; await expect(combine({ intent: approved, regroup: decision(approved) })).rejects.toThrow();
+    }
+    await expect(combine({ authorSessionId: 'other' })).rejects.toThrow('author changed');
+    await expect(combine({ delta: async () => { throw new Error('not an ancestor'); } })).rejects.toThrow('not an ancestor');
+    const fifth = await combine(); expect(fifth.history).toEqual([...fourth.history, { request: fourth.request, reports: fourth.reports }]);
+    expect(fifth.request.continuation).toMatchObject({ cycle: 5, mode: 'full', regroup: decision(expanded), ownerContinuation: ownerApproval(fourth, next), findings: [] });
+    expect(fifth.request.roles).toEqual(['correctness', 'security']);
+    fifth.reports = [closure(fifth)]; expect((await check(fifth, { delta: repairDelta })).status).toBe('needs_agent_review');
+    fifth.reports.push(closure(fifth, 1)); expect((await check(fifth, { delta: repairDelta })).status).toBe('reviewed');
+    expect(await manual(fifth, next, { intent: expanded, regroup: decision(expanded), ownerContinuation: fifth.request.continuation.ownerContinuation, delta: repairDelta })).toEqual(fifth);
+    expect((await check(fifth, { delta: repairDelta, now: () => 86401001 })).reason).toContain('expired');
+    for (const mutate of [value => { value.history.pop(); }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.continuation.regroup.nextIntentDigest = 'f'.repeat(64); }]) {
+      const changed = structuredClone(fifth); mutate(changed); expect((await check(changed, { delta: repairDelta })).status).not.toBe('reviewed');
+    }
+    const sixth = { ...next, head: '6'.repeat(40), tree: '8'.repeat(40), workingDigest: 'a'.repeat(64), indexDigest: 'c'.repeat(64) };
+    await expect(manual(fifth, sixth, { intent: expanded, delta: repairDelta })).rejects.toThrow('remaining owner cycle');
+    await expect(advance(fifth, sixth, { intent: expanded, delta: repairDelta })).rejects.toThrow('two automatic repair cycles');
+  });
   it('refuses missing, mismatched, premature, changed-intent and nonfull owner continuation', async () => {
     const prior = await exhausted(); const next = repaired(3); const approval = ownerApproval(prior, next);
     await expect(advance(prior, next, { fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
