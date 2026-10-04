@@ -23,8 +23,8 @@ INSERT INTO public.clients(id,email) VALUES
  ('b7400000-0000-4000-8000-000000000001','renewal-lock-normal@example.invalid'),
  ('b7400000-0000-4000-8000-000000000002','renewal-lock-retry@example.invalid');
 INSERT INTO public.subscriptions(id,client_id,cadence_days,currency,status,next_cycle_at) VALUES
- ('b7500000-0000-4000-8000-000000000001','b7400000-0000-4000-8000-000000000001',28,'PLN','active','2000-01-01'),
- ('b7500000-0000-4000-8000-000000000002','b7400000-0000-4000-8000-000000000002',28,'PLN','active','2100-01-01');
+ ('b7500000-0000-4000-8000-000000000001','b7400000-0000-4000-8000-000000000001',28,'USD','active','2000-01-01'),
+ ('b7500000-0000-4000-8000-000000000002','b7400000-0000-4000-8000-000000000002',28,'USD','active','2100-01-01');
 INSERT INTO public.subscription_cycles(id,subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key,retry_attempt,next_retry_at) VALUES
  ('b7600000-0000-4000-8000-000000000001','b7500000-0000-4000-8000-000000000002',2,'2000-01-01','retry_scheduled','renewal-lock-retry',1,'2000-01-01');
 $setup$);
