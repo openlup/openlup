@@ -70,6 +70,16 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ## Exact reviewed function forwards
 
+The runtime admission class can bind a corrected forward that retires exactly
+eight legacy id-only browser policies. Membership reads would otherwise
+activate cross-customer access through those policies. The fixed policy names,
+tables, preceding statement hashes and ordered DROP statements are checked
+separately from the finite function and privilege pins. Customer-own policies
+and own membership reads stay outside the retirement set. Other policy
+operations refuse. This control must precede the corrected SQL comparison base
+and introduction parent; control approval alone installs no runtime permission
+or proves the later SQL suite green.
+
 Reviewed replacement is a separate admission class, not expand-only. The fixed
 [allowlist](../../config/reviewed-platform-forwards.json) pins three managed
 forward paths and their whole-file SHA-256 hashes in separate replacement and

@@ -50,8 +50,8 @@
   ],
   "runtimeForwards": [
     {
-      "path": "supabase/migrations/20261004120000_runtime_capabilities.sql",
-      "sha256": "99df012ea83b0ee03b09f95992466a33ded84ce2a096a851e8d2c7efc70bf59b",
+      "path": "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql",
+      "sha256": "0eff952614394aa759a777c4bec65459b72cd3448dbecc593c6b23a1ed7f36d6",
       "functions": [
         {
           "signature": "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -117,6 +117,48 @@
         "GRANT SELECT (id, role, membership_state, email, is_machine_actor, created_at) ON public.admin_users TO authenticated;",
         "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_text(text) TO authenticated;",
         "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_digits(text) TO authenticated;"
+      ],
+      "retiredPolicies": [
+        {
+          "table": "address_canon_localities",
+          "name": "admin_all_address_canon_localities",
+          "beforeSha256": "d19807ab86d0ce52915e49afa9badbb8af16c31b30ea4fb4e36c8dabac1f05bf"
+        },
+        {
+          "table": "address_canon_postal_localities",
+          "name": "admin_all_address_canon_postal_localities",
+          "beforeSha256": "cc1ee58fbe0565c405fe5d650e34b716b2d35dda13daede9870aec5d051d8601"
+        },
+        {
+          "table": "address_canon_streets",
+          "name": "admin_all_address_canon_streets",
+          "beforeSha256": "987b48a51d33488b5393f6412f590e64f1e7e51a69dcfcb2d514b2d287fd3373"
+        },
+        {
+          "table": "addresses",
+          "name": "admin_all_addresses",
+          "beforeSha256": "0b48e1d971a8d0a9590815a6fac6c882ec4e434afbd24943b99dcfda8c5a9522"
+        },
+        {
+          "table": "clients",
+          "name": "admin_all_clients",
+          "beforeSha256": "df05d16b3767447efbcad586abc40fcfcfd8a9f87ea7061d046db903434b83aa"
+        },
+        {
+          "table": "customer_account_events",
+          "name": "admin_all_customer_account_events",
+          "beforeSha256": "c6c967afd0730ee4c6dcee02c2d54d86ea23f3669bd615be226f5d5bf3099d5d"
+        },
+        {
+          "table": "customer_orderer_profiles",
+          "name": "admin_all_customer_orderer_profiles",
+          "beforeSha256": "aa14525f2abbe2a07bbbfe8bbd0578ac2403298fd592554a2751cc84b449ec90"
+        },
+        {
+          "table": "pets",
+          "name": "admin_all_pets",
+          "beforeSha256": "94797029f65c0e641e41c2884b50e0c9703c58523dbcfa219724db4dd6bdaf5e"
+        }
       ]
     }
   ]

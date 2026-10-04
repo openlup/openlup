@@ -92,6 +92,13 @@ SQL; unrelated owner routes remain capped at five and a seventh always refuses.
 It grants no general scope extension, policy operation or publication authority.
 
 
+The runtime-forward checker also binds eight exact legacy policy retirements
+by table, name and preceding CREATE POLICY statement hash. It requires their
+ordered DROP statements before the fixed grants and rejects missing, duplicate
+or additional policy operations. Both PR and release-history tests check these
+refusals and require approval before the forward's introducing commit. These
+checks admit one reviewed contraction; they do not grant general policy edits.
+
 The reviewed runtime-forward checker admits one exact pinned SQL file and a
 fixed set of current capabilities. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,

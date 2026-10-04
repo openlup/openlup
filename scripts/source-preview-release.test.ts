@@ -11,7 +11,7 @@ import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, a
 import { annotatedTag, assertDraft, assertNextPreview, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
-import { MANAGED_BASELINE, REVIEWED_FORWARD_PATH, reviewedFunctionDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { MANAGED_BASELINE, REVIEWED_FORWARD_PATH, reviewedFunctionDefinitions, reviewedPolicyDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const target = "a".repeat(40), previousCommit = "d".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
 const previousTagObject = "6".repeat(40), targetTagObject = "c".repeat(40);
@@ -338,10 +338,12 @@ describe("exact reviewed replacement admission in both gates", () => {
   const baseline = functions.map((signature) => definition(signature, 1)).join("\n");
   const paths = ["supabase/migrations/20261001000001_readiness.sql", "supabase/migrations/20261001000002_price_setup.sql", "supabase/migrations/20261001000003_starter.sql"];
   const sql = [definition(functions[0]!, 2, true), definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 2) + "\n" + definition("public.catalog_price_setup_apply(p_command text, p_fingerprint text)", 2), functions.slice(1).map((signature) => definition(signature, 2, true)).join("\n")];
-  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null, runtime = false) {
+  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null, runtime = false, retirePolicies = false) {
     const existing = definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 1);
     const runtimeFunctions = ["public.admin_clients_search_v3(p_query text, p_page integer, p_page_size integer, p_stage text)", "public.subscription_list_due_for_renewal(p_limit integer, p_as_of timestamp with time zone DEFAULT now())", "public.customer_support_absorb_lead_v1(p_operator uuid, p_customer uuid, p_lead uuid, p_expected text, p_key text, p_now timestamp with time zone)", "public.marketing_rehome_client_lead_v1(p_client uuid, p_now timestamp with time zone DEFAULT NULL::timestamp with time zone)", "public.customer_support_correct_subject_email_v1(p_operator uuid, p_subject uuid, p_expected text, p_new text, p_key text, p_now timestamp with time zone)"];
-    const runtimeBaseline = runtime ? runtimeFunctions.map((signature) => definition(signature, 1)).join("\n") : "";
+    const policyTables = ["address_canon_localities", "address_canon_postal_localities", "address_canon_streets", "addresses", "clients", "customer_account_events", "customer_orderer_profiles", "pets"];
+    const policySql = retirePolicies ? policyTables.map((table) => `CREATE POLICY admin_all_${table} ON public.${table} TO authenticated USING (true) WITH CHECK (true);`).join("\n") : "";
+    const runtimeBaseline = runtime ? runtimeFunctions.map((signature) => definition(signature, 1)).join("\n") + (retirePolicies ? `\n${policySql}` : "") : "";
     const selectedBaseline = (history === "baseline" ? `${baseline}\n${existing}` : baseline) + (runtime ? `\n${runtimeBaseline}` : "");
     const sample = syntheticRelease({ extraFiles: { [MANAGED_BASELINE]: selectedBaseline, ...(history === "forward" ? { "supabase/migrations/20261001000000_existing_function.sql": existing } : {}) } });
     const prior = reviewedFunctionDefinitions(Buffer.from(`${baseline}\n${runtimeBaseline}`)), bytes = [...sql];
@@ -352,6 +354,13 @@ describe("exact reviewed replacement admission in both gates", () => {
       const privilege = "GRANT SELECT (id,membership_state,role) ON public.admin_users TO service_role;";
       bytes.push(runtimeFunctions.map((signature) => definition(signature, 2, true)).join("\n") + `\n${privilege}`);
       registry.runtimeForwards = [{ path: runtimePath, sha256: sqlSha256(bytes[3]!), functions: [...reviewedFunctionDefinitions(Buffer.from(bytes[3]!))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: prior.get(signature)! })), privileges: [privilege] }];
+    }
+    if (retirePolicies) {
+      const forward = registry.runtimeForwards![0]!;
+      const definitions = reviewedPolicyDefinitions(Buffer.from(policySql));
+      forward.retiredPolicies = policyTables.map((table) => ({ table, name: `admin_all_${table}`, beforeSha256: definitions.get(`${table}.admin_all_${table}`)! }));
+      bytes[3] = policyTables.map((table) => `DROP POLICY admin_all_${table} ON public.${table};`).join("\n") + `\n${bytes[3]}`;
+      forward.sha256 = sqlSha256(bytes[3]!);
     }
     edit?.(registry, bytes);
     sample.apply({ [REVIEWED_FORWARD_PATH]: json(registry) });
@@ -467,6 +476,45 @@ describe("exact reviewed replacement admission in both gates", () => {
     try {
       sample.apply(sample.change); const head = sample.commit("Runtime reader feature");
       for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
+  });
+  it("admits exactly eight pinned browser policy retirements before runtime grants in both gates", () => {
+    const sample = fixture(undefined, null, true, true);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Pinned policy contraction");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
+  });
+  it.each(["wrong table", "wrong name", "wrong preimage", "missing binding", "duplicate binding", "extra binding", "missing statement", "duplicate statement", "unlisted statement", "alter policy", "create policy", "if exists", "after grant", "prior policy drift", "same feature approval"])("refuses independently repinned policy retirement: %s", (probe) => {
+    const sample = fixture(undefined, null, true, true);
+    try {
+      const forward = sample.registry.runtimeForwards![0]!;
+      const path = forward.path;
+      if (probe === "wrong table") forward.retiredPolicies![0]!.table = "admin_users";
+      else if (probe === "wrong name") forward.retiredPolicies![0]!.name = "customer_own";
+      else if (probe === "wrong preimage") forward.retiredPolicies![0]!.beforeSha256 = "f".repeat(64);
+      else if (probe === "missing binding") forward.retiredPolicies!.pop();
+      else if (probe === "duplicate binding") forward.retiredPolicies![1] = { ...forward.retiredPolicies![0]! };
+      else if (probe === "extra binding") forward.retiredPolicies!.push({ ...forward.retiredPolicies![0]! });
+      else if (probe === "missing statement") sample.change[path] = sample.change[path]!.replace("DROP POLICY admin_all_pets ON public.pets;", "");
+      else if (probe === "duplicate statement") sample.change[path] = `DROP POLICY admin_all_pets ON public.pets;\n${sample.change[path]}`;
+      else if (probe === "unlisted statement") sample.change[path] = `DROP POLICY customer_own ON public.clients;\n${sample.change[path]}`;
+      else if (probe === "alter policy") sample.change[path] = sample.change[path]!.replace("DROP POLICY admin_all_pets ON public.pets;", "ALTER POLICY admin_all_pets ON public.pets USING (true);");
+      else if (probe === "create policy") sample.change[path] += "\nCREATE POLICY allow_all ON public.clients USING (true);";
+      else if (probe === "if exists") sample.change[path] = sample.change[path]!.replace("DROP POLICY admin_all_pets", "DROP POLICY IF EXISTS admin_all_pets");
+      else if (probe === "after grant") sample.change[path] = sample.change[path]!.replace("DROP POLICY admin_all_pets ON public.pets;", "") + "\nDROP POLICY admin_all_pets ON public.pets;";
+      else if (probe === "prior policy drift") {
+        sample.apply({ "supabase/migrations/20261001000000_policy_drift.sql": "ALTER POLICY admin_all_pets ON public.pets USING (false);" }); sample.commit("Earlier policy drift");
+      }
+      forward.sha256 = sqlSha256(sample.change[path]!);
+      if (probe === "same feature approval") {
+        sample.run(["reset", "--hard", sample.rootCommit]);
+        sample.apply({ ...sample.change, [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      } else {
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); sample.approval = sample.commit("Independent repin"); sample.apply(sample.change);
+      }
+      const head = sample.commit("Refused policy contraction");
+      for (const gate of gates(sample, head)) expect(gate).toThrow();
     } finally { sample.cleanup(); }
   });
   it("refuses runtime control introduced with SQL across a later release commit", () => {
