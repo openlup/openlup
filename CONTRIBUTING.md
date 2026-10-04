@@ -80,6 +80,14 @@ handling.
 
 ## Development-preview checks
 
+The reviewed runtime-forward checker admits one exact pinned SQL file and a
+fixed set of current capabilities. Tests exercise both PR history and release
+history admission, including independently repinned forbidden columns, roles,
+writes, functions and changed execution attributes. The control must already
+exist before the SQL feature's base and introducing commit. Passing these tests
+is admission evidence, not proof that a draft overlay is the shipped chain.
+
+
 <!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-8a6540540597c3a675981b05eb538db6263b367c3c2a60a93e121453a52a5590","reason":"The queue transport losslessly encodes complete large review state for both CLI forms, trusted submission artifacts and all admission consumers, including source carry-over into merge groups. The protocol owner documents the bounded envelope and refusal conditions. Contributor commands, required contexts and the current native identity, freshness, scope, history, reviewer counts and owner-continuation controls in this checks section remain unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)

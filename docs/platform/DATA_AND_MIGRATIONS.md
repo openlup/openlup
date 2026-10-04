@@ -94,6 +94,36 @@ accepted. Grants may target only `authenticated` or `service_role`; grants to
 `PUBLIC` or `anon`, other schemas, unrelated statements and unterminated dollar
 bodies refuse even if the whole-file hash was separately repinned.
 
+The optional runtime list pins one additional forward and exactly five existing
+functions: the `admin_clients_search_v3` and `subscription_list_due_for_renewal`
+readers, and the `customer_support_absorb_lead_v1`,
+`marketing_rehome_client_lead_v1` and `customer_support_correct_subject_email_v1`
+invokers. Its ordered privilege statements grant only `service_role` the fixed
+column-level SELECT capabilities, UPDATE on the five existing client mutation
+columns and `client_id` on the three carry tables, UPDATE on only
+`subscriptions.updated_at` to retain both renewal row-lock clauses, and EXECUTE on
+`record_admin_audit_event`, `subscription_current_template_snapshot`, and the two
+existing pure `commerce_oms_normalize_search_text` /
+`commerce_oms_normalize_search_digits` helpers needed by client expression indexes.
+The checker fixes the allowed tables, operations, columns and signatures
+independently of the registry, including separate authenticated read/helper sets;
+repinning cannot admit additional capabilities,
+table-wide permissions, INSERT, DELETE, TRUNCATE or an unlisted recipient.
+SELECT and UPDATE are separate capabilities; duplicates within either operation
+refuse. These direct service UPDATE permissions require security admission even
+though they support existing invoker bodies. The subscription grant also permits
+raw timestamp writes on any row; it does not confine the caller to locking.
+Both renewal CTEs retain `FOR UPDATE OF s SKIP LOCKED`, with default VOLATILE
+and invoker execution unchanged. The same finite forward restores authenticated profile/membership reads on
+exact columns consumed by current routes and EXECUTE on the two pure OMS
+normalization helpers required by existing expression indexes. Browser writes,
+operator RPC execution and anonymous capabilities do not expand; existing RLS
+continues to filter profile and membership rows.
+Function headers must preserve the preceding definition's arguments, defaults,
+return shape, volatility, execution security and settings. Attributes after the
+outer dollar body refuse; only its terminating semicolon and whitespace may
+follow. This control installs approval data, without shipping the runtime forward.
+
 Required PR/merge-group self-check requires the allowlist bytes to predate the
 feature comparison base. Release prepare uses the same checker and requires
 the identical allowlist in the parent of each forward's introduction commit.
@@ -167,6 +197,7 @@ forward establishes neither installation-path parity nor the complete
 late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
+
 
 Every production-shaped schema change follows this order:
 

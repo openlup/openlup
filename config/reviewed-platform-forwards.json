@@ -47,5 +47,77 @@
         }
       ]
     }
+  ],
+  "runtimeForwards": [
+    {
+      "path": "supabase/migrations/20261004120000_runtime_capabilities.sql",
+      "sha256": "99df012ea83b0ee03b09f95992466a33ded84ce2a096a851e8d2c7efc70bf59b",
+      "functions": [
+        {
+          "signature": "public.admin_clients_search_v3(text,integer,integer,text)",
+          "beforeSha256": "e5a10571dbd64a37ea078d21872cc56baecb1b0bdc4207f5629d0b164d2d5f51",
+          "afterSha256": "7a15ad2e922f46769d215f6aaf0bd1a70a0154a777feda57d17e28c959c0c415"
+        },
+        {
+          "signature": "public.subscription_list_due_for_renewal(integer,timestamp with time zone)",
+          "beforeSha256": "b77f71a4893601a0e3498eb6a138947fe8c8c567d1ec8ed339c53bdf0277cc25",
+          "afterSha256": "803a1fafa61b0cd467498f47f44902905b9574f742c523a9cda0767cc334d3aa"
+        },
+        {
+          "signature": "public.customer_support_absorb_lead_v1(uuid,uuid,uuid,text,text,timestamp with time zone)",
+          "beforeSha256": "9a4f0b8861b24d84b71e9e678764aedc897f71262c5150418783d951ee2d613c",
+          "afterSha256": "0d6892c7d619da904e9c745e63ac3343eca88b7fb803604160d271a57fc4c893"
+        },
+        {
+          "signature": "public.marketing_rehome_client_lead_v1(uuid,timestamp with time zone)",
+          "beforeSha256": "8f86f1a42028fd70b71d222be78a219352403bac23a6f51b66a27365e574ed32",
+          "afterSha256": "d56b492bb696aec18e3e8190a65be08ddb290ed27960cb618337998aef4afa0a"
+        },
+        {
+          "signature": "public.customer_support_correct_subject_email_v1(uuid,uuid,text,text,text,timestamp with time zone)",
+          "beforeSha256": "18212cc448ee36ffc1067efb52d5a545a326ac4d264e2e495684d14260bdf946",
+          "afterSha256": "bcbdf0a0ed2b8bdd69ab6b37d6955eab8b98570b8bc43b0e647654587647ed57"
+        }
+      ],
+      "privileges": [
+        "GRANT EXECUTE ON FUNCTION public.record_admin_audit_event(uuid,text,text,text,text,jsonb,jsonb,text,text,uuid,text) TO service_role;",
+        "GRANT EXECUTE ON FUNCTION public.subscription_current_template_snapshot(uuid) TO service_role;",
+        "GRANT SELECT (id, membership_state, role, is_machine_actor) ON public.admin_users TO service_role;",
+        "GRANT SELECT (principal_id, active) ON public.platform_communication_operators TO service_role;",
+        "GRANT SELECT (status, template_slug) ON public.email_sends TO service_role;",
+        "GRANT SELECT (event_type) ON public.email_events TO service_role;",
+        "GRANT SELECT (id, email, first_name, last_name, phone, identity_kind, lifecycle_stage, created_at, updated_at, acquisition_source, auth_user_id, metadata, marketing_contact_id) ON public.clients TO service_role;",
+        "GRANT SELECT (id, client_id, order_number, status, created_at, updated_at) ON public.commerce_orders TO service_role;",
+        "GRANT SELECT (id, client_id, updated_at, cadence_days, template_version, currency, region_code, payment_method_kind, status, next_cycle_at) ON public.subscriptions TO service_role;",
+        "GRANT SELECT (subscription_id, status, next_retry_at, scheduled_at, renewal_quarantined_until) ON public.subscription_cycles TO service_role;",
+        "GRANT SELECT (subscription_id, provider_kind, provider_customer_ref, provider_method_ref, method_kind, status, active, expires_at, client_id, updated_at, created_at) ON public.commerce_payment_method_refs TO service_role;",
+        "GRANT SELECT (id, slug, status, name, description, ingredients, allergens, marketing_content, primary_sku_id) ON public.catalog_products TO service_role;",
+        "GRANT SELECT (id, product_id, sku, title, pet_type, status, net_weight_g, format_code, unit_form_code, is_addon, sellable_standalone, sellable_in_subscription, requires_pet_profile, min_order_qty) ON public.catalog_skus TO service_role;",
+        "GRANT SELECT (subscription_id, event_type, occurred_at) ON public.subscription_events TO service_role;",
+        "GRANT UPDATE (email, identity_kind, marketing_contact_id, metadata, updated_at) ON public.clients TO service_role;",
+        "GRANT SELECT (client_id) ON public.commerce_carts TO service_role;",
+        "GRANT SELECT (client_id) ON public.commerce_checkout_sessions TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_delivery_preferences TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_external_refs TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_orderer_profiles TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_payment_preferences TO service_role;",
+        "GRANT SELECT (client_id) ON public.pets TO service_role;",
+        "GRANT SELECT (client_id) ON public.promotion_code_claims TO service_role;",
+        "GRANT SELECT (client_id) ON public.promotion_redemptions TO service_role;",
+        "GRANT SELECT (client_id, consent_type, captured_at) ON public.client_consents TO service_role;",
+        "GRANT SELECT (client_id) ON public.client_source_links TO service_role;",
+        "GRANT SELECT (client_id) ON public.customer_personalization TO service_role;",
+        "GRANT UPDATE (client_id) ON public.client_consents TO service_role;",
+        "GRANT UPDATE (client_id) ON public.client_source_links TO service_role;",
+        "GRANT UPDATE (client_id) ON public.customer_personalization TO service_role;",
+        "GRANT UPDATE (updated_at) ON public.subscriptions TO service_role;",
+        "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_text(text) TO service_role;",
+        "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_digits(text) TO service_role;",
+        "GRANT SELECT (id, auth_user_id, email, first_name, last_name, phone, lifecycle_stage) ON public.clients TO authenticated;",
+        "GRANT SELECT (id, role, membership_state, email, is_machine_actor, created_at) ON public.admin_users TO authenticated;",
+        "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_text(text) TO authenticated;",
+        "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_digits(text) TO authenticated;"
+      ]
+    }
   ]
 }
