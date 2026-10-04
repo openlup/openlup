@@ -218,6 +218,7 @@ a runtime contract or establish a stable preview channel.
 
 Published Tree CI enforces that ratchet in required `self-check` and exercises
 its CLI refusal tests in required `test`. The complete root and managed pgTAP
-jobs retain raw diagnostic failures with named ownership; their addition does
+jobs expose actual diagnostic results with named ownership of unresolved
+failures; their addition does
 not change platform behavior, grant application privileges or declare complete
 compatibility evidence. Existing release context checks remain unchanged.

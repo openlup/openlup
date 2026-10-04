@@ -103,18 +103,24 @@ layer remain maintainer-controlled and outside the public tree.
 
 ## Reading results and recovering
 
-At the 2026-10-02 inspection, main was
-`45d5796197f8bfedc24c2053644523a62f95c63a`: the six mechanical checks passed,
-`test-full` and `pgtap` failed, and native review was skipped on the main push.
-The native queue and npm-stage variables were enabled and the ruleset required
-six mechanical statuses plus `native-review`. This is dated activation evidence,
-not a promise about another repository or future settings.
+At the 2026-10-04 checkpoint, merged main was
+`e7f352bd788c6f2557316c3abde5e000772d583d`: [run 37196000352, attempt 1](https://github.com/openlup/openlup/actions/runs/37196000352)
+passed six mechanical checks and `test-full`; `pgtap` retained twelve named
+failing files, and native admission was skipped on the main-push event.
+The [current diagnostic record](plans/public-ci-known-red.md#current-checkpoint)
+gives source/group/main provenance, assertion counts and remaining obligations.
+
+The 2026-10-02 settings inspection found the native queue and npm-stage
+variables enabled and the ruleset requiring six mechanical statuses plus
+`native-review`. This is dated activation evidence, not a promise about another
+repository or future settings.
 
 An aggregate Actions workflow can be red while its required statuses are green.
 Inspect the individual job and its raw log, exact SHA, event, run and attempt.
 Skipped, cancelled or timed-out execution cannot prove a passing check. The
-[known-red record](plans/public-ci-known-red.md) is dated evidence, not a current
-waiver. Compare failures with the exact base; disclose new failures and missing
+[diagnostic debt record](plans/public-ci-known-red.md) distinguishes the current
+finite SQL debt from archived failures; neither is permission to ignore a red
+run. Compare failures with the exact base; disclose new failures and missing
 execution. Required success is not complete-suite success.
 
 Fix named local violations rather than bypass hooks. A busy verification lock

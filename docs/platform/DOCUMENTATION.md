@@ -39,8 +39,11 @@ Distinguish these claims:
 | Check passed | Command, revision and observed result |
 | Runtime works in an installation | Evidence from that installation |
 
-The [public CI record](plans/public-ci-known-red.md) distinguishes required
-coverage from complete raw diagnostics. A failed or aborted suite names its
+The [public CI record](plans/public-ci-known-red.md) separates current diagnostic
+results from archived measurements and required coverage from complete raw
+diagnostics. Refresh a current claim with its exact revision, command, observed
+exit and hosted run/attempt; keep historical observations attributed to their
+original source. A failed or aborted suite names its
 reason, triage owner and unexecuted obligation; it cannot establish a passing
 installation or compatibility claim. Failure classification needs actual logs,
 not a file's presence in the catalogue.
