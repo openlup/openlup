@@ -1,13 +1,86 @@
 # Public CI diagnostic obligations
 
-Status: historical development-preview measurements. These dated raw failing exits describe the recorded sources below; current diagnostic debt must be established by fresh execution of the exact candidate.
+Status: measured development-preview checkpoint with twelve unresolved SQL obligations. Earlier measurements are archived below; refresh current claims from exact-source execution.
 Audience: contributors repairing published tests and runtime contracts.
 
 Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-up family identifies repair scope, not an assigned person's commitment. These records introduce no skip, exception, assertion budget or waiver. Failed behavior and ACL checks are unresolved defects or contract mismatches; calling a test fixture incomplete does not prove the runtime safe.
 
 Retired test rows below link to their archived source at the repair base. These dated results remain historical evidence; current test scope follows [contribution checks](../../../CONTRIBUTING.md#development-preview-checks).
 
-## Measurement and provenance
+## Current checkpoint
+
+Measurement date: 2026-10-04. [PR #130](https://github.com/openlup/openlup/pull/130) was squash-merged as
+`e7f352bd788c6f2557316c3abde5e000772d583d`. Its comparison base was
+`c3a6c96c0ce6291a4554d51f9162dc261deed743`; exact-base
+[main run 37194320482, attempt 1](https://github.com/openlup/openlup/actions/runs/37194320482)
+reported 245 failed Vitest cases in 115 files and 55 failing or aborted SQL files.
+
+Current hosted evidence: [source run 37195393571, attempt 1](https://github.com/openlup/openlup/actions/runs/37195393571),
+[merge-group run 37195802928, attempt 1](https://github.com/openlup/openlup/actions/runs/37195802928)
+and [merged-main run 37196000352, attempt 1](https://github.com/openlup/openlup/actions/runs/37196000352).
+Source and group passed all six mechanical checks and native admission. The main
+push passed six mechanical checks; native admission is intentionally skipped on
+that event. Local verification of source
+`4eaee6cbb158201334714498bdabd8c720e5e1f1` separately passed the required checks
+and ran both diagnostics. Local success and hosted success are separate evidence.
+
+Both local and hosted unrestricted `npm test` exit 0: 1,618 passed files,
+11,788 passed cases, one skipped file and two skipped cases. The skips are the
+existing `catalog policy overlap concurrency` prerequisite case, requiring
+`CATALOG_POLICY_CONCURRENCY_DATABASE_URL` and
+`CATALOG_POLICY_CONCURRENCY_BUNDLE=managed` or `portable`, and the payment-event
+case `proves durable duplicate, ordering, late-success, and cleanup behavior`,
+requiring `CP1P_LOCAL_DATABASE=1`.
+They remain incomplete evidence outside those profiles; this checkpoint adds no
+skip or diagnostic selector exclusion.
+
+Both local and hosted `node scripts/public-ci-pgtap.mjs` exit 1: 205 files,
+4,367 emitted assertions, 12 failing or aborted files, 13 failed emitted
+assertions and seven incomplete plans leaving 122 planned assertions unexecuted.
+All twelve failure identities exist on the comparison base. Red SQL results
+remain visible; zero failed Vitest files and a reduction from 55 to 12 SQL files
+do not establish complete SQL success. Repairs include current fixture/runtime
+composition and idempotent required policy data; retired tests had ended
+historical/tooling or unavailable unmounted-view obligations. Existing money,
+replay, authorization and concurrency contracts remain in scope.
+
+### Remaining current SQL obligations
+
+The triage owner for every row is OpenLup maintainer. Counts distinguish emitted
+assertion failures from missing execution; these are observations at the measured
+source, not permitted budgets. No new runtime grants ship in this checkpoint.
+
+| Test file | Emitted/planned; failed | Remaining runtime obligation |
+| --- | --- | --- |
+| [absorb_lead_test.sql](../../../supabase/tests/absorb_lead_test.sql) | 3/41; 0 | Active-operator lookup denied on `admin_users`; 38 assertions unexecuted. |
+| [admin_audit_record_fn_test.sql](../../../supabase/tests/admin_audit_record_fn_test.sql) | 15/22; 7 | Runtime audit RPC execution denied; actor/refusal and durable-write evidence incomplete, seven assertions unexecuted. |
+| [admin_client_search_v3_test.sql](../../../supabase/tests/admin_client_search_v3_test.sql) | 0/31; 0 | Runtime search references an unavailable `extensions.%` operator; 31 assertions unexecuted. |
+| [admin_membership_authority_test.sql](../../../supabase/tests/admin_membership_authority_test.sql) | 44/49; 0 | Late operator/membership path denied on `admin_users`; five assertions unexecuted. |
+| [browser_role_execute_revocation_test.sql](../../../supabase/tests/browser_role_execute_revocation_test.sql) | 6/6; 1 | Missing server capability for `subscription_current_template_snapshot(uuid)`; browser denials remain required. |
+| [catalog_authz_closure_test.sql](../../../supabase/tests/catalog_authz_closure_test.sql) | 25/25; 1 | Expected server-only product/SKU projection capability is absent; browser closure remains required. |
+| [communication_admin_email_sends_stats_test.sql](../../../supabase/tests/communication_admin_email_sends_stats_test.sql) | 10/10; 1 | Invoker-rights statistics reader denied on `email_sends`. |
+| [communication_admin_email_template_slugs_test.sql](../../../supabase/tests/communication_admin_email_template_slugs_test.sql) | 12/12; 1 | Invoker-rights template-slug reader denied on `email_sends`. |
+| [inherited_table_privilege_class_test.sql](../../../supabase/tests/inherited_table_privilege_class_test.sql) | 27/27; 2 | Expected event projection and actual service-role time-filter read lack capability. |
+| [marketing_lead_email_namespace_test.sql](../../../supabase/tests/marketing_lead_email_namespace_test.sql) | 9/32; 0 | Runtime operation denied on `clients`; 23 assertions unexecuted. |
+| [operator_subscription_actions_test.sql](../../../supabase/tests/operator_subscription_actions_test.sql) | 69/71; 0 | Remaining operator path denied on `admin_users`; two assertions unexecuted. |
+| [subscription_renewal_due_as_of_test.sql](../../../supabase/tests/subscription_renewal_due_as_of_test.sql) | 13/29; 0 | Due-renewal runtime reader denied on `subscriptions`; 16 assertions unexecuted. |
+
+These are current positive runtime/ACL contracts. Do not replace them with owner
+execution, test-only runtime grants, skips or relaxed assertions. The complete
+diagnostic goal remains zero failed root and managed SQL assertions; this
+checkpoint leaves the named SQL work unresolved. A fresh red run needs exact-base
+comparison and explanation of changed failure identities or missing execution.
+Naming debt does not excuse an unexplained new failure, broken installation,
+database start/replay/cleanup, zero discovery or truncated evidence. Required
+checks retain their existing admission role, and diagnostic exits stay raw.
+
+## Archived September measurements
+
+Everything below describes the dated sources named in those measurements, not
+the current checkpoint. Preserve their counts and provenance when consulting
+history; the current obligations and results are recorded above.
+
+### Archived measurement and provenance
 
 Root measurement completed 2026-09-27 from integrated source commit `59b62deb26d43df1a77a5dbdff256951c588f622`, against trusted main `d0b7e4d9a7ef1653bd0ecaa30d621b6fa72957e7`, with Node 24.20.0 and npm 11.19.0. Unrestricted `npm test` completed on the host with `CI=true` and `TZ=UTC`, exiting 1. The SQL result remains the earlier `node scripts/public-ci-pgtap.mjs` measurement (exit 1, Supabase CLI 2.98.2), from source `0d6cb97265c803c910024e891afe9b3bee4a972e` against base `c705c215955286a97606db7610446b69f5306e74`; it was not rerun for this integrated-source snapshot. The identical-input proof below preserves that result. No diagnostic failure prevents separate required core checks or the independent database job from being selected.
 
@@ -243,8 +316,8 @@ The next table distinguishes emitted/planned assertions and emitted failures. A 
 
 ## Admission and follow-up
 
-These named failures remain raw red in `test-full` and `pgtap`. Required-main coverage, lint and neutrality stay blocking; this record does not modify rulesets or the release workflows' six-context selection. Observation does not establish stable framework readiness, production safety, historical migration compatibility or successful installation.
+These archived failures were raw red in their dated `test-full` and `pgtap` measurements; they are not the current failure inventory. See the current checkpoint above. Required-main coverage, lint and neutrality stay blocking; this record does not modify rulesets or the release workflows' six-context selection. Observation does not establish stable framework readiness, production safety, historical migration compatibility or successful installation.
 
-A failed dependency install, unavailable new command, zero diagnostic discovery, migration inventory refusal, database start/replay/owned-cleanup error, truncated report or unexplained new failure blocks delivery until diagnosed. The reports above reach their test summaries and name assertion/setup debt; they do not authorize expanding this CI change into platform repairs. Final prescribed verification must inspect its fresh logs against this inventory before publication.
+A failed dependency install, unavailable new command, zero diagnostic discovery, migration inventory refusal, database start/replay/owned-cleanup error, truncated report or unexplained new failure blocks delivery until diagnosed. The reports above reach their test summaries and name assertion/setup debt; they do not authorize expanding this CI change into platform repairs. Fresh verification compares exact-source results with the current checkpoint and the exact change base; the archived inventory is historical context.
 
 See the [bounded implementation plan](public-ci-completeness.md) and [contribution checks](../../../CONTRIBUTING.md#development-preview-checks).

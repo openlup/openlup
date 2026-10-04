@@ -632,9 +632,10 @@ Merge API changes with their `Unreleased` migration notes before a separate
 release-bump pull request: the bump moves those notes into the version section
 and opens a fresh empty `Unreleased` section.
 
-The [known-red record](docs/platform/plans/public-ci-known-red.md) names the
-measured failing or aborted files, reasons, incomplete obligations and triage
-ownership. It is a dated measurement. When triaging a change, compare fresh
+The [diagnostic debt record](docs/platform/plans/public-ci-known-red.md#current-checkpoint) separates the measured current checkpoint from archived failures.
+It names the twelve remaining SQL files, reasons, unexecuted obligations and
+triage owner; the full-root checkpoint is green. Matching named debt is not
+permission to ignore a red run. When triaging a change, compare fresh
 Vitest failure identities and per-file assertion counts, and pgTAP file summaries,
 with the exact PR base, normalizing log timestamps and ANSI formatting first.
 `test-full` and `pgtap` expose raw failures in separate diagnostic

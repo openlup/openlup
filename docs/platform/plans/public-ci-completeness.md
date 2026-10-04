@@ -36,7 +36,9 @@ Lint blocks `typecheck`; UI neutrality and the tree ratchet block `self-check`.
 
 Independent `test-full` runs unrestricted `npm test`; independent `pgtap` runs
 all supplied SQL tests against the committed managed baseline and ordered
-forwards with Supabase CLI 2.98.2. Their raw failures remain red. No dependencies
+forwards with Supabase CLI 2.98.2. Jobs preserve actual diagnostic exits; current
+results and unresolved obligations are separated from dated historical failures
+in the diagnostic record. No dependencies
 on successful full-root diagnostics can prevent required core checks or pgTAP.
 Actions use full commit pins and jobs retain trusted event-metadata fences,
 including inherited merge-group validation and the optional `native-review`
