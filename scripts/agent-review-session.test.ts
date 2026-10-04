@@ -780,3 +780,65 @@ describe('fork-point review base (S5)', () => {
     const baseline = await pristineAgentReviewBaseline(cwd); expect(baseline.pristine).toBe(true); expect(baseline.candidate.base).toBe(base);
   });
 });
+
+describe('exact owner-approved SQL RLS recovery',()=>{
+const data={
+  "additions": [
+    "docs/platform/plans/autonomous-reviewed-delivery.md",
+    "scripts/agent-review-session.mjs",
+    "scripts/agent-review-session.test.ts",
+    "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql"
+  ],
+  "scope": [
+    "CONTRIBUTING.md",
+    "config/openlup-publication-catalog.json",
+    "config/openlup-source-release-contract.json",
+    "config/reviewed-platform-forwards.json",
+    "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+    "docs/platform/CANONICAL_CONTRACTS.md",
+    "docs/platform/DATA_AND_MIGRATIONS.md",
+    "docs/platform/plans/autonomous-reviewed-delivery.md",
+    "docs/platform/plans/public-ci-known-red.md",
+    "scripts/agent-review-session.mjs",
+    "scripts/agent-review-session.test.ts",
+    "scripts/reviewed-platform-forward.ts",
+    "scripts/source-preview-release.test.ts",
+    "src/lib/subscriptionOwnEngineRpcBoundary.test.ts",
+    "supabase/migrations/20261004120000_runtime_capabilities.sql",
+    "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql",
+    "supabase/tests/operator_contact_correction_test.sql",
+    "supabase/tests/operator_subscription_actions_test.sql",
+    "supabase/tests/runtime_capability_boundary_test.sql",
+    "supabase/tests/subscription_renewal_due_lock_runtime_test.sql"
+  ],
+  "criterion": "RLS recovery: retire exactly eight legacy cross-customer browser policies; preserve customer-own access and distributor own membership read, prove actual authenticated role isolation, merge exact contraction admission before introducing the corrected managed forward, and preserve all review history and automatic limits."
+};
+const digest=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
+const oldIntent={risk:'behavior',scope:data.scope.filter(p=>!data.additions.includes(p)),criteria:'Synthetic approved no-new-browser-writes obligation',requiredRoles:['correctness','security']};
+const expanded={...oldIntent,scope:data.scope,criteria:oldIntent.criteria+' '+data.criterion};
+const now=()=>1000;
+const candidate=n=>({base:'a'.repeat(40),head:n.toString(16).repeat(40),tree:(n+1).toString(16).repeat(40),clean:true,workingDigest:n.toString(16).repeat(64),indexDigest:(n+1).toString(16).repeat(64),changedPaths:oldIntent.scope});
+const delta=async()=>['scripts/reviewed-platform-forward.ts'];
+const finding={mechanism:'Synthetic cross-customer browser update',precondition:'Synthetic active distributor membership read',requirement:'No new browser writes',effect:'Synthetic unrelated customer mutation',risk:'security'};
+function reports(state,fail=false){return state.request.roles.map((role,index)=>({...agentReviewReportBinding(state.request),reviewerId:`synthetic-agent-${state.history?.length??0}-${index}`,sessionId:`synthetic-session-${state.history?.length??0}-${index}`,role,cold:true,completedAt:1000,complete:true,coveredScope:[...new Set([...state.request.intent.scope,...(state.request.continuation?.deltaPaths??[])])].sort(),coveredCriteria:true,simplicityChecked:true,verdict:fail&&index===1?'fail':'pass',materialFindings:fail&&index===1?[finding]:[],...(state.request.version===2?{closure:{coveredDelta:state.request.continuation.deltaPaths,interactionsChecked:true,ordinarySemantics:false,resolvedFindings:state.request.continuation.findings.map(c=>c.id)}}:{})}));}
+const owner=(previous,next)=>({priorRequestDigest:digest(previous.request),candidateDigest:digest(next),ownerDecision:'Synthetic fresh exact owner decision'});
+async function advance(previous,next,intent=oldIntent,extra={}){return prepareAgentReviewState({cwd:'.',base:next.base,intent,authorSessionId:'synthetic-author',now,snapshot:async()=>next,delta,previous,fullRefresh:true,...extra});}
+async function prior(){let s=await advance(undefined,candidate(1));s.reports=reports(s);for(let n=2;n<=3;n++){s=await advance(s,candidate(n));s.reports=reports(s);}const n=candidate(4);s=await advance(s,n,oldIntent,{ownerContinuation:owner(s,n)});s.reports=reports(s,true);return s;}
+const regroup=(p,i)=>({priorRequestDigest:digest(p.request),priorIntentDigest:digest(p.request.intent),nextIntentDigest:digest(i),ownerDecision:'Synthetic fresh exact RLS regroup'});
+const check=s=>verifyAgentReview({cwd:'.',...s,now,snapshot:async()=>s.request.candidate,delta});
+async function fourth(p,extra={}){const n=candidate(5);return advance(p,n,expanded,{ownerContinuation:owner(p,n),regroup:regroup(p,expanded),...extra});}
+describe('private exact RLS owner recovery proposal; no real receipts or session mutation',()=>{
+ it('retains the failed third finding and all history, requires full two reviews for control and feature, refuses cycle six',async()=>{
+  const p=await prior();const s=await fourth(p);expect(s.history).toHaveLength(4);expect(s.history.at(-1).reports[1].verdict).toBe('fail');expect(s.request.continuation.findings).toHaveLength(1);expect(s.request.continuation).toMatchObject({cycle:4,mode:'full'});expect((await check(s)).status).not.toBe('reviewed');s.reports=reports(s).slice(0,1);expect((await check(s)).status).not.toBe('reviewed');s.reports=reports(s);expect((await check(s)).status).toBe('reviewed');
+  const n=candidate(6);await expect(advance(s,n,expanded)).rejects.toThrow();const f=await advance(s,n,expanded,{ownerContinuation:owner(s,n)});expect(f.history).toHaveLength(5);expect(f.request.continuation).toMatchObject({cycle:5,mode:'full'});expect((await check(f)).status).not.toBe('reviewed');f.reports=reports(f);expect((await check(f)).status).toBe('reviewed');const last=candidate(7);await expect(advance(f,last,expanded,{ownerContinuation:owner(f,last)})).rejects.toThrow();
+ });
+ it.each(['scope','criteria','roles','risk','owner','regroup','refresh'])('refuses altered or missing exact RLS authorization: %s',async probe=>{
+  const p=await prior();const i=structuredClone(expanded);const n=candidate(5);const extra={ownerContinuation:owner(p,n),regroup:regroup(p,i),fullRefresh:true};
+  if(probe==='scope')i.scope.push('extra.sql');if(probe==='criteria')i.criteria+=' more';if(probe==='roles')i.requiredRoles=['correctness'];if(probe==='risk')i.risk='unknown';extra.regroup=regroup(p,i);
+  if(probe==='owner')extra.ownerContinuation.priorRequestDigest='f'.repeat(64);if(probe==='regroup')extra.regroup.nextIntentDigest='f'.repeat(64);if(probe==='refresh')extra.fullRefresh=false;
+  await expect(advance(p,n,i,extra)).rejects.toThrow();
+ });
+ it('cannot use the fifth-cycle RLS route without the precise fourth regroup',async()=>{const p=await prior();const n=candidate(5);const ordinary=await advance(p,n,oldIntent,{ownerContinuation:owner(p,n)});ordinary.reports=reports(ordinary);const next=candidate(6);await expect(advance(ordinary,next,oldIntent,{ownerContinuation:owner(ordinary,next)})).rejects.toThrow();});
+});
+
+});

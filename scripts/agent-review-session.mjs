@@ -149,14 +149,49 @@ function validateOwnerContinuation(approval) {
   demand(DIGEST.test(approval.priorRequestDigest) && DIGEST.test(approval.candidateDigest), 'owner continuation digest is invalid');
   text(approval.ownerDecision, 'owner continuation decision', 4096);
 }
+// Bounded SQL/RLS recovery consumes existing owner cycles; automatic limits remain unchanged.
+const RLS_RECOVERY_ADDITIONS = [
+  "docs/platform/plans/autonomous-reviewed-delivery.md",
+  "scripts/agent-review-session.mjs",
+  "scripts/agent-review-session.test.ts",
+  "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql"
+];
+const RLS_RECOVERY_SCOPE = [
+  "CONTRIBUTING.md",
+  "config/openlup-publication-catalog.json",
+  "config/openlup-source-release-contract.json",
+  "config/reviewed-platform-forwards.json",
+  "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+  "docs/platform/CANONICAL_CONTRACTS.md",
+  "docs/platform/DATA_AND_MIGRATIONS.md",
+  "docs/platform/plans/autonomous-reviewed-delivery.md",
+  "docs/platform/plans/public-ci-known-red.md",
+  "scripts/agent-review-session.mjs",
+  "scripts/agent-review-session.test.ts",
+  "scripts/reviewed-platform-forward.ts",
+  "scripts/source-preview-release.test.ts",
+  "src/lib/subscriptionOwnEngineRpcBoundary.test.ts",
+  "supabase/migrations/20261004120000_runtime_capabilities.sql",
+  "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql",
+  "supabase/tests/operator_contact_correction_test.sql",
+  "supabase/tests/operator_subscription_actions_test.sql",
+  "supabase/tests/runtime_capability_boundary_test.sql",
+  "supabase/tests/subscription_renewal_due_lock_runtime_test.sql"
+];
+const RLS_RECOVERY_CRITERION = "RLS recovery: retire exactly eight legacy cross-customer browser policies; preserve customer-own access and distributor own membership read, prove actual authenticated role isolation, merge exact contraction admission before introducing the corrected managed forward, and preserve all review history and automatic limits.";
+function rlsRecoveryIntent(intent) {
+  return equal([...intent.scope].sort(), RLS_RECOVERY_SCOPE) && intent.risk === 'behavior' && equal(intent.requiredRoles, ['correctness', 'security']) && intent.criteria.endsWith(` ${RLS_RECOVERY_CRITERION}`);
+}
 function assertOwnerContinuation(approval, previous, request, regroup, cycle) {
   validateOwnerContinuation(approval);
   demand(approval.priorRequestDigest === digest(previous) && approval.candidateDigest === digest(request.candidate), 'owner continuation differs from exact previous request or candidate');
   const additions = request.intent.scope.filter(path => !previous.intent.scope.includes(path)).sort();
   const consumerScope = cycle !== 5 && equal(additions, ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts']);
   const checkoutScope = cycle === 5 && equal(additions, ['.github/workflows/published-tree-ci.yml']);
-  const scopeOnly = regroup && (consumerScope || checkoutScope) && equal(previous.intent.criteria, request.intent.criteria) && previous.intent.risk === request.intent.risk && equal(previous.intent.requiredRoles, request.intent.requiredRoles);
-  demand((cycle !== 5 && equal(previous.intent, request.intent) || scopeOnly) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
+  const rlsScope = cycle === 4 && equal(additions, RLS_RECOVERY_ADDITIONS) && rlsRecoveryIntent(request.intent) && request.intent.criteria === `${previous.intent.criteria} ${RLS_RECOVERY_CRITERION}`;
+  const scopeOnly = regroup && ((consumerScope || checkoutScope) && equal(previous.intent.criteria, request.intent.criteria) || rlsScope) && previous.intent.risk === request.intent.risk && equal(previous.intent.requiredRoles, request.intent.requiredRoles);
+  const rlsFeature = cycle === 5 && previous.continuation?.cycle === 4 && previous.continuation?.regroup && rlsRecoveryIntent(previous.intent) && equal(previous.intent, request.intent);
+  demand((cycle !== 5 && equal(previous.intent, request.intent) || scopeOnly || rlsFeature) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
 }
 function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
@@ -209,7 +244,7 @@ function validateRequest(request) {
     demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= MAX_OWNER_CYCLES && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
     if (Object.hasOwn(continuation, 'ownerContinuation')) {
       validateOwnerContinuation(continuation.ownerContinuation);
-      demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || [4, 5].includes(continuation.cycle)) && (continuation.cycle !== 5 || continuation.regroup !== undefined) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact full candidate; scope expansion is fourth-cycle consumer or fifth-cycle checkout only');
+      demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || [4, 5].includes(continuation.cycle)) && (continuation.cycle !== 5 || continuation.regroup !== undefined || rlsRecoveryIntent(request.intent)) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact full candidate; scope expansion requires its exact owner-approved consumer, checkout or RLS route');
     } else demand(continuation.cycle <= MAX_REPAIRS, 'third, fourth or checkout fifth cycle requires explicit owner continuation');
     paths(continuation.deltaPaths, continuation.mode === 'full'); demand(continuation.mode === 'full' || continuation.deltaPaths.every(path => request.intent.scope.includes(path)), 'repair delta exceeds approved scope');
     demand(REPAIR_RISKS.includes(continuation.repairRisk), 'repair risk is invalid');

@@ -561,3 +561,20 @@ blocks activation. No DCO exemption or unsupported email assumption is allowed.
 Keep queue settings inactive until the exact proposal and these live results
 support the owner's activation decision. A merge of foundation code is not that
 decision and does not authorize production or a release.
+
+### Bounded SQL RLS recovery after the third review
+
+One explicitly owner-approved recovery may use the existing fourth and fifth
+owner cycles for the SQL diagnostic repair. It retains the complete prior scope,
+adds exactly the corrected managed forward, this protocol page and the native
+session implementation/tests, and appends the fixed RLS recovery criterion.
+The fourth cycle covers separately delivered contraction admission; the fifth
+covers the same approved intent after integrating that admission and introducing
+the corrected forward. Each needs a fresh candidate-bound owner decision and
+two fresh full independent reviews. The fourth also requires an exact regroup
+binding of both intents. Previous reports, unresolved findings, lineage and
+expiry remain binding. The automatic limit remains two, the existing total
+owner ceiling remains five, and no sixth cycle or generic scope exception is
+created. A different scope, goal, role floor, risk, author or missing prior
+regroup refuses. This route does not authorize installing a shared tool,
+publication, merge, production or another policy operation.
