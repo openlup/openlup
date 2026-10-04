@@ -245,3 +245,15 @@ attempt".
 - **The reason.** Each merge into `main` invalidated the reviews of every waiting pull request. With several pull requests in flight, that grew quadratically in reviews and needed a live session within a 20-minute window per group. Gated open-source projects rely on mechanical checks of the exact merged tree in the same way.
 - **Unchanged.** Overlapping changes, and changes to that machinery, keep two integration reviewers.
 - **Wrong if:** a carried-over merge admits an interaction that the mechanical checks on the group tree could not have caught, and that a reviewer would have.
+
+### Bounded RLS control documentation recovery
+
+One explicitly authorized RLS recovery keeps its existing history and the
+automatic two-cycle limit. Its fifth owner cycle may close the control-only
+documentation refusal caused by merging the protocol bootstrap. One final sixth
+owner cycle may introduce the same exact corrected SQL only after that control
+is merged and only if the fifth candidate did not introduce it. Fresh exact
+owner decisions, two full independent reviews, findings, expiry and required
+checks remain binding. Other owner routes stay capped at five; a seventh,
+changed intent or renamed-session reset refuses. This exception grants no
+publication, merge, release or production authority.

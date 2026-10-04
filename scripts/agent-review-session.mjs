@@ -182,6 +182,7 @@ const RLS_RECOVERY_CRITERION = "RLS recovery: retire exactly eight legacy cross-
 function rlsRecoveryIntent(intent) {
   return equal([...intent.scope].sort(), RLS_RECOVERY_SCOPE) && intent.risk === 'behavior' && equal(intent.requiredRoles, ['correctness', 'security']) && intent.criteria.endsWith(` ${RLS_RECOVERY_CRITERION}`);
 }
+function ownerCycleLimit(intent) { return MAX_OWNER_CYCLES + (rlsRecoveryIntent(intent) ? 1 : 0); }
 function assertOwnerContinuation(approval, previous, request, regroup, cycle) {
   validateOwnerContinuation(approval);
   demand(approval.priorRequestDigest === digest(previous) && approval.candidateDigest === digest(request.candidate), 'owner continuation differs from exact previous request or candidate');
@@ -191,7 +192,8 @@ function assertOwnerContinuation(approval, previous, request, regroup, cycle) {
   const rlsScope = cycle === 4 && equal(additions, RLS_RECOVERY_ADDITIONS) && rlsRecoveryIntent(request.intent) && request.intent.criteria === `${previous.intent.criteria} ${RLS_RECOVERY_CRITERION}`;
   const scopeOnly = regroup && ((consumerScope || checkoutScope) && equal(previous.intent.criteria, request.intent.criteria) || rlsScope) && previous.intent.risk === request.intent.risk && equal(previous.intent.requiredRoles, request.intent.requiredRoles);
   const rlsFeature = cycle === 5 && previous.continuation?.cycle === 4 && previous.continuation?.regroup && rlsRecoveryIntent(previous.intent) && equal(previous.intent, request.intent);
-  demand((cycle !== 5 && equal(previous.intent, request.intent) || scopeOnly || rlsFeature) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
+  const rlsFinal = cycle === 6 && previous.continuation?.cycle === 5 && previous.continuation.ownerContinuation && rlsRecoveryIntent(previous.intent) && equal(previous.intent, request.intent) && !previous.candidate.changedPaths.includes('supabase/migrations/20261004123000_runtime_capability_rls_closure.sql') && request.candidate.changedPaths.includes('supabase/migrations/20261004123000_runtime_capability_rls_closure.sql');
+  demand((cycle < 5 && equal(previous.intent, request.intent) || scopeOnly || rlsFeature || rlsFinal) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
 }
 function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
@@ -241,7 +243,7 @@ function validateRequest(request) {
     if (Object.hasOwn(continuation, 'ownerContinuation')) fields.push('ownerContinuation');
     exact(continuation, fields, 'continuation');
     if (Object.hasOwn(continuation, 'regroup')) { validateRegroup(continuation.regroup); demand(continuation.mode === 'full', 'owner regroup requires full coverage'); }
-    demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= MAX_OWNER_CYCLES && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
+    demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= ownerCycleLimit(request.intent) && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
     if (Object.hasOwn(continuation, 'ownerContinuation')) {
       validateOwnerContinuation(continuation.ownerContinuation);
       demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || [4, 5].includes(continuation.cycle)) && (continuation.cycle !== 5 || continuation.regroup !== undefined || rlsRecoveryIntent(request.intent)) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact full candidate; scope expansion requires its exact owner-approved consumer, checkout or RLS route');
@@ -328,7 +330,7 @@ function unresolvedCards(history) {
 }
 function validateLineage(state, time, maxAgeMs) {
   const fields = Object.hasOwn(state ?? {}, 'history') ? ['request', 'reports', 'history'] : ['request', 'reports']; exact(state, fields, 'session state');
-  const history = state.history ?? []; demand(Array.isArray(history) && history.length <= MAX_OWNER_CYCLES, 'repair history exceeds bounds');
+  const history = state.history ?? []; demand(Array.isArray(history) && history.length <= ownerCycleLimit(state.request.intent), 'repair history exceeds bounds');
   const allRounds = [...history, state];
   let anchor = 0;
   for (let index = 1; index < allRounds.length; index += 1) if (allRounds[index].request?.continuation?.mode === 'full') anchor = index;
@@ -380,7 +382,7 @@ export async function prepareAgentReviewState({ previous, repairRisk = 'unknown'
   const preservedOwnerContinuation = ownerContinuation !== undefined && equal(ownerContinuation, previous.request.continuation?.ownerContinuation) && equal(previous.request.candidate, request.candidate);
   if (ownerContinuation !== undefined && !preservedOwnerContinuation) {
     assertOwnerContinuation(ownerContinuation, previous.request, request, intentChanged ? regroup : undefined, (previous.history?.length ?? 0) + 1);
-    demand((previous.history?.length ?? 0) >= MAX_REPAIRS && (previous.history?.length ?? 0) < MAX_OWNER_CYCLES && fullRefresh && (regroup === undefined || intentChanged && [3, 4].includes(previous.history?.length ?? 0)), 'owner continuation requires exhausted automatic budget, a remaining owner cycle and explicit full refresh');
+    demand((previous.history?.length ?? 0) >= MAX_REPAIRS && (previous.history?.length ?? 0) < ownerCycleLimit(request.intent) && fullRefresh && (regroup === undefined || intentChanged && [3, 4].includes(previous.history?.length ?? 0)), 'owner continuation requires exhausted automatic budget, a remaining owner cycle and explicit full refresh');
   }
   if (!intentChanged && equal(previous.request.candidate, request.candidate)) {
     if (preservedOwnerContinuation) return structuredClone(previous);
@@ -391,7 +393,7 @@ export async function prepareAgentReviewState({ previous, repairRisk = 'unknown'
     try { validateLineage(previous, time, maxAgeMs); validateRound(previous.request, previous.reports, { complete: true, time, maxAgeMs }); previous.reports.forEach(report => reportPasses(previous.request, report)); } catch { reviewed = false; }
     if (reviewed) return structuredClone(previous);
   }
-  rescope((previous.history?.length ?? 0) < MAX_REPAIRS || ownerContinuation !== undefined && !preservedOwnerContinuation && (previous.history?.length ?? 0) < MAX_OWNER_CYCLES, 'two automatic repair cycles are exhausted; change execution approach');
+  rescope((previous.history?.length ?? 0) < MAX_REPAIRS || ownerContinuation !== undefined && !preservedOwnerContinuation && (previous.history?.length ?? 0) < ownerCycleLimit(request.intent), 'two automatic repair cycles are exhausted; change execution approach');
   demand(request.candidate.clean, 'repair requires clean committed candidates');
   let priorComplete = previous.request.candidate.clean;
   try { validateLineage(previous, time, maxAgeMs); validateRound(previous.request, previous.reports, { complete: true, time, maxAgeMs }); } catch { priorComplete = false; }
