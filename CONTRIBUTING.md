@@ -217,8 +217,10 @@ evidence expiry and the two-cycle automatic repair/review budget. Separately
 bound fresh owner decisions can permit full cycles 3 and 4. Only cycle 4 may
 pair an exact regroup decision adding the two consumer-check paths specified
 in the native session interface, preserving every previous path, criteria,
-risk, roles and author. Cycle 5 refuses. Each owner cycle retains every prior round and
-finding and requires two fresh full reviewers. See the
+risk, roles and author. A separately approved checkout-history recovery at cycle 5
+may add only `.github/workflows/published-tree-ci.yml`, preserving the same criteria
+and complete lineage. An unscoped fifth or a sixth refuses. Each owner cycle retains
+every prior round and finding and requires two fresh full reviewers. See the
 [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
 for the exact request/candidate bindings. Its review base is the
 candidate's fork point, `git merge-base HEAD origin/main`: a review stays current
@@ -861,13 +863,17 @@ reports `needs_rescope`; it never restarts the budget or drops findings.
 
 A fresh explicit owner decision may authorize one additional full review at
 cycle 3 after the two automatic cycles. A separate fresh decision bound to that
-third request and the next candidate may authorize one final full review at
+third request and the next candidate may authorize one full review at
 cycle 4. Each retains every prior round and finding, the same criteria, risk,
 roles and author, and a clean ancestor-preserving committed candidate. Both
 require two fresh full reviewers. Only cycle 4 may also pair an exact owner
 regroup decision with a bounded scope expansion: retain every previous path and
 add exactly `packages/core/scripts/core-package-consumer-audit.ts` and
-`packages/core/test/consumerTooling.test.ts`. No other scope expansion, fifth
+`packages/core/test/consumerTooling.test.ts`. A separately bound checkout-history
+recovery at cycle 5 may add exactly `.github/workflows/published-tree-ci.yml` to
+supply pinned prior Git objects to the required and full root test jobs. It
+retains every previous path, criteria, risk, roles, author and all history, and
+requires two fresh full reviews. No generic fifth, other scope expansion, sixth
 cycle or automatic extension is permitted; unchanged prepare preserves evidence
 and expiry. These decisions grant no publication, merge or settings authority.
 
