@@ -379,6 +379,64 @@ describe("package release workflow controls", () => {
   });
 });
 
+describe("the per-package pack step on a fresh runner", () => {
+  const pack = script(step(committed.producer, "Pack and check the release's package"));
+  // A command-contract fixture: outbox packing requires core declarations, and only
+  // the selected package enters the manifest. Real package builds are checked separately.
+  function runPack(source: string, name: "core" | "outbox", failCore = false) {
+    const directory = mkdtempSync(join(tmpdir(), "openlup-cold-pack-"));
+    try {
+      const bin = join(directory, "bin");
+      mkdirSync(bin);
+      const npm = `#!/usr/bin/env node
+const { appendFileSync, existsSync, mkdirSync, writeFileSync } = require("node:fs");
+const args = Reflect.get(process, "argv").slice(2).join(" ");
+appendFileSync("commands", args + "\\n");
+if (args === "run build --workspace @openlup/core") {
+  if (${JSON.stringify(failCore)}) process.exit(1);
+  mkdirSync("core-dist");
+} else if (args === 'run packages:check -- --out packs --release-tag openlup-${name}-v0.13.1') {
+  if (${JSON.stringify(name === "outbox")} && !existsSync("core-dist")) {
+    console.error("missing core declarations"); process.exit(1);
+  }
+  mkdirSync("packs");
+  writeFileSync("packs/packages-manifest.json", JSON.stringify({ packages: [{ name: "@openlup/${name}" }] }));
+} else { console.error("unexpected command: " + args); process.exit(1); }
+`;
+      writeFileSync(join(bin, "npm"), npm);
+      chmodSync(join(bin, "npm"), 0o755);
+      const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", source], {
+        cwd: directory, env: { ...inherited, PATH: `${bin}:${inherited.PATH}`, RELEASE_TAG: `openlup-${name}-v0.13.1` }, encoding: "utf8", timeout: 30_000,
+      });
+      const manifest = join(directory, "packs/packages-manifest.json");
+      return { status: result.status, stderr: result.stderr, commands: readFileSync(join(directory, "commands"), "utf8").trim().split("\n"), packages: existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")).packages : [] };
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
+
+  it("builds core before a cold outbox pack and still packs only the selected package", () => {
+    for (const name of ["core", "outbox"] as const) {
+      const result = runPack(pack, name);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.commands).toEqual([...(name === "outbox" ? ["run build --workspace @openlup/core"] : []), `run packages:check -- --out packs --release-tag openlup-${name}-v0.13.1`]);
+      expect(result.packages).toEqual([{ name: `@openlup/${name}` }]);
+    }
+    const missingPrerequisite = pack.replace("npm run build --workspace @openlup/core", ":");
+    expect(missingPrerequisite).not.toBe(pack);
+    const failed = runPack(missingPrerequisite, "outbox");
+    expect(failed.status).not.toBe(0);
+    expect(failed.stderr).toContain("missing core declarations");
+    expect(failed.packages).toEqual([]);
+  });
+
+  it("stops before packing when the core prerequisite build fails", () => {
+    const failed = runPack(pack, "outbox", true);
+    expect(failed.status).not.toBe(0);
+    expect(failed.commands).toEqual(["run build --workspace @openlup/core"]);
+    expect(failed.packages).toEqual([]);
+  });
+});
+
 describe("each release job against a hostile off-main target", () => {
   const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
   const identity = { GIT_AUTHOR_NAME: "fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };

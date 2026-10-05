@@ -146,8 +146,8 @@ While `@openlup/core` is below 1.0, the `@openlup/*` packages are released as
 one set, independently of source previews: one set version `0.N.P` from one
 commit, a tag `openlup-<package>-v<version>` per package at that commit, and
 every package republished in each set. A patch set only fixes; any API,
-behaviour or schema change is a minor set. Today the set has one package,
-`@openlup/core`, and its first set is `0.12.0`. Source preview 11, which
+behaviour or schema change is a minor set. The set contains `@openlup/core` and
+`@openlup/outbox`; the first set was core `0.12.0`. Source preview 11, which
 published `@openlup/core` `0.11.0` on the `preview` dist-tag, was the last
 lockstep cut that also published a package.
 The [versioning policy](../../.github/VERSIONING_AND_EOL.md#package-releases)
@@ -175,8 +175,10 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    creates the annotated tag `openlup-<package>-v<version>` and draft, validates
    the same draft ID and publishes the immutable release. Verify each completed
    release's exact note bytes, identity and GitHub attestation.
-5. The App event starts package packing and independent release/tag checks. The
-   `npm-stage` job verifies the tarball digest, re-reads npm and publishes with OIDC
+5. The App event starts package packing and independent release/tag checks. An
+   outbox tag first builds its exact workspace core peer so its declarations are
+   available on a fresh runner; the checked output still contains only outbox.
+   The `npm-stage` job verifies the tarball digest, re-reads npm and publishes with OIDC
    provenance under `latest`. There is no second npm reviewer in the configured direct
    publishing route. One package's releases and publications run one at a time.
 6. Observe package-workflow success and verify the exact registry version,
