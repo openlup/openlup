@@ -1,0 +1,62 @@
+{
+  "name": "@openlup/outbox",
+  "version": "0.12.0",
+  "private": false,
+  "description": "Transactional PostgreSQL outbox rail; development preview.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openlup/openlup.git",
+    "directory": "packages/outbox"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "packageManager": "npm@11.19.0",
+  "sideEffects": false,
+  "files": [
+    "dist/**",
+    "src/**",
+    "sql/**",
+    "AGENTS.md",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "release-gates.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "test": "vitest run test",
+    "prepublishOnly": "node -e \"throw new Error('OUTBOX_DIRECTORY_PUBLISH_REFUSED')\"",
+    "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
+    "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
+    "ci": "npm run build && npm run test && npm run api:check"
+  },
+  "peerDependencies": {
+    "@openlup/core": "0.12.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./postgres": {
+      "types": "./dist/postgres.d.ts",
+      "import": "./dist/postgres.js",
+      "default": "./dist/postgres.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "tag": "preview"
+  }
+}

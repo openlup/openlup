@@ -519,6 +519,17 @@
       ],
       "doc": "docs/platform/SUBSCRIPTION_WORKFLOWS.md",
       "anchor": "#available-domain-services"
+    },
+    {
+      "id": "outbox-rail",
+      "when": "Outbox protocol, adapter transactions, schedules and package consumption",
+      "paths": [
+        "packages/outbox/**",
+        "server/runtime/outbox/**",
+        "scripts/packages/outbox-consumer-proof.ts"
+      ],
+      "doc": "packages/outbox/README.md",
+      "anchor": ""
     }
   ]
 }

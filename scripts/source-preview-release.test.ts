@@ -283,6 +283,15 @@ const CORE_SCRIPTS = {
   "test:smoke": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts",
   "typecheck:smoke": "tsc -p tsconfig.smoke.json --noEmit",
 };
+const OUTBOX_SCRIPTS = {
+  build: "tsc -p tsconfig.build.json",
+  prepack: "npm run build",
+  test: "vitest run test",
+  prepublishOnly: "node -e \"throw new Error('OUTBOX_DIRECTORY_PUBLISH_REFUSED')\"",
+  "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
+  "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
+  ci: "npm run build && npm run test && npm run api:check",
+};
 const UI_SCRIPTS = { build: CORE_SCRIPTS.build, typecheck: "tsc -p tsconfig.json --noEmit", "test:neutrality": "node --experimental-strip-types smoke/neutrality.ts" };
 const compatibility = (diagnostics: number) => ({ typecheck: { projects: ["tsconfig.synthetic.json"], signedPreviewDebt: { unresolvedEdges: { mode: "exact-ratchet", pairs: 0, importers: 0, targets: 0, digest: "sha256-e3b0c44298fc1c149afbf4c8996fb924", pairHashes: [] }, inferenceCascades: { mode: "ceiling-ratchet", diagnostics } } } });
 const SYNTHETIC_TREE: Record<string, string> = {
@@ -296,6 +305,7 @@ const SYNTHETIC_TREE: Record<string, string> = {
   "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3 }),
   "packages/core/package.json": json({ name: "synthetic-core", scripts: CORE_SCRIPTS }),
   "packages/core/package-lock.json": json({ name: "synthetic-core", lockfileVersion: 3 }),
+  "packages/outbox/package.json": json({ name: "synthetic-outbox", scripts: OUTBOX_SCRIPTS }),
   "packages/ui/package.json": json({ name: "synthetic-ui", scripts: UI_SCRIPTS }),
   [CONTRACT]: createSourceReleaseContract({ ...Object.fromEntries(["inventoryDigest", "classDigest", "packageDigest", "rootLockDigest", "coreLockDigest", "migrationManifestDigest", "databaseTypesDigest", "policyRegistryDigest", "publicationCatalogDigest"].map((name) => [name, `sha256-${"0".repeat(64)}`])) as unknown as SourceReleaseContractInput, compatibility: compatibility(0) as SourceReleaseContractInput["compatibility"] }, { evidenceClass: "activation-candidate", coordinate: CANONICAL_ACTIVATION_REPOSITORY, securityRoute: CANONICAL_ACTIVATION_SECURITY_ROUTE, owner: OWNER }).contents,
 };

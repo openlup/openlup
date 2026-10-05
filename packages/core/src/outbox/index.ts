@@ -1,0 +1,44 @@
+/** @beta Shared event envelope. Storage and execution policy belong to the rail. */
+export interface OutboxEventRow {
+  id: string;
+  created_at: string;
+  available_at: string;
+  processed_at: string | null;
+  aggregate_type: string;
+  aggregate_id: string;
+  event_type: string;
+  idempotency_key: string;
+  status: string;
+  attempts: number;
+  payload: Record<string, unknown>;
+  error: string | null;
+  metadata: Record<string, unknown>;
+}
+/** @beta */
+export type OutboxHandlerOutcome =
+  | { kind: "processed"; detail?: Record<string, unknown> }
+  | { kind: "retry"; reason: string }
+  | { kind: "discard"; reason: string; benign?: boolean }
+  | { kind: "snooze"; reason: string };
+/** @beta Phase observations are transient; never put payloads or credentials here. */
+export interface OutboxHandlerExecutionContext {
+  setPhase(phase: string): void;
+}
+/** @beta Inert registration shared by preflight and the run-bound builder. */
+export interface OutboxHandlerDescriptor {
+  readonly eventType: string;
+  readonly timeoutMs: number;
+}
+/** @beta Structural abort signal, shared by browser and server implementations. */
+export interface OutboxAbortSignal {
+  readonly aborted: boolean;
+  readonly reason: unknown;
+  addEventListener(type: "abort", listener: () => void, options?: { once?: boolean }): void;
+  removeEventListener(type: "abort", listener: () => void): void;
+}
+/** @beta Effects must be idempotent and honor the abort signal. */
+export interface OutboxHandler<Signal extends OutboxAbortSignal = OutboxAbortSignal> extends OutboxHandlerDescriptor {
+  handle(row: OutboxEventRow, signal: Signal, execution?: OutboxHandlerExecutionContext): Promise<OutboxHandlerOutcome>;
+}
+export { PLATFORM_EVENT_VOCABULARY } from "./vocabulary.js";
+export type { EventVocabularyEntry } from "./vocabulary.js";

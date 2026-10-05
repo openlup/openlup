@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 5,
+  "kind": "rail",
+  "compatibilityPolicies": {
+    "internal-candidate": "Development-preview API; no stable compatibility claim.",
+    "testing-internal": "Synthetic protocol test support."
+  },
+  "packageSurface": {
+    ".": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageContract.test.ts"
+      ],
+      "entrypoint": "dist/index.d.ts",
+      "snapshot": "api/index.api.md"
+    },
+    "./postgres": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageContract.test.ts"
+      ],
+      "entrypoint": "dist/postgres.d.ts",
+      "snapshot": "api/postgres.api.md"
+    },
+    "./testing": {
+      "role": "testing",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing-internal",
+      "packageSmokeEvidence": [
+        "test/packageContract.test.ts"
+      ],
+      "entrypoint": "dist/testing.d.ts",
+      "snapshot": "api/testing.api.md"
+    }
+  },
+  "pack": {
+    "code": {
+      "maxPackedBytes": 32768,
+      "maxFiles": 48
+    },
+    "docs": {
+      "maxPackedBytes": 16384,
+      "maxFiles": 12
+    },
+    "maxPackedBytes": 65536,
+    "maxUnpackedBytes": 262144,
+    "maxFiles": 64
+  }
+}

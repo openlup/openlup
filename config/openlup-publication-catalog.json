@@ -1394,6 +1394,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/api/outbox.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/api/partners.api.md",
       "class": "public-output"
     },
@@ -1414,11 +1418,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/api/readiness.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/api/risk.api.md",
       "class": "public-output"
     },
     {
       "path": "packages/core/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/api/standard-schema.api.md",
       "class": "public-output"
     },
     {
@@ -1554,6 +1566,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/smoke/outboxStandalone.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/smoke/partnersStandalone.test.ts",
       "class": "public-output"
     },
@@ -1574,6 +1590,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/smoke/readinessStandalone.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/smoke/riskStandalone.test.ts",
       "class": "public-output"
     },
@@ -1587,6 +1607,10 @@
     },
     {
       "path": "packages/core/smoke/standaloneImportGraph.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/smoke/standardSchemaStandalone.test.ts",
       "class": "public-output"
     },
     {
@@ -1655,6 +1679,14 @@
     },
     {
       "path": "packages/core/src/marketing/research/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/outbox/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/outbox/vocabulary.ts",
       "class": "public-output"
     },
     {
@@ -1770,6 +1802,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/readiness/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/readiness/declarations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/readiness/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/readiness/schemaProbe.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/risk/core/evaluator.ts",
       "class": "public-output"
     },
@@ -1799,6 +1847,10 @@
     },
     {
       "path": "packages/core/src/shipping/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/standard-schema/index.ts",
       "class": "public-output"
     },
     {
@@ -1947,6 +1999,126 @@
     },
     {
       "path": "packages/core/vitest.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/AGENTS.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/CHANGELOG.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/LICENSE",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/api/index.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/api/postgres.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/api/testing.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/package.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/release-gates.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/scripts/api-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/smoke/wiring.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/sql/0001_outbox.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/sql/manifest.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/enqueue.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/factory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/postgres.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/registry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/testing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/trace.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/typedEvents.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/src/worker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/test/factory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/test/packageContract.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/test/postgres.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/test/protocol.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/tsconfig.build.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/vitest.config.ts",
       "class": "public-output"
     },
     {
@@ -2531,6 +2703,10 @@
     },
     {
       "path": "scripts/packages/eslint-import-map.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/outbox-consumer-proof.ts",
       "class": "public-output"
     },
     {
@@ -11270,6 +11446,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/outbox/candidateAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/outbox/candidateAdmission.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/outbox/referenceContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/partners/partnerAcquisitionBinding.test.ts",
       "class": "public-output"
     },
@@ -18775,7 +18963,7 @@
     },
     {
       "name": "prelint",
-      "command": "npm --workspace @openlup/core run build",
+      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18815,7 +19003,7 @@
     },
     {
       "name": "pretest",
-      "command": "npm --workspace @openlup/core run build",
+      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18825,7 +19013,7 @@
     },
     {
       "name": "pretest:required",
-      "command": "npm --workspace @openlup/core run build",
+      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18845,7 +19033,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -18857,11 +19045,15 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-5f04db3987cb2a28c45b7adce444afaa5b166b9456968693b5efa68de8ce7e6f"
+      "digest": "sha256-1cf8056312537e4ec94a7b93ade00626b61e2fc58a89185785c89a61aea5553a"
     },
     {
       "path": "packages/core/package.json",
       "digest": "sha256-5bb893d11455be6a250527b04ffa92845c542b24316a5f4da6f6785d7c79a47f"
+    },
+    {
+      "path": "packages/outbox/package.json",
+      "digest": "sha256-3792dd9ebb26454351558a749f874b52af110153c5ca0d89d4b098f472e5f1b5"
     },
     {
       "path": "packages/ui/package.json",

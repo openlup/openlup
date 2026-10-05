@@ -1,23 +1,10 @@
+import type { OutboxEventRow, OutboxHandler } from "@openlup/outbox";
+export type { OutboxEventRow, OutboxHandler, OutboxHandlerOutcome, OutboxHandlerExecutionContext } from "@openlup/outbox";
+export { OutboxHandlerExecutionTrace } from "@openlup/outbox";
 // Pure contracts for the outbox dispatcher. No IO, no Supabase client, no
 // process.env reads, and no event-type string literals — event types live in
 // the handler registry so the claim allowlist stays the single source of truth.
 // SQL counterpart: supabase/migrations/*_outbox_dispatch_rpcs.sql (outbox_*).
-
-export interface OutboxEventRow {
-  id: string;
-  created_at: string;
-  available_at: string;
-  processed_at: string | null;
-  aggregate_type: string;
-  aggregate_id: string;
-  event_type: string;
-  idempotency_key: string;
-  status: string;
-  attempts: number;
-  payload: Record<string, unknown>;
-  error: string | null;
-  metadata: Record<string, unknown>;
-}
 
 export interface CheckoutEmailOutboxReconcileResult {
   checked: { paid: number; failed: number; expired: number };
@@ -44,53 +31,6 @@ export interface ReorderReminderEnqueuePort {
 export interface ReviewRequestEnqueuePort {
   enqueueRequests(limit: number): Promise<number>;
   enqueueEffects(limit: number): Promise<number>;
-}
-
-export type OutboxHandlerOutcome =
-  | { kind: "processed"; detail?: Record<string, unknown> }
-  | { kind: "retry"; reason: string }
-  // `benign` marks an EXPECTED terminal drop (e.g. the aggregate was legitimately
-  // deleted before the async event dispatched — an orphan from smoke/order
-  // cleanup). The dispatcher logs benign discards at warn, not error, so they
-  // stop reading as failures in observability.
-  | { kind: "discard"; reason: string; benign?: boolean }
-  | { kind: "snooze"; reason: string };
-
-export interface OutboxHandler {
-  readonly eventType: string;
-  readonly timeoutMs: number;
-  // The signal aborts at timeoutMs; handler IO MUST honor it so a timed-out
-  // send cannot complete after the row is re-claimed (duplicate-side-effect
-  // window). Promise.race in the worker is only a backstop.
-  handle(
-    row: OutboxEventRow,
-    signal: AbortSignal,
-    execution?: OutboxHandlerExecutionContext,
-  ): Promise<OutboxHandlerOutcome>;
-}
-
-/** Per-execution, in-memory diagnostics. Never persist payload or recipient data. */
-export interface OutboxHandlerExecutionContext {
-  setPhase(phase: string): void;
-}
-
-export class OutboxHandlerExecutionTrace implements OutboxHandlerExecutionContext {
-  private lastPhase: string | undefined;
-
-  setPhase(phase: string): void {
-    const sanitized = phase.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 48);
-    if (sanitized) this.lastPhase = sanitized;
-  }
-
-  timeoutReason(): string {
-    return this.lastPhase ? `outbox_handler_timeout:${this.lastPhase}` : "outbox_handler_timeout";
-  }
-
-  qualifyTimeout(outcome: OutboxHandlerOutcome): OutboxHandlerOutcome {
-    return this.lastPhase && outcome.kind === "retry" && outcome.reason === "outbox_handler_timeout"
-      ? { ...outcome, reason: this.timeoutReason() }
-      : outcome;
-  }
 }
 
 export type OutboxHandlerRegistry = ReadonlyMap<string, OutboxHandler>;

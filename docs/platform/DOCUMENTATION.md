@@ -98,6 +98,8 @@ It ignores ambient repository/index redirects, replacement objects and grafts,
 disables lazy fetching and filesystem monitors, and excludes global/system Git
 configuration. This preserves the actual object meaning of the reported SHA.
 
+The outbox rail owns its package protocol and transaction guide. Documentation routing assigns its source, explicit disposable consumer proof and reference composition to that guide; core retains shared kernel and checker documentation. Regenerated navigation lists these actual source responsibilities.
+
 ## Impact
 
 For a source change:

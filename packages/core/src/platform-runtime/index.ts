@@ -34,3 +34,5 @@ export type {
   SchedulerPort,
   TransactionalRuntimePort,
 } from "./ports.js";
+
+export type { JobLeasePort, PlatformJobTriggerKind, PlatformJobInvocation, PlatformJobClaim, PlatformJobFinishStatus, PlatformJobFinishSummary } from "./ports.js";

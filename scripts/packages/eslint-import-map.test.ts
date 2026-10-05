@@ -211,7 +211,7 @@ describe("eslint portable package boundaries", () => {
       for (const specifier of ["../../outside", "/outside", "@/outside", "#outside", `@openlup/${otherPackage}`]) {
         for (const source of [`import value from "${specifier}";`, `const value = require(\`${specifier}\`);`]) {
           expect(boundaryMessages(config, source, filename))
-            .toEqual([expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`)]);
+            .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
         }
       }
     }
@@ -228,4 +228,39 @@ describe("eslint portable package boundaries", () => {
       expect(boundaryMessages(config, 'const value = registry.require("@vercel/blob");', filename)).toEqual([]);
     }
   });
+  it.each(sourceExtensions.flatMap((extension) => [0, 1, 4, 12, 13].map((depth) => ({ extension, depth }))))(
+    "permits only exact public core exports from outbox in $extension at depth $depth",
+    async ({ extension, depth }) => {
+      const config=await loadConfig();
+      const filename=`packages/outbox/src/${"nested/".repeat(depth)}usesKernel.${extension}`;
+      for(const specifier of ["@openlup/core/outbox","@openlup/core/readiness","@openlup/core/platform-runtime","@openlup/core/standard-schema"]){
+        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename)).toEqual([]);
+      }
+      for(const specifier of ["@openlup/core/src/readiness","@openlup/core/dist/readiness/index.js","@openlup/core/not-exported","@openlup/core"]){
+        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+          .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
+      }
+      for(const specifier of ["@openlup/ui","@openlup/unknown","/outside","@/outside","#outside",`${"../".repeat(depth+3)}outside`]){
+        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+          .toContainEqual(expect.stringContaining("A file under packages/outbox stays package-local"));
+      }
+      for(const specifier of [managedProvider,cardProvider,"pg","openai","@vercel/blob"]){
+        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+          .toContainEqual(expect.stringContaining("Portable package source must not import provider SDKs"));
+      }
+      if (depth === 0) for(const pkg of portablePackages)for(const source of loadSources("@openlup/outbox","ts"))
+        expect(boundaryMessages(config,source,`packages/${pkg}/src/usesOutbox.ts`))
+          .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
+    });
+
+  it("validates declared workspace exports inside package-local imports too",async()=>{
+    const config=await loadConfig();
+    for(const pkg of ["core","ui","outbox"]){
+      const filename=`packages/${pkg}/src/usesPrivate.ts`;
+      for(const source of loadSources(`@openlup/${pkg}/src/private`,"ts"))
+        expect(boundaryMessages(config,source,filename))
+          .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
+    }
+  });
+
 });

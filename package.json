@@ -26,7 +26,8 @@
     "#communications-egress-policy": "./server/_lib/publicDeploymentPolicies.ts"
   },
   "workspaces": [
-    "packages/core"
+    "packages/core",
+    "packages/outbox"
   ],
   "engines": {
     "node": "24.x"
@@ -42,14 +43,14 @@
     "guard:client-secret-boundary": "node --experimental-strip-types scripts/check-client-secret-boundary.ts",
     "guard:public-reference-site-routes": "node scripts/site-routes.mjs --public-reference",
     "lint": "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint .",
-    "prelint": "npm --workspace @openlup/core run build",
+    "prelint": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
     "oss:published-tree": "node --experimental-strip-types scripts/oss-published-tree-check.ts",
     "packages:check": "node --experimental-strip-types scripts/packages/packages-check.ts",
     "release:bump": "node --experimental-strip-types scripts/packages/release-bump.ts",
-    "pretest": "npm --workspace @openlup/core run build",
-    "pretest:required": "npm --workspace @openlup/core run build",
+    "pretest": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
+    "pretest:required": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
     "test": "node scripts/run-vitest.mjs run",
-    "test:required": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe"
+    "test:required": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.5.7",
@@ -126,7 +127,8 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@openlup/outbox": "file:packages/outbox"
   },
   "devDependencies": {
     "@ast-grep/cli": "^0.45.3",

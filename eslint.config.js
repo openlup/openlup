@@ -16,11 +16,11 @@ const tsconfigRootDir = path.dirname(fileURLToPath(import.meta.url));
 //   1. outside packages/: a package is reached only through its declared exports;
 //   2. domain code: additionally no provider SDK and no adapter, infra, runtime
 //      or route-composition code (tests may compose a domain with an adapter);
-//   3. packages/<name>/: nothing outside the package's own directory;
+//   3. packages/<name>/: package-local; outbox may import exact public core exports;
 //   4. portable package production source: additionally no provider SDK.
 const SOURCE_EXTENSIONS = "{ts,tsx,js,mjs,cjs}";
 const MAX_PACKAGE_DEPTH = 12;
-const PORTABLE_PACKAGE_DIRECTORIES = ["core", "ui"];
+const PORTABLE_PACKAGE_DIRECTORIES = ["core", "ui", "outbox"];
 const DOMAIN_ROOTS = ["src/domains", "server/domains"];
 const testFiles = (prefix) => [
   `${prefix}**/*.test.${SOURCE_EXTENSIONS}`,
@@ -91,13 +91,15 @@ const domainIsolation = {
 // `depth` is the number of directories between the package root and the file;
 // a file deeper than MAX_PACKAGE_DEPTH may not climb out of its directory at all.
 const packageIsolation = (pkg, depth) => ({
-  message: `A file under packages/${pkg.directory} imports nothing outside that directory.`,
+  message: pkg.name === "@openlup/outbox"
+    ? "A file under packages/outbox stays package-local, except exact public core exports."
+    : `A file under packages/${pkg.directory} imports nothing outside that directory.`,
   regexes: [
     depth === null ? "^(?:\\./)?\\.\\.(?:/|$)" : `^(?:\\./)?(?:\\.\\./){${depth}}\\.\\.(?:/|$)`,
     "^/",
     "^@/",
     "^#",
-    `^@openlup/(?!${escapeRegex(pkg.name.replace(/^@openlup\//, ""))}(?:/|$))`,
+    `^@openlup/(?!(?:${escapeRegex(pkg.name.replace(/^@openlup\//, ""))}${pkg.name === "@openlup/outbox" ? "|core" : ""})(?:/|$))`,
   ],
 });
 
@@ -179,12 +181,12 @@ export default tseslint.config(
       const isolation = packageIsolation(pkg, depth);
       const sourcePrefix = `packages/${pkg.directory}/src/`;
       return [
-        { files, rules: boundaryRules([isolation]) },
+        { files, rules: boundaryRules([isolation, packageExports]) },
         ...(PORTABLE_PACKAGE_DIRECTORIES.includes(pkg.directory) ? [{
           // AND selectors preserve the same depth-specific package boundary.
           files: files.map((file) => [file, ...sourceFiles(sourcePrefix)]),
           ignores: testFiles(sourcePrefix),
-          rules: boundaryRules([isolation, providerIsolation]),
+          rules: boundaryRules([isolation, packageExports, providerIsolation]),
         }] : []),
       ];
     })),

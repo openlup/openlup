@@ -149,6 +149,7 @@ export default defineConfig({
             "mcp/**/*.{test,spec}.ts",
             "scripts/**/*.{test,spec}.ts",
             "server/**/*.{test,spec}.ts",
+            "packages/outbox/test/**/*.{test,spec}.ts",
             // src logic tests; the dom project owns the excluded trees below.
             "src/**/*.{test,spec}.ts",
             // Golden-master harness (Platform Portability): deterministic dispatcher contract.

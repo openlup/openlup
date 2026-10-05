@@ -34,7 +34,9 @@
       "role": "kernel",
       "maturity": "candidate",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/subscriptionBundleStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/subscriptionBundleStandalone.test.ts"
+      ],
       "entrypoint": "dist/subscription/index.d.ts",
       "snapshot": "api/subscription.api.md"
     },
@@ -42,7 +44,9 @@
       "role": "kernel",
       "maturity": "candidate",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/subscriptionBundleStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/subscriptionBundleStandalone.test.ts"
+      ],
       "entrypoint": "dist/bundle/contracts.d.ts",
       "snapshot": "api/bundle.api.md"
     },
@@ -50,7 +54,9 @@
       "role": "kernel",
       "maturity": "candidate",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/pricingStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/pricingStandalone.test.ts"
+      ],
       "entrypoint": "dist/pricing/index.d.ts",
       "snapshot": "api/pricing.api.md"
     },
@@ -58,7 +64,9 @@
       "role": "kernel",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/companyIdentityStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/companyIdentityStandalone.test.ts"
+      ],
       "entrypoint": "dist/company-identity/index.d.ts",
       "snapshot": "api/company-identity.api.md"
     },
@@ -66,7 +74,9 @@
       "role": "kernel",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/fulfillmentStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/fulfillmentStandalone.test.ts"
+      ],
       "entrypoint": "dist/fulfillment/index.d.ts",
       "snapshot": "api/fulfillment.api.md"
     },
@@ -74,7 +84,9 @@
       "role": "kernel",
       "maturity": "candidate",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/inventoryStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/inventoryStandalone.test.ts"
+      ],
       "entrypoint": "dist/inventory/index.d.ts",
       "snapshot": "api/inventory.api.md"
     },
@@ -82,7 +94,9 @@
       "role": "kernel",
       "maturity": "candidate",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/shippingStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/shippingStandalone.test.ts"
+      ],
       "entrypoint": "dist/shipping/index.d.ts",
       "snapshot": "api/shipping.api.md"
     },
@@ -90,7 +104,9 @@
       "role": "kernel",
       "maturity": "candidate",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/catalogStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/catalogStandalone.test.ts"
+      ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"
     },
@@ -98,7 +114,9 @@
       "role": "kernel",
       "maturity": "candidate",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/promoStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/promoStandalone.test.ts"
+      ],
       "entrypoint": "dist/promo/index.d.ts",
       "snapshot": "api/promo.api.md"
     },
@@ -106,7 +124,9 @@
       "role": "kernel",
       "maturity": "candidate",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/riskStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/riskStandalone.test.ts"
+      ],
       "entrypoint": "dist/risk/index.d.ts",
       "snapshot": "api/risk.api.md"
     },
@@ -114,7 +134,9 @@
       "role": "kernel",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/marketingResearchStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/marketingResearchStandalone.test.ts"
+      ],
       "entrypoint": "dist/marketing/research/index.d.ts",
       "snapshot": "api/marketing-research.api.md"
     },
@@ -122,7 +144,9 @@
       "role": "kernel",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/partnersStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/partnersStandalone.test.ts"
+      ],
       "entrypoint": "dist/partners/index.d.ts",
       "snapshot": "api/partners.api.md"
     },
@@ -130,7 +154,9 @@
       "role": "kernel",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/paymentStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/paymentStandalone.test.ts"
+      ],
       "entrypoint": "dist/payment/index.d.ts",
       "snapshot": "api/payment.api.md"
     },
@@ -138,15 +164,49 @@
       "role": "kernel",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": ["smoke/platformRuntimeStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/platformRuntimeStandalone.test.ts"
+      ],
       "entrypoint": "dist/platform-runtime/index.d.ts",
       "snapshot": "api/platform-runtime.api.md"
+    },
+    "./outbox": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "smoke/outboxStandalone.test.ts"
+      ],
+      "entrypoint": "dist/outbox/index.d.ts",
+      "snapshot": "api/outbox.api.md"
+    },
+    "./readiness": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "smoke/readinessStandalone.test.ts"
+      ],
+      "entrypoint": "dist/readiness/index.d.ts",
+      "snapshot": "api/readiness.api.md"
+    },
+    "./standard-schema": {
+      "role": "kernel",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "smoke/standardSchemaStandalone.test.ts"
+      ],
+      "entrypoint": "dist/standard-schema/index.d.ts",
+      "snapshot": "api/standard-schema.api.md"
     },
     "./testing": {
       "role": "testing",
       "maturity": "testing",
       "compatibilityPolicy": "testing-internal",
-      "packageSmokeEvidence": ["smoke/testingStandalone.test.ts"],
+      "packageSmokeEvidence": [
+        "smoke/testingStandalone.test.ts"
+      ],
       "entrypoint": "dist/testing.d.ts",
       "snapshot": "api/testing.api.md"
     }
@@ -202,18 +262,18 @@
     }
   },
   "pack": {
-    "$budgetReason": "2026-10-02, owner-approved at the patch read: the pack budget splits into classes so that documentation and metadata cannot crowd out code, and code growth stays visible. Code counts dist JavaScript, declarations and src TypeScript; docs counts the documentation and metadata files at the package root; anything else counts only toward the total. A class's packed bytes are its files gzipped together. Measured, not estimated: clean origin/main packs 131062 packed bytes, 572032 unpacked bytes and 192 files against caps of 131072, 573440 and 192. With AGENTS.md this change packs about 132.1 thousand packed and 575.7 thousand unpacked bytes and 193 files: code exactly 113573 packed bytes in 183 files, docs about 17.9 thousand packed bytes in 10 files (rounded, because this note's own text moves the last digits). The code caps of 114688 bytes and 183 files admit no new code file without a raise. The docs caps are 24576 bytes and 12 files. The total backstop is the sum of the class caps, 139264 packed bytes and 195 files, with 614400 unpacked bytes.",
+    "$budgetReason": "2026-10-05, owner-approved shared-contract growth: seven new source files add 21 source/runtime/declaration artifacts. The measured contribution has 198 code files, 15 above the prior cap, and 127202 code gzip bytes. The code budget is 131072 bytes/198 files; documentation stays at 24576 bytes/12 files. The total budget is 155648 packed bytes/655360 unpacked bytes/211 files, including the shipped documentation outside the root-file class. These bounded increases cover the outbox envelope, candidate-readiness and Standard Schema contracts; later growth still requires a measured budget decision.",
     "code": {
-      "maxPackedBytes": 114688,
-      "maxFiles": 183
+      "maxPackedBytes": 131072,
+      "maxFiles": 198
     },
     "docs": {
       "maxPackedBytes": 24576,
       "maxFiles": 12
     },
-    "maxPackedBytes": 139264,
-    "maxUnpackedBytes": 614400,
-    "maxFiles": 195,
+    "maxPackedBytes": 155648,
+    "maxUnpackedBytes": 655360,
+    "maxFiles": 211,
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",
