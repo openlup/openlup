@@ -10,9 +10,9 @@ const directory = join(root, "packages/outbox");
 it("packs within declared budgets, binds public SQL, imports exact exports and compiles the shipped agent example", () => {
   const base = join(root, ".context/scratch/outbox-contract"); mkdirSync(base, { recursive: true });
   const scratch = mkdtempSync(join(base, "pack-"));
-  const env = { ...process.env, npm_config_cache: join(base, "npm-cache") };
+  const cache = join(base, "npm-cache");
   try {
-    const [info] = JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], { cwd: directory, env, encoding: "utf8" }));
+    const [info] = JSON.parse(execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--cache", cache, "--pack-destination", scratch], { cwd: directory, encoding: "utf8" }));
     const files = info.files.map((f: { path: string }) => f.path);
     expect(files.every((f: string) => /^(dist\/|src\/|sql\/|AGENTS.md$|README.md$|CHANGELOG.md$|LICENSE$|release-gates.json$|package.json$)/.test(f))).toBe(true);
     const extracted=join(scratch,"extracted");mkdirSync(extracted);
@@ -38,7 +38,7 @@ it("packs within declared budgets, binds public SQL, imports exact exports and c
     const example = /```ts\n([\s\S]*?)\n```/.exec(guide)![1];
     const file = join(scratch, "agent-example.mts"); writeFileSync(file, example);
     execFileSync(join(root, "node_modules/.bin/tsc"), [file, "--ignoreConfig", "--noEmit", "--strict", "--skipLibCheck", "--module", "NodeNext", "--moduleResolution", "NodeNext", "--target", "ES2022"], { cwd: root });
-    const refusal = spawnSync("npm", ["run", "prepublishOnly"], { cwd: directory, env, encoding: "utf8" });
+    const refusal = spawnSync("npm", ["run", "prepublishOnly", "--cache", cache], { cwd: directory, encoding: "utf8" });
     expect(refusal.status).not.toBe(0); expect(refusal.stderr).toContain("OUTBOX_DIRECTORY_PUBLISH_REFUSED");
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }, 30000);

@@ -12,14 +12,14 @@ if (!scratch.startsWith(join(root, ".context", "scratch") + "/")) throw new Erro
 mkdirSync(scratch, { recursive: true });
 const packs = join(scratch, "packs"), consumer = join(scratch, "consumer");
 mkdirSync(packs, { recursive: true }); mkdirSync(consumer, { recursive: true });
-const env = { ...process.env, npm_config_cache: join(scratch, "npm-cache") };
+const cache = join(scratch, "npm-cache");
 const pack = (directory: string): string => {
-  const output = execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packs], { cwd: join(root, directory), env, encoding: "utf8" });
+  const output = execFileSync("npm", ["pack", "--json", "--ignore-scripts", "--cache", cache, "--pack-destination", packs], { cwd: join(root, directory), encoding: "utf8" });
   const [info] = JSON.parse(output); return join(packs, info.filename);
 };
 const core = pack("packages/core"), outbox = pack("packages/outbox"), zod = pack("node_modules/zod");
 writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "outbox-disposable-consumer", private: true, type: "module" }));
-execFileSync("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--fund=false", core, outbox, zod], { cwd: consumer, env, stdio: "inherit" });
+execFileSync("npm", ["install", "--offline", "--ignore-scripts", "--cache", cache, "--no-audit", "--fund=false", core, outbox, zod], { cwd: consumer, stdio: "inherit" });
 // Compile the actual reference composition and admission, with imports resolving only to installed tarballs.
 for (const name of ["referenceContribution", "candidateAdmission"]) {
   const source = readFileSync(join(root, "server/runtime/outbox", `${name}.ts`), "utf8");
