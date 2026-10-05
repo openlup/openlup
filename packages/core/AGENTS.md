@@ -27,6 +27,9 @@ process: an application binds its ports and composes it.
 | `./risk` | kernel | candidate |
 | `./shipping` | kernel | candidate |
 | `./subscription` | kernel | candidate |
+| `./outbox` | kernel | experimental |
+| `./readiness` | kernel | experimental |
+| `./standard-schema` | kernel | experimental |
 | `./testing` | testing | testing |
 
 Any version may change an export, and each change is recorded in
@@ -80,7 +83,11 @@ those before guessing at a contract.
 
 ## Readiness codes
 
-This version raises no `OPENLUP_E_*` readiness code.
+The checker reports `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`,
+`OPENLUP_E_EVENT_DUPLICATE`, `OPENLUP_E_SCHEDULE_UNBOUND`, `OPENLUP_E_SCHEMA_BEHIND`,
+`OPENLUP_E_SET_MISMATCH` and `OPENLUP_E_ENV_MISSING`. Only a `ready` report admits
+its exact candidate. A host must provide complete installed metadata and selected-adapter
+observations; a report does not prove ACL, function bodies or recovery.
 
 ## Using this package in an application
 

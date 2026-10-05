@@ -1,0 +1,86 @@
+import type { OutboxHandler as KernelHandler, OutboxEventRow } from "@openlup/core/outbox";
+export type { OutboxEventRow, OutboxHandlerOutcome, OutboxHandlerExecutionContext, OutboxHandlerDescriptor } from "@openlup/core/outbox";
+/** @beta The worker creates the host's standard AbortController. */
+export type OutboxHandler = KernelHandler<AbortSignal>;
+export type OutboxHandlerRegistry = ReadonlyMap<string, OutboxHandler>;
+
+export type OutboxMarkFailedStatus = "failed" | "discarded" | "snoozed" | "missed";
+
+export interface OutboxStore {
+  /** Read-only preflight used to admit a terminal handler when active providers are unavailable. */
+  hasPendingEventType?(eventType: string): Promise<boolean>;
+  claimBatch(input: {
+    eventTypes: readonly string[];
+    knownEventTypes?: readonly string[];
+    batchSize: number;
+    visibilitySeconds: number;
+    maxAttempts: number;
+  }): Promise<OutboxEventRow[]>;
+  markProcessed(input: {
+    eventId: string;
+    claimToken: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ applied: boolean }>;
+  markFailed(input: {
+    eventId: string;
+    claimToken: string;
+    error: string;
+    outcome: "retry" | "discard" | "snooze";
+    baseDelaySeconds: number;
+    maxDelaySeconds: number;
+    maxAttempts: number;
+    snoozeSeconds: number;
+  }): Promise<{ status: OutboxMarkFailedStatus }>;
+  releaseUnprocessed(
+    items: ReadonlyArray<{ eventId: string; claimToken: string }>,
+    delaySeconds: number,
+  ): Promise<number>;
+}
+
+/** Managed-only best-effort queue observation, separate from core claim/ack policy. */
+export interface OutboxQueueDiagnostics {
+  queueStats(): Promise<Record<string, unknown>>;
+}
+
+export interface Clock {
+  now(): number;
+}
+
+export interface OutboxDispatchRunResult {
+  ok: boolean;
+  checked: number;
+  updated: number;
+  failures: number;
+  skipped: boolean;
+  reason?: string;
+  claimed: number;
+  processed: number;
+  retried: number;
+  snoozed: number;
+  discarded: number;
+  released: number;
+  duplicateInRun: number;
+  leaseLost: number;
+  batches: number;
+  runMs: number;
+  byEventType: Record<string, Record<string, number>>;
+  discardedEventIds: string[];
+  queue?: Record<string, unknown>;
+}
+
+export interface OutboxDispatchConfig {
+  batchSize: number;
+  maxAttempts: number;
+  visibilitySeconds: number;
+  backoffBaseSeconds: number;
+  backoffCapSeconds: number;
+  snoozeSeconds: number;
+  maxSnoozes: number;
+  softBudgetMs: number;
+}
+
+
+/** @beta Logging defaults retain the dispatch console transcript. */
+export interface OutboxLogger { warn(...args: unknown[]): void; error(...args: unknown[]): void }
+/** @beta Synchronous bounded observations; no payloads or credentials. */
+export interface OutboxObservation { event: "claimed" | "finished"; count: number }

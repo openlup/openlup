@@ -1,3 +1,4 @@
+import type { admitReferenceOutbox } from "../outbox/candidateAdmission.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, sep } from "node:path";
@@ -142,7 +143,25 @@ export function createPublicReferenceServer(options: PublicReferenceServerOption
   });
 }
 
+/** Start the selected candidate only after its composed rail has been admitted. */
+export async function startPublicReferenceServer(options: PublicReferenceServerOptions & {
+  outbox?: Awaited<ReturnType<typeof admitReferenceOutbox>>;
+  bindSchedule?: (id: string, cadenceSeconds: number, run: () => Promise<unknown>) => void;
+  port?: number;
+  host?: string;
+} = {}) {
+  if (options.outbox && (!options.outbox.admitted || !options.bindSchedule)) throw new Error("Public reference outbox candidate refused before listener");
+  const server = createPublicReferenceServer(options);
+  const listen = () => new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(options.port ?? 8080, options.host ?? "127.0.0.1", () => { server.off("error", reject); resolve(); });
+  });
+  if (options.outbox?.admitted) await options.outbox.start({ listen, bind: options.bindSchedule! });
+  else await listen();
+  return server;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
   const port = Number(process.env.PORT ?? "8080");
-  createPublicReferenceServer().listen(Number.isSafeInteger(port) && port > 0 ? port : 8080, process.env.OPENLUP_REFERENCE_PROFILE === "subscription" ? "127.0.0.1" : "0.0.0.0");
+  await startPublicReferenceServer({ port: Number.isSafeInteger(port) && port > 0 ? port : 8080, host: process.env.OPENLUP_REFERENCE_PROFILE === "subscription" ? "127.0.0.1" : "0.0.0.0" });
 }

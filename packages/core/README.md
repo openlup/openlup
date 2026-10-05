@@ -21,6 +21,8 @@ package together.
   each change is recorded in [the changelog](CHANGELOG.md). Pin an exact
   version and read the changelog when you upgrade.
 
+The experimental `./outbox`, `./standard-schema` and `./readiness` subpaths provide shared infrastructure contracts. `checkReadiness` evaluates inert contribution descriptors, the complete host-observed package set, actual host bindings (schedule/route function identity must match the contribution) and a bounded schema probe. It never migrates, leases or sends. Only `ready` admits a new candidate; `unknown` and `unsatisfied` leave the serving candidate in place. The host owns inventory completeness, immutable artifact/configuration/schema identity and admission at every work entrance. Catalog existence does not prove SQL bodies, permissions or provider recovery.
+
 ## Package Surface Maturity
 
 Every current export is an internal candidate, experimental kernel, or testing
@@ -43,6 +45,9 @@ promise.
 | `./risk` | kernel | candidate | `smoke/riskStandalone.test.ts` |
 | `./shipping` | kernel | candidate | `smoke/shippingStandalone.test.ts` |
 | `./subscription` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
+| `./outbox` | kernel | experimental | `smoke/outboxStandalone.test.ts` |
+| `./readiness` | kernel | experimental | `smoke/readinessStandalone.test.ts` |
+| `./standard-schema` | kernel | experimental | `smoke/standardSchemaStandalone.test.ts` |
 | `./testing` | testing | testing | `smoke/testingStandalone.test.ts` |
 
 `release-gates.json` records four distinct evidence classes:

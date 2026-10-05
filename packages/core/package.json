@@ -215,6 +215,36 @@
       "production": "./dist/testing.js",
       "import": "./dist/testing.js",
       "default": "./dist/testing.js"
+    },
+    "./outbox": {
+      "core-source": "./src/outbox/index.ts",
+      "types": "./dist/outbox/index.d.ts",
+      "module": "./dist/outbox/index.js",
+      "node": "./dist/outbox/index.js",
+      "development": "./dist/outbox/index.js",
+      "production": "./dist/outbox/index.js",
+      "import": "./dist/outbox/index.js",
+      "default": "./dist/outbox/index.js"
+    },
+    "./readiness": {
+      "core-source": "./src/readiness/index.ts",
+      "types": "./dist/readiness/index.d.ts",
+      "module": "./dist/readiness/index.js",
+      "node": "./dist/readiness/index.js",
+      "development": "./dist/readiness/index.js",
+      "production": "./dist/readiness/index.js",
+      "import": "./dist/readiness/index.js",
+      "default": "./dist/readiness/index.js"
+    },
+    "./standard-schema": {
+      "core-source": "./src/standard-schema/index.ts",
+      "types": "./dist/standard-schema/index.d.ts",
+      "module": "./dist/standard-schema/index.js",
+      "node": "./dist/standard-schema/index.js",
+      "development": "./dist/standard-schema/index.js",
+      "production": "./dist/standard-schema/index.js",
+      "import": "./dist/standard-schema/index.js",
+      "default": "./dist/standard-schema/index.js"
     }
   }
 }

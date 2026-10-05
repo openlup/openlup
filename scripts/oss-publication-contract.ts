@@ -1,5 +1,7 @@
 /** Every directly runnable file admitted by the bounded public command/container contract. */
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
+  "packages/outbox/scripts/api-contract.ts", "packages/outbox/vitest.config.ts",
+  "scripts/packages/outbox-consumer-proof.ts",
   "packages/core/scripts/api-contract.ts", "packages/core/scripts/core-package-consumer-smoke.ts",
   "packages/core/scripts/documentation-contract.ts", "packages/core/scripts/refuse-publish.ts",
   "packages/core/scripts/release-bundle.ts", "packages/core/scripts/release-check.ts",

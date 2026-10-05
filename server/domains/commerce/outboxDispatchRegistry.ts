@@ -1,6 +1,7 @@
 // Registry = the single source of truth for which event types this wave
 // claims. The claim allowlist is derived from its keys, so the PSP-blocked
 // event types stay structurally unclaimable until their handlers register.
+import { uniqueRegistry } from "@openlup/outbox";
 import type { OutboxHandler, OutboxHandlerRegistry } from "./outboxDispatchContracts.js";
 import type {
   OrderPaymentLifecyclePort,
@@ -230,54 +231,3 @@ export function claimAllowlist(registry: OutboxHandlerRegistry): string[] {
   return [...registry.keys()];
 }
 
-function uniqueRegistry(handlers: readonly OutboxHandler[]): OutboxHandlerRegistry {
-  const registry = new Map<string, OutboxHandler>();
-  for (const handler of handlers) {
-    const existing = registry.get(handler.eventType);
-    registry.set(handler.eventType, existing ? composeHandlers(existing, handler) : handler);
-  }
-  return registry;
-}
-
-// The DB lifecycle-repair trigger (communication_close_email_deliveries_for_outbox)
-// derives an email delivery's terminal status from TOP-LEVEL outbox_events.metadata
-// keys — `resendId`/`providerMessageId` (→ sent) and `skipped`/`dedupe` (→ skipped
-// reason). When two handlers share an event type (e.g. commerce.order.canceled =
-// email + accounting reversal) their details are nested under `first`/`second`, so
-// those keys would be invisible to the trigger and a genuinely-sent email delivery
-// gets clobbered to `skipped` with `processed_without_provider_send`. Hoist them so
-// the sub-handler that actually sent the email keeps setting the delivery status.
-const DELIVERY_LIFECYCLE_METADATA_KEYS = ["resendId", "providerMessageId", "skipped", "dedupe"] as const;
-
-function hoistDeliveryLifecycleKeys(detail: Record<string, unknown> | undefined): Record<string, unknown> {
-  if (!detail) return {};
-  const hoisted: Record<string, unknown> = {};
-  for (const key of DELIVERY_LIFECYCLE_METADATA_KEYS) {
-    if (detail[key] !== undefined) hoisted[key] = detail[key];
-  }
-  return hoisted;
-}
-
-function composeHandlers(first: OutboxHandler, second: OutboxHandler): OutboxHandler {
-  return {
-    eventType: first.eventType,
-    timeoutMs: first.timeoutMs + second.timeoutMs,
-    async handle(row, signal) {
-      const firstOutcome = await first.handle(row, signal);
-      if (firstOutcome.kind !== "processed") return firstOutcome;
-      const secondOutcome = await second.handle(row, signal);
-      if (secondOutcome.kind !== "processed") return secondOutcome;
-      return {
-        kind: "processed",
-        detail: {
-          // Hoist second first, then first, so the primary (email) handler wins on
-          // the rare chance both emit a lifecycle key.
-          ...hoistDeliveryLifecycleKeys(secondOutcome.detail),
-          ...hoistDeliveryLifecycleKeys(firstOutcome.detail),
-          first: firstOutcome.detail ?? {},
-          second: secondOutcome.detail ?? {},
-        },
-      };
-    },
-  };
-}

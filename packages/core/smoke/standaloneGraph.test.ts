@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import { inspectStandaloneGraph, packageRoot, packageSmokeFiles, packageSourceFiles, repoRel } from "./standaloneImportGraph.js";
 
 const graphEntrypoints = [
+  "smoke/outboxStandalone.test.ts",
+  "smoke/readinessStandalone.test.ts",
+  "smoke/standardSchemaStandalone.test.ts",
   "smoke/catalogStandalone.test.ts",
   "smoke/companyIdentityStandalone.test.ts",
   "smoke/fulfillmentStandalone.test.ts",

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "version": "outbox-1",
+  "migrations": [
+    {
+      "file": "0001_outbox.sql",
+      "source": "db/platform/migrations/20260807190000_comms_outbox_rail.sql",
+      "sha256": "dfb3e9808714846738222bb74a1bfdb38ceafdde2ca8a0c71ab835739fb333bd"
+    }
+  ]
+}

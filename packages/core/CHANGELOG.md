@@ -8,6 +8,12 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental outbox envelope/handler descriptors, structural validation, job lease and candidate readiness contracts.
+- Check package inventory, event ownership/coverage, actual bindings and qualified schema observations before admitting a new candidate.
+
+Migration: existing exports remain; compose the selected rail and bind its schema probe before activation. Unknown observations refuse the new candidate and do not stop a serving version.
+
+
 ### Changed
 
 - `AGENTS.md` gains a required "Using this package in an application" section: do not edit or

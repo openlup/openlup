@@ -7,7 +7,7 @@ export const PUBLIC_REFERENCE_BUILD_COMMAND = "npm --workspace @openlup/core run
 export const PUBLIC_TEST_SCOPE = ["api", "mcp", "scripts", "server", "src", "tests"] as const;
 export const PUBLIC_TEST_COMMAND = "node scripts/run-vitest.mjs run";
 // Preserve the protected-main floor while the complete diagnostic jobs expose debt.
-export const PUBLIC_REQUIRED_TEST_SCOPE = ["scripts/agent-review-queue.test.ts", "scripts/agent-review-session.test.ts", "scripts/agent-review-controller.test.ts", "scripts/agent-review-gate.test.ts", "scripts/agent-review-hosted.test.ts", "scripts/source-preview-release.test.ts", "scripts/packages", "packages/core", "server/_lib", "server/adapters/managed", "server/adapters/postgres", "server/bff/admin/commerce/catalog", "server/bff/commerce", "server/domains/accounting", "server/domains/channels", "server/domains/commerce", "server/domains/communications", "server/domains/fulfillment", "server/domains/payment", "server/domains/platform", "server/domains/support", "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts", "server/shared", "src/checkout/adapters", "src/checkout/machine", "src/components/admin", "src/domains/customers", "src/domains/payment", "src/domains/platform", "src/domains/shipping", "src/domains/subscription", "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts", "src/pages/account/v2/sections/PaymentCardSetup.test.tsx", "src/public-reference", "tests/stripe"] as const;
+export const PUBLIC_REQUIRED_TEST_SCOPE = ["scripts/agent-review-queue.test.ts", "scripts/agent-review-session.test.ts", "scripts/agent-review-controller.test.ts", "scripts/agent-review-gate.test.ts", "scripts/agent-review-hosted.test.ts", "scripts/source-preview-release.test.ts", "scripts/packages", "packages/core", "packages/outbox", "server/runtime/outbox", "server/_lib", "server/adapters/managed", "server/adapters/postgres", "server/bff/admin/commerce/catalog", "server/bff/commerce", "server/domains/accounting", "server/domains/channels", "server/domains/commerce", "server/domains/communications", "server/domains/fulfillment", "server/domains/payment", "server/domains/platform", "server/domains/support", "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts", "server/shared", "src/checkout/adapters", "src/checkout/machine", "src/components/admin", "src/domains/customers", "src/domains/payment", "src/domains/platform", "src/domains/shipping", "src/domains/subscription", "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts", "src/pages/account/v2/sections/PaymentCardSetup.test.tsx", "src/public-reference", "tests/stripe"] as const;
 export const PUBLIC_REQUIRED_TEST_COMMAND = `node scripts/run-vitest.mjs run ${PUBLIC_REQUIRED_TEST_SCOPE.join(" ")}`;
 export type ContractOwner = { id: string; owners: [string] };
 export type PublicPolicyRegistry = { schemaVersion: 1; activePaths: string[]; contracts: ContractOwner[] };
@@ -52,18 +52,19 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("guard:client-secret-boundary", "node --experimental-strip-types scripts/check-client-secret-boundary.ts"),
   publicCommand("guard:public-reference-site-routes", "node scripts/site-routes.mjs --public-reference"),
   publicCommand("lint", "node scripts/ast-grep/check-filewide-ignore.mjs && ast-grep scan --error=no-suppress-all --error=unused-suppression && ast-grep test --skip-snapshot-tests && eslint ."),
-  publicCommand("prelint", "npm --workspace @openlup/core run build"),
+  publicCommand("prelint", "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build"),
   publicCommand("oss:published-tree", "node --experimental-strip-types scripts/oss-published-tree-check.ts"),
   publicCommand("packages:check", "node --experimental-strip-types scripts/packages/packages-check.ts"),
   publicCommand("release:bump", "node --experimental-strip-types scripts/packages/release-bump.ts"),
-  publicCommand("pretest", "npm --workspace @openlup/core run build"),
-  publicCommand("pretest:required", "npm --workspace @openlup/core run build"),
+  publicCommand("pretest", "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build"),
+  publicCommand("pretest:required", "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build"),
   publicCommand("test", PUBLIC_TEST_COMMAND),
   publicCommand("test:required", PUBLIC_REQUIRED_TEST_COMMAND),
 ];
 export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] = [
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
   { path: "packages/core/package.json", digest: "sha256-5bb893d11455be6a250527b04ffa92845c542b24316a5f4da6f6785d7c79a47f" },
+  { path: "packages/outbox/package.json", digest: "sha256-3792dd9ebb26454351558a749f874b52af110153c5ca0d89d4b098f472e5f1b5" },
   { path: "packages/ui/package.json", digest: "sha256-e57b14ab2c433bd03ae8e71aebf8c3b4eedafcc3177bf373230d45f84bccdb0b" },
 ];
 

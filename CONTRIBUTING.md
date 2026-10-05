@@ -182,8 +182,12 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-163bc45102f9ec556620eac205f0af8756d01d92b188cf59a1f92c6288989c68","reason":"The fixed preview 9 recovery workflow checks the existing source commit and six required contexts before publishing its existing draft; it changes no contributor command, required CI context, or admission rule described in this section."} -->
 
+The outbox workspace builds after core for root lint and test entrypoints. Its declared dependency on core uses exact public exports. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Required tests include its protocol/factory/adapter proofs and the reference admission boundary. The explicit disposable packed proof is a separate local command; it accepts only its own loopback database and never reads an ambient database URL. See [the rail guide](packages/outbox/README.md).
+
 ```bash
 npm ci
+
+
 # Root typecheck consumes the built core package; build it after install and source edits.
 npm --workspace @openlup/core run build
 # npm run lint, npm run test:required and npm test also build core through npm pre-scripts

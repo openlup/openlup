@@ -1,9 +1,21 @@
 {
   "schemaVersion": 2,
   "packages": [
-    { "name": "@openlup/core", "directory": "packages/core", "publish": true }
+    {
+      "name": "@openlup/core",
+      "directory": "packages/core",
+      "publish": true
+    },
+    {
+      "name": "@openlup/outbox",
+      "directory": "packages/outbox",
+      "publish": true
+    }
   ],
   "unreleased": [
-    { "directory": "packages/ui", "reason": "types-only scaffold with source exports; not a release artifact" }
+    {
+      "directory": "packages/ui",
+      "reason": "types-only scaffold with source exports; not a release artifact"
+    }
   ]
 }

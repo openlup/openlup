@@ -32,6 +32,7 @@ export { createPlatformBundleRegistry, platformEnvSchema, } from "./platformKern
 export type { CreatePlatformBundleRegistryInput, PlatformBundleDescriptor, PlatformBundleRegistry, PlatformBundleReadiness, PlatformEnv, PlatformEnvInput, } from "./platformKernel.js";
 /** @beta */
 export type { AnalyticsPort, BlobStoragePort, DataGatewayPort, HttpRuntimePort, MigrationRunnerPort, PlatformHttpRequest, PlatformHttpResponse, SchedulerPort, TransactionalRuntimePort, } from "./ports.js";
+export type { JobLeasePort, PlatformJobTriggerKind, PlatformJobInvocation, PlatformJobClaim, PlatformJobFinishStatus, PlatformJobFinishSummary } from "./ports.js";
 ```
 ## dist/platform-runtime/platformKernel.d.ts
 
@@ -183,5 +184,29 @@ export interface TransactionalRuntimePort {
         ok: boolean;
         status: number;
     }>;
+}
+/** @beta Invocation evidence and claim/finish contract shared by infrastructure rails. */
+export type PlatformJobTriggerKind = "worker" | "scheduler" | "operator";
+export type PlatformJobInvocation = {
+    triggerKind: PlatformJobTriggerKind;
+    /** Observational adapter evidence; it never grants execution authority. */
+    invocationSource: string;
+};
+export type PlatformJobClaim = {
+    acquired: boolean;
+    runId: string | null;
+    reason: string;
+};
+export type PlatformJobFinishStatus = "success" | "failed";
+export type PlatformJobFinishSummary = {
+    checked: number;
+    updated: number;
+    failures: number;
+    skipped: boolean;
+    reason?: string;
+};
+export interface JobLeasePort {
+    claimJobRun(jobName: string, invocation: PlatformJobInvocation, leaseSeconds?: number): Promise<PlatformJobClaim>;
+    finishJobRun(jobName: string, runId: string, invocation: PlatformJobInvocation, status: PlatformJobFinishStatus, result: PlatformJobFinishSummary, extraMetadata?: Record<string, unknown>): Promise<boolean>;
 }
 ```

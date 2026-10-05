@@ -174,9 +174,10 @@ describe("complete public CI", () => {
   it("preserves every required selector and the subsequent existing steps with fatal neutrality", () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
     expect(createHash("sha256").update(requiredTestFloor).digest("hex")).toBe("51484fa2f1ef215691d86a1e08f18446147e7ebf7271a621925bb82cd162fe64");
-    expect(PUBLIC_REQUIRED_TEST_COMMAND).toBe(requiredTestFloor);
-    expect(manifest.scripts["test:required"]).toBe(requiredTestFloor);
-    expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(requiredTestFloor.split(" ").slice(3));
+    const expandedFloor = requiredTestFloor.replace("packages/core ", "packages/core packages/outbox server/runtime/outbox ");
+    expect(PUBLIC_REQUIRED_TEST_COMMAND).toBe(expandedFloor);
+    expect(manifest.scripts["test:required"]).toBe(expandedFloor);
+    expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(expandedFloor.split(" ").slice(3));
     expect(manifest.scripts.test).toBe(PUBLIC_TEST_COMMAND);
     expect(manifest.scripts).not.toHaveProperty("test:full");
     expect(workflowCommands(workflowJob("test"))).toEqual([
@@ -221,7 +222,7 @@ describe("complete public CI", () => {
       const required = run(["run", ...PUBLIC_REQUIRED_TEST_SCOPE], 29);
       expect(required.error).toBeUndefined();
       expect(required.status).toBe(29);
-      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(requiredTestFloor.split(" ").slice(2));
+      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(requiredTestFloor.replace("packages/core ", "packages/core packages/outbox server/runtime/outbox ").split(" ").slice(2));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

@@ -72,6 +72,8 @@ has not been installed or certified by this profile.
 
 <!-- openlup-doc-impact {"unit":"reference","digest":"sha256-8e1cfb83fb47995080c878d4e8a542eae8d0f06f7b4dcddb22ca1e1b6ae5ed4b","reason":"The prerender refusal test supplies an invalid lifecycle route manifest at the existing seam. Public reference selection, fail-closed availability and installation boundary described here are unchanged."} -->
 
+The Node reference start function accepts an admitted outbox candidate and a host schedule binding. For a selected rail it binds dispatch/prune before opening the listener; a refused candidate or absent schedule binding opens no listener. Host composition supplies its driver, lease, effect handlers, known vocabulary and migration observation. Immediate and scheduled work share the packed rail engine, with candidate identity checked at every entrance. The default static CLI selects no outbox adapter and provides no deployed outbox proof.
+
 ## Customer diagnostic history preview
 
 Customer diagnostic history is a development-preview, default-off platform

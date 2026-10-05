@@ -68,6 +68,8 @@ refuses a line in a mode its SKU is not sellable in, and a recommendation leaves
 such a SKU out of that mode. A catalog source that states no sellability counts
 as sellable in both modes.
 
+Neutral outbox envelope/handler contracts and the dispatch engine are consumed from the core/outbox packages. Commerce keeps business handler composition and event ownership. Registry composition still preserves nested results, effective summed timeout and retry replay; the explicit known vocabulary remains distinct from the enabled registry.
+
 ## Where the code lives
 - Shared/frontend: `src/domains/commerce/`
 - Server (handlers, orchestration, Supabase ports, runtime saga): `server/domains/commerce/`
