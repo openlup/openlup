@@ -80,6 +80,8 @@ handling.
 
 ## Development-preview checks
 
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-6e58c27ddcc33151ef6aa6027aa18cbce9c804e29d69f5c086a1ab6c7c8fc81b","reason":"The workspace lockfile changes only the core and outbox package versions and outbox's exact core peer pin to 0.13.0. Dependency resolutions, verification commands, required contexts and publication controls remain unchanged; this prepares a set without publishing it."} -->
+
 The bounded SQL RLS recovery uses existing owner cycles only: a separately
 reviewed contraction control precedes the corrected managed forward. Its exact
 regroup preserves every previous report and finding, keeps the automatic limit
@@ -770,7 +772,6 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-904e5646a70769415ea7e72029532a9f05ecde4dc7e882101d00424043ac4f57","reason":"The root lockfile changes only the core workspace version from 0.10.0 to 0.11.0. Dependency resolution, development-preview checks, and required contributor commands remain unchanged."} -->
 
 <!-- openlup-doc-impact {"unit":"tests","digest":"sha256-e23f5b124da515a37baee7ec68971f347f56f2e0c3a38fe498e0e293bb3565dc","reason":"Test-only delta. The neutral catalog extension fixture adds a second installed type whose count pack dimension declares the net-content role, and asserts that an option differing from the SKU net content refuses. The file stays in the complete root Vitest diagnostic scope and outside the required test selectors; the test commands and CI jobs described here are unchanged."} -->
 

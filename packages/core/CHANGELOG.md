@@ -8,6 +8,11 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.13.0]
+
+- Publishable on the npm `latest` dist-tag as `0.13.0`, from tag
+  `openlup-core-v0.13.0`.
+
 - Add experimental outbox envelope/handler descriptors, structural validation, job lease and candidate readiness contracts.
 - Check package inventory, event ownership/coverage, actual bindings and qualified schema observations before admitting a new candidate.
 
