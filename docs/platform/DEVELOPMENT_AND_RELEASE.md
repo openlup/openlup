@@ -20,6 +20,11 @@ The stages below are sequential, but CI jobs and Sonar analysis run in parallel.
 Local success is preparation, not proof that a hosted run or release succeeded.
 The step-by-step order for one change is
 [Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
+An explicitly approved new bounded module programme may combine implementation
+and set-version preparation in that change. Delivery or merge delegation depends
+on the actual programme grant and applicable maintainer-local policy; this page
+does not activate it. Required maintainer reading precedes DCO sign-off, and
+fresh native review, checks and protected release approval retain their roles.
 
 | Stage | Trigger and executor | Checks and next step |
 | --- | --- | --- |
@@ -61,7 +66,7 @@ remain in [contribution checks](../../CONTRIBUTING.md#development-preview-checks
 | Native session review and `native-review` | Independent semantic review bound to candidate, scope and criteria; hosted receipt admission after mechanical success. | Required for registered agent tasks; hosted status depends on explicit activation. Review does not grant publication or release authority. |
 | SonarQube Cloud automatic analysis | Additional security/reliability findings on PR pushes and main, using configured source/test scope. Runs in Sonar Cloud, not a local scanner or Actions job. | Advisory pilot; no required status, coverage import or per-PR token/login. A hotspot needs contextual review, not automatic classification as a vulnerability. |
 | Dependabot | Scheduled dependency/Actions update proposals; security-update activation is a separate repository setting. | Triage signal, not test evidence or automatic approval. |
-| `npm run packages:check -- --out <outside-checkout-directory> --release-tag openlup-<package>-v<version>` | Package versions, exports, packed contents and consumer boundary; local release preparation and hosted pack/preflight. | Release prerequisite. Does not publish. Check the exact candidate, not just its package manifest. |
+| `npm run packages:check -- --cold --out <outside-checkout-directory> --release-tag openlup-<package>-v<version>` | Inventory-based prerequisite builds and selected-package pack from cold generated output; local release proof and hosted pack/preflight. Use `--release-set <version>` for the whole set. | Release prerequisite. Does not publish. Requires a clean committed candidate; a working-tree preview is separate evidence. |
 | `gh release verify <tag> --repo openlup/openlup` | GitHub attestation of the immutable release/tag; maintainer preparation and hosted release/package workflows. | Release evidence. It does not establish npm publication or an adopter installation. |
 
 Core's `ci` includes license allowlisting, production-dependency SBOM and audit,
@@ -100,6 +105,46 @@ is not a hosted CI pass. `leak-check` inspects what the range would publish;
 `release-check` is advisory and can report `CANNOT-DECIDE`. Neither replaces
 release prepare or release attestation. Installation and changes to this local
 layer remain maintainer-controlled and outside the public tree.
+
+## Measuring delivery improvements
+
+Record measurements in the existing task evidence, with actual candidate,
+workflow run and attempt identities; no separate tracking service is needed.
+Compare like work: a new package or API contribution, an existing-package repair,
+and metadata-only delivery have different costs. Retain failed attempts and
+recovery work. Two log files for one run are one attempt.
+
+Use the same start in both routes: the functional scope is ready to stabilize,
+before version bumps, release notes, pins, release-contract generation and any
+route-specific maintainer reading, review or verification. Include this
+preparation in the comparison. If that start cannot be reconstructed for the
+baseline, report the missing cost as unknown; timing only the stabilized
+candidate cannot establish a net saving.
+
+Record these milestones separately: stable signed candidate; source checks green
+and native admission; queue arming, group admission and merge; main checks green
+and exact release preflight; protected release approval; every publisher job
+complete; and complete consumer, integrity and provenance proof. PR creation or
+publish exit zero is not the final milestone. Where completion still requires
+manual observation, include that work rather than claiming an autonomous result.
+
+Report total elapsed time, integrator active work, maintainer wait, other external
+wait and runner/job seconds separately. Agent-controlled critical-path time uses
+non-overlapping intervals excluding maintainer wait; parallel job durations are
+not added to it. Record full reviews and verifies, questions, MFA interactions,
+failures and manual recovery. Do not invent token or monetary costs without
+telemetry.
+
+Evaluate the next two naturally needed comparable sets, each with its own
+required release approval; do not publish empty benchmark versions. Check whether
+the combined route actually removed a second preparation PR and delivery cycle,
+and whether repeated routine decisions disappeared. A working target is 20% less
+agent-controlled time from the common start to final proof, including tool repair
+and operation cost. Two observations detect obvious regressions; they do not
+establish an average effect for every contribution class. Break-even divides
+implementation and maintenance hours by active-work hours saved per comparable
+set. Unknown savings or frequency means unknown return. Report safety improvements
+separately if speed did not improve; local replay alone does not prove a live gain.
 
 ## Reading results and recovering
 
@@ -146,25 +191,33 @@ While `@openlup/core` is below 1.0, the `@openlup/*` packages are released as
 one set, independently of source previews: one set version `0.N.P` from one
 commit, a tag `openlup-<package>-v<version>` per package at that commit, and
 every package republished in each set. A patch set only fixes; any API,
-behaviour or schema change is a minor set. The set contains `@openlup/core` and
-`@openlup/outbox`; the first set was core `0.12.0`. Source preview 11, which
+behaviour or schema change, new package or shipped SQL is a minor set. The
+[package inventory](../../config/openlup-packages.json) determines the publishable
+set; the first set was core `0.12.0`. Source preview 11, which
 published `@openlup/core` `0.11.0` on the `preview` dist-tag, was the last
 lockstep cut that also published a package.
 The [versioning policy](../../.github/VERSIONING_AND_EOL.md#package-releases)
 owns release permissions, setup, detailed refusals and recovery. The sequence is:
 
 1. Prepare the next set version, above every version npm holds, with
-   `npm run release:bump -- --set <version>` in a reviewed ordinary PR. It sets
+   `npm run release:bump -- --set <version>` in a reviewed ordinary PR, either
+   separate preparation or an explicitly approved bounded implementation-and-set-bump
+   contribution. It sets
    every publishable package and every exact internal pin on one, and opens each
    changelog's version section below a fresh Unreleased heading. A version bump
-   by itself publishes nothing.
+   by itself publishes nothing. Useful migration notes may move from Unreleased
+   to the unique candidate-version section only for a real coherent new set;
+   unchanged-version historical notes cannot cover an API change. Recheck the
+   registry version before dispatch; a conflict requires a reviewed repair.
 2. Select the exact reviewed main commit that carries the version and check its
-   six mechanical contexts, then run `packages:check` with `--release-set <version>`.
+   six mechanical contexts, then run `packages:check` with
+   `--cold --out <outside-checkout-directory> --release-set <version>`.
 3. With explicit authority, dispatch `publish-package.yml` from main with package
    `all`, the set version, the exact SHA and reviewed note bytes. Its unprivileged
    preflight refuses while any package release or publication is in flight, checks
    ancestry, contexts, the set version of every publishable package and, for a
-   patch set, each unchanged API snapshot. It packs and scans every tarball, then
+   patch set, each unchanged API snapshot. It cold-packs every package through
+   the shared inventory-based prerequisite route and scans every tarball, then
    decides each package by its tag, release and npm state, before protected
    `release` approval; dispatch itself is not approval. The release gate that
    decides ancestry, contexts and the tag's commit runs as it is at the dispatched
@@ -175,9 +228,12 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    creates the annotated tag `openlup-<package>-v<version>` and draft, validates
    the same draft ID and publishes the immutable release. Verify each completed
    release's exact note bytes, identity and GitHub attestation.
-5. The App event starts package packing and independent release/tag checks. An
-   outbox tag first builds its exact workspace core peer so its declarations are
-   available on a fresh runner; the checked output still contains only outbox.
+5. The App event starts package packing and independent release/tag checks.
+   The same `packages:check --cold` route prepares the selected package's exact
+   internal prerequisites from the inventory on a fresh runner; the checked
+   output still contains only the tag's package. Cold preparation refuses
+   tracked output, symlinks, unsupported layouts or dependency/build failures
+   rather than using residue.
    The `npm-stage` job verifies the tarball digest, re-reads npm and publishes with OIDC
    provenance under `latest`. There is no second npm reviewer in the configured direct
    publishing route. One package's releases and publications run one at a time.

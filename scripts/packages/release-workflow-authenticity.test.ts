@@ -100,8 +100,8 @@ const GITLEAKS_INSTALL = ['repos/gitleaks/gitleaks/releases/assets/378332058 > "
 const GITLEAKS_SCAN = 'gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner';
 const PACK_GATE = "if: ${{ github.repository == 'openlup/openlup' && vars.OPENLUP_NPM_STAGE == 'enabled' && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'openlup-') }}";
 const DRAFT_TAG_REF = 'test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)" = "$(git rev-parse "refs/tags/$tag")"';
-const PREFLIGHT_PACK = 'npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"';
-const SET_PACK = 'npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-set "$VERSION"';
+const PREFLIGHT_PACK = 'npm run packages:check -- --cold --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"';
+const SET_PACK = 'npm run packages:check -- --cold --out "$RUNNER_TEMP/packs" --release-set "$VERSION"';
 /** The preflight packs the one package, or for the set every publishable package at the set version. */
 const PACK_RUN = `        working-directory: target\n        run: |\n          if [ "$PACKAGE" = all ]; then\n            ${SET_PACK}\n          else\n            ${PREFLIGHT_PACK}\n          fi\n`;
 const PLAN_RUN = '        id: plan\n        working-directory: target\n        env:\n          GITHUB_TOKEN: ${{ github.token }}\n        run: node --experimental-strip-types scripts/packages/package-release.ts plan "$RUNNER_TEMP/packs"\n';
@@ -159,7 +159,7 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
   "refusing checks before every write": ({ dispatch, producer }) => inOrder(job(dispatch, "preflight"), ["Validate dispatch coordinates before checkout", "actions/checkout@", `${DISPATCH_GATE} in-flight`, `${DISPATCH_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts preflight", PACK_RUN, "sha256sum --check --strict", "gitleaks dir"])
     && inOrder(job(dispatch, "release"), ["Validate dispatch coordinates before checkout", `${DISPATCH_GATE} commit`, "package-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY", "immutable-releases", FRESH_GATE, '"$gate" tag', 'git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"', DRAFT_TAG_REF, '--method POST "repos/$GITHUB_REPOSITORY/releases"', "package-release.ts check-draft", "--method PATCH"])
     && step(dispatch, "Create the draft release").includes(`          ${DRAFT_TAG_REF}\n`)
-    && inOrder(job(producer, "pack"), [EVENT_STEP, "actions/checkout@", "gh release verify", `${PRODUCER_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts registry", "npm run packages:check -- --out packs --release-tag", "packages.length !== 1", "sha256sum --check --strict", "gitleaks dir", "actions/upload-artifact@"])
+    && inOrder(job(producer, "pack"), [EVENT_STEP, "actions/checkout@", "gh release verify", `${PRODUCER_GATE} commit`, "npm ci --ignore-scripts", "package-release.ts registry", "npm run packages:check -- --cold --out packs --release-tag", "packages.length !== 1", "sha256sum --check --strict", "gitleaks dir", "actions/upload-artifact@"])
     && inOrder(job(producer, "publish"), ["actions/download-artifact@", "if (actual !== sha256)", "npm publish"]),
   "no continue-on-error, || true or set +e": ({ dispatch, producer }) => [dispatch, producer].every((text) => !/continue-on-error|\|\|\s*(?:true|:)(?:\s|$)|set \+[eo]/u.test(text)),
   "id-token: write only on publish": ({ dispatch, producer }) => !dispatch.includes("id-token") && count(producer, "id-token") === 1 && job(producer, "publish").includes("    permissions:\n      id-token: write\n") && job(producer, "publish").includes("    environment: npm-stage\n")
@@ -269,7 +269,7 @@ const DEFECTS: Defect[] = [
   { control: "a later dispatch refuses rather than cancel a queued publication", plant: "the in-flight refusal after the install", in: "dispatch", from: `      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}      - name: ${GATE_STEPS.preflight}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}${TARGET_BLOCK}      - run: npm ci --ignore-scripts --no-audit --fund=false\n        working-directory: target\n`, to: `      - name: ${GATE_STEPS.preflight}\n${gateStep(`${DISPATCH_GATE} commit "$TARGET_COMMIT"`)}${TARGET_BLOCK}      - run: npm ci --ignore-scripts --no-audit --fund=false\n        working-directory: target\n      - name: ${IN_FLIGHT_STEP}\n${gateStep(`${DISPATCH_GATE} in-flight "$GITHUB_RUN_ID"`)}` },
   { control: "refusing checks before every write", plant: "no tarball scan before tagging", in: "dispatch", from: '          gitleaks dir "$RUNNER_TEMP/scan" --config config/gitleaks.toml --redact --no-banner\n', to: "" },
   { control: "refusing checks before every write", plant: "draft published unchecked", in: "dispatch", from: "        run: node --experimental-strip-types scripts/packages/package-release.ts check-draft\n", to: "        run: echo skipped\n" },
-  { control: "refusing checks before every write", plant: "no pack check at publication", in: "producer", from: "          npm run packages:check -- --out packs --release-tag \"$RELEASE_TAG\"\n", to: "          npm pack --pack-destination packs\n" },
+  { control: "refusing checks before every write", plant: "no pack check at publication", in: "producer", from: "          npm run packages:check -- --cold --out packs --release-tag \"$RELEASE_TAG\"\n", to: "          npm pack --pack-destination packs\n" },
   { control: "refusing checks before every write", plant: "no digest check before publish", in: "producer", from: "if (actual !== sha256)", to: "if (false)" },
   { control: "no continue-on-error, || true or set +e", plant: "continue-on-error", in: "producer", from: "    timeout-minutes: 10\n", to: "    timeout-minutes: 10\n    continue-on-error: true\n" },
   { control: "no continue-on-error, || true or set +e", plant: "|| true", in: "dispatch", from: "run: node --experimental-strip-types scripts/packages/package-release.ts preflight", to: "run: node --experimental-strip-types scripts/packages/package-release.ts preflight || true" },
@@ -337,7 +337,7 @@ const DEFECTS: Defect[] = [
   { control: "refusing checks before every write", plant: "draft created without the tag-ref check", in: "dispatch", from: `          ${DRAFT_TAG_REF}\n`, to: "" },
   { control: "refusing checks before every write", plant: "preflight pack without the release tag", in: "dispatch", from: ' --release-tag "openlup-$PACKAGE-v$VERSION"', to: "" },
   { control: "the App-token job installs, builds and packs nothing", plant: "install in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: "      - run: npm ci --ignore-scripts --no-audit --fund=false\n      # No install, build or pack here:" },
-  { control: "the App-token job installs, builds and packs nothing", plant: "pack in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: "      - run: npm run packages:check -- --out packs\n      # No install, build or pack here:" },
+  { control: "the App-token job installs, builds and packs nothing", plant: "pack in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: "      - run: npm run packages:check -- --cold --out packs\n      # No install, build or pack here:" },
   { control: "the App-token job installs, builds and packs nothing", plant: "a direct packages-check.ts pack in the release job", in: "dispatch", from: "      # No install, build or pack here:", to: '      - run: node --experimental-strip-types scripts/packages/packages-check.ts --out "$RUNNER_TEMP/packs"\n      # No install, build or pack here:' },
   { control: "App credential only where the release writes", plant: "App key in the unprivileged preflight", in: "dispatch", from: "      RELEASE_NOTES: ${{ inputs.notes }}\n    steps:\n      - name: Validate dispatch coordinates before checkout\n        run: |\n          [[ \"$PACKAGE\"", to: "      RELEASE_NOTES: ${{ inputs.notes }}\n      KEY: ${{ secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY }}\n    steps:\n      - name: Validate dispatch coordinates before checkout\n        run: |\n          [[ \"$PACKAGE\"" },
   { control: "App credential only where the release writes", plant: "tag written with the default token", in: "dispatch", from: `          ${APP_TOKEN_ENV}\n        run: |\n          gate=`, to: `          GITHUB_TOKEN: \${{ github.token }}\n        run: |\n          gate=` },
@@ -381,8 +381,8 @@ describe("package release workflow controls", () => {
 
 describe("the per-package pack step on a fresh runner", () => {
   const pack = script(step(committed.producer, "Pack and check the release's package"));
-  // A command-contract fixture: outbox packing requires core declarations, and only
-  // the selected package enters the manifest. Real package builds are checked separately.
+  // Routing fixture only; packages-check.test runs these actual workflow commands
+  // against cold packages and failing real prerequisite builds.
   function runPack(source: string, name: "core" | "outbox", failCore = false) {
     const directory = mkdtempSync(join(tmpdir(), "openlup-cold-pack-"));
     try {
@@ -392,13 +392,8 @@ describe("the per-package pack step on a fresh runner", () => {
 const { appendFileSync, existsSync, mkdirSync, writeFileSync } = require("node:fs");
 const args = Reflect.get(process, "argv").slice(2).join(" ");
 appendFileSync("commands", args + "\\n");
-if (args === "run build --workspace @openlup/core") {
-  if (${JSON.stringify(failCore)}) process.exit(1);
-  mkdirSync("core-dist");
-} else if (args === 'run packages:check -- --out packs --release-tag openlup-${name}-v0.13.1') {
-  if (${JSON.stringify(name === "outbox")} && !existsSync("core-dist")) {
-    console.error("missing core declarations"); process.exit(1);
-  }
+if (args === 'run packages:check -- --cold --out packs --release-tag openlup-${name}-v0.13.1') {
+  if (${JSON.stringify(failCore)}) { console.error("prerequisite build refused"); process.exit(1); }
   mkdirSync("packs");
   writeFileSync("packs/packages-manifest.json", JSON.stringify({ packages: [{ name: "@openlup/${name}" }] }));
 } else { console.error("unexpected command: " + args); process.exit(1); }
@@ -414,25 +409,25 @@ if (args === "run build --workspace @openlup/core") {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }
 
-  it("builds core before a cold outbox pack and still packs only the selected package", () => {
+  it("routes every selected tag through the shared cold pack and keeps only that package", () => {
     for (const name of ["core", "outbox"] as const) {
       const result = runPack(pack, name);
       expect(result.status, result.stderr).toBe(0);
-      expect(result.commands).toEqual([...(name === "outbox" ? ["run build --workspace @openlup/core"] : []), `run packages:check -- --out packs --release-tag openlup-${name}-v0.13.1`]);
+      expect(result.commands).toEqual([`run packages:check -- --cold --out packs --release-tag openlup-${name}-v0.13.1`]);
       expect(result.packages).toEqual([{ name: `@openlup/${name}` }]);
     }
-    const missingPrerequisite = pack.replace("npm run build --workspace @openlup/core", ":");
+    const missingPrerequisite = pack.replace("--cold ", "");
     expect(missingPrerequisite).not.toBe(pack);
     const failed = runPack(missingPrerequisite, "outbox");
     expect(failed.status).not.toBe(0);
-    expect(failed.stderr).toContain("missing core declarations");
+    expect(failed.stderr).toContain("unexpected command");
     expect(failed.packages).toEqual([]);
   });
 
-  it("stops before packing when the core prerequisite build fails", () => {
+  it("propagates a refusal from the shared preparation instead of producing a manifest", () => {
     const failed = runPack(pack, "outbox", true);
     expect(failed.status).not.toBe(0);
-    expect(failed.commands).toEqual(["run build --workspace @openlup/core"]);
+    expect(failed.commands).toEqual(["run packages:check -- --cold --out packs --release-tag openlup-outbox-v0.13.1"]);
     expect(failed.packages).toEqual([]);
   });
 });

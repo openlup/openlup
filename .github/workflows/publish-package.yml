@@ -18,7 +18,7 @@
 #   for the set, every publishable package carries the set version, and a patch set leaves each
 #   API snapshot as the previous set left it;
 # - the tag is absent, and npm never held that version and holds none above it;
-# - `npm run packages:check -- --out` packs that one package, or every publishable package;
+# - `npm run packages:check -- --cold --out` packs that one package, or every publishable package;
 # - gitleaks finds nothing in the unpacked tarball;
 # - each package's tag, release and npm state decides what happens to it. One package is released
 #   only from nothing. The set skips a package npm already holds with the same tarball, leaves a
@@ -137,9 +137,9 @@ jobs:
         working-directory: target
         run: |
           if [ "$PACKAGE" = all ]; then
-            npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-set "$VERSION"
+            npm run packages:check -- --cold --out "$RUNNER_TEMP/packs" --release-set "$VERSION"
           else
-            npm run packages:check -- --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"
+            npm run packages:check -- --cold --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"
           fi
       - name: Install checksum-verified gitleaks 8.30.1
         env:

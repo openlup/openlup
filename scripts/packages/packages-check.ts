@@ -1,11 +1,11 @@
 /**
- * `npm run packages:check [-- --pack] [-- --out <dir>] [-- --release-tag <tag> | --release-set <version>]`,
+ * `npm run packages:check [-- --pack | --cold] [-- --out <dir>] [-- --release-tag <tag> | --release-set <version>]`,
  * from the repository root.
  *
  * Without options it checks every package manifest against
  * `config/openlup-packages.json`, including that every publishable package
  * carries the same set version `0.N.P`, and needs no build. With `--pack` it also
- * builds and packs each listed package into a temporary directory, and checks
+ * builds declared internal prerequisites and packs each listed package into a temporary directory, and checks
  * every packed file (see `package-tarball-gate.ts`). A package directory must
  * be clean before the build and still clean after it, so the packed bytes are
  * the commit's. It prints one summary line per tarball, with its integrity.
@@ -17,7 +17,8 @@
  * names one publishable package, requires its manifest version to be that
  * version, and packs only that package. `--release-set <version>` names the
  * whole set: every publishable package, each at that set version. Nothing here
- * publishes.
+ * publishes. `--cold` also removes untracked dist outputs before each attempt;
+ * preflight and publisher use it so no package depends on another pack's residue.
  */
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -25,8 +26,9 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { PACKAGES_CONFIG_PATH, SET_VERSION, checkPackageDirectories, checkPackageManifest, checkSetVersions, checkUnreleasedManifest, parsePackageReleaseTag, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
+import { PACKAGES_CONFIG_PATH, SET_VERSION, checkPackageDirectories, checkPackageManifest, checkSetVersions, checkUnreleasedManifest, releaseVersionAbove, parsePackageReleaseTag, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.ts";
+import { preparePackage } from "./package-build.ts";
 
 type PackResult = { filename: string; integrity: string; sha256: string; entryCount: number };
 export const PACKAGES_MANIFEST_FILE = "packages-manifest.json";
@@ -41,15 +43,12 @@ function walk(directory: string, onSymlink: (path: string) => void): string[] {
   });
 }
 
-function packAndCheck(root: string, entry: PackageEntry, readTracked: (path: string) => Uint8Array | undefined, findings: Finding[], keepDir?: string): PackResult | undefined {
+function packAndCheck(root: string, entry: PackageEntry, packages: readonly PackageEntry[], cold: boolean, readTracked: (path: string) => Uint8Array | undefined, findings: Finding[], keepDir?: string): PackResult | undefined {
   const finding = (rule: string, detail: string): void => { findings.push({ subject: entry.name, rule, detail }); };
   const dirty = (): string => capture(root, "git", ["status", "--porcelain", "--untracked-files=no", "--", entry.directory]).trim();
   if (dirty()) { finding("dirty-tree", `commit or discard the changes under ${entry.directory} first; a pack is checked against the commit`); return undefined; }
   const directory = join(root, entry.directory);
-  const scripts = (JSON.parse(readFileSync(join(directory, "package.json"), "utf8")) as { scripts?: Record<string, string> }).scripts ?? {};
-  // Run the package's own pack preparation visibly, so a build error shows its diagnostics; then pack without re-running it.
-  const prepare = "prepack" in scripts ? "prepack" : "build" in scripts ? "build" : undefined;
-  if (prepare) execFileSync("npm", ["run", prepare], { cwd: directory, stdio: ["ignore", "inherit", "inherit"] });
+  preparePackage(root, entry, packages, cold);
   if (dirty()) { finding("dirty-tree", `the build rewrote tracked files under ${entry.directory}`); return undefined; }
   const scratch = mkdtempSync(join(tmpdir(), "openlup-packages-"));
   try {
@@ -70,12 +69,13 @@ function packAndCheck(root: string, entry: PackageEntry, readTracked: (path: str
   }
 }
 
-type Options = { pack: boolean; outDir?: string; releaseTag?: string; releaseSet?: string };
+type Options = { pack: boolean; cold: boolean; outDir?: string; releaseTag?: string; releaseSet?: string };
 function parseOptions(args: readonly string[]): Options | string {
-  const options: Options = { pack: false };
+  const options: Options = { pack: false, cold: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--pack") options.pack = true;
+    else if (arg === "--cold") { options.pack = true; options.cold = true; }
     else if (arg === "--out" || arg === "--release-tag" || arg === "--release-set") {
       const value = args[index + 1];
       if (value === undefined || value.startsWith("--")) return `${arg} needs a value`;
@@ -144,7 +144,8 @@ function onlyAdds(before: readonly string[], after: readonly string[]): boolean 
 /**
  * Refuses a change from `base` to `head` that removes or changes a declaration line in an API
  * snapshot of a package publishable at `base`, unless the package's single `## [Unreleased]`
- * changelog section at `head` carries a `Migration:` block. The base decides what is checked:
+ * changelog section at `head` carries a `Migration:` block, or a coherent newly
+ * raised set carries it in the unique prepared version section below an empty Unreleased. The base decides what is checked:
  * its packages config, and each subpath its `release-gates.json` `packageSurface` lists. Each is
  * compared with the snapshot the head's `packageSurface` lists for the same subpath; a subpath,
  * gates file or snapshot missing at the head reads as empty, so removing or renaming a subpath
@@ -170,6 +171,36 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
     const path = typeof snapshot === "string" && !posix.isAbsolute(snapshot) ? posix.join(directory, snapshot) : "";
     return path.startsWith(`${directory}/`) ? path : refuse(`${directory}/release-gates.json lists the snapshot ${String(snapshot)}, which is not a path inside ${directory}`);
   };
+  const preparedMigration = (directory: string, sections: string[]): boolean => {
+    try {
+      const before = parsePackagesConfig(atBase(PACKAGES_CONFIG_PATH)).packages.filter(({ publish }) => publish);
+      const after = parsePackagesConfig(atHead(PACKAGES_CONFIG_PATH) ?? "");
+      const manifests = new Map(after.packages.map((entry) => [entry.name, JSON.parse(atHead(`${entry.directory}/package.json`) ?? "null")]));
+      const versions = new Map(after.packages.map((entry) => [entry.name, versionOf(manifests.get(entry.name))]));
+      const entry = after.packages.find((row) => row.directory === directory && row.publish), version = entry && versions.get(entry.name);
+      if (typeof version !== "string" || !SET_VERSION.test(version) || checkSetVersions(after, versions).length > 0) return false;
+      if (after.packages.some((row) => checkPackageManifest(row, manifests.get(row.name), after, versions).length > 0)) return false;
+      const carrierMatches = (name: string, carrier: unknown): boolean => {
+        if (carrier === null || typeof carrier !== "object") return false;
+        const value = carrier as Record<string, unknown>, manifest = manifests.get(name);
+        if (value.version !== versions.get(name)) return false;
+        return ["dependencies", "peerDependencies", "optionalDependencies"].every((field) => {
+          const pins = (value[field] ?? {}) as Record<string, unknown>, expected = manifest[field] ?? {};
+          return [...new Set([...Object.keys(pins), ...Object.keys(expected)])].filter((pin) => pin.startsWith("@openlup/")).every((pin) => pins[pin] === expected[pin] && pins[pin] === versions.get(pin));
+        });
+      };
+      const rootLock = JSON.parse(atHead("package-lock.json") ?? "null");
+      for (const row of after.packages.filter(({ publish }) => publish)) {
+        if (!carrierMatches(row.name, rootLock?.packages?.[row.directory])) return false;
+        const path = `${row.directory}/package-lock.json`, bytes = atHead(path);
+        if (!bytes && capture(root, "git", ["ls-tree", base, "--", path]).trim()) return false;
+        if (bytes) { const lock = JSON.parse(bytes); if (lock.version !== versions.get(row.name) || !carrierMatches(row.name, lock.packages?.[""])) return false; }
+      }
+      if (before.some((row) => { const old = versionOf(JSON.parse(atBase(`${row.directory}/package.json`))); return typeof old !== "string" || releaseVersionAbove(version, old) !== true; })) return false;
+      const released = sections.filter((section) => section.startsWith(`## [${version}]\n`));
+      return released.length === 1 && /^\s*Migration:/mu.test(released[0]!);
+    } catch { return false; }
+  };
   const refusals: string[] = [];
   for (const { name, directory } of parsePackagesConfig(atBase(PACKAGES_CONFIG_PATH)).packages.filter(({ publish }) => publish)) {
     const gates = `${directory}/release-gates.json`, before = surface(base, gates, atBase(gates)), after = surface(head, gates, atHead(gates));
@@ -178,9 +209,10 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
       return onlyAdds(declarationLines(atBase(path)), declarationLines(next)) ? [] : [path];
     });
     if (changed.length === 0) continue;
-    const unreleased = (atHead(`${directory}/CHANGELOG.md`) ?? "").split(/^(?=## )/mu).filter((section) => section.startsWith("## [Unreleased]"));
+    const sections = (atHead(`${directory}/CHANGELOG.md`) ?? "").split(/^(?=## )/mu);
+    const unreleased = sections.filter((section) => section.startsWith("## [Unreleased]"));
     const missing = unreleased.length !== 1 ? `${directory}/CHANGELOG.md has ${unreleased.length} "## [Unreleased]" sections, not one`
-      : /^\s*Migration:/mu.test(unreleased[0]!) ? undefined : `its "## [Unreleased]" section has no Migration: block`;
+      : /^\s*Migration:/mu.test(unreleased[0]!) || (unreleased[0]!.trim() === "## [Unreleased]" && preparedMigration(directory, sections)) ? undefined : `its "## [Unreleased]" section has no Migration: block`;
     if (missing) refusals.push(`migration-block ${name}: ${changed.join(", ")} removes or changes a declaration line since ${base}, and ${missing}; add a Migration: block with the code or SQL before and after`);
   }
   let publishable: readonly PackageEntry[] = [];
@@ -212,9 +244,9 @@ export function runPackagesCheck(root: string, args: readonly string[]): number 
   const keepDir = outDir ? mkdtempSync(join(tmpdir(), "openlup-packages-kept-")) : undefined;
   try {
     const packed: Array<{ name: string; version: string } & PackResult> = [];
-    if (options.pack) {
+    if (options.pack && findings.length === 0) {
       for (const entry of selected) {
-        const result = packAndCheck(root, entry, readTracked, findings, keepDir);
+        const result = packAndCheck(root, entry, config.packages, options.cold, readTracked, findings, keepDir);
         if (!result) continue;
         const version = String(versions.get(entry.name));
         console.log(`packed ${entry.name}@${version}: ${result.filename}, ${result.entryCount} files, ${result.integrity}`);

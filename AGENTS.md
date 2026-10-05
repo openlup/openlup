@@ -70,6 +70,32 @@ handoffs inherit the approved programme boundary. Execution notes may evolve;
 discoveries, review advice and new waves cannot silently add goals, acceptance
 obligations or authority. Material changes use the applicable owner decision.
 
+A new explicitly approved bounded module programme may combine implementation
+and set-version preparation in one pull request, following
+[package release policy](.github/VERSIONING_AND_EOL.md#package-releases).
+Existing programmes keep their approved scope and delivery boundary.
+Where an applicable maintainer-local policy explicitly delegates delivery or
+merge for that programme, record the actual grant in the task; this public guide
+does not install or grant that delegation. It cannot authorize merging the
+change that establishes it.
+
+Before DCO sign-off, complete the applicable working-tree checks and obtain any
+required maintainer read of the stabilized API, npm-publishing, security-control
+or release-control changes and proposed gate budgets. A later material delta
+needs its applicable read again. Record computed identities as evidence, not as
+a maintainer quote. Committed native review and final verification still follow.
+
+Before each delegated external write, revalidate the actual scope, live PR head
+and applicable review/receipt identity and expiry through the existing mechanism.
+Merge additionally requires actual required source and group checks, closed
+material findings and no unread material delta. Delegated PR responses or thread
+resolution cover only that PR; resolve a new risk only after it is explained.
+Thread resolution does not dismiss scanning alerts or mark hotspots safe.
+Protected approval of the specific release run, credentials and npm-account
+operations, settings, partial-release recovery, separate repositories and
+exhausted review budgets retain their own boundaries. A generated plan, passed
+poll or review receipt grants none of those rights.
+
 Necessary in-scope recovery proceeds autonomously: it closes approved acceptance
 or prevents this change or its necessary delivery route from violating an
 applicable contract or invariant. Missing mandatory evidence still blocks

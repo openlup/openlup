@@ -529,13 +529,19 @@ one set:
   of a set points at that commit.
 - Every package is republished in each set, changed or not.
 - A patch set only restores documented behaviour, with no API or schema change.
-  Any API, behaviour or schema change makes a minor set, and so does any SQL a
-  package ships. A change to subscription, renewal or payment objects is always
-  a minor set with a `Migration:` block in the package's changelog.
+  Any API, behaviour or schema change makes a minor set, and so does a new
+  package or any SQL a package ships. A change to subscription, renewal or
+  payment objects is always a minor set with a `Migration:` block in the
+  package's changelog.
 - For a pull request or merge group, the `--policy` self-check refuses a change
   since its base that removes or changes a line of a publishable package's API
   snapshot unless the package's single `## [Unreleased]` changelog section
-  carries a `Migration:` block; the base decides which packages and snapshots
+  carries a `Migration:` block, or a real coherent set bump above the base moves
+  it into the unique section for the manifest's candidate version, with a unique
+  empty Unreleased section. The versioned alternative requires one new version
+  across the publishable set, matching lockfile carriers and exact internal
+  pins. An unchanged version with historical notes, another version, duplicate
+  sections or a mixed set refuses. The base decides which packages and snapshots
   are checked, and removing or renaming a subpath counts as a removal. A pure
   addition, such as a name added to an export list, has no "before", so it
   needs none; a comment that opens a line is ignored, the code on its lines is
@@ -547,17 +553,21 @@ behaviour/schema compatibility, or package withdrawal and later re-admission.
 A fenced or reused `Migration:` line may pass, and text reappearing in order can
 look additive. Reviewers still inspect the semantic change, classification and
 before/after upgrade steps; declaration checks and tests retain their role.
-Merge an API change with its `Unreleased` migration notes before the separate
-release-preparation bump, which moves notes under the version and creates a new
-empty `Unreleased` section.
+Keep useful before/after upgrade notes in Unreleased until release preparation.
+A new explicitly approved bounded module programme may combine implementation
+and set-version preparation in one PR; separate PRs remain available within their
+actual authority. The bump moves the notes under the candidate version and
+creates a fresh empty Unreleased section. Do not copy historical notes or
+duplicate Migration blocks into that empty section to pass the gate. Existing
+programmes retain their approved scope and delivery boundary.
 
 [`config/openlup-packages.json`](../config/openlup-packages.json) lists the
 packages, and `publish: true` marks one that may be published. A new package
 stays under `unreleased`, always private, through its module's pull requests,
 and moves to `packages` with `publish: true` only in the module's final pull
 request, the one where the reference application composes it, so a set never
-republishes a half-built package. `@openlup/core`
-is currently the only one, so today a set has one package. Each publishable
+republishes a half-built package. The inventory, rather than a hardcoded package
+list, determines the publishable set. Each publishable
 package's own `package.json` carries the set version: `packages:check` refuses
 publishable packages at different versions, or at a version that is not `0.N.P`
 below 1.0. A set release needs no source preview. `publish-package.yml` releases
@@ -565,21 +575,29 @@ the whole set when its package is `all`, and one package when it names one;
 `all` is reserved and is never a package directory. `openlup-source-preview/11` was
 the last lockstep cut that also published a package: `@openlup/core` `0.11.0`,
 on the `preview` dist-tag. Later source previews are optional snapshots with no
-package. The first set is `0.12.0`. No package version implies a stable API or a
+package. The first set was `0.12.0`. No package version implies a stable API or a
 supported upgrade path, and the version model at 1.0 is not decided.
 
 A release takes three steps:
 
-1. **Release preparation.** An ordinary reviewed pull request runs
+1. **Release preparation.** An ordinary reviewed pull request, either a separate
+   preparation PR or an explicitly approved bounded implementation-and-set-bump
+   PR, runs
    `npm run release:bump -- --set <version>`. It sets every publishable
    package's version in its `package.json` and lockfile entries, every exact
    internal pin on one, and in each changelog moves the Unreleased entries under
    a new `## [<version>]` heading that opens with its "Publishable" line. The
    pull request regenerates the source release contract as `CONTRIBUTING.md`
    describes. The version is the next set version `0.N.P` and must be above
-   every version npm holds for each package. Merging it does not authorize a
-   release. Read the candidate version from the manifests, and publication only
-   from the immutable releases and the npm registry: a version bump by itself
+   every version npm holds for each package. Choose it from actual registry
+   observations and the API, behaviour, schema and shipped-SQL classification,
+   then recheck before dispatch. A conflict after review needs a repair and
+   applicable review of the new candidate; do not silently change pins. Complete
+   working-tree checks and any required stabilized maintainer read before DCO
+   sign-off, then committed native review and final verification, as
+   [CONTRIBUTING](../CONTRIBUTING.md#deliver-a-change) describes. Merging it does
+   not authorize a release. Read the candidate version from the manifests, and
+   publication only from the immutable releases and the npm registry: a version bump by itself
    publishes nothing.
 2. **Dispatch.** In Actions, choose **Publish Package → Run workflow** on
    **main** and enter `all` (or one package directory name, such as `core`), the
@@ -603,8 +621,18 @@ A release takes three steps:
    annotated tag with the release App's tagger line and the release message, so a
    lightweight or hand-made tag is ignored, but a tagger line proves nothing on
    its own. It then packs every publishable package with
-   `npm run packages:check -- --out <dir> --release-set <version>` and scans the
-   unpacked tarballs with checksum-verified gitleaks 8.30.1. Last, it decides
+   `npm run packages:check -- --cold --out <dir> --release-set <version>` and scans
+   the unpacked tarballs with checksum-verified gitleaks 8.30.1. Cold preparation
+   removes only untracked generated `dist` output in inventory packages before
+   each selected pack; tracked output, symlinks and unsupported output layouts
+   refuse rather than reuse warm output. The checker builds exact internal
+   dependency, optional-dependency and peer-dependency prerequisites from the
+   inventory before the selected package, using the same preparation and
+   single-package pack route as the publisher, then retains the required
+   whole-set manifest and tarball checks. Unknown, cyclic or unsupported
+   internal dependencies and failed prerequisite builds refuse before tagging.
+   Ordinary `--pack` also prepares those prerequisites without cold cleanup.
+   Last, it decides
    each package by [its state](#resuming-a-set) and passes the packages to
    release in full to the `release` job. Main ancestry, the required contexts
    and the tag's commit are decided by
@@ -652,8 +680,11 @@ jobs:
    asset. It checks the annotated tag and its message, verifies GitHub's release
    attestation, and checks with the same release gate that the release commit is
    on `main` and that the six required contexts passed there. It refuses a version npm holds or has passed,
-   packs exactly the tag's package at the tag's version with `packages:check`,
-   and scans the unpacked tarball with gitleaks.
+   packs exactly the tag's package at the tag's version with
+   `packages:check --cold --out <dir> --release-tag <tag>`, and scans the unpacked
+   tarball with gitleaks. Shared inventory-based preparation builds its exact
+   internal prerequisites on a fresh runner; they are not extra tarballs in the
+   selected-package manifest.
 2. **publish** runs in the `npm-stage` environment with no checkout and no
    install, in the package's concurrency group. It checks the commit, package,
    version and digest of the one tarball. Immediately before publishing it

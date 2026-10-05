@@ -35,6 +35,14 @@ maintainer authorization under the [AI contribution policy](.github/AI_CONTRIBUT
 Record whether it covers only local work or also publication, pull-request
 submission and merge. Review evidence cannot extend those rights.
 
+A new explicitly approved bounded module programme may include implementation
+and set-version preparation in one pull request under
+[package release policy](.github/VERSIONING_AND_EOL.md#package-releases).
+Delivery or merge delegation applies only when the applicable maintainer-local
+policy and that programme explicitly grant it; this guide does not activate it
+or extend existing tasks. The [agent guide](AGENTS.md#change-and-verification-rules)
+owns freshness, required maintainer reads and the retained authority boundaries.
+
 Use a dedicated task worktree and branch for implementation; the coordination
 checkout stays clean. Claude and Codex create that isolation automatically with
 the configured repository helper before task edits, installs or tests. Continue
@@ -648,7 +656,11 @@ after applying migrations (falsified by
 Against the same base, `--policy` refuses a change that removes or changes a
 line of a publishable package's API snapshot (`release-gates.json`
 `packageSurface`) unless that package's single `## [Unreleased]` changelog
-section carries a `Migration:` block; the base decides which packages and
+section carries a `Migration:` block, or a real coherent set bump above the base
+has moved it into the unique candidate-version section while leaving a unique
+empty Unreleased section. The candidate section must match the package manifest
+and set; stale notes at an unchanged version, another version, duplicate
+sections or a mixed set refuse. The base decides which packages and
 snapshots are checked, and removing or renaming a subpath counts as a removal.
 A pure addition, such as a name added to an export list, has no "before", so it
 needs none; a comment that opens a line is ignored, the code on its lines is
@@ -661,9 +673,12 @@ reappears in order can look additive. Behaviour or schema changes and withdrawal
 followed by re-admission of a package still need semantic review. Reviewers must
 check the actual compatibility change and useful before/after migration steps;
 the API snapshots, tests and release classification remain separate obligations.
-Merge API changes with their `Unreleased` migration notes before a separate
-release-bump pull request: the bump moves those notes into the version section
-and opens a fresh empty `Unreleased` section.
+Keep useful migration notes in Unreleased until release preparation. A newly
+approved bounded programme may combine the implementation and set bump in one
+PR: the bump moves those notes into the candidate-version section and opens a
+fresh empty Unreleased section. Do not duplicate notes into that empty section
+to satisfy the gate. Separate implementation and release-preparation PRs remain
+available within their actual authority.
 
 The [diagnostic debt record](docs/platform/plans/public-ci-known-red.md#current-checkpoint) separates the measured current checkpoint from archived failures.
 It records closure of the twelve SQL files and keeps earlier failures archived;
@@ -731,7 +746,9 @@ application and documentation. While `@openlup/core` is below 1.0, the
 packages are released as one set, independently of source previews: one set
 version `0.N.P` from one commit, with each package tagged
 `openlup-<package>-v<version>` at that commit and republished in every set. A
-release-preparation pull request runs `npm run release:bump -- --set <version>`,
+reviewed pull request, either release preparation alone or an explicitly approved
+bounded implementation-and-set-bump contribution, runs
+`npm run release:bump -- --set <version>`,
 which updates every publishable package's version carriers and every exact
 internal pin on one, and opens each changelog's version section below a fresh
 Unreleased heading. Merging it authorizes no release.
@@ -810,8 +827,14 @@ detailed rule.
 
 1. **Worktree.** One task, one worktree and one branch, as in
    [AGENTS.md](AGENTS.md).
-2. **Commit.** Run `npx --no -- ast-grep scan` after each change and
-   `npm run lint` before committing. Commit with `git commit -s`.
+2. **Stabilize and commit.** Run `npx --no -- ast-grep scan` after each change
+   and `npm run lint` before committing, along with the applicable contract tests
+   and working-tree package, API, neutrality and budget checks. If the task requires
+   a maintainer read before sign-off, present one stabilized packet of API,
+   npm-publishing, security-control and release-control changes and proposed gate
+   budgets, and obtain that read before `git commit -s`. A working-tree pack
+   preview is labelled as such; it does not replace the clean committed pack
+   proof or final verification.
 3. **Supervisor's native review** of the exact committed candidate, by the rules in
    [AGENTS.md](AGENTS.md) and in this section:
    - write `.context/scratch/agent-review/intent.json` in the shape the
@@ -863,9 +886,11 @@ detailed rule.
    - then update the source-state copy and resubmit the receipt.
 8. **Hosted checks.** The six required contexts and `native-review` must pass.
    Compare raw `test-full` and `pgtap` failures with the exact base.
-9. **Maintainer read**, when the task's authority requires one before sign-off
-   (the pull request states its sign-off class): wait for the maintainer to
-   confirm the exact candidate SHA, within the review's 24-hour validity.
+9. **Revalidate authority and evidence.** The pull request states its sign-off
+   class and actual delivery grant. Recheck the live head and applicable
+   review/receipt identity and expiry before each write. Any later material
+   delta requiring a maintainer read returns to step 2 before its sign-off;
+   required reads, closed material findings and current checks precede merge.
 10. **Arm auto-merge** under merge authority, following the
     [Merge queue](#merge-queue) rules.
 11. **Merge group.** Read the group's `native-review` log (see
