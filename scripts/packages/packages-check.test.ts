@@ -265,6 +265,42 @@ describe("API snapshot Migration blocks", () => {
       }, { "package-lock.json": lock }), carrier).toThrow(red);
     }
   });
+  it("refuses candidate migration notes above Unreleased with otherwise coherent carriers", () => {
+    const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
+    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); };
+    expect(compare(prepare, { "package-lock.json": lock }), "accepted notes below empty Unreleased").not.toThrow();
+    expect(compare((write, root) => {
+      prepare(write, root);
+      const notes = readFileSync(join(root, "packages/pub/CHANGELOG.md"), "utf8");
+      write("packages/pub/CHANGELOG.md", notes.replace("## [Unreleased]\n\n", "") + "\n## [Unreleased]\n\n");
+    }, { "package-lock.json": lock }), "same notes above empty Unreleased").toThrow(red);
+  });
+  it("refuses stale private-package internal pins in either carrier after an actual set bump", () => {
+    const privateManifest = { name: "@openlup/demo", version: "0.1.0", private: true, files: ["dist/**"], exports: { ".": "./dist/a.js" }, scripts: { build }, peerDependencies: { "@openlup/pub": "0.4.0" } };
+    const carrier = { version: "0.1.0", peerDependencies: { "@openlup/pub": "0.4.0" } };
+    const overrides = {
+      "packages/demo/package.json": JSON.stringify(privateManifest, null, 2),
+      "package-lock.json": JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": carrier } }, null, 2),
+      "packages/demo/package-lock.json": JSON.stringify({ version: "0.1.0", packages: { "": carrier } }, null, 2),
+    };
+    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); };
+    expect(compare(prepare, overrides), "accepted private manifest/root/own carrier pin update").not.toThrow();
+    const rootWithoutPrivateCarrier = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" } } }, null, 2);
+    expect(compare(prepare, { ...overrides, "package-lock.json": rootWithoutPrivateCarrier }), "accepted private package with no prior root carrier and coherent own pins").not.toThrow();
+    expect(compare((write, root) => {
+      prepare(write, root);
+      const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")); delete lock.packages["packages/demo"];
+      write("package-lock.json", JSON.stringify(lock, null, 2));
+    }, overrides), "removed previously existing private root carrier").toThrow(red);
+    for (const path of ["package-lock.json", "packages/demo/package-lock.json"]) {
+      expect(compare((write, root) => {
+        prepare(write, root);
+        const lock = JSON.parse(readFileSync(join(root, path), "utf8"));
+        lock.packages[path === "package-lock.json" ? "packages/demo" : ""].peerDependencies["@openlup/pub"] = "0.4.0";
+        write(path, JSON.stringify(lock, null, 2));
+      }, overrides), `stale private pin in ${path}`).toThrow(red);
+    }
+  });
   it("refuses stale, duplicated and wrong-version notes in otherwise coherent prepared sets", () => {
     const released = (version: string) => `## [Unreleased]\n\n## [${version}]\n\n  Migration: before a, after b.\n\n`;
     const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);

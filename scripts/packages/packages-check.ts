@@ -190,15 +190,17 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
         });
       };
       const rootLock = JSON.parse(atHead("package-lock.json") ?? "null");
-      for (const row of after.packages.filter(({ publish }) => publish)) {
-        if (!carrierMatches(row.name, rootLock?.packages?.[row.directory])) return false;
+      const baseRootLock = capture(root, "git", ["ls-tree", base, "--", "package-lock.json"]).trim() ? JSON.parse(atBase("package-lock.json")) : undefined;
+      for (const row of after.packages) {
+        const rootCarrier = rootLock?.packages?.[row.directory];
+        if ((row.publish || rootCarrier !== undefined || baseRootLock?.packages?.[row.directory] !== undefined) && !carrierMatches(row.name, rootCarrier)) return false;
         const path = `${row.directory}/package-lock.json`, bytes = atHead(path);
         if (!bytes && capture(root, "git", ["ls-tree", base, "--", path]).trim()) return false;
         if (bytes) { const lock = JSON.parse(bytes); if (lock.version !== versions.get(row.name) || !carrierMatches(row.name, lock.packages?.[""])) return false; }
       }
       if (before.some((row) => { const old = versionOf(JSON.parse(atBase(`${row.directory}/package.json`))); return typeof old !== "string" || releaseVersionAbove(version, old) !== true; })) return false;
       const released = sections.filter((section) => section.startsWith(`## [${version}]\n`));
-      return released.length === 1 && /^\s*Migration:/mu.test(released[0]!);
+      return released.length === 1 && sections.indexOf(released[0]!) > sections.findIndex((section) => section.startsWith("## [Unreleased]")) && /^\s*Migration:/mu.test(released[0]!);
     } catch { return false; }
   };
   const refusals: string[] = [];
