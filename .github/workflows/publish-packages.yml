@@ -14,7 +14,7 @@
 # - the release commit is on main;
 # - the six required GitHub Actions contexts passed there;
 # - npm never held the tag's version and holds none above it;
-# - the tag's package, at the tag's version, passes `npm run packages:check -- --out`.
+# - the tag's package, at the tag's version, passes `npm run packages:check -- --cold --out`.
 # It then runs a gitleaks scan over the unpacked tarball. The publish job gets only the
 # tarball and its digest: no checkout and no install. It shares the package's concurrency group
 # with publish-package.yml, re-reads npm past its CDN cache immediately before publishing, and
@@ -122,11 +122,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          # The outbox TypeScript build resolves its exact workspace core peer through dist.
-          if [[ "$RELEASE_TAG" == openlup-outbox-v* ]]; then
-            npm run build --workspace @openlup/core
-          fi
-          npm run packages:check -- --out packs --release-tag "$RELEASE_TAG"
+          npm run packages:check -- --cold --out packs --release-tag "$RELEASE_TAG"
           node -e 'if (require("./packs/packages-manifest.json").packages.length !== 1) { console.error("a package release packs exactly one package"); process.exit(1); }'
       - name: Install checksum-verified gitleaks 8.30.1
         env:

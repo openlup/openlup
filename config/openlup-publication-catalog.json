@@ -2710,6 +2710,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/package-build.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/package-manifest-policy.test.ts",
       "class": "public-output"
     },

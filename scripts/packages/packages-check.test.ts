@@ -1,10 +1,12 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
+import { bumpSet } from "./release-bump.ts";
 import { PACKAGES_MANIFEST_FILE, assertMigrationBlocks, runPackagesCheck } from "./packages-check.ts";
 
 const roots: string[] = [];
@@ -28,6 +30,17 @@ function fixture(extra: Record<string, string> = {}): string {
   git(root, "add", "-A");
   git(root, "commit", "-q", "-m", "fixture");
   return root;
+}
+
+/** Two publishable peers in reverse catalogue order: kit's real build reads pub's declarations. */
+function peers(prerequisite = build): string {
+  const manifest = (name: string, scripts: Record<string, string>, extra = {}) => JSON.stringify({ name: `@openlup/${name}`, version: "0.4.0", license: "Apache-2.0", files: ["dist/**"], publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: `packages/${name}` }, exports: { ".": "./dist/a.js" }, scripts, ...extra });
+  return fixture({
+    "config/openlup-packages.json": JSON.stringify({ schemaVersion: 2, packages: [{ name: "@openlup/kit", directory: "packages/kit", publish: true }, { name: "@openlup/pub", directory: "packages/pub", publish: true }, { name: "@openlup/demo", directory: "packages/demo", publish: false }], unreleased: [] }),
+    "packages/pub/package.json": manifest("pub", { build: prerequisite }),
+    "packages/kit/package.json": manifest("kit", { build: `node -e "require('node:fs').readFileSync('../pub/dist/a.js');" && ${build}` }, { peerDependencies: { "@openlup/pub": "0.4.0" } }),
+    "packages/kit/src/a.ts": "export const a = 1;\n",
+  });
 }
 
 describe("packages:check", () => {
@@ -124,6 +137,95 @@ describe("packages:check", () => {
     expect(errors.mock.calls.flat().join("\n")).toMatch(/^unlisted-package packages\/stray: /mu);
     expect(existsSync(join(stray, "out"))).toBe(false);
   }, 120_000);
+  it("runs the actual publisher and set-preflight pack scripts cold, with only the selected manifest", () => {
+    quiet();
+    const checker = fileURLToPath(new URL("./packages-check.ts", import.meta.url));
+    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+    const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
+    for (const [workflow, tag, expected] of [
+      ["publish-packages.yml", "openlup-kit-v0.4.0", ["@openlup/kit"]],
+      ["publish-packages.yml", "openlup-pub-v0.4.0", ["@openlup/pub"]],
+      ["publish-package.yml", "all", ["@openlup/kit", "@openlup/pub"]],
+    ] as const) {
+      const root = peers();
+      writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { "packages:check": `${quote(process.execPath)} --experimental-strip-types ${quote(checker)}` } }));
+      git(root, "add", "-A"); git(root, "commit", "-qm", "real CLI entrypoint");
+      for (const name of ["kit", "pub"]) { mkdirSync(join(root, `packages/${name}/dist`)); writeFileSync(join(root, `packages/${name}/dist/stale.js`), "stale\n"); }
+      const source = readFileSync(new URL(`../../.github/workflows/${workflow}`, import.meta.url), "utf8");
+      const name = workflow === "publish-package.yml" ? "Pack and check the packages of this release" : "Pack and check the release's package";
+      const body = source.split(`      - name: ${name}\n`)[1]!.split(/^ {6}- /mu)[0]!.split("        run: |\n")[1]!.replace(/^ {10}/gmu, "");
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", body], { cwd: root, encoding: "utf8", env: { ...inherited, RELEASE_TAG: tag, PACKAGE: "all", VERSION: "0.4.0", RUNNER_TEMP: root }, timeout: 60_000 });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      const packed = JSON.parse(readFileSync(join(root, "packs", PACKAGES_MANIFEST_FILE), "utf8"));
+      expect(packed.packages.map((row: { name: string }) => row.name)).toEqual(expected);
+      for (const name of ["kit", "pub"]) expect(existsSync(join(root, `packages/${name}/dist/stale.js`))).toBe(false);
+      if (workflow === "publish-package.yml") {
+        const consumer = mkdtempSync(join(tmpdir(), "cold-package-consumer-")); roots.push(consumer);
+        writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
+        execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--fund=false", ...packed.packages.map((row: { filename: string }) => join(root, "packs", row.filename))], { cwd: consumer, stdio: "pipe" });
+        for (const name of ["kit", "pub"]) expect(lstatSync(join(consumer, `node_modules/@openlup/${name}`)).isSymbolicLink()).toBe(false);
+        expect(execFileSync(process.execPath, ["--input-type=module", "-e", "const a=await import('@openlup/pub');const b=await import('@openlup/kit');if(a.a!==1||b.a!==1)process.exit(1);console.log('consumer imports ok')"], { cwd: consumer, encoding: "utf8" })).toContain("consumer imports ok");
+      }
+    }
+  }, 120_000);
+  it("does not inherit a missing prerequisite or emit publication inputs after a failed prerequisite build", () => {
+    quiet();
+    for (const prerequisite of ["node -e \"process.exit(1)\"", "node -e \"console.log('no declarations')\""]) {
+      const root = peers(prerequisite);
+      mkdirSync(join(root, "packages/pub/dist")); writeFileSync(join(root, "packages/pub/dist/a.js"), "stale declarations\n");
+      expect(() => runPackagesCheck(root, ["--cold", "--out", "out", "--release-tag", "openlup-kit-v0.4.0"])).toThrow();
+      expect(existsSync(join(root, "out"))).toBe(false);
+      expect(existsSync(join(root, "packages/pub/dist/a.js"))).toBe(false);
+    }
+  }, 60_000);
+  it("refuses unsupported output layouts and dangling dist symlinks before any cold deletion", () => {
+    quiet();
+    const link = peers(); symlinkSync("missing-output", join(link, "packages/pub/dist"));
+    expect(() => runPackagesCheck(link, ["--cold", "--out", "out"])).toThrow(/is a symlink/);
+    expect(lstatSync(join(link, "packages/pub/dist")).isSymbolicLink()).toBe(true);
+    const layout = peers(), path = join(layout, "packages/pub/package.json");
+    const manifest = JSON.parse(readFileSync(path, "utf8")); manifest.files = ["lib/**"];
+    writeFileSync(path, JSON.stringify(manifest)); git(layout, "add", "-A"); git(layout, "commit", "-qm", "unsupported layout");
+    expect(() => runPackagesCheck(layout, ["--cold", "--out", "out"])).toThrow(/no declared dist/);
+    expect(existsSync(join(layout, "out"))).toBe(false);
+  });
+  it.each(["packages/kit", "packages"])("refuses a symlink at %s before cleaning any unselected package output", (linked) => {
+    quiet();
+    const root = peers(), external = mkdtempSync(join(tmpdir(), "packages-external-")); roots.push(external);
+    execFileSync("cp", ["-R", join(root, linked), join(external, "target")]);
+    const target = linked === "packages" ? "target/kit" : "target";
+    mkdirSync(join(external, target, "dist")); writeFileSync(join(external, target, "dist/precious.js"), "preserve external bytes\n");
+    rmSync(join(root, linked), { recursive: true }); symlinkSync(join(external, "target"), join(root, linked));
+    let exit: number;
+    try { exit = runPackagesCheck(root, ["--cold", "--out", "out", "--release-tag", "openlup-pub-v0.4.0"]); }
+    catch (error) { expect(String(error)).toMatch(/symlink in its package path/); exit = 1; }
+    expect(exit).toBe(1);
+    expect(readFileSync(join(external, target, "dist/precious.js"), "utf8")).toBe("preserve external bytes\n");
+    expect(existsSync(join(root, "out"))).toBe(false);
+  });
+  it("refuses dirty unselected cleanup paths before deleting any output", () => {
+    quiet();
+    const root = peers(); mkdirSync(join(root, "packages/pub/dist"));
+    writeFileSync(join(root, "packages/pub/dist/a.js"), "preserve until clean\n");
+    writeFileSync(join(root, "packages/kit/src/a.ts"), "export const a = 2;\n");
+    expect(() => runPackagesCheck(root, ["--cold", "--out", "out", "--release-tag", "openlup-pub-v0.4.0"])).toThrow(/uncommitted cold cleanup changes/);
+    expect(readFileSync(join(root, "packages/pub/dist/a.js"), "utf8")).toBe("preserve until clean\n");
+    expect(existsSync(join(root, "out"))).toBe(false);
+  });
+  it("refuses dependency cycles and does not delete tracked build output", () => {
+    quiet();
+    const root = peers(), path = join(root, "packages/pub/package.json");
+    const manifest = JSON.parse(readFileSync(path, "utf8"));
+    manifest.dependencies = { "@openlup/kit": "0.4.0" };
+    writeFileSync(path, JSON.stringify(manifest)); git(root, "add", "-A"); git(root, "commit", "-qm", "cycle");
+    expect(() => runPackagesCheck(root, ["--cold", "--out", "out", "--release-tag", "openlup-kit-v0.4.0"])).toThrow(/dependency cycle/);
+    const tracked = peers(); mkdirSync(join(tracked, "packages/pub/dist"));
+    writeFileSync(join(tracked, "packages/pub/dist/a.js"), "tracked\n");
+    git(tracked, "add", "-f", "packages/pub/dist/a.js"); git(tracked, "commit", "-qm", "tracked output");
+    expect(() => runPackagesCheck(tracked, ["--cold", "--out", "out"])).toThrow(/contains tracked files/);
+    expect(readFileSync(join(tracked, "packages/pub/dist/a.js"), "utf8")).toBe("tracked\n");
+  }, 60_000);
+
 });
 
 describe("API snapshot Migration blocks", () => {
@@ -150,6 +252,83 @@ describe("API snapshot Migration blocks", () => {
     expect(compare((_, root) => rmSync(join(root, SNAPSHOT))), "a removed snapshot").toThrow(red);
     for (const unreleased of ["", `${BLOCK}${BLOCK}`]) expect(compare((write) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(unreleased)); }), "not one Unreleased section").toThrow(/CHANGELOG\.md has [02] "## \[Unreleased\]" sections, not one/u);
   }, 60_000);
+  it("accepts migration notes moved by the actual set bump in the same API-change candidate", () => {
+    const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
+    expect(compare((write, root) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); }, { "package-lock.json": lock })).not.toThrow();
+  });
+  it("refuses mismatched lockfile carriers after a combined set bump", () => {
+    const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
+    for (const carrier of ["package-lock.json", "packages/pub/package-lock.json"]) {
+      expect(compare((write, root) => {
+        write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0");
+        write(carrier, JSON.stringify({ version: "0.4.0", packages: { "": { version: "0.4.0" }, "packages/pub": { version: "0.4.0" } } }));
+      }, { "package-lock.json": lock }), carrier).toThrow(red);
+    }
+  });
+  it("refuses candidate migration notes above Unreleased with otherwise coherent carriers", () => {
+    const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
+    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); };
+    expect(compare(prepare, { "package-lock.json": lock }), "accepted notes below empty Unreleased").not.toThrow();
+    expect(compare((write, root) => {
+      prepare(write, root);
+      const notes = readFileSync(join(root, "packages/pub/CHANGELOG.md"), "utf8");
+      write("packages/pub/CHANGELOG.md", notes.replace("## [Unreleased]\n\n", "") + "\n## [Unreleased]\n\n");
+    }, { "package-lock.json": lock }), "same notes above empty Unreleased").toThrow(red);
+  });
+  it("refuses stale private-package internal pins in either carrier after an actual set bump", () => {
+    const privateManifest = { name: "@openlup/demo", version: "0.1.0", private: true, files: ["dist/**"], exports: { ".": "./dist/a.js" }, scripts: { build }, peerDependencies: { "@openlup/pub": "0.4.0" } };
+    const carrier = { version: "0.1.0", peerDependencies: { "@openlup/pub": "0.4.0" } };
+    const overrides = {
+      "packages/demo/package.json": JSON.stringify(privateManifest, null, 2),
+      "package-lock.json": JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": carrier } }, null, 2),
+      "packages/demo/package-lock.json": JSON.stringify({ version: "0.1.0", packages: { "": carrier } }, null, 2),
+    };
+    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); };
+    expect(compare(prepare, overrides), "accepted private manifest/root/own carrier pin update").not.toThrow();
+    const rootWithoutPrivateCarrier = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" } } }, null, 2);
+    expect(compare(prepare, { ...overrides, "package-lock.json": rootWithoutPrivateCarrier }), "accepted private package with no prior root carrier and coherent own pins").not.toThrow();
+    expect(compare((write, root) => {
+      prepare(write, root);
+      const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")); delete lock.packages["packages/demo"];
+      write("package-lock.json", JSON.stringify(lock, null, 2));
+    }, overrides), "removed previously existing private root carrier").toThrow(red);
+    for (const path of ["package-lock.json", "packages/demo/package-lock.json"]) {
+      expect(compare((write, root) => {
+        prepare(write, root);
+        const lock = JSON.parse(readFileSync(join(root, path), "utf8"));
+        lock.packages[path === "package-lock.json" ? "packages/demo" : ""].peerDependencies["@openlup/pub"] = "0.4.0";
+        write(path, JSON.stringify(lock, null, 2));
+      }, overrides), `stale private pin in ${path}`).toThrow(red);
+    }
+  });
+  it("refuses stale, duplicated and wrong-version notes in otherwise coherent prepared sets", () => {
+    const released = (version: string) => `## [Unreleased]\n\n## [${version}]\n\n  Migration: before a, after b.\n\n`;
+    const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
+    const raise = (write: (path: string, contents: string) => void, root: string, version: string) => {
+      write(SNAPSHOT, removed);
+      write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, version);
+    };
+    expect(compare((write, root) => raise(write, root, "0.5.0"), { "package-lock.json": lock }), "accepted coherent control").not.toThrow();
+    expect(compare((write) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", released("0.4.0")); }, { "package-lock.json": lock }), "stale same version").toThrow(red);
+    expect(compare((write, root) => { raise(write, root, "0.5.0"); write("packages/pub/CHANGELOG.md", released("0.4.0")); }, { "package-lock.json": lock }), "wrong notes version").toThrow(red);
+    expect(compare((write, root) => { raise(write, root, "0.5.0"); write("packages/pub/CHANGELOG.md", released("0.5.0") + "## [0.5.0]\n\nMigration: duplicate\n"); }, { "package-lock.json": lock }), "duplicate release section").toThrow(red);
+  }, 60_000);
+  it("refuses mixed versions when both publishable packages and their lock carriers are otherwise valid", () => {
+    const overrides = {
+      "config/openlup-packages.json": JSON.stringify({ schemaVersion: 2, packages: ["demo", "pub"].map((name) => ({ name: `@openlup/${name}`, directory: `packages/${name}`, publish: true })), unreleased: [] }),
+      "packages/demo/package.json": JSON.stringify({ name: "@openlup/demo", version: "0.4.0", license: "Apache-2.0", files: ["dist/**"], publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: "packages/demo" }, exports: { ".": "./dist/a.js" }, scripts: { build } }, null, 2),
+      "package-lock.json": JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.4.0" } } }, null, 2),
+    };
+    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); };
+    expect(compare(prepare, overrides), "accepted coherent two-package control").not.toThrow();
+    expect(compare((write, root) => {
+      prepare(write, root);
+      const manifest = JSON.parse(readFileSync(join(root, "packages/demo/package.json"), "utf8"));
+      write("packages/demo/package.json", JSON.stringify({ ...manifest, version: "0.4.0" }));
+      const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")); lock.packages["packages/demo"].version = "0.4.0";
+      write("package-lock.json", JSON.stringify(lock));
+    }, overrides), "mixed versions with matching carriers").toThrow(red);
+  });
   it("needs no block for a pure addition, a header change or a package that is not publishable", () => {
     expect(compare((write) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); }), "a removal with its block").not.toThrow();
     expect(compare((write) => write(SNAPSHOT, snapshot([...declarations, "export declare const c: number;"]))), "a pure addition").not.toThrow();
