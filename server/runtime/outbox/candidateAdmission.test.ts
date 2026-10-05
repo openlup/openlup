@@ -5,7 +5,7 @@ import type { RequiredSchema } from "@openlup/core/readiness";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { admitReferenceOutbox } from "./candidateAdmission.js";
+import { admitReferenceOutbox, observeReferencePackages } from "./candidateAdmission.js";
 import { createReferenceOutbox } from "./referenceContribution.js";
 import { startPublicReferenceServer } from "../public-reference/serve.js";
 function fixture(override?: OutboxHandler) {
@@ -13,7 +13,8 @@ function fixture(override?: OutboxHandler) {
   const handler=override??{eventType:"example.created",timeoutMs:100,handle:vi.fn(async()=>({kind:"processed" as const}))};
   const runtime=createReferenceOutbox({executor:{query} as never,lease,handlers:[handler],knownEventTypes:["example.created"],config:{batchSize:25,maxAttempts:8,visibilitySeconds:300,backoffBaseSeconds:60,backoffCapSeconds:3600,snoozeSeconds:300,maxSnoozes:48,softBudgetMs:40000}});
   let candidate={artifact:"one",configuration:"one",environment:"test",database:"test-db",schema:"one"};
-  return {query,lease,handler,runtime,setIdentity:(key:string)=>{candidate={...candidate,configuration:key};},input:{runtime,candidate,currentIdentity:()=>candidate,inventoryComplete:true,loadedPackages:[{name:"@openlup/core",version:"0.12.0",kind:"kernel" as const},{name:"@openlup/outbox",version:"0.12.0",kind:"rail" as const}],vocabulary:[{eventType:"example.created",owner:"application"}],exemptions:[],schemaProbe:{observe:async(req: RequiredSchema)=>({database:"test-db",version:req.version,objects:req.objects.map(object=>({object,present:true}))})}}};
+  const observed=observeReferencePackages();
+  return {query,lease,handler,runtime,setIdentity:(key:string)=>{candidate={...candidate,configuration:key};},input:{runtime,candidate,currentIdentity:()=>candidate,...observed,vocabulary:[{eventType:"example.created",owner:"application"}],exemptions:[],schemaProbe:{observe:async(req: RequiredSchema)=>({database:"test-db",version:req.version,objects:req.objects.map(object=>({object,present:true}))})}}};
 }
 it("refuses each absent binding before listener, lease, builder or effects",async()=>{
   const f=fixture();for(const key of Object.keys(f.runtime.ports)){
@@ -21,6 +22,10 @@ it("refuses each absent binding before listener, lease, builder or effects",asyn
     await expect(startPublicReferenceServer({outbox:candidate})).rejects.toThrow("refused before listener");
   }
   for(const key of Object.keys(f.runtime.triggers)){const triggers={...f.runtime.triggers};delete triggers[key];expect((await admitReferenceOutbox({...f.input,triggers})).admitted).toBe(false);}
+  for(const selected of f.input.loadedPackages){
+    const loadedPackages=f.input.loadedPackages.map(pkg=>pkg===selected?{...pkg,version:"0.0.0"}:pkg);
+    expect((await admitReferenceOutbox({...f.input,loadedPackages})).admitted).toBe(false);
+  }
   expect(f.query).not.toHaveBeenCalled();expect(f.lease.claimJobRun).not.toHaveBeenCalled();expect(f.handler.handle).not.toHaveBeenCalled();
 });
 it("checks once at admission, binds selected schedules before listen and invalidates changed identity",async()=>{
