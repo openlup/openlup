@@ -228,9 +228,10 @@ describe("eslint portable package boundaries", () => {
       expect(boundaryMessages(config, 'const value = registry.require("@vercel/blob");', filename)).toEqual([]);
     }
   });
-  it.each(sourceExtensions)("permits only exact public core exports from outbox in %s across directory depth",async(extension)=>{
-    const config=await loadConfig();
-    for(const depth of [0,1,4,12,13]){
+  it.each(sourceExtensions.flatMap((extension) => [0, 1, 4, 12, 13].map((depth) => ({ extension, depth }))))(
+    "permits only exact public core exports from outbox in $extension at depth $depth",
+    async ({ extension, depth }) => {
+      const config=await loadConfig();
       const filename=`packages/outbox/src/${"nested/".repeat(depth)}usesKernel.${extension}`;
       for(const specifier of ["@openlup/core/outbox","@openlup/core/readiness","@openlup/core/platform-runtime","@openlup/core/standard-schema"]){
         for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename)).toEqual([]);
@@ -247,11 +248,10 @@ describe("eslint portable package boundaries", () => {
         for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("Portable package source must not import provider SDKs"));
       }
-    }
-    for(const pkg of portablePackages)for(const source of loadSources("@openlup/outbox","ts"))
-      expect(boundaryMessages(config,source,`packages/${pkg}/src/usesOutbox.ts`))
-        .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
-  });
+      if (depth === 0) for(const pkg of portablePackages)for(const source of loadSources("@openlup/outbox","ts"))
+        expect(boundaryMessages(config,source,`packages/${pkg}/src/usesOutbox.ts`))
+          .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
+    });
 
   it("validates declared workspace exports inside package-local imports too",async()=>{
     const config=await loadConfig();
