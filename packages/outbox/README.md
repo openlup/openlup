@@ -28,6 +28,8 @@ Prune defaults to 30 days for processed and 90 for discarded, in batches of 500.
 
 ## Readiness and verification
 
+<!-- openlup-doc-impact {"unit":"outbox-rail","digest":"sha256-bf04ee4fb87fa78a1bab7dd34bd0d6ca51838e5d12f84db8804f15804da0ac80","reason":"Release preparation changes only the outbox manifest version and exact core peer pin to 0.13.0. Exports, implementation, shipped SQL, readiness composition, publishing configuration and package gates remain unchanged; the changelog identifies the prepared set and retains its migration guidance."} -->
+
 Compose the contribution with `@openlup/core/readiness`, actual loaded package metadata, selected-adapter schema observations and host bindings to the exact contribution run/handle functions before activating the exact new candidate. Only `ready` admits; `unknown` and `unsatisfied` leave the serving version running. Descriptors are inert; the builder supplies the same actual event identities and effective timeouts after lease acquisition. The default schema declaration describes catalog existence and overloads; it does not prove bodies, ACL or recovery. Use framework-free fence conformance from `./testing` and real transactional proof for your adapter. No ambient database URL is used by the packed proof.
 
 Upgrade the complete `@openlup/*` set together after reading each changelog. Use ports and composition; do not edit or patch installed package bytes. Sources are in `src/`, built JavaScript/declarations in `dist/`. Synthetic packed-consumer proof is first-party package evidence, not an independent adopter, provider-delivery or deployment certificate.
