@@ -70,6 +70,14 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/m2-contract-fixture.yml",
+      "class": "public-output"
+    },
+    {
+      "path": ".github/workflows/m2-contract-publisher-fixture.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/native-review-admission.yml",
       "class": "public-output"
     },
