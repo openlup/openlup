@@ -80,7 +80,7 @@ handling.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-6e58c27ddcc33151ef6aa6027aa18cbce9c804e29d69f5c086a1ab6c7c8fc81b","reason":"The workspace lockfile changes only the core and outbox package versions and outbox's exact core peer pin to 0.13.0. Dependency resolutions, verification commands, required contexts and publication controls remain unchanged; this prepares a set without publishing it."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-c16825c44228a1ec470d1953052bf04c4c72bee072fbcfed7821a6f55213dea1","reason":"The workspace lockfile changes only the core and outbox versions and the exact core peer pin from 0.13.0 to 0.13.1. Dependency resolutions, install commands and required contributor checks remain unchanged."} -->
 
 The bounded SQL RLS recovery uses existing owner cycles only: a separately
 reviewed contraction control precedes the corrected managed forward. Its exact
@@ -109,7 +109,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-8a6540540597c3a675981b05eb538db6263b367c3c2a60a93e121453a52a5590","reason":"The queue transport losslessly encodes complete large review state for both CLI forms, trusted submission artifacts and all admission consumers, including source carry-over into merge groups. The protocol owner documents the bounded envelope and refusal conditions. Contributor commands, required contexts and the current native identity, freshness, scope, history, reviewer counts and owner-continuation controls in this checks section remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-0c8ef49beda289af07ba6efc562c9d637c470e862c846aaf8ff51f29dfe56df0","reason":"The existing required package workflow test now executes the per-tag pack shell with a cold declaration fixture. It proves core-before-outbox ordering, one selected package, failure without the prerequisite, and refusal after a failed core build. Its existing required test selector and contributor test commands stay unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -182,7 +182,7 @@ run; each comment names its job. The inherited `native-review` job additionally
 checks exact-candidate admission when the maintainer enables `OPENLUP_NATIVE_QUEUE`;
 its six required dependencies and merge-group metadata controls remain unchanged:
 
-<!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-163bc45102f9ec556620eac205f0af8756d01d92b188cf59a1f92c6288989c68","reason":"The fixed preview 9 recovery workflow checks the existing source commit and six required contexts before publishing its existing draft; it changes no contributor command, required CI context, or admission rule described in this section."} -->
+<!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-f225cf3ee88ddcdea046bd5f3928719c623a16d2631587630596ce9e1a995045","reason":"The unprivileged per-tag pack job builds the exact workspace core peer before outbox packing on a fresh runner. The release owner documents this prerequisite. It still checks and scans only the selected package and preserves identity, npm version, permissions, provenance and all required CI contexts; contributor verification commands are unchanged."} -->
 
 The outbox workspace builds after core for root lint and test entrypoints. Its declared dependency on core uses exact public exports. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Required tests include its protocol/factory/adapter proofs and the reference admission boundary. The explicit disposable packed proof is a separate local command; it accepts only its own loopback database and never reads an ambient database URL. See [the rail guide](packages/outbox/README.md).
 

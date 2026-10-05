@@ -1,6 +1,6 @@
 {
   "name": "@openlup/outbox",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "private": false,
   "description": "Transactional PostgreSQL outbox rail; development preview.",
   "license": "Apache-2.0",
@@ -35,7 +35,7 @@
     "ci": "npm run build && npm run test && npm run api:check"
   },
   "peerDependencies": {
-    "@openlup/core": "0.13.0"
+    "@openlup/core": "0.13.1"
   },
   "exports": {
     ".": {
