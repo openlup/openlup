@@ -88,6 +88,20 @@ npm run ci
 
 Focused proofs are `npm run api:check`, `npm run release:check`, and
 `npm run test:consumer`. The root test script skips this suite.
+The shared repository gate runs this package's API check before expensive
+proofs, then `ci:required` retains the other complete-CI obligations once.
+The standalone `ci` command keeps its API check for manual package verification.
+In the monorepo, required CI supplies `OPENLUP_PACK_MANIFEST` and
+`OPENLUP_PACK_COMMIT` together to the same consumer. It verifies the complete
+publishable set and both tarball digests, then uses the named core artifact
+without rebuilding or repacking it. A missing or damaged supplied input refuses;
+it never falls back to a source-directory install. The consumer still audits the
+packed files, imports every public export, checks NodeNext and Bundler types,
+and builds with Vite. It installs Zod from a separately packed locked runtime
+input and uses explicitly located host TypeScript/Vite tools. The isolated
+consumer records the core artifact hashes and rejects package symlinks or
+ancestor module-resolution overrides. Without either supplied input, the manual
+source command retains its own build and pack.
 `npm run docs:check` requires relative links in shipped Markdown to resolve to
 files actually packed in the tarball; a target present only in source refuses.
 Ambiguous destinations refuse explicitly: use literal punctuation or

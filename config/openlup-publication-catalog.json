@@ -1202,6 +1202,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/early-package-gates.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -1986,6 +1990,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/suppliedConsumer.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/targetPriceAllocation.test.ts",
       "class": "public-output"
     },
@@ -2039,6 +2047,14 @@
     },
     {
       "path": "packages/outbox/scripts/api-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/scripts/consumer-proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/smoke/schemaProof.ts",
       "class": "public-output"
     },
     {
@@ -2706,7 +2722,23 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/outbox-consumer-proof.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/outbox-consumer-proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/outbox-disposable-postgres.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/pack-manifest-input.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/pack-manifest-input.ts",
       "class": "public-output"
     },
     {
@@ -2763,6 +2795,18 @@
     },
     {
       "path": "scripts/packages/release-workflow-authenticity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/required-package-gates.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/required-package-gates.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/schema-budget-proof.mjs",
       "class": "public-output"
     },
     {
@@ -19053,11 +19097,11 @@
     },
     {
       "path": "packages/core/package.json",
-      "digest": "sha256-5bb893d11455be6a250527b04ffa92845c542b24316a5f4da6f6785d7c79a47f"
+      "digest": "sha256-4930c4c02466566fb26cf2c791d78716280d823bf9fd3eebf3d16d3fad0792f1"
     },
     {
       "path": "packages/outbox/package.json",
-      "digest": "sha256-3792dd9ebb26454351558a749f874b52af110153c5ca0d89d4b098f472e5f1b5"
+      "digest": "sha256-60beaa6303f13fa5c3568e227d571f1b6013260dd260578670896eaf0d613319"
     },
     {
       "path": "packages/ui/package.json",

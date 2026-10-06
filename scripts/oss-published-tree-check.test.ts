@@ -37,6 +37,7 @@ import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_REQU
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 
 import { readManagedMigrationChain } from "./public-ci-pgtap.mjs";
+import { parsePackagesConfig } from "./packages/package-manifest-policy.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW = ".github/workflows/published-tree-ci.yml";
@@ -50,6 +51,16 @@ const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish
 const requiredTestFloor = "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/" + ["str", "ipe"].join("");
 const workflowJob = (name: string, source = workflow) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
 const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run: (?!\|)(.+)$/gmu)].map((match) => match[1]);
+
+// The workflow uses the same inventory-driven route for future packages.
+function assertPublishedPackageRoutes(inventory: string, source = workflow): void {
+  const commands = workflowCommands(workflowJob("test", source));
+  expect(commands).toContain('node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
+  for (const { directory } of parsePackagesConfig(inventory).packages.filter(({ publish }) => publish)) {
+    const manifest = JSON.parse(readFileSync(join(ROOT, directory, "package.json"), "utf8"));
+    for (const script of ["api:check", "ci:required", "test:consumer"]) expect(manifest.scripts[script], `${directory}: ${script}`).toBeTruthy();
+  }
+}
 
 describe("maintainer-controlled source preview workflow", () => {
   it("is inert without the repository variable and the protected main environment", () => {
@@ -182,9 +193,9 @@ describe("complete public CI", () => {
     expect(manifest.scripts).not.toHaveProperty("test:full");
     expect(workflowCommands(workflowJob("test"))).toEqual([
       "npm ci",
+      'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
       "npm run test:required",
       "npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx",
-      "npm --workspace ./packages/core run ci",
       "npx vitest run scripts/oss-published-tree-check.test.ts",
       "npx vitest run scripts/public-ci-neutrality.test.ts",
     ]);
@@ -202,6 +213,29 @@ describe("complete public CI", () => {
       'node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"',
     ]);
   });
+  it("binds every current publishable package to an actual required build/API/consumer route", async () => {
+    const inventory = readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8");
+    assertPublishedPackageRoutes(inventory);
+    const core = JSON.parse(readFileSync(join(ROOT, "packages/core/package.json"), "utf8"));
+    for (const step of ["test:coverage", "typecheck:smoke", "api:check", "docs:check", "release:check", "test:consumer"]) expect(core.scripts.ci).toContain(`npm run ${step}`);
+    // The common API phase plus the owning batch preserves the whole previous CI once.
+    expect(core.scripts["ci:required"].split(" && ")).toEqual(core.scripts.ci.split(" && ").filter((command: string) => command !== "npm run api:check"));
+    expect(JSON.parse(readFileSync(join(ROOT, "packages/outbox/package.json"), "utf8")).scripts["ci:required"]).toBe("npm run test:consumer");
+    const { createVitest } = await import("vitest/node");
+    const root = await createVitest("test", { root: ROOT, watch: false });
+    try {
+      const selected = await root.globTestSpecifications(["packages/outbox"]);
+      expect(selected.some(({ moduleId }) => moduleId.endsWith("packages/outbox/test/packageContract.test.ts"))).toBe(true);
+      expect((await root.globTestSpecifications(["packages/core"])).length).toBe(0);
+    } finally { await root.close(); }
+    const standalone = await createVitest("test", { root: join(ROOT, "packages/core"), config: join(ROOT, "packages/core/vitest.config.ts"), watch: false });
+    try {
+      const files = (await standalone.globTestSpecifications()).map(({ moduleId }) => moduleId);
+      expect(files.some((path) => path.endsWith("smoke/readinessStandalone.test.ts"))).toBe(true);
+      expect(files.some((path) => path.endsWith("test/consumerTooling.test.ts"))).toBe(true);
+    } finally { await standalone.close(); }
+    expect(() => assertPublishedPackageRoutes(inventory, workflow.replace("scripts/packages/required-package-gates.ts", "scripts/packages/missing-gates.ts"))).toThrow();
+  }, 30_000);
   it("passes the full and frozen required argv to Vitest unchanged and propagates failure", () => {
     const scratch = join(ROOT, ".context/scratch");
     mkdirSync(scratch, { recursive: true });

@@ -75,7 +75,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | subscription-recovery | Session, token ownership, expiry, revocation and replay in payment recovery | [docs/platform/SUBSCRIPTION_WORKFLOWS.md](SUBSCRIPTION_WORKFLOWS.md#recover-payment) | `server/domains/subscription/paymentRecoveryHandler.ts`; `server/domains/subscription/paymentRecoveryPorts.ts` |
 | subscription-delivery | Renewal delivery admission and the durable replacement-confirmation boundary | [docs/platform/SUBSCRIPTION_WORKFLOWS.md](SUBSCRIPTION_WORKFLOWS.md#protect-delivery) | `server/domains/subscription/callSubscriptionDeliveryAlignmentAdmission.ts`; `server/adapters/subscriptionDeliveryAlignmentGateway.ts` |
 | subscription-services | Available domain service entrypoints and their composition limitations | [docs/platform/SUBSCRIPTION_WORKFLOWS.md](SUBSCRIPTION_WORKFLOWS.md#available-domain-services) | `server/domains/subscription/checkoutActivationBridge.ts`; `server/domains/subscription/runAutomaticSubscriptionRenewal.ts` |
-| outbox-rail | Outbox protocol, adapter transactions, schedules and package consumption | [packages/outbox/README.md](../../packages/outbox/README.md) | `packages/outbox/**`; `server/runtime/outbox/**`; `scripts/packages/outbox-consumer-proof.ts` |
+| outbox-rail | Outbox protocol, adapter transactions, schedules and package consumption | [packages/outbox/README.md](../../packages/outbox/README.md) | `packages/outbox/**`; `server/runtime/outbox/**`; `scripts/packages/outbox-consumer-proof.ts`; `scripts/packages/outbox-consumer-proof.test.ts`; `scripts/packages/outbox-disposable-postgres.ts` |
 <!-- openlup-generated:end -->
 
 ## Drill down to a file
