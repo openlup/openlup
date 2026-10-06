@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
@@ -101,19 +102,90 @@ it("fails the actual reclaim proof if the adapter reports a formerly valid token
   const result = invoke(f.target, true); expect(result.status).not.toBe(0); expect(result.stderr).toContain("AssertionError"); expect(result.stdout).toContain("Owned PostgreSQL cleanup");
 }, 240_000);
 
+// The Vitest worker owns no Docker resource. A plain Node owner remains in the
+// required-test process group and finishes cleanup even if that worker exits.
+function fixtureDriver(f: ReturnType<typeof fixture>, operation: string, mode: string) {
+  const source = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const driver = join(f.target, "fixture-owner.ts");
+  const body = source.slice(source.indexOf("\nasync function fixtureWait("), source.indexOf("\n// End standalone fixture functions."));
+  assert.ok(body.startsWith("\nasync function fixtureWait("));
+  writeFileSync(driver, [
+    'import assert from "node:assert/strict";',
+    'import {execFileSync, spawn, spawnSync} from "node:child_process";',
+    'import {randomUUID} from "node:crypto";',
+    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from "node:fs";',
+    'import {join} from "node:path";',
+    `const env = process.env, commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, POSTGRES_PROOF_IMAGE = ${JSON.stringify(POSTGRES_PROOF_IMAGE)};`,
+    // A dead worker closes its output pipe. Output errors must not kill cleanup.
+    'process.stdout.on("error", () => {}); process.stderr.on("error", () => {});',
+    body,
+    `await ${operation}(${JSON.stringify(mode)}, ${JSON.stringify(f)});`,
+  ].join("\n"));
+  return spawn(process.execPath, ["--experimental-strip-types", driver], { cwd: f.target, env, stdio: ["ignore", "pipe", "pipe"] });
+}
+async function driverCompletion(child: ReturnType<typeof spawn>) {
+  let stdout = "", stderr = "";
+  child.stdout!.on("data", bytes => { stdout += bytes.toString(); }); child.stderr!.on("data", bytes => { stderr += bytes.toString(); });
+  const code = await new Promise<number | null>((done, fail) => { child.once("error", fail); child.once("close", done); });
+  assert.equal(code, 0, `${stdout} ${stderr}`);
+}
 it.each(["direct", "package-group"] as const)("handles repeated interruption through %s, drops only its database and preserves the owned service", async mode => {
-  const f = fixture(), owner = randomUUID(), name = `openlup-outbox-interruption-${owner}`;
+  await driverCompletion(fixtureDriver(fixture(), "exerciseInterruption", mode));
+}, 60_000);
+it.each(["container-response", "container-owner-mismatch", "database-response"] as const)("cleans owned startup effects after %s", async mode => {
+  await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
+}, 90_000);
+it.each(["service-created", "proof-ready"] as const)("cleans its owned resources before releasing the root cancellation lock at %s", async stage => {
+  await driverCompletion(fixtureDriver(fixture(), "exerciseRootCancellation", stage));
+}, 120_000);
+
+async function fixtureWait(ready: () => boolean, signal: AbortSignal | undefined, timeout: number, check?: () => void) {
+  const deadline = performance.now() + timeout;
+  while (!ready()) {
+    if (signal?.aborted) throw new Error("Fixture interrupted");
+    check?.();
+    if (performance.now() >= deadline) throw new Error("Fixture deadline");
+    await new Promise(done => setTimeout(done, 25));
+  }
+  if (signal?.aborted) throw new Error("Fixture interrupted");
+}
+function fixtureRemoveService(identity: string, name: string, label: string, environment: NodeJS.ProcessEnv) {
+  // Repeated group TERM must not kill our bounded cleanup CLI between inspect
+  // and remove. The owner stays in the group; only these synchronous CLIs detach.
+  const inspected = spawnSync("docker", ["inspect", identity], { env: environment, encoding: "utf8", timeout: 10_000, detached: true });
+  if (inspected.status !== 0 && inspected.stderr.toLowerCase().includes("no such object")) return;
+  assert.equal(inspected.status, 0, inspected.stderr);
+  const info = JSON.parse(inspected.stdout)[0], separator = label.indexOf("=");
+  assert.equal(info.Name, `/${name}`); assert.match(info.Id, /^[a-f0-9]{64}$/u);
+  assert.equal(info.Config.Labels[label.slice(0, separator)], label.slice(separator + 1));
+  assert.equal(spawnSync("docker", ["rm", "--force", info.Id], { env: environment, encoding: "utf8", timeout: 10_000, detached: true }).status, 0);
+}
+async function fixtureStopPoint(stage: string, identity: object, signal: AbortSignal) {
+  if (process.env.OPENLUP_FIXTURE_CANCEL_STAGE === stage && process.env.OPENLUP_FIXTURE_WITNESS) {
+    writeFileSync(process.env.OPENLUP_FIXTURE_WITNESS, JSON.stringify(identity));
+    await fixtureWait(() => false, signal, 45_000);
+  }
+}
+
+async function exerciseInterruption(mode: string, f: { target: string; packs: string }) {
+
+  const owner = randomUUID(), name = `openlup-outbox-interruption-${owner}`;
   const environment = { ...env };
   delete environment.OPENLUP_PROOF_SERVICE_CONTAINER;
   delete environment.OPENLUP_PROOF_SERVICE_PORT;
   const docker = (args: string[]) => execFileSync("docker", args, { encoding: "utf8", env: environment, timeout: 30_000 }).trim();
-  const started = performance.now();
+  const started = performance.now(), life = new AbortController(), interrupt = () => life.abort();
+  process.on("SIGTERM", interrupt); process.on("SIGINT", interrupt);
+  let attemptedService = false;
   let container: string | undefined, launcher: ReturnType<typeof spawn> | undefined;
   let proofPid: number | undefined, descendantPid: number | undefined;
   let stdout = "", stderr = "";
   const running = (pid: number) => { try { process.kill(pid, 0); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; } };
+  let failure: unknown;
   try {
+    attemptedService = true;
     container = docker(["run", "--detach", "--rm", "--name", name, "--label", `openlup-interruption-test=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE]);
+    await fixtureStopPoint("service-created", { id: container, name, label: `openlup-interruption-test=${owner}` }, life.signal);
     const port = docker(["port", container, "5432/tcp"]).split(":").at(-1)!;
     // Both processes resist TERM, exercising the launcher's bounded group KILL.
     writeFileSync(join(f.target, "scripts/packages/outbox-consumer-proof.ts"), [
@@ -132,26 +204,23 @@ it.each(["direct", "package-group"] as const)("handles repeated interruption thr
       launcher!.once("error", fail);
       launcher!.once("close", (code, signal) => done({ code, signal }));
     });
+    void completion.catch(() => {}); // Observe spawn errors until the readiness/teardown checks report them.
     launcher.stderr!.on("data", data => { stderr += data.toString(); });
-    await new Promise<void>((ready, fail) => {
-      const timer = setTimeout(() => fail(new Error(`Hanging proof startup deadline: ${stdout} ${stderr}`)), 45_000);
-      launcher!.stdout!.on("data", data => {
-        stdout += data.toString();
-        const match = /HANGING_PROOF_READY (\{[^\n]+\})/.exec(stdout);
-        if (match) {
-          const identity = JSON.parse(match[1]);
-          proofPid = identity.proof; descendantPid = identity.descendant;
-          clearTimeout(timer); ready();
-        }
-      });
-      completion.then(() => { clearTimeout(timer); fail(new Error(`Launcher exited before proof readiness: ${stdout} ${stderr}`)); }, error => { clearTimeout(timer); fail(error); });
+    launcher.stdout!.on("data", data => {
+      stdout += data.toString();
+      const match = /HANGING_PROOF_READY (\{[^\n]+\})/.exec(stdout);
+      if (match) { const identity = JSON.parse(match[1]); proofPid = identity.proof; descendantPid = identity.descendant; }
     });
-    expect(proofPid).toBeGreaterThan(0); expect(descendantPid).toBeGreaterThan(0);
-    expect(running(proofPid!)).toBe(true); expect(running(descendantPid!)).toBe(true);
+    await fixtureWait(() => proofPid !== undefined, life.signal, 45_000, () => {
+      if (launcher!.exitCode !== null || launcher!.signalCode !== null) throw new Error(`Launcher exited before proof readiness: ${stdout} ${stderr}`);
+    });
+    await fixtureStopPoint("proof-ready", { id: container, name, label: `openlup-interruption-test=${owner}`, proofPid, descendantPid }, life.signal);
+    assert.ok((proofPid) > (0)); assert.ok((descendantPid) > (0));
+    assert.equal(running(proofPid!), true); assert.equal(running(descendantPid!), true);
     const database = /database=(openlup_outbox_proof_[a-f0-9]{32})/u.exec(stdout)?.[1];
-    expect(database).toBeDefined();
+    assert.notEqual(database, undefined);
     const databaseCount = () => docker(["exec", container!, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", `select count(*) from pg_database where datname='${database}'`]);
-    expect(databaseCount()).toBe("1");
+    assert.equal(databaseCount(), "1");
     const interrupted = performance.now();
     const interrupt = () => { if (mode === "direct") launcher!.kill("SIGTERM"); else process.kill(-launcher!.pid!, "SIGTERM"); };
     interrupt();
@@ -162,34 +231,36 @@ it.each(["direct", "package-group"] as const)("handles repeated interruption thr
     try {
       result = await Promise.race([completion, new Promise<never>((_, fail) => { timer = setTimeout(() => fail(new Error(`Launcher interruption deadline: ${stdout} ${stderr}`)), 10_000); })]);
     } finally { if (timer) clearTimeout(timer); }
-    expect(result.code).not.toBe(0);
-    expect(stderr).toContain("deadline/interruption"); expect(stdout).toContain("Owned PostgreSQL cleanup");
+    assert.notEqual(result.code, 0);
+    assert.ok((stderr).includes("deadline/interruption")); assert.ok((stdout).includes("Owned PostgreSQL cleanup"));
     const goneDeadline = performance.now() + 3000;
     while ((running(proofPid!) || running(descendantPid!)) && performance.now() < goneDeadline) await new Promise(done => setTimeout(done, 25));
-    expect(running(proofPid!)).toBe(false); expect(running(descendantPid!)).toBe(false);
-    expect(JSON.parse(docker(["inspect", container]))[0].State.Running).toBe(true);
-    expect(databaseCount()).toBe("0");
+    assert.equal(running(proofPid!), false); assert.equal(running(descendantPid!), false);
+    assert.equal(JSON.parse(docker(["inspect", container]))[0].State.Running, true);
+    assert.equal(databaseCount(), "0");
     process.stdout.write(`Owned service ${container} ${mode} interruption: startup ${Math.round(interrupted - started)} ms, signal/group/database cleanup ${Math.round(performance.now() - interrupted)} ms\n`);
-  } finally {
-    if (launcher && launcher.exitCode === null && launcher.signalCode === null) {
-      await new Promise<void>(done => {
-        const timer = setTimeout(() => { launcher!.kill("SIGKILL"); done(); }, 3000);
-        launcher!.once("close", () => { clearTimeout(timer); done(); });
-        launcher!.kill("SIGTERM");
-      });
+  } catch (error) { failure = error; } finally {
+    const cleanupErrors: unknown[] = [];
+    const stop = () => { if (launcher?.pid) { try { if (mode === "direct") launcher.kill("SIGTERM"); else process.kill(-launcher.pid, "SIGTERM"); } catch { /* Already stopped. */ } } };
+    stop(); // The child cleans its proof in parallel with our service teardown.
+    try { if (attemptedService) fixtureRemoveService(container ?? name, name, `openlup-interruption-test=${owner}`, env); } catch (error) { cleanupErrors.push(error); }
+    try {
+      await fixtureWait(() => !launcher || (launcher.exitCode !== null || launcher.signalCode !== null), undefined, 32_000);
+    } catch (error) {
+      if (launcher?.pid) { try { if (mode === "direct") launcher.kill("SIGKILL"); else process.kill(-launcher.pid, "SIGKILL"); } catch { /* Already stopped. */ } }
+      cleanupErrors.push(error);
     }
     for (const pid of [proofPid, descendantPid]) if (pid && running(pid)) { try { process.kill(pid, "SIGKILL"); } catch { /* Already exited. */ } }
-    if (container) {
-      const info = JSON.parse(docker(["inspect", container]))[0];
-      expect(info.Config.Labels["openlup-interruption-test"]).toBe(owner);
-      docker(["rm", "--force", container]);
-    }
+    try { await fixtureWait(() => [proofPid, descendantPid].every(pid => !pid || !running(pid)), undefined, 2000); } catch (error) { cleanupErrors.push(error); }
+    process.removeListener("SIGTERM", interrupt); process.removeListener("SIGINT", interrupt);
+    if (cleanupErrors.length) failure = new AggregateError([failure, ...cleanupErrors].filter(Boolean), "Fixture and cleanup failed");
   }
-}, 60_000);
+  if (failure) throw failure;
+}
 
-// Exercise lost acknowledgements after real daemon/SQL effects, not a fake database.
-it.each(["container-response", "container-owner-mismatch", "database-response"] as const)("cleans owned startup effects after %s", async mode => {
-  const f = fixture(), environment = { ...env }, realDocker = execFileSync("which", ["docker"], { env, encoding: "utf8" }).trim();
+async function exerciseStartupLoss(mode: string, f: { target: string; packs: string }) {
+
+  const environment = { ...env }, realDocker = execFileSync("which", ["docker"], { env, encoding: "utf8" }).trim();
   delete environment.OPENLUP_PROOF_SERVICE_CONTAINER; delete environment.OPENLUP_PROOF_SERVICE_PORT;
   const docker = (args: string[]) => spawnSync(realDocker, args, { env: environment, encoding: "utf8", timeout: 30_000 });
   const effect = join(f.target, "effect.json"), attempted = join(f.target, "attempted.json"), tools = join(f.target, "tools"); mkdirSync(tools);
@@ -214,38 +285,100 @@ it.each(["container-response", "container-owner-mismatch", "database-response"] 
     '} else { process.stdout.write(result.stdout || ""); process.stderr.write(result.stderr || ""); process.exit(result.status ?? 1); }',
   ].join("\n")); chmodSync(shim, 0o700);
   const owner = randomUUID(), serviceName = `openlup-startup-loss-${owner}`;
+  const life = new AbortController(), interrupt = () => life.abort();
+  process.on("SIGTERM", interrupt); process.on("SIGINT", interrupt);
+  let attemptedService = false;
   let service: string | undefined, launcher: ReturnType<typeof spawn> | undefined, stdout = "", stderr = "";
+  let failure: unknown;
   try {
     const supplied: NodeJS.ProcessEnv = { ...environment, PATH: `${tools}:${environment.PATH}`, OPENLUP_PACK_MANIFEST: join(f.packs, "packages-manifest.json"), OPENLUP_PACK_COMMIT: commit };
     if (mode === "database-response") {
+      attemptedService = true;
       const started = docker(["run", "--detach", "--rm", "--name", serviceName, "--label", `openlup-startup-test=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE]);
-      expect(started.status).toBe(0); service = started.stdout.trim();
+      assert.equal(started.status, 0); service = started.stdout.trim();
       const readyDeadline = performance.now() + 30_000;
-      while (docker(["exec", service, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-t", "1"]).status !== 0) { if (performance.now() >= readyDeadline) throw new Error("Owned test service startup deadline"); await new Promise(done => setTimeout(done, 100)); }
-      expect(docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "CREATE DATABASE openlup_outbox_proof"]).status).toBe(0);
+      while (!life.signal.aborted && docker(["exec", service, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-t", "1"]).status !== 0) { if (performance.now() >= readyDeadline) throw new Error("Owned test service startup deadline"); await new Promise(done => setTimeout(done, 100)); }
+      if (life.signal.aborted) throw new Error("Fixture interrupted");
+      assert.equal(docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "CREATE DATABASE openlup_outbox_proof"]).status, 0);
       supplied.OPENLUP_PROOF_SERVICE_CONTAINER = service; supplied.OPENLUP_PROOF_SERVICE_PORT = docker(["port", service, "5432/tcp"]).stdout.trim().split(":").at(-1)!;
     }
     launcher = spawn("npm", ["--workspace", "./packages/outbox", "run", "ci:required"], { cwd: f.target, env: supplied, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     launcher.stdout!.on("data", bytes => { stdout += bytes.toString(); }); launcher.stderr!.on("data", bytes => { stderr += bytes.toString(); });
     const completion = new Promise<number | null>((done, fail) => { launcher!.once("error", fail); launcher!.once("close", code => done(code)); });
+    void completion.catch(() => {});
     const startupDeadline = performance.now() + 45_000;
-    while (!existsSync(effect)) { if (launcher.exitCode !== null || performance.now() >= startupDeadline) throw new Error(`Lost response setup: ${stdout} ${stderr}`); await new Promise(done => setTimeout(done, 25)); }
+    while (!existsSync(effect) && !life.signal.aborted) { if (launcher.exitCode !== null || performance.now() >= startupDeadline) throw new Error(`Lost response setup: ${stdout} ${stderr}`); await new Promise(done => setTimeout(done, 25)); }
+    if (life.signal.aborted) throw new Error("Fixture interrupted");
     const observed = JSON.parse(readFileSync(effect, "utf8"));
-    if (!service) { const info = JSON.parse(docker(["inspect", observed.id]).stdout)[0]; expect(info.Name).toBe(`/${observed.name}`); expect(info.Config.Labels["openlup-proof"]).toBe(observed.label.slice("openlup-proof=".length)); expect(info.State.Running).toBe(true); }
+    if (!service) { const info = JSON.parse(docker(["inspect", observed.id]).stdout)[0]; assert.equal(info.Name, `/${observed.name}`); assert.equal(info.Config.Labels["openlup-proof"], observed.label.slice("openlup-proof=".length)); assert.equal(info.State.Running, true); }
     process.kill(-launcher.pid!, "SIGTERM");
     let timer: NodeJS.Timeout | undefined;
-    try { expect(await Promise.race([completion, new Promise<never>((_, fail) => { timer = setTimeout(() => fail(new Error(`Lost response cleanup deadline: ${stdout} ${stderr}`)), 10_000); })])).not.toBe(0); } finally { if (timer) clearTimeout(timer); }
-    expect(stdout).toContain("Owned PostgreSQL cleanup");
+    try { assert.notEqual(await Promise.race([completion, new Promise<never>((_, fail) => { timer = setTimeout(() => fail(new Error(`Lost response cleanup deadline: ${stdout} ${stderr}`)), 10_000); })]), 0); } finally { if (timer) clearTimeout(timer); }
+    assert.ok((stdout).includes("Owned PostgreSQL cleanup"));
     if (service) {
       const remaining = docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", `select datname from pg_database where datname in ('${observed.database}', 'openlup_outbox_proof') order by datname`]);
-      expect(remaining.status).toBe(0); expect(remaining.stdout.trim()).toBe("openlup_outbox_proof"); expect(JSON.parse(docker(["inspect", service]).stdout)[0].State.Running).toBe(true);
+      assert.equal(remaining.status, 0); assert.equal(remaining.stdout.trim(), "openlup_outbox_proof"); assert.equal(JSON.parse(docker(["inspect", service]).stdout)[0].State.Running, true);
     } else if (mode === "container-owner-mismatch") {
-      expect(stderr).toContain("Container cleanup ownership mismatch"); expect(JSON.parse(docker(["inspect", observed.id]).stdout)[0].State.Running).toBe(true);
-    } else expect(docker(["inspect", observed.id]).status).not.toBe(0);
-    expect(stdout).not.toContain("Packed proof process");
-  } finally {
-    if (launcher && launcher.exitCode === null && launcher.signalCode === null) { try { process.kill(-launcher.pid!, "SIGTERM"); } catch { /* Already stopped. */ } await new Promise(done => setTimeout(done, 1500)); if (launcher.exitCode === null) { try { process.kill(-launcher.pid!, "SIGKILL"); } catch { /* Already stopped. */ } } }
-    if (service) { const info = JSON.parse(docker(["inspect", service]).stdout)[0]; expect(info.Config.Labels["openlup-startup-test"]).toBe(owner); expect(docker(["rm", "--force", service]).status).toBe(0); }
-    if (!service && existsSync(attempted)) { const observed = JSON.parse(readFileSync(attempted, "utf8")), inspected = docker(["inspect", observed.name]); if (inspected.status === 0) { const info = JSON.parse(inspected.stdout)[0]; expect(info.Name).toBe(`/${observed.name}`); expect(info.Config.Labels["openlup-proof"]).toBe(observed.label.slice("openlup-proof=".length)); expect(docker(["rm", "--force", info.Id]).status).toBe(0); } }
+      assert.ok((stderr).includes("Container cleanup ownership mismatch")); assert.equal(JSON.parse(docker(["inspect", observed.id]).stdout)[0].State.Running, true);
+    } else assert.notEqual(docker(["inspect", observed.id]).status, 0);
+    assert.ok(!(stdout).includes("Packed proof process"));
+  } catch (error) { failure = error; } finally {
+    const cleanupErrors: unknown[] = [];
+    if (launcher?.pid) { try { process.kill(-launcher.pid, "SIGTERM"); } catch { /* Already stopped. */ } }
+    try { if (attemptedService) fixtureRemoveService(service ?? serviceName, serviceName, `openlup-startup-test=${owner}`, environment); } catch (error) { cleanupErrors.push(error); }
+    try { await fixtureWait(() => !launcher || (launcher.exitCode !== null || launcher.signalCode !== null), undefined, 32_000); }
+    catch (error) { if (launcher?.pid) { try { process.kill(-launcher.pid, "SIGKILL"); } catch { /* Already stopped. */ } } cleanupErrors.push(error); }
+    try {
+      if (!service && existsSync(attempted)) { const observed = JSON.parse(readFileSync(attempted, "utf8")); fixtureRemoveService(observed.name, observed.name, observed.label, environment); }
+    } catch (error) { cleanupErrors.push(error); }
+    process.removeListener("SIGTERM", interrupt); process.removeListener("SIGINT", interrupt);
+    if (cleanupErrors.length) failure = new AggregateError([failure, ...cleanupErrors].filter(Boolean), "Fixture and cleanup failed");
   }
-}, 90_000);
+  if (failure) throw failure;
+}
+
+async function exerciseRootCancellation(stage: string, f: { target: string; packs: string }) {
+  const witness = join(f.target, "root-witness.json"), lock = join(f.target, "root-verify.lock"); mkdirSync(lock);
+  const life = new AbortController(), interrupt = () => life.abort();
+  process.on("SIGTERM", interrupt); process.on("SIGINT", interrupt);
+  const child = spawn(process.execPath, [join(root, "scripts/run-vitest.mjs"), "run", "scripts/packages/outbox-consumer-proof.test.ts", "-t", "handles repeated interruption through package-group,"], {
+    cwd: root, env: { ...env, VITEST_MAX_WORKERS: "1", OPENLUP_FIXTURE_CANCEL_STAGE: stage, OPENLUP_FIXTURE_WITNESS: witness }, detached: true, stdio: "ignore",
+  });
+  let spawnError: Error | undefined; child.once("error", error => { spawnError = error; });
+  const groupExists = () => { if (!child.pid) return false; try { process.kill(-child.pid, 0); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; } };
+  let groupDeadline: number | undefined;
+  const stop = () => { groupDeadline ??= performance.now() + 60_000; if (child.pid) { try { process.kill(-child.pid, "SIGTERM"); } catch { /* Already stopped. */ } } };
+  const waitForGroup = () => fixtureWait(() => !groupExists(), undefined, Math.max(1, groupDeadline! - performance.now()));
+  let observed: { id: string; name: string; label: string; proofPid?: number; descendantPid?: number } | undefined;
+  let failure: unknown;
+  try {
+    await fixtureWait(() => existsSync(witness), life.signal, 45_000, () => { if (spawnError) throw spawnError; if (child.exitCode !== null || child.signalCode !== null) throw new Error("Nested Vitest exited before witness"); });
+    observed = JSON.parse(readFileSync(witness, "utf8"));
+    stop(); await new Promise(done => setTimeout(done, 50)); stop();
+    // This follows the verifier's group-liveness contract, without a real stamp
+    // or shared lock. The resource owner must remain in that group until cleanup.
+    await waitForGroup();
+    rmSync(lock, { recursive: true });
+    assert.equal(spawnSync("docker", ["inspect", observed!.id], { env, encoding: "utf8", timeout: 30_000 }).status === 0, false, "Root cancellation leaked fixture service");
+    for (const pid of [observed!.proofPid, observed!.descendantPid]) if (pid) { assert.throws(() => process.kill(pid, 0), /ESRCH/u); }
+    assert.equal(existsSync(lock), false);
+  } catch (error) { failure = error; } finally {
+    const cleanupErrors: unknown[] = [];
+    stop();
+    try { await waitForGroup(); }
+    catch (error) {
+      if (child.pid) { try { process.kill(-child.pid, "SIGKILL"); } catch { /* Already stopped. */ } }
+      try { await fixtureWait(() => !groupExists(), undefined, 2000); } catch (stopError) { cleanupErrors.push(stopError); }
+      cleanupErrors.push(error);
+    }
+    try {
+      if (!observed && existsSync(witness)) observed = JSON.parse(readFileSync(witness, "utf8"));
+      if (observed) fixtureRemoveService(observed.id, observed.name, observed.label, env);
+    } catch (error) { cleanupErrors.push(error); }
+    if (!groupExists()) rmSync(lock, { recursive: true, force: true });
+    process.removeListener("SIGTERM", interrupt); process.removeListener("SIGINT", interrupt);
+    if (cleanupErrors.length) failure = new AggregateError([failure, ...cleanupErrors].filter(Boolean), "Root fixture and cleanup failed");
+  }
+  if (failure) throw failure;
+}
+// End standalone fixture functions.
