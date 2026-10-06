@@ -93,12 +93,13 @@ handling.
 The bounded SQL RLS recovery uses existing owner cycles only: a separately
 reviewed contraction control precedes the corrected managed forward. Its exact
 regroup preserves every previous report and finding, keeps the automatic limit
-at two and the owner ceiling at five, and requires fresh candidate-bound owner
+at two and its owner ceiling at six, and requires fresh candidate-bound owner
 decisions plus two full independent reviews for each sensitive phase. If the
 separately merged bootstrap absorbs the control's documentation delta, the fifth
 cycle may finish that control recovery and one final sixth cycle may introduce
 the exact corrected SQL. The sixth refuses if the fifth already introduced that
-SQL; unrelated owner routes remain capped at five and a seventh always refuses.
+SQL or fails to introduce it; generic unchanged-intent cycle 6 cannot bypass
+that condition. A seventh always refuses.
 It grants no general scope extension, policy operation or publication authority.
 
 
@@ -268,15 +269,17 @@ those assertions require.
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
 evidence expiry and the two-cycle automatic repair/review budget. Separately
-bound fresh owner decisions can permit full cycles 3, 4 and 5 with unchanged
+bound fresh owner decisions can permit full cycles 3, 4, 5 and 6 with unchanged
 intent. Each decision binds the preserved previous request and actual next
 candidate; the automatic limit remains two. Only cycle 4 may
 pair an exact regroup decision adding the two consumer-check paths specified
 in the native session interface, preserving every previous path, criteria,
 risk, roles and author. A separately approved checkout-history recovery at cycle 5
 may add only `.github/workflows/published-tree-ci.yml`, preserving the same criteria
-and complete lineage. An automatic fifth or generic sixth refuses; the bounded
-SQL/RLS recovery retains its separately defined exception. Each owner cycle
+and complete lineage. Cycle 6 needs a separate fresh decision bound to the
+preserved fifth request and next candidate; it cannot expand scope. Automatic
+owner cycles and a seventh refuse. The bounded SQL/RLS recovery still requires
+its exact SQL introduction at cycle 6; generic unchanged intent cannot bypass it. Each owner cycle
 retains every prior round and finding and requires explicit full refresh and
 two fresh full reviewers. An unchanged prepare preserves evidence and expiry. See the
 [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
@@ -949,17 +952,23 @@ reports `needs_rescope`; it never restarts the budget or drops findings.
 A fresh explicit owner decision may authorize one additional full review at
 cycle 3 after the two automatic cycles. A separate fresh decision bound to that
 third request and the next candidate may authorize one full review at
-cycle 4. Each retains every prior round and finding, the same criteria, risk,
-roles and author, and a clean ancestor-preserving committed candidate. Both
-require two fresh full reviewers. Only cycle 4 may also pair an exact owner
+cycle 4. One further fresh decision bound to the preserved fourth request and
+next candidate may authorize a full cycle 5 with unchanged intent. A separate
+fresh decision bound to the preserved fifth request and next candidate may
+authorize a full cycle 6 with unchanged intent. Each retains
+every prior round and finding, the same scope, criteria, risk, roles and author,
+and a clean ancestor-preserving committed candidate. All require two fresh full
+reviewers and explicit full refresh. Only cycle 4 may also pair an exact owner
 regroup decision with a bounded scope expansion: retain every previous path and
 add exactly `packages/core/scripts/core-package-consumer-audit.ts` and
 `packages/core/test/consumerTooling.test.ts`. A separately bound checkout-history
 recovery at cycle 5 may add exactly `.github/workflows/published-tree-ci.yml` to
 supply pinned prior Git objects to the required and full root test jobs. It
 retains every previous path, criteria, risk, roles, author and all history, and
-requires two fresh full reviews. No generic fifth, other scope expansion, sixth
-cycle or automatic extension is permitted; unchanged prepare preserves evidence
+requires two fresh full reviews. No automatic owner cycle, other scope expansion
+or seventh cycle is permitted. The separately defined bounded SQL/RLS recovery
+still requires its exact SQL introduction at cycle 6; unchanged intent alone
+cannot authorize that sixth recovery cycle. Unchanged prepare preserves evidence
 and expiry. These decisions grant no publication, merge or settings authority.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat

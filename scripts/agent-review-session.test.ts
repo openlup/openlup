@@ -320,8 +320,30 @@ describe('bounded repair convergence', () => {
     expect((await check(fifth, { ...options, now: () => 86401001 })).reason).toContain('expired');
     expect(await advance(fifth, next, { ...options, now: () => 86401001 })).toEqual(fifth);
     const sixth = { ...next, head: '6'.repeat(40), tree: '8'.repeat(40), workingDigest: 'a'.repeat(64), indexDigest: 'c'.repeat(64) };
-    await expect(manual(fifth, sixth, options)).rejects.toThrow('remaining owner cycle');
     await expect(advance(fifth, sixth, { ...options, fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
+    await expect(manual(fifth, sixth, { ...options, ownerContinuation: fifth.request.continuation.ownerContinuation })).rejects.toThrow('differs from exact');
+    for (const field of ['priorRequestDigest', 'candidateDigest']) await expect(manual(fifth, sixth, { ...options, ownerContinuation: { ...ownerApproval(fifth, sixth), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
+    await expect(manual(fifth, sixth, { ...options, fullRefresh: false })).rejects.toThrow('explicit full refresh');
+    await expect(manual(fifth, { ...sixth, clean: false }, options)).rejects.toThrow('clean committed');
+    await expect(manual(fifth, sixth, { ...options, delta: async (_cwd, before, after) => { if (before.head === fifth.request.candidate.head) throw new Error('not an authenticated ancestor'); return integrationDelta(_cwd, before, after); } })).rejects.toThrow('nonancestor integration');
+    for (const change of [{ criteria: 'Changed goal' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }, { scope: ['source.txt', 'new.txt'] }]) await expect(manual(fifth, sixth, { ...options, intent: { ...intent, ...change } })).rejects.toThrow('approved intent');
+    await expect(manual(fifth, sixth, { ...options, authorSessionId: 'other' })).rejects.toThrow('author changed');
+    const final = await manual(fifth, sixth, options);
+    expect(final.history).toEqual([...fifth.history, { request: fifth.request, reports: fifth.reports }]);
+    expect(final.request.continuation).toMatchObject({ cycle: 6, mode: 'full', ownerContinuation: ownerApproval(fifth, sixth), findings: [] });
+    expect(final.request.intent).toEqual(fifth.request.intent); expect(final.request.roles).toEqual(['correctness', 'security']);
+    final.reports = [closure(final)]; expect((await check(final, options)).status).toBe('needs_agent_review');
+    final.reports.push(closure(final, 1)); expect((await check(final, options)).status).toBe('reviewed');
+    for (const mutate of [value => { value.history = []; }, value => { delete value.request.continuation.ownerContinuation; }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.intent.criteria = 'Changed goal'; }, value => { value.request.authorSessionId = 'other'; }]) {
+      const changed = structuredClone(final); mutate(changed); expect((await check(changed, options)).status).not.toBe('reviewed');
+    }
+    expect(await manual(final, sixth, { ...options, ownerContinuation: final.request.continuation.ownerContinuation })).toEqual(final);
+    expect(await advance(final, sixth, { ...options, fullRefresh: true })).toEqual(final);
+    expect((await check(final, { ...options, now: () => 86401001 })).reason).toContain('expired');
+    expect(await advance(final, sixth, { ...options, now: () => 86401001 })).toEqual(final);
+    const seventh = { ...sixth, head: '7'.repeat(40), tree: '9'.repeat(40), workingDigest: 'b'.repeat(64), indexDigest: 'd'.repeat(64) };
+    await expect(manual(final, seventh, options)).rejects.toThrow('remaining owner cycle');
+    await expect(advance(final, seventh, { ...options, fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
   });
   it('pairs only the exact two consumer-check additions with a separately bound fourth full review', async () => {
     const additions = ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts'];
@@ -391,7 +413,8 @@ describe('bounded repair convergence', () => {
       const changed = structuredClone(fifth); mutate(changed); expect((await check(changed, { delta: repairDelta })).status).not.toBe('reviewed');
     }
     const sixth = { ...next, head: '6'.repeat(40), tree: '8'.repeat(40), workingDigest: 'a'.repeat(64), indexDigest: 'c'.repeat(64) };
-    await expect(manual(fifth, sixth, { intent: expanded, delta: repairDelta })).rejects.toThrow('remaining owner cycle');
+    const final = await manual(fifth, sixth, { intent: expanded, delta: repairDelta }); expect(final.request.continuation.cycle).toBe(6);
+    await expect(manual(final, { ...sixth, head: '7'.repeat(40) }, { intent: expanded, delta: repairDelta })).rejects.toThrow('remaining owner cycle');
     await expect(advance(fifth, sixth, { intent: expanded, delta: repairDelta })).rejects.toThrow('two automatic repair cycles');
   });
   it('refuses missing, mismatched, premature, changed-intent and nonfull owner continuation', async () => {
@@ -543,7 +566,7 @@ describe('explicit owner regroup without reset', () => {
 });
 
 describe('actual source snapshot without candidate execution', () => {
-  it('runs separately bound owner cycles through actual Git and CLI, retaining fourth history at fifth ancestor integration and refusing a sixth', async () => {
+  it('runs separately bound owner cycles through actual Git and CLI, retaining complete history through sixth ancestor review and refusing a seventh', async () => {
     const { cwd, git } = await fixture();
     await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
     const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
@@ -642,10 +665,37 @@ describe('actual source snapshot without candidate execution', () => {
       const altered = structuredClone(completeFifth); mutate(altered); await writeFile(statePath, JSON.stringify(altered)); expect(invoke('verify').status).not.toBe(0); expect(invoke('prepare').status).not.toBe(0);
     }
     await writeFile(statePath, fifthBytes);
-    await commit(6); const sixthApproval = { priorRequestDigest: digest(completeFifth.request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic unsupported sixth decision' };
-    await writeFile(specPath, JSON.stringify({ ...fifthSpec, ownerContinuation: sixthApproval }));
-    expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(fifthBytes);
-    expect(invoke('verify').status).not.toBe(0);
+    await commit(6); const sixthApproval = { priorRequestDigest: digest(completeFifth.request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic separate fresh sixth fixture decision' };
+    const sixthSpec = { ...fifthSpec, ownerContinuation: sixthApproval };
+    for (const rejected of [
+      { ...sixthSpec, ownerContinuation: undefined }, { ...sixthSpec, ownerContinuation: fifthApproval }, { ...sixthSpec, fullRefresh: false },
+      { ...sixthSpec, ownerContinuation: { ...sixthApproval, priorRequestDigest: 'f'.repeat(64) } }, { ...sixthSpec, ownerContinuation: { ...sixthApproval, candidateDigest: 'f'.repeat(64) } },
+      { ...sixthSpec, authorSessionId: 'other' }, ...[{ criteria: 'changed' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }, { scope: [...expanded.scope, 'extra.txt'] }].map(change => ({ ...sixthSpec, intent: { ...expanded, ...change } })),
+    ]) {
+      await writeFile(specPath, JSON.stringify(rejected)); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(fifthBytes);
+    }
+    await writeFile(specPath, JSON.stringify(sixthSpec));
+    await writeFile(join(cwd, 'source.txt'), 'dirty sixth candidate\n'); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(fifthBytes);
+    git('restore', 'source.txt'); expect(invoke('prepare').status).toBe(0);
+    const sixth = JSON.parse(await readFile(statePath, 'utf8'));
+    expect(sixth.history).toEqual([...completeFifth.history, { request: completeFifth.request, reports: completeFifth.reports }]);
+    expect(sixth.history[0].reports[0].materialFindings).toEqual([finding]);
+    expect(sixth.request.continuation).toMatchObject({ cycle: 6, mode: 'full', ownerContinuation: sixthApproval, deltaPaths: ['source.txt'] });
+    expect(sixth.request.intent).toEqual(completeFifth.request.intent); expect(sixth.request.roles).toEqual(['correctness', 'security']);
+    for (const index of [0, 1]) {
+      const reportPath = join(directory, `sixth-${index}.json`);
+      await writeFile(reportPath, JSON.stringify({ ...report(sixth.request, index), coveredScope: expanded.scope, reviewerId: `sixth-${index}`, sessionId: `sixth-session-${index}`, completedAt: Date.now(), closure: { coveredDelta: ['source.txt'], interactionsChecked: true, ordinarySemantics: false, resolvedFindings: sixth.request.continuation.findings.map(card => card.id) } }));
+      expect(invoke('record', reportPath).status).toBe(0); expect(invoke('verify').status === 0).toBe(index === 1);
+    }
+    const sixthBytes = await readFile(statePath, 'utf8'); const completeSixth = JSON.parse(sixthBytes);
+    expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(sixthBytes);
+    for (const mutate of [value => { value.history = []; }, value => { delete value.history[5].request.continuation.ownerContinuation; }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.preparedAt = Date.now() - 86400001; }]) {
+      const altered = structuredClone(completeSixth); mutate(altered); await writeFile(statePath, JSON.stringify(altered)); expect(invoke('verify').status).not.toBe(0); expect(invoke('prepare').status).not.toBe(0);
+    }
+    await writeFile(statePath, sixthBytes); await commit(7);
+    const seventhApproval = { priorRequestDigest: digest(completeSixth.request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic unsupported seventh decision' };
+    await writeFile(specPath, JSON.stringify({ ...sixthSpec, ownerContinuation: seventhApproval }));
+    expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(sixthBytes); expect(invoke('verify').status).not.toBe(0);
   }, 30000);
 
   it('authenticates actual repair ancestry and deletions and refuses forked prior lineage', async () => {
@@ -916,7 +966,7 @@ describe('private exact RLS owner recovery proposal; no real receipts or session
  });
  it('admits only one explicitly owned sixth SQL phase after a fifth control recovery',async()=>{const p=await prior();const c=await fourth(p);c.reports=reports(c);const n=candidate(6);const f=await advance(c,n,expanded,{ownerContinuation:owner(c,n)});f.reports=reports(f);const sql={...candidate(7),changedPaths:[...oldIntent.scope,'supabase/migrations/20261004123000_runtime_capability_rls_closure.sql']};await expect(advance(f,sql,expanded)).rejects.toThrow();const s=await advance(f,sql,expanded,{ownerContinuation:owner(f,sql)});expect(s.history).toHaveLength(6);expect(s.request.continuation).toMatchObject({cycle:6,mode:'full'});expect((await check(s)).status).not.toBe('reviewed');s.reports=reports(s);expect((await check(s)).status).toBe('reviewed');const seventh=candidate(8);await expect(advance(s,seventh,expanded,{ownerContinuation:owner(s,seventh)})).rejects.toThrow();});
  it('refuses a sixth cycle after the fifth already introduced the corrected SQL',async()=>{const p=await prior();const c=await fourth(p);c.reports=reports(c);const sql={...candidate(6),changedPaths:[...oldIntent.scope,'supabase/migrations/20261004123000_runtime_capability_rls_closure.sql']};const f=await advance(c,sql,expanded,{ownerContinuation:owner(c,sql)});f.reports=reports(f);const next={...candidate(7),changedPaths:sql.changedPaths};await expect(advance(f,next,expanded,{ownerContinuation:owner(f,next)})).rejects.toThrow();});
- it('keeps a generic unchanged-intent fifth capped at five without the precise RLS regroup',async()=>{const p=await prior();const n=candidate(5);const ordinary=await advance(p,n,oldIntent,{ownerContinuation:owner(p,n)});ordinary.reports=reports(ordinary);const next=candidate(6);const fifth=await advance(ordinary,next,oldIntent,{ownerContinuation:owner(ordinary,next)});fifth.reports=reports(fifth);expect((await check(fifth)).status).toBe('reviewed');const sixth=candidate(7);await expect(advance(fifth,sixth,oldIntent,{ownerContinuation:owner(fifth,sixth)})).rejects.toThrow();});
+ it('allows generic unchanged-intent sixth without the RLS regroup but refuses a seventh',async()=>{const p=await prior();const n=candidate(5);const ordinary=await advance(p,n,oldIntent,{ownerContinuation:owner(p,n)});ordinary.reports=reports(ordinary);const next=candidate(6);const fifth=await advance(ordinary,next,oldIntent,{ownerContinuation:owner(ordinary,next)});fifth.reports=reports(fifth);expect((await check(fifth)).status).toBe('reviewed');const sixth=candidate(7);const final=await advance(fifth,sixth,oldIntent,{ownerContinuation:owner(fifth,sixth)});final.reports=reports(final);expect((await check(final)).status).toBe('reviewed');const seventh=candidate(8);await expect(advance(final,seventh,oldIntent,{ownerContinuation:owner(final,seventh)})).rejects.toThrow();});
 });
 
 });
