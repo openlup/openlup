@@ -191,9 +191,8 @@ function assertOwnerContinuation(approval, previous, request, regroup, cycle) {
   const checkoutScope = cycle === 5 && equal(additions, ['.github/workflows/published-tree-ci.yml']);
   const rlsScope = cycle === 4 && equal(additions, RLS_RECOVERY_ADDITIONS) && rlsRecoveryIntent(request.intent) && request.intent.criteria === `${previous.intent.criteria} ${RLS_RECOVERY_CRITERION}`;
   const scopeOnly = regroup && ((consumerScope || checkoutScope) && equal(previous.intent.criteria, request.intent.criteria) || rlsScope) && previous.intent.risk === request.intent.risk && equal(previous.intent.requiredRoles, request.intent.requiredRoles);
-  const rlsFeature = cycle === 5 && previous.continuation?.cycle === 4 && previous.continuation?.regroup && rlsRecoveryIntent(previous.intent) && equal(previous.intent, request.intent);
   const rlsFinal = cycle === 6 && previous.continuation?.cycle === 5 && previous.continuation.ownerContinuation && rlsRecoveryIntent(previous.intent) && equal(previous.intent, request.intent) && !previous.candidate.changedPaths.includes('supabase/migrations/20261004123000_runtime_capability_rls_closure.sql') && request.candidate.changedPaths.includes('supabase/migrations/20261004123000_runtime_capability_rls_closure.sql');
-  demand((cycle < 5 && equal(previous.intent, request.intent) || scopeOnly || rlsFeature || rlsFinal) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
+  demand((cycle <= MAX_OWNER_CYCLES && equal(previous.intent, request.intent) || scopeOnly || rlsFinal) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
 }
 function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
@@ -246,8 +245,8 @@ function validateRequest(request) {
     demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= ownerCycleLimit(request.intent) && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
     if (Object.hasOwn(continuation, 'ownerContinuation')) {
       validateOwnerContinuation(continuation.ownerContinuation);
-      demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || [4, 5].includes(continuation.cycle)) && (continuation.cycle !== 5 || continuation.regroup !== undefined || rlsRecoveryIntent(request.intent)) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact full candidate; scope expansion requires its exact owner-approved consumer, checkout or RLS route');
-    } else demand(continuation.cycle <= MAX_REPAIRS, 'third, fourth or checkout fifth cycle requires explicit owner continuation');
+      demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || [4, 5].includes(continuation.cycle)) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact full candidate; scope expansion requires its exact owner-approved consumer, checkout or RLS route');
+    } else demand(continuation.cycle <= MAX_REPAIRS, 'third, fourth or fifth cycle requires explicit owner continuation');
     paths(continuation.deltaPaths, continuation.mode === 'full'); demand(continuation.mode === 'full' || continuation.deltaPaths.every(path => request.intent.scope.includes(path)), 'repair delta exceeds approved scope');
     demand(REPAIR_RISKS.includes(continuation.repairRisk), 'repair risk is invalid');
     demand(Array.isArray(continuation.findings) && continuation.findings.length <= 384, 'finding cards exceed bounds');
