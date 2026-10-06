@@ -1,6 +1,6 @@
 /** Own only this proof's disposable database/container, never an ambient service. */
 import { env as processEnvironment } from "node:process";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -10,6 +10,17 @@ import { isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-in
 export const POSTGRES_PROOF_IMAGE = "postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b";
 const deadlineMs = 180_000;
 const docker = (args: string[], timeout = 30_000): string => execFileSync("docker", args, { encoding: "utf8", timeout, env: isolatedConsumerEnv() }).trim();
+function cleanupDocker(args: string[]): string {
+  // The owner remains in the verifier group until teardown finishes. Its
+  // bounded cleanup CLI must survive TERM broadcast to that group as well.
+  // Node forwards detached in spawnSync, although its synchronous option type
+  // omits that asynchronous spawn option. Keep the actual option explicitly.
+  const options = { encoding: "utf8" as const, timeout: 30_000, env: isolatedConsumerEnv(), detached: true };
+  const result = spawnSync("docker", args, options);
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`Docker cleanup failed (${result.status ?? result.signal}): ${result.stderr}`);
+  return result.stdout.trim();
+}
 
 function proof(args: string[], signal: AbortSignal): Promise<void> {
   return new Promise((resolveProof, reject) => {
@@ -88,11 +99,11 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
   } finally {
     const cleanup = performance.now();
     try {
-      if (service && attemptedDatabase) docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `DROP DATABASE IF EXISTS ${database} WITH (FORCE)`]);
+      if (service && attemptedDatabase) cleanupDocker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `DROP DATABASE IF EXISTS ${database} WITH (FORCE)`]);
       if (!service && attemptedContainer) {
-        const info = JSON.parse(docker(["inspect", container ?? name]))[0];
+        const info = JSON.parse(cleanupDocker(["inspect", container ?? name]))[0];
         if (info?.Name !== `/${name}` || info?.Config?.Labels?.["openlup-proof"] !== owner || !/^[a-f0-9]{64}$/u.test(info?.Id ?? "") || (container && info.Id !== container)) failure = new AggregateError([failure, new Error("Container cleanup ownership mismatch")].filter(Boolean), "Owned PostgreSQL failure");
-        else docker(["rm", "--force", info.Id]);
+        else cleanupDocker(["rm", "--force", info.Id]);
       }
     } catch (error) {
       failure = failure ? new AggregateError([failure, error], "Proof and cleanup failed") : error;

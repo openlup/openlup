@@ -135,6 +135,9 @@ it.each(["direct", "package-group"] as const)("handles repeated interruption thr
 it.each(["container-response", "container-owner-mismatch", "database-response"] as const)("cleans owned startup effects after %s", async mode => {
   await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
 }, 90_000);
+it.each(["cleanup-inspect", "cleanup-remove", "cleanup-drop"] as const)("finishes actual owned cleanup despite group cancellation during %s", async mode => {
+  await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
+}, 90_000);
 it.each(["service-created", "proof-ready"] as const)("cleans its owned resources before releasing the root cancellation lock at %s", async stage => {
   await driverCompletion(fixtureDriver(fixture(), "exerciseRootCancellation", stage));
 }, 120_000);
@@ -264,20 +267,30 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
   delete environment.OPENLUP_PROOF_SERVICE_CONTAINER; delete environment.OPENLUP_PROOF_SERVICE_PORT;
   const docker = (args: string[]) => spawnSync(realDocker, args, { env: environment, encoding: "utf8", timeout: 30_000 });
   const effect = join(f.target, "effect.json"), attempted = join(f.target, "attempted.json"), tools = join(f.target, "tools"); mkdirSync(tools);
-  const shim = join(tools, "docker");
+  const shim = join(tools, "docker"), cleanupMode = mode.startsWith("cleanup-");
+  if (cleanupMode) writeFileSync(join(f.target, "scripts/packages/outbox-consumer-proof.ts"), 'console.log("SYNTHETIC_PROCESS_FINISHED");\n');
   writeFileSync(shim, `#!${process.execPath}
 ` + [
     'import { spawnSync } from "node:child_process";',
-    'import { writeFileSync } from "node:fs";',
+    'import { readFileSync, writeFileSync } from "node:fs";',
     'import { argv } from "node:process";',
     'const args = argv.slice(2);',
     `const mode = ${JSON.stringify(mode)}, effect = ${JSON.stringify(effect)}, attempted = ${JSON.stringify(attempted)};`,
     'const create = args.at(-1)?.match(/^CREATE DATABASE (openlup_outbox_proof_[a-f0-9]{32})$/);',
-    'const intercepted = (args[0] === "run" && mode !== "database-response") || Boolean(create && mode === "database-response");',
+    'const cleanup = mode.startsWith("cleanup-");',
+    'const drop = args.at(-1)?.match(/^DROP DATABASE IF EXISTS (openlup_outbox_proof_[a-f0-9]{32}) WITH [(]FORCE[)]$/);',
+    'const cleanupStep = cleanup && ((mode === "cleanup-inspect" && args[0] === "inspect") || (mode === "cleanup-remove" && args[0] === "rm") || (mode === "cleanup-drop" && Boolean(drop)));',
+    'const intercepted = !cleanup && ((args[0] === "run" && mode !== "database-response") || Boolean(create && mode === "database-response"));',
     'const name = args[args.indexOf("--name") + 1], labelAt = args.indexOf("--label");',
     'if (intercepted && mode === "container-owner-mismatch") args[labelAt + 1] += "-different-owner";',
     'const record = { name, label: args[labelAt + 1], database: create?.[1] };',
-    'if (intercepted) writeFileSync(attempted, JSON.stringify(record));',
+    'if (intercepted || (cleanup && args[0] === "run")) writeFileSync(attempted, JSON.stringify(record));',
+    'if (cleanupStep) {',
+    ' const owned = mode === "cleanup-drop" ? {database: drop[1]} : JSON.parse(readFileSync(attempted, "utf8"));',
+    ' process.on("SIGTERM", () => process.exit(143));',
+    ' writeFileSync(effect, JSON.stringify({...owned, id: args[0] === "rm" ? args.at(-1) : args[1]}));',
+    ' await new Promise(done => setTimeout(done, 800));',
+    '}',
     `const result = spawnSync(${JSON.stringify(realDocker)}, args, { encoding: "utf8", timeout: 30000 });`,
     'if (intercepted && result.status === 0) {',
     ' writeFileSync(effect, JSON.stringify({ ...record, id: result.stdout.trim() }));',
@@ -292,7 +305,7 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
   let failure: unknown;
   try {
     const supplied: NodeJS.ProcessEnv = { ...environment, PATH: `${tools}:${environment.PATH}`, OPENLUP_PACK_MANIFEST: join(f.packs, "packages-manifest.json"), OPENLUP_PACK_COMMIT: commit };
-    if (mode === "database-response") {
+    if (mode === "database-response" || mode === "cleanup-drop") {
       attemptedService = true;
       const started = docker(["run", "--detach", "--rm", "--name", serviceName, "--label", `openlup-startup-test=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE]);
       assert.equal(started.status, 0); service = started.stdout.trim();
@@ -313,7 +326,10 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
     if (!service) { const info = JSON.parse(docker(["inspect", observed.id]).stdout)[0]; assert.equal(info.Name, `/${observed.name}`); assert.equal(info.Config.Labels["openlup-proof"], observed.label.slice("openlup-proof=".length)); assert.equal(info.State.Running, true); }
     process.kill(-launcher.pid!, "SIGTERM");
     let timer: NodeJS.Timeout | undefined;
-    try { assert.notEqual(await Promise.race([completion, new Promise<never>((_, fail) => { timer = setTimeout(() => fail(new Error(`Lost response cleanup deadline: ${stdout} ${stderr}`)), 10_000); })]), 0); } finally { if (timer) clearTimeout(timer); }
+    try {
+      const result = await Promise.race([completion, new Promise<never>((_, fail) => { timer = setTimeout(() => fail(new Error(`Lost response cleanup deadline: ${stdout} ${stderr}`)), 10_000); })]);
+      if (!cleanupMode) assert.notEqual(result, 0);
+    } finally { if (timer) clearTimeout(timer); }
     assert.ok((stdout).includes("Owned PostgreSQL cleanup"));
     if (service) {
       const remaining = docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", `select datname from pg_database where datname in ('${observed.database}', 'openlup_outbox_proof') order by datname`]);
@@ -321,7 +337,8 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
     } else if (mode === "container-owner-mismatch") {
       assert.ok((stderr).includes("Container cleanup ownership mismatch")); assert.equal(JSON.parse(docker(["inspect", observed.id]).stdout)[0].State.Running, true);
     } else assert.notEqual(docker(["inspect", observed.id]).status, 0);
-    assert.ok(!(stdout).includes("Packed proof process"));
+    if (!cleanupMode) assert.ok(!(stdout).includes("Packed proof process"));
+    else assert.ok(stdout.includes("SYNTHETIC_PROCESS_FINISHED"));
   } catch (error) { failure = error; } finally {
     const cleanupErrors: unknown[] = [];
     if (launcher?.pid) { try { process.kill(-launcher.pid, "SIGTERM"); } catch { /* Already stopped. */ } }
