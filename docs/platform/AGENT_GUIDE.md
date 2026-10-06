@@ -176,17 +176,20 @@ is required. Review grants no publication, merge, secret or settings authority.
 A fresh explicit owner decision may authorize one additional full review at
 cycle 3 after the two automatic cycles. A separate fresh decision bound to that
 third request and the next candidate may authorize one full review at
-cycle 4. Each retains every prior round and finding, the same criteria, risk,
-roles and author, and a clean ancestor-preserving committed candidate. Both
-require two fresh full reviewers. Only cycle 4 may also pair an exact owner
+cycle 4. One further fresh decision bound to the preserved fourth request and
+next candidate may authorize a full cycle 5 with unchanged intent. Each retains
+every prior round and finding, the same scope, criteria, risk, roles and author,
+and a clean ancestor-preserving committed candidate. All require two fresh full
+reviewers and explicit full refresh. Only cycle 4 may also pair an exact owner
 regroup decision with a bounded scope expansion: retain every previous path and
 add exactly `packages/core/scripts/core-package-consumer-audit.ts` and
 `packages/core/test/consumerTooling.test.ts`. A separately bound checkout-history
 recovery at cycle 5 may add exactly `.github/workflows/published-tree-ci.yml` to
 supply pinned prior Git objects to the required and full root test jobs. It
 retains every previous path, criteria, risk, roles, author and all history, and
-requires two fresh full reviews. No generic fifth, other scope expansion, sixth
-cycle or automatic extension is permitted; unchanged prepare preserves evidence
+requires two fresh full reviews. No automatic fifth, other scope expansion or
+generic sixth cycle is permitted; the separately defined bounded SQL/RLS
+recovery retains its existing exception. Unchanged prepare preserves evidence
 and expiry. These decisions grant no publication, merge or settings authority.
 
 The optional [native queue admission](plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)

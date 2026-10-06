@@ -268,13 +268,17 @@ those assertions require.
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
 evidence expiry and the two-cycle automatic repair/review budget. Separately
-bound fresh owner decisions can permit full cycles 3 and 4. Only cycle 4 may
+bound fresh owner decisions can permit full cycles 3, 4 and 5 with unchanged
+intent. Each decision binds the preserved previous request and actual next
+candidate; the automatic limit remains two. Only cycle 4 may
 pair an exact regroup decision adding the two consumer-check paths specified
 in the native session interface, preserving every previous path, criteria,
 risk, roles and author. A separately approved checkout-history recovery at cycle 5
 may add only `.github/workflows/published-tree-ci.yml`, preserving the same criteria
-and complete lineage. An unscoped fifth or a sixth refuses. Each owner cycle retains
-every prior round and finding and requires two fresh full reviewers. See the
+and complete lineage. An automatic fifth or generic sixth refuses; the bounded
+SQL/RLS recovery retains its separately defined exception. Each owner cycle
+retains every prior round and finding and requires explicit full refresh and
+two fresh full reviewers. An unchanged prepare preserves evidence and expiry. See the
 [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
 for the exact request/candidate bindings. Its review base is the
 candidate's fork point, `git merge-base HEAD origin/main`: a review stays current

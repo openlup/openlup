@@ -302,8 +302,11 @@ they are computed evidence, not owner quotations. Record the actual fresh human
 decision in `ownerDecision`. This process evidence is not an authenticated owner
 signature. Cycle 3 requires a fresh decision. Cycle 4 requires a
 separate fresh decision bound to the exact third request and next candidate.
-Both require complete preserved lineage, actual ancestor delta and two fresh
-full reviews. Cycle 3 retains unchanged intent and author. Cycle 4 has one
+One further fresh decision bound to the preserved fourth request and next
+candidate may authorize cycle 5 with unchanged scope, criteria, risk, roles and
+author. All require complete preserved lineage and findings, actual ancestor
+delta, explicit full refresh and two fresh full independent reviews. Cycle 3
+retains unchanged intent and author. Cycle 4 has one
 bounded exception: it may combine its decision with `regroup` to retain every
 previous scope path and add exactly
 `packages/core/scripts/core-package-consumer-audit.ts` and
@@ -314,7 +317,9 @@ digests independently bind the previous request and actual candidate. Neither
 decision can be reused for a changed request or candidate. The automatic limit
 remains two. Wrong bindings, early use, missing, extra or replacement scope
 paths, changed criteria, risk, roles or author, missing history, reduced
-coverage and an unscoped fifth round refuse. An unchanged repeat retains the manual round
+coverage, an automatic fifth or a generic sixth round refuse. The existing
+owner ceiling remains five; the separately defined bounded SQL/RLS recovery
+retains its existing exception. An unchanged repeat retains the manual round
 and its original expiry; expired evidence still blocks delivery.
 
 A separately approved checkout-history recovery may use cycle 5 only with
@@ -324,8 +329,9 @@ root test jobs; this does not authorize weakening their selectors or assertions.
 The prior fourth request, both intents and actual candidate need new decision
 bindings. Criteria, risk, required roles, author, every prior scope path and all
 history/findings remain. Two fresh full reviews cover the complete source and
-ancestor integration. An unchanged-intent fifth, any other or additional scope
-path, reuse of the fourth decision and a sixth cycle refuse. This is one bounded
+ancestor integration. Any other or additional scope path, reuse of the fourth
+decision and a sixth checkout-recovery cycle refuse. The unchanged-intent
+cycle 5 above needs no scope regroup; it cannot add a path. This is one bounded
 recovery of the hosted checkout mismatch, not a reset of the automatic budget.
 
 The supervisor launches fresh native agents and uses their actual execution IDs
