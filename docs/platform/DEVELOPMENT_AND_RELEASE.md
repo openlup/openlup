@@ -185,6 +185,32 @@ Triage existing findings separately by impact; do not bulk-clean unrelated code
 or turn a pilot gate into a required check without a new decision. If App access
 is revoked, analysis may stop; it is not a new merge blocker in this pilot.
 
+### Temporary scheduling probe
+
+The manually requested [M2 producer fixture](../../.github/workflows/m2-contract-fixture.yml)
+and its [independent fake publisher](../../.github/workflows/m2-contract-publisher-fixture.yml)
+probe GitHub scheduling before adding terminal package verification. They use
+only fake alpha/beta markers: no checkout, package build, tag, release, npm
+publication, App, OIDC or protected environment. The observer has only
+`actions: read`; other jobs have no token permissions.
+
+The bounded probe covers five initial producer scenarios (happy, matrix failure,
+preflight failure, first-attempt verifier failure and cancellation), one exact
+verifier-job rerun, one cancellation during its separately observable window,
+and three read-only continuations (valid coordinates, wrong target and wrong
+notes). Record actual workflow/run/attempt/job identities, conclusions and
+marker timings. A leaf rerun must not replay release or fake-publish markers;
+verify-only must execute neither. `workflow_run requested` is an inert scheduling
+stand-in, not proof of the production App's release event or npm provenance.
+Local syntax checks cannot establish hosted cancellation, dependency or rerun
+semantics; absent or failed proof remains absent or failed.
+
+The fixture is temporary. Remove both workflows and their publication-catalogue
+entries through a reviewed contribution after the bounded experiment; preserve
+its Actions run evidence. The ordinary package workflows and their checks,
+permissions and owner approvals remain the release route. A successful probe
+alone does not activate terminal verification or prove a complete npm set.
+
 ## Releasing a package
 
 While `@openlup/core` is below 1.0, the `@openlup/*` packages are released as
