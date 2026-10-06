@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { env as processEnvironment } from "node:process";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -18,6 +19,7 @@ import {
   fixedBoxTypecheckImports,
   fixedBoxTypecheckScenarioLines,
 } from "./core-package-consumer-fixed-box-fixture.ts";
+import { createHash } from "node:crypto";
 import { writeViteConsumerConfig } from "./core-package-consumer-vite.ts";
 type NpmPackEntry = {
   filename: string;
@@ -27,6 +29,8 @@ export type CorePackageConsumerSmokeOptions = {
   packageRoot?: string;
   dependencyRoot?: string;
   keepTemporaryFiles?: boolean;
+  packManifest?: string;
+  packCommit?: string;
 };
 
 const defaultPackageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -40,7 +44,25 @@ function run(command: string, args: string[], cwd: string): string {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    env: consumerEnvironment(),
   });
+}
+
+function consumerEnvironment(): NodeJS.ProcessEnv {
+  const environment = { ...processEnvironment };
+  delete environment.NODE_PATH;
+  delete environment.NODE_OPTIONS;
+  delete environment.npm_config_node_options;
+  delete environment.NPM_CONFIG_NODE_OPTIONS;
+  return environment;
+}
+
+function assertInstalled(consumerDir: string, names: readonly string[]): void {
+  const root = realpathSync(consumerDir);
+  for (const name of names) {
+    const path = join(root, "node_modules", name), state = lstatSync(path);
+    assert(state.isDirectory() && !state.isSymbolicLink() && realpathSync(path).startsWith(`${root}${sep}`), `installed ${name} must be a confined ordinary directory`);
+  }
 }
 
 function publicSpecifier(packageName: string, subpath: string): string {
@@ -109,8 +131,25 @@ function resolveWorkspaceRoot(packageRoot: string): string {
   return packageRoot;
 }
 
-function dependencyFileSpec(name: string, roots: string[]): string {
-  return pathToFileURL(installedPath(name, roots)).href;
+function packDependency(name: string, roots: string[], packDir: string, cacheDir: string): string {
+  assert(name === "zod", `unsupported core runtime dependency ${name}; declare its locked artifact explicitly`);
+  const directory = installedPath(name, roots);
+  const metadata = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+  const lock = JSON.parse(readFileSync(join(roots[0], "package-lock.json"), "utf8"));
+  assert(metadata.name === name && metadata.version === lock.packages?.[`node_modules/${name}`]?.version, "installed Zod must match the core source lock");
+  const [packed] = JSON.parse(run("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir, "--json", "--cache", cacheDir, "--workspaces=false"], directory)) as NpmPackEntry[];
+  const path = tarballPathFromPackResult(packed, packDir);
+  const bytes = readFileSync(path);
+  console.log(`core consumer runtime input ${name}@${metadata.version} sha256=${createHash("sha256").update(bytes).digest("hex")}`);
+  return pathToFileURL(path).href;
+}
+
+function packedFiles(directory: string, base = directory): string[] {
+  return readdirSync(directory).flatMap(name => {
+    const path = join(directory, name), state = lstatSync(path);
+    assert(!state.isSymbolicLink(), "packed core artifact contains a symlink");
+    return state.isDirectory() ? packedFiles(path, base) : [relative(base, path).split(sep).join("/")];
+  }).sort();
 }
 
 function toolBinary(name: string, roots: string[]): string {
@@ -121,18 +160,9 @@ function writeConsumerPackageJson(
   consumerDir: string,
   tarballPath: string,
   packageJson: CorePackageJson,
-  dependencyRoots: string[],
+  dependencySpecs: Record<string, string>,
 ): void {
   const packageName = packageJson.name;
-  const coreDependencies = {
-    ...(packageJson.dependencies ?? {}),
-    ...(packageJson.peerDependencies ?? {}),
-  };
-  const localDependencies = Object.fromEntries(
-    Object.keys(coreDependencies)
-      .sort()
-      .map((name) => [name, dependencyFileSpec(name, dependencyRoots)]),
-  );
 
   writeFileSync(
     join(consumerDir, "package.json"),
@@ -142,7 +172,7 @@ function writeConsumerPackageJson(
         type: "module",
         dependencies: {
           [packageName]: pathToFileURL(tarballPath).href,
-          ...localDependencies,
+          ...dependencySpecs,
         },
       },
       null,
@@ -226,6 +256,26 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
   const dependencyRoots = resolveDependencyRoots(packageRoot, {
     dependencyRoot: options.dependencyRoot,
   });
+  const packManifest = options.packManifest ?? processEnvironment.OPENLUP_PACK_MANIFEST;
+  const packCommit = options.packCommit ?? processEnvironment.OPENLUP_PACK_COMMIT;
+  assert((packManifest === undefined) === (packCommit === undefined), "OPENLUP_PACK_MANIFEST and OPENLUP_PACK_COMMIT must be supplied together");
+  let supplied: { path: string; name: string; version: string; sha256: string; integrity: string } | undefined;
+  if (packManifest !== undefined && packCommit !== undefined) {
+    const root = resolveWorkspaceRoot(packageRoot);
+    // The root-owned input tool crosses no package import boundary.
+    const verified = JSON.parse(run(process.execPath, [
+      "--experimental-strip-types", join(root, "scripts/packages/pack-manifest-input.ts"), packManifest, packCommit,
+    ], root)) as Array<NonNullable<typeof supplied>>;
+    supplied = verified.find(entry => entry.name === "@openlup/core");
+    assert(supplied, "supplied package set has no core artifact");
+  }
+  const workspaceRoot = realpathSync(resolveWorkspaceRoot(packageRoot));
+  let ancestor = realpathSync(tmpdir());
+  assert(ancestor !== workspaceRoot && !ancestor.startsWith(`${workspaceRoot}${sep}`), "consumer temporary directory must be outside the checkout");
+  while (ancestor !== dirname(ancestor)) {
+    assert(!existsSync(join(ancestor, "node_modules", "@openlup")), "consumer temporary directory has an ancestor OpenLup installation");
+    ancestor = dirname(ancestor);
+  }
   const tempRoot = mkdtempSync(join(tmpdir(), "core-package-consumer-"));
 
   try {
@@ -236,17 +286,24 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     mkdirSync(packDir);
     mkdirSync(consumerDir);
 
-    run("npm", ["run", "build", "--workspaces=false"], packageRoot);
-
-    const packOutput = run(
-      "npm",
-      ["pack", "--pack-destination", packDir, "--json", "--cache", cacheDir, "--workspaces=false"],
-      packageRoot,
-    );
-    const packResult = JSON.parse(packOutput) as NpmPackEntry[];
-    assert(packResult.length === 1, `expected one packed package, got ${packResult.length}`);
-
-    const tarballPath = tarballPathFromPackResult(packResult[0], packDir);
+    let tarballPath: string;
+    if (supplied) tarballPath = supplied.path;
+    else {
+      run("npm", ["run", "build", "--workspaces=false"], packageRoot);
+      const packOutput = run("npm", ["pack", "--pack-destination", packDir, "--json", "--cache", cacheDir, "--workspaces=false"], packageRoot);
+      const packResult = JSON.parse(packOutput) as NpmPackEntry[];
+      assert(packResult.length === 1, `expected one packed package, got ${packResult.length}`);
+      tarballPath = tarballPathFromPackResult(packResult[0], packDir);
+    }
+    const bytes = readFileSync(tarballPath);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+    if (supplied) {
+      assert(sha256 === supplied.sha256 && integrity === supplied.integrity, "supplied core artifact changed after validation");
+      tarballPath = join(packDir, "core.tgz");
+      writeFileSync(tarballPath, bytes);
+    }
+    console.log(`core consumer artifact sha256=${sha256} integrity=${integrity}`);
     const packedPackageRoot = extractPackedPackage(tarballPath, tempRoot);
     const packageJson = JSON.parse(readFileSync(join(packedPackageRoot, "package.json"), "utf8")) as CorePackageJson;
     const packageName = packageJson.name;
@@ -256,10 +313,12 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
       packageName,
       packageJson,
       packageReadme,
-      packFiles: packResult[0].files.map((file) => file.path).sort(),
+      packFiles: packedFiles(packedPackageRoot),
     });
 
-    writeConsumerPackageJson(consumerDir, tarballPath, packageJson, dependencyRoots);
+    if (supplied) assert(packageJson.name === supplied.name && packageJson.version === supplied.version, "packed core identity differs from the supplied manifest");
+    const dependencySpecs = Object.fromEntries(Object.keys({ ...packageJson.dependencies, ...packageJson.peerDependencies }).sort().map(name => [name, packDependency(name, dependencyRoots, packDir, cacheDir)]));
+    writeConsumerPackageJson(consumerDir, tarballPath, packageJson, dependencySpecs);
     writeConsumerSmoke(consumerDir, packageJson);
 
     run(
@@ -277,7 +336,8 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
       ],
       consumerDir,
     );
-    run("node", ["smoke.mjs"], consumerDir);
+    assertInstalled(consumerDir, [packageName, "zod"]);
+    run(process.execPath, ["smoke.mjs"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.json", "--noEmit"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.bundler.json", "--noEmit"], consumerDir);
     run(toolBinary("vite", dependencyRoots), ["build", "--logLevel", "error"], consumerDir);

@@ -266,6 +266,7 @@ const CORE_SCRIPTS = {
   "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
   "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
   ci: "npm run test:coverage && npm run typecheck:smoke && npm run api:check && npm run docs:check && npm run release:check && npm run test:consumer",
+  "ci:required": "npm run test:coverage && npm run typecheck:smoke && npm run docs:check && npm run release:check && npm run test:consumer",
   "docs:check": "node --experimental-strip-types ./scripts/documentation-contract.ts",
   prepack: "npm run build",
   prepublishOnly: "node --experimental-strip-types ./scripts/refuse-publish.ts",
@@ -291,6 +292,8 @@ const OUTBOX_SCRIPTS = {
   "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
   "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
   ci: "npm run build && npm run test && npm run api:check",
+  "ci:required": "npm run test:consumer",
+  "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts",
 };
 const UI_SCRIPTS = { build: CORE_SCRIPTS.build, typecheck: "tsc -p tsconfig.json --noEmit", "test:neutrality": "node --experimental-strip-types smoke/neutrality.ts" };
 const compatibility = (diagnostics: number) => ({ typecheck: { projects: ["tsconfig.synthetic.json"], signedPreviewDebt: { unresolvedEdges: { mode: "exact-ratchet", pairs: 0, importers: 0, targets: 0, digest: "sha256-e3b0c44298fc1c149afbf4c8996fb924", pairHashes: [] }, inferenceCascades: { mode: "ceiling-ratchet", diagnostics } } } });

@@ -63,8 +63,8 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
 ];
 export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] = [
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
-  { path: "packages/core/package.json", digest: "sha256-5bb893d11455be6a250527b04ffa92845c542b24316a5f4da6f6785d7c79a47f" },
-  { path: "packages/outbox/package.json", digest: "sha256-3792dd9ebb26454351558a749f874b52af110153c5ca0d89d4b098f472e5f1b5" },
+  { path: "packages/core/package.json", digest: "sha256-4930c4c02466566fb26cf2c791d78716280d823bf9fd3eebf3d16d3fad0792f1" },
+  { path: "packages/outbox/package.json", digest: "sha256-60beaa6303f13fa5c3568e227d571f1b6013260dd260578670896eaf0d613319" },
   { path: "packages/ui/package.json", digest: "sha256-e57b14ab2c433bd03ae8e71aebf8c3b4eedafcc3177bf373230d45f84bccdb0b" },
 ];
 

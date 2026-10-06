@@ -526,7 +526,9 @@
       "paths": [
         "packages/outbox/**",
         "server/runtime/outbox/**",
-        "scripts/packages/outbox-consumer-proof.ts"
+        "scripts/packages/outbox-consumer-proof.ts",
+        "scripts/packages/outbox-consumer-proof.test.ts",
+        "scripts/packages/outbox-disposable-postgres.ts"
       ],
       "doc": "packages/outbox/README.md",
       "anchor": ""

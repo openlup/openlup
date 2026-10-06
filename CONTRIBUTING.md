@@ -193,7 +193,9 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-f225cf3ee88ddcdea046bd5f3928719c623a16d2631587630596ce9e1a995045","reason":"The unprivileged per-tag pack job builds the exact workspace core peer before outbox packing on a fresh runner. The release owner documents this prerequisite. It still checks and scans only the selected package and preserves identity, npm version, permissions, provenance and all required CI contexts; contributor verification commands are unchanged."} -->
 
-The outbox workspace builds after core for root lint and test entrypoints. Its declared dependency on core uses exact public exports. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Required tests include its protocol/factory/adapter proofs and the reference admission boundary. The explicit disposable packed proof is a separate local command; it accepts only its own loopback database and never reads an ambient database URL. See [the rail guide](packages/outbox/README.md).
+The test job runs the shared package gate before broad root tests. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply an installed-artifact consumer, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+
+Core's required batch retains coverage, standalone types, documentation, release checks and its supplied-artifact consumer. Outbox's batch owns schema/SQL/replay against its installed tarball; its unit/factory/admission tests run once through the protected root selectors. The outbox workspace builds after core for root lint and test entrypoints. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Missing artifacts or a required runtime refuse; there is no workspace fallback or DB skip. Only modules with SQL obligations need a database. Outbox's pinned job-owned PostgreSQL service is separate from raw pgTAP; see [the rail guide](packages/outbox/README.md) for ownership and proof limits.
 
 ```bash
 npm ci
@@ -211,11 +213,14 @@ npm run oss:published-tree -- --typecheck
 npm run build
 OPENLUP_REFERENCE_PROFILE=subscription OPENLUP_BUILD_OUT_DIR=dist-subscription \
   OPENLUP_SSR_OUT_DIR=dist-subscription-ssr npm run build:public-reference
-# test: required coverage inherited from main
+# test: package gates, then required coverage inherited from main (clean signed candidate)
+GATE_PACKS="$(mktemp -d)"
+# Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
+node --experimental-strip-types scripts/packages/required-package-gates.ts \
+  --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
 npm run test:required
 npx vitest run server/runtime/public-reference \
   src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
-npm --workspace ./packages/core run ci
 npx vitest run scripts/oss-published-tree-check.test.ts
 npx vitest run scripts/public-ci-neutrality.test.ts
 # test-full: raw complete Vitest diagnostics
@@ -314,9 +319,10 @@ so it stays valid in a group whose base moved for unrelated reasons. A
 pull-request checkout is identified by `GITHUB_SHA` and its exact event base and
 head parents; the payload's `merge_commit_sha` is not compared, because a
 `synchronize` payload can carry a lagging value.
-The configured local verification mirror runs these required steps on every
-run. It runs the raw diagnostics only on request, or pgTAP alone when the range
-reaches database inputs.
+The local verification mirror must match these workflow commands before final
+delivery. A workflow change needs its separately authorized mirror update; focused
+tests cannot replace that final gate or stamp. The mirror runs raw diagnostics
+only on request, or pgTAP alone when the range reaches database inputs.
 
 **When the job runs.** The `native-review` job runs when the repository
 variable `OPENLUP_NATIVE_QUEUE` is `enabled`. At the

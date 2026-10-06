@@ -8,10 +8,12 @@ import { dirname, join } from "node:path";
 import { buildOutboxEnqueue, runOutboxDispatchWorker, uniqueRegistry } from "@openlup/outbox";
 import { createPostgresOutboxStore, createPostgresOutboxCompactor, POSTGRES_OUTBOX_SCHEMA } from "@openlup/outbox/postgres";
 import { assertOutboxStoreFences } from "@openlup/outbox/testing";
-import { createSchemaProbe } from "@openlup/core/readiness";
+import { createSchemaProbe, schemaObjectKey } from "@openlup/core/readiness";
 import { createReferenceOutbox } from "./referenceContribution.js";
 import { admitReferenceOutbox } from "./candidateAdmission.js";
+import { proveSchemaReadiness } from "./schemaProof.mjs";
 export async function prove(pool, observer) {
+  await proveSchemaReadiness(); // Fake queued work is settled and real timers restored before SQL.
   const require = createRequire(import.meta.url);
   const outboxRoot = dirname(dirname(require.resolve("@openlup/outbox")));
   const sql=await readFile(join(outboxRoot,"sql/0001_outbox.sql"),"utf8");
@@ -63,14 +65,37 @@ export async function prove(pool, observer) {
   rows=await store.claimBatch(claim);assert.equal(rows.length,2);
   for(const r of rows)await store.markProcessed({eventId:r.id,claimToken:r.metadata.claimToken});
   const effects=[];
+  const replay={eventId:null,token:null,attempts:[],ackLost:false};
   const handler={eventType:"example.effect",timeoutMs:100,async handle(r){
     const observed=(await observer.query("select status,attempts,metadata from public.outbox_events where id=$1",[r.id])).rows[0];
     assert.equal(observed.status,"processing");assert.equal(observed.metadata.claimToken,r.metadata.claimToken);assert.equal(observed.attempts,r.attempts);
-    effects.push(r.id);return {kind:"processed",detail:{captured:true}};
+    if(r.id===replay.eventId){
+      replay.attempts.push(r.attempts);
+      if(!replay.token)replay.token=r.metadata.claimToken;
+      else {
+        assert.notEqual(r.metadata.claimToken,replay.token);
+        const current=async()=>(await observer.query("select * from public.outbox_events where id=$1",[r.id])).rows[0];
+        const before=await current();
+        assert.equal((await store.markProcessed({eventId:r.id,claimToken:replay.token,metadata:{stale:true}})).applied,false);
+        assert.deepEqual(await current(),before);
+        assert.equal((await store.markFailed({eventId:r.id,claimToken:replay.token,error:"stale",outcome:"retry",baseDelaySeconds:5,maxDelaySeconds:10,maxAttempts:8,snoozeSeconds:60})).status,"missed");
+        assert.deepEqual(await current(),before);
+        assert.equal(await store.releaseUnprocessed([{eventId:r.id,claimToken:replay.token}],0),0);
+        assert.deepEqual(await current(),before);
+      }
+      await pool.query("insert into public.synthetic_dedupe_effect (event_id) values ($1) on conflict (event_id) do nothing",[r.id]);
+    } else effects.push(r.id);
+    return {kind:"processed",detail:{captured:true}};
   }};
   const config={batchSize:25,maxAttempts:8,visibilitySeconds:300,backoffBaseSeconds:60,backoffCapSeconds:3600,snoozeSeconds:300,maxSnoozes:48,softBudgetMs:40000};
   const lease={async claimJobRun(){return {acquired:true,runId:"synthetic-run",reason:"acquired"};},async finishJobRun(){return true;}};
-  const runtime=createReferenceOutbox({executor:pool,lease,handlers:[handler],knownEventTypes:["example.effect"],config});
+  const executor={query:(text,values)=>{
+    if(replay.eventId && values?.[0]===replay.eventId && text.startsWith("select public.outbox_mark_processed") && !replay.ackLost){
+      replay.ackLost=true;throw new Error("synthetic_ack_lost_after_effect");
+    }
+    return pool.query(text,values);
+  }};
+  const runtime=createReferenceOutbox({executor,lease,handlers:[handler],knownEventTypes:["example.effect"],config});
   const migration=await applied();
   let coreRoot=dirname(require.resolve("@openlup/core/readiness"));while(!existsSync(join(coreRoot,"package.json")))coreRoot=dirname(coreRoot);
   const tree=(directory,base=directory)=>readdirSync(directory,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(e=>e.isDirectory()?tree(join(directory,e.name),base): [{path:join(directory,e.name).slice(base.length+1),hash:createHash("sha256").update(readFileSync(join(directory,e.name))).digest("hex")}]);
@@ -88,6 +113,19 @@ export async function prove(pool, observer) {
   await admitted.immediate();assert.equal(effects.length,1);
   const final=(await observer.query("select status,metadata from public.outbox_events where id=$1",[effects[0]])).rows[0];assert.equal(final.status,"processed");assert.equal(final.metadata.captured,true);
   await enqueue(pool,"scheduled-effect","example.effect","00000000-0000-4000-8000-000000000008");await admitted.run("outbox-dispatch",{triggerKind:"scheduler",invocationSource:"synthetic"});assert.equal(effects.length,2);
+  // One accepted synthetic durable effect survives lost ack and immediate -> scheduled replay.
+  await pool.query("create table public.synthetic_dedupe_effect (event_id uuid primary key)");
+  replay.eventId=(await enqueue(pool,"accepted-ack-lost","example.effect","00000000-0000-4000-8000-000000000011")).rows[0].id;
+  await assert.rejects(admitted.immediate(),/synthetic_ack_lost_after_effect/);
+  const interrupted=(await observer.query("select status,attempts,metadata from public.outbox_events where id=$1",[replay.eventId])).rows[0];
+  assert.equal(interrupted.status,"processing");assert.equal(interrupted.attempts,1);assert.equal(interrupted.metadata.claimToken,replay.token);
+  assert.equal((await observer.query("select count(*)::integer n from public.synthetic_dedupe_effect where event_id=$1",[replay.eventId])).rows[0].n,1);
+  await pool.query("update public.outbox_events set available_at=now()-interval '1 second' where id=$1",[replay.eventId]);
+  await admitted.run("outbox-dispatch",{triggerKind:"scheduler",invocationSource:"synthetic-replay"});
+  const settled=(await observer.query("select status,attempts,metadata from public.outbox_events where id=$1",[replay.eventId])).rows[0];
+  assert.equal(settled.status,"processed");assert.equal(settled.attempts,2);assert.notEqual(settled.metadata.claimToken,replay.token);
+  assert.deepEqual(replay.attempts,[1,2]);
+  assert.equal((await observer.query("select count(*)::integer n from public.synthetic_dedupe_effect where event_id=$1",[replay.eventId])).rows[0].n,1);
   // Each missing selected binding refuses before listener, lease, immediate or effect work.
   for(const key of Object.keys(runtime.ports)){
     const ports={...runtime.ports};delete ports[key];assert.equal((await admitReferenceOutbox({...base,ports})).admitted,false);
@@ -95,9 +133,19 @@ export async function prove(pool, observer) {
   for(const key of Object.keys(runtime.triggers)){
     const triggers={...runtime.triggers};delete triggers[key];assert.equal((await admitReferenceOutbox({...base,triggers})).admitted,false);
   }
+  const completeObservation=await schemaProbe.observe(POSTGRES_OUTBOX_SCHEMA);
+  assert.ok(completeObservation.objects.every(item=>item.present===true));
   for(const object of POSTGRES_OUTBOX_SCHEMA.objects){
-    const observation=await schemaProbe.observe(POSTGRES_OUTBOX_SCHEMA);observation.objects=observation.objects.map(v=>v.object.name===object.name?{...v,present:false}:v);
+    const observation={...completeObservation,objects:completeObservation.objects.map(v=>schemaObjectKey(v.object)===schemaObjectKey(object)?{...v,present:false}:v)};
     assert.equal((await admitReferenceOutbox({...base,schemaProbe:{observe:async()=>observation}})).admitted,false);
+  }
+  // Real negative catalog results use the same database, without deleting any Outbox object.
+  for(const object of [{kind:"table",name:"public.synthetic_missing_table"},{kind:"column",name:"public.outbox_events.synthetic_missing_column"},{kind:"function",name:"public.outbox_mark_processed",signature:"uuid,text,jsonb,boolean"}]){
+    const requiredSchema={...POSTGRES_OUTBOX_SCHEMA,objects:[object]};
+    const negativeRuntime={...runtime,contribution:{...runtime.contribution,manifest:{...runtime.contribution.manifest,requiredSchema}}};
+    const refused=await admitReferenceOutbox({...base,runtime:negativeRuntime});
+    assert.equal(refused.admitted,false);assert.equal(refused.report.state,"unsatisfied");
+    assert.ok(refused.report.issues.some(issue=>issue.subject===schemaObjectKey(object)&&issue.observation==="object_absent"));
   }
   assert.equal((await admitReferenceOutbox({...base,schemaProbe:{observe:async()=>{throw new Error("unavailable");}}})).admitted,false);
   config.softBudgetMs--;assert.throws(()=>admitted.immediate(),/stale/);config.softBudgetMs++;
@@ -129,5 +177,5 @@ export async function prove(pool, observer) {
   assert.notDeepEqual((await observer.query("select payload from public.outbox_events where idempotency_key='bad-age'")).rows[0].payload,{});
   await enqueue(pool,"committed");assert.equal((await observer.query("select count(*)::integer n from public.outbox_events")).rows[0].n,before);
   assert.equal(await createPostgresOutboxCompactor(pool).compact({processedDays:30,discardedDays:90,limit:500}),0);
-  console.log("PASS producer/rollback/dedupe, committed claim/ack/failure/refund, concurrent claims, ordering exceptions, packed scheduled/immediate reference, binding/schema refusal, retained terminal identities");
+  console.log("PASS producer/rollback/dedupe, committed claim/ack/failure/refund, concurrent claims, ordering exceptions, packed scheduled/immediate reference, binding/schema refusal, accepted-effect replay/new-token fencing, retained terminal identities");
 }
