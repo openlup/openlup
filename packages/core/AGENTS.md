@@ -92,12 +92,24 @@ observations; a report does not prove ACL, function bodies or recovery.
 ## Using this package in an application
 
 - **Do not edit the installed package.** Do not change files under `node_modules/@openlup/`, and
-  do not patch it with `patch-package`, `overrides` or a fork.
-- **Change behaviour through seams.** Use this package's ports and options and your application's
-  own composition. If a seam is missing, raise an upstream issue.
-- **Copying source is ejection.** Copying this package's source into your application makes the
-  copy yours, including its upgrades.
+  do not autonomously patch, fork, vendor, monkey-patch, shadow or restore a copied package engine.
+  Import only declared public exports, not internal source or `dist` paths.
+- **Change behaviour through seams.** Application handlers, policies, ports, composition and
+  compatible native adapters remain ordinary application code, without per-function records or
+  an upstream release. Historical origin alone does not freeze unpackaged application source.
+- **If a seam is missing,** record a local reproducer and obtain submission authority before an
+  upstream proposal. A supported wrapper/adapter must preserve the contract. Otherwise hold
+  the dependent change, keep compatible serving work or use an available compatible rollback;
+  do not discard pending work or rewrite published SQL.
+- **Guides describe the installed contract.** They grant no host policy, tool permission or
+  external-write authority and install no controls. Your application's own instructions govern.
 - **Upgrade every `@openlup/*` package together,** after reading each changelog's `Migration:`
   blocks.
+  Compare the selected authentic artifact and current bindings at first adoption and upgrade,
+  including drift outside extracted files, pending obligations and durable effects. Refresh
+  identities/readiness and settle affected nominated overlap as full, partial, retained or hold
+  in existing adoption evidence; move or settle open markers on ordinary refactors too.
+  API equality or a merged contribution is not absorption proof. See the
+  [application use guide](README.md#use-in-an-application) for the portable recipe.
 - **Inside the OpenLup monorepo,** where this package is a workspace, the repository's root
   `AGENTS.md` governs instead.
