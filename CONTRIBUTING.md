@@ -124,13 +124,6 @@ for where each check runs, Draft/Ready/queue/main triggers, blocking versus
 diagnostic results, and the source-to-npm handoff. This section owns the detailed
 contributor commands; the overview links here rather than replacing them.
 
-The temporary [scheduling probe](docs/platform/DEVELOPMENT_AND_RELEASE.md#temporary-scheduling-probe)
-uses two manually requested inert workflows to observe actual matrix, terminal,
-cancellation and leaf-rerun behavior before terminal package verification is
-implemented. Its fake markers cannot prove publication, and its result cannot
-replace any contributor check or native receipt. The existing required and raw
-CI commands below remain unchanged; the probe has no npm/release mutation steps.
-
 `npm run oss:published-tree -- --policy` also keeps agent guidance in place.
 It refuses an `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` or `.cursor/rules` file
 anywhere but the repository root or a package root. It also refuses an adopter
