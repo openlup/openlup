@@ -115,7 +115,8 @@ function fixtureDriver(f: ReturnType<typeof fixture>, operation: string, mode: s
     'import {randomUUID} from "node:crypto";',
     'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from "node:fs";',
     'import {join} from "node:path";',
-    `const env = process.env, commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, POSTGRES_PROOF_IMAGE = ${JSON.stringify(POSTGRES_PROOF_IMAGE)};`,
+    'import {isolatedConsumerEnv} from "./scripts/packages/pack-manifest-input.ts";',
+    `const env = isolatedConsumerEnv(), commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, POSTGRES_PROOF_IMAGE = ${JSON.stringify(POSTGRES_PROOF_IMAGE)};`,
     // A dead worker closes its output pipe. Output errors must not kill cleanup.
     'process.stdout.on("error", () => {}); process.stderr.on("error", () => {});',
     body,
@@ -164,8 +165,8 @@ function fixtureRemoveService(identity: string, name: string, label: string, env
   assert.equal(spawnSync("docker", ["rm", "--force", info.Id], { env: environment, encoding: "utf8", timeout: 10_000, detached: true }).status, 0);
 }
 async function fixtureStopPoint(stage: string, identity: object, signal: AbortSignal) {
-  if (process.env.OPENLUP_FIXTURE_CANCEL_STAGE === stage && process.env.OPENLUP_FIXTURE_WITNESS) {
-    writeFileSync(process.env.OPENLUP_FIXTURE_WITNESS, JSON.stringify(identity));
+  if (env.OPENLUP_FIXTURE_CANCEL_STAGE === stage && env.OPENLUP_FIXTURE_WITNESS) {
+    writeFileSync(env.OPENLUP_FIXTURE_WITNESS, JSON.stringify(identity));
     await fixtureWait(() => false, signal, 45_000);
   }
 }
