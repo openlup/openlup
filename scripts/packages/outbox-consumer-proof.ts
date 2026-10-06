@@ -20,7 +20,7 @@ for (let index = 0; index < options.length; index += 2) {
 }
 if (flags.has("--manifest") !== flags.has("--expected-commit")) throw new Error("Manifest and expected commit must be supplied together");
 const target = new URL(database ?? "invalid:");
-if (target.protocol !== "postgresql:" || !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) || target.password || target.search || target.hash || target.pathname !== "/openlup_outbox_proof") throw new Error("Use the explicit disposable loopback database openlup_outbox_proof, with no password or query options");
+if (target.protocol !== "postgresql:" || !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) || target.password || target.search || target.hash || !/^\/openlup_outbox_proof(?:_[a-f0-9]{32})?$/u.test(target.pathname)) throw new Error("Use the explicit disposable loopback database openlup_outbox_proof (optionally its owned UUID suffix), with no password or query options");
 const scratch = resolve(scratchArgument ?? ".context/scratch/outbox-packed-proof");
 if (!scratch.startsWith(join(root, ".context", "scratch") + "/")) throw new Error("Proof output must stay in this task's ignored scratch directory");
 const expected = parsePackagesConfig(readFileSync(join(root, "config/openlup-packages.json"), "utf8")).packages.filter(p => p.publish).map(p => {

@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 
 export const POSTGRES_PROOF_IMAGE = "postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b";
-const database = "openlup_outbox_proof", deadlineMs = 180_000;
+const deadlineMs = 180_000;
 const docker = (args: string[], timeout = 30_000): string => execFileSync("docker", args, { encoding: "utf8", timeout, env: isolatedConsumerEnv() }).trim();
 
 function proof(args: string[], signal: AbortSignal): Promise<void> {
@@ -51,12 +51,12 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
   readCurrentPackManifest(root, resolve(manifest), commit); // Refuse before install, SQL or service startup.
   mkdirSync(scratchParent, { recursive: true });
   const scratch = mkdtempSync(join(scratchParent, "owned-postgres-"));
-  const owner = randomUUID(), name = `openlup-outbox-proof-${owner}`;
+  const owner = randomUUID(), name = `openlup-outbox-proof-${owner}`, database = `openlup_outbox_proof_${owner.replaceAll("-", "")}`;
   const controller = new AbortController(), interrupt = () => controller.abort();
   // npm and the package wrapper may forward the same group signal. Keep the
   // idempotent abort handler installed until owned cleanup has finished.
   process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
-  let container: string | undefined, createdDatabase = false, failure: unknown;
+  let container: string | undefined, attemptedContainer = false, attemptedDatabase = false, failure: unknown;
   const started = performance.now();
   try {
     if (service) {
@@ -65,18 +65,21 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
       if (info?.Id !== service || info?.Config?.Image !== POSTGRES_PROOF_IMAGE || !info?.State?.Running || !info?.NetworkSettings?.Ports?.["5432/tcp"]?.some((binding: { HostPort: string }) => binding.HostPort === port)) throw new Error("Job service is not the exact pinned running container/port");
       container = service;
     } else {
+      // Creation can succeed even when its response is interrupted. The known
+      // unique name and owner label remain sufficient for checked cleanup.
+      attemptedContainer = true;
       container = docker(["run", "--detach", "--rm", "--name", name, "--label", `openlup-proof=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE]);
     }
     let ready = false;
     const startupDeadline = performance.now() + 30_000;
     while (performance.now() < startupDeadline && !controller.signal.aborted) {
-      try { docker(["exec", container, "pg_isready", "-U", "postgres", "-t", "1"], 3000); ready = true; break; } catch { await new Promise((done) => setTimeout(done, 1000)); }
+      try { docker(["exec", container, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-t", "1"], 3000); ready = true; break; } catch { await new Promise((done) => setTimeout(done, 1000)); }
     }
     if (!ready || controller.signal.aborted) throw new Error("Owned PostgreSQL startup failed/interrupted");
     const mapped = port ?? docker(["port", container, "5432/tcp"]).split(":").at(-1)!;
+    attemptedDatabase = true; // Only this run's unique name, including a lost CREATE response.
     docker(["exec", container, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `CREATE DATABASE ${database}`]);
-    createdDatabase = true;
-    console.log(`Owned PostgreSQL ready in ${Math.round(performance.now() - started)} ms; ${POSTGRES_PROOF_IMAGE}`);
+    console.log(`Owned PostgreSQL ready in ${Math.round(performance.now() - started)} ms; ${POSTGRES_PROOF_IMAGE}; database=${database}`);
     const proofStarted = performance.now();
     try { await proof(["--experimental-strip-types", join(root, "scripts/packages/outbox-consumer-proof.ts"), `postgresql://postgres@127.0.0.1:${mapped}/${database}`, scratch, "--manifest", resolve(manifest), "--expected-commit", commit], controller.signal); }
     finally { console.log(`Packed proof process ${Math.round(performance.now() - proofStarted)} ms`); }
@@ -85,11 +88,11 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
   } finally {
     const cleanup = performance.now();
     try {
-      if (service && createdDatabase) docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `DROP DATABASE ${database} WITH (FORCE)`]);
-      if (!service && container) {
-        const info = JSON.parse(docker(["inspect", container]))[0];
-        if (info?.Config?.Labels?.["openlup-proof"] !== owner) failure = new AggregateError([failure, new Error("Container cleanup ownership mismatch")].filter(Boolean), "Owned PostgreSQL failure");
-        else docker(["rm", "--force", container]);
+      if (service && attemptedDatabase) docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `DROP DATABASE IF EXISTS ${database} WITH (FORCE)`]);
+      if (!service && attemptedContainer) {
+        const info = JSON.parse(docker(["inspect", container ?? name]))[0];
+        if (info?.Name !== `/${name}` || info?.Config?.Labels?.["openlup-proof"] !== owner || !/^[a-f0-9]{64}$/u.test(info?.Id ?? "") || (container && info.Id !== container)) failure = new AggregateError([failure, new Error("Container cleanup ownership mismatch")].filter(Boolean), "Owned PostgreSQL failure");
+        else docker(["rm", "--force", info.Id]);
       }
     } catch (error) {
       failure = failure ? new AggregateError([failure, error], "Proof and cleanup failed") : error;

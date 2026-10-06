@@ -1,6 +1,6 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -148,7 +148,9 @@ it.each(["direct", "package-group"] as const)("handles repeated interruption thr
     });
     expect(proofPid).toBeGreaterThan(0); expect(descendantPid).toBeGreaterThan(0);
     expect(running(proofPid!)).toBe(true); expect(running(descendantPid!)).toBe(true);
-    const databaseCount = () => docker(["exec", container!, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", "select count(*) from pg_database where datname='openlup_outbox_proof'"]);
+    const database = /database=(openlup_outbox_proof_[a-f0-9]{32})/u.exec(stdout)?.[1];
+    expect(database).toBeDefined();
+    const databaseCount = () => docker(["exec", container!, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", `select count(*) from pg_database where datname='${database}'`]);
     expect(databaseCount()).toBe("1");
     const interrupted = performance.now();
     const interrupt = () => { if (mode === "direct") launcher!.kill("SIGTERM"); else process.kill(-launcher!.pid!, "SIGTERM"); };
@@ -184,3 +186,66 @@ it.each(["direct", "package-group"] as const)("handles repeated interruption thr
     }
   }
 }, 60_000);
+
+// Exercise lost acknowledgements after real daemon/SQL effects, not a fake database.
+it.each(["container-response", "container-owner-mismatch", "database-response"] as const)("cleans owned startup effects after %s", async mode => {
+  const f = fixture(), environment = { ...env }, realDocker = execFileSync("which", ["docker"], { env, encoding: "utf8" }).trim();
+  delete environment.OPENLUP_PROOF_SERVICE_CONTAINER; delete environment.OPENLUP_PROOF_SERVICE_PORT;
+  const docker = (args: string[]) => spawnSync(realDocker, args, { env: environment, encoding: "utf8", timeout: 30_000 });
+  const effect = join(f.target, "effect.json"), attempted = join(f.target, "attempted.json"), tools = join(f.target, "tools"); mkdirSync(tools);
+  const shim = join(tools, "docker");
+  writeFileSync(shim, `#!${process.execPath}
+` + [
+    'import { spawnSync } from "node:child_process";',
+    'import { writeFileSync } from "node:fs";',
+    'import { argv } from "node:process";',
+    'const args = argv.slice(2);',
+    `const mode = ${JSON.stringify(mode)}, effect = ${JSON.stringify(effect)}, attempted = ${JSON.stringify(attempted)};`,
+    'const create = args.at(-1)?.match(/^CREATE DATABASE (openlup_outbox_proof_[a-f0-9]{32})$/);',
+    'const intercepted = (args[0] === "run" && mode !== "database-response") || Boolean(create && mode === "database-response");',
+    'const name = args[args.indexOf("--name") + 1], labelAt = args.indexOf("--label");',
+    'if (intercepted && mode === "container-owner-mismatch") args[labelAt + 1] += "-different-owner";',
+    'const record = { name, label: args[labelAt + 1], database: create?.[1] };',
+    'if (intercepted) writeFileSync(attempted, JSON.stringify(record));',
+    `const result = spawnSync(${JSON.stringify(realDocker)}, args, { encoding: "utf8", timeout: 30000 });`,
+    'if (intercepted && result.status === 0) {',
+    ' writeFileSync(effect, JSON.stringify({ ...record, id: result.stdout.trim() }));',
+    ' process.on("SIGTERM", () => process.exit(143)); setInterval(() => {}, 1000);',
+    '} else { process.stdout.write(result.stdout || ""); process.stderr.write(result.stderr || ""); process.exit(result.status ?? 1); }',
+  ].join("\n")); chmodSync(shim, 0o700);
+  const owner = randomUUID(), serviceName = `openlup-startup-loss-${owner}`;
+  let service: string | undefined, launcher: ReturnType<typeof spawn> | undefined, stdout = "", stderr = "";
+  try {
+    const supplied: NodeJS.ProcessEnv = { ...environment, PATH: `${tools}:${environment.PATH}`, OPENLUP_PACK_MANIFEST: join(f.packs, "packages-manifest.json"), OPENLUP_PACK_COMMIT: commit };
+    if (mode === "database-response") {
+      const started = docker(["run", "--detach", "--rm", "--name", serviceName, "--label", `openlup-startup-test=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE]);
+      expect(started.status).toBe(0); service = started.stdout.trim();
+      const readyDeadline = performance.now() + 30_000;
+      while (docker(["exec", service, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-t", "1"]).status !== 0) { if (performance.now() >= readyDeadline) throw new Error("Owned test service startup deadline"); await new Promise(done => setTimeout(done, 100)); }
+      expect(docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "CREATE DATABASE openlup_outbox_proof"]).status).toBe(0);
+      supplied.OPENLUP_PROOF_SERVICE_CONTAINER = service; supplied.OPENLUP_PROOF_SERVICE_PORT = docker(["port", service, "5432/tcp"]).stdout.trim().split(":").at(-1)!;
+    }
+    launcher = spawn("npm", ["--workspace", "./packages/outbox", "run", "ci:required"], { cwd: f.target, env: supplied, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    launcher.stdout!.on("data", bytes => { stdout += bytes.toString(); }); launcher.stderr!.on("data", bytes => { stderr += bytes.toString(); });
+    const completion = new Promise<number | null>((done, fail) => { launcher!.once("error", fail); launcher!.once("close", code => done(code)); });
+    const startupDeadline = performance.now() + 45_000;
+    while (!existsSync(effect)) { if (launcher.exitCode !== null || performance.now() >= startupDeadline) throw new Error(`Lost response setup: ${stdout} ${stderr}`); await new Promise(done => setTimeout(done, 25)); }
+    const observed = JSON.parse(readFileSync(effect, "utf8"));
+    if (!service) { const info = JSON.parse(docker(["inspect", observed.id]).stdout)[0]; expect(info.Name).toBe(`/${observed.name}`); expect(info.Config.Labels["openlup-proof"]).toBe(observed.label.slice("openlup-proof=".length)); expect(info.State.Running).toBe(true); }
+    process.kill(-launcher.pid!, "SIGTERM");
+    let timer: NodeJS.Timeout | undefined;
+    try { expect(await Promise.race([completion, new Promise<never>((_, fail) => { timer = setTimeout(() => fail(new Error(`Lost response cleanup deadline: ${stdout} ${stderr}`)), 10_000); })])).not.toBe(0); } finally { if (timer) clearTimeout(timer); }
+    expect(stdout).toContain("Owned PostgreSQL cleanup");
+    if (service) {
+      const remaining = docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", `select datname from pg_database where datname in ('${observed.database}', 'openlup_outbox_proof') order by datname`]);
+      expect(remaining.status).toBe(0); expect(remaining.stdout.trim()).toBe("openlup_outbox_proof"); expect(JSON.parse(docker(["inspect", service]).stdout)[0].State.Running).toBe(true);
+    } else if (mode === "container-owner-mismatch") {
+      expect(stderr).toContain("Container cleanup ownership mismatch"); expect(JSON.parse(docker(["inspect", observed.id]).stdout)[0].State.Running).toBe(true);
+    } else expect(docker(["inspect", observed.id]).status).not.toBe(0);
+    expect(stdout).not.toContain("Packed proof process");
+  } finally {
+    if (launcher && launcher.exitCode === null && launcher.signalCode === null) { try { process.kill(-launcher.pid!, "SIGTERM"); } catch { /* Already stopped. */ } await new Promise(done => setTimeout(done, 1500)); if (launcher.exitCode === null) { try { process.kill(-launcher.pid!, "SIGKILL"); } catch { /* Already stopped. */ } } }
+    if (service) { const info = JSON.parse(docker(["inspect", service]).stdout)[0]; expect(info.Config.Labels["openlup-startup-test"]).toBe(owner); expect(docker(["rm", "--force", service]).status).toBe(0); }
+    if (!service && existsSync(attempted)) { const observed = JSON.parse(readFileSync(attempted, "utf8")), inspected = docker(["inspect", observed.name]); if (inspected.status === 0) { const info = JSON.parse(inspected.stdout)[0]; expect(info.Name).toBe(`/${observed.name}`); expect(info.Config.Labels["openlup-proof"]).toBe(observed.label.slice("openlup-proof=".length)); expect(docker(["rm", "--force", info.Id]).status).toBe(0); } }
+  }
+}, 90_000);
