@@ -32,9 +32,9 @@ function rehash(packs: string) {
 function fixture() {
   const target = realpathSync(mkdtempSync(join(scratch, "fixture-"))), packs = join(target, "packs"); cpSync(basePacks, packs, { recursive: true });
   // This is a test-input subset, with no checkout or Git identity. Tooling is explicit.
-  const files = ["config/openlup-packages.json", "packages/core/package.json", "packages/outbox/package.json", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
+  const files = ["config/openlup-packages.json", "packages/core/package.json", "packages/outbox/package.json", "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
   for (const file of files) { mkdirSync(dirname(join(target, file)), { recursive: true }); cpSync(join(root, file), join(target, file)); }
-  writeFileSync(join(target, "package.json"), '{"type":"module"}\n'); mkdirSync(join(target, "node_modules"));
+  writeFileSync(join(target, "package.json"), '{"type":"module","workspaces":["packages/core","packages/outbox"]}\n'); mkdirSync(join(target, "node_modules"));
   cpSync(join(root, "node_modules/zod"), join(target, "node_modules/zod"), { recursive: true });
   for (const name of ["typescript", "pg"]) symlinkSync(join(root, "node_modules", name), join(target, "node_modules", name), "dir");
   return { target, packs };
@@ -101,7 +101,7 @@ it("fails the actual reclaim proof if the adapter reports a formerly valid token
   const result = invoke(f.target, true); expect(result.status).not.toBe(0); expect(result.stderr).toContain("AssertionError"); expect(result.stdout).toContain("Owned PostgreSQL cleanup");
 }, 240_000);
 
-it("interrupts the actual proof group, drops only its database and preserves the owned service", async () => {
+it.each(["direct", "package-group"] as const)("handles repeated interruption through %s, drops only its database and preserves the owned service", async mode => {
   const f = fixture(), owner = randomUUID(), name = `openlup-outbox-interruption-${owner}`;
   const environment = { ...env };
   delete environment.OPENLUP_PROOF_SERVICE_CONTAINER;
@@ -124,7 +124,10 @@ it("interrupts the actual proof group, drops only its database and preserves the
       'child.stdout.once("data", () => console.log("HANGING_PROOF_READY " + JSON.stringify({ proof: process.pid, descendant: child.pid })));',
       'setInterval(() => {}, 1000);',
     ].join("\n"));
-    launcher = spawn(process.execPath, ["--experimental-strip-types", join(f.target, "scripts/packages/outbox-disposable-postgres.ts"), "--manifest", join(f.packs, "packages-manifest.json"), "--expected-commit", commit, "--service-container", container, "--service-port", port], { cwd: f.target, env: environment, stdio: ["ignore", "pipe", "pipe"] });
+    const supplied = { ...environment, OPENLUP_PACK_MANIFEST: join(f.packs, "packages-manifest.json"), OPENLUP_PACK_COMMIT: commit, OPENLUP_PROOF_SERVICE_CONTAINER: container, OPENLUP_PROOF_SERVICE_PORT: port };
+    launcher = mode === "direct"
+      ? spawn(process.execPath, ["--experimental-strip-types", join(f.target, "scripts/packages/outbox-disposable-postgres.ts")], { cwd: f.target, env: supplied, stdio: ["ignore", "pipe", "pipe"] })
+      : spawn("npm", ["--workspace", "./packages/outbox", "run", "ci:required"], { cwd: f.target, env: supplied, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     const completion = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((done, fail) => {
       launcher!.once("error", fail);
       launcher!.once("close", (code, signal) => done({ code, signal }));
@@ -148,7 +151,10 @@ it("interrupts the actual proof group, drops only its database and preserves the
     const databaseCount = () => docker(["exec", container!, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", "select count(*) from pg_database where datname='openlup_outbox_proof'"]);
     expect(databaseCount()).toBe("1");
     const interrupted = performance.now();
-    launcher.kill("SIGTERM");
+    const interrupt = () => { if (mode === "direct") launcher!.kill("SIGTERM"); else process.kill(-launcher!.pid!, "SIGTERM"); };
+    interrupt();
+    // Separate deliveries avoid signal coalescing hiding npm/wrapper forwarding.
+    await new Promise(done => setTimeout(done, 50)); interrupt();
     let timer: NodeJS.Timeout | undefined;
     let result;
     try {
@@ -161,7 +167,7 @@ it("interrupts the actual proof group, drops only its database and preserves the
     expect(running(proofPid!)).toBe(false); expect(running(descendantPid!)).toBe(false);
     expect(JSON.parse(docker(["inspect", container]))[0].State.Running).toBe(true);
     expect(databaseCount()).toBe("0");
-    process.stdout.write(`Owned service ${container} interruption: startup ${Math.round(interrupted - started)} ms, signal/group/database cleanup ${Math.round(performance.now() - interrupted)} ms\n`);
+    process.stdout.write(`Owned service ${container} ${mode} interruption: startup ${Math.round(interrupted - started)} ms, signal/group/database cleanup ${Math.round(performance.now() - interrupted)} ms\n`);
   } finally {
     if (launcher && launcher.exitCode === null && launcher.signalCode === null) {
       await new Promise<void>(done => {

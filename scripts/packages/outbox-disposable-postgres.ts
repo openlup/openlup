@@ -53,7 +53,9 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
   const scratch = mkdtempSync(join(scratchParent, "owned-postgres-"));
   const owner = randomUUID(), name = `openlup-outbox-proof-${owner}`;
   const controller = new AbortController(), interrupt = () => controller.abort();
-  process.once("SIGINT", interrupt); process.once("SIGTERM", interrupt);
+  // npm and the package wrapper may forward the same group signal. Keep the
+  // idempotent abort handler installed until owned cleanup has finished.
+  process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
   let container: string | undefined, createdDatabase = false, failure: unknown;
   const started = performance.now();
   try {
