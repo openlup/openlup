@@ -29,6 +29,10 @@ const expected = parsePackagesConfig(readFileSync(join(root, "config/openlup-pac
   return { name: p.name, version: manifest.version, directory: p.directory };
 });
 const supplied = flags.has("--manifest") ? readPackManifest(resolve(flags.get("--manifest")!), flags.get("--expected-commit")!, expected) : undefined;
+// Validate the complete set above, but this reference imports only its own
+// composition. Unrelated future modules belong to their own package consumers.
+const referencePackages = expected.filter(p => ["@openlup/core", "@openlup/outbox"].includes(p.name));
+if (referencePackages.length !== 2) throw new Error("Outbox reference needs Core and Outbox artifacts");
 mkdirSync(scratch, { recursive: true });
 const temporary = mkdtempSync(join(tmpdir(), "openlup-outbox-consumer-"));
 const env = isolatedConsumerEnv();
@@ -42,7 +46,7 @@ try {
     const [info] = JSON.parse(command("npm", ["pack", "--json", "--ignore-scripts", "--cache", cache, "--pack-destination", packs], directory));
     return join(packs, info.filename);
   };
-  const packageInputs = expected.map(p => {
+  const packageInputs = referencePackages.map(p => {
     if (!supplied) return pack(join(root, p.directory));
     const entry = supplied.get(p.name)!, bytes = readFileSync(entry.path);
     if (createHash("sha256").update(bytes).digest("hex") !== entry.sha256 || `sha512-${createHash("sha512").update(bytes).digest("base64")}` !== entry.integrity) throw new Error(`Verified artifact changed before use: ${p.name}`);
@@ -54,11 +58,11 @@ try {
   const zodDirectory = join(root, "node_modules/zod");
   if (!lstatSync(zodDirectory).isDirectory() || lstatSync(zodDirectory).isSymbolicLink()) throw new Error("Zod runtime input must be an ordinary installed directory");
   const zod = pack(zodDirectory);
-  writeFileSync(join(scratch, "consumed-artifacts.json"), JSON.stringify({ expectedCommit: flags.get("--expected-commit") ?? null, packages: supplied ? expected.map((p, index) => ({ ...supplied.get(p.name), usedPath: packageInputs[index] })) : packageInputs }, null, 2) + "\n");
+  writeFileSync(join(scratch, "consumed-artifacts.json"), JSON.stringify({ expectedCommit: flags.get("--expected-commit") ?? null, packages: supplied ? referencePackages.map((p, index) => ({ ...supplied.get(p.name), usedPath: packageInputs[index] })) : packageInputs }, null, 2) + "\n");
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "outbox-disposable-consumer", private: true, type: "module" }));
   command("npm", ["install", "--offline", "--ignore-scripts", "--cache", cache, "--no-audit", "--fund=false", ...packageInputs, zod], consumer);
-  assertInstalledPackages(consumer, [...expected.map(p => p.name), "zod"]);
-  const installed = expected.map(p => {
+  assertInstalledPackages(consumer, [...referencePackages.map(p => p.name), "zod"]);
+  const installed = referencePackages.map(p => {
     const path = realpathSync(join(consumer, "node_modules", p.name)), bytes = readFileSync(join(path, "package.json"));
     const manifest = JSON.parse(bytes.toString("utf8"));
     if (manifest.name !== p.name || manifest.version !== p.version) throw new Error(`Installed identity mismatch for ${p.name}`);

@@ -138,6 +138,13 @@ modes may remain, but required CI never falls back to them on missing evidence.
 Missing/unknown input refuses before install or SQL. No author-produced manifest
 alone proves packing: the required producer must have exited zero first.
 
+Each consumer installs its actual composition from that complete verified set,
+not every unrelated module. The Outbox reference imports only Core and Outbox;
+its complete installed namespace observation stays unchanged when other modules
+gain their own package consumers. An actual third-artifact regression retains
+the Outbox reference proof, and a damaged unused artifact still refuses before
+PostgreSQL startup.
+
 Install in a fresh isolated consumer outside ancestor workspace resolution,
 clear ambient module-resolution overrides, use offline installs with scripts
 disabled and assert installed OpenLup paths are regular directories confined to

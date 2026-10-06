@@ -1,6 +1,6 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +53,30 @@ function repackOutbox(packs: string, mutate: (directory: string) => void) {
   mutate(join(extract, "package"));
   execFileSync("tar", ["-czf", join(packs, outbox.filename), "-C", extract, "package"]); rehash(packs);
 }
+function addIndependentPackage(target: string, packs: string) {
+  const directory = "packages/independent", name = "@openlup/independent", version = "0.13.1";
+  mkdirSync(join(target, directory), { recursive: true });
+  writeFileSync(join(target, directory, "package.json"), JSON.stringify({ name, version, type: "module", exports: "./index.js" }));
+  writeFileSync(join(target, directory, "index.js"), "export const independent = true;\n");
+  const configPath = join(target, "config/openlup-packages.json"), config = JSON.parse(readFileSync(configPath, "utf8"));
+  config.packages.push({ name, directory, publish: true }); writeFileSync(configPath, JSON.stringify(config));
+  const [pack] = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--workspaces=false", "--cache", join(scratch, "cache"), "--pack-destination", packs], { cwd: join(target, directory), env, encoding: "utf8", timeout: 30_000 }));
+  const manifestPath = join(packs, "packages-manifest.json"), manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.packages.push({ name, version, filename: pack.filename }); writeFileSync(manifestPath, JSON.stringify(manifest)); rehash(packs);
+  return join(packs, pack.filename);
+}
+it("retains the actual Outbox reference proof when the complete artifact set gains an independent package", () => {
+  const f = fixture(); addIndependentPackage(f.target, f.packs);
+  const result = invoke(f.target, true); expect(result.status).toBe(0); expect(result.stdout).toContain("Packed outbox/reference proof PASS");
+  const reports = join(f.target, ".context/scratch"), owned = readdirSync(reports).filter(name => name.startsWith("owned-postgres-"));
+  expect(owned).toHaveLength(1);
+  const installed = JSON.parse(readFileSync(join(reports, owned[0]!, "installed-packages.json"), "utf8"));
+  expect(installed.map((p: { name: string }) => p.name)).toEqual(["@openlup/core", "@openlup/outbox"]);
+}, 240_000);
+it("still rejects damaged independent artifacts before starting PostgreSQL", () => {
+  const f = fixture(), artifact = addIndependentPackage(f.target, f.packs); writeFileSync(artifact, "changed after manifest");
+  const result = invoke(f.target, true); expect(result.status).not.toBe(0); expect(result.stderr).toContain("digest mismatch"); expect(result.stdout).not.toContain("Owned PostgreSQL ready");
+});
 it("rejects changed tarball bytes before any install or SQL", () => {
   const f = fixture(), manifest = JSON.parse(readFileSync(join(f.packs, "packages-manifest.json"), "utf8"));
   writeFileSync(join(f.packs, manifest.packages[0].filename), "changed after manifest");
