@@ -75,6 +75,19 @@ upstream proposal under your application's submission authority; the dependency
 guide grants no permission to publish an issue or change your application.
 Keep every installed `@openlup/*` package on the same exact set version.
 
+The package owns its engine; application handlers, policies, ports, composition
+and compatible native adapters remain yours. Use declared public exports, without
+autonomous package patching, vendoring, shadowing or copied-engine replacement.
+Follow the [using rules](AGENTS.md#using-this-package-in-an-application) for a
+missing seam and compatible recovery. First adoption and upgrade compare the
+actual npm artifact with current bindings and nominated extensions, preserving
+native effects and pending work. The public
+[adopter recipe](https://github.com/openlup/openlup/blob/main/docs/platform/adopter-kit/README.md#adopt-or-upgrade-a-package)
+is optional source guidance to select at a deliberate revision and compare with
+your installed contract; later guide changes do not alter this version or install
+application controls. Existing tests and the unchanged wiring example do not
+certify a complete module absorption or deployed adoption.
+
 ## Local verification from source
 
 The following developer commands require a source checkout of this package;

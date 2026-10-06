@@ -14,6 +14,20 @@ The reference application demonstrates a neutral platform composition. It is
 not a default adopter application and does not transfer ownership of adopter
 assets or business policy to the platform.
 
+An adopted package owns its engine algorithm and public contract. Consume that
+engine through an exact authenticated `@openlup/*` npm artifact. An application
+agent must not autonomously patch, fork, vendor, monkey-patch, shadow its imports
+or restore a copied implementation as an alternative engine. Use only the
+installed package's declared public exports, not internal source or `dist` paths.
+Dependency identity alone does not establish which engine actually serves work.
+
+Application handlers, policies, ports, composition, host bindings and compatible
+native adapters remain ordinary application code. They need no ownership record
+per function or upstream release. Historical OpenLup origin alone does not freeze
+unpackaged application source. One engine algorithm owner can serve multiple hosts
+under the existing admission, fencing and retirement contract; a second competing
+state writer is not an extension seam.
+
 ## Runtime boundaries
 
 <!-- openlup-doc-impact {"unit": "browser", "digest": "sha256-b68539ca9e5cdab8feab5ac48dfc0db2126a646411197ed5c12121700b42b506", "reason": "The changed source is a static renewal SQL boundary test. It now requires both existing SKIP LOCKED clauses and accepts CREATE OR REPLACE. No browser imports, application composition, extension seam or production boundary changes in this source delta."} -->
@@ -91,12 +105,23 @@ The platform will not modify or promise compatibility for an ejected copy.
 Use a documented extension seam when updates must continue to flow. A source
 ejection should be a deliberate, reviewable ownership transfer.
 
+This component/page route does not authorize ejection of an adopted package
+engine. For a missing engine seam or defect, use a supported wrapper or native
+adapter only if it preserves the installed contract. Otherwise retain compatible
+serving behavior, record a local reproducer, and hold the dependent change for
+authorized upstream work or an available compatible rollback. Rollback must fit
+the current durable state; it never means rewriting published SQL or discarding
+pending work. Unrelated application development continues. The
+[adopter recipe](adopter-kit/README.md#adopt-or-upgrade-a-package) owns the comparison
+and extension-disposition steps.
+
 ## Package architecture
 
 OpenLup ships its platform as `@openlup/*` npm packages. This section is the
-contract every package follows as it is extracted. Today only the kernel,
-`@openlup/core`, is published. Rules that need a contract the kernel does not
-export yet say so. Development-preview rules may still change (see
+contract every package follows as it is extracted. The installed manifests,
+exports and guides identify the selected version's available capabilities.
+Rules that need a contract the kernel does not export yet say so.
+Development-preview rules may still change (see
 [Compatibility posture](#compatibility-posture)).
 
 ### Package kinds
@@ -182,6 +207,8 @@ and the protected release workflow still govern its first published minor set.
   [the agent guide](AGENT_GUIDE.md) govern work on this monorepo only.
 - **Each package carries its own `AGENTS.md`.** It states the package's kind, the maturity of each
   subpath, one wiring example and the rules for using it from an application.
+  It describes that installed version's contract, not host policy, tool permissions
+  or authority for an external write. Installing it activates no application control.
 - **Applications start from the [adopter kit](adopter-kit/README.md).** It holds an agent-guide
   template, a dependency-update template that moves every `@openlup/*` package together, and an
   agent-tool permission template that refuses file-edit tools under `node_modules/`. The template files use

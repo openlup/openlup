@@ -33,3 +33,30 @@ Prune defaults to 30 days for processed and 90 for discarded, in batches of 500.
 Compose the contribution with `@openlup/core/readiness`, actual loaded package metadata, selected-adapter schema observations and host bindings to the exact contribution run/handle functions before activating the exact new candidate. Only `ready` admits; `unknown` and `unsatisfied` leave the serving version running. Descriptors are inert; the builder supplies the same actual event identities and effective timeouts after lease acquisition. The default schema declaration describes catalog existence and overloads; it does not prove bodies, ACL or recovery. Use framework-free fence conformance from `./testing` and real transactional proof for your adapter. No ambient database URL is used by the packed proof.
 
 Upgrade the complete `@openlup/*` set together after reading each changelog. Use ports and composition; do not edit or patch installed package bytes. Sources are in `src/`, built JavaScript/declarations in `dist/`. Synthetic packed-consumer proof is first-party package evidence, not an independent adopter, provider-delivery or deployment certificate.
+
+## Adoption and native extensions
+
+One npm package owns the dispatch algorithm. Application drivers, handlers,
+policies, host bindings and compatible native stores remain editable through
+public seams without a nomination or per-function ownership record. Do not
+autonomously fork, vendor, monkey-patch, shadow or restore a copied engine; use
+only the installed package's declared exports. A missing seam follows the
+[agent guide's dependent hold and compatible recovery route](AGENTS.md#using-this-package-in-an-application).
+
+At first adoption compare the actual selected artifact with current consumer
+behavior, including producer payload/schema and composition changes outside the
+extracted engine. On upgrades, preserve pending obligations, transactional enqueue,
+claim/ack/fencing and native recovery. Compatible native schema additions remain
+permitted; published SQL stays immutable. Validate the actual adapter and serving
+binding. For full or partial absorption remove only proven duplicate behavior,
+retain distinct effects sharing an event, and demonstrate durable success and
+unfinished work across retries and replacement. Catalogue existence, a handler
+return or an upstream merge alone cannot establish that proof.
+
+The public [adopter recipe](https://github.com/openlup/openlup/blob/main/docs/platform/adopter-kit/README.md#adopt-or-upgrade-a-package)
+explains source-local nominations and full/partial/retained/hold dispositions.
+Select that optional source guidance at a deliberate revision against your
+installed contract. This package guide conveys version-bound contract information,
+not tool permissions, an automatic control installation or external-write authority.
+The existing wiring and packed protocol examples remain narrow package evidence;
+a complete extension/absorption/retry witness belongs to the actual module adoption.

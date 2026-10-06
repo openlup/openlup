@@ -36,4 +36,30 @@ Composition can report `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`, `O
 
 ## Using this package in an application
 
-Do not edit `node_modules/@openlup/**`, patch packages or apply the monorepo's contributor process to your application. Change behavior through ports and composition. Copying source is ejection and makes its security, tests and upgrades yours. Upgrade every `@openlup/*` together after reading all `Migration:` blocks. Your application owns its own admission, delivery and production authority.
+Keep the dispatch engine in its authentic npm package. Do not edit
+`node_modules/@openlup/**`, autonomously patch/fork/vendor/monkey-patch/shadow the
+package or restore a copied engine. Use declared public exports. Drivers,
+handlers, policies, host bindings and compatible native stores remain ordinary
+application code; they need no record per function or upstream release.
+
+The public `withPayloadSchema`, `composeHandlers` and `uniqueRegistry` seams keep
+handler policy and effects in the application. The [README](README.md) explains
+retry, transaction, fence and admission obligations; `./testing` supplies the
+store-fence check, not complete adapter or absorption proof. A missing seam needs
+a local reproducer and authorized upstream proposal. Use a supported compatible
+wrapper/adapter, or hold the dependent change while retaining compatible serving
+work or an available compatible rollback. Do not rewrite published SQL or lose
+pending obligations.
+
+Upgrade every `@openlup/*` together after reading all `Migration:` blocks. Compare
+current producer/schema/policy/bindings with the actual target at first adoption
+and upgrade. Settle affected nominations as full, partial, retained or hold using
+capability and durable-effect evidence, including dormant branches and retry;
+keep distinct same-event effects. Move or settle open markers when native code is
+refactored even without pin changes. A merged contribution is not adoption proof.
+
+This guide describes the installed contract; it grants no host/tool/external-write
+authority and installs no controls. The monorepo's contributor process does not
+govern your application. Your application owns admission, delivery and production
+authority. The [README's adoption route](README.md#adoption-and-native-extensions)
+links optional source guidance; later instructions do not change this version.
