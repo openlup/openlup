@@ -129,7 +129,7 @@ function validateCandidate(candidate) {
 }
 const REPAIR_RISKS = ['ordinary', 'security', 'control', 'schema', 'instructions', 'unknown'];
 const MAX_REPAIRS = 2;
-const MAX_OWNER_CYCLES = MAX_REPAIRS + 3;
+const MAX_OWNER_CYCLES = MAX_REPAIRS + 4;
 class NeedsRescope extends Error {}
 function rescope(value, message) { if (!value) throw new NeedsRescope(`Agent review needs rescope: ${message}`); }
 // Explicit owner regrouping is process evidence, not an authenticated owner signature.
@@ -182,7 +182,7 @@ const RLS_RECOVERY_CRITERION = "RLS recovery: retire exactly eight legacy cross-
 function rlsRecoveryIntent(intent) {
   return equal([...intent.scope].sort(), RLS_RECOVERY_SCOPE) && intent.risk === 'behavior' && equal(intent.requiredRoles, ['correctness', 'security']) && intent.criteria.endsWith(` ${RLS_RECOVERY_CRITERION}`);
 }
-function ownerCycleLimit(intent) { return MAX_OWNER_CYCLES + (rlsRecoveryIntent(intent) ? 1 : 0); }
+function ownerCycleLimit(intent) { return rlsRecoveryIntent(intent) ? 6 : MAX_OWNER_CYCLES; }
 function assertOwnerContinuation(approval, previous, request, regroup, cycle) {
   validateOwnerContinuation(approval);
   demand(approval.priorRequestDigest === digest(previous) && approval.candidateDigest === digest(request.candidate), 'owner continuation differs from exact previous request or candidate');
@@ -192,7 +192,7 @@ function assertOwnerContinuation(approval, previous, request, regroup, cycle) {
   const rlsScope = cycle === 4 && equal(additions, RLS_RECOVERY_ADDITIONS) && rlsRecoveryIntent(request.intent) && request.intent.criteria === `${previous.intent.criteria} ${RLS_RECOVERY_CRITERION}`;
   const scopeOnly = regroup && ((consumerScope || checkoutScope) && equal(previous.intent.criteria, request.intent.criteria) || rlsScope) && previous.intent.risk === request.intent.risk && equal(previous.intent.requiredRoles, request.intent.requiredRoles);
   const rlsFinal = cycle === 6 && previous.continuation?.cycle === 5 && previous.continuation.ownerContinuation && rlsRecoveryIntent(previous.intent) && equal(previous.intent, request.intent) && !previous.candidate.changedPaths.includes('supabase/migrations/20261004123000_runtime_capability_rls_closure.sql') && request.candidate.changedPaths.includes('supabase/migrations/20261004123000_runtime_capability_rls_closure.sql');
-  demand((cycle <= MAX_OWNER_CYCLES && equal(previous.intent, request.intent) || scopeOnly || rlsFinal) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
+  demand((cycle <= MAX_OWNER_CYCLES && (cycle !== 6 || !rlsRecoveryIntent(request.intent)) && equal(previous.intent, request.intent) || scopeOnly || rlsFinal) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
 }
 function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
@@ -246,7 +246,7 @@ function validateRequest(request) {
     if (Object.hasOwn(continuation, 'ownerContinuation')) {
       validateOwnerContinuation(continuation.ownerContinuation);
       demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || [4, 5].includes(continuation.cycle)) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact full candidate; scope expansion requires its exact owner-approved consumer, checkout or RLS route');
-    } else demand(continuation.cycle <= MAX_REPAIRS, 'third, fourth or fifth cycle requires explicit owner continuation');
+    } else demand(continuation.cycle <= MAX_REPAIRS, 'third through sixth cycle requires explicit owner continuation');
     paths(continuation.deltaPaths, continuation.mode === 'full'); demand(continuation.mode === 'full' || continuation.deltaPaths.every(path => request.intent.scope.includes(path)), 'repair delta exceeds approved scope');
     demand(REPAIR_RISKS.includes(continuation.repairRisk), 'repair risk is invalid');
     demand(Array.isArray(continuation.findings) && continuation.findings.length <= 384, 'finding cards exceed bounds');

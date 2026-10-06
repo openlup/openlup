@@ -303,8 +303,9 @@ decision in `ownerDecision`. This process evidence is not an authenticated owner
 signature. Cycle 3 requires a fresh decision. Cycle 4 requires a
 separate fresh decision bound to the exact third request and next candidate.
 One further fresh decision bound to the preserved fourth request and next
-candidate may authorize cycle 5 with unchanged scope, criteria, risk, roles and
-author. All require complete preserved lineage and findings, actual ancestor
+candidate may authorize cycle 5. A separate fresh decision bound to the
+preserved fifth request and next candidate may authorize cycle 6. Both retain
+unchanged scope, criteria, risk, roles and author. All require complete preserved lineage and findings, actual ancestor
 delta, explicit full refresh and two fresh full independent reviews. Cycle 3
 retains unchanged intent and author. Cycle 4 has one
 bounded exception: it may combine its decision with `regroup` to retain every
@@ -317,9 +318,10 @@ digests independently bind the previous request and actual candidate. Neither
 decision can be reused for a changed request or candidate. The automatic limit
 remains two. Wrong bindings, early use, missing, extra or replacement scope
 paths, changed criteria, risk, roles or author, missing history, reduced
-coverage, an automatic fifth or a generic sixth round refuse. The existing
-owner ceiling remains five; the separately defined bounded SQL/RLS recovery
-retains its existing exception. An unchanged repeat retains the manual round
+coverage, an automatic owner cycle or a seventh round refuse. The owner ceiling
+is six. The separately defined bounded SQL/RLS recovery still requires its exact
+SQL introduction at cycle 6; unchanged intent alone cannot authorize that sixth
+recovery cycle. An unchanged repeat retains the manual round
 and its original expiry; expired evidence still blocks delivery.
 
 A separately approved checkout-history recovery may use cycle 5 only with
@@ -330,8 +332,9 @@ The prior fourth request, both intents and actual candidate need new decision
 bindings. Criteria, risk, required roles, author, every prior scope path and all
 history/findings remain. Two fresh full reviews cover the complete source and
 ancestor integration. Any other or additional scope path, reuse of the fourth
-decision and a sixth checkout-recovery cycle refuse. The unchanged-intent
-cycle 5 above needs no scope regroup; it cannot add a path. This is one bounded
+decision and a sixth scope-expanding checkout-recovery cycle refuse. The
+unchanged-intent cycles 5 and 6 above need no scope regroup; neither can add a
+path. This is one bounded
 recovery of the hosted checkout mismatch, not a reset of the automatic budget.
 
 The supervisor launches fresh native agents and uses their actual execution IDs
@@ -582,8 +585,9 @@ is merged, with the same approved intent. It refuses if the fifth already
 introduced the corrected SQL or the sixth does not introduce it. Each needs a fresh candidate-bound owner decision and
 two fresh full independent reviews. The fourth also requires an exact regroup
 binding of both intents. Previous reports, unresolved findings, lineage and
-expiry remain binding. The automatic limit remains two, the existing total
-owner ceiling remains five for every other route. This exact RLS recovery may
-use at most six, and a seventh or generic scope exception refuses. A different scope, goal, role floor, risk, author or missing prior
+expiry remain binding. The automatic limit remains two. The owner ceiling
+remains six for both generic unchanged-intent continuation and this exact RLS
+recovery, whose sixth-cycle SQL precondition still applies. This route never
+inherits an extra cycle when the generic ceiling changes, and a seventh or generic scope exception refuses. A different scope, goal, role floor, risk, author or missing prior
 regroup refuses. This route does not authorize installing a shared tool,
 publication, merge, production or another policy operation.
