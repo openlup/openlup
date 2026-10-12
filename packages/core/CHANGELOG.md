@@ -8,9 +8,14 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.14.0]
+
+- Publishable on the npm `latest` dist-tag as `0.14.0`, from tag
+  `openlup-core-v0.14.0`.
+
 - Add experimental `buildGroupedPostgresSchemaProbe`, `decodeGroupedPostgresSchemaRows` and `PostgresSchemaCatalogEntry` on `./readiness` for one ordered, parameterized PostgreSQL catalog read with table, column and exact function-overload shapes. The strict decoder refuses incomplete or malformed rows without exposing catalog bodies.
 
-Migration: additive API; existing scalar probes, observations, readiness codes and deadlines remain unchanged. Catalog rows use jsonb text, definition-string/null aggregates and raw pg_policy values; the decoder accepts text only. Hosts retain connection, snapshot, identity, digest and admission ownership. This API requires a later minor release of the complete publishable set; this contribution does not prepare or publish that release.
+Migration: additive API; existing scalar probes, observations, readiness codes and deadlines remain unchanged. Catalog rows use jsonb text, definition-string/null aggregates and raw pg_policy values; the decoder accepts text only. Hosts retain connection, snapshot, identity, digest and admission ownership. This preparation targets the 0.14.0 MINOR set; merging it does not publish packages.
 
 ## [0.13.1]
 
