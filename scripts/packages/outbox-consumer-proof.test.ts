@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync, renameSync, readlinkSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync, renameSync, readlinkSync, constants, openSync, fstatSync, readSync, writeSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -113,7 +113,7 @@ function fixtureDriver(f: ReturnType<typeof fixture>, operation: string, mode: s
     'import assert from "node:assert/strict";',
     'import {execFileSync, spawn, spawnSync} from "node:child_process";',
     'import {randomUUID} from "node:crypto";',
-    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, renameSync, readlinkSync} from "node:fs";',
+    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, renameSync, readlinkSync, constants, openSync, fstatSync, readSync, writeSync, closeSync} from "node:fs";',
     'import {join} from "node:path";',
     'import {isolatedConsumerEnv} from "./scripts/packages/pack-manifest-input.ts";',
     `const env = isolatedConsumerEnv(), commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, POSTGRES_PROOF_IMAGE = ${JSON.stringify(POSTGRES_PROOF_IMAGE)};`,
@@ -153,6 +153,12 @@ async function fixtureWait(ready: () => boolean, signal: AbortSignal | undefined
   }
   if (signal?.aborted) throw new Error("Fixture interrupted");
 }
+const fixtureDiagnosticFields: Readonly<Record<string, readonly string[]>> = {
+  "fixture-interrupt": ["signal"],
+  "fixture-stop-point": ["stage", "id", "name", "label"],
+  "cleanup-inspect-result": ["resource", "status", "signal", "errorCode", "stderr"],
+  "cleanup-remove-result": ["resource", "status", "signal", "errorCode", "stderr"],
+};
 function fixtureDiagnostic(event: string, details: object) {
   // Temporary owned-fixture evidence; never replace an assertion or cleanup.
   let pgid: number | null = null, pidNamespace: string | null = null, identityError: string | null = null;
@@ -163,12 +169,69 @@ function fixtureDiagnostic(event: string, details: object) {
       pidNamespace = readlinkSync("/proc/self/ns/pid");
     }
   } catch (error) { identityError = (error as NodeJS.ErrnoException).code ?? "unavailable"; }
+  const record = { event, time: Date.now(), pid: process.pid, ppid: process.ppid,
+    uid: process.getuid?.() ?? null, pgid, pidNamespace, identityError, details };
+  // One pre-created file in the outer fixture survives the nested worker's
+  // buffered output and afterAll scratch cleanup. It is observation, not a gate.
+  if (env.OPENLUP_FIXTURE_WITNESS && Object.hasOwn(fixtureDiagnosticFields, event)) {
+    let descriptor: number | undefined;
+    try {
+      descriptor = openSync(`${env.OPENLUP_FIXTURE_WITNESS}.owner-diagnostic.log`, constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      const stat = fstatSync(descriptor), clean: Record<string, string | number | null> = {};
+      for (const key of fixtureDiagnosticFields[event]) {
+        const value = (details as Record<string, unknown>)[key];
+        clean[key] = typeof value === "string" ? Buffer.from(value).subarray(0, 2048).toString("utf8")
+          : typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+      }
+      const bytes = Buffer.from(JSON.stringify({ ...record, details: clean }) + "\n");
+      if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o600 || bytes.length > 4096) throw new Error("Fixture diagnostic file identity or record limit");
+      // Reserve room for an explicit cap notice; do not evict or rebuild events.
+      if (stat.size + bytes.length > 16_000) {
+        const notice = Buffer.from('{"event":"telemetry-limit","status":"unknown"}\n');
+        if (stat.size + notice.length <= 16_384) writeSync(descriptor, notice);
+      } else if (writeSync(descriptor, bytes) !== bytes.length) throw new Error("Fixture diagnostic partial write");
+    } catch { /* Missing or incomplete telemetry always remains unknown. */ }
+    finally { if (descriptor !== undefined) { try { closeSync(descriptor); } catch { /* Preserve original failure. */ } } }
+  }
+  try { process.stderr.write("Fixture diagnostic " + JSON.stringify(record) + "\n"); }
+  catch { /* Diagnostic I/O must not replace the original failure. */ }
+}
+function fixtureReadOwnerDiagnostic(descriptor: number | undefined, observed: { id: string; name: string; label: string } | undefined, group: number | undefined) {
+  if (descriptor === undefined) return { status: "unavailable", reason: "exclusive-file-not-created" };
   try {
-    process.stderr.write("Fixture diagnostic " + JSON.stringify({
-      event, time: Date.now(), pid: process.pid, ppid: process.ppid,
-      uid: process.getuid?.() ?? null, pgid, pidNamespace, identityError, details,
-    }) + "\n");
-  } catch { /* Diagnostic I/O must not replace the original failure. */ }
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o600 || stat.size <= 0 || stat.size > 16_384) return { status: "unavailable", reason: "file-identity-size-or-no-record" };
+    const bytes = Buffer.alloc(stat.size), count = readSync(descriptor, bytes, 0, bytes.length, 0);
+    if (count !== bytes.length || bytes.at(-1) !== 10) return { status: "unavailable", reason: "partial-read-or-record" };
+    const records = bytes.toString("utf8").trimEnd().split("\n").map(line => JSON.parse(line));
+    const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+    let limited = false;
+    const events: Record<string, unknown>[] = [];
+    for (const record of records) {
+      if (!object(record)) return { status: "rejected", reason: "record-shape" };
+      if (record.event === "telemetry-limit" && Object.keys(record).sort().join(",") === "event,status" && record.status === "unknown") { limited = true; continue; }
+      if (Object.keys(record).sort().join(",") !== "details,event,identityError,pgid,pid,pidNamespace,ppid,time,uid"
+        || typeof record.event !== "string" || !Object.hasOwn(fixtureDiagnosticFields, record.event) || !object(record.details)
+        || !Number.isSafeInteger(record.pid) || (record.pid as number) <= 0 || record.uid !== stat.uid
+        || !Number.isSafeInteger(record.ppid) || (record.ppid as number) < 0 || !Number.isSafeInteger(record.time)
+        || (record.pgid !== null && (!Number.isSafeInteger(record.pgid) || (record.pgid as number) <= 0))
+        || !(record.pidNamespace === null || (typeof record.pidNamespace === "string" && /^pid:\[\d+\]$/u.test(record.pidNamespace)))
+        || !(record.identityError === null || (typeof record.identityError === "string" && record.identityError.length <= 64))
+        || Object.keys(record.details).sort().join(",") !== [...fixtureDiagnosticFields[record.event]].sort().join(",")
+        || Object.values(record.details).some(value => value !== null && !(typeof value === "number" && Number.isSafeInteger(value)) && !(typeof value === "string" && Buffer.byteLength(value) <= 2051))) return { status: "rejected", reason: "record-shape" };
+      events.push(record);
+    }
+    const point = events.find(record => record.event === "fixture-stop-point"), binding = point?.details as Record<string, unknown> | undefined;
+    if (!point) return { status: "unbound", reason: "stop-point-unavailable", bytes: bytes.length, limited, completeness: "unknown", evidence: "self-reported-owned-process-observations", events };
+    if (!observed || !binding || binding.id !== observed.id || binding.name !== observed.name || binding.label !== observed.label
+      || !/^[a-f0-9]{64}$/u.test(observed.id) || observed.label !== `openlup-interruption-test=${observed.name.slice("openlup-outbox-interruption-".length)}`
+      || !/^openlup-outbox-interruption-[a-f0-9-]{36}$/u.test(observed.name)
+      || events.some(record => record.pid !== point.pid
+        || ((record.event as string).startsWith("cleanup-") && (record.details as Record<string, unknown>).resource !== observed.id))) return { status: "rejected", reason: "owner-or-resource-binding" };
+    return { status: "read", bytes: bytes.length, device: stat.dev, inode: stat.ino, limited,
+      completeness: "unknown", groupMatchesAtStopPoint: point.pgid === null ? null : point.pgid === group,
+      evidence: "self-reported-owned-process-observations", events };
+  } catch (error) { return { status: "unavailable", errorCode: (error as NodeJS.ErrnoException).code ?? "unavailable" }; }
 }
 function fixtureRemoveService(identity: string, name: string, label: string, environment: NodeJS.ProcessEnv) {
   // Repeated group TERM must not kill our bounded cleanup CLI between inspect
@@ -200,9 +263,9 @@ function fixturePublishJson(path: string, value: object) {
 
 async function fixtureStopPoint(stage: string, identity: object, signal: AbortSignal) {
   if (env.OPENLUP_FIXTURE_CANCEL_STAGE === stage && env.OPENLUP_FIXTURE_WITNESS) {
-    fixturePublishJson(env.OPENLUP_FIXTURE_WITNESS, identity);
     const owned = identity as { id?: string; name?: string; label?: string };
     fixtureDiagnostic("fixture-stop-point", { stage, id: owned.id, name: owned.name, label: owned.label });
+    fixturePublishJson(env.OPENLUP_FIXTURE_WITNESS, identity);
     await fixtureWait(() => false, signal, 45_000);
   }
 }
@@ -214,7 +277,10 @@ async function exerciseInterruption(mode: string, f: { target: string; packs: st
   delete environment.OPENLUP_PROOF_SERVICE_CONTAINER;
   delete environment.OPENLUP_PROOF_SERVICE_PORT;
   const docker = (args: string[]) => execFileSync("docker", args, { encoding: "utf8", env: environment, timeout: 30_000 }).trim();
-  const started = performance.now(), life = new AbortController(), interrupt = () => life.abort();
+  const started = performance.now(), life = new AbortController(), interrupt = (signal?: string) => {
+    life.abort();
+    if (env.OPENLUP_FIXTURE_WITNESS) fixtureDiagnostic("fixture-interrupt", { signal: signal ?? null });
+  };
   process.on("SIGTERM", interrupt); process.on("SIGINT", interrupt);
   let attemptedService = false;
   let container: string | undefined, launcher: ReturnType<typeof spawn> | undefined;
@@ -396,6 +462,10 @@ async function exerciseRootCancellation(stage: string, f: { target: string; pack
   const witness = join(f.target, "root-witness.json"), lock = join(f.target, "root-verify.lock"); mkdirSync(lock);
   const life = new AbortController(), interrupt = () => life.abort();
   process.on("SIGTERM", interrupt); process.on("SIGINT", interrupt);
+  let diagnosticDescriptor: number | undefined;
+  let ownerFile: object = { status: "unavailable", reason: "not-read" };
+  try { diagnosticDescriptor = openSync(`${witness}.owner-diagnostic.log`, "wx+", 0o600); }
+  catch (error) { ownerFile = { status: "unavailable", errorCode: (error as NodeJS.ErrnoException).code ?? "unavailable" }; }
   const child = spawn(process.execPath, [join(root, "scripts/run-vitest.mjs"), "run", "scripts/packages/outbox-consumer-proof.test.ts", "-t", "handles repeated interruption through package-group,"], {
     cwd: root, env: { ...env, VITEST_MAX_WORKERS: "1", OPENLUP_FIXTURE_CANCEL_STAGE: stage, OPENLUP_FIXTURE_WITNESS: witness }, detached: true, stdio: ["ignore", "pipe", "pipe"],
   });
@@ -477,13 +547,15 @@ async function exerciseRootCancellation(stage: string, f: { target: string; pack
     if (!groupExists()) rmSync(lock, { recursive: true, force: true });
     process.removeListener("SIGTERM", interrupt); process.removeListener("SIGINT", interrupt);
     if (cleanupErrors.length) failure = new AggregateError([failure, ...cleanupErrors].filter(Boolean), "Root fixture and cleanup failed");
+    if (failure && diagnosticDescriptor !== undefined) ownerFile = fixtureReadOwnerDiagnostic(diagnosticDescriptor, observed, child.pid);
+    if (diagnosticDescriptor !== undefined) { try { closeSync(diagnosticDescriptor); } catch { /* Telemetry cannot replace the original failure. */ } }
   }
   if (failure) {
     // One event-loop turn drains pending output after the original cleanup.
     // Never wait for pipe closure or change the original failure.
     await new Promise<void>(done => setImmediate(done));
     fixtureDiagnostic("root-cancellation-failed", {
-      stage, signalledGroup: child.pid, childExitCode: child.exitCode, childSignal: child.signalCode, control,
+      stage, signalledGroup: child.pid, childExitCode: child.exitCode, childSignal: child.signalCode, control, ownerFile,
       resource: observed && { id: observed.id, name: observed.name, label: observed.label,
         proofPid: observed.proofPid, descendantPid: observed.descendantPid },
       stdout: { tail: output.stdout.tail.toString("utf8"), droppedBytes: output.stdout.dropped, closed: output.stdout.closed },
