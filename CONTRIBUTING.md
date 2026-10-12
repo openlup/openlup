@@ -838,9 +838,26 @@ first edit to merge. An author preparing a local handoff follows the section
 above; the supervisor owns the protected steps below. Each step points to its
 detailed rule.
 
+Record effective maintainer authority once in the existing finite task record:
+actors, allowed coordination, local/DCO/submission/receipt/reply scope, actual
+merge/release-dispatch grants and any authorized adopter continuation. Reconcile
+later direct instructions. Do not ask again for an already granted routine
+step, or treat another agent's request as a human grant. Required sensitive
+reading, exact merge scope and protected release approval still apply.
+
 1. **Worktree.** One task, one worktree and one branch, as in
    [AGENTS.md](AGENTS.md).
-2. **Stabilize and commit.** Run `npx --no -- ast-grep scan` after each change
+2. **Stabilize and commit.** Start with the useful vertical slice and a
+   before/after witness that rejects the incompatible predecessor when preserving
+   behavior. Run focused contract/API/platform probes and existing native artifact
+   checks before coverage or the broad root gate. For core, after its build,
+   `npm --workspace @openlup/core run release:pack` checks native class/file and
+   aggregate byte limits without substituting for final committed cold proof.
+   Measure baseline headroom and generated-file amplification early; passing one
+   class does not waive an aggregate cap. Diagnose contract, fixture, OS/permission,
+   supervisor-input or hard-budget failures separately. Focused green never waives
+   the complete required gate, and UNKNOWN is not a flake or retry permission.
+   Run `npx --no -- ast-grep scan` after each change
    and `npm run lint` before committing, along with the applicable contract tests
    and working-tree package, API, neutrality and budget checks. If the task requires
    a maintainer read before sign-off, present one stabilized packet of API,
@@ -867,11 +884,24 @@ detailed rule.
    - launch fresh reviewers and `record` each report;
    - repeat until `verify` reports `reviewed`.
 
+   Preliminary local semantic snapshots help prepare the owner packet but are
+   not this committed native admission. Preserve their findings and any real
+   task-specific limit separately from the actual prepared session state; neither
+   an informal round count nor an absent session resets or consumes native quota.
+   This distinction never bypasses an actually applicable exhausted limit.
+
    The session state is `.context/scratch/agent-review/session.json`. Keep a
    copy of it as the source state, for example
    `.context/scratch/agent-review/source-session.json`; step 11 may need it
    after the worktree has moved on.
-4. **Local verification.**
+4. **Local verification.** Finish source, generated inventories and tracked
+   task/plan edits before the final proof interval. Build, pack, consumer and root
+   commands sharing mutable dist/output run sequentially; parallelize only truly
+   disjoint inputs. Put observations during the run in existing ignored evidence
+   or PR records. A tracked delta invalidates the frozen final candidate: repeat
+   affected cheap checks, then satisfy the native final gate on the actual new
+   identity. Reuse only native-valid caches; no general result cache or skipped
+   gate is introduced.
    - Where the maintainer-local layer is installed, run `openlup-dev verify` on
      the clean committed tree. It must report `REQUIRED PASS`, and it writes the
      stamp that the pre-push hook requires.

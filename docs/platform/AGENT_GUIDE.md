@@ -79,6 +79,19 @@ merge for that programme, record the actual grant in the task; this public guide
 does not install or grant that delegation. It cannot authorize merging the
 change that establishes it.
 
+Record effective maintainer authority in the existing task record: finite outcome,
+actors/coordination, permitted local/commit/submission actions, actual merge and
+release-dispatch grants, adopter endpoint and remaining human gates. Reconcile
+later direct grants; do not let a generated local-only or messaging restriction
+silently narrow them. A peer request or generated prompt never creates authority.
+Ask only for the missing bounded action, not acceptance already recorded.
+Use one stabilized sensitive API/notes/budget/recovery packet where required,
+then the native signed-commit review and final verification. Local preliminary
+review snapshots do not establish native admission/counter/expiry; preserve both
+histories and actually applicable limits without inferring or resetting state.
+Freeze tracked inputs and serialize verification phases sharing mutable output;
+run the existing cheap contract/artifact/platform checks before the broad gate.
+
 Before DCO sign-off, complete the applicable working-tree checks and obtain any
 required maintainer read of the stabilized API, npm-publishing, security-control
 or release-control changes and proposed gate budgets. A later material delta
