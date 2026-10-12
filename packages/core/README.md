@@ -199,7 +199,7 @@ neutrality evidence, not package activation or consumer compatibility evidence.
 
 ## Kernel Documentation
 
-<!-- openlup-doc-impact {"unit":"core","digest":"sha256-4cbbfc0be291fa6ce550be48f3dafb7c9db6f474d8679ea1f66f8fd2a9947a9a","reason":"The core manifest and own lockfile move from 0.13.0 to 0.13.1 as part of the complete recovery set. API snapshots, exports, dependency resolutions, runtime behavior and package gates are unchanged; no application composition or verification step changes."} -->
+<!-- openlup-doc-impact {"unit":"core","digest":"sha256-09e3df57d5021bc7edebe553c8811ffd94436bf3e0c70d981b9cedbd36782e3a","reason":"The manifest and own lockfile move from 0.13.1 to 0.14.0 for the coherent MINOR set. API, runtime, dependency resolutions and package gates are unchanged in this preparation delta; the grouped schema helpers are already documented here."} -->
 
 - [`docs/SUBSCRIPTION_ENGINE.md`](docs/SUBSCRIPTION_ENGINE.md) — what the
   `./subscription` kernel owns, its deterministic-clock contract, the

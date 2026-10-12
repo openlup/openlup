@@ -88,7 +88,7 @@ handling.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-c16825c44228a1ec470d1953052bf04c4c72bee072fbcfed7821a6f55213dea1","reason":"The workspace lockfile changes only the core and outbox versions and the exact core peer pin from 0.13.0 to 0.13.1. Dependency resolutions, install commands and required contributor checks remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-9788de355decd3eaca0cad174782917cecedd8459abd92c84fcfd351c1426282","reason":"The workspace lockfile changes only Core and Outbox versions and the exact Core peer pin from 0.13.1 to 0.14.0. Dependency resolutions, install commands and required contributor checks remain unchanged."} -->
 
 The bounded SQL RLS recovery uses existing owner cycles only: a separately
 reviewed contraction control precedes the corrected managed forward. Its exact
