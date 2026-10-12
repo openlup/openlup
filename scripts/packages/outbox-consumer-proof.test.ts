@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +33,7 @@ function rehash(packs: string) {
 function fixture() {
   const target = realpathSync(mkdtempSync(join(scratch, "fixture-"))), packs = join(target, "packs"); cpSync(basePacks, packs, { recursive: true });
   // This is a test-input subset, with no checkout or Git identity. Tooling is explicit.
-  const files = ["config/openlup-packages.json", "packages/core/package.json", "packages/outbox/package.json", "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
+  const files = ["config/openlup-packages.json", "packages/core/package.json", "packages/outbox/package.json", "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
   for (const file of files) { mkdirSync(dirname(join(target, file)), { recursive: true }); cpSync(join(root, file), join(target, file)); }
   writeFileSync(join(target, "package.json"), '{"type":"module","workspaces":["packages/core","packages/outbox"]}\n'); mkdirSync(join(target, "node_modules"));
   cpSync(join(root, "node_modules/zod"), join(target, "node_modules/zod"), { recursive: true });
@@ -113,7 +113,7 @@ function fixtureDriver(f: ReturnType<typeof fixture>, operation: string, mode: s
     'import assert from "node:assert/strict";',
     'import {execFileSync, spawn, spawnSync} from "node:child_process";',
     'import {randomUUID} from "node:crypto";',
-    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from "node:fs";',
+    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, renameSync} from "node:fs";',
     'import {join} from "node:path";',
     'import {isolatedConsumerEnv} from "./scripts/packages/pack-manifest-input.ts";',
     `const env = isolatedConsumerEnv(), commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, POSTGRES_PROOF_IMAGE = ${JSON.stringify(POSTGRES_PROOF_IMAGE)};`,
@@ -143,6 +143,10 @@ it.each(["service-created", "proof-ready"] as const)("cleans its owned resources
   await driverCompletion(fixtureDriver(fixture(), "exerciseRootCancellation", stage));
 }, 120_000);
 
+it.each(["inspect-term", "remove-term", "remove-after-effect", "second-term", "cross-phase-term", "wrong-owner", "nonzero", "timeout", "deadline"] as const)("retains owned cleanup effects, refusal and original budget after %s", async mode => {
+  await driverCompletion(fixtureDriver(fixture(), "exerciseCleanupRecovery", mode));
+}, 60_000);
+
 async function fixtureWait(ready: () => boolean, signal: AbortSignal | undefined, timeout: number, check?: () => void) {
   const deadline = performance.now() + timeout;
   while (!ready()) {
@@ -154,19 +158,53 @@ async function fixtureWait(ready: () => boolean, signal: AbortSignal | undefined
   if (signal?.aborted) throw new Error("Fixture interrupted");
 }
 function fixtureRemoveService(identity: string, name: string, label: string, environment: NodeJS.ProcessEnv) {
-  // Repeated group TERM must not kill our bounded cleanup CLI between inspect
-  // and remove. The owner stays in the group; only these synchronous CLIs detach.
-  const inspected = spawnSync("docker", ["inspect", identity], { env: environment, encoding: "utf8", timeout: 10_000, detached: true });
-  if (inspected.status !== 0 && inspected.stderr.toLowerCase().includes("no such object")) return;
-  assert.equal(inspected.status, 0, inspected.stderr);
-  const info = JSON.parse(inspected.stdout)[0], separator = label.indexOf("=");
-  assert.equal(info.Name, `/${name}`); assert.match(info.Id, /^[a-f0-9]{64}$/u);
-  assert.equal(info.Config.Labels[label.slice(0, separator)], label.slice(separator + 1));
-  assert.equal(spawnSync("docker", ["rm", "--force", info.Id], { env: environment, encoding: "utf8", timeout: 10_000, detached: true }).status, 0);
+  // A TERM may reach a child before detachment. Recover at most once in this
+  // finite two-TERM fixture, without extending either original 10-second phase.
+  let recovered = false;
+  const run = (args: string[], deadline: number) => {
+    const remaining = Math.floor(deadline - performance.now());
+    assert.ok(remaining > 0, "Fixture cleanup operation deadline");
+    const options: { env: NodeJS.ProcessEnv; encoding: "utf8"; timeout: number; detached: boolean } = {
+      env: environment, encoding: "utf8", timeout: remaining, detached: true,
+    };
+    const result = spawnSync("docker", args, options);
+    if (result.error) throw result.error;
+    return result;
+  };
+  const terminated = (result: ReturnType<typeof run>) => result.status === null && result.signal === "SIGTERM" && result.error === undefined;
+  const absent = (result: ReturnType<typeof run>) => result.status !== null && result.status !== 0
+    && result.signal === null && result.error === undefined && result.stderr.toLowerCase().includes("no such object");
+  const checked = (result: ReturnType<typeof run>) => {
+    assert.equal(result.status, 0, result.stderr); assert.equal(result.signal, null);
+    const info = JSON.parse(result.stdout)[0], separator = label.indexOf("=");
+    assert.equal(info.Name, `/${name}`); assert.match(info.Id, /^[a-f0-9]{64}$/u);
+    assert.equal(info.Config.Labels[label.slice(0, separator)], label.slice(separator + 1));
+    return info;
+  };
+  const inspectDeadline = performance.now() + 10_000;
+  let inspected = run(["inspect", identity], inspectDeadline);
+  if (terminated(inspected)) { recovered = true; inspected = run(["inspect", identity], inspectDeadline); }
+  if (absent(inspected)) return;
+  const info = checked(inspected), removalDeadline = performance.now() + 10_000;
+  let removed = run(["rm", "--force", info.Id], removalDeadline);
+  if (!recovered && terminated(removed)) {
+    recovered = true;
+    const observed = run(["inspect", info.Id], removalDeadline);
+    if (absent(observed)) return; // Actual Docker absence, never TERM-as-success.
+    const current = checked(observed); assert.equal(current.Id, info.Id);
+    removed = run(["rm", "--force", current.Id], removalDeadline);
+  }
+  assert.equal(removed.status, 0);
 }
+function fixturePublishJson(path: string, value: object) {
+  const temporary = `${path}.tmp`;
+  writeFileSync(temporary, JSON.stringify(value));
+  renameSync(temporary, path);
+}
+
 async function fixtureStopPoint(stage: string, identity: object, signal: AbortSignal) {
   if (env.OPENLUP_FIXTURE_CANCEL_STAGE === stage && env.OPENLUP_FIXTURE_WITNESS) {
-    writeFileSync(env.OPENLUP_FIXTURE_WITNESS, JSON.stringify(identity));
+    fixturePublishJson(env.OPENLUP_FIXTURE_WITNESS, identity);
     await fixtureWait(() => false, signal, 45_000);
   }
 }
@@ -273,9 +311,10 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
   writeFileSync(shim, `#!${process.execPath}
 ` + [
     'import { spawnSync } from "node:child_process";',
-    'import { readFileSync, writeFileSync } from "node:fs";',
+    'import { readFileSync, writeFileSync, renameSync } from "node:fs";',
     'import { argv } from "node:process";',
     'const args = argv.slice(2);',
+    'const publish = (path, value) => { writeFileSync(path + ".tmp", JSON.stringify(value)); renameSync(path + ".tmp", path); };',
     `const mode = ${JSON.stringify(mode)}, effect = ${JSON.stringify(effect)}, attempted = ${JSON.stringify(attempted)};`,
     'const create = args.at(-1)?.match(/^CREATE DATABASE (openlup_outbox_proof_[a-f0-9]{32})$/);',
     'const cleanup = mode.startsWith("cleanup-");',
@@ -285,16 +324,16 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
     'const name = args[args.indexOf("--name") + 1], labelAt = args.indexOf("--label");',
     'if (intercepted && mode === "container-owner-mismatch") args[labelAt + 1] += "-different-owner";',
     'const record = { name, label: args[labelAt + 1], database: create?.[1] };',
-    'if (intercepted || (cleanup && args[0] === "run")) writeFileSync(attempted, JSON.stringify(record));',
+    'if (intercepted || (cleanup && args[0] === "run")) publish(attempted, record);',
     'if (cleanupStep) {',
     ' const owned = mode === "cleanup-drop" ? {database: drop[1]} : JSON.parse(readFileSync(attempted, "utf8"));',
     ' process.on("SIGTERM", () => process.exit(143));',
-    ' writeFileSync(effect, JSON.stringify({...owned, id: args[0] === "rm" ? args.at(-1) : args[1]}));',
+    ' publish(effect, {...owned, id: args[0] === "rm" ? args.at(-1) : args[1]});',
     ' await new Promise(done => setTimeout(done, 800));',
     '}',
     `const result = spawnSync(${JSON.stringify(realDocker)}, args, { encoding: "utf8", timeout: 30000 });`,
     'if (intercepted && result.status === 0) {',
-    ' writeFileSync(effect, JSON.stringify({ ...record, id: result.stdout.trim() }));',
+    ' publish(effect, { ...record, id: result.stdout.trim() });',
     ' process.on("SIGTERM", () => process.exit(143)); setInterval(() => {}, 1000);',
     '} else { process.stdout.write(result.stdout || ""); process.stderr.write(result.stderr || ""); process.exit(result.status ?? 1); }',
   ].join("\n")); chmodSync(shim, 0o700);
@@ -351,6 +390,66 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
     } catch (error) { cleanupErrors.push(error); }
     process.removeListener("SIGTERM", interrupt); process.removeListener("SIGINT", interrupt);
     if (cleanupErrors.length) failure = new AggregateError([failure, ...cleanupErrors].filter(Boolean), "Fixture and cleanup failed");
+  }
+  if (failure) throw failure;
+}
+
+async function exerciseCleanupRecovery(mode: string, f: { target: string; packs: string }) {
+  const owner = randomUUID(), name = `openlup-cleanup-recovery-${owner}`, label = `openlup-cleanup-recovery=${owner}`;
+  const realDocker = execFileSync("which", ["docker"], { env, encoding: "utf8" }).trim();
+  const environment = { ...env }; delete environment.OPENLUP_PROOF_SERVICE_CONTAINER; delete environment.OPENLUP_PROOF_SERVICE_PORT;
+  const tools = join(f.target, "cleanup-tools"), calls = join(f.target, "cleanup-calls.json"); mkdirSync(tools);
+  const shim = join(tools, "docker");
+  writeFileSync(shim, `#!${process.execPath}\n` + [
+    'import {spawnSync} from "node:child_process";',
+    'import {existsSync,readFileSync,writeFileSync,renameSync} from "node:fs";',
+    'import {argv} from "node:process";',
+    `const mode=${JSON.stringify(mode)}, marker=${JSON.stringify(calls)}, docker=${JSON.stringify(realDocker)};`,
+    'const args=argv.slice(2), calls=existsSync(marker)?JSON.parse(readFileSync(marker,"utf8")):[];',
+    'calls.push(args[0]); writeFileSync(marker+".tmp",JSON.stringify(calls)); renameSync(marker+".tmp",marker);',
+    'const count=calls.length;',
+    'const term=()=>process.kill(process.pid,"SIGTERM");',
+    'if ((mode==="inspect-term" && count===1) || (mode==="second-term" && count<=2) || (mode==="cross-phase-term" && (count===1 || count===3)) || ((mode==="remove-term" || mode==="wrong-owner") && count===2)) term();',
+    'else if (mode==="nonzero" && count===1) {process.stderr.write("FIXTURE_INSPECT_REFUSAL");process.exit(2);}',
+    'else if (mode==="timeout" && count===1) setInterval(()=>{},1000);',
+    'else if (mode==="deadline" && count===1) setTimeout(term,4000);',
+    'else if (mode==="deadline" && count===2) setInterval(()=>{},1000);',
+    'else {',
+    ' const result=spawnSync(docker,args,{encoding:"utf8",timeout:10000});',
+    ' if(result.error)throw result.error;',
+    ' if(mode==="remove-after-effect" && count===2){if(result.status!==0)throw new Error("Fixture removal setup failed");term();}',
+    ' else if(mode==="wrong-owner" && count===3){if(result.status!==0)throw new Error("Fixture inspect setup failed");const info=JSON.parse(result.stdout);info[0].Config.Labels["openlup-cleanup-recovery"]="not-the-owner";process.stdout.write(JSON.stringify(info));}',
+    ' else {process.stdout.write(result.stdout);process.stderr.write(result.stderr);process.exit(result.status??1);}',
+    '}',
+  ].join("\n")); chmodSync(shim, 0o755);
+  const supplied = { ...environment, PATH: `${tools}:${environment.PATH}` };
+  const life = new AbortController(), interrupt = () => life.abort();
+  process.on("SIGTERM", interrupt); process.on("SIGINT", interrupt);
+  let container: string | undefined, attempted = false, failure: unknown;
+  try {
+    attempted = true;
+    container = execFileSync(realDocker, ["run", "--detach", "--rm", "--name", name, "--label", label, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE], { env: environment, encoding: "utf8", timeout: 30_000 }).trim();
+    if (life.signal.aborted) throw new Error("Fixture interrupted");
+    let refused: unknown; const started = performance.now();
+    try { fixtureRemoveService(container, name, label, supplied); } catch (error) { refused = error; }
+    const elapsed = performance.now() - started;
+    const observed = JSON.parse(readFileSync(calls, "utf8"));
+    const expected: Record<string, string[]> = {
+      "inspect-term": ["inspect", "inspect", "rm"], "remove-term": ["inspect", "rm", "inspect", "rm"],
+      "remove-after-effect": ["inspect", "rm", "inspect"], "second-term": ["inspect", "inspect"], "cross-phase-term": ["inspect", "inspect", "rm"],
+      "wrong-owner": ["inspect", "rm", "inspect"], "nonzero": ["inspect"], "timeout": ["inspect"], "deadline": ["inspect", "inspect"],
+    };
+    assert.deepEqual(observed, expected[mode]);
+    const positive = ["inspect-term", "remove-term", "remove-after-effect"].includes(mode);
+    if (positive) assert.equal(refused, undefined); else assert.ok(refused);
+    if (mode === "timeout" || mode === "deadline") { assert.equal((refused as NodeJS.ErrnoException).code, "ETIMEDOUT"); assert.ok(elapsed < 13_000, "Original 10-second operation budget was reset"); }
+    const residual = spawnSync(realDocker, ["inspect", container], { env: environment, encoding: "utf8", timeout: 30_000 });
+    assert.equal(residual.status === 0, !positive);
+    if (positive) assert.ok(residual.stderr.toLowerCase().includes("no such object"));
+  } catch (error) { failure = error; } finally {
+    try { if (attempted) fixtureRemoveService(container ?? name, name, label, environment); }
+    catch (error) { failure = new AggregateError([failure, error].filter(Boolean), "Recovery fixture and cleanup failed"); }
+    process.removeListener("SIGTERM", interrupt); process.removeListener("SIGINT", interrupt);
   }
   if (failure) throw failure;
 }

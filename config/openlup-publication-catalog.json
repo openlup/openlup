@@ -2054,6 +2054,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/outbox/smoke/groupedSchemaProof.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/outbox/smoke/schemaProof.ts",
       "class": "public-output"
     },

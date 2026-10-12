@@ -206,7 +206,7 @@ export interface ReadinessReport {
 ```ts
 import type { ReadinessInput, ReadinessReport } from "./contracts.js";
 export * from "./contracts.js";
-export { schemaObjectKey, buildSchemaObjectProbe, createSchemaProbe } from "./schemaProbe.js";
+export { schemaObjectKey, buildSchemaObjectProbe, createSchemaProbe, buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows, type PostgresSchemaCatalogEntry } from "./schemaProbe.js";
 /** @beta Evaluates supplied facts; never performs migration or effect work. */
 export declare function checkReadiness(input: ReadinessInput): Promise<ReadinessReport>;
 ```
@@ -226,4 +226,17 @@ export declare function createSchemaProbe(executor: SqlExecutor, identity: (requ
     database: string;
     version: string | null;
 }>): SchemaProbePort;
+/** @beta An ordered catalog observation, not proof of behavior or authorization. */
+export type PostgresSchemaCatalogEntry = {
+    object: SchemaObject;
+    present: boolean;
+    shape: Readonly<Record<string, unknown>> | null;
+};
+/** @beta One parameterized PostgreSQL catalog read; the host owns execution and snapshot. */
+export declare function buildGroupedPostgresSchemaProbe(objects: readonly SchemaObject[]): {
+    text: string;
+    values: readonly unknown[];
+};
+/** @beta Refuses incomplete or malformed observations without exposing catalog bodies. */
+export declare function decodeGroupedPostgresSchemaRows(objects: readonly SchemaObject[], rows: readonly Record<string, unknown>[]): readonly PostgresSchemaCatalogEntry[];
 ```
