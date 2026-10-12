@@ -578,6 +578,33 @@ on the `preview` dist-tag. Later source previews are optional snapshots with no
 package. The first set was `0.12.0`. No package version implies a stable API or a
 supported upgrade path, and the version model at 1.0 is not decided.
 
+### Task authority, verification and adopter continuation
+
+The finite task record names actual implementation/submission/merge and
+release-dispatch grants; generated plans and reviews grant none. Collect required
+sensitive API/Migration/budget/recovery reading in one stabilized packet before
+DCO, without repeating an acceptance after immaterial identity updates. A later
+material delta returns to its native decision. An implementation/set-preparation
+combined PR requires the explicitly accepted route above; it is not selected by
+a general instruction to work autonomously. Merging still publishes nothing.
+
+Check the existing artifact limits after the first useful slice, before expensive
+final proof. Freeze tracked source/generated/task inputs and serialize rebuilds
+sharing package outputs. Preserve actual review/repair history and failed attempts;
+local preliminary snapshots are not committed native admission. No cap increase,
+new retry or weaker control is implied by better ordering.
+
+After publication, verify every publishable package from the exact release
+commit's inventory: immutable release/tag, actual fetched-byte integrity, signed
+source/workflow provenance and registry consumption. A successful job or matching
+latest metadata alone is insufficient. Use existing per-package verification until
+an aggregate verifier has actually been demonstrated; no new verifier is claimed
+here. Through an actual coordination grant, send that complete receipt to an
+already authorized adopter task. It independently revalidates receipt/scope and
+continues without another continuation prompt or dependency-bot timing. Unknown
+or partial publication holds the dependent transition; missing adopter authority
+is not created by the message. No production action is granted.
+
 A release takes three steps:
 
 1. **Release preparation.** An ordinary reviewed pull request, either a separate
