@@ -262,7 +262,7 @@
     }
   },
   "pack": {
-    "$budgetReason": "2026-10-05, owner-approved shared-contract growth: seven new source files add 21 source/runtime/declaration artifacts. The measured contribution has 198 code files, 15 above the prior cap, and 127202 code gzip bytes. The code budget is 131072 bytes/198 files; documentation stays at 24576 bytes/12 files. The total budget is 155648 packed bytes/655360 unpacked bytes/211 files, including the shipped documentation outside the root-file class. These bounded increases cover the outbox envelope, candidate-readiness and Standard Schema contracts; later growth still requires a measured budget decision.",
+    "$budgetReason": "2026-10-12 owner-approved bounded decision: additive grouped PostgreSQL catalog probes preserve the native jsonb text contract. Public base380edbd measures154118 packed/652616 unpacked bytes; corrected contribution measures158572/666908. Aggregate155KiB packed/652KiB unpacked is the smallest KiB-aligned headroom that fits the measured contribution; code/docs class ceilings, all file ceilings, required artifacts and other controls remain unchanged. Re-measure the exact approved candidate before DCO/delivery; this proposal grants no release authority. Later growth still requires a measured budget decision.",
     "code": {
       "maxPackedBytes": 131072,
       "maxFiles": 198
@@ -271,8 +271,8 @@
       "maxPackedBytes": 24576,
       "maxFiles": 12
     },
-    "maxPackedBytes": 155648,
-    "maxUnpackedBytes": 655360,
+    "maxPackedBytes": 158720,
+    "maxUnpackedBytes": 667648,
     "maxFiles": 211,
     "requiredFiles": [
       "AGENTS.md",

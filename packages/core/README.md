@@ -23,6 +23,56 @@ package together.
 
 The experimental `./outbox`, `./standard-schema` and `./readiness` subpaths provide shared infrastructure contracts. `checkReadiness` evaluates inert contribution descriptors, the complete host-observed package set, actual host bindings (schedule/route function identity must match the contribution) and a bounded schema probe. It never migrates, leases or sends. Only `ready` admits a new candidate; `unknown` and `unsatisfied` leave the serving candidate in place. The host owns inventory completeness, immutable artifact/configuration/schema identity and admission at every work entrance. Catalog existence does not prove SQL bodies, permissions or provider recovery.
 
+For PostgreSQL catalog inspection, import `buildGroupedPostgresSchemaProbe`,
+`decodeGroupedPostgresSchemaRows` and `PostgresSchemaCatalogEntry` from
+`@openlup/core/readiness`. The builder accepts the existing `SchemaObject`
+identities and returns one SQL statement with bound values. Tables use
+`to_regclass` and must be ordinary or partitioned; columns split the final name
+component exactly as the scalar builder does and exclude system/dropped
+attributes; functions use `to_regprocedure` with the exact signature (omission
+means zero arguments). PostgreSQL retains responsibility for name resolution
+and invalid-name errors. Duplicate requests retain separate one-based integer
+ordinals; an empty request executes a valid empty catalog read.
+
+Rows carry `ordinal`, boolean `present` and `shape`. The decoder requires exactly
+one row per input, in ordinal order. Legitimate absence is `false` with SQL
+`NULL`; presence requires nonempty JSON text parsing to a nonnull, nonarray object.
+Parsed driver objects are refused.
+Missing, extra, duplicate, reordered or noninteger ordinals, malformed presence,
+inconsistent absence and invalid/nonobject JSON throw a bounded generic error
+without catalog bodies. Extra row columns are ignored. JSON.parse property and
+nested array order are retained without sorting, canonicalization or rebuilding; input objects and
+rows are not mutated. Database/driver errors propagate to the host.
+
+Each shape is `pg_catalog.jsonb_build_object(...)::text`, retaining PostgreSQL
+jsonb field ordering as parsed by the consumer. Shape fields are: functions expose `definition`, `owner`,
+`acl`, `config`, `securityDefiner`, `volatility`; tables expose `kind`, `owner`,
+`acl`, `rls`, `forceRls`, `constraints`, `indexes`, `triggers`, `policies`; columns
+expose `type`, `notNull`, `identity`, `generated`, `default`, `acl`. Catalog nulls
+are retained. Constraint/index/noninternal-trigger aggregates contain definition
+strings ordered by constraint name, index OID cast to regclass text or trigger
+name, and remain null when empty. Policies use `pg_catalog.pg_policy`, ordered
+by policy name, with `name`, raw role OID array `roles`, command code `cmd`,
+boolean `permissive`, and expression strings/nulls `qual`, `check`; the aggregate
+remains null when empty. Definitions come from PostgreSQL's `pg_get_*` functions
+and column types from `format_type`.
+
+The host executes and decodes the query through its own driver and owns
+connection/TLS/role, any `READ ONLY REPEATABLE READ` snapshot, requirements,
+independently observed identity and migration ledgers, digest policy,
+invalidation and admission. Catalog shapes do not establish SQL behavior,
+effective grants, recovery or authorization. The grouped helpers add no I/O,
+transaction, retry or deadline and do not change `createSchemaProbe`,
+`SchemaObservation` or readiness codes. A host maps decoder/driver failures to
+its existing unknown policy. Focused decoder tests extend the existing
+standalone readiness suite. Actual installed-tarball SQL and shape-order proof
+runs in the existing Outbox disposable PostgreSQL tier in the source repository.
+
+Contributor package verification keeps the existing code/docs class and file
+ceilings. The grouped catalog addition uses the measured, owner-approved
+aggregate budgets in `release-gates.json`; later growth still needs its own
+measured budget decision. Passing a local pack does not authorize publication.
+
 ## Package Surface Maturity
 
 Every current export is an internal candidate, experimental kernel, or testing

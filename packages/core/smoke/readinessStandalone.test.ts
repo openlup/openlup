@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkReadiness, createSchemaProbe, buildSchemaObjectProbe, type ReadinessInput } from "../src/readiness/index.js";
+import { checkReadiness, createSchemaProbe, buildSchemaObjectProbe, buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows, type SchemaObject, type ReadinessInput } from "../src/readiness/index.js";
 const handler = { eventType: "example.ready", timeoutMs: 100 };
 const run = () => undefined;
 function input(): ReadinessInput {
@@ -101,4 +101,60 @@ describe("candidate readiness", () => {
     expect((await checkReadiness(i)).state).toBe("ready");
   });
 
+});
+
+const objects: readonly SchemaObject[] = Object.freeze([
+  Object.freeze({ kind: "table", name: "public.example" }),
+  Object.freeze({ kind: "column", name: "public.example.value" }),
+  Object.freeze({ kind: "function", name: "public.example_read", signature: "integer,text" }),
+]);
+describe("grouped PostgreSQL schema catalog", () => {
+  it("binds scalar identities without interpolation and retains duplicates", () => {
+    const hostile: SchemaObject = { kind: "table", name: "example'); select 1; --" };
+    const query = buildGroupedPostgresSchemaProbe([...objects, objects[0], hostile]);
+    expect(query.values).toEqual([
+      ["table", "column", "function", "table", "table"],
+      ["public.example", "public.example", "public.example_read(integer,text)", "public.example", hostile.name],
+      [null, "value", null, null, null],
+    ]);
+    expect(query.text).not.toContain(hostile.name);
+    expect(buildGroupedPostgresSchemaProbe([{ kind: "function", name: "example" }]).values[1]).toEqual(["example()"]);
+    expect(buildGroupedPostgresSchemaProbe([{ kind: "column", name: "value" }]).values).toEqual([["column"], [""], ["value"]]);
+  });
+  it("accepts empty results only for empty requests", () => {
+    expect(buildGroupedPostgresSchemaProbe([]).values).toEqual([[], [], []]);
+    expect(decodeGroupedPostgresSchemaRows([], [])).toEqual([]);
+    expect(() => decodeGroupedPostgresSchemaRows([], [{ ordinal: 1, present: false, shape: null }])).toThrow();
+  });
+  it("preserves JSON.parse key and nested order without rebuilding shapes or mutating inputs", () => {
+    const shape = '{"z":[{"b":2,"a":1}],"a":null}';
+    const rows = Object.freeze([
+      Object.freeze({ ordinal: 1, present: true, shape, extra: "ignored" }),
+      Object.freeze({ ordinal: 2, present: true, shape: '{"a":null,"z":[{"a":1,"b":2}]}' }),
+      Object.freeze({ ordinal: 3, present: false, shape: null }),
+    ]);
+    const decoded = decodeGroupedPostgresSchemaRows(objects, rows);
+    expect(JSON.stringify(decoded[0].shape)).toBe(shape);
+    expect(JSON.stringify(decoded[1].shape)).toBe(rows[1].shape);
+    expect(decoded[0].object).toBe(objects[0]);
+    expect(decoded[2]).toEqual({ object: objects[2], present: false, shape: null });
+    expect(decodeGroupedPostgresSchemaRows([objects[0], objects[0]], [rows[0], { ...rows[0], ordinal: 2 }])).toHaveLength(2);
+  });
+  it.each([
+    [], [{ ordinal: 1, present: false, shape: null }, { ordinal: 2, present: false, shape: null }],
+    [null], [{ ordinal: 0, present: false, shape: null }], [{ ordinal: 2, present: false, shape: null }],
+    [{ ordinal: 1.5, present: false, shape: null }], [{ ordinal: "1", present: false, shape: null }],
+    [{ ordinal: NaN, present: false, shape: null }], [{ ordinal: Infinity, present: false, shape: null }],
+    [{ ordinal: 1, present: null, shape: null }], [{ ordinal: 1, present: "true", shape: {} }],
+    [{ ordinal: 1, present: false, shape: {} }], [{ ordinal: 1, present: false, shape: "null" }],
+    [{ ordinal: 1, present: true, shape: null }], [{ ordinal: 1, present: true }],
+    ...["", "   ", "private-body", "null", "[]", "42", '"private-body"', "true", {}, [], 42, true].map(shape => [{ ordinal: 1, present: true, shape }]),
+  ])("refuses malformed rows with a bounded generic error: %#", (...rows) => {
+    expect(() => decodeGroupedPostgresSchemaRows([objects[0]], rows as never)).toThrow("Invalid grouped PostgreSQL schema rows");
+  });
+  it("rejects missing, extra, duplicate and reordered ordinals at full cardinality", () => {
+    for (const ordinals of [[1, 1, 3], [2, 1, 3], [1, 2, 4]]) {
+      expect(() => decodeGroupedPostgresSchemaRows(objects, ordinals.map(ordinal => ({ ordinal, present: false, shape: null })))).toThrow();
+    }
+  });
 });

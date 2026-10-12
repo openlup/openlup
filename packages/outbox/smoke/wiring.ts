@@ -12,6 +12,7 @@ import { createSchemaProbe, schemaObjectKey } from "@openlup/core/readiness";
 import { createReferenceOutbox } from "./referenceContribution.js";
 import { admitReferenceOutbox } from "./candidateAdmission.js";
 import { proveSchemaReadiness } from "./schemaProof.mjs";
+import { proveGroupedSchema } from "./groupedSchemaProof.mjs";
 export async function prove(pool, observer) {
   await proveSchemaReadiness(); // Fake queued work is settled and real timers restored before SQL.
   const require = createRequire(import.meta.url);
@@ -21,6 +22,7 @@ export async function prove(pool, observer) {
   const sqlHash=createHash("sha256").update(sql).digest("hex");
   assert.equal(sqlHash,sqlManifest.migrations[0].sha256);
   await pool.query(sql);
+  await proveGroupedSchema(pool, POSTGRES_OUTBOX_SCHEMA.objects);
   await pool.query("create table public.synthetic_migration_ledger (version text not null, hash text not null)");
   await pool.query("insert into public.synthetic_migration_ledger values ($1,$2)",[sqlManifest.version,sqlHash]);
   const applied=async()=>{const r=(await pool.query("select current_database() as database, version, hash from public.synthetic_migration_ledger")).rows[0];assert.equal(r.hash,sqlHash);return r;};

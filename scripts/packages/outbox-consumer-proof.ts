@@ -74,7 +74,7 @@ try {
     const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
     writeFileSync(join(consumer, `${name}.js`), compiled);
   }
-  for (const name of ["wiring", "schemaProof"]) writeFileSync(join(consumer, `${name}.mjs`), readFileSync(join(root, "packages/outbox/smoke", `${name}.ts`)));
+  for (const name of ["wiring", "schemaProof", "groupedSchemaProof"]) writeFileSync(join(consumer, `${name}.mjs`), readFileSync(join(root, "packages/outbox/smoke", `${name}.ts`)));
   writeFileSync(join(consumer, "schema-budget-proof.mjs"), readFileSync(join(root, "scripts/packages/schema-budget-proof.mjs")));
   const require = createRequire(import.meta.url);
   writeFileSync(join(consumer, "run.mjs"), `import pg from ${JSON.stringify(pathToFileURL(require.resolve("pg")).href)};\nimport { prove } from "./wiring.mjs";\nconst pool = new pg.Pool({ connectionString: process.argv[2], max: 4 });\nconst observer = new pg.Pool({ connectionString: process.argv[2], max: 2 });\ntry { await prove(pool, observer); } finally { await Promise.all([pool.end(), observer.end()]); }\n`);

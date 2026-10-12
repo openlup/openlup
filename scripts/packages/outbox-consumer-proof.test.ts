@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +33,7 @@ function rehash(packs: string) {
 function fixture() {
   const target = realpathSync(mkdtempSync(join(scratch, "fixture-"))), packs = join(target, "packs"); cpSync(basePacks, packs, { recursive: true });
   // This is a test-input subset, with no checkout or Git identity. Tooling is explicit.
-  const files = ["config/openlup-packages.json", "packages/core/package.json", "packages/outbox/package.json", "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
+  const files = ["config/openlup-packages.json", "packages/core/package.json", "packages/outbox/package.json", "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
   for (const file of files) { mkdirSync(dirname(join(target, file)), { recursive: true }); cpSync(join(root, file), join(target, file)); }
   writeFileSync(join(target, "package.json"), '{"type":"module","workspaces":["packages/core","packages/outbox"]}\n'); mkdirSync(join(target, "node_modules"));
   cpSync(join(root, "node_modules/zod"), join(target, "node_modules/zod"), { recursive: true });
@@ -113,7 +113,7 @@ function fixtureDriver(f: ReturnType<typeof fixture>, operation: string, mode: s
     'import assert from "node:assert/strict";',
     'import {execFileSync, spawn, spawnSync} from "node:child_process";',
     'import {randomUUID} from "node:crypto";',
-    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from "node:fs";',
+    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, renameSync} from "node:fs";',
     'import {join} from "node:path";',
     'import {isolatedConsumerEnv} from "./scripts/packages/pack-manifest-input.ts";',
     `const env = isolatedConsumerEnv(), commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, POSTGRES_PROOF_IMAGE = ${JSON.stringify(POSTGRES_PROOF_IMAGE)};`,
@@ -164,9 +164,15 @@ function fixtureRemoveService(identity: string, name: string, label: string, env
   assert.equal(info.Config.Labels[label.slice(0, separator)], label.slice(separator + 1));
   assert.equal(spawnSync("docker", ["rm", "--force", info.Id], { env: environment, encoding: "utf8", timeout: 10_000, detached: true }).status, 0);
 }
+function fixturePublishJson(path: string, value: object) {
+  const temporary = `${path}.tmp`;
+  writeFileSync(temporary, JSON.stringify(value));
+  renameSync(temporary, path);
+}
+
 async function fixtureStopPoint(stage: string, identity: object, signal: AbortSignal) {
   if (env.OPENLUP_FIXTURE_CANCEL_STAGE === stage && env.OPENLUP_FIXTURE_WITNESS) {
-    writeFileSync(env.OPENLUP_FIXTURE_WITNESS, JSON.stringify(identity));
+    fixturePublishJson(env.OPENLUP_FIXTURE_WITNESS, identity);
     await fixtureWait(() => false, signal, 45_000);
   }
 }
@@ -273,9 +279,10 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
   writeFileSync(shim, `#!${process.execPath}
 ` + [
     'import { spawnSync } from "node:child_process";',
-    'import { readFileSync, writeFileSync } from "node:fs";',
+    'import { readFileSync, writeFileSync, renameSync } from "node:fs";',
     'import { argv } from "node:process";',
     'const args = argv.slice(2);',
+    'const publish = (path, value) => { writeFileSync(path + ".tmp", JSON.stringify(value)); renameSync(path + ".tmp", path); };',
     `const mode = ${JSON.stringify(mode)}, effect = ${JSON.stringify(effect)}, attempted = ${JSON.stringify(attempted)};`,
     'const create = args.at(-1)?.match(/^CREATE DATABASE (openlup_outbox_proof_[a-f0-9]{32})$/);',
     'const cleanup = mode.startsWith("cleanup-");',
@@ -285,16 +292,16 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
     'const name = args[args.indexOf("--name") + 1], labelAt = args.indexOf("--label");',
     'if (intercepted && mode === "container-owner-mismatch") args[labelAt + 1] += "-different-owner";',
     'const record = { name, label: args[labelAt + 1], database: create?.[1] };',
-    'if (intercepted || (cleanup && args[0] === "run")) writeFileSync(attempted, JSON.stringify(record));',
+    'if (intercepted || (cleanup && args[0] === "run")) publish(attempted, record);',
     'if (cleanupStep) {',
     ' const owned = mode === "cleanup-drop" ? {database: drop[1]} : JSON.parse(readFileSync(attempted, "utf8"));',
     ' process.on("SIGTERM", () => process.exit(143));',
-    ' writeFileSync(effect, JSON.stringify({...owned, id: args[0] === "rm" ? args.at(-1) : args[1]}));',
+    ' publish(effect, {...owned, id: args[0] === "rm" ? args.at(-1) : args[1]});',
     ' await new Promise(done => setTimeout(done, 800));',
     '}',
     `const result = spawnSync(${JSON.stringify(realDocker)}, args, { encoding: "utf8", timeout: 30000 });`,
     'if (intercepted && result.status === 0) {',
-    ' writeFileSync(effect, JSON.stringify({ ...record, id: result.stdout.trim() }));',
+    ' publish(effect, { ...record, id: result.stdout.trim() });',
     ' process.on("SIGTERM", () => process.exit(143)); setInterval(() => {}, 1000);',
     '} else { process.stdout.write(result.stdout || ""); process.stderr.write(result.stderr || ""); process.exit(result.status ?? 1); }',
   ].join("\n")); chmodSync(shim, 0o700);

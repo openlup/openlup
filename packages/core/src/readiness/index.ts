@@ -2,7 +2,7 @@ import { declarationIssues, manifestShape, schemaObjectShape } from "./declarati
 import { schemaObjectKey } from "./schemaProbe.js";
 import type { ReadinessInput, ReadinessIssue, ReadinessReport, RequiredSchema, SchemaObservation, Contribution } from "./contracts.js";
 export * from "./contracts.js";
-export { schemaObjectKey, buildSchemaObjectProbe, createSchemaProbe } from "./schemaProbe.js";
+export { schemaObjectKey, buildSchemaObjectProbe, createSchemaProbe, buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows, type PostgresSchemaCatalogEntry } from "./schemaProbe.js";
 /** @beta Evaluates supplied facts; never performs migration or effect work. */
 export async function checkReadiness(input: ReadinessInput): Promise<ReadinessReport> {
   const issues = declarationIssues(input);
