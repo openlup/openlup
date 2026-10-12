@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync, renameSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync, renameSync, readlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -113,7 +113,7 @@ function fixtureDriver(f: ReturnType<typeof fixture>, operation: string, mode: s
     'import assert from "node:assert/strict";',
     'import {execFileSync, spawn, spawnSync} from "node:child_process";',
     'import {randomUUID} from "node:crypto";',
-    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, renameSync} from "node:fs";',
+    'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, renameSync, readlinkSync} from "node:fs";',
     'import {join} from "node:path";',
     'import {isolatedConsumerEnv} from "./scripts/packages/pack-manifest-input.ts";',
     `const env = isolatedConsumerEnv(), commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, POSTGRES_PROOF_IMAGE = ${JSON.stringify(POSTGRES_PROOF_IMAGE)};`,
@@ -153,16 +153,44 @@ async function fixtureWait(ready: () => boolean, signal: AbortSignal | undefined
   }
   if (signal?.aborted) throw new Error("Fixture interrupted");
 }
+function fixtureDiagnostic(event: string, details: object) {
+  // Temporary owned-fixture evidence; never replace an assertion or cleanup.
+  let pgid: number | null = null, pidNamespace: string | null = null, identityError: string | null = null;
+  try {
+    if (process.platform === "linux") {
+      const stat = readFileSync("/proc/self/stat", "utf8");
+      pgid = Number(stat.slice(stat.lastIndexOf(")") + 2).trim().split(/\s+/u)[2]);
+      pidNamespace = readlinkSync("/proc/self/ns/pid");
+    }
+  } catch (error) { identityError = (error as NodeJS.ErrnoException).code ?? "unavailable"; }
+  try {
+    process.stderr.write("Fixture diagnostic " + JSON.stringify({
+      event, time: Date.now(), pid: process.pid, ppid: process.ppid,
+      uid: process.getuid?.() ?? null, pgid, pidNamespace, identityError, details,
+    }) + "\n");
+  } catch { /* Diagnostic I/O must not replace the original failure. */ }
+}
 function fixtureRemoveService(identity: string, name: string, label: string, environment: NodeJS.ProcessEnv) {
   // Repeated group TERM must not kill our bounded cleanup CLI between inspect
   // and remove. The owner stays in the group; only these synchronous CLIs detach.
   const inspected = spawnSync("docker", ["inspect", identity], { env: environment, encoding: "utf8", timeout: 10_000, detached: true });
+  fixtureDiagnostic("cleanup-inspect-result", {
+    resource: identity, status: inspected.status, signal: inspected.signal,
+    errorCode: (inspected.error as NodeJS.ErrnoException | undefined)?.code ?? null,
+    stderr: Buffer.from(inspected.stderr ?? "").subarray(-2048).toString("utf8"),
+  });
   if (inspected.status !== 0 && inspected.stderr.toLowerCase().includes("no such object")) return;
   assert.equal(inspected.status, 0, inspected.stderr);
   const info = JSON.parse(inspected.stdout)[0], separator = label.indexOf("=");
   assert.equal(info.Name, `/${name}`); assert.match(info.Id, /^[a-f0-9]{64}$/u);
   assert.equal(info.Config.Labels[label.slice(0, separator)], label.slice(separator + 1));
-  assert.equal(spawnSync("docker", ["rm", "--force", info.Id], { env: environment, encoding: "utf8", timeout: 10_000, detached: true }).status, 0);
+  const removed = spawnSync("docker", ["rm", "--force", info.Id], { env: environment, encoding: "utf8", timeout: 10_000, detached: true });
+  fixtureDiagnostic("cleanup-remove-result", {
+    resource: info.Id, status: removed.status, signal: removed.signal,
+    errorCode: (removed.error as NodeJS.ErrnoException | undefined)?.code ?? null,
+    stderr: Buffer.from(removed.stderr ?? "").subarray(-2048).toString("utf8"),
+  });
+  assert.equal(removed.status, 0);
 }
 function fixturePublishJson(path: string, value: object) {
   const temporary = `${path}.tmp`;
@@ -173,6 +201,8 @@ function fixturePublishJson(path: string, value: object) {
 async function fixtureStopPoint(stage: string, identity: object, signal: AbortSignal) {
   if (env.OPENLUP_FIXTURE_CANCEL_STAGE === stage && env.OPENLUP_FIXTURE_WITNESS) {
     fixturePublishJson(env.OPENLUP_FIXTURE_WITNESS, identity);
+    const owned = identity as { id?: string; name?: string; label?: string };
+    fixtureDiagnostic("fixture-stop-point", { stage, id: owned.id, name: owned.name, label: owned.label });
     await fixtureWait(() => false, signal, 45_000);
   }
 }
@@ -367,13 +397,52 @@ async function exerciseRootCancellation(stage: string, f: { target: string; pack
   const life = new AbortController(), interrupt = () => life.abort();
   process.on("SIGTERM", interrupt); process.on("SIGINT", interrupt);
   const child = spawn(process.execPath, [join(root, "scripts/run-vitest.mjs"), "run", "scripts/packages/outbox-consumer-proof.test.ts", "-t", "handles repeated interruption through package-group,"], {
-    cwd: root, env: { ...env, VITEST_MAX_WORKERS: "1", OPENLUP_FIXTURE_CANCEL_STAGE: stage, OPENLUP_FIXTURE_WITNESS: witness }, detached: true, stdio: "ignore",
+    cwd: root, env: { ...env, VITEST_MAX_WORKERS: "1", OPENLUP_FIXTURE_CANCEL_STAGE: stage, OPENLUP_FIXTURE_WITNESS: witness }, detached: true, stdio: ["ignore", "pipe", "pipe"],
   });
+  const output = {
+    stdout: { tail: Buffer.alloc(0), dropped: 0, closed: false },
+    stderr: { tail: Buffer.alloc(0), dropped: 0, closed: false },
+  };
+  const capture = (channel: "stdout" | "stderr", bytes: Buffer) => {
+    const entry = output[channel], combined = Buffer.concat([entry.tail, bytes]);
+    const dropped = Math.max(0, combined.length - 8192);
+    entry.dropped += dropped;
+    entry.tail = Buffer.alloc(combined.length - dropped);
+    combined.copy(entry.tail, 0, dropped);
+  };
+  child.stdout?.on("data", bytes => capture("stdout", bytes));
+  child.stderr?.on("data", bytes => capture("stderr", bytes));
+  child.stdout?.once("close", () => { output.stdout.closed = true; });
+  child.stderr?.once("close", () => { output.stderr.closed = true; });
   let spawnError: Error | undefined; child.once("error", error => { spawnError = error; });
   const groupExists = () => { if (!child.pid) return false; try { process.kill(-child.pid, 0); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; } };
   let groupDeadline: number | undefined;
-  const stop = () => { groupDeadline ??= performance.now() + 60_000; if (child.pid) { try { process.kill(-child.pid, "SIGTERM"); } catch { /* Already stopped. */ } } };
-  const waitForGroup = () => fixtureWait(() => !groupExists(), undefined, Math.max(1, groupDeadline! - performance.now()));
+  const control: object[] = [];
+  const stop = () => {
+    groupDeadline ??= performance.now() + 60_000;
+    if (child.pid) {
+      const at = Date.now();
+      try {
+        process.kill(-child.pid, "SIGTERM");
+        control.push({ operation: "term", at, completedAt: Date.now(), group: child.pid, result: "sent" });
+      } catch (error) {
+        control.push({ operation: "term", at, completedAt: Date.now(), group: child.pid, result: "error",
+          errorCode: (error as NodeJS.ErrnoException).code ?? null });
+        /* Already stopped. */
+      }
+    }
+  };
+  const waitForGroup = () => {
+    const at = Date.now();
+    const pending = fixtureWait(() => !groupExists(), undefined, Math.max(1, groupDeadline! - performance.now()));
+    // Observe the original promise; do not replace it, add a wait or alter errors.
+    void pending.then(
+      () => { control.push({ operation: "group-wait", at, completedAt: Date.now(), group: child.pid, result: "resolved" }); },
+      error => { control.push({ operation: "group-wait", at, completedAt: Date.now(), group: child.pid, result: "rejected",
+        errorCode: (error as NodeJS.ErrnoException).code ?? null }); },
+    );
+    return pending;
+  };
   let observed: { id: string; name: string; label: string; proofPid?: number; descendantPid?: number } | undefined;
   let failure: unknown;
   try {
@@ -384,7 +453,12 @@ async function exerciseRootCancellation(stage: string, f: { target: string; pack
     // or shared lock. The resource owner must remain in that group until cleanup.
     await waitForGroup();
     rmSync(lock, { recursive: true });
-    assert.equal(spawnSync("docker", ["inspect", observed!.id], { env, encoding: "utf8", timeout: 30_000 }).status === 0, false, "Root cancellation leaked fixture service");
+    const inspectedAt = Date.now();
+    const residual = spawnSync("docker", ["inspect", observed!.id], { env, encoding: "utf8", timeout: 30_000 });
+    control.push({ operation: "post-group-inspect", at: inspectedAt, completedAt: Date.now(), resource: observed!.id,
+      status: residual.status, signal: residual.signal, errorCode: (residual.error as NodeJS.ErrnoException | undefined)?.code ?? null,
+      presence: residual.status === 0 ? "present" : "not-established" });
+    assert.equal(residual.status === 0, false, "Root cancellation leaked fixture service");
     for (const pid of [observed!.proofPid, observed!.descendantPid]) if (pid) { assert.throws(() => process.kill(pid, 0), /ESRCH/u); }
     assert.equal(existsSync(lock), false);
   } catch (error) { failure = error; } finally {
@@ -404,6 +478,18 @@ async function exerciseRootCancellation(stage: string, f: { target: string; pack
     process.removeListener("SIGTERM", interrupt); process.removeListener("SIGINT", interrupt);
     if (cleanupErrors.length) failure = new AggregateError([failure, ...cleanupErrors].filter(Boolean), "Root fixture and cleanup failed");
   }
-  if (failure) throw failure;
+  if (failure) {
+    // One event-loop turn drains pending output after the original cleanup.
+    // Never wait for pipe closure or change the original failure.
+    await new Promise<void>(done => setImmediate(done));
+    fixtureDiagnostic("root-cancellation-failed", {
+      stage, signalledGroup: child.pid, childExitCode: child.exitCode, childSignal: child.signalCode, control,
+      resource: observed && { id: observed.id, name: observed.name, label: observed.label,
+        proofPid: observed.proofPid, descendantPid: observed.descendantPid },
+      stdout: { tail: output.stdout.tail.toString("utf8"), droppedBytes: output.stdout.dropped, closed: output.stdout.closed },
+      stderr: { tail: output.stderr.tail.toString("utf8"), droppedBytes: output.stderr.dropped, closed: output.stderr.closed },
+    });
+    throw failure;
+  }
 }
 // End standalone fixture functions.
