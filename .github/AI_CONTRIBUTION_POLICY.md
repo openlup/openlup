@@ -254,6 +254,7 @@ documentation refusal caused by merging the protocol bootstrap. One final sixth
 owner cycle may introduce the same exact corrected SQL only after that control
 is merged and only if the fifth candidate did not introduce it. Fresh exact
 owner decisions, two full independent reviews, findings, expiry and required
-checks remain binding. Other owner routes stay capped at five; a seventh,
+checks remain binding. Other owner routes follow the agent guide's owner-cycle
+limit of six; a seventh,
 changed intent or renamed-session reset refuses. This exception grants no
 publication, merge, release or production authority.

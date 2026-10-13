@@ -152,7 +152,8 @@ At the 2026-10-04 checkpoint, merged main was
 `e7f352bd788c6f2557316c3abde5e000772d583d`: [run 37196000352, attempt 1](https://github.com/openlup/openlup/actions/runs/37196000352)
 passed six mechanical checks and `test-full`; `pgtap` retained twelve named
 failing files, and native admission was skipped on the main-push event.
-The [current diagnostic record](plans/public-ci-known-red.md#current-checkpoint)
+Later checkpoints closed those pgTAP files. The
+[current diagnostic record](plans/public-ci-known-red.md#current-checkpoint)
 gives source/group/main provenance, assertion counts and remaining obligations.
 
 The 2026-10-02 settings inspection found the native queue and npm-stage

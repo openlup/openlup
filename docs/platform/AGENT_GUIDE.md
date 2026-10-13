@@ -45,6 +45,7 @@ Do not copy a deployment-specific assumption into a platform contract.
 
 Prefer a documented port, configuration seam, event subscription, or theme/data boundary over modifying platform internals.
 An adopter may keep an extension in its own source or propose it upstream, but an accepted change still needs an explicit compatibility and maintenance owner.
+Existing adopter code is contributed with unchanged logic first and refactored afterwards in OpenLup with its characterization witness unchanged; a behaviour change is never a refactor. [Contribute existing adopter code, then refactor](../../CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor) owns the order.
 
 Copying a platform component or page into adopter source is source ejection. The adopter then owns its security, tests, compatibility work, and manual porting of later changes; the platform does not update that copy automatically.
 
@@ -289,8 +290,8 @@ A migration, status mapping, or idempotency rule needs a regression test for its
 `npm run lint` checks first-line file-wide ignores before running the ast-grep
 structural rules in `scripts/ast-grep/rules`, rejects bare and unused
 suppressions, runs the rule tests, then ESLint. Portable core/UI production
-source has provider import boundaries and industry-neutral contract-name
-checks; opaque adopter data remains generic. The industry rule covers TS/TSX
+source has provider import boundaries, and every package's production source
+has industry-neutral contract-name checks; opaque adopter data remains generic. The industry rule covers TS/TSX
 syntax, not arbitrary values or semantic analysis.
 Run `npx --no -- ast-grep scan --error=no-suppress-all
 --error=unused-suppression` after each change for focused feedback, and run

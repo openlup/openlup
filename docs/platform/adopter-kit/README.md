@@ -13,8 +13,11 @@ npm 11.19.0:
 mkdir example-app
 cd example-app
 npm init -y
-npm install --save-exact @openlup/core@0.12.0
+npm install --save-exact @openlup/core@<version>
 ```
+
+`<version>` is the current set version (`npm view @openlup/core version`);
+install every `@openlup/*` package you use at that same version.
 
 In an existing application, run only the install command from its root, within
 that application's task authority. Read
