@@ -4,7 +4,7 @@ severity: error
 message: Portable platform source must keep industry-specific names in adopter extensions.
 note: |
   Architecture rule (AGENTS.md): an adopter owns its industry, content and local
-  policy. Portable core and UI contracts stay generic. This rule catches explicit
+  policy. Portable package contracts stay generic. This rule catches explicit
   pet/pets, dog/dogs and cat/cats components in identifiers, property and type
   names, quoted declared keys, static property indexes and literal types. It
   covers ordinary camel/Pascal/snake names, including internal components.
@@ -13,8 +13,7 @@ note: |
   Keep industry contracts in an adopter extension and pass opaque data through a
   generic port. This is a TS/TSX structural check, not semantic or dataflow analysis.
 files:
-  - packages/core/src/**/*.ts
-  - packages/ui/src/**/*.ts
+  - packages/*/src/**/*.ts
 ignores:
   - "**/*.{test,spec,fixture,fixtures}.ts"
   - "**/{__tests__,test,tests,__fixtures__,fixtures}/**"
@@ -56,7 +55,7 @@ severity: error
 message: Portable platform source must keep industry-specific names in adopter extensions.
 note: |
   Architecture rule (AGENTS.md): an adopter owns its industry, content and local
-  policy. Portable core and UI contracts stay generic. This rule catches explicit
+  policy. Portable package contracts stay generic. This rule catches explicit
   pet/pets, dog/dogs and cat/cats components in identifiers, property and type
   names, quoted declared keys, static property indexes and literal types. It
   covers ordinary camel/Pascal/snake names, including internal components.
@@ -65,8 +64,7 @@ note: |
   Keep industry contracts in an adopter extension and pass opaque data through a
   generic port. This is a TS/TSX structural check, not semantic or dataflow analysis.
 files:
-  - packages/core/src/**/*.tsx
-  - packages/ui/src/**/*.tsx
+  - packages/*/src/**/*.tsx
 ignores:
   - "**/*.{test,spec,fixture,fixtures}.tsx"
   - "**/{__tests__,test,tests,__fixtures__,fixtures}/**"

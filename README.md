@@ -29,8 +29,11 @@ Install an exact npm version from your application's root, using Node 24 and
 npm 11.19.0. For example:
 
 ```sh
-npm install --save-exact @openlup/core@0.12.0
+npm install --save-exact @openlup/core@<version>
 ```
+
+Use the current set version from `npm view @openlup/core version`, and install
+every `@openlup/*` package you use at that same version.
 
 Read `node_modules/@openlup/core/AGENTS.md` and its typed wiring example before
 composing the package's ports and options. The [adopter route](docs/platform/adopter-kit/README.md)

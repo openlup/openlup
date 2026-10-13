@@ -20,7 +20,9 @@ alone does not establish that an install or feature works.
 ## Use a package or contribute source
 
 For an application task, start from your application's root with Node 24 and
-npm 11.19.0: `npm install --save-exact @openlup/core@0.12.0`. Read the installed
+npm 11.19.0: `npm install --save-exact @openlup/core@<version>`, where `<version>`
+is the current set on npm (`npm view @openlup/core version`); install every
+`@openlup/*` package you use at that same version. Read the installed
 `AGENTS.md` and its [typed wiring example](packages/core/AGENTS.md#wiring-example),
 then use the [adopter route](docs/platform/adopter-kit/README.md). No OpenLup
 clone or contributor check is needed to compose an installed package. Your
@@ -85,6 +87,45 @@ Do not include sensitive values, customer data, or deployment-specific details
 in commits, issue reports, test fixtures, screenshots, or logs. Follow
 [SECURITY.md](SECURITY.md) for responsible disclosure and sensitive-material
 handling.
+
+### Contribute existing adopter code, then refactor
+
+Code that already runs in an adopter's application reaches OpenLup in a fixed
+order, so that the adopter can later replace its own copy without any change
+its users or operators can observe.
+
+1. **Characterize first.** Before contributing, the adopter writes tests in its
+   own repository that pin the slice's current behaviour: results, errors and
+   refusals. Rewritten with neutral names and synthetic data, they become the
+   witness.
+2. **Import with unchanged logic.** The first OpenLup pull request brings the
+   slice with its logic unchanged, written fresh in the OpenLup worktree with
+   neutral names, literals, copy and identifiers from the start; adopter files,
+   history, tests and fixtures are never copied, and the neutrality rules apply
+   from the first commit. Private values, customer data and deployment details
+   never enter a commit.
+   The witness lands in the same pull request as package tests, and the
+   package's tests join the required test selection, so required CI runs them
+   while the package is still unreleased. As with `packages/outbox`, that pull
+   request extends `test:required`, the required scope in
+   `scripts/oss-publication-policy.ts` and its pinned expectation in
+   `scripts/oss-published-tree-check.test.ts`, and the root Vitest configuration.
+3. **Refactor in later pull requests.** Each refactoring pull request keeps the
+   witness unchanged. A refactor changes nothing a consumer can observe:
+   results, side effects, ordering, errors and fault modes, operational logs,
+   defaults, load order, policy, schema and SQL object names, configuration
+   names, URLs, cron paths and persisted keys. A performance change qualifies only with identical
+   observable results. Anything else is a behaviour change: propose and review
+   it as one, with its own changelog entry, never inside a refactoring pull
+   request.
+4. **Check before release.** Before the release dispatch, the contributor packs
+   the release candidate and gives the adopter its commit and tarball checksums;
+   the adopter installs those tarballs without committing them and runs its
+   characterization against them. A difference is fixed in OpenLup before
+   publication.
+5. **Adopt thinly.** The adopter replaces its copy by changing imports and
+   adapter bindings only. It keeps its own persisted names and maps the
+   package's neutral names in its adapter.
 
 ## Development-preview checks
 
@@ -526,7 +567,8 @@ applies a mechanical edit; call the binary `ast-grep`, because `sg` is also a
 system command on Linux.
 
 `portable-no-industry-contracts` and its TSX variant guard the clean portable
-source in `packages/core/src` and `packages/ui/src`. Explicit `pet`, `pets`,
+source in every package's `src` (`packages/*/src`), so a newly imported module
+package is checked from its first commit. Explicit `pet`, `pets`,
 `dog`, `dogs`, `cat` or `cats` components in identifiers, property/type names,
 static declaration/access keys and literal types belong in adopter code, not generic
 contracts. For example, `petId`, `dogWeightKg`, `CatProfile` and
