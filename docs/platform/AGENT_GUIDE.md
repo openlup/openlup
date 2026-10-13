@@ -91,6 +91,11 @@ review snapshots do not establish native admission/counter/expiry; preserve both
 histories and actually applicable limits without inferring or resetting state.
 Freeze tracked inputs and serialize verification phases sharing mutable output;
 run the existing cheap contract/artifact/platform checks before the broad gate.
+Preserve complete required local verification and coverage before submission;
+early focused feedback complements that gate and helps keep late failures rare.
+For an authorized adopter continuation, use waits for independent, bounded
+read-only reconnaissance of its current pins, drift and ownership. Record the
+actual registry, adoption and staging endpoint when those outcomes are in scope.
 
 Before DCO sign-off, complete the applicable working-tree checks and obtain any
 required maintainer read of the stabilized API, npm-publishing, security-control
@@ -136,6 +141,13 @@ Once acceptance, required review and checks are complete, perform only the
 remaining authorized delivery steps and finish. Do not start cosmetic polish,
 reassurance review or an automatic successor. Budget exhaustion or missing proof
 is a blocker, not completion. Existing controls and authority remain binding.
+
+Close every completed or stopped task run with a short self-retro in its existing
+summary: measured delays or defects, a justified simplification, or no useful
+improvement found. Apply only necessary, justified changes within actual scope
+and authority. A process optimization reviews both its new contribution and
+the applicable prior rules for freshness and contradictions. This terminal note
+requires no separate learning PR and opens no automatic successor or review loop.
 
 Follow the [AI contribution policy](../../.github/AI_CONTRIBUTION_POLICY.md) for accountability,
 DCO and delivery authority. The [autonomous delivery intent](plans/autonomous-reviewed-delivery-intent.md)
@@ -215,6 +227,15 @@ The supervisor supplies current source evidence for the reviewed PR head and,
 only for a merge group the source review does not carry over to, integration
 evidence for the exact merge-group run/attempt. Admission observes the queue's
 actual base, head, tree and source identity.
+
+When integration review is expected, have fresh reviewers inspect the complete
+immutable expected integration content before arming the queue.
+That inspection is preparation, with no verdict for a future commit. After the
+actual group exists, prepare its native request; each reviewer independently
+confirms the actual base, head, tree, parents, criteria, full scope and content equality,
+and evaluates any delta before concluding the required full review. Reports
+complete after that prepare and bind its exact request and candidate. Existing
+carry-over, freshness, coverage, counters and receipt rules remain binding.
 
 A source review carries over to a merge group when either:
 - the group tree equals the reviewed tree; or

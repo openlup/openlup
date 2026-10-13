@@ -936,6 +936,10 @@ reading, exact merge scope and protected release approval still apply.
    required reads, closed material findings and current checks precede merge.
 10. **Arm auto-merge** under merge authority, following the
     [Merge queue](#merge-queue) rules.
+    When integration review is expected, complete fresh reviewers' immutable
+    content inspection before arming. Step 11 still prepares the actual
+    group request and completes exact-bound full reports as the
+    [agent guide](AGENTS.md#change-and-verification-rules) describes.
 11. **Merge group.** Read the group's `native-review` log (see
     [Required and raw checks](#required-and-raw-checks)).
     - If it reports admission by the source receipt ("unchanged tree" or
