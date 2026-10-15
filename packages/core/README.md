@@ -21,7 +21,14 @@ package together.
   each change is recorded in [the changelog](CHANGELOG.md). Pin an exact
   version and read the changelog when you upgrade.
 
-The experimental `./outbox`, `./standard-schema` and `./readiness` subpaths provide shared infrastructure contracts. `checkReadiness` evaluates inert contribution descriptors, the complete host-observed package set, actual host bindings (schedule/route function identity must match the contribution) and a bounded schema probe. It never migrates, leases or sends. Only `ready` admits a new candidate; `unknown` and `unsatisfied` leave the serving candidate in place. The host owns inventory completeness, immutable artifact/configuration/schema identity and admission at every work entrance. Catalog existence does not prove SQL bodies, permissions or provider recovery.
+The experimental `./outbox`, `./standard-schema` and `./readiness` subpaths
+provide infrastructure contracts. `checkReadiness` checks inert contributions,
+complete host inventory, actual schedule/route function bindings and a bounded
+schema probe. It never migrates, leases or sends. Only `ready` admits a candidate;
+`unknown` and `unsatisfied` retain the serving candidate. The host owns immutable
+artifact/configuration/schema identity and admission at every work entrance.
+Exactly one contribution per non-kernel package is required today; multiple
+capabilities per distribution need a future separately reviewed adaptation.
 
 For PostgreSQL catalog inspection, import `buildGroupedPostgresSchemaProbe`,
 `decodeGroupedPostgresSchemaRows` and `PostgresSchemaCatalogEntry` from

@@ -234,7 +234,42 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-f225cf3ee88ddcdea046bd5f3928719c623a16d2631587630596ce9e1a995045","reason":"The unprivileged per-tag pack job builds the exact workspace core peer before outbox packing on a fresh runner. The release owner documents this prerequisite. It still checks and scans only the selected package and preserves identity, npm version, permissions, provenance and all required CI contexts; contributor verification commands are unchanged."} -->
 
-The test job runs the shared package gate before broad root tests. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply an installed-artifact consumer, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+The test job runs the shared package gate before broad root tests. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+
+A module added to an existing distribution extends that package's consumer and
+required batch; it does not need another npm workspace, runner or CI job.
+Preserve the complete package proof and name the new module's behavior,
+refusals and schema obligations. Grouping modules does not waive the
+[internal dependency graph](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#internal-boundaries-and-adapter-isolation)
+or make multi-capability readiness available before its reviewed prerequisite.
+
+For the planned foundation package and each later module that changes peers,
+dependencies, public exports or the relevant import graph, extend the same
+packed consumer with this cold proof before accepting the module candidate:
+
+1. Install the actual core/platform tarballs and outbox when selected, with
+   ordinary required dependencies and without optional provider SDKs. Verify
+   their physical absence and independent resolution: no workspace links,
+   repository or ancestor `node_modules` may supply them. `--omit=optional`
+   alone does not prove isolation.
+2. Classify the current export inventory and import every public nonadapter
+   entry in a fresh process, without secrets, provider initialization or SQL.
+   Compile its declarations in both NodeNext and Bundler mode without those
+   SDKs; nonadapter declarations must not leak required SDK types.
+3. Exercise the supported adapter's explicit, stable refusal naming the missing
+   SDK or configuration, with no fetch, install or implicit fallback. Then
+   install the selected SDK and run the adapter's actual consumer/conformance
+   behavior and refusals without live provider access; mocking an import alone
+   is insufficient.
+
+Keep this in the existing required package gate. Cover the actual delta while
+still importing all nonadapter exports after the change; final release proof
+retains the complete required set. A failed cold consumer blocks candidate
+acceptance even when unit tests pass. This specifies later foundation/module
+proof, not a claim that today's core/outbox gate already tests platform.
+Only schema-owning modules need database proof, including deterministic fresh
+and upgrade/replay boundaries under the
+[migration contract](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 Core's required batch retains coverage, standalone types, documentation, release checks and its supplied-artifact consumer. Outbox's batch owns schema/SQL/replay against its installed tarball; its unit/factory/admission tests run once through the protected root selectors. The outbox workspace builds after core for root lint and test entrypoints. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Missing artifacts or a required runtime refuse; there is no workspace fallback or DB skip. Only modules with SQL obligations need a database. Outbox's pinned job-owned PostgreSQL service is separate from raw pgTAP; see [the rail guide](packages/outbox/README.md) for ownership and proof limits.
 

@@ -124,39 +124,106 @@ Rules that need a contract the kernel does not export yet say so.
 Development-preview rules may still change (see
 [Compatibility posture](#compatibility-posture)).
 
-### Package kinds
+### Modules and distributions
 
-Each package declares one `kind` in its `release-gates.json`:
+A module is a capability or infrastructure responsibility with an owner, public
+entry, ports, data obligations and conformance evidence. A package is an npm
+distribution artifact. Several controlled modules may share a package; one
+module does not require one package, and a capability is not split into a
+package per process. Grouping changes neither ownership nor transactional,
+idempotency, recovery or schema boundaries.
+
+The intended distribution roles are:
+
+| Distribution | Role and adoption boundary |
+| --- | --- |
+| `@openlup/core` | Existing I/O-free kernel; retain its published coordinates and exports. |
+| `@openlup/outbox` | Existing outbox rail; retain its published coordinates and algorithm owner. |
+| `@openlup/platform` | Planned backend distribution, beginning with runnable foundation (M02), then identity (M03) at `@openlup/platform/identity`. |
+| UI | Target distribution role in M19; this does not reserve an npm name or establish a published library. The foundation shell remains reference-application source. |
+
+These are target roles, not an inventory of published artifacts. The
+[package catalogue](../../config/openlup-packages.json), installed manifests
+and export maps establish the selected set. Identity's planned physical home is
+`packages/platform/src/identity/`; its browser-safe contracts need an isolated
+entry, preferably `@openlup/platform/identity/contracts`, with no server imports.
+Only genuinely shared contracts belong in core; importing platform as a whole
+is not a browser-safety guarantee.
+
+### Package kinds and dependency direction
+
+Today each package declares one `kind` in `release-gates.json` and the readiness
+manifest. The same responsibility rules must hold between logical modules
+inside a distribution:
 
 | Kind | Holds | May depend on |
 | --- | --- | --- |
-| `kernel` | I/O-free contracts and logic that two or more packages, or an application's composition, read; its only runtime dependency is `zod` | nothing else in `@openlup/*` |
-| `rail` | runtime infrastructure every capability emits into or records through, such as the outbox and the job-run ledger | the kernel |
-| `capability` | one capability end to end: its processes, the schema it needs and the contracts only it reads | the kernel and rails |
-| `implementation` | one port bound to one provider or market | the kernel, rails and the one package it implements |
+| `kernel` | I/O-free contracts and logic shared by modules or read by application composition; its only runtime dependency is `zod` | nothing else in `@openlup/*` |
+| `rail` | runtime infrastructure capabilities emit into or record through | the kernel |
+| `capability` | a complete capability, including its processes, schema and local contracts | the kernel and rails |
+| `implementation` | one port bound to one provider or runtime | the kernel, rails and the responsibility it implements |
 
-The placement rules:
+- **No I/O in the kernel.** It imports no database driver, provider SDK or
+  `node:` module, and is no HTTP or scheduled-job entrypoint.
+- **No capability depends on another capability's implementation or use cases.**
+  Cross-capability flows use declared ports, contracts, rails and maintained
+  orchestration in the appropriate layer. An allowed public index alone does
+  not legalize a forbidden dependency.
+- **The kernel grows only for shared contracts.** A contract used by one module
+  stays there unless application composition genuinely needs the shared seam.
+- **Default stores need no driver.** They use a structural SQL executor;
+  provider-specific stores stay behind explicit adapter boundaries.
+- **New kernel validation contracts use `StandardSchemaV1`.** Existing kernel
+  exports are `zod` schemas today.
+- **Host composition stays in the application.** Environment selection, routing,
+  bindings, handler manifests, readiness wiring and host entrypoints belong to
+  the application. A package may supply a generic composer over public ports
+  and factories; the host chooses its concrete runtime and provider bindings.
 
-- **No I/O in the kernel.** A kernel file imports no database driver, provider SDK or `node:`
-  module, and is no HTTP or scheduled-job entrypoint.
-- **One capability, one package.** A capability boundary is where an adopter would replace or
-  leave out the capability as a whole. One capability is never split into a package per process.
-- **No capability depends on another capability.** Cross-capability flows go through kernel
-  contracts and rails, and the application's composition connects them.
-- **The kernel grows only for shared contracts.** It gains a contract only when a second package
-  reads it. A contract that one package reads stays in that package.
-- **Default stores need no driver** (from the first rail or capability package). A default store is
-  a subpath over a structural SQL executor, which the kernel adds with that package. A
-  provider-specific store is an implementation package or application code.
-- **New kernel validation contracts are typed as `StandardSchemaV1`,** not as types of one schema
-  library. The kernel's existing exports are `zod` schemas today.
-- **Composition stays in the application.** Runtime assembly, handler manifests, readiness
-  wiring, scheduled-job files and HTTP entries belong to the application, never to a package.
-  The reference application ships its own.
+Module grouping must not rewrite historical kind metadata or bypass current
+validators. Separating artifact identity from module responsibility requires
+its own reviewed compatibility change before a second capability is admitted.
 
-Names follow `@openlup/core`, `@openlup/<rail>`, `@openlup/<capability>`,
-`@openlup/<capability>-<provider>` and `@openlup/market-<cc>`. They never name
-a brand or an industry.
+### Internal boundaries and adapter isolation
+
+The foundation boundary work starts from its existing directories and entries:
+`http`, `bff`, `scheduler`, `blob`, `data`, `migrations`, `job-ledger`, `kernel`
+and `composition`. Retain the corresponding public subpaths. Helper directories
+do not automatically constitute separate capabilities; inventory their existing
+characterized dependencies, including type dependencies, before enforcing the
+allowed graph. No foundation wrapper directory or extra runtime registry is
+required.
+
+Within a module, imports may use its internals. Between modules, production
+imports must use the target's declared entry and the allowed dependency graph.
+This includes type imports and supported literal dynamic imports or `require`.
+An alias or re-export must not conceal a deep import or a forbidden capability
+implementation dependency. Not every internal module needs an npm export.
+
+The later foundation implementation must enforce these boundaries through
+existing ESLint and import-map tests, using ast-grep only for a gap those cannot
+express. Prove allowed own-internal and permitted neighbour-entry imports,
+refused neighbour deep imports (runtime and type), and refused directions or
+capability implementation imports even through a public entry. Cover alias and
+absolute-path escapes within the mechanism's supported syntax. Control changes
+need their applicable owner authority; this contract does not install new rules.
+
+Installing a distribution does not activate all its modules. A nonadapter
+import must not read provider environment, initialize a client or execute SQL.
+An unselected adapter must not require its SDK. A selected adapter must refuse
+explicitly when its required SDK or configuration is missing. Subpaths do not
+split installation of ordinary dependencies or guarantee tree shaking. The
+[packed-consumer proof](../../CONTRIBUTING.md#required-and-raw-checks) must
+establish physical SDK absence and declaration usability, not just source scans.
+
+Separate an integration artifact only on evidence: incompatible peer ranges in
+supported cold installs; a genuinely different browser/edge/Node runtime;
+measured installation cost; a different maintenance or release lifecycle; or
+an actual independent consumer. First assess an existing port, isolated
+subpath, optional peer or application adapter. A trigger calls for an owner
+decision with compatibility and maintenance ownership, not automatic permission
+to create or publish a package. Generic supported orchestration remains the
+platform's responsibility.
 
 ### Contributions, seams and readiness
 
@@ -165,6 +232,30 @@ The local outbox contribution implements these rules through the experimental
 The publication catalogue admits the complete outbox rail to the release set.
 Catalogue admission is distinct from npm publication; reviewed release preparation
 and the protected release workflow still govern its first published minor set.
+
+The current [checker](../../packages/core/src/readiness/index.ts) requires
+exactly one contribution for every observed non-kernel package. Its
+[manifest](../../packages/core/src/readiness/contracts.ts) binds one package
+name, kind and optional `requiredSchema`. Multiple unchanged contributions with
+the same package name do not satisfy that contract.
+
+**Planned prerequisite (M03/B0):** before adding identity as the second
+capability in platform, the public identity author must deliver a separately
+reviewed readiness adaptation under the architecture coordinator. It precedes
+the first identity-code import and requires its own scope, owner decision and
+applicable control/merge authority; this documentation grants none of them.
+First test whether lossless aggregation through the existing contribution seam
+is sufficient. Otherwise introduce the smallest explicit module representation,
+without a general loader or plugin framework. Preserve compatibility for core
+and outbox, the exact package set and artifact bindings, complete host inventory,
+module identity, required module/contract dependencies and every schema requirement,
+missing-module and duplicate/missing port, handler, route and schedule refusals,
+and actionable
+package/module diagnostics. Prove default and supported narrower compositions;
+`unknown` or `unsatisfied` must leave the serving candidate in place. Until
+that prerequisite is implemented and verified, multi-capability readiness is a
+target, not an available API. UI admission must separately establish its
+artifact role and consumer proof without inventing server workers or schema.
 
 - **The factory.** A rail or capability exposes a factory taking ports and options. It returns
   a contribution, `{ handlers, schedules, routes, manifest }`; a field that does not apply is
@@ -199,7 +290,15 @@ and the protected release workflow still govern its first published minor set.
   package together, after reading each changelog's `Migration:` blocks.
 - **Schema in the tarball.** A package that owns schema ships its SQL in its tarball from its
   first release, for the application's own migration chain to apply. It never applies SQL itself.
-  Shipped SQL follows expand, compatible deploy, backfill, contract.
+  Shipped SQL follows expand, compatible deploy, backfill, contract. The
+  [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+  distinguishes source history, tarball projection and an existing store.
+- **Readiness adaptation release.** A public readiness API or behaviour change
+  needs the next minor set, chosen against the actual registry. Merging B0 does
+  not require an immediate separate release: prefer one compatible set with
+  completed identity, proving intermediate work with built workspace candidates
+  and real tarballs in disposable consumers. A separate earlier set needs a
+  real npm consumer and its own release authorization and protected approval.
 
 ### Agent guidance for applications
 
