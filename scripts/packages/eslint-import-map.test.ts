@@ -359,6 +359,8 @@ describe("eslint platform module boundaries", () => {
         `${up}../src/composition/index.js`, `././${up}composition/index.js`, `./.x/../${up}composition/index.js`,
         `${up}kernel/.x/../../composition/index.js`, `./..\\composition\\index.js`, `./%2e%2e/composition/index.js`,
         `${up}kernel//../composition/index.js`, `.//${up}composition/index.js`,
+        ...["\t", "\n", "\r"].flatMap((control) => [`${up}kernel/${control}../composition/index.js`, `./${control}${up}composition/index.js`]),
+        "\tfile:///packages/platform/src/composition/index.js", " file:///packages/platform/src/composition/index.js",
       ]) refused("kernel", specifier);
     });
 

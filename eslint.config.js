@@ -160,9 +160,11 @@ const PLATFORM_SOURCE = "packages/platform/src";
 
 // Specifiers that would reach a module around its entry, at any depth: a relative path not in
 // canonical form (an optional leading `./`, then `../` climbs, then named segments that are not
-// empty, do not start with a dot and hold no backslash or percent sign), the package's own name,
-// or a URL.
+// empty, do not start with a dot and hold no backslash or percent sign), any control character or
+// space (URL parsing strips them, so they can hide a climb or a URL), the package's own name, or a
+// URL.
 const platformModuleEscapes = (message) => ({ message, regexes: [
+  "[\\x00-\\x20\\x7f]",
   "^(?=\\.)(?!(?:\\./)?(?:\\.\\./)*(?:[^./\\\\%][^/\\\\%]*/)*[^./\\\\%][^/\\\\%]*$)",
   "^@openlup/platform(?:/|$)",
   "^(?!node:)[A-Za-z][A-Za-z0-9+.-]*:",
