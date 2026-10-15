@@ -361,7 +361,12 @@ describe("eslint platform module boundaries", () => {
         `${up}kernel//../composition/index.js`, `.//${up}composition/index.js`,
         ...["\t", "\n", "\r"].flatMap((control) => [`${up}kernel/${control}../composition/index.js`, `./${control}${up}composition/index.js`]),
         "\tfile:///packages/platform/src/composition/index.js", " file:///packages/platform/src/composition/index.js",
+        // A dependency without an exports map resolves a climb in its subpath back into this tree.
+        "accepts/../../packages/platform/src/composition/index.js", "zod/../../packages/platform/src/data/postgresGateway.js",
+        "accepts/./index.js", "accepts//index.js", "accepts/", "accepts/%2e%2e/index.js", "node:fs/../index.js",
       ]) refused("kernel", specifier);
+      // Ordinary package and built-in specifiers stay admitted.
+      for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime"]) admitted("kernel", specifier);
     });
 
   it.each(sourceExtensions)("keeps refusing self-reference and URL escapes beyond the deepest module depth in %s", async (extension) => {

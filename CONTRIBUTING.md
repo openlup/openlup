@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-24ace49ed24d7d9c4862aaa09da4c65dcf50fe81f9eadd37a86e89aaa1e6272f","reason":"ESLint adds the module graph that Architecture and extensions, internal boundaries, requires inside packages/platform/src: a module's production files import their own files and other modules only through their declared entries, with a type-aware variant for type-only edges, and refuse non-canonical relative paths, specifiers holding control characters or spaces, the package's own name and URLs at any depth, using the same core rules as the existing package boundaries. Other packages' rules, required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-4fa9d2f5723862143793fa5301f14ff55ee4910be03565fd0f831ce77d696f8a","reason":"ESLint adds the module graph that Architecture and extensions, internal boundaries, requires inside packages/platform/src: a module's production files import their own files and other modules only through their declared entries, with a type-aware variant for type-only edges, and refuse non-canonical relative paths, package specifiers with dot or empty segments, specifiers holding control characters, spaces, backslashes or percent signs, the package's own name and URLs at any depth, using the same core rules as the existing package boundaries. Other packages' rules, required contributor commands, their order and the checks described here are unchanged."} -->
 
 The bounded SQL RLS recovery uses existing owner cycles only: a separately
 reviewed contraction control precedes the corrected managed forward. Its exact
@@ -159,7 +159,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-07520a7810027ac6ea6504b20efb65f40e27824f8fb638c3f8c4b9085d210cb0","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports; refused deep, type, direction, self-reference, URL, control-character and non-canonical relative paths at every depth; and an inventory check that the declared edges equal the actual imports between modules, with only the composer declaring more. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-10f256a69f236b7123a077263673cde937fadb62b4c35b02adf6110b4642ffa5","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports; refused deep, type, direction, self-reference, URL, control-character, non-canonical relative and climbing package paths at every depth; and an inventory check that the declared edges equal the actual imports between modules, with only the composer declaring more. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
