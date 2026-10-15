@@ -24,11 +24,13 @@ function stubPool(input: { ledger?: AppliedRow[]; bodies: readonly string[] }) {
   let ledgerExists = input.ledger !== undefined;
   const executed: string[] = [];
   const queries: string[] = [];
+  const lockNames: unknown[] = [];
   const pool = {
     async connect() {
       return {
         async query(text: string, values?: unknown[]) {
           queries.push(text);
+          if (text.includes("pg_advisory_")) lockNames.push(values?.[0]);
           if (text === "SELECT pg_advisory_lock(hashtextextended($1, 0))") return { rows: [{}] };
           if (text === "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked") {
             return { rows: [{ unlocked: true }] };
@@ -54,7 +56,7 @@ function stubPool(input: { ledger?: AppliedRow[]; bodies: readonly string[] }) {
       };
     },
   };
-  return { pool: pool as never, ledger, executed, queries };
+  return { pool: pool as never, ledger, executed, queries, lockNames };
 }
 
 async function fixtureRoot() {
@@ -109,6 +111,8 @@ describe("createPostgresMigrationRunner", () => {
     });
     await expect(runner.apply()).resolves.toEqual({ applied: [BASELINE_PATH, FORWARD_A, FORWARD_B] });
     expect(stub.queries[0]).toBe("SELECT pg_advisory_lock(hashtextextended($1, 0))");
+    // The lock name is a persisted operational identifier: old and new hosts must serialize on it.
+    expect(stub.lockNames).toEqual(["openlup:public-platform-migrations:v1", "openlup:public-platform-migrations:v1"]);
     expect(stub.queries.find((query) => query.includes("to_regclass"))).toBe(
       "SELECT to_regclass($1) IS NOT NULL AS ledger_exists",
     );

@@ -253,9 +253,34 @@ describe("eslint portable package boundaries", () => {
           .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
     });
 
+  it.each(sourceExtensions.flatMap((extension) => [0, 1, 4, 12, 13].map((depth) => ({ extension, depth }))))(
+    "permits only exact public core exports from platform in $extension at depth $depth",
+    async ({ extension, depth }) => {
+      const config=await loadConfig();
+      const filename=`packages/platform/src/${"nested/".repeat(depth)}usesKernel.${extension}`;
+      for(const specifier of ["@openlup/core/outbox","@openlup/core/readiness","@openlup/core/platform-runtime","@openlup/core/standard-schema"]){
+        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename)).toEqual([]);
+      }
+      for(const specifier of ["@openlup/core/src/readiness","@openlup/core/dist/readiness/index.js","@openlup/core/not-exported","@openlup/core"]){
+        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+          .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
+      }
+      for(const specifier of ["@openlup/ui","@openlup/outbox","@openlup/unknown","/outside","@/outside","#outside",`${"../".repeat(depth+3)}outside`]){
+        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+          .toContainEqual(expect.stringContaining("A file under packages/platform stays package-local"));
+      }
+      // The platform adapters own their provider clients, so the portable-source SDK rule does not apply.
+      for(const specifier of ["pg","@vercel/blob"]){
+        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename)).toEqual([]);
+      }
+      if (depth === 0) for(const pkg of portablePackages)for(const source of loadSources("@openlup/platform/http","ts"))
+        expect(boundaryMessages(config,source,`packages/${pkg}/src/usesPlatform.ts`))
+          .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
+    });
+
   it("validates declared workspace exports inside package-local imports too",async()=>{
     const config=await loadConfig();
-    for(const pkg of ["core","ui","outbox"]){
+    for(const pkg of ["core","ui","outbox","platform"]){
       const filename=`packages/${pkg}/src/usesPrivate.ts`;
       for(const source of loadSources(`@openlup/${pkg}/src/private`,"ts"))
         expect(boundaryMessages(config,source,filename))

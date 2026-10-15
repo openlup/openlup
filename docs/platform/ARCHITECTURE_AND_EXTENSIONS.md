@@ -44,8 +44,9 @@ contract, not to a browser client or provider response.
 
 `npm run lint` enforces the import side of this in
 [eslint.config.js](../../eslint.config.js). A package under `packages/` imports
-nothing outside its own directory, except `@openlup/outbox` may import the
-exact public exports of its declared `@openlup/core` dependency. Workspace
+nothing outside its own directory, except `@openlup/outbox` and the unreleased
+`@openlup/platform` may import the exact public exports of their declared
+`@openlup/core` dependency. Workspace
 imports, including imports inside packages, use only subpaths their target's
 `package.json` `exports` declares, never through a
 relative path into `packages/` or an undeclared subpath such as `src` or
@@ -54,7 +55,10 @@ the provider SDKs the config names and no adapter, infrastructure, runtime or
 route code; its tests may compose a domain with an adapter. The same provider
 SDK restriction applies to non-test production source in `packages/core/src`
 and `packages/ui/src` as well as `packages/outbox/src`; their tests retain
-package isolation and exact-export checks. The checks cover
+package isolation and exact-export checks. `packages/platform` is not portable
+in that sense: its PostgreSQL adapters load `pg`, its only optional peer, and
+it receives the `@vercel/blob` module and the Supabase client factory from the
+application instead of importing those SDKs. The checks cover
 literal import and re-export specifiers, plain-template dynamic imports,
 type imports, and literal/plain-template `require` and `module.require`
 loads. A specifier held in a variable or reached through an alias still needs
@@ -70,6 +74,16 @@ of semantic or dataflow analysis; see the precise scope and exceptions in
 
 
 <!-- openlup-doc-impact {"unit":"server","digest":"sha256-677c8943f9ff430a5c5c104f7b6414a5f70c9cb0f35013a78e4b4b423776d8f1","reason":"Server-library comment delta. The admin-domain kit, feature flag, observability and service comments name downstream files by role or by their path in this tree, the rate limiter test title names its callers generically, and the payment adapter registry comment names an adapter folder generically. No server boundary described here changes."} -->
+
+The runnable server substrate lives in the unreleased `@openlup/platform`
+package: the Node HTTP runtime and its fixed request order, BFF dispatch,
+scheduling with job leases, blob and data adapters, the node-postgres migration
+runner and bundle composition. Every deployment value reaches it as an option or
+injected function, including the environment, route table, header policy,
+entrypoints, job configuration and migration catalogue. The reference
+application keeps its former module paths as thin bindings that pass its own
+values, and keeps its BFF envelope, observability, health route and managed
+Supabase job ledger as its own source.
 
 The reference outbox worker delegates to `@openlup/outbox`; application handlers and the explicit known event vocabulary remain in composition. Shared envelope, execution-context, descriptor and readiness contracts live in `@openlup/core`. The rail provides one bare worker for immediate work and lease-bound schedules for dispatched work. Its PostgreSQL executor commits each claim or settlement before resolving, with no encompassing transaction across effects.
 

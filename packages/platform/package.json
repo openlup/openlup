@@ -1,0 +1,84 @@
+{
+  "name": "@openlup/platform",
+  "version": "0.14.0",
+  "private": true,
+  "description": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduler, storage, data gateways and bundle composition; development preview.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "packageManager": "npm@11.19.0",
+  "sideEffects": false,
+  "files": [
+    "dist/**",
+    "src/**",
+    "sql/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+    "test": "vitest run test",
+    "ci": "npm run build && npm run test"
+  },
+  "peerDependencies": {
+    "@openlup/core": "0.14.0",
+    "pg": "^8.22.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "exports": {
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js",
+      "default": "./dist/http/index.js"
+    },
+    "./bff": {
+      "types": "./dist/bff/index.d.ts",
+      "import": "./dist/bff/index.js",
+      "default": "./dist/bff/index.js"
+    },
+    "./scheduler": {
+      "types": "./dist/scheduler/index.d.ts",
+      "import": "./dist/scheduler/index.js",
+      "default": "./dist/scheduler/index.js"
+    },
+    "./blob": {
+      "types": "./dist/blob/index.d.ts",
+      "import": "./dist/blob/index.js",
+      "default": "./dist/blob/index.js"
+    },
+    "./data": {
+      "types": "./dist/data/index.d.ts",
+      "import": "./dist/data/index.js",
+      "default": "./dist/data/index.js"
+    },
+    "./migrations": {
+      "types": "./dist/migrations/index.d.ts",
+      "import": "./dist/migrations/index.js",
+      "default": "./dist/migrations/index.js"
+    },
+    "./job-ledger": {
+      "types": "./dist/job-ledger/index.d.ts",
+      "import": "./dist/job-ledger/index.js",
+      "default": "./dist/job-ledger/index.js"
+    },
+    "./kernel": {
+      "types": "./dist/kernel/index.d.ts",
+      "import": "./dist/kernel/index.js",
+      "default": "./dist/kernel/index.js"
+    },
+    "./composition": {
+      "types": "./dist/composition/index.d.ts",
+      "import": "./dist/composition/index.js",
+      "default": "./dist/composition/index.js"
+    }
+  }
+}

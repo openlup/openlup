@@ -62,9 +62,12 @@ export async function admitReferenceOutbox(input: {
 }
 
 /** Read the installed namespace and the actual exported package roots; never infer versions from a fixture. */
-export function observeReferencePackages(): { loadedPackages: LoadedPackage[]; inventoryComplete: boolean } {
+export function observeReferencePackages(
+  /** Directory the installation search starts from; tests pass a synthetic tree. */
+  start: string = dirname(fileURLToPath(import.meta.url)),
+): { loadedPackages: LoadedPackage[]; inventoryComplete: boolean } {
   const require = createRequire(import.meta.url);
-  let directory = dirname(fileURLToPath(import.meta.url));
+  let directory = start;
   while (!existsSync(join(directory, "node_modules", "@openlup"))) {
     const parent = dirname(directory);
     if (parent === directory) return { loadedPackages: [], inventoryComplete: false };
@@ -75,8 +78,13 @@ export function observeReferencePackages(): { loadedPackages: LoadedPackage[]; i
   const loadedPackages: LoadedPackage[] = [];
   for (const name of names) {
     const pkg = `@openlup/${name}`;
-    // The reference imports these two packages. An unexpected installation stays unknown.
-    if (!["core", "outbox"].includes(name)) return { loadedPackages, inventoryComplete: false };
+    // The reference imports these two set packages. The unreleased platform substrate is a private
+    // workspace package, not a release-set member, so the inventory leaves it out once its manifest
+    // proves exactly that; any other unexpected installation stays unknown.
+    if (!["core", "outbox"].includes(name)) {
+      if (name === "platform" && isUnreleasedPlatformPackage(join(directory, "node_modules", "@openlup", name))) continue;
+      return { loadedPackages, inventoryComplete: false };
+    }
     let root = dirname(require.resolve(name === "core" ? "@openlup/core/readiness" : "@openlup/outbox"));
     while (!existsSync(join(root, "package.json"))) {
       const parent = dirname(root); if (parent === root) return { loadedPackages, inventoryComplete: false }; root = parent;
@@ -86,6 +94,12 @@ export function observeReferencePackages(): { loadedPackages: LoadedPackage[]; i
     if (manifest.name !== pkg) return { loadedPackages, inventoryComplete: false };
     loadedPackages.push({ name: manifest.name, version: manifest.version, kind: gates.kind });
   }
-  return { loadedPackages, inventoryComplete: names.length === 2 };
+  return { loadedPackages, inventoryComplete: loadedPackages.length === 2 };
   } catch { return { loadedPackages: [], inventoryComplete: false }; }
+}
+
+/** True only for the private, unreleased `@openlup/platform` workspace package at `root`. */
+export function isUnreleasedPlatformPackage(root: string): boolean {
+  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  return manifest.name === "@openlup/platform" && manifest.private === true;
 }

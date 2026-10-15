@@ -23,7 +23,9 @@ change belongs there, never in a local shim.
 
 - Engine: `packages/core/src/platform-runtime/` (`@openlup/core/platform-runtime`)
 - Shared/frontend: `src/domains/platform-runtime/` (shims + the local bundle list)
-- Server: `server/domains/platform-runtime/platformKernel.ts` (kernel shim) and
+- Server: `server/domains/platform-runtime/platformKernel.ts`, a binding that re-exports the
+  bundle kernel of the unreleased `@openlup/platform/kernel` (descriptors, readiness and the
+  server-side bundle id list, which a test keeps equal to the local bundle list here), and
   a deployment-owned composition root described in `docs/platform/RUNTIME_AND_SELF_HOSTING.md`
 
 ## Does NOT own

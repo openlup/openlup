@@ -295,6 +295,11 @@ const OUTBOX_SCRIPTS = {
   "ci:required": "npm run test:consumer",
   "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts",
 };
+const PLATFORM_SCRIPTS = {
+  build: "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+  test: "vitest run test",
+  ci: "npm run build && npm run test",
+};
 const UI_SCRIPTS = { build: CORE_SCRIPTS.build, typecheck: "tsc -p tsconfig.json --noEmit", "test:neutrality": "node --experimental-strip-types smoke/neutrality.ts" };
 const compatibility = (diagnostics: number) => ({ typecheck: { projects: ["tsconfig.synthetic.json"], signedPreviewDebt: { unresolvedEdges: { mode: "exact-ratchet", pairs: 0, importers: 0, targets: 0, digest: "sha256-e3b0c44298fc1c149afbf4c8996fb924", pairHashes: [] }, inferenceCascades: { mode: "ceiling-ratchet", diagnostics } } } });
 const SYNTHETIC_TREE: Record<string, string> = {
@@ -309,6 +314,7 @@ const SYNTHETIC_TREE: Record<string, string> = {
   "packages/core/package.json": json({ name: "synthetic-core", scripts: CORE_SCRIPTS }),
   "packages/core/package-lock.json": json({ name: "synthetic-core", lockfileVersion: 3 }),
   "packages/outbox/package.json": json({ name: "synthetic-outbox", scripts: OUTBOX_SCRIPTS }),
+  "packages/platform/package.json": json({ name: "synthetic-platform", scripts: PLATFORM_SCRIPTS }),
   "packages/ui/package.json": json({ name: "synthetic-ui", scripts: UI_SCRIPTS }),
   [CONTRACT]: createSourceReleaseContract({ ...Object.fromEntries(["inventoryDigest", "classDigest", "packageDigest", "rootLockDigest", "coreLockDigest", "migrationManifestDigest", "databaseTypesDigest", "policyRegistryDigest", "publicationCatalogDigest"].map((name) => [name, `sha256-${"0".repeat(64)}`])) as unknown as SourceReleaseContractInput, compatibility: compatibility(0) as SourceReleaseContractInput["compatibility"] }, { evidenceClass: "activation-candidate", coordinate: CANONICAL_ACTIVATION_REPOSITORY, securityRoute: CANONICAL_ACTIVATION_SECURITY_ROUTE, owner: OWNER }).contents,
 };
