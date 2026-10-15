@@ -1123,6 +1123,11 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   canonical forms, or reuse the resolver.
 - 2026-10-15, the same rule and the owner's review of the rethink: hardening a
   checker cycle after cycle → question the criterion and the tool first.
+- 2026-10-15, the review-cycle rule change itself: its compatibility proof
+  checked an in-flight lineage at cycle 3, which then reached old-rule owner
+  cycles 4 and 5 before the merge and was refused → a validator rule change
+  must accept or explicitly migrate in-flight lineages; prove it against every
+  live session's stored state just before merge, not only its current cycle.
 
 ### Merge queue
 
