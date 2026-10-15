@@ -3,7 +3,7 @@ import { posix } from "node:path";
 
 export const PUBLIC_POLICY_REGISTRY_PATH = "config/openlup-policy-registry.json";
 export const PUBLICATION_CATALOG_PATH = "config/openlup-publication-catalog.json";
-export const PUBLIC_REFERENCE_BUILD_COMMAND = "npm --workspace @openlup/core run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender";
+export const PUBLIC_REFERENCE_BUILD_COMMAND = "npm --workspace @openlup/core run build && npm --workspace @openlup/platform run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender";
 export const PUBLIC_TEST_SCOPE = ["api", "mcp", "scripts", "server", "src", "tests"] as const;
 export const PUBLIC_TEST_COMMAND = "node scripts/run-vitest.mjs run";
 // Preserve the protected-main floor while the complete diagnostic jobs expose debt.

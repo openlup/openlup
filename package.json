@@ -36,7 +36,7 @@
   "packageManager": "npm@11.19.0",
   "scripts": {
     "build": "npm run build:public-reference",
-    "build:public-reference": "npm --workspace @openlup/core run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender",
+    "build:public-reference": "npm --workspace @openlup/core run build && npm --workspace @openlup/platform run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender",
     "build:public-reference:client": "OPENLUP_BUILD_TARGET=public-reference vite build --configLoader native",
     "build:public-reference:prerender": "node --experimental-strip-types scripts/oss-reference-prerender.ts",
     "build:public-reference:ssr": "OPENLUP_BUILD_TARGET=public-reference-ssr vite build --configLoader native",

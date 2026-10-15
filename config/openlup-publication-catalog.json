@@ -19187,7 +19187,7 @@
     },
     {
       "name": "build:public-reference",
-      "command": "npm --workspace @openlup/core run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender",
+      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/platform run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -19349,7 +19349,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-44a1be5abc19c92e3d97352bafe7705010d03a45bf859037043d845f626729ad"
+      "digest": "sha256-348a17832f86962d1ba0dace1473d6f2b2337d8199bedd7f782429e981671a93"
     },
     {
       "path": "packages/core/package.json",
