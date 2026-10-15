@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-9e3a9941e1b60095dbdd9a39f6eedd3fb89df22509a5c9cfae0472492262f5bc","reason":"ESLint adds the module graph that Architecture and extensions, internal boundaries, requires inside packages/platform/src: a module's production files import their own files and other modules only through their declared entries, with a type-aware variant for type-only edges, and refuse non-canonical relative paths, package specifiers with dot or empty segments, specifiers holding control characters, spaces, backslashes or percent signs, the package's own name, other spellings of the @openlup scope, test or fixture files and URLs at any depth, using the same core rules as the existing package boundaries. Other packages' rules, required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-925d9e165e1838a0406761bb0baf78f21d506196a314189795ea04c61046224f","reason":"ESLint adds the module graph that Architecture and extensions, internal boundaries, requires inside packages/platform/src: a module's production files import their own files and other modules only through their declared entries, with a type-aware variant for type-only edges, and refuse non-canonical relative paths, package specifiers with dot or empty segments, specifiers holding control characters, spaces, backslashes or percent signs, the package's own name, other spellings of the @openlup scope, test or fixture files and URLs at any depth, using the same core rules as the existing package boundaries. Other packages' rules, required contributor commands, their order and the checks described here are unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-693a3f969e95b094a7a7fb637914e45f24ca5e65dca32565ca4cc96920c8acfe","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports; refused deep, type, direction, self-reference, URL, control-character, non-canonical relative, climbing package, scope-spelling and test-file paths at every depth; and an inventory check that the declared edges equal the actual imports between modules, with only the composer declaring more. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-9a719591f66282787260ebee03d29b1ada6e4a5860b1fcf34be7e58323a8aac7","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports; refused deep, type, direction, self-reference, URL, control-character, non-canonical relative, climbing package, scope-spelling and test-file paths at every depth; and an inventory check that the declared edges equal the actual imports between modules, with only the composer declaring more. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
