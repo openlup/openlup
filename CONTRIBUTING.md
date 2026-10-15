@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-8fc619f48754e571c79562b2f79aeb07f4c6f598f9ab0400fc3583a8b0b9983c","reason":"The workspace adds the unreleased @openlup/platform package. The root pre-scripts and the public reference build script build it after core, because the reference bindings load it, the lockfile links it, the root Vitest node project collects its tests, and ESLint lets it import exact public core exports as outbox does. Required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-dc7b03231cfe02682761399aa90f8973b24a3a47bc32ba3c87b750b91f6339c0","reason":"ESLint adds the module graph that Architecture and extensions, internal boundaries, requires inside packages/platform/src: a module's production files import their own files and other modules only through their declared entries, with a type-aware variant for type-only edges, using the same core rules as the existing package boundaries. Other packages' rules, required contributor commands, their order and the checks described here are unchanged."} -->
 
 The bounded SQL RLS recovery uses existing owner cycles only: a separately
 reviewed contraction control precedes the corrected managed forward. Its exact
@@ -159,7 +159,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-f4e213d2f31de3e485de37ee9259169e43b3d2a4a56a017f3219bbcbc0a642cc","reason":"The publication policy pins the extended pre-script and public build commands and the new package's script digest, adds packages/platform to the required test scope after packages/outbox, and admits its Vitest config as an execution entrypoint; the materialized contract test pins that scope, and the source preview release falsifiers add the new manifest to their synthetic tree. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-9c043b423288225cb20e6fed269299cb1e5dee4dff38e775c5d203d6206573c2","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports, and refused deep, type, direction, self-reference, URL and unnormalized escapes, plus a check that the graph names exactly the package's module directories. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

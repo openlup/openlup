@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Linter } from "eslint";
@@ -288,4 +289,73 @@ describe("eslint portable package boundaries", () => {
     }
   });
 
+});
+
+describe("eslint platform module boundaries", () => {
+  const platformSource = join(root, "packages/platform/src");
+  const typeOnlyForm = /^(?:import type |import \{ type |export type |type Value = import\()/;
+
+  function moduleMessages(config: Linter.Config[], source: string, filename: string): string[] {
+    const messages = new Linter({ cwd: root }).verify(source, config, resolve(root, filename));
+    expect(messages.filter(({ fatal, ruleId }) => fatal || ruleId === null)).toEqual([]);
+    return messages
+      .filter(({ ruleId }) => ["no-restricted-imports", "no-restricted-syntax", "@typescript-eslint/no-restricted-imports"].includes(ruleId!))
+      .map(({ message }) => message);
+  }
+
+  it("declares exactly the package's module directories, each edge to another declared module", async () => {
+    const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
+      PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;
+    };
+    const entries = readdirSync(platformSource, { withFileTypes: true });
+    expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
+    expect(Object.keys(graph).sort()).toEqual(entries.map(({ name }) => name).sort());
+    for (const [module, { values, types }] of Object.entries(graph)) {
+      for (const target of [...values, ...types]) expect(Object.keys(graph)).toContain(target);
+      expect([...values, ...types]).not.toContain(module);
+      expect(values.filter((target) => types.includes(target))).toEqual([]);
+    }
+  });
+
+  it.each(sourceExtensions.flatMap((extension) => [0, 1, 10].map((depth) => ({ extension, depth }))))(
+    "admits own files and declared entries and refuses every other module path in $extension at depth $depth",
+    async ({ extension, depth }) => {
+      const config = await loadConfig();
+      const file = (module: string) => `packages/platform/src/${module}/${"nested/".repeat(depth)}usesModule.${extension}`;
+      const up = "../".repeat(depth + 1);
+      const refusal = (module: string) => expect.stringContaining(`packages/platform module "${module}"`);
+      const admitted = (module: string, specifier: string, onlyTypes = false) => {
+        for (const source of loadSources(specifier, extension)) {
+          const messages = moduleMessages(config, source, file(module));
+          if (!onlyTypes || typeOnlyForm.test(source)) expect(messages).toEqual([]);
+          else expect(messages).toContainEqual(refusal(module));
+        }
+      };
+      const refused = (module: string, specifier: string) => {
+        for (const source of loadSources(specifier, extension)) expect(moduleMessages(config, source, file(module))).toContainEqual(refusal(module));
+      };
+
+      // Own internals, from the module's files and through the source root.
+      for (const specifier of ["./own.js", `${up}composition/own.js`, ...(depth > 0 ? ["../own.js"] : [])]) admitted("composition", specifier);
+      // Declared value edges through the target's entry.
+      admitted("composition", `${up}data/index.js`);
+      admitted("bff", `${up}kernel/index.js`);
+      // A types edge admits type-only imports; any load that brings in a value is refused.
+      admitted("http", `${up}bff/index.js`, true);
+      admitted("job-ledger", `${up}data/index.js`, true);
+      // Deep imports into a neighbour, even along a declared edge.
+      for (const specifier of [`${up}data/postgresGateway.js`, `${up}data/index.ts`, `${up}data/index`, `${up}data`, `${up}data/`]) refused("composition", specifier);
+      refused("http", `${up}bff/dispatch.js`);
+      // Undeclared directions, even through the target's public entry.
+      refused("kernel", `${up}composition/index.js`);
+      refused("data", `${up}blob/index.js`);
+      refused("scheduler", `${up}bff/index.js`);
+      refused("migrations", `${up}kernel/index.js`);
+      // Escapes around the relative entry: package self-reference, URL, unnormalized or out-of-source paths.
+      for (const specifier of [
+        "@openlup/platform/composition", "@openlup/platform", "file:///packages/platform/src/composition/index.js",
+        `${up}kernel/../composition/index.js`, `./x/../${up}composition/index.js`, `${up}./composition/index.js`,
+        `${up}../src/composition/index.js`,
+      ]) refused("kernel", specifier);
+    });
 });
