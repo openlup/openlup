@@ -54,6 +54,43 @@ Rows that platform behaviour depends on must ship as idempotent statements in a
 forward, rather than relying on a reference fixture or process startup. A missing
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
+## Module catalogues and installed histories
+
+The canonical source manifest for `db/platform/migrations` is the existing
+[`config/platform-migration-manifest.json`](../../config/platform-migration-manifest.json).
+Its current format is v1: one baseline and ordered forward file/hash rows for
+that catalogue, plus `objectInventorySha256`. Keep its exact immutable prefix; do not create a competing
+canonical manifest or add package SQL paths to unchanged v1. The
+[source validator](../../scripts/platform-migration-manifest.ts) owns that
+format. A future combined catalogue needs an explicit reviewed format and
+compatibility change if v1 cannot represent it.
+
+Several modules in one distribution need a deterministic migration catalogue
+before they can be installed together. Declare their dependency order and
+preserve each migration's identity, bytes and owner; do not infer ordering from
+directory traversal or replace independent schema requirements with one nominal
+package version. A tarball manifest is a projection of canonical source rows
+and their digests, not a second authoring source. Copying existing SQL into a
+tarball does not make it a new migration to replay. Never split, rename or edit
+an issued or applied SQL unit, including one that spans several modules.
+
+The planned foundation/identity path must prove both a fresh installation of
+the complete selected catalogue and an upgrade from the exact foundation chain
+to identity. The runner must match the applied ledger to the exact selected
+prefix by path, hash and position before appending; missing, reordered,
+duplicated or changed applied identities refuse. Preserve durable state and
+prove replay and refusal through the existing package-owned required proof.
+This is a future package-runner acceptance requirement, not evidence that a
+multi-module runner or catalogue already exists on this branch.
+
+An adopter with an existing store retains its own reviewed migration chain and
+applied ledger. It compares required schema and migration identities with that
+store and applies only compatible reviewed forwards. It does not apply a fresh
+package baseline over an existing database, relabel old SQL as new, rewrite an
+applied prefix or discard pending work. Fresh-install proof does not establish
+that upgrade path. See [package architecture](ARCHITECTURE_AND_EXTENSIONS.md#versions-and-schema)
+for the shared set and shipment boundary.
+
 ## Database test fixtures and witnesses
 
 A selected test may supply neutral settlement, format, provider, location and
