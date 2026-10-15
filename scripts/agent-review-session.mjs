@@ -128,8 +128,13 @@ function validateCandidate(candidate) {
   demand(['base', 'head', 'tree'].every(field => SHA.test(candidate[field])) && ['workingDigest', 'indexDigest'].every(field => DIGEST.test(candidate[field])), 'candidate digest is invalid'); demand(typeof candidate.clean === 'boolean', 'candidate clean flag is invalid'); paths(candidate.changedPaths);
 }
 const REPAIR_RISKS = ['ordinary', 'security', 'control', 'schema', 'instructions', 'unknown'];
-const MAX_REPAIRS = 2;
-const MAX_OWNER_CYCLES = MAX_REPAIRS + 4;
+// Cycles 1-3 are automatic. After a cycle 3 that did not pass, a rethink record
+// unlocks two more automatic cycles; cycle 6 needs an explicit owner continuation.
+const RETHINK_CYCLE = 4;
+const OWNER_CYCLE = 6;
+const MAX_CYCLES = 6;
+const FULL_CYCLES = [3, RETHINK_CYCLE, OWNER_CYCLE];
+const RETHINK_DECISIONS = ['keep', 'change', 'narrow', 'intent'];
 class NeedsRescope extends Error {}
 function rescope(value, message) { if (!value) throw new NeedsRescope(`Agent review needs rescope: ${message}`); }
 // Explicit owner regrouping is process evidence, not an authenticated owner signature.
@@ -149,50 +154,34 @@ function validateOwnerContinuation(approval) {
   demand(DIGEST.test(approval.priorRequestDigest) && DIGEST.test(approval.candidateDigest), 'owner continuation digest is invalid');
   text(approval.ownerDecision, 'owner continuation decision', 4096);
 }
-// Bounded SQL/RLS recovery consumes existing owner cycles; automatic limits remain unchanged.
-const RLS_RECOVERY_ADDITIONS = [
-  "docs/platform/plans/autonomous-reviewed-delivery.md",
-  "scripts/agent-review-session.mjs",
-  "scripts/agent-review-session.test.ts",
-  "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql"
-];
-const RLS_RECOVERY_SCOPE = [
-  "CONTRIBUTING.md",
-  "config/openlup-publication-catalog.json",
-  "config/openlup-source-release-contract.json",
-  "config/reviewed-platform-forwards.json",
-  "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
-  "docs/platform/CANONICAL_CONTRACTS.md",
-  "docs/platform/DATA_AND_MIGRATIONS.md",
-  "docs/platform/plans/autonomous-reviewed-delivery.md",
-  "docs/platform/plans/public-ci-known-red.md",
-  "scripts/agent-review-session.mjs",
-  "scripts/agent-review-session.test.ts",
-  "scripts/reviewed-platform-forward.ts",
-  "scripts/source-preview-release.test.ts",
-  "src/lib/subscriptionOwnEngineRpcBoundary.test.ts",
-  "supabase/migrations/20261004120000_runtime_capabilities.sql",
-  "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql",
-  "supabase/tests/operator_contact_correction_test.sql",
-  "supabase/tests/operator_subscription_actions_test.sql",
-  "supabase/tests/runtime_capability_boundary_test.sql",
-  "supabase/tests/subscription_renewal_due_lock_runtime_test.sql"
-];
-const RLS_RECOVERY_CRITERION = "RLS recovery: retire exactly eight legacy cross-customer browser policies; preserve customer-own access and distributor own membership read, prove actual authenticated role isolation, merge exact contraction admission before introducing the corrected managed forward, and preserve all review history and automatic limits.";
-function rlsRecoveryIntent(intent) {
-  return equal([...intent.scope].sort(), RLS_RECOVERY_SCOPE) && intent.risk === 'behavior' && equal(intent.requiredRoles, ['correctness', 'security']) && intent.criteria.endsWith(` ${RLS_RECOVERY_CRITERION}`);
-}
-function ownerCycleLimit(intent) { return rlsRecoveryIntent(intent) ? 6 : MAX_OWNER_CYCLES; }
-function assertOwnerContinuation(approval, previous, request, regroup, cycle) {
+function assertOwnerContinuation(approval, previous, request, regroup) {
   validateOwnerContinuation(approval);
   demand(approval.priorRequestDigest === digest(previous) && approval.candidateDigest === digest(request.candidate), 'owner continuation differs from exact previous request or candidate');
-  const additions = request.intent.scope.filter(path => !previous.intent.scope.includes(path)).sort();
-  const consumerScope = cycle !== 5 && equal(additions, ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts']);
-  const checkoutScope = cycle === 5 && equal(additions, ['.github/workflows/published-tree-ci.yml']);
-  const rlsScope = cycle === 4 && equal(additions, RLS_RECOVERY_ADDITIONS) && rlsRecoveryIntent(request.intent) && request.intent.criteria === `${previous.intent.criteria} ${RLS_RECOVERY_CRITERION}`;
-  const scopeOnly = regroup && ((consumerScope || checkoutScope) && equal(previous.intent.criteria, request.intent.criteria) || rlsScope) && previous.intent.risk === request.intent.risk && equal(previous.intent.requiredRoles, request.intent.requiredRoles);
-  const rlsFinal = cycle === 6 && previous.continuation?.cycle === 5 && previous.continuation.ownerContinuation && rlsRecoveryIntent(previous.intent) && equal(previous.intent, request.intent) && !previous.candidate.changedPaths.includes('supabase/migrations/20261004123000_runtime_capability_rls_closure.sql') && request.candidate.changedPaths.includes('supabase/migrations/20261004123000_runtime_capability_rls_closure.sql');
-  demand((cycle <= MAX_OWNER_CYCLES && (cycle !== 6 || !rlsRecoveryIntent(request.intent)) && equal(previous.intent, request.intent) || scopeOnly || rlsFinal) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged criteria, risk, roles and author; remaining owner cycle requires its exact scope addition');
+  demand((equal(previous.intent, request.intent) || regroup) && previous.authorSessionId === request.authorSessionId, 'owner continuation requires unchanged intent and author, or an owner regroup');
+}
+// A rethink is the supervisor's process evidence with one fresh cold simplicity
+// reviewer, not an owner decision. It accounts for every finding card so far.
+function validateRethink(rethink) {
+  exact(rethink, ['priorRequestDigest', 'reviewerId', 'sessionId', 'completedAt', 'findingClasses', 'pattern', 'rootCause', 'simplicityCheck', 'alternatives', 'decision', 'rationale', 'lesson'], 'rethink');
+  demand(DIGEST.test(rethink.priorRequestDigest) && Number.isSafeInteger(rethink.completedAt) && rethink.completedAt >= 0, 'rethink binding is invalid');
+  text(rethink.reviewerId, 'rethink reviewer ID'); text(rethink.sessionId, 'rethink session ID');
+  for (const field of ['pattern', 'rootCause', 'simplicityCheck', 'rationale']) text(rethink[field], `rethink ${field}`, 4096);
+  demand(Array.isArray(rethink.findingClasses) && rethink.findingClasses.length <= 64, 'rethink finding classes exceed bounds');
+  for (const group of rethink.findingClasses) { exact(group, ['class', 'findingIds'], 'rethink finding class'); text(group.class, 'rethink class'); demand(Array.isArray(group.findingIds) && group.findingIds.length > 0 && group.findingIds.length <= 384 && group.findingIds.every(id => DIGEST.test(id)), 'rethink finding IDs are invalid'); }
+  demand(Array.isArray(rethink.alternatives) && rethink.alternatives.length > 0 && rethink.alternatives.length <= 16, 'rethink alternatives are missing or exceed bounds'); rethink.alternatives.forEach(item => text(item, 'rethink alternative', 1024));
+  demand(RETHINK_DECISIONS.includes(rethink.decision), 'rethink decision is invalid');
+  text(rethink.lesson, 'rethink lesson', 240); demand(rethink.lesson.includes('→'), 'rethink lesson must read "pattern → simpler path"');
+}
+function assertRethink(rethink, history, request, identities) {
+  validateRethink(rethink);
+  const previous = history.at(-1);
+  demand(rethink.priorRequestDigest === digest(previous.request), 'rethink differs from exact previous request');
+  demand(![rethink.reviewerId, rethink.sessionId].some(id => id === request.authorSessionId || identities.has(id)) && rethink.reviewerId !== rethink.sessionId, 'rethink reviewer is the author or not fresh');
+  demand(previous.reports.every(report => report.completedAt <= rethink.completedAt) && rethink.completedAt <= request.preparedAt, 'rethink predates the previous round or follows the request');
+  const grouped = rethink.findingClasses.flatMap(group => group.findingIds);
+  demand(new Set(grouped).size === grouped.length && equal([...grouped].sort(), allCards(history).map(card => card.id).sort()), 'rethink must group every finding card so far exactly once');
+  demand((rethink.decision === 'intent') === Boolean(request.continuation.regroup), 'an intent-change rethink requires an owner regroup; other decisions keep the approved intent');
+  identities.add(rethink.reviewerId); identities.add(rethink.sessionId);
 }
 function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
@@ -232,21 +221,25 @@ function validateFinding(finding) {
 function validateRequest(request) {
   const fields = ['version', 'evidence', 'id', 'authorSessionId', 'candidate', 'intent', 'roles', 'preparedAt'];
   if (request?.version === 2) fields.push('continuation');
+  if (request?.version === 1 && Object.hasOwn(request, 'simplicityPreCheck')) fields.push('simplicityPreCheck');
   exact(request, fields, 'request');
   demand([1, 2].includes(request.version) && request.evidence === EVIDENCE, 'request version/evidence is invalid'); text(request.id, 'request ID'); text(request.authorSessionId, 'author session'); validateIntent(request.intent); validateCandidate(request.candidate);
   demand(Number.isSafeInteger(request.preparedAt) && request.preparedAt >= 0, 'request time is invalid');
+  if (Object.hasOwn(request, 'simplicityPreCheck')) text(request.simplicityPreCheck, 'simplicity pre-check', 2048);
   if (request.version === 2) {
     const continuation = request.continuation;
     const fields = ['cycle', 'mode', 'priorDigest', 'deltaPaths', 'findings', 'repairRisk'];
-    if (Object.hasOwn(continuation, 'regroup')) fields.push('regroup');
-    if (Object.hasOwn(continuation, 'ownerContinuation')) fields.push('ownerContinuation');
+    for (const optional of ['regroup', 'ownerContinuation', 'rethink']) if (Object.hasOwn(continuation, optional)) fields.push(optional);
     exact(continuation, fields, 'continuation');
     if (Object.hasOwn(continuation, 'regroup')) { validateRegroup(continuation.regroup); demand(continuation.mode === 'full', 'owner regroup requires full coverage'); }
-    demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= ownerCycleLimit(request.intent) && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
+    demand(Number.isSafeInteger(continuation.cycle) && continuation.cycle >= 1 && continuation.cycle <= MAX_CYCLES && ['closure', 'focused', 'full'].includes(continuation.mode) && DIGEST.test(continuation.priorDigest), 'repair lineage is invalid');
+    demand(!FULL_CYCLES.includes(continuation.cycle) || continuation.mode === 'full', 'cycles 3, 4 and 6 require full coverage');
+    // Cycle 3 accepts an owner continuation recorded before it became automatic.
     if (Object.hasOwn(continuation, 'ownerContinuation')) {
       validateOwnerContinuation(continuation.ownerContinuation);
-      demand(continuation.cycle > MAX_REPAIRS && continuation.mode === 'full' && (!continuation.regroup || [4, 5].includes(continuation.cycle)) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation requires exact full candidate; scope expansion requires its exact owner-approved consumer, checkout or RLS route');
-    } else demand(continuation.cycle <= MAX_REPAIRS, 'third through sixth cycle requires explicit owner continuation');
+      demand([3, OWNER_CYCLE].includes(continuation.cycle) && continuation.ownerContinuation.candidateDigest === digest(request.candidate), 'owner continuation applies to the exact full candidate of cycle 6');
+    } else demand(continuation.cycle !== OWNER_CYCLE, 'cycle 6 requires explicit owner continuation');
+    if (Object.hasOwn(continuation, 'rethink')) { validateRethink(continuation.rethink); demand(continuation.cycle === RETHINK_CYCLE, 'a rethink record applies only at the cycle 4 transition'); }
     paths(continuation.deltaPaths, continuation.mode === 'full'); demand(continuation.mode === 'full' || continuation.deltaPaths.every(path => request.intent.scope.includes(path)), 'repair delta exceeds approved scope');
     demand(REPAIR_RISKS.includes(continuation.repairRisk), 'repair risk is invalid');
     demand(Array.isArray(continuation.findings) && continuation.findings.length <= 384, 'finding cards exceed bounds');
@@ -262,10 +255,10 @@ function validateRequest(request) {
   }
   if (request.intent.risk === 'routine') demand(request.candidate.changedPaths.every(path => !sensitivePath(path)), 'routine risk cannot cover control, trust-boundary or public-contract paths; prepare behavior reviews');
 }
-export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, modeCheck = routineModeChanged, base }) {
+export async function prepareAgentReview({ cwd, intent, authorSessionId, now = Date.now, snapshot = captureSessionCandidate, modeCheck = routineModeChanged, base, simplicityPreCheck }) {
   validateIntent(intent); text(authorSessionId, 'author session');
   const candidate = await snapshot(cwd, base); validateCandidate(candidate);
-  const request = { version: 1, evidence: EVIDENCE, id: randomUUID(), authorSessionId, candidate, intent: structuredClone(intent), roles: requestRoles(intent), preparedAt: now() };
+  const request = { version: 1, evidence: EVIDENCE, id: randomUUID(), authorSessionId, candidate, intent: structuredClone(intent), roles: requestRoles(intent), preparedAt: now(), ...(simplicityPreCheck === undefined ? {} : { simplicityPreCheck }) };
   validateRequest(request);
   if (intent.risk === 'routine') demand(!await modeCheck(cwd, candidate), 'routine risk cannot cover mode or symlink changes; prepare behavior reviews');
   return request;
@@ -317,19 +310,33 @@ function validateRound(request, reports, { complete = false, time = Infinity, ma
   if (complete) demand(roles.size === request.roles.length && reports.some(report => report.simplicityChecked), 'prior review round lacks required coverage or simplicity');
   return identities;
 }
+function passed(round) {
+  if (round.reports.length !== round.request.roles.length || !round.reports.some(report => report.simplicityChecked)) return false;
+  try { round.reports.forEach(report => reportPasses(round.request, report)); return true; } catch { return false; }
+}
+function roundCards(round) {
+  return round.reports.flatMap(report => report.materialFindings.map((finding, index) => ({ id: digest({ requestDigest: digest(round.request), reviewerId: report.reviewerId, index, finding }), finding: structuredClone(finding) })));
+}
 function unresolvedCards(history) {
   const cards = new Map();
   for (const round of history) {
-    let closed = round.reports.length === round.request.roles.length && round.reports.some(report => report.simplicityChecked);
-    try { round.reports.forEach(report => reportPasses(round.request, report)); } catch { closed = false; }
-    if (closed) for (const report of round.reports) for (const id of report.closure?.resolvedFindings ?? []) cards.delete(id);
-    for (const report of round.reports) report.materialFindings.forEach((finding, index) => { const id = digest({ requestDigest: digest(round.request), reviewerId: report.reviewerId, index, finding }); cards.set(id, { id, finding: structuredClone(finding) }); });
+    if (passed(round)) for (const report of round.reports) for (const id of report.closure?.resolvedFindings ?? []) cards.delete(id);
+    for (const card of roundCards(round)) cards.set(card.id, card);
   }
   return [...cards.values()];
 }
+function allCards(history) { return [...new Map(history.flatMap(roundCards).map(card => [card.id, card])).values()]; }
+/** Why the cycle after this state cannot start automatically, or null. */
+function cycleGate(state, { rethink = false, owner = false } = {}) {
+  const cycle = (state.history?.length ?? 0) + 1;
+  if (cycle > MAX_CYCLES) return 'six review cycles are exhausted; change the execution approach with the owner';
+  if (cycle === OWNER_CYCLE && !owner) return 'cycle 6 requires an explicit owner continuation';
+  if (cycle === RETHINK_CYCLE && !rethink && !passed(state)) return 'cycle 3 did not pass; record a rethink with a fresh simplicity reviewer before cycle 4';
+  return null;
+}
 function validateLineage(state, time, maxAgeMs) {
   const fields = Object.hasOwn(state ?? {}, 'history') ? ['request', 'reports', 'history'] : ['request', 'reports']; exact(state, fields, 'session state');
-  const history = state.history ?? []; demand(Array.isArray(history) && history.length <= ownerCycleLimit(state.request.intent), 'repair history exceeds bounds');
+  const history = state.history ?? []; demand(Array.isArray(history) && history.length <= MAX_CYCLES, 'repair history exceeds bounds');
   const allRounds = [...history, state];
   let anchor = 0;
   for (let index = 1; index < allRounds.length; index += 1) if (allRounds[index].request?.continuation?.mode === 'full') anchor = index;
@@ -345,7 +352,9 @@ function validateLineage(state, time, maxAgeMs) {
       demand(request.version === 2 && request.continuation.cycle === index && request.continuation.priorDigest === digest(history.slice(0, index)), 'repair lineage digest or cycle differs');
       demand(equal(request.continuation.findings, unresolvedCards(history.slice(0, index))), 'material finding cards were erased or altered');
       if (request.continuation.regroup) assertRegroup(request.continuation.regroup, previous, request);
-      if (request.continuation.ownerContinuation) assertOwnerContinuation(request.continuation.ownerContinuation, previous, request, request.continuation.regroup, request.continuation.cycle);
+      if (request.continuation.ownerContinuation) assertOwnerContinuation(request.continuation.ownerContinuation, previous, request, request.continuation.regroup);
+      if (request.continuation.rethink) assertRethink(request.continuation.rethink, history.slice(0, index), request, identities);
+      else demand(index !== RETHINK_CYCLE || passed(history[index - 1]), 'cycle 4 after a cycle 3 that did not pass requires a rethink record');
       demand((equal(request.intent, previous.intent) || request.continuation.regroup) && request.authorSessionId === previous.authorSessionId && (request.continuation.mode === 'full' || request.candidate.base === previous.candidate.base) && request.candidate.clean && (request.continuation.mode === 'full' || previous.candidate.clean) && (request.continuation.mode === 'full' || request.candidate.head !== previous.candidate.head && request.candidate.workingDigest !== previous.candidate.workingDigest) && request.preparedAt >= previous.preparedAt && history[index - 1].reports.every(report => report.completedAt <= request.preparedAt), 'repair criteria, scope, base, or committed lineage differs');
     }
     validateRound(request, round.reports, { complete: index < history.length && (index + 1 < history.length ? history[index + 1].request : state.request).continuation.mode !== 'full', time, maxAgeMs: index < anchor ? Infinity : maxAgeMs, identities });
@@ -366,10 +375,11 @@ async function currentLineage(cwd, state, delta) {
   for (let index = 1; index < rounds.length; index += 1) demand(equal(await delta(cwd, rounds[index - 1].request.candidate, rounds[index].request.candidate), rounds[index].request.continuation.deltaPaths), 'actual committed repair delta differs from lineage');
 }
 /** Prepare is idempotent; continuation never erases findings or restarts its budget. */
-export async function prepareAgentReviewState({ previous, repairRisk = 'unknown', fullRefresh = false, regroup, ownerContinuation, delta = captureAgentReviewDelta, maxAgeMs = 86400000, ...options }) {
+export async function prepareAgentReviewState({ previous, repairRisk = 'unknown', fullRefresh = false, regroup, ownerContinuation, rethink, simplicityPreCheck, delta = captureAgentReviewDelta, maxAgeMs = 86400000, ...options }) {
   demand(REPAIR_RISKS.includes(repairRisk) && typeof fullRefresh === 'boolean', 'repair risk or refresh is invalid');
-  const request = await prepareAgentReview(options);
-  if (!previous) { demand(regroup === undefined && ownerContinuation === undefined, 'owner regroup requires preserved previous state; owner continuation also requires history'); return { request, reports: [] }; }
+  // The root request records the author's simplicity pre-check; continuations inherit it through history.
+  const request = await prepareAgentReview(previous ? options : { ...options, simplicityPreCheck });
+  if (!previous) { demand(regroup === undefined && ownerContinuation === undefined && rethink === undefined, 'owner regroup, owner continuation and rethink require preserved previous state'); return { request, reports: [] }; }
   const now = options.now ?? Date.now; const time = now();
   // Validate bindings before reusing any state, including failed/partial unchanged rounds.
   validateLineage(previous, time, Infinity); await currentLineage(options.cwd, previous, delta);
@@ -378,21 +388,27 @@ export async function prepareAgentReviewState({ previous, repairRisk = 'unknown'
   if (intentChanged) { assertRegroup(regroup, previous.request, request); demand(fullRefresh, 'owner regroup requires explicit full refresh'); }
   const preservedRegroup = regroup !== undefined && [...(previous.history ?? []), previous].some(round => equal(regroup, round.request.continuation?.regroup) && equal(round.request.intent, request.intent));
   if (!intentChanged && regroup !== undefined) demand(preservedRegroup, 'owner regroup is not the preserved transition');
+  const cycle = (previous.history?.length ?? 0) + 1;
   const preservedOwnerContinuation = ownerContinuation !== undefined && equal(ownerContinuation, previous.request.continuation?.ownerContinuation) && equal(previous.request.candidate, request.candidate);
   if (ownerContinuation !== undefined && !preservedOwnerContinuation) {
-    assertOwnerContinuation(ownerContinuation, previous.request, request, intentChanged ? regroup : undefined, (previous.history?.length ?? 0) + 1);
-    demand((previous.history?.length ?? 0) >= MAX_REPAIRS && (previous.history?.length ?? 0) < ownerCycleLimit(request.intent) && fullRefresh && (regroup === undefined || intentChanged && [3, 4].includes(previous.history?.length ?? 0)), 'owner continuation requires exhausted automatic budget, a remaining owner cycle and explicit full refresh');
+    assertOwnerContinuation(ownerContinuation, previous.request, request, intentChanged ? regroup : undefined);
+    demand([3, OWNER_CYCLE].includes(cycle) && fullRefresh, 'owner continuation applies at cycle 6 with explicit full refresh');
   }
+  // A repeated spec may carry the rethink already preserved in lineage; only a new one starts cycle 4.
+  const preservedRethink = rethink !== undefined && [...(previous.history ?? []), previous].some(round => equal(rethink, round.request.continuation?.rethink));
+  const newRethink = rethink !== undefined && !preservedRethink;
+  if (newRethink) { validateRethink(rethink); demand(cycle === RETHINK_CYCLE, 'a rethink record applies only at the cycle 4 transition'); }
   if (!intentChanged && equal(previous.request.candidate, request.candidate)) {
     if (preservedOwnerContinuation) return structuredClone(previous);
     if (preservedRegroup) return structuredClone(previous);
+    if (rethink !== undefined && equal(rethink, previous.request.continuation?.rethink)) return structuredClone(previous);
     if (!fullRefresh) return structuredClone(previous);
     // Recovery is unnecessary for a terminal current pass, even if requested.
     let reviewed = true;
     try { validateLineage(previous, time, maxAgeMs); validateRound(previous.request, previous.reports, { complete: true, time, maxAgeMs }); previous.reports.forEach(report => reportPasses(previous.request, report)); } catch { reviewed = false; }
     if (reviewed) return structuredClone(previous);
   }
-  rescope((previous.history?.length ?? 0) < MAX_REPAIRS || ownerContinuation !== undefined && !preservedOwnerContinuation && (previous.history?.length ?? 0) < ownerCycleLimit(request.intent), 'two automatic repair cycles are exhausted; change execution approach');
+  const gate = cycleGate(previous, { rethink: newRethink, owner: ownerContinuation !== undefined && !preservedOwnerContinuation }); rescope(!gate, gate);
   demand(request.candidate.clean, 'repair requires clean committed candidates');
   let priorComplete = previous.request.candidate.clean;
   try { validateLineage(previous, time, maxAgeMs); validateRound(previous.request, previous.reports, { complete: true, time, maxAgeMs }); } catch { priorComplete = false; }
@@ -400,9 +416,9 @@ export async function prepareAgentReviewState({ previous, repairRisk = 'unknown'
   let deltaPaths;
   try { deltaPaths = await delta(options.cwd, previous.request.candidate, request.candidate); } catch (error) { if (error.message.includes('not an authenticated ancestor')) throw new NeedsRescope('Agent review needs rescope: nonancestor integration requires a changed execution approach'); throw error; }
   const findings = unresolvedCards(history);
-  const mode = fullRefresh || !priorComplete || previous.request.candidate.base !== request.candidate.base ? 'full' : repairRisk === 'ordinary' && !deltaPaths.some(sensitivePath) && findings.every(card => card.finding.risk === 'ordinary') ? 'closure' : 'focused';
+  const mode = fullRefresh || !priorComplete || previous.request.candidate.base !== request.candidate.base || FULL_CYCLES.includes(history.length) ? 'full' : repairRisk === 'ordinary' && !deltaPaths.some(sensitivePath) && findings.every(card => card.finding.risk === 'ordinary') ? 'closure' : 'focused';
   paths(deltaPaths, mode === 'full');
-  request.version = 2; request.continuation = { cycle: history.length, mode, priorDigest: digest(history), deltaPaths, findings, repairRisk }; if (intentChanged) request.continuation.regroup = structuredClone(regroup); if (ownerContinuation !== undefined) request.continuation.ownerContinuation = structuredClone(ownerContinuation);
+  request.version = 2; request.continuation = { cycle: history.length, mode, priorDigest: digest(history), deltaPaths, findings, repairRisk }; if (intentChanged) request.continuation.regroup = structuredClone(regroup); if (ownerContinuation !== undefined) request.continuation.ownerContinuation = structuredClone(ownerContinuation); if (newRethink) request.continuation.rethink = structuredClone(rethink);
   request.roles = requestRoles(request.intent, request.continuation);
   const state = { request, reports: [], history: structuredClone(history) }; validateLineage(state, time, maxAgeMs); return state;
 }
@@ -419,7 +435,8 @@ export async function verifyAgentReview({ cwd, request, reports = [], history, s
     demand(Number.isSafeInteger(maxAgeMs) && maxAgeMs > 0 && maxAgeMs <= 86400000, 'review freshness bound is invalid');
     const state = { request, reports, ...(history ? { history } : {}) }; validateLineage(state, now(), maxAgeMs);
     const observed = await snapshot(cwd, request.candidate.base);
-    if (!equal(observed, request.candidate) && (history?.length ?? 0) >= MAX_REPAIRS) throw new NeedsRescope('Agent review needs rescope: two automatic repair cycles are exhausted; change execution approach');
+    const gate = equal(observed, request.candidate) ? null : cycleGate(state);
+    if (gate) throw new NeedsRescope(`Agent review needs rescope: ${gate}`);
     demand(equal(observed, request.candidate), 'candidate changed; prepare fresh independent reviews');
     if (request.intent.risk === 'routine') demand(!await modeCheck(cwd, request.candidate), 'routine risk cannot cover mode or symlink changes; prepare behavior reviews');
     demand(request.candidate.clean, 'final review requires a clean committed candidate; commit and prepare fresh reviews'); await currentLineage(cwd, state, delta);
@@ -505,9 +522,10 @@ async function main() {
   const operation = async () => {
   if (verb === 'prepare') {
     const spec = await boundedJson(input ?? join(directory, 'intent.json'));
-    demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base', 'repairRisk', 'fullRefresh', 'regroup', 'ownerContinuation'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
+    demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base', 'repairRisk', 'fullRefresh', 'regroup', 'ownerContinuation', 'rethink', 'simplicityPreCheck'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
     spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= await forkPoint(cwd);
     let previous; try { previous = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    demand(previous || spec.simplicityPreCheck, 'a first request needs simplicityPreCheck: read Review lessons in CONTRIBUTING.md and name the smallest adequate alternative considered');
     let state;
     try { state = await prepareAgentReviewState({ cwd, ...spec, previous }); }
     catch (error) { if (!(error instanceof NeedsRescope)) throw error; console.log(JSON.stringify({ status: 'needs_rescope', evidence: EVIDENCE, reason: error.message })); process.exitCode = 1; return; }

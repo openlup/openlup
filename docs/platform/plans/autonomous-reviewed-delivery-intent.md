@@ -67,9 +67,11 @@ reviews, regardless of filenames. Reduced repair reviews cannot renew inherited
 evidence expiry; unavailable or expired coverage requires two fresh full-scope
 reviews with all prior findings and lineage retained.
 
-Unchanged prepare preserves evidence. The two automatic repair/review cycles
-persist across prepare and full-review escalation. On exhaustion the supervisor
-automatically regroups the execution approach within existing authority while
+Unchanged prepare preserves evidence. The review-cycle budget persists across
+prepare and full-review escalation: cycles 1–3 are automatic, a cycle 3 that did
+not pass pauses for a rethink with a fresh simplicity reviewer before automatic
+cycles 4 and 5, and cycle 6 needs the owner. At a pause or exhaustion the
+supervisor regroups the execution approach within existing authority while
 keeping honest blocked evidence; there is no budget reset, bypass or automatic
 merge. Changed intent requires explicit regrouping. An ancestor-preserving base
 integration requires fresh full-scope review, preserving history and budget. Stop optional edits

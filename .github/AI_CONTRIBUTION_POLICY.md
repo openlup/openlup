@@ -103,7 +103,7 @@ refuses known sensitive paths; the single correctness reviewer must also confirm
 ordinary semantics and the simplicity perspective. Uncertainty or a discovered
 higher-risk interaction blocks the single-review route. Two fresh full reviews
 of the same committed candidate can resolve that uncertainty without a
-gratuitous code edit; prior evidence and the two-cycle budget remain visible.
+gratuitous code edit; prior evidence and the review-cycle budget remain visible.
 A merge group that the source review does not carry over to (below) still
 requires two full integration reviews.
 
@@ -118,10 +118,14 @@ reviews, even in otherwise ordinary source files. Reduced repair reviews cannot
 renew inherited evidence expiry. Unavailable, incomplete or expired coverage
 requires two fresh full-scope reviews, preserving prior findings and lineage.
 
-Unchanged prepare preserves complete evidence. The task has at most two automatic
-repair/review continuation cycles across prepare and full-review escalation. Exhaustion
-stays blocked while the supervisor regroups the execution approach within actual
-authority; it cannot restart the counter, bypass review or merge automatically.
+Unchanged prepare preserves complete evidence. Repair/review continuation cycles
+1–3 across prepare and full-review escalation are automatic. A cycle 3 that did
+not pass pauses for a rethink with a fresh cold simplicity reviewer, which admits
+automatic cycles 4 and 5; cycle 6 needs an explicit owner decision and a seventh
+refuses. The [agent guide](../AGENTS.md#change-and-verification-rules) owns the
+rethink. A pause or exhaustion stays blocked while the supervisor regroups the
+execution approach within actual authority; it cannot restart the counter,
+bypass review or merge automatically.
 Changed intent requires explicit regrouping. The review base is the candidate's
 fork point, the single `git merge-base HEAD origin/main`, so `main` moving ahead does not
 by itself make a review stale. An ancestor-preserving base integration, such as
@@ -246,15 +250,10 @@ attempt".
 - **Unchanged.** Overlapping changes, and changes to that machinery, keep two integration reviewers.
 - **Wrong if:** a carried-over merge admits an interaction that the mechanical checks on the group tree could not have caught, and that a reviewer would have.
 
-### Bounded RLS control documentation recovery
+**Review cycles with a rethink pause, decided 2026-10-15.** The rule read: "at most two automatic repair/review continuation cycles are allowed". Cycles 3 to 6 each needed a fresh owner decision, and three historic exceptions added exact paths or SQL at cycles 4 to 6.
 
-One explicitly authorized RLS recovery keeps its existing history and the
-automatic two-cycle limit. Its fifth owner cycle may close the control-only
-documentation refusal caused by merging the protocol bootstrap. One final sixth
-owner cycle may introduce the same exact corrected SQL only after that control
-is merged and only if the fifth candidate did not introduce it. Fresh exact
-owner decisions, two full independent reviews, findings, expiry and required
-checks remain binding. Other owner routes follow the agent guide's owner-cycle
-limit of six; a seventh,
-changed intent or renamed-session reset refuses. This exception grants no
-publication, merge, release or production authority.
+- **What changed.** Cycles 1–3 are automatic, and cycle 3 is a full review. A cycle 3 that did not pass pauses for a rethink: a record, written with one fresh cold simplicity reviewer, that groups every finding card by class, names the root cause, weighs simpler alternatives and decides to keep, change or narrow the approach, or to take an intent change to the owner. Cycles 4 and 5 are then automatic; cycle 6 still needs the owner. Each rethink ends with a lesson that feeds [Review lessons](../CONTRIBUTING.md#review-lessons), which the author reads before cycle 1. The spent exceptions are removed.
+- **The reason.** A second failed cycle rarely needed a human; it needed a different approach. One module-boundary lint rule spent three cycles chasing new escapes in a growing denylist of import specifiers before the owner could authorize cycle 3. The pause targets that loop where the owner gate did not.
+- **Unchanged.** Receipts, freshness, the fork point, reviewer independence, finding cards, the six-cycle ceiling and the owner's decision for cycle 6 and for intent changes.
+- **Wrong if:** rethinks become rubber stamps, so tasks reach cycle 6 as often as they reached the owner gate before, or lessons accumulate without changing how later tasks start.
+

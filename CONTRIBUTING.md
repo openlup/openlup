@@ -131,19 +131,6 @@ its users or operators can observe.
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-8fc619f48754e571c79562b2f79aeb07f4c6f598f9ab0400fc3583a8b0b9983c","reason":"The workspace adds the unreleased @openlup/platform package. The root pre-scripts and the public reference build script build it after core, because the reference bindings load it, the lockfile links it, the root Vitest node project collects its tests, and ESLint lets it import exact public core exports as outbox does. Required contributor commands, their order and the checks described here are unchanged."} -->
 
-The bounded SQL RLS recovery uses existing owner cycles only: a separately
-reviewed contraction control precedes the corrected managed forward. Its exact
-regroup preserves every previous report and finding, keeps the automatic limit
-at two and its owner ceiling at six, and requires fresh candidate-bound owner
-decisions plus two full independent reviews for each sensitive phase. If the
-separately merged bootstrap absorbs the control's documentation delta, the fifth
-cycle may finish that control recovery and one final sixth cycle may introduce
-the exact corrected SQL. The sixth refuses if the fifth already introduced that
-SQL or fails to introduce it; generic unchanged-intent cycle 6 cannot bypass
-that condition. A seventh always refuses.
-It grants no general scope extension, policy operation or publication authority.
-
-
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
 ordered DROP statements before the fixed grants and rejects missing, duplicate
@@ -349,20 +336,15 @@ those assertions require.
 
 The native review session in `scripts/agent-review-session.mjs` checks committed
 candidate lineage, complete prior coverage, closure dispositions, inherited
-evidence expiry and the two-cycle automatic repair/review budget. Separately
-bound fresh owner decisions can permit full cycles 3, 4, 5 and 6 with unchanged
-intent. Each decision binds the preserved previous request and actual next
-candidate; the automatic limit remains two. Only cycle 4 may
-pair an exact regroup decision adding the two consumer-check paths specified
-in the native session interface, preserving every previous path, criteria,
-risk, roles and author. A separately approved checkout-history recovery at cycle 5
-may add only `.github/workflows/published-tree-ci.yml`, preserving the same criteria
-and complete lineage. Cycle 6 needs a separate fresh decision bound to the
-preserved fifth request and next candidate; it cannot expand scope. Automatic
-owner cycles and a seventh refuse. The bounded SQL/RLS recovery still requires
-its exact SQL introduction at cycle 6; generic unchanged intent cannot bypass it. Each owner cycle
-retains every prior round and finding and requires explicit full refresh and
-two fresh full reviewers. An unchanged prepare preserves evidence and expiry. See the
+evidence expiry and the review-cycle budget. Cycles 1–3 are automatic, and
+cycle 3 is a full review. After a cycle 3 that did not pass, cycle 4 needs a
+rethink record bound to the third request; it accounts for every finding card so
+far and names a fresh cold simplicity reviewer. Cycles 4 and 5 are then
+automatic, and cycle 4 is a full review. Cycle 6 needs a fresh owner decision bound
+to the preserved fifth request and the actual next candidate, with explicit full
+refresh and two fresh full reviewers; a seventh refuses. A first request records
+the author's simplicity pre-check. Every cycle retains every prior round and
+finding. An unchanged prepare preserves evidence and expiry. See the
 [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
 for the exact request/candidate bindings. Its review base is the
 candidate's fork point, `git merge-base HEAD origin/main`: a review stays current
@@ -950,8 +932,12 @@ reading, exact merge scope and protected release approval still apply.
 
      ```json
      { "authorSessionId": "<your session id>",
+       "simplicityPreCheck": "<smallest adequate alternative considered>",
        "intent": { "risk": "<prose|routine|behavior|unknown>", "scope": ["<changed paths>"], "criteria": "<approved criteria>", "requiredRoles": [] } }
      ```
+
+     - read [Review lessons](#review-lessons) before writing
+       `simplicityPreCheck`; the first request needs it.
 
      - `risk` sets the reviewer floor: one reviewer for `prose` or `routine`,
        two for `behavior` or `unknown`.
@@ -959,7 +945,9 @@ reading, exact merge scope and protected release approval still apply.
        `CODEX_THREAD_ID`. Every other supervisor sets it to its own session ID.
    - run `node scripts/agent-review-session.mjs prepare`;
    - launch fresh reviewers and `record` each report;
-   - repeat until `verify` reports `reviewed`.
+   - repeat until `verify` reports `reviewed`. If `prepare` pauses after a
+     cycle 3 that did not pass, add the `rethink` record that the native session
+     interface defines, then prepare again.
 
    Preliminary local semantic snapshots help prepare the owner packet but are
    not this committed native admission. Preserve their findings and any real
@@ -1059,34 +1047,28 @@ never old verdicts or author history. The reviewer independently confirms semant
 risk; control, security, schema, executable instruction and unknown repairs need
 two focused reviews regardless of filenames. Account for every prior material
 finding and preserve inherited expiry; unavailable or expired coverage requires
-two fresh full-scope reviews. Carry the two-cycle repair/review budget through
-prepare and full-review escalation. Exhaustion stays blocked while the supervisor regroups
-within existing authority. Changed intent requires explicit regrouping. Resolve a
+two fresh full-scope reviews. Carry the review-cycle budget through prepare and
+full-review escalation. A pause or exhaustion stays blocked while the supervisor
+regroups within existing authority. Changed intent requires explicit regrouping. Resolve a
 textual conflict by merging `main`: that moves the fork point and gets fresh
 full-scope review within the same budget. A rebase discards that lineage and
 reports `needs_rescope`; it never restarts the budget or drops findings.
 
-A fresh explicit owner decision may authorize one additional full review at
-cycle 3 after the two automatic cycles. A separate fresh decision bound to that
-third request and the next candidate may authorize one full review at
-cycle 4. One further fresh decision bound to the preserved fourth request and
-next candidate may authorize a full cycle 5 with unchanged intent. A separate
-fresh decision bound to the preserved fifth request and next candidate may
-authorize a full cycle 6 with unchanged intent. Each retains
-every prior round and finding, the same scope, criteria, risk, roles and author,
-and a clean ancestor-preserving committed candidate. All require two fresh full
-reviewers and explicit full refresh. Only cycle 4 may also pair an exact owner
-regroup decision with a bounded scope expansion: retain every previous path and
-add exactly `packages/core/scripts/core-package-consumer-audit.ts` and
-`packages/core/test/consumerTooling.test.ts`. A separately bound checkout-history
-recovery at cycle 5 may add exactly `.github/workflows/published-tree-ci.yml` to
-supply pinned prior Git objects to the required and full root test jobs. It
-retains every previous path, criteria, risk, roles, author and all history, and
-requires two fresh full reviews. No automatic owner cycle, other scope expansion
-or seventh cycle is permitted. The separately defined bounded SQL/RLS recovery
-still requires its exact SQL introduction at cycle 6; unchanged intent alone
-cannot authorize that sixth recovery cycle. Unchanged prepare preserves evidence
-and expiry. These decisions grant no publication, merge or settings authority.
+Cycles 1–3 are automatic; cycle 3 is a full review by two fresh full reviewers.
+A cycle 3 that did not pass pauses the task for a rethink before cycle 4. The
+supervisor writes the rethink with one fresh cold simplicity reviewer; it is not
+an owner gate. The record groups every finding card so far by class, names the
+pattern and root cause, checks the approach against the simplicity rule in the
+[agent guide](AGENTS.md#change-and-verification-rules), lists the simpler
+alternatives considered and records one decision: keep the approach with
+evidence that findings converge, change it within the same intent and scope,
+narrow the change within that scope and defer the rest, or change intent through
+the owner or a recorded delegate. It ends with a one-line lesson,
+`pattern → simpler path`. Cycles 4 and 5 then run automatically; cycle 4 is a full
+review. Cycle 6 needs a fresh owner decision bound to the preserved fifth request
+and the next candidate, with explicit full refresh and two fresh full reviewers.
+A seventh refuses. History, findings, fork point and numbering never reset.
+These decisions grant no publication, merge or settings authority.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
@@ -1115,6 +1097,26 @@ adoption state are not public platform documentation inputs.
 Read the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) before
 submitting material AI-assisted work. Human accountability and DCO, independent
 native review, and actual task publication authority remain required.
+
+### Review lessons
+
+Each rethink ends with a one-line lesson. Before cycle 1 of a review, the author
+reads this list and records a short simplicity pre-check in the first review
+request: the smallest adequate alternative considered. `prepare` refuses a first
+request without it.
+
+The supervisor appends each new lesson here, with its date and task, in the same
+delivery when its approved scope includes this file; otherwise it adds them in
+one bounded documentation change after delivery, which may collect several
+lessons. When a lesson recurs, the supervisor promotes it into the guidance it
+concerns in that same delivery and replaces the entry here with a pointer.
+Promotion adds guidance only: it never relaxes a control, budget, review or
+authority rule. The rethink record and the task's terminal self-retro carry the
+lesson until it lands. No other tracker is kept.
+
+- 2026-10-15, M02 module-boundary lint rule: cycles 0–2 each found another
+  import-specifier escape → replace a growing denylist with an allowlist of the
+  canonical forms, or reuse the resolver.
 
 ### Merge queue
 
