@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
+import { agentReviewIdentities, agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
 
 const base = 'a'.repeat(40);
 const candidate = { base, head: 'b'.repeat(40), tree: 'c'.repeat(40), clean: true, workingDigest: 'd'.repeat(64), indexDigest: 'e'.repeat(64), changedPaths: ['source.txt'] };
@@ -269,6 +269,7 @@ describe('bounded repair convergence', () => {
     const fifth = await advance(fourth, repaired(5), { rethink }); expect(fifth.request.continuation.cycle).toBe(5); expect(fifth.request.continuation.rethink).toBeUndefined();
     expect(fifth.history[4].request.continuation.rethink).toEqual(rethink);
     expect((await check({ ...fifth, reports: [closure(fifth, 0, { reviewerId: 'simplicity-reviewer' })] })).reason).toContain('duplicated');
+    expect([...agentReviewIdentities(fifth)]).toEqual(expect.arrayContaining(['simplicity-reviewer', 'simplicity-session', 'agent-0', 'session-0']));
     const reviewed = structuredClone(fifth); reviewed.reports = fifth.request.roles.map((_, index) => closure(fifth, index)); expect((await check(reviewed)).status).toBe('reviewed');
     fifth.reports = fifth.request.roles.map((_, index) => index === 0 ? fail(fifth, 0, 'fifth escape') : closure(fifth, index));
     expect((await check(fifth, { snapshot: async () => repaired(6) })).reason).toContain('cycle 6 requires an explicit owner continuation');
@@ -296,6 +297,8 @@ describe('bounded repair convergence', () => {
       [{ decision: 'intent' }, 'requires an owner regroup'], [{ decision: 'skip' }, 'decision is invalid'], [{ lesson: 'no arrow here' }, 'pattern → simpler path'], [{ lesson: `${'x'.repeat(240)} → y` }, 'lesson is invalid'],
       [{ alternatives: [] }, 'alternatives'], [{ rootCause: '' }, 'rootCause is invalid'], [{ completedAt: 999 }, 'predates'], [{ completedAt: 1001 }, 'follows the request'], [{ extra: true }, 'rethink schema'],
     ] as const) await expect(advance(third, repaired(4), { rethink: rethinkFor(third, extra) })).rejects.toThrow(message);
+    const unreviewed = { ...third, reports: [] };
+    await expect(advance(unreviewed, repaired(4), { rethink: rethinkFor(unreviewed, { completedAt: 999 }) })).rejects.toThrow('predates');
     const second = structuredClone(third.history[2]); second.history = third.history.slice(0, 2);
     await expect(advance(second, repaired(3), { rethink: rethinkFor(second) })).rejects.toThrow('only at the cycle 4 transition');
     await expect(advance(undefined, repaired(1), { rethink: rethinkFor(third) })).rejects.toThrow('preserved previous state');
@@ -305,6 +308,14 @@ describe('bounded repair convergence', () => {
     const changed = await advance(third, repaired(4), { intent: expanded, regroup, fullRefresh: true, rethink: rethinkFor(third, { decision: 'intent' }) });
     expect(changed.request.continuation).toMatchObject({ cycle: 4, mode: 'full', regroup }); expect(changed.request.intent).toEqual(expanded);
   });
+  it('keeps an expired cycle 4 while the spec repeats its rethink and refreshes it as cycle 5 once the rethink is dropped', async () => {
+    const third = await thirdFailed(); const rethink = rethinkFor(third); const fourth = await advance(third, repaired(4), { rethink });
+    fourth.reports = [closure(fourth), closure(fourth, 1)]; const late = () => 86402000;
+    expect((await check(fourth, { now: late })).reason).toContain('expired');
+    expect(await advance(fourth, repaired(4), { rethink, fullRefresh: true, now: late })).toEqual(fourth);
+    const refreshed = await advance(fourth, repaired(4), { fullRefresh: true, now: late });
+    expect(refreshed.request.continuation).toMatchObject({ cycle: 5, mode: 'full', deltaPaths: [] }); expect(refreshed.request.continuation.rethink).toBeUndefined();
+  });
   it('needs no rethink when cycle 3 passed, for example before a later base integration', async () => {
     const third = await thirdFailed(); third.reports = [closure(third), closure(third, 1)]; expect((await check(third)).status).toBe('reviewed');
     const next = { ...repaired(4), base: 'f'.repeat(40) }; const integrationDelta = async (_cwd, before, after) => before.head === third.request.candidate.head && after.head === next.head ? ['incoming.txt', 'source.txt'] : delta(_cwd, before, after);
@@ -313,8 +324,9 @@ describe('bounded repair convergence', () => {
   });
   it('keeps a cycle 3 owner continuation recorded before cycle 3 became automatic and refuses one at cycles 2, 4 and 5', async () => {
     const first = await advance(await initial(), repaired(1), { fullRefresh: true }); const second = await advance(first, repaired(2), { fullRefresh: true });
-    await expect(manual(first, repaired(2))).rejects.toThrow('applies at cycle 6');
-    const third = await manual(second); expect(third.request.continuation).toMatchObject({ cycle: 3, mode: 'full', ownerContinuation: ownerApproval(second, repaired(3)) });
+    for (const [previous, next] of [[first, repaired(2)], [second, repaired(3)]]) await expect(manual(previous, next)).rejects.toThrow('applies at cycle 6');
+    const third = await advance(second, repaired(3), { fullRefresh: true }); third.request.continuation.ownerContinuation = ownerApproval(second, repaired(3));
+    expect(third.request.continuation).toMatchObject({ cycle: 3, mode: 'full' });
     expect((await check(third)).status).toBe('needs_agent_review'); third.reports = [closure(third), closure(third, 1)]; expect((await check(third)).status).toBe('reviewed');
     expect(await manual(third, repaired(3), { ownerContinuation: third.request.continuation.ownerContinuation })).toEqual(third);
     for (const mutate of [s => { s.request.continuation.ownerContinuation.priorRequestDigest = 'f'.repeat(64); }, s => { s.request.continuation.ownerContinuation.candidateDigest = 'f'.repeat(64); }, s => { s.request.continuation.cycle = 4; }]) {

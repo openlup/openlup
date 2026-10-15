@@ -176,8 +176,8 @@ function assertRethink(rethink, history, request, identities) {
   validateRethink(rethink);
   const previous = history.at(-1);
   demand(rethink.priorRequestDigest === digest(previous.request), 'rethink differs from exact previous request');
-  demand(![rethink.reviewerId, rethink.sessionId].some(id => id === request.authorSessionId || identities.has(id)) && rethink.reviewerId !== rethink.sessionId, 'rethink reviewer is the author or not fresh');
-  demand(previous.reports.every(report => report.completedAt <= rethink.completedAt) && rethink.completedAt <= request.preparedAt, 'rethink predates the previous round or follows the request');
+  demand(![rethink.reviewerId, rethink.sessionId].some(id => id === request.authorSessionId || identities.has(id)), 'rethink reviewer is the author or not fresh');
+  demand(rethink.completedAt >= previous.request.preparedAt && previous.reports.every(report => report.completedAt <= rethink.completedAt) && rethink.completedAt <= request.preparedAt, 'rethink predates the previous round or follows the request');
   const grouped = rethink.findingClasses.flatMap(group => group.findingIds);
   demand(new Set(grouped).size === grouped.length && equal([...grouped].sort(), allCards(history).map(card => card.id).sort()), 'rethink must group every finding card so far exactly once');
   demand((rethink.decision === 'intent') === Boolean(request.continuation.regroup), 'an intent-change rethink requires an owner regroup; other decisions keep the approved intent');
@@ -392,7 +392,7 @@ export async function prepareAgentReviewState({ previous, repairRisk = 'unknown'
   const preservedOwnerContinuation = ownerContinuation !== undefined && equal(ownerContinuation, previous.request.continuation?.ownerContinuation) && equal(previous.request.candidate, request.candidate);
   if (ownerContinuation !== undefined && !preservedOwnerContinuation) {
     assertOwnerContinuation(ownerContinuation, previous.request, request, intentChanged ? regroup : undefined);
-    demand([3, OWNER_CYCLE].includes(cycle) && fullRefresh, 'owner continuation applies at cycle 6 with explicit full refresh');
+    demand(cycle === OWNER_CYCLE && fullRefresh, 'owner continuation applies at cycle 6 with explicit full refresh');
   }
   // A repeated spec may carry the rethink already preserved in lineage; only a new one starts cycle 4.
   const preservedRethink = rethink !== undefined && [...(previous.history ?? []), previous].some(round => equal(rethink, round.request.continuation?.rethink));
@@ -449,6 +449,10 @@ export async function verifyAgentReview({ cwd, request, reports = [], history, s
     try { validateLineage(state, finalTime, maxAgeMs); } catch { throw new Error('Agent review required: review expired or clock changed during final source scan'); }
     return { status: 'reviewed', evidence: EVIDENCE, requestId: request.id, requestDigest: digest(request), candidate: request.candidate, reviewerIds: reports.map(report => report.reviewerId), verifiedAt: finalTime };
   } catch (error) { return { status: error instanceof NeedsRescope ? 'needs_rescope' : 'needs_agent_review', evidence: EVIDENCE, reason: error.message, requestId: request?.id ?? null }; }
+}
+/** Every reviewer and session identity a state has used, rethink reviewers included. */
+export function agentReviewIdentities(state) {
+  return new Set([...(state.history ?? []), state].flatMap(round => [...round.reports.flatMap(report => [report.reviewerId, report.sessionId]), ...(round.request.continuation?.rethink ? [round.request.continuation.rethink.reviewerId, round.request.continuation.rethink.sessionId] : [])]));
 }
 export function agentReviewReportBinding(request) { validateRequest(request); return { requestId: request.id, requestDigest: digest(request), candidate: structuredClone(request.candidate) }; }
 

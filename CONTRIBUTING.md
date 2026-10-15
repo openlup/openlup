@@ -1111,8 +1111,10 @@ one bounded documentation change after delivery, which may collect several
 lessons. When a lesson recurs, the supervisor promotes it into the guidance it
 concerns in that same delivery and replaces the entry here with a pointer.
 Promotion adds guidance only: it never relaxes a control, budget, review or
-authority rule. The rethink record and the task's terminal self-retro carry the
-lesson until it lands. No other tracker is kept.
+authority rule. This route grants no submission, merge or scope authority of its
+own: a lessons change is an ordinary delivery under existing authority, and a
+promotion stays within its approved scope. The rethink record and the task's
+terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
 - 2026-10-15, M02 module-boundary lint rule: cycles 0–2 each found another
   import-specifier escape → replace a growing denylist with an allowlist of the

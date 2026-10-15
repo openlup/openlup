@@ -300,16 +300,18 @@ not reset the cycle budget. An identical repeated prepare preserves partial
 or complete evidence and its original expiry; later unchanged-intent rounds may
 carry only the exact transition already present in their preserved lineage.
 
-Cycles 1–3 are automatic; `prepare` gives cycles 3, 4 and 6 full coverage
-without a `fullRefresh` flag. After a cycle 3 whose round did not pass, the
-next `prepare` reports `needs_rescope` until the spec carries a top-level
-`rethink` with exactly:
+Cycles 1–3 are automatic; `prepare` gives cycles 3 and 4 full coverage without
+a `fullRefresh` flag, and cycle 6 is full with the flag its owner continuation
+requires. After a cycle 3 whose round did not pass, the next repair `prepare`
+reports `needs_rescope` until the spec carries a top-level `rethink` with
+exactly:
 - `priorRequestDigest`: SHA256 of `JSON.stringify` of the preserved third
   request;
 - `reviewerId` and `sessionId`: the fresh cold simplicity reviewer, neither the
-  author nor any earlier reviewer or session; later reviewers cannot reuse them;
-- `completedAt`: no earlier than the third round's reports and no later than
-  the new request;
+  author nor any earlier reviewer or session; later reviewers cannot reuse them,
+  and hosted admission refuses them as integration reviewers;
+- `completedAt`: no earlier than the third request and its reports, and no
+  later than the new request;
 - `findingClasses`: classes of `{ class, findingIds }` that together list
   every material finding card of every round so far exactly once, resolved or
   not;
@@ -321,7 +323,11 @@ next `prepare` reports `needs_rescope` until the spec carries a top-level
 `intent` requires an owner `regroup` in the same transition; the other
 decisions keep the approved intent. `narrow` changes fewer paths within the
 approved scope. The rethink binds only cycle 4. A later spec may repeat the
-preserved record, and `prepare` then ignores it. Cycles 4 and 5 are automatic.
+preserved record: `prepare` then attaches nothing new, and on the unchanged
+cycle 4 candidate it returns the stored round even with `fullRefresh`. To
+refresh an expired cycle 4, drop `rethink` from the spec; the refresh becomes
+cycle 5. Cycles 4 and 5 are automatic. Any cycle may carry an owner `regroup`;
+it never adds a cycle.
 A cycle 3 that passed needs no rethink, for example before a later base
 integration.
 
@@ -333,7 +339,8 @@ computed evidence, not owner quotations. Record the actual fresh human decision
 in `ownerDecision`. This process evidence is not an authenticated owner
 signature. Cycle 6 keeps the approved intent and author unless the same
 transition carries an owner `regroup`. A cycle 3 owner continuation recorded
-before cycle 3 became automatic stays valid; no other cycle accepts one. Wrong
+before cycle 3 became automatic stays valid; `prepare` accepts a new one only at
+cycle 6. Wrong
 bindings, a missing or misplaced rethink, reduced coverage at cycles 3, 4 or 6,
 missing history and a seventh cycle refuse. An unchanged repeat retains the
 round and its original expiry; expired evidence still blocks delivery.

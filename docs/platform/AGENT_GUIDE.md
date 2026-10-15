@@ -181,8 +181,8 @@ two fresh reviews of the full approved scope.
 Handle `needs_agent_review` within the active task. Unchanged prepare preserves
 evidence. Repair/review continuation cycles 1–3, including full-review
 escalation, are automatic; cycle 3 is a full review by two fresh full reviewers.
-After a cycle 3 that did not pass, `prepare` reports `needs_rescope` until the
-supervisor records a rethink with one fresh cold simplicity reviewer. The rethink
+After a cycle 3 that did not pass, the next repair `prepare` reports
+`needs_rescope` until the supervisor records a rethink with one fresh cold simplicity reviewer. The rethink
 is a pause, not an owner gate. It admits two more automatic cycles, 4 and 5, and
 cycle 4 gets a full review. Cycle 6 needs a fresh explicit owner decision bound to
 the preserved fifth request and the next candidate, with explicit full refresh
