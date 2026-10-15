@@ -20,7 +20,12 @@ import type {
   TransactionalRuntimePort,
 } from "@openlup/core/platform-runtime";
 
-import { bindBlobPort } from "../blob/index.js";
+import { bindBlobPort, type SupabaseStorageClient } from "../blob/index.js";
+import {
+  createServiceClient,
+  readSupabaseDataGatewayEnv,
+  type SupabaseCreateClient,
+} from "../data/index.js";
 import {
   getBundleDescriptor,
   resolveBlobCapability,
@@ -53,6 +58,8 @@ export interface PlatformBundle {
  * transactional binder also receives the bundle's data capability.
  */
 export interface PlatformBundleBinders {
+  /** The supabase-js `createClient` used by the default Supabase Storage blob binder. */
+  createSupabaseClient?: SupabaseCreateClient;
   http?: (capability: string, env: Env) => HttpRuntimePort | null;
   scheduler?: (capability: string, env: Env) => SchedulerPort | null;
   /** Defaults to `bindBlobPort`. */
@@ -68,7 +75,15 @@ export type ComposeBundle = (env: Env) => PlatformBundle;
 
 /** Build the deployment's composition root from its port binders. */
 export function createBundleComposer(binders: PlatformBundleBinders = {}): ComposeBundle {
-  const bindBlob = binders.blob ?? ((capability: string, env: Env) => bindBlobPort(capability, env));
+  const bindBlob = binders.blob ?? ((capability: string, env: Env) => {
+    const settings = capability === "supabase" ? readSupabaseDataGatewayEnv(env) : null;
+    const createSupabaseClient = binders.createSupabaseClient;
+    return bindBlobPort(capability, env, {
+      supabaseStorageClient: settings && createSupabaseClient
+        ? () => createServiceClient(settings, createSupabaseClient) as SupabaseStorageClient
+        : undefined,
+    });
+  });
   return function composeBundle(env: Env): PlatformBundle {
     const id = resolveBundleId(env);
     const descriptor = getBundleDescriptor(id);

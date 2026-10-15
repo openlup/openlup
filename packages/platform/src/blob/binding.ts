@@ -3,12 +3,11 @@
 // Maps the selected blob capability to a concrete BlobStoragePort built from env: filesystem
 // (the local development default), S3-compatible storage (the default client unless one is
 // injected), Vercel Blob (with the injected `@vercel/blob` module) and Supabase Storage (a
-// service-role client built from the data-gateway settings with the injected `createClient`).
+// ready storage client supplied by the injected factory).
 // A capability whose settings or client are missing stays unbound (null); readiness reports it.
 
 import type { BlobStoragePort } from "@openlup/core/platform-runtime";
 
-import { createServiceClient, readSupabaseDataGatewayEnv, type SupabaseCreateClient } from "../data/index.js";
 import { createFilesystemBlobStorage } from "./filesystem.js";
 import { createS3BlobStorage, type S3ObjectClient } from "./s3.js";
 import { createS3ClientFromEnv } from "./s3Client.js";
@@ -22,8 +21,8 @@ export interface BlobBindingDeps {
   vercelBlob?: VercelBlobSdk;
   /** S3 client factory; defaults to `createS3ClientFromEnv`. */
   s3ClientFactory?: (env: Env) => S3ObjectClient;
-  /** The supabase-js `createClient`; without it the supabase capability stays unbound. */
-  createSupabaseClient?: SupabaseCreateClient;
+  /** Ready Supabase Storage client factory; without it the supabase capability stays unbound. */
+  supabaseStorageClient?: () => SupabaseStorageClient;
 }
 
 /** Resolve the BlobStoragePort for a blob capability, or null when it cannot be bound. */
@@ -47,10 +46,8 @@ export function bindBlobPort(
           })
         : null;
     case "supabase": {
-      const settings = readSupabaseDataGatewayEnv(env);
-      if (!deps.createSupabaseClient || !settings || !env.BLOB_SUPABASE_BUCKET) return null;
-      const client = createServiceClient(settings, deps.createSupabaseClient) as SupabaseStorageClient;
-      return createSupabaseBlobStorage(client, env.BLOB_SUPABASE_BUCKET);
+      if (!deps.supabaseStorageClient || !env.BLOB_SUPABASE_BUCKET) return null;
+      return createSupabaseBlobStorage(deps.supabaseStorageClient(), env.BLOB_SUPABASE_BUCKET);
     }
     default:
       return null;

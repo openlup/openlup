@@ -92,6 +92,10 @@ describe("package source boundary", () => {
     }
   });
 
+  it.each(files.filter(({ path }) => path.startsWith("blob/")))("$path has no data-module imports, including types", ({ source }) => {
+    expect(specifiers(source).filter((specifier) => specifier.startsWith("../data/"))).toEqual([]);
+  });
+
   it("recognizes the forms it refuses", () => {
     expect("const value = process . env.X;").toMatch(ENVIRONMENT_READ);
     expect(specifiers('import { a } from "provider-sdk";\nimport "side-sdk";\nawait import("other-sdk"); require("third-sdk");'))

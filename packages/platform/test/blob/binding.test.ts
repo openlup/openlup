@@ -46,20 +46,20 @@ describe("bindBlobPort", () => {
     expect(putObject).toHaveBeenCalledWith(expect.objectContaining({ Bucket: "b", Key: "objects/a.txt" }));
   });
 
-  it("binds supabase storage only with the injected client factory, data settings and bucket", async () => {
+  it("binds supabase storage only with the injected storage client factory and bucket", async () => {
     const upload = vi.fn(async () => ({ data: {}, error: null }));
-    const createSupabaseClient = vi.fn(() => ({
+    const supabaseStorageClient = vi.fn(() => ({
       storage: { from: vi.fn(() => ({ upload, remove: vi.fn(), list: vi.fn(), getPublicUrl: (path: string) => ({ data: { publicUrl: `https://data.example.test/${path}` } }) })) },
     }));
-    const env = { SUPABASE_URL: "https://data.example.test", SUPABASE_SERVICE_ROLE_KEY: "service-key", BLOB_SUPABASE_BUCKET: "objects" };
+    const env = { BLOB_SUPABASE_BUCKET: "objects" };
     expect(bindBlobPort("supabase", env)).toBeNull();
-    expect(bindBlobPort("supabase", { ...env, BLOB_SUPABASE_BUCKET: "" }, { createSupabaseClient })).toBeNull();
-    expect(bindBlobPort("supabase", { ...env, SUPABASE_SERVICE_ROLE_KEY: undefined }, { createSupabaseClient })).toBeNull();
-    const port = bindBlobPort("supabase", env, { createSupabaseClient });
+    expect(bindBlobPort("supabase", { ...env, BLOB_SUPABASE_BUCKET: "" }, { supabaseStorageClient })).toBeNull();
+    expect(bindBlobPort("supabase", {}, { supabaseStorageClient })).toBeNull();
+    expect(supabaseStorageClient).not.toHaveBeenCalled();
+    const port = bindBlobPort("supabase", env, { supabaseStorageClient });
     await port!.upload("a.txt", Buffer.from("a"));
-    expect(createSupabaseClient).toHaveBeenCalledWith("https://data.example.test", "service-key", {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    expect(supabaseStorageClient).toHaveBeenCalledExactlyOnceWith();
+    expect(supabaseStorageClient.mock.results[0]!.value.storage.from).toHaveBeenCalledWith("objects");
     expect(upload).toHaveBeenCalledOnce();
   });
 

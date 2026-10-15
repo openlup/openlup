@@ -32,7 +32,7 @@ A job is `{ id, schedule, lease?, run(context) }` with a UTC cron expression. Do
 
 - `filesystem`: `BLOB_FS_ROOT`, `BLOB_FS_BASE_URL`;
 - `s3`: `BLOB_S3_BUCKET`, `BLOB_S3_BASE_URL`, and a default client from `createS3ClientFromEnv` (`BLOB_S3_REGION`, `BLOB_S3_ENDPOINT`, `BLOB_S3_FORCE_PATH_STYLE`, `BLOB_S3_ACCESS_KEY_ID` with `BLOB_S3_SECRET_ACCESS_KEY`). `@aws-sdk/client-s3` is an optional peer loaded on first use, so only an application that selects S3 installs it;
-- `supabase`: a service-role client from the data-gateway settings with the injected `createClient`, and `BLOB_SUPABASE_BUCKET`;
+- `supabase`: `BLOB_SUPABASE_BUCKET` and `BlobBindingDeps.supabaseStorageClient`, a factory returning the structural `SupabaseStorageClient` declared in blob. Blob itself reads no data-gateway settings. The default composer supplies this factory from the data-gateway settings and its optional `createSupabaseClient` dependency, using the service-role key with `persistSession: false` and `autoRefreshToken: false`;
 - `vercel-blob`: the injected `@vercel/blob` module and `BLOB_READ_WRITE_TOKEN`.
 
 The Node host passes the composed ports, blob storage included, to the HTTP runtime builder and to the jobs contributed to it. The reference repository's compose file starts a local S3-compatible service with `--profile local-storage`; a conformance test runs upload, read-back, delete and access refusal against that image. Hosted S3 provider certification is not claimed.
@@ -51,7 +51,7 @@ The package carries no deployment identity. The application passes it every valu
 - the environment, passed explicitly, and the provider clients it needs (the Supabase `createClient`, the `@vercel/blob` module, optionally its own PostgreSQL gateway factory), so the package itself reads no environment variable (an injected SDK may read its own credentials; the static and migration roots default to the working directory) and imports no provider SDK except the optional `pg` peer, whose types its PostgreSQL declarations use;
 - an optional scheduler profile for the Node host: a fenced projection of the declared jobs with its own bindings and validation hooks.
 
-`createBundleComposer` binds the blob slot by default; without injected clients that binds only the filesystem backend. The HTTP, scheduler, data, migrations, analytics and transactional slots stay `null` until the application supplies their binders; `createDataBindings` builds the data binder from the application's database client factory.
+`createBundleComposer` binds the blob slot by default; pass `createBundleComposer({ createSupabaseClient })` to enable its Supabase Storage binding when the data-gateway settings and bucket are present. Without that client Supabase Storage stays unbound. A custom `blob` binder still overrides the default. The HTTP, scheduler, data, migrations, analytics and transactional slots stay `null` until the application supplies their binders; `createDataBindings` builds the data binder from the application's database client factory.
 
 ## Job-run ledger SQL
 

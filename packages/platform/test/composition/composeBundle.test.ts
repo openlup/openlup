@@ -100,6 +100,67 @@ describe("bundle composition", () => {
   });
 
   it.each([
+    { PLATFORM_BUNDLE: "node-supabase", SUPABASE_URL: "https://data.example.test" },
+    { PLATFORM_BUNDLE: "node-supabase", VITE_SUPABASE_URL: "https://data.example.test" },
+    { PLATFORM_BUNDLE: "node-postgres", PLATFORM_BLOB: "supabase", SUPABASE_URL: "https://data.example.test" },
+  ])("binds working Supabase Storage through the default composer with %j", async (selection) => {
+    const upload = vi.fn(async () => ({ data: {}, error: null }));
+    const from = vi.fn(() => ({
+      upload, remove: vi.fn(), list: vi.fn(),
+      getPublicUrl: (path: string) => ({ data: { publicUrl: `https://data.example.test/${path}` } }),
+    }));
+    const createSupabaseClient = vi.fn(() => ({ storage: { from } }));
+    const blob = createBundleComposer({ createSupabaseClient })({
+      ...selection, SUPABASE_SERVICE_ROLE_KEY: "service-key", BLOB_SUPABASE_BUCKET: "objects",
+    }).ports.blob;
+    expect(blob).not.toBeNull();
+    const bytes = Buffer.from("a");
+    await expect(blob!.upload("a.txt", bytes)).resolves.toEqual({
+      url: "https://data.example.test/a.txt", pathname: "a.txt",
+    });
+    expect(blob!.urlFor("a.txt")).toBe("https://data.example.test/a.txt");
+    expect(createSupabaseClient).toHaveBeenCalledExactlyOnceWith("https://data.example.test", "service-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    expect(from).toHaveBeenCalledWith("objects");
+    expect(upload).toHaveBeenCalledExactlyOnceWith("a.txt", bytes, {
+      contentType: "application/octet-stream", upsert: true,
+    });
+  });
+
+  it("leaves default Supabase Storage unbound without the injected SDK", () => {
+    expect(createBundleComposer()({
+      PLATFORM_BUNDLE: "node-supabase", SUPABASE_URL: "https://data.example.test",
+      SUPABASE_SERVICE_ROLE_KEY: "service-key", BLOB_SUPABASE_BUCKET: "objects",
+    }).ports.blob).toBeNull();
+  });
+
+  it.each([
+    { BLOB_SUPABASE_BUCKET: undefined }, { BLOB_SUPABASE_BUCKET: "" },
+    { SUPABASE_URL: undefined }, { SUPABASE_URL: "" },
+    { SUPABASE_SERVICE_ROLE_KEY: undefined }, { SUPABASE_SERVICE_ROLE_KEY: "" },
+  ])("declines default Supabase Storage without required settings: %j", (missing) => {
+    const createSupabaseClient = vi.fn();
+    expect(createBundleComposer({ createSupabaseClient })({
+      PLATFORM_BUNDLE: "node-supabase", SUPABASE_URL: "https://data.example.test",
+      SUPABASE_SERVICE_ROLE_KEY: "service-key", BLOB_SUPABASE_BUCKET: "objects", ...missing,
+    }).ports.blob).toBeNull();
+    expect(createSupabaseClient).not.toHaveBeenCalled();
+  });
+
+  it("keeps an injected Supabase SDK unused when a custom blob binder overrides the default", () => {
+    const createSupabaseClient = vi.fn();
+    const blob = vi.fn(() => null);
+    const env = {
+      PLATFORM_BUNDLE: "node-supabase", SUPABASE_URL: "https://data.example.test",
+      SUPABASE_SERVICE_ROLE_KEY: "service-key", BLOB_SUPABASE_BUCKET: "objects",
+    };
+    expect(createBundleComposer({ createSupabaseClient, blob })(env).ports.blob).toBeNull();
+    expect(blob).toHaveBeenCalledExactlyOnceWith("supabase", env);
+    expect(createSupabaseClient).not.toHaveBeenCalled();
+  });
+
+  it.each([
     {}, { BLOB_FS_ROOT: "/synthetic/storage" }, { BLOB_FS_BASE_URL: "https://assets.example.test" },
     { BLOB_FS_ROOT: "", BLOB_FS_BASE_URL: "https://assets.example.test" },
     { BLOB_FS_ROOT: "/synthetic/storage", BLOB_FS_BASE_URL: "" },
