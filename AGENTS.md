@@ -147,8 +147,9 @@ Close every completed or stopped task run with a short self-retro in its existin
 summary: measured delays or defects, a justified simplification, or no useful
 improvement found. Apply only necessary, justified changes within actual scope
 and authority. A process optimization reviews both its new contribution and
-the applicable prior rules for freshness and contradictions. This terminal note
-requires no separate learning PR and opens no automatic successor or review loop.
+the applicable prior rules for freshness and contradictions. The note cites any
+rethink and its lesson. Apart from the Review lessons route below, it requires
+no separate learning PR and opens no automatic successor or review loop.
 
 Follow the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) for accountability,
 DCO and delivery authority. The [autonomous delivery intent](docs/platform/plans/autonomous-reviewed-delivery-intent.md)
@@ -178,9 +179,14 @@ coverage permits focused repair reviews; unavailable or expired coverage require
 two fresh reviews of the full approved scope.
 
 Handle `needs_agent_review` within the active task. Unchanged prepare preserves
-evidence; at most two automatic repair/review continuation cycles are allowed,
-including full-review escalation. Exhaustion remains blocked while the supervisor regroups
-the execution approach within existing authority; no reset, bypass or automatic
+evidence. Repair/review continuation cycles 1–3, including full-review
+escalation, are automatic; cycle 3 is a full review by two fresh full reviewers.
+After a cycle 3 that did not pass, the next repair `prepare` reports
+`needs_rescope` until the supervisor records a rethink with one fresh cold simplicity reviewer. The rethink
+is a pause, not an owner gate. It admits two more automatic cycles, 4 and 5, and
+cycle 4 gets a full review. Cycle 6 needs a fresh explicit owner decision bound to
+the preserved fifth request and the next candidate, with explicit full refresh
+and two fresh full reviewers; a seventh refuses. No reset, bypass or automatic
 merge follows. Changed intent requires explicit regrouping. The review base is the
 candidate's fork point (`git merge-base HEAD origin/main`), so verify and pre-push keep
 accepting a reviewed candidate while `main` moves ahead. Do not rebase or merge
@@ -199,27 +205,28 @@ hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
 
-A fresh explicit owner decision may authorize one additional full review at
-cycle 3 after the two automatic cycles. A separate fresh decision bound to that
-third request and the next candidate may authorize one full review at
-cycle 4. One further fresh decision bound to the preserved fourth request and
-next candidate may authorize a full cycle 5 with unchanged intent. A separate
-fresh decision bound to the preserved fifth request and next candidate may
-authorize a full cycle 6 with unchanged intent. Each retains
-every prior round and finding, the same scope, criteria, risk, roles and author,
-and a clean ancestor-preserving committed candidate. All require two fresh full
-reviewers and explicit full refresh. Only cycle 4 may also pair an exact owner
-regroup decision with a bounded scope expansion: retain every previous path and
-add exactly `packages/core/scripts/core-package-consumer-audit.ts` and
-`packages/core/test/consumerTooling.test.ts`. A separately bound checkout-history
-recovery at cycle 5 may add exactly `.github/workflows/published-tree-ci.yml` to
-supply pinned prior Git objects to the required and full root test jobs. It
-retains every previous path, criteria, risk, roles, author and all history, and
-requires two fresh full reviews. No automatic owner cycle, other scope expansion
-or seventh cycle is permitted. The separately defined bounded SQL/RLS recovery
-still requires its exact SQL introduction at cycle 6; unchanged intent alone
-cannot authorize that sixth recovery cycle. Unchanged prepare preserves evidence
-and expiry. These decisions grant no publication, merge or settings authority.
+The rethink reviews the approach, not the last finding. It groups every finding
+card so far by class, names the pattern and its root cause, and tests the
+approach against the simplicity rule above. One recurring class means
+whack-a-mole: look for the cause rather than the next instance. It records the
+simpler alternatives considered, such as removing the cause, reusing an existing
+tool, an allowlist instead of a growing denylist, or rebuilding or narrowing the
+change. It then records one decision:
+- keep the approach, only with evidence that the findings converge;
+- change the approach within the same intent and scope;
+- narrow the change within the approved scope and defer the rest;
+- change intent, which goes to the owner or a recorded delegate as an owner
+  regroup.
+
+It ends with a one-line lesson, `pattern → simpler path`. History, findings, fork
+point and cycle numbering continue unchanged. These decisions grant no
+publication, merge or settings authority.
+
+Before cycle 1, the author reads [Review lessons](CONTRIBUTING.md#review-lessons) and puts a short
+simplicity pre-check, the smallest adequate alternative considered, into the
+first review request. The supervisor adds each rethink lesson to that section,
+and promotes a recurring lesson into the guidance it concerns in the same
+delivery; that section owns the route.
 
 The optional [native queue admission](docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
 keeps reviewers in this same task and subscription. It was active at the dated

@@ -174,7 +174,7 @@ belongs to another run; wait without removing it. A pre-push refusal for a
 missing stamp needs `openlup-dev verify` on the clean committed tree. Workflow-mirror drift needs
 maintainer recovery, not an alternate verifier. The supervisor handles missing
 native-review evidence in the active task with fresh independent reviewers;
-retain lineage and the existing two-cycle budget. Optional review advice does
+retain lineage and the existing review-cycle budget. Optional review advice does
 not add acceptance obligations. A `native-review` timeout is a missing or late
 receipt, not a review failure; in a merge group, the job log names why the
 source receipt did not carry over. For its recovery, see the receipt-timeout rule in

@@ -10,12 +10,16 @@ import { encodeNativeReceipt, observeNativeAdmission, parseNativeAdmission, read
 
 const roots: string[] = [];
 afterEach(async () => { for (const cwd of roots.splice(0)) await rm(cwd, { recursive: true, force: true }); });
-async function fixture() {
+const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+async function fixture({ rethink = false } = {}) {
   const scratch = join(process.cwd(), '.context/scratch'); await mkdir(scratch, { recursive: true });
   const cwd = await mkdtemp(join(scratch, 'queue-proof-')); roots.push(cwd);
   const git = (...args: string[]) => execFileSync('/usr/bin/git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-C', cwd, ...args], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
   git('init', '-q'); await writeFile(join(cwd, 'code.ts'), 'export const n = 1;\n'); git('add', '.'); git('commit', '-qm', 'base');
   const base = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', base);
+  // With rethink, four earlier review rounds precede the final source commit, which becomes cycle 4.
+  const rounds: string[] = [];
+  if (rethink) for (const n of [3, 4, 5, 6]) { await writeFile(join(cwd, 'code.ts'), `export const n = ${n};\n`); git('add', '.'); git('commit', '-qm', `round ${n}`); rounds.push(git('rev-parse', 'HEAD')); }
   await writeFile(join(cwd, 'code.ts'), 'export const n = 2;\n'); git('add', '.'); git('commit', '-qm', 'source');
   const head = git('rev-parse', 'HEAD');
   const candidate = await captureCommittedReviewCandidate(cwd, base, head);
@@ -23,7 +27,20 @@ async function fixture() {
     const request = await prepareAgentReview({ cwd, base: candidate.base, intent: { risk: 'behavior', scope: candidate.changedPaths, criteria: 'Preserve the approved contract and actual interactions', requiredRoles: [] }, authorSessionId: 'supervisor', now: () => 1000, snapshot: async () => candidate });
     return { request, reports: request.roles.map((role, index) => ({ ...agentReviewReportBinding(request), reviewerId: `${candidate.head}-review-${index}`, sessionId: `${candidate.head}-session-${index}`, role, cold: true, completedAt: 1000, complete: true, coveredScope: candidate.changedPaths, coveredCriteria: true, simplicityChecked: index === 0, verdict: 'pass', materialFindings: [] })) };
   }
-  const source = await state(candidate);
+  async function rethinkState() {
+    const intent = { risk: 'behavior', scope: candidate.changedPaths, criteria: 'Preserve the approved contract and actual interactions', requiredRoles: [] };
+    const finding = { mechanism: 'escape', precondition: 'input', requirement: 'refuse it', effect: 'accepted', risk: 'control' };
+    let current;
+    for (const [cycle, head] of [...rounds, candidate.head].entries()) {
+      const next = await captureCommittedReviewCandidate(cwd, base, head);
+      const extra = cycle === 4 ? { rethink: { priorRequestDigest: sha256(current.request), reviewerId: 'rethink-reviewer', sessionId: 'rethink-session', completedAt: 1000, findingClasses: [{ class: 'escape', findingIds: [...current.history, current].flatMap(round => round.reports.flatMap(observed => observed.materialFindings.map((material, index) => sha256({ requestDigest: sha256(round.request), reviewerId: observed.reviewerId, index, finding: material })))) }], pattern: 'One class recurs', rootCause: 'A denylist', simplicityCheck: 'An allowlist removes the class', alternatives: ['Allowlist'], decision: 'change', rationale: 'Same intent', lesson: 'denylist → allowlist' } } : {};
+      current = await prepareAgentReviewState({ cwd, base, intent, authorSessionId: 'supervisor', now: () => 1000, snapshot: async () => next, previous: current, fullRefresh: true, ...extra });
+      const request = current.request;
+      current.reports = request.roles.map((role, index) => ({ ...agentReviewReportBinding(request), reviewerId: `round-${cycle}-review-${index}`, sessionId: `round-${cycle}-session-${index}`, role, cold: true, completedAt: 1000, complete: true, coveredScope: candidate.changedPaths, coveredCriteria: true, simplicityChecked: index === 0, verdict: cycle < 4 && index === 0 ? 'fail' : 'pass', materialFindings: cycle < 4 && index === 0 ? [finding] : [], ...(request.version === 2 ? { closure: { coveredDelta: request.continuation.deltaPaths, interactionsChecked: true, ordinarySemantics: false, resolvedFindings: cycle === 4 ? request.continuation.findings.map(card => card.id) : [] } } : {}) }));
+    }
+    return current;
+  }
+  const source = rethink ? await rethinkState() : await state(candidate);
   const input = { version: 1, targetRunId: 10, targetAttempt: 1, prNumber: 5, source, integration: null };
   const run = { id: 10, run_attempt: 1, repository: { id: 1376035358 }, path: '.github/workflows/published-tree-ci.yml', workflow_id: 100, event: 'pull_request', head_sha: head, head_branch: 'codex/task', head_repository: { id: 1376035358 }, status: 'in_progress' };
   const pr = { number: 5, state: 'open', draft: false, merged: false, base: { ref: 'main', repo: { id: 1376035358 } }, head: { sha: head, ref: 'codex/task', repo: { id: 1376035358 } } };
@@ -151,6 +168,21 @@ describe('native review queue admission', () => {
     continuation.reports = template.reports.map(report => ({ ...report, ...agentReviewReportBinding(continuation.request), coveredScope: continuation.request.continuation.mode === 'full' ? continuation.request.intent.scope : continuation.request.continuation.deltaPaths, closure: { coveredDelta: continuation.request.continuation.deltaPaths, interactionsChecked: true, ordinarySemantics: false, resolvedFindings: [] } }));
     f.input.integration = continuation;
     await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow(mode === 'focused' ? 'fresh full coverage' : 'reused source context');
+  });
+  it('treats rethink reviewers as source context on both sides of integration admission', async () => {
+    const f = await fixture({ rethink: true }); expect(f.input.source.request.continuation).toMatchObject({ cycle: 4, mode: 'full', rethink: { reviewerId: 'rethink-reviewer' } });
+    f.git('checkout', '-qb', 'new-main', f.base); await writeFile(join(f.cwd, 'other.ts'), 'new interaction\n'); f.git('add', '.'); f.git('commit', '-qm', 'new main'); const main = f.git('rev-parse', 'HEAD');
+    f.git('merge', '--no-ff', f.head, '-m', 'group'); const group = f.git('rev-parse', 'HEAD'); f.group(main, group);
+    const fresh = await f.state(await captureCommittedReviewCandidate(f.cwd, main, group)); f.input.integration = fresh;
+    expect((await verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).head).toBe(group);
+    for (const id of ['rethink-reviewer', 'rethink-session']) {
+      const reused = structuredClone(fresh); reused.reports[0][id.endsWith('reviewer') ? 'reviewerId' : 'sessionId'] = id; f.input.integration = reused;
+      await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow('reused source context');
+    }
+    // The identity check precedes verification of the integration state, so a colliding rethink refuses on identity alone.
+    const colliding = structuredClone(fresh); Object.assign(colliding.request, { continuation: { rethink: { reviewerId: f.input.source.reports[0].reviewerId, sessionId: 'integration-rethink-session' } } });
+    f.input.integration = colliding;
+    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow('reused source context');
   });
   it('same SHA requeue and changed live identities cannot reuse admission binding', async () => {
     const f = await fixture(); f.group(f.base, f.head); const binding = await observeNativeAdmission(f.api, f.input);

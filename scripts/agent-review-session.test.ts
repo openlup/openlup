@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
+import { agentReviewIdentities, agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
 
 const base = 'a'.repeat(40);
 const candidate = { base, head: 'b'.repeat(40), tree: 'c'.repeat(40), clean: true, workingDigest: 'd'.repeat(64), indexDigest: 'e'.repeat(64), changedPaths: ['source.txt'] };
@@ -16,6 +16,8 @@ function report(req, index = 0) {
   return { ...agentReviewReportBinding(req), reviewerId: `agent-${index}`, sessionId: `session-${index}`, role: req.roles[index], cold: true, completedAt: 1000, complete: true, coveredScope: ['source.txt'], coveredCriteria: true, simplicityChecked: index === 0, verdict: 'pass', materialFindings: [], ...(req.version === 1 && req.intent.risk === 'routine' ? { routineSemantics: true } : {}) };
 }
 async function verify(req, reports, extra = {}) { return verifyAgentReview({ cwd: '.', request: req, reports, snapshot, modeCheck: async () => false, now, ...extra }); }
+function findingIds(rounds) { return rounds.flatMap(round => round.reports.flatMap(observed => observed.materialFindings.map((finding, index) => createHash('sha256').update(JSON.stringify({ requestDigest: createHash('sha256').update(JSON.stringify(round.request)).digest('hex'), reviewerId: observed.reviewerId, index, finding })).digest('hex')))); }
+const simplicityPreCheck = 'Read Review lessons; the smallest adequate alternative is the direct edit';
 const directories: string[] = [];
 afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
 async function fixture() {
@@ -131,7 +133,7 @@ describe('native session review process evidence', () => {
 describe('bounded repair convergence', () => {
   const finding = { mechanism: 'lost clamp', precondition: 'late parcel', requirement: 'no early cycle', effect: 'early renewal', risk: 'ordinary' };
   const delta = async (_cwd, before, after) => before.head === after.head ? [] : ['source.txt'];
-  const repaired = (number = 1) => ({ ...candidate, head: String(number).repeat(40), tree: String(number + 2).repeat(40), workingDigest: String(number + 4).repeat(64), indexDigest: (number + 6).toString(16).repeat(64) });
+  const repaired = (number = 1) => ({ ...candidate, head: String(number).repeat(40), tree: String(number + 2).repeat(40), workingDigest: (number + 4).toString(16).repeat(64), indexDigest: (number + 6).toString(16).repeat(64) });
   async function initial() { const req = await request(); return { request: req, reports: [{ ...report(req), verdict: 'fail', materialFindings: [structuredClone(finding)] }, report(req, 1)] }; }
   async function advance(previous, next = repaired(), extra = {}) { return prepareAgentReviewState({ cwd: '.', base, intent, authorSessionId: 'author', now, snapshot: async () => next, delta, previous, repairRisk: 'ordinary', ...extra }); }
   function closure(state, index = 0, extra = {}) {
@@ -150,12 +152,6 @@ describe('bounded repair convergence', () => {
     const state = await advance(await initial()); expect(state.request.roles).toEqual(['closure']); expect(state.history).toHaveLength(1); expect(state.request.continuation.findings).toHaveLength(1);
     state.reports = await recordAgentReview({ cwd: '.', ...state, report: closure(state), snapshot: async () => state.request.candidate, delta, now });
     expect((await check(state)).status).toBe('reviewed'); expect(await advance(state, state.request.candidate)).toEqual(state); expect(await advance(state, state.request.candidate, { fullRefresh: true })).toEqual(state);
-  });
-  it('retains only unresolved prior cards and allows at most two committed repair cycles', async () => {
-    const first = await advance(await initial()); first.reports = [closure(first)];
-    const second = await advance(first, repaired(2)); expect(second.request.continuation.cycle).toBe(2); expect(second.request.continuation.findings).toEqual([]); second.reports = [closure(second)]; expect((await check(second)).status).toBe('reviewed');
-    await expect(advance(second, repaired(3))).rejects.toThrow('two automatic repair cycles');
-    expect((await check(second, { snapshot: async () => repaired(3) })).status).toBe('needs_rescope');
   });
   it('retains findings from failed closure alongside earlier unresolved cards', async () => {
     const first = await advance(await initial()); first.reports = [closure(first, 0, { verdict: 'fail', materialFindings: [{ ...finding, mechanism: 'second failure' }] })];
@@ -233,200 +229,113 @@ describe('bounded repair convergence', () => {
   });
   const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const ownerDecision = 'Synthetic explicit owner authorization for one additional full review';
-  async function exhausted() {
-    const first = await advance(await initial(), repaired(1), { fullRefresh: true });
-    return advance(first, repaired(2), { fullRefresh: true });
-  }
   function ownerApproval(previous, next) { return { priorRequestDigest: digest(previous.request), candidateDigest: digest(next), ownerDecision }; }
   async function manual(previous, next = repaired(3), extra = {}) {
     return advance(previous, next, { fullRefresh: true, ownerContinuation: ownerApproval(previous, next), ...extra });
   }
-  it('retains every round and finding for exactly one owner-bound third full review', async () => {
-    const prior = await exhausted(); const state = await manual(prior);
-    expect(state.history).toEqual([...prior.history, { request: prior.request, reports: prior.reports }]);
-    expect(state.request.continuation).toMatchObject({ cycle: 3, mode: 'full', ownerContinuation: ownerApproval(prior, repaired(3)), findings: prior.request.continuation.findings });
-    expect(state.request.roles).toEqual(['correctness', 'security']);
-    expect((await check(state)).status).toBe('needs_agent_review');
-    state.reports = [closure(state), closure(state, 1)]; expect((await check(state)).status).toBe('reviewed');
-    expect(await manual(state, repaired(3), { ownerContinuation: state.request.continuation.ownerContinuation })).toEqual(state);
-    expect(await advance(state, repaired(3))).toEqual(state);
-    await expect(advance(state, { ...repaired(3), head: 'f'.repeat(40) })).rejects.toThrow('two automatic repair cycles');
-    expect((await check(state, { now: () => 86401001 })).reason).toContain('expired');
-    expect((await check(state, { snapshot: async () => ({ ...repaired(3), head: 'f'.repeat(40) }) })).status).toBe('needs_rescope');
-    for (const mutate of [s => { delete s.request.continuation.ownerContinuation; }, s => { s.request.continuation.mode = 'focused'; }, s => { s.request.continuation.cycle = 4; }, s => { s.history[0].reports[0].materialFindings = []; }]) {
-      const changed = structuredClone(state); mutate(changed); expect((await check(changed)).status).not.toBe('reviewed');
+  const fail = (state, index, mechanism) => closure(state, index, { verdict: 'fail', materialFindings: [{ ...finding, mechanism }] });
+  async function thirdFailed() {
+    const first = await advance(await initial()); first.reports = [closure(first)];
+    const second = await advance(first, repaired(2)); second.reports = [fail(second, 0, 'second escape')];
+    const third = await advance(second, repaired(3)); third.reports = [fail(third, 0, 'third escape'), closure(third, 1)];
+    return third;
+  }
+  function rethinkFor(state, extra = {}) {
+    return { priorRequestDigest: digest(state.request), reviewerId: 'simplicity-reviewer', sessionId: 'simplicity-session', completedAt: 1000, findingClasses: [{ class: 'non-canonical specifier escapes', findingIds: findingIds([...state.history, state]) }], pattern: 'One recurring class: every round found another specifier escape', rootCause: 'A growing denylist of import specifiers', simplicityCheck: 'An allowlist of canonical specifiers removes the whole class', alternatives: ['Allowlist canonical relative specifiers', 'Reuse the TypeScript module resolver'], decision: 'change', rationale: 'Same intent and scope; replace the denylist with an allowlist', lesson: 'growing specifier denylist → allowlist the canonical forms', ...extra };
+  }
+  it('runs cycle 3 automatically as a full review while retaining unresolved cards', async () => {
+    const first = await advance(await initial()); first.reports = [closure(first)];
+    const second = await advance(first, repaired(2)); expect(second.request.continuation.cycle).toBe(2); expect(second.request.continuation.findings).toEqual([]); second.reports = [fail(second, 0, 'second escape')];
+    const third = await advance(second, repaired(3)); expect(third.request.continuation).toMatchObject({ cycle: 3, mode: 'full' }); expect(third.request.roles).toEqual(['correctness', 'security']);
+    expect(third.request.continuation.findings).toHaveLength(1); expect(third.history).toEqual([...second.history, { request: second.request, reports: second.reports }]);
+    third.reports = [closure(third)]; expect((await check(third)).status).toBe('needs_agent_review');
+    third.reports.push(closure(third, 1)); expect((await check(third)).status).toBe('reviewed');
+    for (const mutate of [s => { s.request.continuation.mode = 'focused'; }, s => { s.history[2].reports[0].materialFindings = []; }]) {
+      const changed = structuredClone(third); mutate(changed); expect((await check(changed)).status).not.toBe('reviewed');
     }
   });
-  it('allows one separately bound fourth full review and refuses an automatic fourth', async () => {
-    const third = await manual(await exhausted()); const next = repaired(4);
-    await expect(advance(third, next, { fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
-    await expect(manual(third, next, { ownerContinuation: third.request.continuation.ownerContinuation })).rejects.toThrow('differs from exact');
-    for (const field of ['priorRequestDigest', 'candidateDigest']) await expect(manual(third, next, { ownerContinuation: { ...ownerApproval(third, next), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
-    await expect(manual(third, next, { fullRefresh: false })).rejects.toThrow('explicit full refresh');
-    await expect(manual(third, { ...next, clean: false })).rejects.toThrow('clean committed');
-    await expect(manual(third, next, { delta: async (_cwd, before, after) => { if (before.head === third.request.candidate.head) throw new Error('not an authenticated ancestor'); return delta(_cwd, before, after); } })).rejects.toThrow('nonancestor integration');
-    for (const change of [{ criteria: 'Changed goal' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }, { scope: ['source.txt', 'new.txt'] }]) await expect(manual(third, next, { intent: { ...intent, ...change } })).rejects.toThrow('approved intent');
-    await expect(manual(third, next, { authorSessionId: 'other' })).rejects.toThrow('author changed');
-    const fourth = await manual(third, next);
-    expect(fourth.history).toEqual([...third.history, { request: third.request, reports: third.reports }]);
-    expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full', ownerContinuation: ownerApproval(third, next), findings: third.request.continuation.findings });
-    expect(fourth.request.roles).toEqual(['correctness', 'security']); expect((await check(fourth)).status).toBe('needs_agent_review');
-    fourth.reports = [closure(fourth)]; expect((await check(fourth)).status).toBe('needs_agent_review');
-    fourth.reports.push(closure(fourth, 1)); expect((await check(fourth)).status).toBe('reviewed');
-    expect(await manual(fourth, next, { ownerContinuation: fourth.request.continuation.ownerContinuation })).toEqual(fourth);
-    expect(await advance(fourth, next)).toEqual(fourth);
-    expect((await check(fourth, { now: () => 86401001 })).reason).toContain('expired');
-    expect((await check(fourth, { snapshot: async () => ({ ...next, clean: false }) })).status).not.toBe('reviewed');
-    await expect(advance(fourth, repaired(5))).rejects.toThrow('two automatic repair cycles');
-    for (const mutate of [value => { value.history = []; }, value => { delete value.request.continuation.ownerContinuation; }, value => { delete value.history[3].request.continuation.ownerContinuation; }, value => { value.request.continuation.findings = []; }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.continuation.mode = 'focused'; }, value => { value.request.continuation.cycle = 5; }, value => { value.reports[1] = { ...closure(value, 1), reviewerId: 'agent-0', sessionId: 'session-0' }; }]) {
-      const changed = structuredClone(fourth); mutate(changed); expect((await check(changed)).status).not.toBe('reviewed');
+  it('pauses after a failed cycle 3 until a rethink, then allows two automatic cycles and requires the owner at cycle 6', async () => {
+    const third = await thirdFailed(); const rethink = rethinkFor(third);
+    expect((await check(third, { snapshot: async () => repaired(4) })).reason).toContain('record a rethink');
+    for (const extra of [{}, { fullRefresh: true }]) await expect(advance(third, repaired(4), extra)).rejects.toThrow('record a rethink');
+    const fourth = await advance(third, repaired(4), { rethink });
+    expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full', rethink }); expect(fourth.request.roles).toEqual(['correctness', 'security']);
+    expect(fourth.history).toEqual([...third.history, { request: third.request, reports: third.reports }]); expect(fourth.request.continuation.findings).toHaveLength(2);
+    expect(await advance(fourth, repaired(4), { rethink })).toEqual(fourth); expect(await advance(fourth, repaired(4), { rethink, fullRefresh: true })).toEqual(fourth);
+    fourth.reports = [fail(fourth, 0, 'fourth escape'), closure(fourth, 1)]; expect((await check(fourth)).status).toBe('needs_agent_review');
+    for (const mutate of [s => { delete s.request.continuation.rethink; }, s => { s.request.continuation.mode = 'focused'; }, s => { s.request.continuation.rethink.findingClasses[0].findingIds.pop(); }, s => { s.request.continuation.rethink.decision = 'intent'; }, s => { s.request.continuation.rethink.priorRequestDigest = 'f'.repeat(64); }]) {
+      const changed = structuredClone(fourth); mutate(changed); expect((await check(changed)).reason).not.toContain('unresolved material');
     }
+    const fifth = await advance(fourth, repaired(5), { rethink }); expect(fifth.request.continuation.cycle).toBe(5); expect(fifth.request.continuation.rethink).toBeUndefined();
+    expect(fifth.history[4].request.continuation.rethink).toEqual(rethink);
+    expect((await check({ ...fifth, reports: [closure(fifth, 0, { reviewerId: 'simplicity-reviewer' })] })).reason).toContain('duplicated');
+    expect([...agentReviewIdentities(fifth)]).toEqual(expect.arrayContaining(['simplicity-reviewer', 'simplicity-session', 'agent-0', 'session-0']));
+    const reviewed = structuredClone(fifth); reviewed.reports = fifth.request.roles.map((_, index) => closure(fifth, index)); expect((await check(reviewed)).status).toBe('reviewed');
+    fifth.reports = fifth.request.roles.map((_, index) => index === 0 ? fail(fifth, 0, 'fifth escape') : closure(fifth, index));
+    expect((await check(fifth, { snapshot: async () => repaired(6) })).reason).toContain('cycle 6 requires an explicit owner continuation');
+    await expect(advance(fifth, repaired(6), { fullRefresh: true })).rejects.toThrow('cycle 6 requires an explicit owner continuation');
+    await expect(manual(fifth, repaired(6), { fullRefresh: false })).rejects.toThrow('explicit full refresh');
+    for (const field of ['priorRequestDigest', 'candidateDigest']) await expect(manual(fifth, repaired(6), { ownerContinuation: { ...ownerApproval(fifth, repaired(6)), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
+    await expect(manual(fifth, repaired(6), { intent: { ...intent, criteria: 'Changed goal' } })).rejects.toThrow('approved intent');
+    const sixth = await manual(fifth, repaired(6)); expect(sixth.request.continuation).toMatchObject({ cycle: 6, mode: 'full', ownerContinuation: ownerApproval(fifth, repaired(6)) });
+    expect(sixth.history).toHaveLength(6); expect(sixth.history[0].reports[0].materialFindings).toEqual([finding]);
+    sixth.reports = [closure(sixth)]; expect((await check(sixth)).status).toBe('needs_agent_review'); sixth.reports.push(closure(sixth, 1)); expect((await check(sixth)).status).toBe('reviewed');
+    expect(await manual(sixth, repaired(6), { ownerContinuation: sixth.request.continuation.ownerContinuation })).toEqual(sixth);
+    for (const mutate of [s => { delete s.request.continuation.ownerContinuation; }, s => { s.request.continuation.mode = 'focused'; }, s => { delete s.history[4].request.continuation.rethink; }, s => { s.history = []; }]) {
+      const changed = structuredClone(sixth); mutate(changed); expect((await check(changed)).status).not.toBe('reviewed');
+    }
+    sixth.reports[0] = fail(sixth, 0, 'sixth escape');
+    await expect(advance(sixth, repaired(7), { fullRefresh: true })).rejects.toThrow('six review cycles are exhausted');
+    await expect(manual(sixth, repaired(7))).rejects.toThrow('applies at cycle 6');
+    expect((await check(sixth, { snapshot: async () => repaired(7) })).status).toBe('needs_rescope');
   });
-  it('admits only one fresh owner-bound unchanged-intent fifth with full history, findings and ancestor integration', async () => {
-    const fourth = await manual(await manual(await exhausted()), repaired(4));
-    fourth.reports = [closure(fourth, 0, { verdict: 'fail', materialFindings: [{ ...finding, mechanism: 'remaining fourth-round failure' }] }), closure(fourth, 1)];
-    const next = { ...repaired(5), base: 'f'.repeat(40) };
-    const integrationDelta = async (_cwd, before, after) => before.head === fourth.request.candidate.head && after.head === next.head ? ['incoming.txt', 'source.txt'] : delta(_cwd, before, after);
-    const options = { base: next.base, delta: integrationDelta };
-    await expect(advance(fourth, next, { ...options, fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
-    await expect(manual(fourth, next, { ...options, ownerContinuation: fourth.request.continuation.ownerContinuation })).rejects.toThrow('differs from exact');
-    for (const field of ['priorRequestDigest', 'candidateDigest']) await expect(manual(fourth, next, { ...options, ownerContinuation: { ...ownerApproval(fourth, next), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
-    await expect(manual(fourth, next, { ...options, fullRefresh: false })).rejects.toThrow('explicit full refresh');
-    await expect(manual(fourth, { ...next, clean: false }, options)).rejects.toThrow('clean committed');
-    await expect(manual(fourth, next, { ...options, delta: async (_cwd, before, after) => { if (before.head === fourth.request.candidate.head) throw new Error('not an authenticated ancestor'); return delta(_cwd, before, after); } })).rejects.toThrow('nonancestor integration');
-    for (const change of [{ criteria: 'Changed goal' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }, { scope: ['source.txt', 'new.txt'] }]) await expect(manual(fourth, next, { ...options, intent: { ...intent, ...change } })).rejects.toThrow('approved intent');
-    await expect(manual(fourth, next, { ...options, authorSessionId: 'other' })).rejects.toThrow('author changed');
-    for (const additions of [['extra.txt'], ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts'], ['.github/workflows/published-tree-ci.yml', 'extra.txt']]) {
-      const expanded = { ...intent, scope: [...intent.scope, ...additions] };
-      const regroup = { priorRequestDigest: digest(fourth.request), priorIntentDigest: digest(fourth.request.intent), nextIntentDigest: digest(expanded), ownerDecision: 'Synthetic unsupported scope approval' };
-      await expect(manual(fourth, next, { ...options, intent: expanded, regroup })).rejects.toThrow('requires unchanged');
-    }
-    const fifth = await manual(fourth, next, options);
-    expect(fifth.history).toEqual([...fourth.history, { request: fourth.request, reports: fourth.reports }]);
-    expect(fifth.request.intent).toEqual(fourth.request.intent);
-    expect(fifth.request.continuation).toMatchObject({ cycle: 5, mode: 'full', ownerContinuation: ownerApproval(fourth, next), deltaPaths: ['incoming.txt', 'source.txt'] });
-    expect(fifth.request.continuation.findings).toHaveLength(2);
-    expect(fifth.request.roles).toEqual(['correctness', 'security']);
-    fifth.reports = [closure(fifth)]; expect((await check(fifth, options)).status).toBe('needs_agent_review');
-    fifth.reports.push(closure(fifth, 1)); expect((await check(fifth, options)).status).toBe('reviewed');
-    const incompleteIntegration = closure(fifth, 1); incompleteIntegration.coveredScope = ['source.txt'];
-    expect((await check({ ...fifth, reports: [closure(fifth), incompleteIntegration] }, options)).status).not.toBe('reviewed');
-    for (const mutate of [value => { value.history = []; }, value => { delete value.request.continuation.ownerContinuation; }, value => { delete value.history[4].request.continuation.ownerContinuation; }, value => { value.request.continuation.findings = []; }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.continuation.mode = 'focused'; }, value => { value.request.intent.criteria = 'Changed goal'; }, value => { value.request.intent.risk = 'unknown'; }, value => { value.request.intent.requiredRoles = ['specialist']; }, value => { value.request.authorSessionId = 'other'; }, value => { value.reports[1] = { ...closure(value, 1), reviewerId: value.history[0].reports[0].reviewerId }; }]) {
-      const changed = structuredClone(fifth); mutate(changed); expect((await check(changed, options)).status).not.toBe('reviewed');
-    }
-    expect(await manual(fifth, next, { ...options, ownerContinuation: fifth.request.continuation.ownerContinuation })).toEqual(fifth);
-    expect(await advance(fifth, next, options)).toEqual(fifth);
-    expect(await advance(fifth, next, { ...options, fullRefresh: true })).toEqual(fifth);
-    expect((await check(fifth, { ...options, now: () => 86401001 })).reason).toContain('expired');
-    expect(await advance(fifth, next, { ...options, now: () => 86401001 })).toEqual(fifth);
-    const sixth = { ...next, head: '6'.repeat(40), tree: '8'.repeat(40), workingDigest: 'a'.repeat(64), indexDigest: 'c'.repeat(64) };
-    await expect(advance(fifth, sixth, { ...options, fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
-    await expect(manual(fifth, sixth, { ...options, ownerContinuation: fifth.request.continuation.ownerContinuation })).rejects.toThrow('differs from exact');
-    for (const field of ['priorRequestDigest', 'candidateDigest']) await expect(manual(fifth, sixth, { ...options, ownerContinuation: { ...ownerApproval(fifth, sixth), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
-    await expect(manual(fifth, sixth, { ...options, fullRefresh: false })).rejects.toThrow('explicit full refresh');
-    await expect(manual(fifth, { ...sixth, clean: false }, options)).rejects.toThrow('clean committed');
-    await expect(manual(fifth, sixth, { ...options, delta: async (_cwd, before, after) => { if (before.head === fifth.request.candidate.head) throw new Error('not an authenticated ancestor'); return integrationDelta(_cwd, before, after); } })).rejects.toThrow('nonancestor integration');
-    for (const change of [{ criteria: 'Changed goal' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }, { scope: ['source.txt', 'new.txt'] }]) await expect(manual(fifth, sixth, { ...options, intent: { ...intent, ...change } })).rejects.toThrow('approved intent');
-    await expect(manual(fifth, sixth, { ...options, authorSessionId: 'other' })).rejects.toThrow('author changed');
-    const final = await manual(fifth, sixth, options);
-    expect(final.history).toEqual([...fifth.history, { request: fifth.request, reports: fifth.reports }]);
-    expect(final.request.continuation).toMatchObject({ cycle: 6, mode: 'full', ownerContinuation: ownerApproval(fifth, sixth), findings: [] });
-    expect(final.request.intent).toEqual(fifth.request.intent); expect(final.request.roles).toEqual(['correctness', 'security']);
-    final.reports = [closure(final)]; expect((await check(final, options)).status).toBe('needs_agent_review');
-    final.reports.push(closure(final, 1)); expect((await check(final, options)).status).toBe('reviewed');
-    for (const mutate of [value => { value.history = []; }, value => { delete value.request.continuation.ownerContinuation; }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.intent.criteria = 'Changed goal'; }, value => { value.request.authorSessionId = 'other'; }]) {
-      const changed = structuredClone(final); mutate(changed); expect((await check(changed, options)).status).not.toBe('reviewed');
-    }
-    expect(await manual(final, sixth, { ...options, ownerContinuation: final.request.continuation.ownerContinuation })).toEqual(final);
-    expect(await advance(final, sixth, { ...options, fullRefresh: true })).toEqual(final);
-    expect((await check(final, { ...options, now: () => 86401001 })).reason).toContain('expired');
-    expect(await advance(final, sixth, { ...options, now: () => 86401001 })).toEqual(final);
-    const seventh = { ...sixth, head: '7'.repeat(40), tree: '9'.repeat(40), workingDigest: 'b'.repeat(64), indexDigest: 'd'.repeat(64) };
-    await expect(manual(final, seventh, options)).rejects.toThrow('remaining owner cycle');
-    await expect(advance(final, seventh, { ...options, fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
+  it('binds the rethink to the failed round, every finding card, a fresh reviewer and the approved intent', async () => {
+    const third = await thirdFailed(); const ids = rethinkFor(third).findingClasses[0].findingIds; expect(ids).toHaveLength(3);
+    for (const [extra, message] of [
+      [{ priorRequestDigest: 'f'.repeat(64) }, 'differs from exact previous request'], [{ reviewerId: 'author' }, 'not fresh'], [{ sessionId: third.history[0].reports[0].sessionId }, 'not fresh'],
+      [{ findingClasses: [{ class: 'partial', findingIds: ids.slice(1) }] }, 'every finding card'], [{ findingClasses: [{ class: 'one', findingIds: ids }, { class: 'two', findingIds: ids.slice(0, 1) }] }, 'every finding card'],
+      [{ decision: 'intent' }, 'requires an owner regroup'], [{ decision: 'skip' }, 'decision is invalid'], [{ lesson: 'no arrow here' }, 'pattern → simpler path'], [{ lesson: `${'x'.repeat(240)} → y` }, 'lesson is invalid'],
+      [{ alternatives: [] }, 'alternatives'], [{ rootCause: '' }, 'rootCause is invalid'], [{ completedAt: 999 }, 'predates'], [{ completedAt: 1001 }, 'follows the request'], [{ extra: true }, 'rethink schema'],
+    ] as const) await expect(advance(third, repaired(4), { rethink: rethinkFor(third, extra) })).rejects.toThrow(message);
+    const unreviewed = { ...third, reports: [] };
+    await expect(advance(unreviewed, repaired(4), { rethink: rethinkFor(unreviewed, { completedAt: 999 }) })).rejects.toThrow('predates');
+    const second = structuredClone(third.history[2]); second.history = third.history.slice(0, 2);
+    await expect(advance(second, repaired(3), { rethink: rethinkFor(second) })).rejects.toThrow('only at the cycle 4 transition');
+    await expect(advance(undefined, repaired(1), { rethink: rethinkFor(third) })).rejects.toThrow('preserved previous state');
+    const expanded = { ...intent, scope: ['source.txt', 'new.txt'] };
+    const regroup = { priorRequestDigest: digest(third.request), priorIntentDigest: digest(third.request.intent), nextIntentDigest: digest(expanded), ownerDecision: 'Synthetic owner decision for the intent change' };
+    await expect(advance(third, repaired(4), { intent: expanded, regroup, fullRefresh: true, rethink: rethinkFor(third) })).rejects.toThrow('requires an owner regroup');
+    const changed = await advance(third, repaired(4), { intent: expanded, regroup, fullRefresh: true, rethink: rethinkFor(third, { decision: 'intent' }) });
+    expect(changed.request.continuation).toMatchObject({ cycle: 4, mode: 'full', regroup }); expect(changed.request.intent).toEqual(expanded);
   });
-  it('pairs only the exact two consumer-check additions with a separately bound fourth full review', async () => {
-    const additions = ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts'];
-    const third = await manual(await exhausted()); const expanded = { ...intent, scope: [...intent.scope, ...additions] }; const next = { ...repaired(4), changedPaths: expanded.scope };
-    const decision = approved => ({ priorRequestDigest: digest(third.request), priorIntentDigest: digest(third.request.intent), nextIntentDigest: digest(approved), ownerDecision: 'Synthetic exact two-path owner approval' });
-    const expandedDelta = async (_cwd, before, after) => before.head === third.request.candidate.head && after.head === next.head ? expanded.scope : delta(_cwd, before, after);
-    const combine = (extra = {}) => manual(third, next, { intent: expanded, regroup: decision(expanded), delta: expandedDelta, ...extra });
-    await expect(combine({ regroup: undefined })).rejects.toThrow('approved intent');
-    await expect(advance(third, next, { intent: expanded, regroup: decision(expanded), fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
-    for (const field of ['priorRequestDigest', 'priorIntentDigest', 'nextIntentDigest']) await expect(combine({ regroup: { ...decision(expanded), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
-    for (const change of [{ criteria: 'Changed goal' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }]) {
-      const changed = { ...expanded, ...change }; await expect(combine({ intent: changed, regroup: decision(changed) })).rejects.toThrow('unchanged criteria, risk, roles');
-    }
-    await expect(combine({ authorSessionId: 'other' })).rejects.toThrow('author changed');
-    for (const scope of [['source.txt', additions[0]], ['source.txt', ...additions, 'extra.txt'], ['source.txt', additions[0], 'replacement.txt'], additions]) {
-      const approved = { ...intent, scope }; await expect(manual(third, { ...next, changedPaths: scope }, { intent: approved, regroup: decision(approved), delta: expandedDelta })).rejects.toThrow();
-    }
-    await expect(manual(third, repaired(4), { regroup: decision(intent) })).rejects.toThrow('not the preserved transition');
-    const second = await exhausted(); const prematureRegroup = { ...decision(expanded), priorRequestDigest: digest(second.request), priorIntentDigest: digest(second.request.intent) };
-    await expect(manual(second, next, { intent: expanded, regroup: prematureRegroup, delta: expandedDelta })).rejects.toThrow('exhausted automatic budget');
-    await expect(combine({ fullRefresh: false })).rejects.toThrow('explicit full refresh');
-    await expect(manual(third, { ...next, clean: false }, { intent: expanded, regroup: decision(expanded), delta: expandedDelta })).rejects.toThrow('clean committed');
-    await expect(combine({ delta: async (_cwd, before, after) => { if (before.head === third.request.candidate.head) throw new Error('not an authenticated ancestor'); return delta(_cwd, before, after); } })).rejects.toThrow('nonancestor integration');
-    const fourth = await combine(); expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full', regroup: decision(expanded), ownerContinuation: ownerApproval(third, next), findings: third.request.continuation.findings });
-    expect(fourth.history).toEqual([...third.history, { request: third.request, reports: third.reports }]);
-    expect(fourth.request.roles).toEqual(['correctness', 'security']);
-    fourth.reports = [closure(fourth)]; expect((await check(fourth, { delta: expandedDelta })).status).toBe('needs_agent_review');
-    fourth.reports.push(closure(fourth, 1)); expect((await check(fourth, { delta: expandedDelta })).status).toBe('reviewed');
-    expect(await manual(fourth, next, { intent: expanded, regroup: decision(expanded), ownerContinuation: fourth.request.continuation.ownerContinuation, delta: expandedDelta })).toEqual(fourth);
-    expect((await check(fourth, { delta: expandedDelta, now: () => 86401001 })).reason).toContain('expired');
-    expect((await check(fourth, { delta: expandedDelta, snapshot: async () => ({ ...next, clean: false }) })).status).not.toBe('reviewed');
-    for (const mutate of [value => { value.history = []; }, value => { value.request.continuation.findings = []; }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.continuation.regroup.nextIntentDigest = 'f'.repeat(64); }, value => { value.request.continuation.ownerContinuation.priorRequestDigest = 'f'.repeat(64); }]) {
-      const changed = structuredClone(fourth); mutate(changed); expect((await check(changed, { delta: expandedDelta })).status).not.toBe('reviewed');
-    }
-    const fifth = await manual(fourth, { ...repaired(5), changedPaths: expanded.scope }, { intent: expanded, delta: expandedDelta });
-    expect(fifth.request.intent).toEqual(fourth.request.intent); expect(fifth.request.continuation).toMatchObject({ cycle: 5, mode: 'full' });
-    expect(fifth.history).toEqual([...fourth.history, { request: fourth.request, reports: fourth.reports }]);
+  it('keeps an expired cycle 4 while the spec repeats its rethink and refreshes it as cycle 5 once the rethink is dropped', async () => {
+    const third = await thirdFailed(); const rethink = rethinkFor(third); const fourth = await advance(third, repaired(4), { rethink });
+    fourth.reports = [closure(fourth), closure(fourth, 1)]; const late = () => 86402000;
+    expect((await check(fourth, { now: late })).reason).toContain('expired');
+    expect(await advance(fourth, repaired(4), { rethink, fullRefresh: true, now: late })).toEqual(fourth);
+    const refreshed = await advance(fourth, repaired(4), { fullRefresh: true, now: late });
+    expect(refreshed.request.continuation).toMatchObject({ cycle: 5, mode: 'full', deltaPaths: [] }); expect(refreshed.request.continuation.rethink).toBeUndefined();
   });
-  it('admits only one owner-bound checkout scope regroup after four cycles, preserving lineage and refusing a sixth', async () => {
-    const third = await manual(await exhausted()); const fourth = await manual(third, repaired(4));
-    fourth.reports = [closure(fourth), closure(fourth, 1)];
-    const path = '.github/workflows/published-tree-ci.yml';
-    const expanded = { ...intent, scope: [...intent.scope, path] }; const next = { ...repaired(5), changedPaths: expanded.scope };
-    const decision = approved => ({ priorRequestDigest: digest(fourth.request), priorIntentDigest: digest(fourth.request.intent), nextIntentDigest: digest(approved), ownerDecision: 'Synthetic explicit checkout-history regroup' });
-    const repairDelta = async (_cwd, before, after) => before.head === fourth.request.candidate.head && after.head === next.head ? [path] : delta(_cwd, before, after);
-    const combine = (extra = {}) => manual(fourth, next, { intent: expanded, regroup: decision(expanded), delta: repairDelta, ...extra });
-    await expect(combine({ regroup: undefined })).rejects.toThrow('approved intent');
-    await expect(combine({ fullRefresh: false })).rejects.toThrow('explicit full refresh');
-    await expect(combine({ ownerContinuation: fourth.request.continuation.ownerContinuation })).rejects.toThrow('differs from exact');
-    for (const field of ['priorRequestDigest', 'priorIntentDigest', 'nextIntentDigest']) await expect(combine({ regroup: { ...decision(expanded), [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
-    for (const change of [{ criteria: 'changed goal' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }]) {
-      const changed = { ...expanded, ...change }; await expect(combine({ intent: changed, regroup: decision(changed) })).rejects.toThrow('unchanged criteria, risk, roles');
-    }
-    for (const scope of [[path], ['source.txt', path, 'extra.txt'], ['source.txt', 'other.txt']]) {
-      const approved = { ...intent, scope }; await expect(combine({ intent: approved, regroup: decision(approved) })).rejects.toThrow();
-    }
-    await expect(combine({ authorSessionId: 'other' })).rejects.toThrow('author changed');
-    await expect(combine({ delta: async () => { throw new Error('not an ancestor'); } })).rejects.toThrow('not an ancestor');
-    const fifth = await combine(); expect(fifth.history).toEqual([...fourth.history, { request: fourth.request, reports: fourth.reports }]);
-    expect(fifth.request.continuation).toMatchObject({ cycle: 5, mode: 'full', regroup: decision(expanded), ownerContinuation: ownerApproval(fourth, next), findings: [] });
-    expect(fifth.request.roles).toEqual(['correctness', 'security']);
-    fifth.reports = [closure(fifth)]; expect((await check(fifth, { delta: repairDelta })).status).toBe('needs_agent_review');
-    fifth.reports.push(closure(fifth, 1)); expect((await check(fifth, { delta: repairDelta })).status).toBe('reviewed');
-    expect(await manual(fifth, next, { intent: expanded, regroup: decision(expanded), ownerContinuation: fifth.request.continuation.ownerContinuation, delta: repairDelta })).toEqual(fifth);
-    expect((await check(fifth, { delta: repairDelta, now: () => 86401001 })).reason).toContain('expired');
-    for (const mutate of [value => { value.history.pop(); }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.continuation.regroup.nextIntentDigest = 'f'.repeat(64); }]) {
-      const changed = structuredClone(fifth); mutate(changed); expect((await check(changed, { delta: repairDelta })).status).not.toBe('reviewed');
-    }
-    const sixth = { ...next, head: '6'.repeat(40), tree: '8'.repeat(40), workingDigest: 'a'.repeat(64), indexDigest: 'c'.repeat(64) };
-    const final = await manual(fifth, sixth, { intent: expanded, delta: repairDelta }); expect(final.request.continuation.cycle).toBe(6);
-    await expect(manual(final, { ...sixth, head: '7'.repeat(40) }, { intent: expanded, delta: repairDelta })).rejects.toThrow('remaining owner cycle');
-    await expect(advance(fifth, sixth, { intent: expanded, delta: repairDelta })).rejects.toThrow('two automatic repair cycles');
+  it('needs no rethink when cycle 3 passed, for example before a later base integration', async () => {
+    const third = await thirdFailed(); third.reports = [closure(third), closure(third, 1)]; expect((await check(third)).status).toBe('reviewed');
+    const next = { ...repaired(4), base: 'f'.repeat(40) }; const integrationDelta = async (_cwd, before, after) => before.head === third.request.candidate.head && after.head === next.head ? ['incoming.txt', 'source.txt'] : delta(_cwd, before, after);
+    const fourth = await advance(third, next, { base: next.base, delta: integrationDelta });
+    expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full' }); expect(fourth.request.continuation.rethink).toBeUndefined();
   });
-  it('refuses missing, mismatched, premature, changed-intent and nonfull owner continuation', async () => {
-    const prior = await exhausted(); const next = repaired(3); const approval = ownerApproval(prior, next);
-    await expect(advance(prior, next, { fullRefresh: true })).rejects.toThrow('two automatic repair cycles');
-    for (const field of ['priorRequestDigest', 'candidateDigest']) await expect(manual(prior, next, { ownerContinuation: { ...approval, [field]: 'f'.repeat(64) } })).rejects.toThrow('differs from exact');
-    await expect(manual(prior, next, { fullRefresh: false })).rejects.toThrow('explicit full refresh');
-    await expect(manual(await initial(), next)).rejects.toThrow('exhausted automatic budget');
-    await expect(manual(prior, next, { authorSessionId: 'other' })).rejects.toThrow('author changed');
-    await expect(manual(prior, next, { intent: { ...intent, criteria: 'Changed intent' } })).rejects.toThrow('approved intent');
-    await expect(manual(prior, next, { delta: async (_cwd, before, after) => { if (before.head === prior.request.candidate.head) throw new Error('not an authenticated ancestor'); return delta(_cwd, before, after); } })).rejects.toThrow('nonancestor integration');
-    await expect(manual(prior, { ...next, clean: false })).rejects.toThrow('clean committed');
+  it('keeps a cycle 3 owner continuation recorded before cycle 3 became automatic and refuses one at cycles 2, 4 and 5', async () => {
+    const first = await advance(await initial(), repaired(1), { fullRefresh: true }); const second = await advance(first, repaired(2), { fullRefresh: true });
+    for (const [previous, next] of [[first, repaired(2)], [second, repaired(3)]]) await expect(manual(previous, next)).rejects.toThrow('applies at cycle 6');
+    const third = await advance(second, repaired(3), { fullRefresh: true }); third.request.continuation.ownerContinuation = ownerApproval(second, repaired(3));
+    expect(third.request.continuation).toMatchObject({ cycle: 3, mode: 'full' });
+    expect((await check(third)).status).toBe('needs_agent_review'); third.reports = [closure(third), closure(third, 1)]; expect((await check(third)).status).toBe('reviewed');
+    expect(await manual(third, repaired(3), { ownerContinuation: third.request.continuation.ownerContinuation })).toEqual(third);
+    for (const mutate of [s => { s.request.continuation.ownerContinuation.priorRequestDigest = 'f'.repeat(64); }, s => { s.request.continuation.ownerContinuation.candidateDigest = 'f'.repeat(64); }, s => { s.request.continuation.cycle = 4; }]) {
+      const changed = structuredClone(third); mutate(changed); expect((await check(changed)).status).not.toBe('reviewed');
+    }
+    third.reports[0] = fail(third, 0, 'third escape');
+    await expect(manual(third, repaired(4))).rejects.toThrow('applies at cycle 6');
+    const fourth = await advance(third, repaired(4), { rethink: rethinkFor(third) }); fourth.reports = [closure(fourth), closure(fourth, 1)];
+    await expect(manual(fourth, repaired(5))).rejects.toThrow('applies at cycle 6');
   });
 
 });
@@ -463,8 +372,10 @@ describe('explicit owner regroup without reset', () => {
     expect(state.request.roles).toEqual(['correctness', 'security']); expect(state.reports).toEqual([]);
     expect((await check(state)).status).toBe('needs_agent_review');
     state.reports = complete(state); expect((await check(state)).status).toBe('reviewed');
-    await expect(regroup(state, next(3), { regroup: undefined })).rejects.toThrow('two automatic repair cycles');
-    await expect(regroup(state, next(3), { intent: { ...expanded, scope: [...expanded.scope, 'third.txt'] }, regroup: approval(state, { ...expanded, scope: [...expanded.scope, 'third.txt'] }) })).rejects.toThrow('two automatic repair cycles');
+    const third = await regroup(state, next(3), { regroup: undefined, fullRefresh: false });
+    expect(third.request.continuation).toMatchObject({ cycle: 3, mode: 'full' }); expect(third.request.continuation.regroup).toBeUndefined();
+    const wider = { ...expanded, scope: [...expanded.scope, 'third.txt'] };
+    expect((await regroup(state, next(3), { intent: wider, regroup: approval(state, wider) })).request.continuation).toMatchObject({ cycle: 3, mode: 'full', regroup: approval(state, wider) });
   });
   it('forces fresh full2 on same-SHA expansion and keeps pending and completed prepare idempotent without renewing expiry', async () => {
     const prior = await initial(); const decision = approval(prior); const state = await regroup(prior, candidate);
@@ -549,7 +460,7 @@ describe('explicit owner regroup without reset', () => {
     await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
     const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
     const specPath = join(directory, 'intent.json'); const statePath = join(directory, 'session.json');
-    const spec = { intent, base: baseline, authorSessionId: 'author' }; await writeFile(specPath, JSON.stringify(spec));
+    const spec = { intent, base: baseline, authorSessionId: 'author', simplicityPreCheck }; await writeFile(specPath, JSON.stringify(spec));
     const script = resolve('scripts/agent-review-session.mjs');
     const invoke = (...args: string[]) => {
       try { return execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', stdio: 'pipe' }); }
@@ -566,7 +477,7 @@ describe('explicit owner regroup without reset', () => {
 });
 
 describe('actual source snapshot without candidate execution', () => {
-  it('runs separately bound owner cycles through actual Git and CLI, retaining complete history through sixth ancestor review and refusing a seventh', async () => {
+  it('runs automatic cycles, the rethink pause and the owner cycle through actual Git and CLI, retaining history and refusing a seventh', async () => {
     const { cwd, git } = await fixture();
     await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
     const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
@@ -576,126 +487,63 @@ describe('actual source snapshot without candidate execution', () => {
     const script = resolve('scripts/agent-review-session.mjs');
     const invoke = (...args: string[]) => spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' });
     const commit = async number => { await writeFile(join(cwd, 'source.txt'), `candidate ${number}\n`); git('add', 'source.txt'); git('commit', '-qm', `candidate ${number}`); };
-    await writeFile(specPath, JSON.stringify(spec));
-    const finding = { mechanism: 'wrong bytes', precondition: 'read source', requirement: 'preserve behavior', effect: 'wrong result', risk: 'ordinary' };
-    for (const number of [0, 1, 2]) {
-      await commit(number); expect(invoke('prepare').status).toBe(0);
-      if (number === 0) {
-        const initial = JSON.parse(await readFile(statePath, 'utf8'));
-        for (const index of [0, 1]) {
-          const reportPath = join(directory, `initial-${index}.json`);
-          await writeFile(reportPath, JSON.stringify({ ...report(initial.request, index), completedAt: Date.now(), ...(index === 0 ? { verdict: 'fail', materialFindings: [finding] } : {}) }));
-          expect(invoke('record', reportPath).status).toBe(0);
-        }
-      }
-    }
-    const priorBytes = await readFile(statePath, 'utf8'), prior = JSON.parse(priorBytes);
-    await commit(3); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(priorBytes);
     const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-    const ownerContinuation = { priorRequestDigest: digest(prior.request), candidateDigest: digest(await captureSessionCandidate(cwd, baseline)), ownerDecision: 'Synthetic explicit approval for this exact fixture candidate' };
-    await writeFile(specPath, JSON.stringify({ ...spec, ownerContinuation: { ...ownerContinuation, candidateDigest: 'f'.repeat(64) } }));
-    expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(priorBytes);
-    await writeFile(specPath, JSON.stringify({ ...spec, ownerContinuation })); expect(invoke('prepare').status).toBe(0);
-    const state = JSON.parse(await readFile(statePath, 'utf8'));
-    expect(state.history).toEqual([...prior.history, { request: prior.request, reports: prior.reports }]);
-    expect(state.request.continuation).toMatchObject({ cycle: 3, mode: 'full', ownerContinuation, deltaPaths: ['source.txt'] });
-    expect(state.request.roles).toEqual(['correctness', 'security']);
-    for (const index of [0, 1]) {
-      const reportPath = join(directory, `manual-${index}.json`);
-      await writeFile(reportPath, JSON.stringify({ ...report(state.request, index), reviewerId: `manual-${index}`, sessionId: `manual-session-${index}`, completedAt: Date.now(), closure: { coveredDelta: ['source.txt'], interactionsChecked: true, ordinarySemantics: false, resolvedFindings: state.request.continuation.findings.map(card => card.id) } }));
-      expect(invoke('record', reportPath).status).toBe(0);
-    }
-    expect(invoke('verify').status).toBe(0); const reviewed = await readFile(statePath, 'utf8');
-    expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
-    await commit(4); const current = JSON.parse(reviewed);
-    const additions = ['packages/core/scripts/core-package-consumer-audit.ts', 'packages/core/test/consumerTooling.test.ts'];
-    for (const path of additions) { await mkdir(join(cwd, path.substring(0, path.lastIndexOf('/'))), { recursive: true }); await writeFile(join(cwd, path), 'export {};\n'); }
-    git('add', ...additions); git('commit', '-qm', 'exact consumer-check scope');
-    const expanded = { ...intent, scope: [...intent.scope, ...additions] };
-    const fourthSpec = { ...spec, intent: expanded };
-    await writeFile(specPath, JSON.stringify(fourthSpec)); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
-    await writeFile(specPath, JSON.stringify({ ...fourthSpec, ownerContinuation })); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
-    const fourthApproval = { ...ownerContinuation, priorRequestDigest: digest(current.request), candidateDigest: digest(await captureSessionCandidate(cwd, baseline)), ownerDecision: 'Synthetic separate fresh approval for the fourth fixture candidate' };
-    const regroup = { priorRequestDigest: digest(current.request), priorIntentDigest: digest(current.request.intent), nextIntentDigest: digest(expanded), ownerDecision: 'Synthetic separate exact two-path fixture approval' };
-    await writeFile(specPath, JSON.stringify({ ...fourthSpec, ownerContinuation: fourthApproval, regroup: { ...regroup, nextIntentDigest: 'f'.repeat(64) } })); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
-    await writeFile(specPath, JSON.stringify({ ...fourthSpec, ownerContinuation: fourthApproval, regroup })); expect(invoke('prepare').status).toBe(0);
+    const finding = { mechanism: 'wrong bytes', precondition: 'read source', requirement: 'preserve behavior', effect: 'wrong result', risk: 'ordinary' };
+    const record = async (label, failing = -1) => {
+      const state = JSON.parse(await readFile(statePath, 'utf8'));
+      for (const index of [0, 1]) {
+        const reportPath = join(directory, `${label}-${index}.json`);
+        const scope = state.request.version === 1 ? intent.scope : [...new Set([...intent.scope, ...state.request.continuation.deltaPaths])];
+        await writeFile(reportPath, JSON.stringify({ ...report(state.request, index), reviewerId: `${label}-${index}`, sessionId: `${label}-session-${index}`, coveredScope: scope, completedAt: Date.now(), ...(state.request.version === 2 ? { closure: { coveredDelta: state.request.continuation.deltaPaths, interactionsChecked: true, ordinarySemantics: false, resolvedFindings: state.request.continuation.findings.map(card => card.id) } } : {}), ...(index === failing ? { verdict: 'fail', materialFindings: [finding] } : {}) }));
+        expect(invoke('record', reportPath).status).toBe(0);
+      }
+      return readFile(statePath, 'utf8');
+    };
+    await writeFile(specPath, JSON.stringify(spec)); await commit(0);
+    expect(invoke('prepare').stderr).toContain('simplicityPreCheck'); await expect(readFile(statePath, 'utf8')).rejects.toThrow();
+    await writeFile(specPath, JSON.stringify({ ...spec, simplicityPreCheck })); expect(invoke('prepare').status).toBe(0);
+    expect(JSON.parse(await readFile(statePath, 'utf8')).request.simplicityPreCheck).toBe(simplicityPreCheck);
+    await record('initial', 0);
+    for (const number of [1, 2]) { await commit(number); expect(invoke('prepare').status).toBe(0); }
+    await commit(3); expect(invoke('prepare').status).toBe(0);
+    const third = JSON.parse(await readFile(statePath, 'utf8'));
+    expect(third.request.continuation).toMatchObject({ cycle: 3, mode: 'full', deltaPaths: ['source.txt'] }); expect(third.request.continuation.ownerContinuation).toBeUndefined();
+    expect(third.history[0].request.simplicityPreCheck).toBe(simplicityPreCheck);
+    const thirdBytes = await record('third', 1); const failedThird = JSON.parse(thirdBytes);
+    await commit(4); const refused = invoke('prepare'); expect(refused.status).not.toBe(0); expect(refused.stdout).toContain('needs_rescope'); expect(refused.stdout).toContain('record a rethink');
+    expect(await readFile(statePath, 'utf8')).toBe(thirdBytes);
+    const rethink = { priorRequestDigest: digest(failedThird.request), reviewerId: 'simplicity-reviewer', sessionId: 'simplicity-session', completedAt: Date.now(), findingClasses: [{ class: 'wrong bytes', findingIds: findingIds([...failedThird.history, failedThird]) }], pattern: 'The same wrong-bytes class recurs', rootCause: 'The source is rewritten instead of preserved', simplicityCheck: 'Preserving the original bytes removes the class', alternatives: ['Keep the original bytes'], decision: 'change', rationale: 'Same intent and scope', lesson: 'rewriting preserved bytes → keep the original bytes' };
+    await writeFile(specPath, JSON.stringify({ ...spec, rethink: { ...rethink, priorRequestDigest: 'f'.repeat(64) } })); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(thirdBytes);
+    await writeFile(specPath, JSON.stringify({ ...spec, rethink })); expect(invoke('prepare').status).toBe(0);
     const fourth = JSON.parse(await readFile(statePath, 'utf8'));
-    expect(fourth.history).toEqual([...current.history, { request: current.request, reports: current.reports }]);
-    expect(fourth.history[0].reports[0].materialFindings).toEqual([finding]);
-    expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full', ownerContinuation: fourthApproval, regroup });
-    expect(fourth.request.roles).toEqual(['correctness', 'security']);
-    for (const index of [0, 1]) {
-      const reportPath = join(directory, `fourth-${index}.json`);
-      await writeFile(reportPath, JSON.stringify({ ...report(fourth.request, index), coveredScope: expanded.scope, reviewerId: `fourth-${index}`, sessionId: `fourth-session-${index}`, completedAt: Date.now(), closure: { coveredDelta: [...expanded.scope].sort(), interactionsChecked: true, ordinarySemantics: false, resolvedFindings: fourth.request.continuation.findings.map(card => card.id) } }));
-      expect(invoke('record', reportPath).status).toBe(0);
-      expect(invoke('verify').status === 0).toBe(index === 1);
-    }
-    const finalBytes = await readFile(statePath, 'utf8'); expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(finalBytes);
-    await commit(5); const final = JSON.parse(finalBytes);
-    const branch = git('symbolic-ref', '--short', 'HEAD');
+    expect(fourth.history).toEqual([...failedThird.history, { request: failedThird.request, reports: failedThird.reports }]);
+    expect(fourth.request.continuation).toMatchObject({ cycle: 4, mode: 'full', rethink }); expect(fourth.history[0].reports[0].materialFindings).toEqual([finding]);
+    const fourthBytes = await record('fourth'); expect(invoke('verify').status).toBe(0);
+    expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(fourthBytes);
+    await commit(5); const branch = git('symbolic-ref', '--short', 'HEAD');
     git('checkout', '-q', '--detach', baseline); await writeFile(join(cwd, 'incoming.txt'), 'ancestor integration\n'); git('add', 'incoming.txt'); git('commit', '-qm', 'main integration source');
     const integratedBase = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', integratedBase); git('checkout', '-q', branch); git('merge', '-q', '--no-edit', integratedBase);
-    const fifthApproval = { priorRequestDigest: digest(final.request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic separate fresh fifth fixture decision' };
-    const fifthSpec = { ...fourthSpec, base: integratedBase, ownerContinuation: fifthApproval };
-    for (const rejected of [
-      { ...fifthSpec, ownerContinuation: undefined }, { ...fifthSpec, ownerContinuation: fourthApproval }, { ...fifthSpec, fullRefresh: false },
-      { ...fifthSpec, ownerContinuation: { ...fifthApproval, priorRequestDigest: 'f'.repeat(64) } }, { ...fifthSpec, ownerContinuation: { ...fifthApproval, candidateDigest: 'f'.repeat(64) } },
-      { ...fifthSpec, authorSessionId: 'other' }, ...[{ criteria: 'changed' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }].map(change => ({ ...fifthSpec, intent: { ...expanded, ...change } })),
-    ]) {
-      await writeFile(specPath, JSON.stringify(rejected)); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(finalBytes);
-    }
-    const unsupported = { ...expanded, scope: [...expanded.scope, 'extra.txt'] };
-    await writeFile(specPath, JSON.stringify({ ...fifthSpec, intent: unsupported, regroup: { priorRequestDigest: digest(final.request), priorIntentDigest: digest(final.request.intent), nextIntentDigest: digest(unsupported), ownerDecision: 'Synthetic unsupported scope' } }));
-    expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(finalBytes);
-    await writeFile(specPath, JSON.stringify(fifthSpec)); expect(invoke('prepare').status).toBe(0);
+    const fifthSpec = { ...spec, base: integratedBase, rethink }; await writeFile(specPath, JSON.stringify(fifthSpec)); expect(invoke('prepare').status).toBe(0);
     const fifth = JSON.parse(await readFile(statePath, 'utf8'));
-    expect(fifth.history).toEqual([...final.history, { request: final.request, reports: final.reports }]);
-    expect(fifth.history[0].reports[0].materialFindings).toEqual([finding]);
-    expect(fifth.request.candidate.base).toBe(integratedBase); expect(fifth.request.intent).toEqual(final.request.intent);
-    expect(fifth.request.continuation).toMatchObject({ cycle: 5, mode: 'full', ownerContinuation: fifthApproval, deltaPaths: ['incoming.txt', 'source.txt'] });
-    expect(fifth.request.roles).toEqual(['correctness', 'security']);
-    for (const index of [0, 1]) {
-      const reportPath = join(directory, `fifth-${index}.json`);
-      await writeFile(reportPath, JSON.stringify({ ...report(fifth.request, index), coveredScope: [...expanded.scope, 'incoming.txt'], reviewerId: `fifth-${index}`, sessionId: `fifth-session-${index}`, completedAt: Date.now(), closure: { coveredDelta: ['incoming.txt', 'source.txt'], interactionsChecked: true, ordinarySemantics: false, resolvedFindings: fifth.request.continuation.findings.map(card => card.id) } }));
-      expect(invoke('record', reportPath).status).toBe(0); expect(invoke('verify').status === 0).toBe(index === 1);
-    }
-    const fifthBytes = await readFile(statePath, 'utf8'); expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(fifthBytes);
-    const completeFifth = JSON.parse(fifthBytes);
-    for (const mutate of [value => { value.history = []; }, value => { delete value.history[4].request.continuation.ownerContinuation; }, value => { value.history[0].reports[0].materialFindings = []; }]) {
-      const altered = structuredClone(completeFifth); mutate(altered); await writeFile(statePath, JSON.stringify(altered)); expect(invoke('verify').status).not.toBe(0); expect(invoke('prepare').status).not.toBe(0);
-    }
-    await writeFile(statePath, fifthBytes);
-    await commit(6); const sixthApproval = { priorRequestDigest: digest(completeFifth.request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic separate fresh sixth fixture decision' };
-    const sixthSpec = { ...fifthSpec, ownerContinuation: sixthApproval };
-    for (const rejected of [
-      { ...sixthSpec, ownerContinuation: undefined }, { ...sixthSpec, ownerContinuation: fifthApproval }, { ...sixthSpec, fullRefresh: false },
-      { ...sixthSpec, ownerContinuation: { ...sixthApproval, priorRequestDigest: 'f'.repeat(64) } }, { ...sixthSpec, ownerContinuation: { ...sixthApproval, candidateDigest: 'f'.repeat(64) } },
-      { ...sixthSpec, authorSessionId: 'other' }, ...[{ criteria: 'changed' }, { risk: 'unknown' }, { requiredRoles: ['specialist'] }, { scope: [...expanded.scope, 'extra.txt'] }].map(change => ({ ...sixthSpec, intent: { ...expanded, ...change } })),
-    ]) {
+    expect(fifth.request.continuation).toMatchObject({ cycle: 5, mode: 'full', deltaPaths: ['incoming.txt', 'source.txt'] }); expect(fifth.request.continuation.rethink).toBeUndefined();
+    const fifthBytes = await record('fifth', 0); expect(invoke('verify').status).not.toBe(0);
+    await commit(6); expect(invoke('prepare').stdout).toContain('cycle 6 requires an explicit owner continuation'); expect(await readFile(statePath, 'utf8')).toBe(fifthBytes);
+    const failedFifth = JSON.parse(fifthBytes);
+    const sixthApproval = { priorRequestDigest: digest(failedFifth.request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic separate fresh sixth fixture decision' };
+    for (const rejected of [{ ...fifthSpec, ownerContinuation: { ...sixthApproval, candidateDigest: 'f'.repeat(64) } }, { ...fifthSpec, ownerContinuation: sixthApproval, fullRefresh: false }, { ...fifthSpec, ownerContinuation: sixthApproval, authorSessionId: 'other' }]) {
       await writeFile(specPath, JSON.stringify(rejected)); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(fifthBytes);
     }
-    await writeFile(specPath, JSON.stringify(sixthSpec));
-    await writeFile(join(cwd, 'source.txt'), 'dirty sixth candidate\n'); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(fifthBytes);
-    git('restore', 'source.txt'); expect(invoke('prepare').status).toBe(0);
+    await writeFile(specPath, JSON.stringify({ ...fifthSpec, ownerContinuation: sixthApproval })); expect(invoke('prepare').status).toBe(0);
     const sixth = JSON.parse(await readFile(statePath, 'utf8'));
-    expect(sixth.history).toEqual([...completeFifth.history, { request: completeFifth.request, reports: completeFifth.reports }]);
-    expect(sixth.history[0].reports[0].materialFindings).toEqual([finding]);
-    expect(sixth.request.continuation).toMatchObject({ cycle: 6, mode: 'full', ownerContinuation: sixthApproval, deltaPaths: ['source.txt'] });
-    expect(sixth.request.intent).toEqual(completeFifth.request.intent); expect(sixth.request.roles).toEqual(['correctness', 'security']);
-    for (const index of [0, 1]) {
-      const reportPath = join(directory, `sixth-${index}.json`);
-      await writeFile(reportPath, JSON.stringify({ ...report(sixth.request, index), coveredScope: expanded.scope, reviewerId: `sixth-${index}`, sessionId: `sixth-session-${index}`, completedAt: Date.now(), closure: { coveredDelta: ['source.txt'], interactionsChecked: true, ordinarySemantics: false, resolvedFindings: sixth.request.continuation.findings.map(card => card.id) } }));
-      expect(invoke('record', reportPath).status).toBe(0); expect(invoke('verify').status === 0).toBe(index === 1);
-    }
-    const sixthBytes = await readFile(statePath, 'utf8'); const completeSixth = JSON.parse(sixthBytes);
-    expect(invoke('prepare').status).toBe(0); expect(await readFile(statePath, 'utf8')).toBe(sixthBytes);
-    for (const mutate of [value => { value.history = []; }, value => { delete value.history[5].request.continuation.ownerContinuation; }, value => { value.history[0].reports[0].materialFindings = []; }, value => { value.request.preparedAt = Date.now() - 86400001; }]) {
-      const altered = structuredClone(completeSixth); mutate(altered); await writeFile(statePath, JSON.stringify(altered)); expect(invoke('verify').status).not.toBe(0); expect(invoke('prepare').status).not.toBe(0);
+    expect(sixth.request.continuation).toMatchObject({ cycle: 6, mode: 'full', ownerContinuation: sixthApproval }); expect(sixth.history).toHaveLength(6);
+    const sixthBytes = await record('sixth', 0);
+    for (const mutate of [value => { value.history = []; }, value => { delete value.history[4].request.continuation.rethink; }, value => { value.history[0].reports[0].materialFindings = []; }]) {
+      const altered = JSON.parse(sixthBytes); mutate(altered); await writeFile(statePath, JSON.stringify(altered)); expect(invoke('verify').status).not.toBe(0); expect(invoke('prepare').status).not.toBe(0);
     }
     await writeFile(statePath, sixthBytes); await commit(7);
-    const seventhApproval = { priorRequestDigest: digest(completeSixth.request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic unsupported seventh decision' };
-    await writeFile(specPath, JSON.stringify({ ...sixthSpec, ownerContinuation: seventhApproval }));
-    expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(sixthBytes); expect(invoke('verify').status).not.toBe(0);
+    const seventhApproval = { priorRequestDigest: digest(JSON.parse(sixthBytes).request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic unsupported seventh decision' };
+    for (const rejected of [{ ...fifthSpec, ownerContinuation: seventhApproval }, fifthSpec]) { await writeFile(specPath, JSON.stringify(rejected)); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(sixthBytes); }
+    expect(invoke('verify').status).not.toBe(0);
   }, 30000);
 
   it('authenticates actual repair ancestry and deletions and refuses forked prior lineage', async () => {
@@ -708,7 +556,7 @@ describe('actual source snapshot without candidate execution', () => {
   it('runs actual CLI ordinary closure and keeps terminal PASS idempotent even with full refresh', async () => {
     const { cwd, git } = await fixture(); await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
     const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline); await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
-    const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true }); const spec = { intent, base: baseline, authorSessionId: 'author', repairRisk: 'ordinary' }; const specPath = join(directory, 'intent.json'); await writeFile(specPath, JSON.stringify(spec));
+    const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true }); const spec = { intent, base: baseline, authorSessionId: 'author', repairRisk: 'ordinary', simplicityPreCheck }; const specPath = join(directory, 'intent.json'); await writeFile(specPath, JSON.stringify(spec));
     const script = resolve('scripts/agent-review-session.mjs'); const invoke = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' })); const statePath = join(directory, 'session.json');
     invoke('prepare'); const first = JSON.parse(await readFile(statePath, 'utf8'));
     for (const index of [0, 1]) { const reportPath = join(directory, `first-${index}.json`); await writeFile(reportPath, JSON.stringify({ ...report(first.request, index), completedAt: Date.now(), ...(index === 0 ? { verdict: 'fail', materialFindings: [{ mechanism: 'wrong bytes', precondition: 'read', requirement: 'right bytes', effect: 'wrong result', risk: 'ordinary' }] } : {}) })); invoke('record', reportPath); }
@@ -752,7 +600,7 @@ describe('actual source snapshot without candidate execution', () => {
     const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
     await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
     const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent: { ...intent, risk: 'prose' }, base: baseline, authorSessionId: 'author' }));
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent: { ...intent, risk: 'prose' }, base: baseline, authorSessionId: 'author', simplicityPreCheck }));
     expect(git('check-ignore', '.context/scratch/agent-review/intent.json')).toBe('.context/scratch/agent-review/intent.json');
     const script = resolve('scripts/agent-review-session.mjs');
     const invoke = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' }));
@@ -775,7 +623,7 @@ describe('actual source snapshot without candidate execution', () => {
     const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
     await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
     const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent: { ...intent, risk: 'prose' }, base: baseline, authorSessionId: 'author' }));
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent: { ...intent, risk: 'prose' }, base: baseline, authorSessionId: 'author', simplicityPreCheck }));
     const script = resolve('scripts/agent-review-session.mjs'); const invoke = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' }));
     invoke('prepare'); const path = join(directory, 'session.json'); const victim = join(directory, 'sibling.json'); await link(path, victim);
     const before = await readFile(victim, 'utf8'); invoke('prepare'); expect(await readFile(victim, 'utf8')).toBe(before); expect(await readFile(path, 'utf8')).toBe(before);
@@ -788,7 +636,7 @@ describe('actual source snapshot without candidate execution', () => {
     const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
     await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
     const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent, base: baseline, authorSessionId: 'author' }));
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent, base: baseline, authorSessionId: 'author', simplicityPreCheck }));
     const script = resolve('scripts/agent-review-session.mjs'); const invoke = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', stdio: 'pipe' }));
     invoke('prepare'); const statePath = join(directory, 'session.json'); const state = JSON.parse(await readFile(statePath, 'utf8'));
     const failedPath = join(directory, 'failed.json'); const passPath = join(directory, 'pass.json');
@@ -827,7 +675,7 @@ describe('actual source snapshot without candidate execution', () => {
     await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
     const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true });
     const scope = ['source.txt', ...Array.from({ length: 4095 }, (_, index) => `scope/${index}-${'a'.repeat(88)}`)];
-    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent: { ...intent, scope }, base: baseline, authorSessionId: 'author' }));
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent: { ...intent, scope }, base: baseline, authorSessionId: 'author', simplicityPreCheck }));
     const script = resolve('scripts/agent-review-session.mjs'); const invoke = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }));
     invoke('prepare'); const statePath = join(directory, 'session.json'); const state = JSON.parse(await readFile(statePath, 'utf8'));
     for (const index of [0, 1]) {
@@ -854,7 +702,7 @@ describe('fork-point review base (S5)', () => {
     const reviewedBase = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', reviewedBase); const branch = git('symbolic-ref', '--short', 'HEAD');
     await writeFile(join(cwd, 'source.txt'), 'candidate\n'); git('add', 'source.txt'); git('commit', '-qm', 'candidate');
     const directory = join(cwd, '.context', 'scratch', 'agent-review'); await mkdir(directory, { recursive: true }); const statePath = join(directory, 'session.json');
-    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent, authorSessionId: 'author', repairRisk: 'ordinary' }));
+    await writeFile(join(directory, 'intent.json'), JSON.stringify({ intent, authorSessionId: 'author', repairRisk: 'ordinary', simplicityPreCheck }));
     const script = resolve('scripts/agent-review-session.mjs');
     const invoke = (...args: string[]) => { const run = spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' }); return { code: run.status, result: run.stdout ? JSON.parse(run.stdout) : undefined, stderr: run.stderr }; };
     const record = async (name: string, observation: object) => { const path = join(directory, `${name}.json`); await writeFile(path, JSON.stringify(observation)); return invoke('record', path); };
@@ -905,68 +753,4 @@ describe('fork-point review base (S5)', () => {
     git('checkout', '-q', '--detach'); await writeFile(join(cwd, 'later.txt'), 'main\n'); git('add', 'later.txt'); git('commit', '-qm', 'later main'); git('update-ref', 'refs/remotes/origin/main', git('rev-parse', 'HEAD')); git('checkout', '-q', branch);
     const baseline = await pristineAgentReviewBaseline(cwd); expect(baseline.pristine).toBe(true); expect(baseline.candidate.base).toBe(base);
   });
-});
-
-describe('exact owner-approved SQL RLS recovery',()=>{
-const data={
-  "additions": [
-    "docs/platform/plans/autonomous-reviewed-delivery.md",
-    "scripts/agent-review-session.mjs",
-    "scripts/agent-review-session.test.ts",
-    "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql"
-  ],
-  "scope": [
-    "CONTRIBUTING.md",
-    "config/openlup-publication-catalog.json",
-    "config/openlup-source-release-contract.json",
-    "config/reviewed-platform-forwards.json",
-    "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
-    "docs/platform/CANONICAL_CONTRACTS.md",
-    "docs/platform/DATA_AND_MIGRATIONS.md",
-    "docs/platform/plans/autonomous-reviewed-delivery.md",
-    "docs/platform/plans/public-ci-known-red.md",
-    "scripts/agent-review-session.mjs",
-    "scripts/agent-review-session.test.ts",
-    "scripts/reviewed-platform-forward.ts",
-    "scripts/source-preview-release.test.ts",
-    "src/lib/subscriptionOwnEngineRpcBoundary.test.ts",
-    "supabase/migrations/20261004120000_runtime_capabilities.sql",
-    "supabase/migrations/20261004123000_runtime_capability_rls_closure.sql",
-    "supabase/tests/operator_contact_correction_test.sql",
-    "supabase/tests/operator_subscription_actions_test.sql",
-    "supabase/tests/runtime_capability_boundary_test.sql",
-    "supabase/tests/subscription_renewal_due_lock_runtime_test.sql"
-  ],
-  "criterion": "RLS recovery: retire exactly eight legacy cross-customer browser policies; preserve customer-own access and distributor own membership read, prove actual authenticated role isolation, merge exact contraction admission before introducing the corrected managed forward, and preserve all review history and automatic limits."
-};
-const digest=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
-const oldIntent={risk:'behavior',scope:data.scope.filter(p=>!data.additions.includes(p)),criteria:'Synthetic approved no-new-browser-writes obligation',requiredRoles:['correctness','security']};
-const expanded={...oldIntent,scope:data.scope,criteria:oldIntent.criteria+' '+data.criterion};
-const now=()=>1000;
-const candidate=n=>({base:'a'.repeat(40),head:n.toString(16).repeat(40),tree:(n+1).toString(16).repeat(40),clean:true,workingDigest:n.toString(16).repeat(64),indexDigest:(n+1).toString(16).repeat(64),changedPaths:oldIntent.scope});
-const delta=async()=>['scripts/reviewed-platform-forward.ts'];
-const finding={mechanism:'Synthetic cross-customer browser update',precondition:'Synthetic active distributor membership read',requirement:'No new browser writes',effect:'Synthetic unrelated customer mutation',risk:'security'};
-function reports(state,fail=false){return state.request.roles.map((role,index)=>({...agentReviewReportBinding(state.request),reviewerId:`synthetic-agent-${state.history?.length??0}-${index}`,sessionId:`synthetic-session-${state.history?.length??0}-${index}`,role,cold:true,completedAt:1000,complete:true,coveredScope:[...new Set([...state.request.intent.scope,...(state.request.continuation?.deltaPaths??[])])].sort(),coveredCriteria:true,simplicityChecked:true,verdict:fail&&index===1?'fail':'pass',materialFindings:fail&&index===1?[finding]:[],...(state.request.version===2?{closure:{coveredDelta:state.request.continuation.deltaPaths,interactionsChecked:true,ordinarySemantics:false,resolvedFindings:state.request.continuation.findings.map(c=>c.id)}}:{})}));}
-const owner=(previous,next)=>({priorRequestDigest:digest(previous.request),candidateDigest:digest(next),ownerDecision:'Synthetic fresh exact owner decision'});
-async function advance(previous,next,intent=oldIntent,extra={}){return prepareAgentReviewState({cwd:'.',base:next.base,intent,authorSessionId:'synthetic-author',now,snapshot:async()=>next,delta,previous,fullRefresh:true,...extra});}
-async function prior(){let s=await advance(undefined,candidate(1));s.reports=reports(s);for(let n=2;n<=3;n++){s=await advance(s,candidate(n));s.reports=reports(s);}const n=candidate(4);s=await advance(s,n,oldIntent,{ownerContinuation:owner(s,n)});s.reports=reports(s,true);return s;}
-const regroup=(p,i)=>({priorRequestDigest:digest(p.request),priorIntentDigest:digest(p.request.intent),nextIntentDigest:digest(i),ownerDecision:'Synthetic fresh exact RLS regroup'});
-const check=s=>verifyAgentReview({cwd:'.',...s,now,snapshot:async()=>s.request.candidate,delta});
-async function fourth(p,extra={}){const n=candidate(5);return advance(p,n,expanded,{ownerContinuation:owner(p,n),regroup:regroup(p,expanded),...extra});}
-describe('private exact RLS owner recovery proposal; no real receipts or session mutation',()=>{
- it('retains the failed third finding and all history, requires full two reviews for control and feature, refuses cycle six',async()=>{
-  const p=await prior();const s=await fourth(p);expect(s.history).toHaveLength(4);expect(s.history.at(-1).reports[1].verdict).toBe('fail');expect(s.request.continuation.findings).toHaveLength(1);expect(s.request.continuation).toMatchObject({cycle:4,mode:'full'});expect((await check(s)).status).not.toBe('reviewed');s.reports=reports(s).slice(0,1);expect((await check(s)).status).not.toBe('reviewed');s.reports=reports(s);expect((await check(s)).status).toBe('reviewed');
-  const n=candidate(6);await expect(advance(s,n,expanded)).rejects.toThrow();const f=await advance(s,n,expanded,{ownerContinuation:owner(s,n)});expect(f.history).toHaveLength(5);expect(f.request.continuation).toMatchObject({cycle:5,mode:'full'});expect((await check(f)).status).not.toBe('reviewed');f.reports=reports(f);expect((await check(f)).status).toBe('reviewed');const last=candidate(7);await expect(advance(f,last,expanded,{ownerContinuation:owner(f,last)})).rejects.toThrow();
- });
- it.each(['scope','criteria','roles','risk','owner','regroup','refresh'])('refuses altered or missing exact RLS authorization: %s',async probe=>{
-  const p=await prior();const i=structuredClone(expanded);const n=candidate(5);const extra={ownerContinuation:owner(p,n),regroup:regroup(p,i),fullRefresh:true};
-  if(probe==='scope')i.scope.push('extra.sql');if(probe==='criteria')i.criteria+=' more';if(probe==='roles')i.requiredRoles=['correctness'];if(probe==='risk')i.risk='unknown';extra.regroup=regroup(p,i);
-  if(probe==='owner')extra.ownerContinuation.priorRequestDigest='f'.repeat(64);if(probe==='regroup')extra.regroup.nextIntentDigest='f'.repeat(64);if(probe==='refresh')extra.fullRefresh=false;
-  await expect(advance(p,n,i,extra)).rejects.toThrow();
- });
- it('admits only one explicitly owned sixth SQL phase after a fifth control recovery',async()=>{const p=await prior();const c=await fourth(p);c.reports=reports(c);const n=candidate(6);const f=await advance(c,n,expanded,{ownerContinuation:owner(c,n)});f.reports=reports(f);const sql={...candidate(7),changedPaths:[...oldIntent.scope,'supabase/migrations/20261004123000_runtime_capability_rls_closure.sql']};await expect(advance(f,sql,expanded)).rejects.toThrow();const s=await advance(f,sql,expanded,{ownerContinuation:owner(f,sql)});expect(s.history).toHaveLength(6);expect(s.request.continuation).toMatchObject({cycle:6,mode:'full'});expect((await check(s)).status).not.toBe('reviewed');s.reports=reports(s);expect((await check(s)).status).toBe('reviewed');const seventh=candidate(8);await expect(advance(s,seventh,expanded,{ownerContinuation:owner(s,seventh)})).rejects.toThrow();});
- it('refuses a sixth cycle after the fifth already introduced the corrected SQL',async()=>{const p=await prior();const c=await fourth(p);c.reports=reports(c);const sql={...candidate(6),changedPaths:[...oldIntent.scope,'supabase/migrations/20261004123000_runtime_capability_rls_closure.sql']};const f=await advance(c,sql,expanded,{ownerContinuation:owner(c,sql)});f.reports=reports(f);const next={...candidate(7),changedPaths:sql.changedPaths};await expect(advance(f,next,expanded,{ownerContinuation:owner(f,next)})).rejects.toThrow();});
- it('allows generic unchanged-intent sixth without the RLS regroup but refuses a seventh',async()=>{const p=await prior();const n=candidate(5);const ordinary=await advance(p,n,oldIntent,{ownerContinuation:owner(p,n)});ordinary.reports=reports(ordinary);const next=candidate(6);const fifth=await advance(ordinary,next,oldIntent,{ownerContinuation:owner(ordinary,next)});fifth.reports=reports(fifth);expect((await check(fifth)).status).toBe('reviewed');const sixth=candidate(7);const final=await advance(fifth,sixth,oldIntent,{ownerContinuation:owner(fifth,sixth)});final.reports=reports(final);expect((await check(final)).status).toBe('reviewed');const seventh=candidate(8);await expect(advance(final,seventh,oldIntent,{ownerContinuation:owner(final,seventh)})).rejects.toThrow();});
-});
-
 });

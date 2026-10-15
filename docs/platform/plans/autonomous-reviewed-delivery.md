@@ -140,10 +140,12 @@ run, a dashboard, service framework or permanent third reviewer.
    unknown repairs use two focused reviews. Missing, incomplete or expired prior
    coverage requires two fresh reviews of the full approved scope. Prior timestamps
    remain immutable; reduced review cannot renew inherited expiry.
-   At most two automatic continuation cycles are allowed across repair and
-   full-review escalation. On exhaustion preserve blocked evidence and regroup
-   the execution approach within actual authority; never silently reset the
-   counter or auto-admit. Agent or session changes carry unresolved finding
+   Continuation cycles 1–3 across repair and full-review escalation are
+   automatic; cycle 3 is a full review. A cycle 3 that did not pass pauses for a
+   rethink with a fresh cold simplicity reviewer, which admits automatic cycles
+   4 and 5; cycle 6 needs an explicit owner decision. On a pause or exhaustion
+   preserve blocked evidence and regroup the execution approach within actual
+   authority; never silently reset the counter or auto-admit. Agent or session changes carry unresolved finding
    cards, failed attempts, consumed budgets and evidence expiry in existing
    task state; changing context cannot restart admission or erase history.
    Changed intent requires explicit regrouping. An
@@ -244,7 +246,11 @@ for this native-session route.
 The supervisor writes approved intent data to the ignored
 `.context/scratch/agent-review/intent.json` file: `intent` contains `risk`, `scope`,
 `criteria` and `requiredRoles`; an adapter may supply an observed
-`authorSessionId`. `node scripts/agent-review-session.mjs prepare` computes the
+`authorSessionId`. A first request also needs `simplicityPreCheck`, at most
+2048 characters: the smallest adequate alternative the author considered after
+reading [Review lessons](../../../CONTRIBUTING.md#review-lessons). The root
+request records it; continuations do not repeat it.
+`node scripts/agent-review-session.mjs prepare` computes the
 candidate, role floor and request binding, then stores bounded session state in
 `.context/scratch/agent-review/session.json`. The candidate's base is its fork
 point, `git merge-base HEAD origin/main`; evidence stays current while `main`
@@ -290,52 +296,54 @@ and a clean ancestor-preserving committed candidate. Criteria-only replacement,
 scope shrink and a new root refuse. The existing version-2 continuation retains
 the transition, all history and findings, consumes the next existing cycle and
 requires two fresh full reviews even when the source SHA is unchanged. It does
-not reset the two-cycle budget. An identical repeated prepare preserves partial
+not reset the cycle budget. An identical repeated prepare preserves partial
 or complete evidence and its original expiry; later unchanged-intent rounds may
 carry only the exact transition already present in their preserved lineage.
 
-For an explicit owner continuation after exhaustion, `prepare` accepts
-`ownerContinuation` with exactly `priorRequestDigest`, `candidateDigest` and
-`ownerDecision`, alongside `fullRefresh: true`. Both digests are computed SHA256
-of `JSON.stringify` of the preserved request and actual candidate respectively;
-they are computed evidence, not owner quotations. Record the actual fresh human
-decision in `ownerDecision`. This process evidence is not an authenticated owner
-signature. Cycle 3 requires a fresh decision. Cycle 4 requires a
-separate fresh decision bound to the exact third request and next candidate.
-One further fresh decision bound to the preserved fourth request and next
-candidate may authorize cycle 5. A separate fresh decision bound to the
-preserved fifth request and next candidate may authorize cycle 6. Both retain
-unchanged scope, criteria, risk, roles and author. All require complete preserved lineage and findings, actual ancestor
-delta, explicit full refresh and two fresh full independent reviews. Cycle 3
-retains unchanged intent and author. Cycle 4 has one
-bounded exception: it may combine its decision with `regroup` to retain every
-previous scope path and add exactly
-`packages/core/scripts/core-package-consumer-audit.ts` and
-`packages/core/test/consumerTooling.test.ts`. Criteria, risk, required roles and
-author must remain unchanged. No generic scope expansion is accepted. The
-regroup digests bind the previous request and both intents; the continuation
-digests independently bind the previous request and actual candidate. Neither
-decision can be reused for a changed request or candidate. The automatic limit
-remains two. Wrong bindings, early use, missing, extra or replacement scope
-paths, changed criteria, risk, roles or author, missing history, reduced
-coverage, an automatic owner cycle or a seventh round refuse. The owner ceiling
-is six. The separately defined bounded SQL/RLS recovery still requires its exact
-SQL introduction at cycle 6; unchanged intent alone cannot authorize that sixth
-recovery cycle. An unchanged repeat retains the manual round
-and its original expiry; expired evidence still blocks delivery.
+Cycles 1–3 are automatic; `prepare` gives cycles 3 and 4 full coverage without
+a `fullRefresh` flag, and cycle 6 is full with the flag its owner continuation
+requires. After a cycle 3 whose round did not pass, the next repair `prepare`
+reports `needs_rescope` until the spec carries a top-level `rethink` with
+exactly:
+- `priorRequestDigest`: SHA256 of `JSON.stringify` of the preserved third
+  request;
+- `reviewerId` and `sessionId`: the fresh cold simplicity reviewer, neither the
+  author nor any earlier reviewer or session; later reviewers cannot reuse them,
+  and hosted admission refuses them as integration reviewers;
+- `completedAt`: no earlier than the third request and its reports, and no
+  later than the new request;
+- `findingClasses`: classes of `{ class, findingIds }` that together list
+  every material finding card of every round so far exactly once, resolved or
+  not;
+- `pattern`, `rootCause`, `simplicityCheck` and `rationale`: bounded text;
+- `alternatives`: one to sixteen simpler alternatives considered;
+- `decision`: `keep`, `change`, `narrow` or `intent`;
+- `lesson`: at most 240 characters, written `pattern → simpler path`.
 
-A separately approved checkout-history recovery may use cycle 5 only with
-`regroup` adding exactly `.github/workflows/published-tree-ci.yml`. Its current
-obligation is to supply the pinned prior Git objects to the required and full
-root test jobs; this does not authorize weakening their selectors or assertions.
-The prior fourth request, both intents and actual candidate need new decision
-bindings. Criteria, risk, required roles, author, every prior scope path and all
-history/findings remain. Two fresh full reviews cover the complete source and
-ancestor integration. Any other or additional scope path, reuse of the fourth
-decision and a sixth scope-expanding checkout-recovery cycle refuse. The
-unchanged-intent cycles 5 and 6 above need no scope regroup; neither can add a
-path. This is one bounded
-recovery of the hosted checkout mismatch, not a reset of the automatic budget.
+`intent` requires an owner `regroup` in the same transition; the other
+decisions keep the approved intent. `narrow` changes fewer paths within the
+approved scope. The rethink binds only cycle 4. A later spec may repeat the
+preserved record: `prepare` then attaches nothing new, and on the unchanged
+cycle 4 candidate it returns the stored round even with `fullRefresh`. To
+refresh an expired cycle 4, drop `rethink` from the spec; the refresh becomes
+cycle 5. Cycles 4 and 5 are automatic. Any cycle may carry an owner `regroup`;
+it never adds a cycle.
+A cycle 3 that passed needs no rethink, for example before a later base
+integration.
+
+For cycle 6, `prepare` accepts `ownerContinuation` with exactly
+`priorRequestDigest`, `candidateDigest` and `ownerDecision`, alongside
+`fullRefresh: true`. Both digests are computed SHA256 of `JSON.stringify` of
+the preserved fifth request and the actual candidate respectively; they are
+computed evidence, not owner quotations. Record the actual fresh human decision
+in `ownerDecision`. This process evidence is not an authenticated owner
+signature. Cycle 6 keeps the approved intent and author unless the same
+transition carries an owner `regroup`. A cycle 3 owner continuation recorded
+before cycle 3 became automatic stays valid; `prepare` accepts a new one only at
+cycle 6. Wrong
+bindings, a missing or misplaced rethink, reduced coverage at cycles 3, 4 or 6,
+missing history and a seventh cycle refuse. An unchanged repeat retains the
+round and its original expiry; expired evidence still blocks delivery.
 
 The supervisor launches fresh native agents and uses their actual execution IDs
 and complete structured results. `agentReviewReportBinding(request)` supplies
@@ -411,7 +419,7 @@ condition only after separate activation.
 1. Commit and review the source through the existing session protocol. Obtain
    actual complete fresh native observations in this conversation; never copy a
    PASS to a new SHA. Preserve criteria, source scope, findings, lineage, expiry
-   and the two-cycle repair budget. Record the actual PR head and tree, distinct
+   and the review-cycle budget. Record the actual PR head and tree, distinct
    from the PR workflow's test-merge checkout.
 2. Select the authenticated Published Tree CI run and current attempt. Transport
    the complete source state for that exact target. A changed source head after
@@ -570,24 +578,3 @@ blocks activation. No DCO exemption or unsupported email assumption is allowed.
 Keep queue settings inactive until the exact proposal and these live results
 support the owner's activation decision. A merge of foundation code is not that
 decision and does not authorize production or a release.
-
-### Bounded SQL RLS recovery after the third review
-
-One explicitly owner-approved recovery may use the existing fourth and fifth
-owner cycles for the SQL diagnostic repair. It retains the complete prior scope,
-adds exactly the corrected managed forward, this protocol page and the native
-session implementation/tests, and appends the fixed RLS recovery criterion.
-The fourth cycle covers separately delivered contraction admission. If the
-bootstrap's merge absorbs its contributor-documentation delta, the fifth may
-finish the required control documentation recovery. One explicitly authorized
-sixth cycle may then introduce the exact corrected forward after that control
-is merged, with the same approved intent. It refuses if the fifth already
-introduced the corrected SQL or the sixth does not introduce it. Each needs a fresh candidate-bound owner decision and
-two fresh full independent reviews. The fourth also requires an exact regroup
-binding of both intents. Previous reports, unresolved findings, lineage and
-expiry remain binding. The automatic limit remains two. The owner ceiling
-remains six for both generic unchanged-intent continuation and this exact RLS
-recovery, whose sixth-cycle SQL precondition still applies. This route never
-inherits an extra cycle when the generic ceiling changes, and a seventh or generic scope exception refuses. A different scope, goal, role floor, risk, author or missing prior
-regroup refuses. This route does not authorize installing a shared tool,
-publication, merge, production or another policy operation.
