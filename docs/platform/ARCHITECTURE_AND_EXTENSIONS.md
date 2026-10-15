@@ -82,8 +82,10 @@ runner and bundle composition. Every deployment value reaches it as an option or
 injected function, including the environment, route table, header policy,
 entrypoints, job configuration and migration catalogue. The reference
 application keeps its former module paths as thin bindings that pass its own
-values, and keeps its BFF envelope, observability, health route and managed
-Supabase job ledger as its own source.
+values. The BFF envelope, observed request context, health route and managed
+job-run ledger are package code too; the application binds its request-reference
+policy, health payload and contract, and ledger messages, and keeps its route
+observability and browser contracts as its own source.
 
 The reference outbox worker delegates to `@openlup/outbox`; application handlers and the explicit known event vocabulary remain in composition. Shared envelope, execution-context, descriptor and readiness contracts live in `@openlup/core`. The rail provides one bare worker for immediate work and lease-bound schedules for dispatched work. Its PostgreSQL executor commits each claim or settlement before resolving, with no encompassing transaction across effects.
 

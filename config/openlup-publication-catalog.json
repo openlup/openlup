@@ -2162,11 +2162,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/bff/envelope.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/bff/health.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/index.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/bff/lazyRoute.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/bff/requestContext.ts",
       "class": "public-output"
     },
     {
@@ -2286,6 +2298,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/job-ledger/supabase.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/kernel/index.ts",
       "class": "public-output"
     },
@@ -2334,7 +2350,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/bff/envelope.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/bff/health.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/lazyRoute.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/bff/requestContext.test.ts",
       "class": "public-output"
     },
     {
@@ -2435,6 +2463,10 @@
     },
     {
       "path": "packages/platform/test/job-ledger/sqlParity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/job-ledger/supabase.test.ts",
       "class": "public-output"
     },
     {
@@ -3375,6 +3407,10 @@
     },
     {
       "path": "server/_lib/admin-domain/rpcErrors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/_lib/bff/envelopeContract.test.ts",
       "class": "public-output"
     },
     {
