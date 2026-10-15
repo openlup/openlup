@@ -1,5 +1,5 @@
-import { readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Linter } from "eslint";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -351,11 +351,68 @@ describe("eslint platform module boundaries", () => {
       refused("data", `${up}blob/index.js`);
       refused("scheduler", `${up}bff/index.js`);
       refused("migrations", `${up}kernel/index.js`);
+      refused("blob", `${up}data/index.js`);
       // Escapes around the relative entry: package self-reference, URL, unnormalized or out-of-source paths.
       for (const specifier of [
         "@openlup/platform/composition", "@openlup/platform", "file:///packages/platform/src/composition/index.js",
         `${up}kernel/../composition/index.js`, `./x/../${up}composition/index.js`, `${up}./composition/index.js`,
-        `${up}../src/composition/index.js`,
+        `${up}../src/composition/index.js`, `././${up}composition/index.js`, `./.x/../${up}composition/index.js`,
+        `${up}kernel/.x/../../composition/index.js`, `./..\\composition\\index.js`, `./%2e%2e/composition/index.js`,
+        `${up}kernel//../composition/index.js`, `.//${up}composition/index.js`,
       ]) refused("kernel", specifier);
     });
+
+  it.each(sourceExtensions)("keeps refusing self-reference and URL escapes beyond the deepest module depth in %s", async (extension) => {
+    const config = await loadConfig();
+    const filename = `packages/platform/src/kernel/${"nested/".repeat(11)}usesModule.${extension}`;
+    for (const source of loadSources("./own.js", extension)) expect(moduleMessages(config, source, filename)).toEqual([]);
+    for (const specifier of ["@openlup/platform/composition", "file:///packages/platform/src/composition/index.js", "././own.js"]) {
+      for (const source of loadSources(specifier, extension)) {
+        expect(moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining('packages/platform module "kernel"'));
+      }
+    }
+    for (const source of loadSources("../composition/index.js", extension)) {
+      expect(moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining("A file under packages/platform stays package-local"));
+    }
+  });
+
+  it("declares exactly the inventoried edges between modules; only the composer may declare more", async () => {
+    const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
+      PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;
+    };
+    const ts = (await import("typescript")).default;
+    const actual = new Map(Object.keys(graph).map((module) => [module, { values: new Set<string>(), types: new Set<string>() }]));
+    const files = (directory: string): string[] => readdirSync(directory, { withFileTypes: true })
+      .flatMap((entry) => entry.isDirectory() ? files(join(directory, entry.name)) : entry.name.endsWith(".ts") ? [join(directory, entry.name)] : []);
+    for (const path of files(platformSource)) {
+      const module = relative(platformSource, path).split(sep)[0]!;
+      const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+      const edge = (specifier: string, typeOnly: boolean) => {
+        if (!specifier.startsWith(".")) return;
+        const target = relative(platformSource, resolve(dirname(path), specifier)).split(sep)[0]!;
+        if (target !== module) actual.get(module)![typeOnly ? "types" : "values"].add(target);
+      };
+      const visit = (node: import("typescript").Node): void => {
+        if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+          const clause = ts.isImportDeclaration(node) ? node.importClause : undefined;
+          const named = ts.isImportDeclaration(node) ? (clause && !clause.name && clause.namedBindings && ts.isNamedImports(clause.namedBindings) ? clause.namedBindings.elements : undefined)
+            : (node.exportClause && ts.isNamedExports(node.exportClause) ? node.exportClause.elements : undefined);
+          const typeOnly = (ts.isImportDeclaration(node) ? clause?.isTypeOnly === true : node.isTypeOnly) || (named !== undefined && named.length > 0 && named.every((element) => element.isTypeOnly));
+          edge(node.moduleSpecifier.text, typeOnly);
+        }
+        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) edge(node.arguments[0].text, false);
+        if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) edge(node.argument.literal.text, true);
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+    for (const [module, { values, types }] of actual) {
+      const typesOnly = [...types].filter((target) => !values.has(target)).sort();
+      if (module === "composition") {
+        for (const target of [...values, ...typesOnly]) expect(graph[module]!.values).toContain(target);
+        continue;
+      }
+      expect({ module, values: [...values].sort(), types: typesOnly }).toEqual({ module, values: [...graph[module]!.values].sort(), types: [...graph[module]!.types].sort() });
+    }
+  });
 });

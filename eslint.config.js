@@ -150,13 +150,23 @@ export const PLATFORM_MODULE_GRAPH = {
   bff: { values: ["kernel"], types: ["http"] },
   scheduler: { values: [], types: ["http"] },
   data: { values: ["kernel"], types: [] },
-  blob: { values: ["data"], types: [] },
+  blob: { values: [], types: [] },
   "job-ledger": { values: [], types: ["data"] },
   migrations: { values: [], types: [] },
   // The generic composer over the other modules' public ports and factories.
   composition: { values: ["blob", "bff", "data", "http", "job-ledger", "kernel", "migrations", "scheduler"], types: [] },
 };
 const PLATFORM_SOURCE = "packages/platform/src";
+
+// Specifiers that would reach a module around its entry, at any depth: a relative path not in
+// canonical form (an optional leading `./`, then `../` climbs, then named segments that are not
+// empty, do not start with a dot and hold no backslash or percent sign), the package's own name,
+// or a URL.
+const platformModuleEscapes = (message) => ({ message, regexes: [
+  "^(?=\\.)(?!(?:\\./)?(?:\\.\\./)*(?:[^./\\\\%][^/\\\\%]*/)*[^./\\\\%][^/\\\\%]*$)",
+  "^@openlup/platform(?:/|$)",
+  "^(?!node:)[A-Za-z][A-Za-z0-9+.-]*:",
+] });
 
 // `depth` is the number of directories between the module root and the file.
 function platformModuleBoundaries(module, depth) {
@@ -168,30 +178,35 @@ function platformModuleBoundaries(module, depth) {
   return {
     graph: { message, regexes: [
       `${toSource}(?!${escapeRegex(module)}/|(?:${[...values, ...types].map(entry).join("|") || "(?!)"})$)`,
-      // A `.` or `..` segment after a named one hides where the path lands.
-      "(?:^|/)[^/.][^/]*/\\.{1,2}(?:/|$)",
-      // The package's own name or a URL would reach a module around its entry.
-      "^@openlup/platform(?:/|$)",
-      "^(?!node:)[A-Za-z][A-Za-z0-9+.-]*:",
+      ...platformModuleEscapes(message).regexes,
     ] },
     typeOnly: { message, regexes: types.length > 0 ? [`${toSource}(?:${types.map(entry).join("|")})$`] : [] },
   };
 }
 
-function platformModuleRules(pkg, module, depth) {
-  const files = (extensions) => [`${PLATFORM_SOURCE}/${module}/${"*/".repeat(depth)}*.${extensions}`];
+function platformModuleRules(pkg, module) {
   const ignores = testFiles(`${PLATFORM_SOURCE}/`);
-  const base = [packageIsolation(pkg, depth + 2), packageExports];
-  const { graph, typeOnly } = platformModuleBoundaries(module, depth);
+  const message = `packages/platform module "${module}" imports other modules only through their entry <module>/index.js.`;
   return [
-    // No type imports in plain JavaScript: a types edge admits nothing there.
-    { files: files("{js,mjs,cjs}"), ignores, rules: boundaryRules([...base, graph, typeOnly]) },
-    { files: files("{ts,tsx}"), ignores, rules: {
-      ...boundaryRules([...base, graph], [typeOnly]),
-      "@typescript-eslint/no-restricted-imports": ["error", {
-        patterns: typeOnly.regexes.map((regex) => ({ regex, message: typeOnly.message, caseSensitive: true, allowTypeImports: true })),
-      }],
-    } },
+    // Beyond the deepest depth below, a file may not climb out of its directory at all; it still
+    // may not reach a module through the package's own name or a URL.
+    { files: sourceFiles(`${PLATFORM_SOURCE}/${module}/`), ignores,
+      rules: boundaryRules([packageIsolation(pkg, null), packageExports, platformModuleEscapes(message)]) },
+    ...Array.from({ length: MAX_PACKAGE_DEPTH - 1 }, (_, depth) => {
+      const files = (extensions) => [`${PLATFORM_SOURCE}/${module}/${"*/".repeat(depth)}*.${extensions}`];
+      const base = [packageIsolation(pkg, depth + 2), packageExports];
+      const { graph, typeOnly } = platformModuleBoundaries(module, depth);
+      return [
+        // No type imports in plain JavaScript: a types edge admits nothing there.
+        { files: files("{js,mjs,cjs}"), ignores, rules: boundaryRules([...base, graph, typeOnly]) },
+        { files: files("{ts,tsx}"), ignores, rules: {
+          ...boundaryRules([...base, graph], [typeOnly]),
+          "@typescript-eslint/no-restricted-imports": ["error", {
+            patterns: typeOnly.regexes.map((regex) => ({ regex, message: typeOnly.message, caseSensitive: true, allowTypeImports: true })),
+          }],
+        } },
+      ];
+    }).flat(),
   ];
 }
 
@@ -256,6 +271,5 @@ export default tseslint.config(
       ];
     })),
   ...workspacePackages.filter(({ name }) => name === "@openlup/platform").flatMap((pkg) =>
-    Object.keys(PLATFORM_MODULE_GRAPH).flatMap((module) =>
-      Array.from({ length: MAX_PACKAGE_DEPTH - 1 }, (_, depth) => platformModuleRules(pkg, module, depth)).flat())),
+    Object.keys(PLATFORM_MODULE_GRAPH).flatMap((module) => platformModuleRules(pkg, module))),
 );
