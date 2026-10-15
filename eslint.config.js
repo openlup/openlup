@@ -163,8 +163,13 @@ const PLATFORM_SOURCE = "packages/platform/src";
 // empty, do not start with a dot and hold no backslash or percent sign); a package specifier with
 // a `.`, `..` or empty segment (a dependency without an exports map resolves such a climb back
 // into this tree); a backslash or percent sign anywhere; any control character or space (URL
-// parsing strips them, so they can hide a climb or a URL); the package's own name; or a URL.
+// parsing strips them, so they can hide a climb or a URL); the package's own name; any other
+// spelling of the `@openlup` scope (a case-insensitive file system resolves it to the workspace
+// links); a test or fixture file, which these rules do not cover and so could relay an import; or
+// a URL.
 const platformModuleEscapes = (message) => ({ message, regexes: [
+  "^@(?!openlup/)[Oo][Pp][Ee][Nn][Ll][Uu][Pp](?:/|$)",
+  "(?:^|/)[^/]*\\.test(?:Fixtures)?(?:\\.[^/]*)?$",
   "[\\x00-\\x20\\x7f\\\\%]",
   "^(?!\\.)(?:.*/)?\\.{1,2}(?:/|$)",
   "^(?!\\.).*(?://|/$)",

@@ -364,9 +364,13 @@ describe("eslint platform module boundaries", () => {
         // A dependency without an exports map resolves a climb in its subpath back into this tree.
         "accepts/../../packages/platform/src/composition/index.js", "zod/../../packages/platform/src/data/postgresGateway.js",
         "accepts/./index.js", "accepts//index.js", "accepts/", "accepts/%2e%2e/index.js", "node:fs/../index.js",
+        // A case-insensitive file system resolves another spelling of the scope to the workspace links.
+        "@OpenLup/platform/composition", "@OPENLUP/platform", "@openLup/core/platform-runtime",
+        // Test and fixture files are outside these rules, so a production file may not relay through one.
+        "./bridge.testFixtures.js", "./bridge.test.js", `${up}kernel/bridge.testFixtures.ts`,
       ]) refused("kernel", specifier);
       // Ordinary package and built-in specifiers stay admitted.
-      for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime"]) admitted("kernel", specifier);
+      for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime", "./testing.js", "./latest.js"]) admitted("kernel", specifier);
     },
     // Each case lints several hundred TypeScript sources; hosted runners need more than the default.
     60_000);
@@ -375,7 +379,7 @@ describe("eslint platform module boundaries", () => {
     const config = await loadConfig();
     const filename = `packages/platform/src/kernel/${"nested/".repeat(11)}usesModule.${extension}`;
     for (const source of loadSources("./own.js", extension)) expect(moduleMessages(config, source, filename)).toEqual([]);
-    for (const specifier of ["@openlup/platform/composition", "file:///packages/platform/src/composition/index.js", "././own.js"]) {
+    for (const specifier of ["@openlup/platform/composition", "@OpenLup/platform/composition", "file:///packages/platform/src/composition/index.js", "././own.js", "./bridge.testFixtures.js"]) {
       for (const source of loadSources(specifier, extension)) {
         expect(moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining('packages/platform module "kernel"'));
       }
@@ -392,7 +396,7 @@ describe("eslint platform module boundaries", () => {
     const ts = (await import("typescript")).default;
     const actual = new Map(Object.keys(graph).map((module) => [module, { values: new Set<string>(), types: new Set<string>() }]));
     const files = (directory: string): string[] => readdirSync(directory, { withFileTypes: true })
-      .flatMap((entry) => entry.isDirectory() ? files(join(directory, entry.name)) : entry.name.endsWith(".ts") ? [join(directory, entry.name)] : []);
+      .flatMap((entry) => entry.isDirectory() ? files(join(directory, entry.name)) : /\.(?:ts|tsx|js|mjs|cjs)$/.test(entry.name) ? [join(directory, entry.name)] : []);
     for (const path of files(platformSource)) {
       const module = relative(platformSource, path).split(sep)[0]!;
       const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
@@ -409,7 +413,10 @@ describe("eslint platform module boundaries", () => {
           const typeOnly = (ts.isImportDeclaration(node) ? clause?.isTypeOnly === true : node.isTypeOnly) || (named !== undefined && named.length > 0 && named.every((element) => element.isTypeOnly));
           edge(node.moduleSpecifier.text, typeOnly);
         }
-        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) edge(node.arguments[0].text, false);
+        if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteral(node.arguments[0]) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
+          || (ts.isIdentifier(node.expression) && node.expression.text === "require")
+          || (ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "module" && node.expression.name.text === "require"))) edge(node.arguments[0].text, false);
+        if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference) && ts.isStringLiteral(node.moduleReference.expression)) edge(node.moduleReference.expression.text, node.isTypeOnly);
         if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) edge(node.argument.literal.text, true);
         ts.forEachChild(node, visit);
       };
