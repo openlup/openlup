@@ -159,7 +159,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-10f256a69f236b7123a077263673cde937fadb62b4c35b02adf6110b4642ffa5","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports; refused deep, type, direction, self-reference, URL, control-character, non-canonical relative and climbing package paths at every depth; and an inventory check that the declared edges equal the actual imports between modules, with only the composer declaring more. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-c2b78a008b7f4df58c4f0082ab87a3be53bd4a408213c59cadc27ad1bd20b6ab","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports; refused deep, type, direction, self-reference, URL, control-character, non-canonical relative and climbing package paths at every depth; and an inventory check that the declared edges equal the actual imports between modules, with only the composer declaring more. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

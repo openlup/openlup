@@ -367,7 +367,9 @@ describe("eslint platform module boundaries", () => {
       ]) refused("kernel", specifier);
       // Ordinary package and built-in specifiers stay admitted.
       for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime"]) admitted("kernel", specifier);
-    });
+    },
+    // Each case lints several hundred TypeScript sources; hosted runners need more than the default.
+    60_000);
 
   it.each(sourceExtensions)("keeps refusing self-reference and URL escapes beyond the deepest module depth in %s", async (extension) => {
     const config = await loadConfig();
