@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-9788de355decd3eaca0cad174782917cecedd8459abd92c84fcfd351c1426282","reason":"The workspace lockfile changes only Core and Outbox versions and the exact Core peer pin from 0.13.1 to 0.14.0. Dependency resolutions, install commands and required contributor checks remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-cf9fe6878ec934672750da0155fbea49ea377a7b4628d32b57da3936b4a82870","reason":"The workspace adds the unreleased @openlup/platform package. The root pre-scripts build it after core and outbox, the lockfile links it, the root Vitest node project collects its tests, and ESLint lets it import exact public core exports as outbox does. Required contributor commands, their order and the checks described here are unchanged."} -->
 
 The bounded SQL RLS recovery uses existing owner cycles only: a separately
 reviewed contraction control precedes the corrected managed forward. Its exact
@@ -159,7 +159,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-0c8ef49beda289af07ba6efc562c9d637c470e862c846aaf8ff51f29dfe56df0","reason":"The existing required package workflow test now executes the per-tag pack shell with a cold declaration fixture. It proves core-before-outbox ordering, one selected package, failure without the prerequisite, and refusal after a failed core build. Its existing required test selector and contributor test commands stay unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-b1b1bee7b04dd32c8a49f8c2ab6b454db0a43aeb052f40c0faa527bd17d44bb1","reason":"The publication policy pins the extended pre-script commands and the new package's script digest, adds packages/platform to the required test scope after packages/outbox, and admits its Vitest config as an execution entrypoint; the materialized contract test pins that scope, and the source preview release falsifiers add the new manifest to their synthetic tree. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

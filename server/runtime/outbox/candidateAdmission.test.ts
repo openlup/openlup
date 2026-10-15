@@ -5,7 +5,7 @@ import type { RequiredSchema } from "@openlup/core/readiness";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { admitReferenceOutbox, observeReferencePackages } from "./candidateAdmission.js";
+import { admitReferenceOutbox, isUnreleasedPlatformPackage, observeReferencePackages } from "./candidateAdmission.js";
 import { createReferenceOutbox } from "./referenceContribution.js";
 import { startPublicReferenceServer } from "../public-reference/serve.js";
 function fixture(override?: OutboxHandler) {
@@ -65,4 +65,43 @@ it("reference composition preserves class prototype methods and private receiver
   const handler=new Handler(),f=fixture(handler);f.query.mockResolvedValueOnce({rows:[syntheticOutboxRow()]} as never).mockResolvedValueOnce({rows:[{value:true}]} as never);
   const admitted=await admitReferenceOutbox(f.input);expect(admitted.admitted).toBe(true);if(!admitted.admitted)throw new Error("expected admission");
   expect(await admitted.immediate()).toMatchObject({processed:1,retried:0});expect(handler.count).toBe(1);
+});
+it("observes exactly the release-set packages and leaves out only the verified private platform package", () => {
+  const observed = observeReferencePackages();
+  expect(observed.inventoryComplete).toBe(true);
+  expect(observed.loadedPackages.map((pkg) => pkg.name)).toEqual(["@openlup/core", "@openlup/outbox"]);
+  const root = mkdtempSync(join(tmpdir(), "reference-inventory-"));
+  try {
+    const write = (manifest: Record<string, unknown>) => writeFileSync(join(root, "package.json"), JSON.stringify(manifest));
+    write({ name: "@openlup/platform", private: true });
+    expect(isUnreleasedPlatformPackage(root)).toBe(true);
+    for (const manifest of [
+      { name: "@openlup/platform", private: false },
+      { name: "@openlup/platform" },
+      { name: "@openlup/unknown", private: true },
+      { name: "@openlup/unknown" },
+    ]) {
+      write(manifest);
+      expect(isUnreleasedPlatformPackage(root)).toBe(false);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("still refuses an unknown installed @openlup package next to the verified platform package", () => {
+  const root = mkdtempSync(join(tmpdir(), "reference-installation-"));
+  try {
+    const install = (name: string, manifest: Record<string, unknown>) => {
+      mkdirSync(join(root, "node_modules", "@openlup", name), { recursive: true });
+      writeFileSync(join(root, "node_modules", "@openlup", name, "package.json"), JSON.stringify(manifest));
+    };
+    install("core", { name: "@openlup/core" });
+    install("outbox", { name: "@openlup/outbox" });
+    install("platform", { name: "@openlup/platform", private: true });
+    expect(observeReferencePackages(root).inventoryComplete).toBe(true);
+    install("unknown", { name: "@openlup/unknown", private: true });
+    expect(observeReferencePackages(root).inventoryComplete).toBe(false);
+    rmSync(join(root, "node_modules", "@openlup", "unknown"), { recursive: true });
+    install("platform", { name: "@openlup/platform", private: false });
+    expect(observeReferencePackages(root).inventoryComplete).toBe(false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

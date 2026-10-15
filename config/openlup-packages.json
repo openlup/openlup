@@ -16,6 +16,10 @@
     {
       "directory": "packages/ui",
       "reason": "types-only scaffold with source exports; not a release artifact"
+    },
+    {
+      "directory": "packages/platform",
+      "reason": "server substrate imported with unchanged logic; becomes publishable when the reference application composes it"
     }
   ]
 }

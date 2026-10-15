@@ -21,6 +21,14 @@ public selection is the neutral example. A host selecting another presentation
 must make its import-map target available to its runtime; source-level
 selection alone does not establish function packaging or deployment behavior.
 
+The BFF entrypoints (`api/bff/[...path].ts` and the `api/bff-router.ts` rewrite)
+dispatch through the unreleased `@openlup/platform` dispatcher, bound in
+`server/runtime/bffDispatch.ts` with this application's settlement bootstrap,
+admin preflight, and not-found envelope. Shared cron entrypoints
+use the package's `authorizeCron` guard through `api/_cron/authorizeCron.ts`.
+The package's Node runtime, scheduler and node host are not yet composed by the
+public reference server; the module's composition change does that.
+
 <!-- openlup-doc-impact {"unit":"bff","digest":"sha256-7788098979c46ed1078d805f50d6928427d19d9ab28facfe4ad24acd6a628110","reason":"Handler tests distinguish real default adopter-policy refusal from explicit unit compositions. Concrete GET/POST requests retain bearer validation, production pg_cron refusal, configured claim driver mapping and default unconfigured refusal; they no longer reconstruct unpublished scheduler migrations. No runtime route, policy or scheduler installation changes."} -->
 
 ## Self-host boundary

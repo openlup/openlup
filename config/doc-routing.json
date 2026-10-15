@@ -532,6 +532,15 @@
       ],
       "doc": "packages/outbox/README.md",
       "anchor": ""
+    },
+    {
+      "id": "platform-substrate",
+      "when": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduling, storage, data gateways and bundle composition",
+      "paths": [
+        "packages/platform/**"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": ""
     }
   ]
 }

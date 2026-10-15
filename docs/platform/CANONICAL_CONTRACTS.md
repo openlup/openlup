@@ -153,6 +153,8 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-07d6d061ef321fdd30ba56e58878562210f3799f4fa3da1eb8be658fddaed28f","reason":"The package configuration adds packages/platform to the unreleased list. An unreleased package is private and never in a release set, so preview compatibility, set versioning and release preparation described here are unchanged."} -->
+
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement
 checks exact names, tables, preceding statement hashes and ordered DROP
@@ -189,8 +191,6 @@ Required self-check and release preparation share the same admission check.
 This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see
 [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
-
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-1189eee35af5c79cedb47e98ed1b0d43d316379fbe4b4ed4d46e2444bb3eb6ec","reason":"The package configuration advances only the lockstep version from 0.10.0 to 0.11.0 after preview 10 and its package publication. Matching package and source preview numbering, development-preview compatibility, and release preparation rules remain unchanged."} -->
 
 While `@openlup/core` is below 1.0, every `@openlup/*` package is released in
 one set version `0.N.P` from one commit, each package with its own tag

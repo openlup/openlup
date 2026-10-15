@@ -32,14 +32,16 @@ function adminRoutesFromBffRouter(): string[] {
 
 describe("admin BFF trust boundary guardrails", () => {
   it("preflights admin BFF routes before dispatching handlers", () => {
-    // The dispatch loop (preflight-before-handler) was extracted to server/runtime/bffDispatch.ts
-    // in the platform-runtime wave; api/bff/[...path].ts now delegates to it. The guardrail holds —
-    // it just lives in the extracted dispatcher.
-    const source = read("server/runtime/bffDispatch.ts");
+    // api/bff/[...path].ts delegates to server/runtime/bffDispatch.ts, which binds the admin
+    // preflight into the @openlup/platform dispatcher; the dispatcher runs the preflight hook for
+    // the matched route before its handler.
+    const binding = read("server/runtime/bffDispatch.ts");
+    const dispatcher = read("packages/platform/src/bff/dispatch.ts");
 
-    expect(source).toContain("preflightAdminBffRoute");
-    expect(source.indexOf("preflightAdminBffRoute(req, res, entry.route)"))
-      .toBeLessThan(source.indexOf("return entry.handler(req, res)"));
+    expect(binding).toContain("preflight: preflightAdminBffRoute");
+    expect(dispatcher.indexOf("options.preflight(req, res, entry.route)")).toBeGreaterThan(-1);
+    expect(dispatcher.indexOf("options.preflight(req, res, entry.route)"))
+      .toBeLessThan(dispatcher.indexOf("return entry.handler(req, res)"));
   });
 
   it("keeps every admin BFF route covered by the role-aware route policy", () => {

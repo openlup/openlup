@@ -28,7 +28,7 @@ Prune defaults to 30 days for processed and 90 for discarded, in batches of 500.
 
 ## Readiness and verification
 
-<!-- openlup-doc-impact {"unit":"outbox-rail","digest":"sha256-207a9646260642afdf50398c025d2305f1126fc89a45a5652ededd14bef1f402","reason":"The Outbox version and exact Core peer pin move together from 0.13.1 to 0.14.0. This preparation changes no Outbox API, runtime, SQL, readiness responsibilities or verification step."} -->
+<!-- openlup-doc-impact {"unit":"outbox-rail","digest":"sha256-4e5138c89746267ce29fd73f0a58659fdf2d4eca8791fced9abbefb891922000","reason":"The reference admission's installed-package inventory now skips a private (unreleased) workspace package such as @openlup/platform. Release-set observation, the fail-closed refusal of any other unexpected installation, and every Outbox API, SQL, readiness responsibility and verification step described here are unchanged."} -->
 
 Compose the contribution with `@openlup/core/readiness`, actual loaded package metadata, selected-adapter schema observations and host bindings to the exact contribution run/handle functions before activating the exact new candidate. Only `ready` admits; `unknown` and `unsatisfied` leave the serving version running. Descriptors are inert; the builder supplies the same actual event identities and effective timeouts after lease acquisition. The default schema declaration describes catalog existence and overloads; it does not prove bodies, ACL or recovery. Use framework-free fence conformance from `./testing` and real transactional proof for your adapter. No ambient database URL is used by the packed proof.
 

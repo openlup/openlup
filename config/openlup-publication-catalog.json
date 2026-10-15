@@ -166,10 +166,6 @@
       "class": "public-output"
     },
     {
-      "path": "api/_cron/authorizeCron.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "api/_cron/authorizeCron.ts",
       "class": "public-output"
     },
@@ -2142,6 +2138,350 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/LICENSE",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/package.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260809150000_job_run_ledger.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260809150001_job_run_ledger_v3.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/bff/dispatch.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/bff/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/bff/lazyRoute.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/bff/routerRewrite.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/blob/binding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/blob/filesystem.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/blob/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/blob/s3.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/blob/supabase.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/blob/vercel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/composeBundle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/httpBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/nodeHost.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/data/binding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/data/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/data/postgresGateway.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/data/queryBuilder.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/data/queryBuilderSql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/data/supabaseClientFactory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/data/supabaseGateway.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/deadline.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/requestAdapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/runtime.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/security.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/staticAssets.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/job-ledger/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/job-ledger/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/job-ledger/postgres.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/job-ledger/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/kernel/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/kernel/platformKernel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/postgresRunner.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/scheduler/advisoryLock.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/scheduler/cronGuard.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/scheduler/handlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/scheduler/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/scheduler/jobRegistry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/scheduler/nodeScheduler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/scheduler/vercelScheduler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/bff/dispatch.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/bff/lazyRoute.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/bff/routerRewrite.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/binding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/blobPortContract.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/filesystem.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/s3.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/supabase.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/vercel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/vercel.transport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/composition/composeBundle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/composition/httpBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/composition/nodeHost.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/data/binding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/data/postgresGateway.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/data/queryBuilder.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/data/queryBuilderSql.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/data/supabaseClientFactory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/data/supabaseGateway.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/http/deadline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/http/requestAdapter.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/http/runtime.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/http/security.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/http/staticAssets.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/job-ledger/postgres.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/job-ledger/sql.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/job-ledger/sqlParity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/kernel/platformKernel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/migrations/postgresRunner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/packageBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/scheduler/advisoryLock.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/scheduler/cronGuard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/scheduler/handlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/scheduler/jobRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/scheduler/nodeScheduler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/scheduler/vercelScheduler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/tsconfig.build.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/vitest.config.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/ui/package.json",
       "class": "public-output"
     },
@@ -3354,10 +3694,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/blobPortContract.testFixtures.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/bundleAdminWritePortContract.test.ts",
       "class": "public-output"
     },
@@ -3634,14 +3970,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/filesystem/blobStorage.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/filesystem/blobStorage.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/filesystem/orderReviewMediaObjectStore.test.ts",
       "class": "public-output"
     },
@@ -3814,35 +4142,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/node/advisoryLock.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/node/advisoryLock.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/node/httpDeadline.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/node/httpDeadline.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/node/httpRequestAdapter.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/node/httpRuntime.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/node/httpSecurity.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/node/scheduler.ts",
       "class": "public-output"
     },
     {
@@ -4266,6 +4566,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/platformJobRunLedger.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/platformJobRunLedger.ts",
       "class": "public-output"
     },
@@ -4286,19 +4590,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/postgres/queryBuilder.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/postgres/queryBuilder.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/queryBuilderSql.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/queryBuilderSql.ts",
       "class": "public-output"
     },
     {
@@ -4427,14 +4719,6 @@
     },
     {
       "path": "server/adapters/resend/transactionalEmailPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/s3/blobStorage.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/s3/blobStorage.ts",
       "class": "public-output"
     },
     {
@@ -4727,10 +5011,6 @@
     },
     {
       "path": "server/adapters/supabase/authEmailPersistencePort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/blobStorage.test.ts",
       "class": "public-output"
     },
     {
@@ -5486,15 +5766,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/dataGateway.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/dataGateway.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/dataGatewayClientFactory.test.ts",
       "class": "public-output"
     },
     {
@@ -5914,6 +6186,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/supabase/platformJobRunLedgerSqlParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/supabase/pricingResolver.test.ts",
       "class": "public-output"
     },
@@ -6266,14 +6542,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/vercel/blobStorage.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/vercel/blobStorage.transport.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/vercel/blobStorage.ts",
       "class": "public-output"
     },
@@ -6283,14 +6551,6 @@
     },
     {
       "path": "server/adapters/vercel/runtimeProvenance.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/vercel/scheduler.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/vercel/scheduler.ts",
       "class": "public-output"
     },
     {
@@ -10286,6 +10546,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/platform-runtime/platformKernel.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/platform-runtime/platformKernel.ts",
       "class": "public-output"
     },
@@ -11270,14 +11534,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/runtime/blobBinding.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/runtime/blobBinding.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/runtime/channelIngest/channelIngestComposition.test.ts",
       "class": "public-output"
     },
@@ -11407,10 +11663,6 @@
     },
     {
       "path": "server/runtime/customers/subscriptionActivationBinding.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/runtime/dataBinding.test.ts",
       "class": "public-output"
     },
     {
@@ -19015,7 +19267,7 @@
     },
     {
       "name": "prelint",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
+      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -19055,7 +19307,7 @@
     },
     {
       "name": "pretest",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
+      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -19065,7 +19317,7 @@
     },
     {
       "name": "pretest:required",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build",
+      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -19085,7 +19337,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -19097,7 +19349,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-1cf8056312537e4ec94a7b93ade00626b61e2fc58a89185785c89a61aea5553a"
+      "digest": "sha256-44a1be5abc19c92e3d97352bafe7705010d03a45bf859037043d845f626729ad"
     },
     {
       "path": "packages/core/package.json",
@@ -19106,6 +19358,10 @@
     {
       "path": "packages/outbox/package.json",
       "digest": "sha256-60beaa6303f13fa5c3568e227d571f1b6013260dd260578670896eaf0d613319"
+    },
+    {
+      "path": "packages/platform/package.json",
+      "digest": "sha256-ce22c20163ac042fb35cadbcaa1065fef6315526cc7d8d76583cad46900e1356"
     },
     {
       "path": "packages/ui/package.json",

@@ -62,7 +62,7 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
-<!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-82bb199d05ad249e116c5320841af8438f2f2e6e1673d248825d18cfbf25dccf","reason":"The routing delta assigns the Outbox packed-proof companion test and disposable database launcher to the existing Outbox rail README. Shared package routing, manifest and schema test utilities retain the existing contributor-tooling owner. No domain owner, routing precedence, impact obligation or navigation-generation rule changes."} -->
+<!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-2bd5c8dcd101f78e125fc543a314da258ecb9566ec041d6e9b2351b75e975edf","reason":"The routing delta adds one unit that assigns packages/platform/** to that package's README, more specific than the shared packages route. No domain owner, routing precedence, impact obligation or navigation-generation rule changes."} -->
 
 The [domain registry](../../src/lib/coreDomains.ts) names platform domains. The
 [publication catalogue](../../config/openlup-publication-catalog.json) supplies
