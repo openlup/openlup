@@ -522,6 +522,12 @@ condition, since Node allows a condition object as a target. A subpath pattern
 alias such as `#name/*` is not matched as a pattern. Published Tree CI runs lint
 in the `typecheck` job.
 
+The [import-boundary test matrix](scripts/packages/eslint-import-map.test.ts)
+reuses one linter per loaded configuration across that configuration's samples.
+Each import-map scenario loads its own configuration. Both boundary helpers
+reject parser failures and unmatched files before checking the expected rule;
+the complete syntax, path-depth and package matrix remains collected.
+
 `npm run lint` first checks file-leading blank-line suppressions with
 `scripts/ast-grep/check-filewide-ignore.mjs`; this check cannot be suppressed
 by an ast-grep directive. It then scans with the structural rules in
@@ -1128,6 +1134,15 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   cycles 4 and 5 before the merge and was refused → a validator rule change
   must accept or explicitly migrate in-flight lineages; prove it against every
   live session's stored state just before merge, not only its current cycle.
+- 2026-10-17, M02 package pull requests: stacked pull requests that each
+  regenerate one shared record (a doc-impact marker, a contract digest)
+  conflict once the lower one squash-lands → stack only pull requests without
+  single-instance records, merge `main` once before each turn otherwise, and
+  check `git merge-tree` against the queue base before relying on carry-over.
+- 2026-10-17, parallel M02 work: parallel heavy local test runs cause load
+  timeouts → parallelize writing and serialize heavy test runs; after a load
+  timeout the complete gate is rerun without the concurrent load, and the
+  timeout never counts as a pass.
 
 ### Merge queue
 
@@ -1169,6 +1184,34 @@ records why these rules exist.
     defect on a pull-request run, or on a merge group whose log names no
     carry-over refusal: stop and report it. An expired receipt or review needs the
     re-review and resubmission described in step 7.
+
+**Stacked pull requests.** `main` takes squash merges, so a stacked branch keeps
+its old fork point after its predecessor lands. Stack only pull requests that
+share no single-instance record: a line each of them regenerates as one
+combined value, such as a doc-impact marker for a unit and section, the
+source-release contract's aggregate digests, the publication catalogue or a
+lockfile entry. Otherwise the stacked branch's combined line conflicts with the
+one its predecessor brought to `main`.
+- A stacked branch contains its predecessors, and its generated files are
+  computed on that cumulative tree. Each is opened against `main` and reviewed
+  on its cumulative diff from its fork point, predecessors' paths included. Arm
+  it once it is reviewed and green and its predecessors have merged; queue
+  admission takes only the first queue entry.
+- Before relying on carry-over, check `git merge-tree --write-tree` of the queue
+  base and the head. Only a result equal to the reviewed tree carries the source
+  review over ("unchanged tree"). Otherwise the run-keyed receipt with two
+  integration reviews applies, or a conflict needs the next step.
+- Pull requests that share a single-instance record are prepared in parallel
+  and merged in turn. When a predecessor has merged, merge `main` into the next
+  one once (do not rebase), regenerate the shared records and get a fresh full
+  review, as for a textual conflict.
+- If a predecessor changes, merge its new head into each stacked pull request
+  above it (do not rebase); each result is reviewed again under the usual repair
+  rules and budget.
+- A second ejection of the same head stops the stack for diagnosis.
+
+Each stacked pull request is still one concern. Stacking changes no review,
+receipt or merge rule.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned
