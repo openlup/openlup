@@ -35,7 +35,8 @@ one-time public-root projection is not an ongoing authoring route. -->
       `README.md` and/or `CONTRIBUTING.md`.
 - [ ] Generated navigation is current; affected owner explanations or fresh
       scoped no-impact records were reviewed for meaning, not only fingerprints.
-- [ ] Every commit carries a `Signed-off-by:` line (`git commit -s`). The
+- [ ] Every commit carries a `Signed-off-by:` line (`git commit -s`), and this
+      description ends with yours, because the merge commit takes it. The
       Developer Certificate of Origin section of `CONTRIBUTING.md` explains what
       that line certifies.
 - [ ] This pull request carries no deployment URL, no credential, and no

@@ -578,3 +578,30 @@ blocks activation. No DCO exemption or unsupported email assumption is allowed.
 Keep queue settings inactive until the exact proposal and these live results
 support the owner's activation decision. A merge of foundation code is not that
 decision and does not authorize production or a release.
+
+### Merge-commit queue (proposed 2026-10-17)
+
+Stacked pull requests do not stay tree-equal under squash landings. The upper
+branch keeps its old merge base, so any insertion next to its predecessor's in
+a shared list conflicts: catalogue rows, appended exports, single-instance
+records. Simulated merge-commit landings of the same stacks were clean and
+tree-equal. The owner's settings change, not this repository, enables it:
+- the `main` ruleset drops `required_linear_history` and allows the merge
+  method;
+- the merge queue's `merge_method` becomes `MERGE`;
+- the repository's merge-commit message is the pull request body
+  (`merge_commit_message: PR_BODY`).
+
+No review, receipt, carry-over or DCO rule changes. The DCO check already
+certifies merge commits, so each description ends with the author's
+`Signed-off-by:` line.
+
+Prove it live right after the switch, before relying on it:
+1. The first pull request merges through the queue. The group tip and the merge
+   commit on `main` pass DCO from the description's sign-off; record the merge
+   commit's actual author.
+2. A second pull request, stacked on the first and reviewed before the first
+   merged, is admitted with "unchanged tree" carry-over and no new receipt.
+
+If either step fails, the owner restores the squash settings and the guidance
+change is reverted.

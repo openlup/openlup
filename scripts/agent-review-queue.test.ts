@@ -11,12 +11,14 @@ import { encodeNativeReceipt, observeNativeAdmission, parseNativeAdmission, read
 const roots: string[] = [];
 afterEach(async () => { for (const cwd of roots.splice(0)) await rm(cwd, { recursive: true, force: true }); });
 const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-async function fixture({ rethink = false } = {}) {
+async function fixture({ rethink = false, predecessor = false } = {}) {
   const scratch = join(process.cwd(), '.context/scratch'); await mkdir(scratch, { recursive: true });
   const cwd = await mkdtemp(join(scratch, 'queue-proof-')); roots.push(cwd);
   const git = (...args: string[]) => execFileSync('/usr/bin/git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-C', cwd, ...args], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
   git('init', '-q'); await writeFile(join(cwd, 'code.ts'), 'export const n = 1;\n'); git('add', '.'); git('commit', '-qm', 'base');
   const base = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', base);
+  let predecessorHead: string | undefined;
+  if (predecessor) { await writeFile(join(cwd, 'pred.ts'), 'predecessor\n'); git('add', '.'); git('commit', '-qm', 'predecessor'); predecessorHead = git('rev-parse', 'HEAD'); }
   // With rethink, four earlier review rounds precede the final source commit, which becomes cycle 4.
   const rounds: string[] = [];
   if (rethink) for (const n of [3, 4, 5, 6]) { await writeFile(join(cwd, 'code.ts'), `export const n = ${n};\n`); git('add', '.'); git('commit', '-qm', `round ${n}`); rounds.push(git('rev-parse', 'HEAD')); }
@@ -60,7 +62,7 @@ async function fixture({ rethink = false } = {}) {
     queueBase = base; queueHead = head; run.event = 'merge_group'; run.head_sha = head; run.head_branch = 'gh-readonly-queue/main/pr-5-fixture';
     entry = { id: 'entry-1', position: 1, enqueuedAt: '2026-09-27T10:00:00Z', baseCommit: { oid: base }, headCommit: { oid: head }, pullRequest: { number: 5, headRefOid: candidate.head, baseRefName: 'main' } };
   }
-  return { cwd, git, base, head, input, run, pr, candidate, state, api, group, get entry() { return entry; } };
+  return { cwd, git, base, head, predecessor: predecessorHead, input, run, pr, candidate, state, api, group, get entry() { return entry; } };
 }
 
 describe('native review queue admission', () => {
@@ -242,8 +244,8 @@ describe('immutable native artifact transport', () => {
 });
 
 describe('source-keyed pull-request receipts', () => {
-  async function sourceFixture() {
-    const f = await fixture();
+  async function sourceFixture({ predecessor = false } = {}) {
+    const f = await fixture({ predecessor });
     const input = { version: 2, target: { event: 'pull_request', prNumber: 5, sourceHead: f.head }, source: f.input.source, integration: null };
     const dispatch = { id: 20, workflow_id: 200, repository: { id: 1376035358 }, path: '.github/workflows/native-review-admission.yml', event: 'workflow_dispatch', head_branch: 'main', head_sha: f.base, status: 'completed', conclusion: 'success', run_attempt: 1 };
     const listings = new Map<string, Array<Record<string, unknown>>>(); const downloads = new Map<number, Buffer>();
@@ -355,6 +357,15 @@ describe('source-keyed pull-request receipts', () => {
       const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
       await behindGroup(s, 'other.ts', 'unrelated\n'); await expect(s.wait()).resolves.toBeUndefined();
     });
+    it('G1m admits a two-parent merge group whose base moved only on unrelated paths', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      const f = s.f; f.git('checkout', '-q', '--detach', f.base); await writeFile(join(f.cwd, 'other.ts'), 'unrelated\n'); f.git('add', '.'); f.git('commit', '-qm', 'side');
+      const side = f.git('rev-parse', 'HEAD'); const main2 = f.git('commit-tree', f.git('rev-parse', `${side}^{tree}`), '-p', f.base, '-p', side, '-m', 'merge earlier PR');
+      const tree = f.git('merge-tree', '--write-tree', main2, f.head); const head = f.git('commit-tree', tree, '-p', main2, '-p', f.head, '-m', 'queue group'); f.group(main2, head);
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      await expect(s.wait()).resolves.toBeUndefined();
+    });
     // A refused carry-over is logged and the wait continues for the run-keyed route.
     // Two polls (a 30 s deadline) prove the continuation without 80 full polls.
     async function refusedThenExpired(s: Awaited<ReturnType<typeof sourceFixture>>, reason: string) {
@@ -404,6 +415,40 @@ describe('source-keyed pull-request receipts', () => {
       s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
       Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
       await expect(s.wait()).resolves.toBeUndefined();
+    });
+    it('G5m admits a two-parent merge group with the unchanged reviewed tree', async () => {
+      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
+      const tree = s.f.git('rev-parse', `${s.f.head}^{tree}`); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'queue group'); s.f.group(s.f.base, head);
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      await expect(s.wait()).resolves.toBeUndefined();
+    });
+    it('G9 admits a stacked pull request after its predecessor landed as a merge commit', async () => {
+      const s = await sourceFixture({ predecessor: true }); await s.upload(s.sourceName(), await s.submit(), 123);
+      const f = s.f; const main2 = f.git('commit-tree', f.git('rev-parse', `${f.predecessor}^{tree}`), '-p', f.base, '-p', f.predecessor!, '-m', 'merge predecessor');
+      const tree = f.git('merge-tree', '--write-tree', main2, f.head); const head = f.git('commit-tree', tree, '-p', main2, '-p', f.head, '-m', 'queue group'); f.group(main2, head);
+      expect(f.git('rev-parse', `${head}^{tree}`)).toBe(f.git('rev-parse', `${f.head}^{tree}`));
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      await expect(s.wait()).resolves.toBeUndefined();
+    });
+    it('G10 still admits a stacked merge group through the run-keyed route when its base changed a reviewed path', async () => {
+      const s = await sourceFixture({ predecessor: true }); await s.upload(s.sourceName(), await s.submit(), 123);
+      // A reviewed path's mode changes on main2, keeping the content merge clean but its tree distinct.
+      const f = s.f; f.git('checkout', '-q', '--detach', f.predecessor!); f.git('update-index', '--chmod=+x', 'code.ts');
+      const main2 = f.git('commit-tree', f.git('write-tree'), '-p', f.base, '-p', f.predecessor!, '-m', 'merge predecessor with reviewed path change');
+      const tree = f.git('merge-tree', '--write-tree', main2, f.head); const head = f.git('commit-tree', tree, '-p', main2, '-p', f.head, '-m', 'queue group'); f.group(main2, head);
+      expect(tree).not.toBe(f.git('rev-parse', `${f.head}^{tree}`));
+      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
+      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
+      const integration = await f.state(await captureCommittedReviewCandidate(f.cwd, main2, head));
+      const input = { ...f.input, targetRunId: f.run.id, targetAttempt: f.run.run_attempt, integration };
+      const binding = await observeNativeAdmission(s.api, input);
+      let uploaded = false; const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await expect(s.wait(async () => { if (!uploaded) { uploaded = true; await s.upload('native-review-10-1', { input, binding }, 124); } })).resolves.toBeUndefined();
+        expect(log.mock.calls.some(([line]) => String(line).includes('the base moved under a reviewed path'))).toBe(true);
+      } finally { log.mockRestore(); }
     });
     it('G6 waits when the queue entry names another reviewed head', async () => {
       const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
