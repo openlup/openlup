@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-925d9e165e1838a0406761bb0baf78f21d506196a314189795ea04c61046224f","reason":"ESLint adds the module graph that Architecture and extensions, internal boundaries, requires inside packages/platform/src: a module's production files import their own files and other modules only through their declared entries, with a type-aware variant for type-only edges, and refuse non-canonical relative paths, package specifiers with dot or empty segments, specifiers holding control characters, spaces, backslashes or percent signs, the package's own name, other spellings of the @openlup scope, test or fixture files and URLs at any depth, using the same core rules as the existing package boundaries. Other packages' rules, required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-b165976ecb30f654ed0a3b456ab1c3921a91ab6f63400cdb91ccab70f43521da","reason":"The SSG Playwright configuration's comment now says the hydration spec reads its documents from the preview server it starts. Required contributor commands, their order and the checks described here are unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -862,7 +862,7 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-e23f5b124da515a37baee7ec68971f347f56f2e0c3a38fe498e0e293bb3565dc","reason":"Test-only delta. The neutral catalog extension fixture adds a second installed type whose count pack dimension declares the net-content role, and asserts that an option differing from the SKU net content refuses. The file stays in the complete root Vitest diagnostic scope and outside the required test selectors; the test commands and CI jobs described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-6a1435b8ef768292203f116e94ecb7909cd607ea309ce824499a0a05aeabbd75","reason":"Test-only delta. The browser proof that playwright.ssg.config.ts already selects is added: each SSG route of the public-reference manifest is served as its prerendered document and must hydrate with unchanged markup and no page error. It runs after the build through that existing configuration; no test command, required selector or CI job described here changes."} -->
 
 ## Pull requests
 
