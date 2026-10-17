@@ -19166,6 +19166,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/preview/ssg-hydration.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/runtime/subscriptionSelfServiceGuardrails.test.ts",
       "class": "public-output"
     },
