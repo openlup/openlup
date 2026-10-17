@@ -21,11 +21,7 @@ import type {
 } from "@openlup/core/platform-runtime";
 
 import { bindBlobPort, type SupabaseStorageClient } from "../blob/index.js";
-import {
-  createServiceClient,
-  readSupabaseDataGatewayEnv,
-  type SupabaseCreateClient,
-} from "../data/index.js";
+import { createServiceClient, readSupabaseDataGatewayEnv } from "../data/index.js";
 import {
   getBundleDescriptor,
   resolveBlobCapability,
@@ -58,8 +54,15 @@ export interface PlatformBundle {
  * transactional binder also receives the bundle's data capability.
  */
 export interface PlatformBundleBinders {
-  /** The supabase-js `createClient` used by the default Supabase Storage blob binder. */
-  createSupabaseClient?: SupabaseCreateClient;
+  /**
+   * The supabase-js `createClient` used by the default Supabase Storage blob binder. Declared
+   * structurally here so the composition entry's declarations reference no data-module type.
+   */
+  createSupabaseClient?: (
+    url: string,
+    key: string,
+    options?: { auth?: { persistSession?: boolean; autoRefreshToken?: boolean } },
+  ) => unknown;
   http?: (capability: string, env: Env) => HttpRuntimePort | null;
   scheduler?: (capability: string, env: Env) => SchedulerPort | null;
   /** Defaults to `bindBlobPort`. */
