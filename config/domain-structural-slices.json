@@ -15,7 +15,6 @@
           "status": "refactor-ready-map",
           "sourceFiles": [
             "server/domains/commerce/checkoutInvoiceBuyerSnapshot.ts",
-            "server/domains/commerce/checkoutPersonalizationMint.ts",
             "server/domains/commerce/checkoutRecoveryToken.ts",
             "server/domains/commerce/checkoutRefusalContinuation.ts",
             "server/domains/commerce/paymentRecoveryGuidanceAuthorization.ts",

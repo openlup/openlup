@@ -46,3 +46,5 @@ bounded public-source inventory. A repository path establishes source existence
 at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
+
+<!-- openlup-doc-impact {"unit":"domain-platform","digest":"sha256-1bca28309730f041fd59b2ebad18793a57ff8ea1c9f667115474593051dff9e1","reason":"The no-ledger job exception list drops the removed blob cleanup cron entry; the remaining exceptions and the job catalogue contract described here are unchanged."} -->

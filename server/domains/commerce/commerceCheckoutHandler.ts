@@ -13,8 +13,6 @@ import type {
   CommerceOrderDraftWritePort,
   CommerceCustomerDefaultsReadPort,
 } from "../../../src/domains/commerce/ports.js";
-import type { PersonalizationOnPersistHook } from "./configuratorIntentPersistenceHandler.js";
-import { applyCheckoutPersonalization } from "./checkoutPersonalizationMint.js";
 import type { CommerceCheckoutRuntimePort } from "../../../src/domains/commerce/runtimePorts.js";
 import {
   orchestratePaidOrder,
@@ -63,8 +61,6 @@ export interface CommerceCheckoutHandlerDeps extends CheckoutResumeGuardDeps, Ch
   savedPaymentMethodResolverPort?: CheckoutSavedPaymentMethodResolverPort;
   customerDefaultsPort?: CommerceCustomerDefaultsReadPort;
   linkCustomerAccount?: (email: string) => Promise<void>;
-  personalizationOnPersist?: PersonalizationOnPersistHook;
-  mintPersonalizationCookies?: (clientId: string) => string[];
   subscriptionCheckoutContractEnabled?: () => boolean;
   dhlOnlyDeliveryEnabled?: () => boolean;
   verifyPromotionAcceptance?: Parameters<typeof resolveCheckoutQuoteGuard>[0]["verifyPromotionAcceptance"];
@@ -94,8 +90,6 @@ export function createCommerceCheckoutHandler({
   rateLimitMessage,
   checkRiskBlocklist,
   linkCustomerAccount,
-  personalizationOnPersist,
-  mintPersonalizationCookies,
   subscriptionCheckoutContractEnabled = () => false,
   dhlOnlyDeliveryEnabled = () => false,
   verifyPromotionAcceptance,
@@ -157,17 +151,6 @@ export function createCommerceCheckoutHandler({
         return;
       }
       const provisioned = identity.provisioned;
-
-      if (personalizationOnPersist || mintPersonalizationCookies) {
-        await applyCheckoutPersonalization({
-          res,
-          clientId: provisioned.clientId,
-          ownerName: intent.contact.firstName ?? null,
-          dogName: intent.petProfile.name ?? null,
-          personalizationOnPersist,
-          mintPersonalizationCookies,
-        });
-      }
 
       let paymentMethodRef: string | undefined;
       let paymentMethodAliasType: "UID" | "PAYID" | undefined;

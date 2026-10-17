@@ -18,8 +18,8 @@ import {
  * hardcodes and publication cannot change: the deny-all body, the staging host, and the named
  * crawler groups.
  *
- * ⛔ Not a place for facts about THIS deployment's route manifest. That `/admin`, `/account` and
- * `/personalizer` are private is a claim about `config/site-routes.json`, and it is pinned where
+ * ⛔ Not a place for facts about THIS deployment's route manifest. That `/admin` and `/account`
+ * are private is a claim about `config/site-routes.json`, and it is pinned where
  * the manifest's other deployment facts already are: the deployment's route guardrail tests.
  */
 const { productionHosts, siteOrigin, crawlPolicy } = siteRoutesManifest;

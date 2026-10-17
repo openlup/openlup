@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-b165976ecb30f654ed0a3b456ab1c3921a91ab6f63400cdb91ccab70f43521da","reason":"The SSG Playwright configuration's comment now says the hydration spec reads its documents from the preview server it starts. Required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-e11f6bbaee387f3462a027c7f440bd7deb03a597594cfa61ed098882499198c4","reason":"The root manifest and lockfile drop the openai and sharp dependencies, which no remaining source imports, and the Vitest coverage configuration drops the removed personalizer excludes. Required contributor commands, their order and the checks described here are unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-bc973326fc86a63d068d25c5bb4a0544d116981c82193843018170ecc84ece2a","reason":"Merge-commit landing support. The package release gate accepts only a target on main's first-parent line, and release prepare finds the mainline commit, squash or merge, that introduced each reviewed forward; DATA_AND_MIGRATIONS and DEVELOPMENT_AND_RELEASE state the rules. Admission, release-gate and release tests add merge-history fixtures and plants, and the source-preview workflow test pins the new first-parent check. The contributor commands and checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-c3d61788dfbcdde753661c65dae553d62b2b780311fe8c2e9474c6088a18d86b","reason":"The zero-coverage assertion drops the excludes for the removed personalizer paths, and the lint-heavy ESLint import-map test cases get an explicit 60-second timeout because a hosted runner took just over the default; no assertion changes. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

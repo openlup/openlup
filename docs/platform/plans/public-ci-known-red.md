@@ -173,7 +173,7 @@ Filename cells display exact shipped file identities; CommonMark character entit
 | api/_cron/outboxHandlerGroupReadiness.test.ts | 9/1/0 | Projected Compose omits the asserted direct-fulfillment activation key; the deployment activation-set obligation remains unresolved. | Runtime composition |
 | api/_cron/stagingBridgeInvokerRouteContract.test.ts | 0/0/0 | Collection cannot find the historical scheduler definition. No scheduler-routing assertion executes. | Historical source |
 | api/bff/[...path].test.ts | 1/1/0 | The generated public route table has no two asserted direct-only order-review entries. Their pre-auth availability mapping is unproved. | Runtime composition |
-| api/c/[slug].test.ts | 3/1/0 | The neutral asset map provides no deployment icon override; the assertion looks for an undefined icon URL. | Reference presentation |
+| api/c/[slug].test.ts (deleted) | 3/1/0 | The neutral asset map provides no deployment icon override; the assertion looks for an undefined icon URL. | Reference presentation |
 | api/cron/cronGateFlagAuthority.test.ts | 3/1/0 | The renewal cron entrypoint is withheld; its dedicated flag-to-job mapping cannot be read. | Published inventory |
 | tests/golden-master/ambientSettlementProfileNode.test.ts | 9/1/0 | The withheld worker directory prevents completion of the reaching-entrypoint initialization inventory. | Published inventory |
 | tests/postgres/adminMembershipAuthority.test.ts | 0/0/3 | The test reads unavailable historical forward source rather than the managed baseline; managed backfill, fixture cleanup and full-manifest forward compatibility remain unproved. | Historical source |
