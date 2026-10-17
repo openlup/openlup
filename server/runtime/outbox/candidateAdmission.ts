@@ -22,13 +22,18 @@ export async function admitReferenceOutbox(input: {
   const identity = { ...input.candidate };
   const observed = input.loadedPackages ? { loadedPackages: input.loadedPackages, inventoryComplete: input.inventoryComplete === true } : observeReferencePackages();
   const packages = observed.loadedPackages.map((p) => ({ ...p }));
+  // Platform supplies the host substrate here, with no outbox handlers, schedules or routes.
+  const platform = packages.find((pkg) => pkg.name === "@openlup/platform");
   const triggers = { ...(input.triggers ?? runtime.triggers) };
   const ports: Record<string, unknown> = { ...(input.ports ?? runtime.ports) };
   // Evidence must identify this runtime's actual selected bindings, not an unrelated observational map.
   for (const key of Object.keys(runtime.ports)) if (ports[key] !== runtime.ports[key as keyof typeof runtime.ports]) delete ports[key];
   for (const key of Object.keys(runtime.triggers)) if (triggers[key] !== runtime.triggers[key]) delete triggers[key];
   const facts: ReadinessInput = { candidate: identity, loadedPackages: packages, inventoryComplete: observed.inventoryComplete,
-    contributions: [runtime.contribution], vocabulary: input.vocabulary, exemptions: input.exemptions,
+    contributions: [runtime.contribution, ...(platform ? [{
+      manifest: { ...platform, emits: [], handles: [], schedules: [], routes: [], requiredPorts: [], env: [] },
+      handlers: [], schedules: [], routes: [],
+    }] : [])], vocabulary: input.vocabulary, exemptions: input.exemptions,
     bindings: { ports, triggers, routes: {}, env: {} }, schemaProbe: input.schemaProbe };
   const schedules = runtime.contribution.schedules.map((s) => ({ ...s }));
   const immediate = runtime.immediate;
@@ -78,14 +83,11 @@ export function observeReferencePackages(
   const loadedPackages: LoadedPackage[] = [];
   for (const name of names) {
     const pkg = `@openlup/${name}`;
-    // The reference imports these two set packages. The unreleased platform substrate is a private
-    // workspace package, not a release-set member, so the inventory leaves it out once its manifest
-    // proves exactly that; any other unexpected installation stays unknown.
-    if (!["core", "outbox"].includes(name)) {
-      if (name === "platform" && isUnreleasedPlatformPackage(join(directory, "node_modules", "@openlup", name))) continue;
+    // Core, Outbox and Platform are set packages; any other installation stays unknown.
+    if (!["core", "outbox", "platform"].includes(name)) {
       return { loadedPackages, inventoryComplete: false };
     }
-    let root = dirname(require.resolve(name === "core" ? "@openlup/core/readiness" : "@openlup/outbox"));
+    let root = dirname(require.resolve(name === "core" ? "@openlup/core/readiness" : name === "platform" ? "@openlup/platform/kernel" : "@openlup/outbox"));
     while (!existsSync(join(root, "package.json"))) {
       const parent = dirname(root); if (parent === root) return { loadedPackages, inventoryComplete: false }; root = parent;
     }
@@ -94,12 +96,6 @@ export function observeReferencePackages(
     if (manifest.name !== pkg) return { loadedPackages, inventoryComplete: false };
     loadedPackages.push({ name: manifest.name, version: manifest.version, kind: gates.kind });
   }
-  return { loadedPackages, inventoryComplete: loadedPackages.length === 2 };
+  return { loadedPackages, inventoryComplete: ["@openlup/core", "@openlup/outbox", "@openlup/platform"].every((name) => loadedPackages.some((pkg) => pkg.name === name)) };
   } catch { return { loadedPackages: [], inventoryComplete: false }; }
-}
-
-/** True only for the private, unreleased `@openlup/platform` workspace package at `root`. */
-export function isUnreleasedPlatformPackage(root: string): boolean {
-  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  return manifest.name === "@openlup/platform" && manifest.private === true;
 }

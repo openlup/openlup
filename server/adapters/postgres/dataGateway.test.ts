@@ -88,6 +88,8 @@ describe("generic role-free lane confinement", () => {
     const users = execFileSync("git", ["ls-files", "--", "*.ts", "*.tsx", "*.mts", "*.cts"], { encoding: "utf8" })
       .split(/\r?\n/).filter(Boolean)
       .filter((file) => !file.startsWith("packages/platform/"))
+      // The package consumer proof calls the lane as a package consumer, not as a reference binding.
+      .filter((file) => file !== "scripts/packages/platform-cold-consumer.ts")
       .filter((file) => !/\.(test|spec)\.(ts|tsx|mts|cts)$/.test(file))
       .filter((file) => readFileSync(file, "utf8").includes("createPostgresRoleFreeTransactionLane"))
       .sort();
