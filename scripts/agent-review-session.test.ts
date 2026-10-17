@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { env as processEnvironment } from 'node:process';
 import { agentReviewIdentities, agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
+import { checkMergePreview } from './merge-preview.mjs';
+import { heavyCommandEnvironment, heavyLeaseDirectory, verifyCandidateCommand, withHeavyLease } from './verify-candidate.mjs';
 
 const base = 'a'.repeat(40);
 const candidate = { base, head: 'b'.repeat(40), tree: 'c'.repeat(40), clean: true, workingDigest: 'd'.repeat(64), indexDigest: 'e'.repeat(64), changedPaths: ['source.txt'] };
@@ -19,7 +22,7 @@ async function verify(req, reports, extra = {}) { return verifyAgentReview({ cwd
 function findingIds(rounds) { return rounds.flatMap(round => round.reports.flatMap(observed => observed.materialFindings.map((finding, index) => createHash('sha256').update(JSON.stringify({ requestDigest: createHash('sha256').update(JSON.stringify(round.request)).digest('hex'), reviewerId: observed.reviewerId, index, finding })).digest('hex')))); }
 const simplicityPreCheck = 'Read Review lessons; the smallest adequate alternative is the direct edit';
 const directories: string[] = [];
-afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
+afterEach(async () => { vi.unstubAllEnvs(); for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
 async function fixture() {
   const root = join(process.cwd(), '.context', 'scratch'); await mkdir(root, { recursive: true });
   const cwd = await mkdtemp(join(root, 'session-test-')); directories.push(cwd);
@@ -691,6 +694,108 @@ describe('actual source snapshot without candidate execution', () => {
     const { cwd, base } = await fixture(); await writeFile(join(cwd, '.gitattributes'), 'source.txt filter=trap\n');
     await writeFile(join(cwd, 'source.txt'), 'dirty\n');
     const result = await captureSessionCandidate(cwd, base); expect(result.changedPaths).toEqual(['.gitattributes', 'source.txt']);
+  });
+});
+
+describe('pinned stack bases and local final proof', () => {
+  it('keeps the exact own-delta review and expiry before and after a merge-commit predecessor landing', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'source.txt'), 'predecessor\n'); f.git('add', '.'); f.git('commit', '-qm', 'predecessor'); const predecessor = f.git('rev-parse', 'HEAD');
+    await writeFile(join(f.cwd, 'upper.txt'), 'upper\n'); f.git('add', '.'); f.git('commit', '-qm', 'upper');
+    vi.stubEnv('OPENLUP_STACK_BASE', predecessor);
+    const scoped = { ...intent, scope: ['upper.txt'] };
+    const req = await prepareAgentReview({ cwd: f.cwd, intent: scoped, authorSessionId: 'author', now });
+    expect(req.candidate).toMatchObject({ base: predecessor, stackBase: predecessor, changedPaths: ['upper.txt'] });
+    const reports = req.roles.map((_, index) => ({ ...report(req, index), coveredScope: ['upper.txt'] }));
+    expect((await verifyAgentReview({ cwd: f.cwd, request: req, reports, now })).status).toBe('reviewed');
+    const main = f.git('commit-tree', f.git('rev-parse', `${predecessor}^{tree}`), '-p', f.base, '-p', predecessor, '-m', 'land predecessor'); f.git('update-ref', 'refs/remotes/origin/main', main);
+    expect((await verifyAgentReview({ cwd: f.cwd, request: req, reports, now })).status).toBe('reviewed');
+    const state = await prepareAgentReviewState({ cwd: f.cwd, base: predecessor, intent: scoped, authorSessionId: 'author', previous: { request: req, reports }, now });
+    expect(state.request).toEqual(req); expect(state.reports).toEqual(reports); expect(state.history).toBeUndefined();
+    expect((await verifyAgentReview({ cwd: f.cwd, request: req, reports, now: () => 86401001 })).status).toBe('needs_agent_review');
+    vi.unstubAllEnvs();
+    expect((await verifyAgentReview({ cwd: f.cwd, request: req, reports, now })).status).toBe('needs_agent_review');
+  });
+  it('refuses an unrelated predecessor, mismatched pin, and integration beyond the pinned base', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'upper.txt'), 'upper\n'); f.git('add', '.'); f.git('commit', '-qm', 'upper'); const upper = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', f.base); await writeFile(join(f.cwd, 'other.txt'), 'other\n'); f.git('add', '.'); f.git('commit', '-qm', 'other'); const other = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', upper); vi.stubEnv('OPENLUP_STACK_BASE', other);
+    await expect(captureSessionCandidate(f.cwd)).rejects.toThrow();
+    await expect(captureSessionCandidate(f.cwd, f.base)).rejects.toThrow('differs');
+    vi.stubEnv('OPENLUP_STACK_BASE', f.base); f.git('update-ref', 'refs/remotes/origin/main', other); f.git('merge', '-q', '--no-edit', other);
+    await expect(captureSessionCandidate(f.cwd)).rejects.toThrow('fork point');
+  });
+  it('catches a clean merge with an invalid combined aggregate before any heavy command', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'a.json'), 'false'); await writeFile(join(f.cwd, 'b.json'), 'false'); await writeFile(join(f.cwd, 'count.json'), '0');
+    await writeFile(join(f.cwd, 'check.mjs'), "import{readFileSync as r}from'node:fs';if(Number(r('count.json'))!==['a','b'].filter(n=>JSON.parse(r(n+'.json'))).length)process.exitCode=1;\n");
+    f.git('add', '.'); f.git('commit', '-qm', 'counter'); const base = f.git('rev-parse', 'HEAD');
+    await writeFile(join(f.cwd, 'a.json'), 'true'); await writeFile(join(f.cwd, 'count.json'), '1'); f.git('add', '.'); f.git('commit', '-qm', 'a'); const a = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', base); await writeFile(join(f.cwd, 'b.json'), 'true'); await writeFile(join(f.cwd, 'count.json'), '1'); f.git('add', '.'); f.git('commit', '-qm', 'b'); const b = f.git('rev-parse', 'HEAD'); f.git('checkout', '-q', '--detach', a);
+    expect(checkMergePreview({ cwd: f.cwd, target: base, checks: [] }).basis).toBe('unchanged tree');
+    expect(() => checkMergePreview({ cwd: f.cwd, target: b, checks: [[process.execPath, 'check.mjs']] })).toThrow('combined tree failed');
+    expect(f.git('rev-parse', 'HEAD')).toBe(a); expect(f.git('status', '--porcelain')).toBe('');
+  });
+  it('reports textual conflicts without changing the source checkout', async () => {
+    const f = await fixture(); await writeFile(join(f.cwd, 'source.txt'), 'ours\n'); f.git('add', '.'); f.git('commit', '-qm', 'ours'); const ours = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', f.base); await writeFile(join(f.cwd, 'source.txt'), 'theirs\n'); f.git('add', '.'); f.git('commit', '-qm', 'theirs'); const theirs = f.git('rev-parse', 'HEAD'); f.git('checkout', '-q', '--detach', ours);
+    expect(() => checkMergePreview({ cwd: f.cwd, target: theirs })).toThrow('merge main into this branch');
+    expect(f.git('status', '--porcelain')).toBe('');
+  });
+  it('serializes independent callers and releases only its own lease on success or failure', async () => {
+    const f = await fixture(); const directory = join(f.cwd, 'lease'); const order: string[] = [];
+    let release!: () => void; let entered!: () => void; const ready = new Promise<void>(resolve => { entered = resolve; }); const held = new Promise<void>(resolve => { release = resolve; });
+    const first = withHeavyLease(async () => { order.push('first'); entered(); await held; order.push('first done'); }, { directory, waitMs: 1000, pollMs: 5 });
+    await ready;
+    await expect(withHeavyLease(async () => {}, { directory, waitMs: 0 })).rejects.toThrow('bounded wait');
+    const second = withHeavyLease(async () => { order.push('second'); throw new Error('command failed'); }, { directory, waitMs: 1000, pollMs: 5 });
+    release(); await first; await expect(second).rejects.toThrow('command failed');
+    expect(order).toEqual(['first', 'first done', 'second']);
+    await expect(stat(directory)).rejects.toThrow();
+  });
+  it('does not start expensive work after preflight failure and refuses a mid-run source mutation', async () => {
+    vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', '1');
+    const f = await fixture(); const run = vi.fn(async () => 0); const snapshot = async () => candidate;
+    await expect(verifyCandidateCommand({ cwd: f.cwd, command: 'unused', lease: { directory: join(f.cwd, 'lease') }, snapshot, preflight: async () => { throw new Error('cheap failure'); }, run })).rejects.toThrow('cheap failure');
+    expect(run).not.toHaveBeenCalled(); let changed = false;
+    await expect(verifyCandidateCommand({ cwd: f.cwd, command: 'unused', lease: { directory: join(f.cwd, 'lease') }, snapshot: async () => ({ ...candidate, head: changed ? 'f'.repeat(40) : candidate.head }), preflight: async () => {}, run: async () => { changed = true; return 0; } })).rejects.toThrow('superseded');
+    await expect(stat(join(f.cwd, 'lease'))).rejects.toThrow();
+  });
+  it.each([false, true])('revalidates after host admission before expensive work (source changed: %s)', async changed => {
+    const f = await fixture(); const bin = join(f.cwd, 'bin'); await mkdir(bin);
+    const broker = join(bin, 'ai-resource-gate'); await writeFile(broker, 'fixture'); await chmod(broker, 0o755);
+    vi.stubEnv('PATH', bin); vi.stubEnv('CI', 'false'); vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', '0');
+    let admitted = false; const heavy = vi.fn(async () => 0); const preflight = vi.fn(async () => {});
+    const snapshot = async () => ({ ...candidate, head: admitted && changed ? 'f'.repeat(40) : candidate.head });
+    await expect(verifyCandidateCommand({ cwd: f.cwd, command: 'required-command', preflight, snapshot, run: heavy })).rejects.toThrow('select the existing broker profile');
+    expect(heavy).not.toHaveBeenCalled(); preflight.mockClear();
+    const run = async (command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv) => {
+      expect(command).toBe(broker);
+      expect(args).toContain(`openlup:coverage:${(await heavyLeaseDirectory(cwd)).split('/').at(-1)}`);
+      for (const policy of ['--cpu', '--memory-mb', '--lane', '--queue-timeout', '--execution-timeout']) expect(args).not.toContain(policy);
+      expect(env.VITEST_MAX_WORKERS).toBe(processEnvironment.VITEST_MAX_WORKERS);
+      expect(args.slice(-7)).toEqual([process.execPath, resolve('scripts/verify-candidate.mjs'), '--resource', 'openlup:coverage', '--', 'required-command', 'argument']);
+      vi.stubEnv('OPENLUP_VERIFY_EXPECTED', env.OPENLUP_VERIFY_EXPECTED!); vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', '1'); admitted = true;
+      return verifyCandidateCommand({ cwd, command: 'required-command', args: ['argument'], resource: 'openlup:coverage', preflight, snapshot, run: heavy });
+    };
+    const result = verifyCandidateCommand({ cwd: f.cwd, command: 'required-command', args: ['argument'], resource: 'openlup:coverage', preflight, snapshot, run });
+    if (changed) { await expect(result).rejects.toThrow('host capacity'); expect(heavy).not.toHaveBeenCalled(); }
+    else { expect(await result).toBe(0); expect(preflight).toHaveBeenCalledTimes(3); expect(heavy).toHaveBeenCalledOnce(); }
+  });
+  it('keeps independent projects separate, rejects nesting immediately, and scopes stack pins away from test fixtures', async () => {
+    const first = await fixture(); const second = await fixture();
+    expect(await heavyLeaseDirectory(first.cwd)).not.toBe(await heavyLeaseDirectory(second.cwd));
+    const directory = await heavyLeaseDirectory(first.cwd); vi.stubEnv('OPENLUP_HEAVY_ACTIVE', directory);
+    const snapshot = vi.fn(async () => candidate);
+    await expect(verifyCandidateCommand({ cwd: first.cwd, command: 'unused', snapshot })).rejects.toThrow('nested wrapper');
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(heavyCommandEnvironment(directory, { OPENLUP_STACK_BASE: base, OPENLUP_VERIFY_EXPECTED: 'other repo', PATH: '/bin' })).toEqual({ OPENLUP_HEAVY_ACTIVE: directory, PATH: '/bin' });
+    const busy = join(second.cwd, 'busy'); await mkdir(busy);
+    await expect(verifyCandidateCommand({ cwd: second.cwd, command: 'unused', lease: { directory: busy, waitMs: 0 }, snapshot: async () => ({ ...candidate, clean: false }) })).rejects.toThrow('commit source');
+    await rm(busy, { recursive: true });
+    vi.stubEnv('OPENLUP_VERIFY_EXPECTED', 'another candidate');
+    await expect(verifyCandidateCommand({ cwd: second.cwd, command: 'unused', snapshot: async () => candidate })).rejects.toThrow('host capacity');
   });
 });
 

@@ -189,7 +189,12 @@ the preserved fifth request and the next candidate, with explicit full refresh
 and two fresh full reviewers; a seventh refuses. No reset, bypass or automatic
 merge follows. Changed intent requires explicit regrouping. The review base is the
 candidate's fork point (`git merge-base HEAD origin/main`), so verify and pre-push keep
-accepting a reviewed candidate while `main` moves ahead. Do not rebase or merge
+accepting a reviewed candidate while `main` moves ahead. A stacked task may export
+`OPENLUP_STACK_BASE` with the exact predecessor between that fork point and HEAD.
+Documentation and local native review use this same pin, bound in the candidate;
+source and group admission require it on actual main before admitting the upper
+change. A predecessor-only landing preserves that exact candidate and its
+existing expiry/history. Ordinary independent PRs need no pin. Do not rebase or merge
 `main` only to catch up: the merge queue integrates. Resolve a textual conflict by
 merging `main`: that moves the fork point and requires fresh full-scope review,
 preserving history and budget. A rebase discards that lineage, so `prepare` reports
@@ -197,7 +202,7 @@ preserving history and budget. A rebase discards that lineage, so `prepare` repo
 dropping findings. When criteria,
 required review and checks pass, stop optional edits and continue only authorized
 delivery steps. Missing, stale, expired, dirty, partial or unclosed evidence, including
-evidence whose fork point has changed, refuses verify and pre-push once installed enforcement passes its live refusal tests. Where the
+evidence whose unpinned fork point or pinned candidate has changed, refuses verify and pre-push once installed enforcement passes its live refusal tests. Where the
 maintainer-local layer is installed, pre-push also refuses a task-worktree push
 whose exact clean tree has no stamp from a passing `openlup-dev verify`. Native
 session receipts are process evidence, not cryptographic remote attestation or

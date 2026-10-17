@@ -110,6 +110,20 @@ describe("public documentation routing", () => {
 });
 
 describe("attributable source and owner impact", () => {
+  it("uses the same pinned predecessor as native review without changing hosted event precedence", () => {
+    const { root, base } = fixture();
+    write(root, "src/domains/demo/other.ts", "export const other = 2;\n"); review(root, base); const predecessor = commit(root);
+    write(root, SOURCE, "export const value = 2;\n"); review(root, predecessor); commit(root);
+    const env = { OPENLUP_STACK_BASE: predecessor };
+    expect(impact(root, resolveDocumentationBase(root, { env }).base).failures).toEqual([]);
+    expect(impact(root, resolveDocumentationBase(root, { env: {} }).base).failures).toHaveLength(1);
+    expect(() => resolveDocumentationBase(root, { env, base })).toThrow('differs');
+    const merged = git(root, 'commit-tree', git(root, 'rev-parse', `${predecessor}^{tree}`), '-p', base, '-p', predecessor, '-m', 'merge predecessor');
+    git(root, 'update-ref', 'refs/remotes/origin/main', merged);
+    expect(impact(root, resolveDocumentationBase(root, { env }).base).failures).toEqual([]);
+    expect(impact(root, resolveDocumentationBase(root, { env: {} }).base).failures).toEqual([]);
+    expect(() => resolveDocumentationBase(root, { env: { OPENLUP_STACK_BASE: 'bad' } })).toThrow('full commit SHA');
+  });
   it("compares actual commit and blob objects despite local replacement refs", () => {
     const { root, base } = fixture(); const originalBlob = git(root, "rev-parse", `${base}:${SOURCE}`);
     write(root, SOURCE, "export const value = 2;\n"); const head = commit(root); const changedBlob = git(root, "rev-parse", `HEAD:${SOURCE}`);

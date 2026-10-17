@@ -2962,6 +2962,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/merge-preview.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/mint-customer-session-with-retry.test.ts",
       "class": "public-output"
     },
@@ -3367,6 +3371,10 @@
     },
     {
       "path": "scripts/vercel-function-tsconfig-contract.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/verify-candidate.mjs",
       "class": "public-output"
     },
     {

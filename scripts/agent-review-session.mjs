@@ -7,6 +7,7 @@ import { lstat, mkdir, open, readlink, realpath, rename, unlink } from 'node:fs/
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { env as processEnvironment } from 'node:process';
 import { reviewTreeEntries, verifyReviewObjectGraph } from './agent-review-hook.mjs';
 
 const execute = promisify(execFile);
@@ -30,8 +31,8 @@ async function git(cwd, ...args) {
 }
 
 /** The review base is the candidate's fork point: the single merge base of HEAD
- * and the observed origin/main. It stays put while main moves ahead, and moves
- * when HEAD integrates main or main is rewritten.
+ * and the observed origin/main. An explicitly pinned predecessor may be ahead
+ * of that fork point on HEAD's ancestry; hosted admission waits for it on main.
  */
 async function forkPoint(cwd) {
   let bases;
@@ -46,11 +47,16 @@ async function forkPoint(cwd) {
  */
 export async function captureSessionCandidate(cwd, base) {
   cwd = await realpath(cwd);
-  base ??= await forkPoint(cwd);
+  const pinned = processEnvironment.OPENLUP_STACK_BASE;
+  demand(pinned === undefined || SHA.test(pinned), 'OPENLUP_STACK_BASE must be a full commit digest');
+  demand(pinned === undefined || base === undefined || base === pinned, 'stack base differs from the prepared review base');
+  base ??= pinned ?? await forkPoint(cwd);
   demand(SHA.test(base), 'base must be a full commit digest');
   const head = (await git(cwd, 'rev-parse', '--verify', 'HEAD^{commit}')).trim();
   const tree = (await git(cwd, 'rev-parse', '--verify', 'HEAD^{tree}')).trim();
-  demand(await forkPoint(cwd) === base, 'base is no longer the fork point of HEAD and observed origin/main; prepare again');
+  const fork = await forkPoint(cwd);
+  try { demand(pinned !== undefined || fork === base, 'fork point changed'); await git(cwd, 'merge-base', '--is-ancestor', fork, base); }
+  catch { throw new Error('Agent review required: base is no longer the fork point or its pinned descendant on HEAD; prepare again'); }
   const graph = await verifyReviewObjectGraph(cwd, { head, tree, base });
   const flags = (await git(cwd, 'ls-files', '-v', '-z')).split('\0').filter(Boolean);
   demand(flags.every(entry => entry[0] !== 'S' && entry[0] === entry[0].toUpperCase()), 'index flags conceal source');
@@ -90,14 +96,15 @@ export async function captureSessionCandidate(cwd, base) {
   const expectedIndex = headEntries.map(entry => `${entry.mode} ${entry.object} 0\t${entry.path}`).sort();
   const committed = new Map(headEntries.map(entry => [entry.path, entry]));
   const clean = equal(index, expectedIndex) && actual.size === committed.size && [...actual].every(([name, entry]) => entry.mode === committed.get(name)?.mode && entry.object === committed.get(name)?.object);
-  return { base, head, tree, clean, workingDigest: digest([...actual.values()]), indexDigest: digest({ index, flags: flags.sort() }), changedPaths };
+  return { base, head, tree, clean, workingDigest: digest([...actual.values()]), indexDigest: digest({ index, flags: flags.sort() }), changedPaths, ...(pinned === undefined ? {} : { stackBase: pinned }) };
 }
 
 /** Read a committed candidate as data, without checking it out or executing its
  * configuration. Hosted admission must not run a candidate with write tokens.
  * The reconstructed clean index uses the same canonical digests as local review.
  */
-export async function captureCommittedReviewCandidate(cwd, base, head) {
+export async function captureCommittedReviewCandidate(cwd, base, head, stackBase) {
+  demand(stackBase === undefined || stackBase === base, 'stack base differs from the prepared review base');
   const graph = await verifyReviewObjectGraph(cwd, { base, head });
   const entries = reviewTreeEntries(graph, graph.headTree).map(({ path, mode, object }) => ({ path, mode, object })).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   const before = new Map(reviewTreeEntries(graph, graph.baseTree).map(entry => [entry.path, entry]));
@@ -108,7 +115,7 @@ export async function captureCommittedReviewCandidate(cwd, base, head) {
   for (const entry of entries) paths([entry.path]);
   const index = entries.map(entry => `${entry.mode} ${entry.object} 0\t${entry.path}`).sort();
   const flags = entries.map(entry => `H ${entry.path}`).sort();
-  return { base, head, tree: graph.headTree, clean: true, workingDigest: digest(entries), indexDigest: digest({ index, flags }), changedPaths };
+  return { base, head, tree: graph.headTree, clean: true, workingDigest: digest(entries), indexDigest: digest({ index, flags }), changedPaths, ...(stackBase === undefined ? {} : { stackBase }) };
 }
 
 function validateIntent(intent) {
@@ -124,7 +131,9 @@ export async function pristineAgentReviewBaseline(cwd) {
 }
 
 function validateCandidate(candidate) {
-  exact(candidate, ['base', 'head', 'tree', 'clean', 'workingDigest', 'indexDigest', 'changedPaths'], 'candidate');
+  demand(candidate && typeof candidate === 'object', 'candidate schema is invalid');
+  exact(candidate, ['base', 'head', 'tree', 'clean', 'workingDigest', 'indexDigest', 'changedPaths', ...(Object.hasOwn(candidate, 'stackBase') ? ['stackBase'] : [])], 'candidate');
+  demand(!Object.hasOwn(candidate, 'stackBase') || candidate.stackBase === candidate.base, 'candidate stack base differs');
   demand(['base', 'head', 'tree'].every(field => SHA.test(candidate[field])) && ['workingDigest', 'indexDigest'].every(field => DIGEST.test(candidate[field])), 'candidate digest is invalid'); demand(typeof candidate.clean === 'boolean', 'candidate clean flag is invalid'); paths(candidate.changedPaths);
 }
 const REPAIR_RISKS = ['ordinary', 'security', 'control', 'schema', 'instructions', 'unknown'];
@@ -187,7 +196,7 @@ function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
     /(?:^|\/)(?:AGENTS|CLAUDE)(?:\.local)?\.(?:md|txt|rst)$/iu.test(path) ||
     /(?:^|\/)(?:CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY|AGENT_GUIDE)\.(?:md|txt|rst)$/iu.test(path) ||
-    /^scripts\/(?:agent-review|check-|oss-|dco-|run-|packages\/)/iu.test(path) ||
+    /^scripts\/(?:agent-review|check-|oss-|dco-|run-|merge-preview|verify-candidate|packages\/)/iu.test(path) ||
     /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration|payment|checkout|subscription|permission|access|credential|secret|token|release|publish|deploy|schema|contract|account|login|otp|cardSetup|paymentCard|customer|invoice).*)$/iu.test(path) ||
     /^(?:packages\/core|server\/(?:bff|adapters|runtime|domains\/(?:accounting|customers|shipping))|src\/(?:integrations|pages\/account|domains\/(?:customers|shipping)))(?:\/|$)/iu.test(path) ||
     /^docs\/platform\/plans\/autonomous-reviewed-delivery/iu.test(path);
@@ -527,7 +536,7 @@ async function main() {
   if (verb === 'prepare') {
     const spec = await boundedJson(input ?? join(directory, 'intent.json'));
     demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base', 'repairRisk', 'fullRefresh', 'regroup', 'ownerContinuation', 'rethink', 'simplicityPreCheck'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
-    spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= await forkPoint(cwd);
+    spec.authorSessionId ??= processEnvironment.CODEX_THREAD_ID; spec.base ??= processEnvironment.OPENLUP_STACK_BASE ?? await forkPoint(cwd);
     let previous; try { previous = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     demand(previous || spec.simplicityPreCheck, 'a first request needs simplicityPreCheck: read Review lessons in CONTRIBUTING.md and name the smallest adequate alternative considered');
     let state;

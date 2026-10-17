@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { agentReviewReportBinding, captureCommittedReviewCandidate, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState } from './agent-review-session.mjs';
-import { encodeNativeReceipt, observeNativeAdmission, parseNativeAdmission, readNativeAdmissionArtifact, readSourceAdmissionArtifact, verifyNativeAdmission, verifySourceAdmission, waitNativeAdmission } from './agent-review-queue.mjs';
+import { carryOverSourceReview, encodeNativeReceipt, observeNativeAdmission, parseNativeAdmission, readNativeAdmissionArtifact, readSourceAdmissionArtifact, verifyNativeAdmission, verifySourceAdmission, waitNativeAdmission } from './agent-review-queue.mjs';
 
 const roots: string[] = [];
 afterEach(async () => { for (const cwd of roots.splice(0)) await rm(cwd, { recursive: true, force: true }); });
@@ -53,6 +53,11 @@ async function fixture({ rethink = false, predecessor = false } = {}) {
       if (path.endsWith('/pulls/5')) return structuredClone(pr);
       if (path.includes('/git/commits/')) { const sha = path.split('/').at(-1)!; return { sha, tree: { sha: git('rev-parse', `${sha}^{tree}`) } }; }
       if (path.endsWith('/git/ref/heads/main')) return { ref: 'refs/heads/main', object: { sha: queueBase, type: 'commit' } };
+      if (path.includes('/compare/')) {
+        const [base, head] = path.split('/compare/')[1]!.split('...');
+        const ancestor = git('merge-base', base!, head!);
+        return { base_commit: { sha: base }, merge_base_commit: { sha: ancestor }, status: base === head ? 'identical' : ancestor === base ? 'ahead' : 'behind' };
+      }
       if (path.includes('/git/ref/heads/gh-readonly-queue')) return { ref: `refs/heads/${run.head_branch}`, object: { sha: queueHead, type: 'commit' } };
       throw new Error(`Unexpected fixture API path ${path}`);
     },
@@ -277,6 +282,27 @@ describe('source-keyed pull-request receipts', () => {
     const sourceName = (pr = 5, head = f.head) => `native-review-pr-${pr}-${head}`;
     return { f, input, dispatch, upload, api, event, env, submit, wait, sourceName, setClock: (value: number) => { clock = value; }, calls: () => calls, resetCalls: () => { calls = []; } };
   }
+  it('waits for a pinned predecessor on main, then admits the own-delta source with unrelated main changes', async () => {
+    const s = await sourceFixture({ predecessor: true }); const f = s.f;
+    const candidate = await captureCommittedReviewCandidate(f.cwd, f.predecessor!, f.head, f.predecessor);
+    s.input.source = await f.state(candidate); f.input.source = s.input.source;
+    await expect(s.submit()).rejects.toThrow('has not landed');
+    const main = f.git('commit-tree', f.git('rev-parse', `${f.predecessor}^{tree}`), '-p', f.base, '-p', f.predecessor!, '-m', 'merge predecessor');
+    f.git('checkout', '-q', '--detach', main); await writeFile(join(f.cwd, 'unrelated.ts'), 'unrelated\n'); f.git('add', '.'); f.git('commit', '-qm', 'unrelated main'); const moved = f.git('rev-parse', 'HEAD');
+    const tree = f.git('merge-tree', '--write-tree', moved, f.head); const head = f.git('commit-tree', tree, '-p', moved, '-p', f.head, '-m', 'group'); f.group(moved, head);
+    await expect(s.submit()).resolves.toBeDefined();
+    await expect(carryOverSourceReview(f.cwd, candidate, { base: moved, tree })).resolves.toBe('disjoint base move');
+    f.group(f.base, head);
+    await expect(s.submit()).rejects.toThrow('has not landed');
+  });
+  it('refuses an unmerged predecessor even for an equal tree or a full integration receipt', async () => {
+    const f = await fixture({ predecessor: true }); const candidate = await captureCommittedReviewCandidate(f.cwd, f.predecessor!, f.head, f.predecessor);
+    f.input.source = await f.state(candidate);
+    const tree = f.git('rev-parse', `${f.head}^{tree}`); const group = f.git('commit-tree', tree, '-p', f.base, '-p', f.head, '-m', 'group before predecessor'); f.group(f.base, group);
+    await expect(carryOverSourceReview(f.cwd, candidate, { base: f.base, tree })).rejects.toThrow('not an ancestor');
+    f.input.integration = await f.state(await captureCommittedReviewCandidate(f.cwd, f.base, group));
+    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow('has not landed');
+  });
   it.each(['source', 'run'])('admits a large compressed %s receipt through immutable artifact and full native verification', async (kind) => {
     const s = await sourceFixture();
     s.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
