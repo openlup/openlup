@@ -8,6 +8,13 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.15.0]
+
+- Publishable on the npm `latest` dist-tag as `0.15.0`, from tag
+  `openlup-core-v0.15.0`.
+
+- Republished unchanged.
+
 ## [0.14.0]
 
 - Publishable on the npm `latest` dist-tag as `0.14.0`, from tag

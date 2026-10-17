@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.15.0]
+
+- Publishable on the npm `latest` dist-tag as `0.15.0`, from tag
+  `openlup-outbox-v0.15.0`.
+
+- Republish with the exact `@openlup/core` `0.15.0` peer pin in the set that adds `@openlup/platform`; Outbox APIs, runtime behavior and shipped SQL are unchanged.
+
 ## [0.14.0]
 
 - Publishable on the npm `latest` dist-tag as `0.14.0`, from tag

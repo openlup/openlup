@@ -9,6 +9,9 @@ import { admitReferenceOutbox, observeReferencePackages } from "./candidateAdmis
 import { createReferenceOutbox } from "./referenceContribution.js";
 import { startPublicReferenceServer } from "../public-reference/serve.js";
 vi.mock("node:fs", { spy: true });
+// The live set version: the version the inventory reads from the installed core manifest.
+const SET_VERSION: string = JSON.parse(readFileSync(new URL("../../../packages/core/package.json", import.meta.url), "utf8")).version;
+const OTHER_VERSION = SET_VERSION === "0.0.1" ? "0.0.2" : "0.0.1";
 function fixture(override?: OutboxHandler) {
   const query=vi.fn(async()=>({rows:[]}));const lease={claimJobRun:vi.fn(async()=>({acquired:true,runId:"run",reason:"acquired"})),finishJobRun:vi.fn(async()=>true)};
   const handler=override??{eventType:"example.created",timeoutMs:100,handle:vi.fn(async()=>({kind:"processed" as const}))};
@@ -71,16 +74,16 @@ it("observes core, outbox and platform with their release-set versions and kinds
   const observed = observeReferencePackages();
   expect(observed.inventoryComplete).toBe(true);
   expect(observed.loadedPackages).toEqual([
-    { name: "@openlup/core", version: "0.14.0", kind: "kernel" },
-    { name: "@openlup/outbox", version: "0.14.0", kind: "rail" },
-    { name: "@openlup/platform", version: "0.14.0", kind: "rail" },
+    { name: "@openlup/core", version: SET_VERSION, kind: "kernel" },
+    { name: "@openlup/outbox", version: SET_VERSION, kind: "rail" },
+    { name: "@openlup/platform", version: SET_VERSION, kind: "rail" },
   ]);
 });
 
 it("refuses admission when the platform package is not at the release-set version", async () => {
   const f = fixture();
   const observed = observeReferencePackages();
-  const loadedPackages = observed.loadedPackages.map((pkg) => pkg.name === "@openlup/platform" ? { ...pkg, version: "0.13.0" } : pkg);
+  const loadedPackages = observed.loadedPackages.map((pkg) => pkg.name === "@openlup/platform" ? { ...pkg, version: OTHER_VERSION } : pkg);
   const refused = await admitReferenceOutbox({ ...f.input, loadedPackages, inventoryComplete: true });
   expect(refused.admitted).toBe(false);
   if (refused.admitted) throw new Error("expected refusal");
@@ -104,7 +107,7 @@ it("still refuses unknown installed packages and mismatched manifest names", asy
     names.mockReturnValue(["core", "outbox", "platform"] as never);
     const manifest = vi.mocked(readFileSync).mockImplementation((path, options) =>
       path.toString().endsWith("/platform/package.json")
-        ? JSON.stringify({ name: "@openlup/unknown", version: "0.14.0" })
+        ? JSON.stringify({ name: "@openlup/unknown", version: SET_VERSION })
         : read(path, options));
     try { expect(observeReferencePackages().inventoryComplete).toBe(false); }
     finally { manifest.mockReset(); }

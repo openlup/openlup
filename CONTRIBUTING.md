@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-686e4027ae48df40649e606cb083c49e3f7ba4d845f99ea75c94f03fd2aae479","reason":"The root manifest and lockfile remove the unused openai and sharp dependencies, add pinned @aws-sdk/client-s3 test tooling and record platform's optional SDK/type peers. Compose adds an opt-in local-storage S3-compatible service; the inactive profile requires no storage settings. Vitest removes obsolete personalization coverage exclusions and updates its dynamic-path examples, retaining the projects, required selectors and thresholds. Contributor commands, their order and the shared package-gate discovery described in this section remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-b242b5ab57fd6e21b1e29c85d3b014f190710dceb2a001fde2557dc880f66678","reason":"The workspace lockfile changes only the Core, Outbox and Platform versions and their exact Core peer pins for the 0.15.0 set. Required contributor commands, their order and the checks described here are unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
