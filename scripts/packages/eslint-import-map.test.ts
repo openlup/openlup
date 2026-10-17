@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Linter } from "eslint";
+import { ESLint, type Linter } from "eslint";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // eslint.config.js reads the root package.json `imports` map to find the aliases
@@ -13,6 +13,17 @@ const manifestPath = join(root, "package.json");
 const domainFile = join(root, "src/domains/example/usesAlias.ts");
 
 type ReadFileSync = typeof import("node:fs").readFileSync;
+
+const linters = new WeakMap<Linter.Config[], ESLint>();
+
+function linterFor(config: Linter.Config[]): ESLint {
+  let linter = linters.get(config);
+  if (!linter) {
+    linter = new ESLint({ cwd: root, overrideConfigFile: true, overrideConfig: config });
+    linters.set(config, linter);
+  }
+  return linter;
+}
 
 async function loadConfig(imports?: Record<string, unknown>): Promise<Linter.Config[]> {
   vi.resetModules();
@@ -29,12 +40,12 @@ async function loadConfig(imports?: Record<string, unknown>): Promise<Linter.Con
   return (await import("../../eslint.config.js")).default as Linter.Config[];
 }
 
-function restrictedImports(config: Linter.Config[], specifier: string): string[] {
-  return boundaryMessages(config, `import value from ${JSON.stringify(specifier)};\nexport { value };\n`, domainFile);
+async function restrictedImports(config: Linter.Config[], specifier: string): Promise<string[]> {
+  return await boundaryMessages(config, `import value from ${JSON.stringify(specifier)};\nexport { value };\n`, domainFile);
 }
 
-function boundaryMessages(config: Linter.Config[], source: string, filename: string): string[] {
-  const messages = new Linter({ cwd: root }).verify(source, config, resolve(root, filename));
+async function boundaryMessages(config: Linter.Config[], source: string, filename: string): Promise<string[]> {
+  const messages = (await linterFor(config).lintText(source, { filePath: resolve(root, filename), warnIgnored: true }))[0]!.messages;
   // A parse failure or unmatched config is not proof that a boundary refused.
   expect(messages.filter(({ fatal, ruleId }) => fatal || ruleId === null)).toEqual([]);
   return messages
@@ -82,14 +93,14 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("eslint import-map boundary", () => {
+describe("eslint import-map boundary", { timeout: 60_000 }, () => {
   it("keeps string targets: an alias into infra code is refused in domain code", async () => {
     const config = await loadConfig({
       "#plain-infra": "./server/adapters/example.ts",
       "#plain-neutral": "./src/lib/example.ts",
     });
-    expect(restrictedImports(config, "#plain-infra")).toEqual([expect.stringContaining("Domain code must not import")]);
-    expect(restrictedImports(config, "#plain-neutral")).toEqual([]);
+    expect(await restrictedImports(config, "#plain-infra")).toEqual([expect.stringContaining("Domain code must not import")]);
+    expect(await restrictedImports(config, "#plain-neutral")).toEqual([]);
   });
 
   it("loads conditional and fallback-array targets and refuses an alias any of whose targets reaches infra", async () => {
@@ -103,27 +114,27 @@ describe("eslint import-map boundary", () => {
       "#array-neutral": ["./src/lib/first.ts", "./src/lib/second.ts"],
     });
     for (const alias of ["#overlay-infra", "#nested-infra", "#plain-infra", "#array-infra", "#condition-array-infra"]) {
-      expect(restrictedImports(config, alias)).toEqual([expect.stringContaining("Domain code must not import")]);
+      expect(await restrictedImports(config, alias)).toEqual([expect.stringContaining("Domain code must not import")]);
     }
-    expect(restrictedImports(config, "#overlay-neutral")).toEqual([]);
-    expect(restrictedImports(config, "#array-neutral")).toEqual([]);
+    expect(await restrictedImports(config, "#overlay-neutral")).toEqual([]);
+    expect(await restrictedImports(config, "#array-neutral")).toEqual([]);
   });
 
   it("still applies the committed import map", async () => {
     const config = await loadConfig();
-    expect(restrictedImports(config, "#tester-program-email-binding")).toEqual([expect.stringContaining("Domain code must not import")]);
-    expect(restrictedImports(config, "#deployment-analytics")).toEqual([]);
+    expect(await restrictedImports(config, "#tester-program-email-binding")).toEqual([expect.stringContaining("Domain code must not import")]);
+    expect(await restrictedImports(config, "#deployment-analytics")).toEqual([]);
   });
 });
 
-describe("eslint portable package boundaries", () => {
+describe("eslint portable package boundaries", { timeout: 60_000 }, () => {
   it("rejects every existing provider family in both portable source trees", async () => {
     const config = await loadConfig();
     for (const pkg of portablePackages) for (const specifier of [
       cardProvider, `${cardProvider}/subpath`, "pg", "openai", `@${cardProvider}/${cardProvider}-js`,
       managedProvider, "@vercel/blob", "@modelcontextprotocol/sdk",
     ]) {
-      expect(boundaryMessages(config, `import value from ${JSON.stringify(specifier)};`, `packages/${pkg}/src/usesProvider.ts`))
+      expect(await boundaryMessages(config, `import value from ${JSON.stringify(specifier)};`, `packages/${pkg}/src/usesProvider.ts`))
         .toEqual([expect.stringContaining("Portable package source must not import provider SDKs")]);
     }
   });
@@ -132,7 +143,7 @@ describe("eslint portable package boundaries", () => {
     const config = await loadConfig();
     for (const pkg of portablePackages) for (const specifier of [managedProvider, "@vercel/blob"]) {
       for (const source of loadSources(specifier, extension)) {
-        expect(boundaryMessages(config, source, `packages/${pkg}/src/nested/usesProvider.${extension}`))
+        expect(await boundaryMessages(config, source, `packages/${pkg}/src/nested/usesProvider.${extension}`))
           .toEqual([expect.stringContaining("Portable package source must not import provider SDKs")]);
       }
     }
@@ -157,7 +168,7 @@ describe("eslint portable package boundaries", () => {
     for (const filename of files) for (const specifier of [managedProvider, "@vercel/blob"]) {
       const extension = filename.split(".").at(-1)!;
       for (const source of loadSources(specifier, extension)) {
-        expect(boundaryMessages(config, source, filename)).toEqual([]);
+        expect(await boundaryMessages(config, source, filename)).toEqual([]);
       }
     }
   });
@@ -167,14 +178,14 @@ describe("eslint portable package boundaries", () => {
     for (const source of [
       'const value = require("@vercel/blob");',
       'const value = module.require(`@vercel/blob`);',
-    ]) expect(boundaryMessages(config, source, "server/domains/example/usesProvider.cjs"))
+    ]) expect(await boundaryMessages(config, source, "server/domains/example/usesProvider.cjs"))
       .toEqual([expect.stringContaining("Domain code must not import")]);
     for (const source of [
       'const value = require("@openlup/core/src/payment/index.ts");',
       'const value = module.require(`../../packages/core/src/payment/index.ts`);',
-    ]) expect(boundaryMessages(config, source, "server/adapters/example.cjs"))
+    ]) expect(await boundaryMessages(config, source, "server/adapters/example.cjs"))
       .toEqual([expect.stringContaining("Import a workspace package only through a subpath")]);
-    expect(boundaryMessages(config, 'const value = require("@openlup/core/payment");', "server/adapters/example.cjs"))
+    expect(await boundaryMessages(config, 'const value = require("@openlup/core/payment");', "server/adapters/example.cjs"))
       .toEqual([]);
   });
 
@@ -188,17 +199,17 @@ describe("eslint portable package boundaries", () => {
         `import value from "${outside}";`,
         `const value = import(\`${outside}\`);`,
         `const value = module.require("${outside}");`,
-      ]) expect(boundaryMessages(config, source, filename))
+      ]) expect(await boundaryMessages(config, source, filename))
         .toEqual([expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`)]);
 
-      expect(boundaryMessages(config, 'import value from "./internal";', filename)).toEqual([]);
+      expect(await boundaryMessages(config, 'import value from "./internal";', filename)).toEqual([]);
       const parent = `${"../".repeat(Math.max(depth, 1))}internal`;
-      expect(boundaryMessages(config, `import value from "${parent}";`, filename))
+      expect(await boundaryMessages(config, `import value from "${parent}";`, filename))
         .toEqual(depth === 0 || depth > 12
           ? [expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`)]
           : []);
       if (depth > 0) {
-        expect(boundaryMessages(config, 'import value from "@vercel/blob";', filename))
+        expect(await boundaryMessages(config, 'import value from "@vercel/blob";', filename))
           .toEqual([expect.stringContaining("Portable package source must not import provider SDKs")]);
       }
     }
@@ -211,7 +222,7 @@ describe("eslint portable package boundaries", () => {
       const otherPackage = pkg === "core" ? "ui" : "core";
       for (const specifier of ["../../outside", "/outside", "@/outside", "#outside", `@openlup/${otherPackage}`]) {
         for (const source of [`import value from "${specifier}";`, `const value = require(\`${specifier}\`);`]) {
-          expect(boundaryMessages(config, source, filename))
+          expect(await boundaryMessages(config, source, filename))
             .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
         }
       }
@@ -223,10 +234,10 @@ describe("eslint portable package boundaries", () => {
     for (const pkg of portablePackages) for (const extension of sourceExtensions) {
       const filename = `packages/${pkg}/src/nested/usesPort.${extension}`;
       for (const specifier of ["zod", "./internal", "../ports", `${cardProvider}-helper`, "@vercel-like/sdk"]) {
-        for (const source of loadSources(specifier, extension)) expect(boundaryMessages(config, source, filename)).toEqual([]);
+        for (const source of loadSources(specifier, extension)) expect(await boundaryMessages(config, source, filename)).toEqual([]);
       }
-      expect(boundaryMessages(config, 'const providerLabel = "@vercel/blob";', filename)).toEqual([]);
-      expect(boundaryMessages(config, 'const value = registry.require("@vercel/blob");', filename)).toEqual([]);
+      expect(await boundaryMessages(config, 'const providerLabel = "@vercel/blob";', filename)).toEqual([]);
+      expect(await boundaryMessages(config, 'const value = registry.require("@vercel/blob");', filename)).toEqual([]);
     }
   });
   it.each(sourceExtensions.flatMap((extension) => [0, 1, 4, 12, 13].map((depth) => ({ extension, depth }))))(
@@ -235,22 +246,22 @@ describe("eslint portable package boundaries", () => {
       const config=await loadConfig();
       const filename=`packages/outbox/src/${"nested/".repeat(depth)}usesKernel.${extension}`;
       for(const specifier of ["@openlup/core/outbox","@openlup/core/readiness","@openlup/core/platform-runtime","@openlup/core/standard-schema"]){
-        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename)).toEqual([]);
+        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename)).toEqual([]);
       }
       for(const specifier of ["@openlup/core/src/readiness","@openlup/core/dist/readiness/index.js","@openlup/core/not-exported","@openlup/core"]){
-        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
       }
       for(const specifier of ["@openlup/ui","@openlup/unknown","/outside","@/outside","#outside",`${"../".repeat(depth+3)}outside`]){
-        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("A file under packages/outbox stays package-local"));
       }
       for(const specifier of [managedProvider,cardProvider,"pg","openai","@vercel/blob"]){
-        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("Portable package source must not import provider SDKs"));
       }
       if (depth === 0) for(const pkg of portablePackages)for(const source of loadSources("@openlup/outbox","ts"))
-        expect(boundaryMessages(config,source,`packages/${pkg}/src/usesOutbox.ts`))
+        expect(await boundaryMessages(config,source,`packages/${pkg}/src/usesOutbox.ts`))
           .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
     });
 
@@ -260,22 +271,22 @@ describe("eslint portable package boundaries", () => {
       const config=await loadConfig();
       const filename=`packages/platform/src/${"nested/".repeat(depth)}usesKernel.${extension}`;
       for(const specifier of ["@openlup/core/outbox","@openlup/core/readiness","@openlup/core/platform-runtime","@openlup/core/standard-schema"]){
-        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename)).toEqual([]);
+        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename)).toEqual([]);
       }
       for(const specifier of ["@openlup/core/src/readiness","@openlup/core/dist/readiness/index.js","@openlup/core/not-exported","@openlup/core"]){
-        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
       }
       for(const specifier of ["@openlup/ui","@openlup/outbox","@openlup/unknown","/outside","@/outside","#outside",`${"../".repeat(depth+3)}outside`]){
-        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("A file under packages/platform stays package-local"));
       }
       // The platform adapters own their provider clients, so the portable-source SDK rule does not apply.
       for(const specifier of ["pg","@vercel/blob"]){
-        for(const source of loadSources(specifier,extension))expect(boundaryMessages(config,source,filename)).toEqual([]);
+        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename)).toEqual([]);
       }
       if (depth === 0) for(const pkg of portablePackages)for(const source of loadSources("@openlup/platform/http","ts"))
-        expect(boundaryMessages(config,source,`packages/${pkg}/src/usesPlatform.ts`))
+        expect(await boundaryMessages(config,source,`packages/${pkg}/src/usesPlatform.ts`))
           .toContainEqual(expect.stringContaining(`A file under packages/${pkg} imports nothing outside that directory`));
     });
 
@@ -284,19 +295,19 @@ describe("eslint portable package boundaries", () => {
     for(const pkg of ["core","ui","outbox","platform"]){
       const filename=`packages/${pkg}/src/usesPrivate.ts`;
       for(const source of loadSources(`@openlup/${pkg}/src/private`,"ts"))
-        expect(boundaryMessages(config,source,filename))
+        expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
     }
   });
 
 });
 
-describe("eslint platform module boundaries", () => {
+describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   const platformSource = join(root, "packages/platform/src");
   const typeOnlyForm = /^(?:import type |import \{ type |export type |type Value = import\()/;
 
-  function moduleMessages(config: Linter.Config[], source: string, filename: string): string[] {
-    const messages = new Linter({ cwd: root }).verify(source, config, resolve(root, filename));
+  async function moduleMessages(config: Linter.Config[], source: string, filename: string): Promise<string[]> {
+    const messages = (await linterFor(config).lintText(source, { filePath: resolve(root, filename), warnIgnored: true }))[0]!.messages;
     expect(messages.filter(({ fatal, ruleId }) => fatal || ruleId === null)).toEqual([]);
     return messages
       .filter(({ ruleId }) => ["no-restricted-imports", "no-restricted-syntax", "@typescript-eslint/no-restricted-imports"].includes(ruleId!))
@@ -324,34 +335,34 @@ describe("eslint platform module boundaries", () => {
       const file = (module: string) => `packages/platform/src/${module}/${"nested/".repeat(depth)}usesModule.${extension}`;
       const up = "../".repeat(depth + 1);
       const refusal = (module: string) => expect.stringContaining(`packages/platform module "${module}"`);
-      const admitted = (module: string, specifier: string, onlyTypes = false) => {
+      const admitted = async (module: string, specifier: string, onlyTypes = false) => {
         for (const source of loadSources(specifier, extension)) {
-          const messages = moduleMessages(config, source, file(module));
+          const messages = await moduleMessages(config, source, file(module));
           if (!onlyTypes || typeOnlyForm.test(source)) expect(messages).toEqual([]);
           else expect(messages).toContainEqual(refusal(module));
         }
       };
-      const refused = (module: string, specifier: string) => {
-        for (const source of loadSources(specifier, extension)) expect(moduleMessages(config, source, file(module))).toContainEqual(refusal(module));
+      const refused = async (module: string, specifier: string) => {
+        for (const source of loadSources(specifier, extension)) expect(await moduleMessages(config, source, file(module))).toContainEqual(refusal(module));
       };
 
       // Own internals, from the module's files and through the source root.
-      for (const specifier of ["./own.js", `${up}composition/own.js`, ...(depth > 0 ? ["../own.js"] : [])]) admitted("composition", specifier);
+      for (const specifier of ["./own.js", `${up}composition/own.js`, ...(depth > 0 ? ["../own.js"] : [])]) await admitted("composition", specifier);
       // Declared value edges through the target's entry.
-      admitted("composition", `${up}data/index.js`);
-      admitted("bff", `${up}kernel/index.js`);
+      await admitted("composition", `${up}data/index.js`);
+      await admitted("bff", `${up}kernel/index.js`);
       // A types edge admits type-only imports; any load that brings in a value is refused.
-      admitted("http", `${up}bff/index.js`, true);
-      admitted("job-ledger", `${up}data/index.js`, true);
+      await admitted("http", `${up}bff/index.js`, true);
+      await admitted("job-ledger", `${up}data/index.js`, true);
       // Deep imports into a neighbour, even along a declared edge.
-      for (const specifier of [`${up}data/postgresGateway.js`, `${up}data/index.ts`, `${up}data/index`, `${up}data`, `${up}data/`]) refused("composition", specifier);
-      refused("http", `${up}bff/dispatch.js`);
+      for (const specifier of [`${up}data/postgresGateway.js`, `${up}data/index.ts`, `${up}data/index`, `${up}data`, `${up}data/`]) await refused("composition", specifier);
+      await refused("http", `${up}bff/dispatch.js`);
       // Undeclared directions, even through the target's public entry.
-      refused("kernel", `${up}composition/index.js`);
-      refused("data", `${up}blob/index.js`);
-      refused("scheduler", `${up}bff/index.js`);
-      refused("migrations", `${up}kernel/index.js`);
-      refused("blob", `${up}data/index.js`);
+      await refused("kernel", `${up}composition/index.js`);
+      await refused("data", `${up}blob/index.js`);
+      await refused("scheduler", `${up}bff/index.js`);
+      await refused("migrations", `${up}kernel/index.js`);
+      await refused("blob", `${up}data/index.js`);
       // Escapes around the relative entry: package self-reference, URL, unnormalized or out-of-source paths.
       for (const specifier of [
         "@openlup/platform/composition", "@openlup/platform", "file:///packages/platform/src/composition/index.js",
@@ -368,9 +379,9 @@ describe("eslint platform module boundaries", () => {
         "@OpenLup/platform/composition", "@OPENLUP/platform", "@openLup/core/platform-runtime",
         // Test and fixture files are outside these rules, so a production file may not relay through one.
         "./bridge.testFixtures.js", "./bridge.test.js", `${up}kernel/bridge.testFixtures.ts`,
-      ]) refused("kernel", specifier);
+      ]) await refused("kernel", specifier);
       // Ordinary package and built-in specifiers stay admitted.
-      for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime", "./testing.js", "./latest.js"]) admitted("kernel", specifier);
+      for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime", "./testing.js", "./latest.js"]) await admitted("kernel", specifier);
     },
     // Each case lints several hundred TypeScript sources; hosted runners need more than the default.
     60_000);
@@ -378,14 +389,14 @@ describe("eslint platform module boundaries", () => {
   it.each(sourceExtensions)("keeps refusing self-reference and URL escapes beyond the deepest module depth in %s", async (extension) => {
     const config = await loadConfig();
     const filename = `packages/platform/src/kernel/${"nested/".repeat(11)}usesModule.${extension}`;
-    for (const source of loadSources("./own.js", extension)) expect(moduleMessages(config, source, filename)).toEqual([]);
+    for (const source of loadSources("./own.js", extension)) expect(await moduleMessages(config, source, filename)).toEqual([]);
     for (const specifier of ["@openlup/platform/composition", "@OpenLup/platform/composition", "file:///packages/platform/src/composition/index.js", "././own.js", "./bridge.testFixtures.js"]) {
       for (const source of loadSources(specifier, extension)) {
-        expect(moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining('packages/platform module "kernel"'));
+        expect(await moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining('packages/platform module "kernel"'));
       }
     }
     for (const source of loadSources("../composition/index.js", extension)) {
-      expect(moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining("A file under packages/platform stays package-local"));
+      expect(await moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining("A file under packages/platform stays package-local"));
     }
   });
 
