@@ -1,4 +1,5 @@
-import { dirname, join, resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Linter } from "eslint";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -288,4 +289,146 @@ describe("eslint portable package boundaries", () => {
     }
   });
 
+});
+
+describe("eslint platform module boundaries", () => {
+  const platformSource = join(root, "packages/platform/src");
+  const typeOnlyForm = /^(?:import type |import \{ type |export type |type Value = import\()/;
+
+  function moduleMessages(config: Linter.Config[], source: string, filename: string): string[] {
+    const messages = new Linter({ cwd: root }).verify(source, config, resolve(root, filename));
+    expect(messages.filter(({ fatal, ruleId }) => fatal || ruleId === null)).toEqual([]);
+    return messages
+      .filter(({ ruleId }) => ["no-restricted-imports", "no-restricted-syntax", "@typescript-eslint/no-restricted-imports"].includes(ruleId!))
+      .map(({ message }) => message);
+  }
+
+  it("declares exactly the package's module directories, each edge to another declared module", async () => {
+    const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
+      PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;
+    };
+    const entries = readdirSync(platformSource, { withFileTypes: true });
+    expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
+    expect(Object.keys(graph).sort()).toEqual(entries.map(({ name }) => name).sort());
+    for (const [module, { values, types }] of Object.entries(graph)) {
+      for (const target of [...values, ...types]) expect(Object.keys(graph)).toContain(target);
+      expect([...values, ...types]).not.toContain(module);
+      expect(values.filter((target) => types.includes(target))).toEqual([]);
+    }
+  });
+
+  it.each(sourceExtensions.flatMap((extension) => [0, 1, 10].map((depth) => ({ extension, depth }))))(
+    "admits own files and declared entries and refuses every other module path in $extension at depth $depth",
+    async ({ extension, depth }) => {
+      const config = await loadConfig();
+      const file = (module: string) => `packages/platform/src/${module}/${"nested/".repeat(depth)}usesModule.${extension}`;
+      const up = "../".repeat(depth + 1);
+      const refusal = (module: string) => expect.stringContaining(`packages/platform module "${module}"`);
+      const admitted = (module: string, specifier: string, onlyTypes = false) => {
+        for (const source of loadSources(specifier, extension)) {
+          const messages = moduleMessages(config, source, file(module));
+          if (!onlyTypes || typeOnlyForm.test(source)) expect(messages).toEqual([]);
+          else expect(messages).toContainEqual(refusal(module));
+        }
+      };
+      const refused = (module: string, specifier: string) => {
+        for (const source of loadSources(specifier, extension)) expect(moduleMessages(config, source, file(module))).toContainEqual(refusal(module));
+      };
+
+      // Own internals, from the module's files and through the source root.
+      for (const specifier of ["./own.js", `${up}composition/own.js`, ...(depth > 0 ? ["../own.js"] : [])]) admitted("composition", specifier);
+      // Declared value edges through the target's entry.
+      admitted("composition", `${up}data/index.js`);
+      admitted("bff", `${up}kernel/index.js`);
+      // A types edge admits type-only imports; any load that brings in a value is refused.
+      admitted("http", `${up}bff/index.js`, true);
+      admitted("job-ledger", `${up}data/index.js`, true);
+      // Deep imports into a neighbour, even along a declared edge.
+      for (const specifier of [`${up}data/postgresGateway.js`, `${up}data/index.ts`, `${up}data/index`, `${up}data`, `${up}data/`]) refused("composition", specifier);
+      refused("http", `${up}bff/dispatch.js`);
+      // Undeclared directions, even through the target's public entry.
+      refused("kernel", `${up}composition/index.js`);
+      refused("data", `${up}blob/index.js`);
+      refused("scheduler", `${up}bff/index.js`);
+      refused("migrations", `${up}kernel/index.js`);
+      refused("blob", `${up}data/index.js`);
+      // Escapes around the relative entry: package self-reference, URL, unnormalized or out-of-source paths.
+      for (const specifier of [
+        "@openlup/platform/composition", "@openlup/platform", "file:///packages/platform/src/composition/index.js",
+        `${up}kernel/../composition/index.js`, `./x/../${up}composition/index.js`, `${up}./composition/index.js`,
+        `${up}../src/composition/index.js`, `././${up}composition/index.js`, `./.x/../${up}composition/index.js`,
+        `${up}kernel/.x/../../composition/index.js`, `./..\\composition\\index.js`, `./%2e%2e/composition/index.js`,
+        `${up}kernel//../composition/index.js`, `.//${up}composition/index.js`,
+        ...["\t", "\n", "\r"].flatMap((control) => [`${up}kernel/${control}../composition/index.js`, `./${control}${up}composition/index.js`]),
+        "\tfile:///packages/platform/src/composition/index.js", " file:///packages/platform/src/composition/index.js",
+        // A dependency without an exports map resolves a climb in its subpath back into this tree.
+        "accepts/../../packages/platform/src/composition/index.js", "zod/../../packages/platform/src/data/postgresGateway.js",
+        "accepts/./index.js", "accepts//index.js", "accepts/", "accepts/%2e%2e/index.js", "node:fs/../index.js",
+        // A case-insensitive file system resolves another spelling of the scope to the workspace links.
+        "@OpenLup/platform/composition", "@OPENLUP/platform", "@openLup/core/platform-runtime",
+        // Test and fixture files are outside these rules, so a production file may not relay through one.
+        "./bridge.testFixtures.js", "./bridge.test.js", `${up}kernel/bridge.testFixtures.ts`,
+      ]) refused("kernel", specifier);
+      // Ordinary package and built-in specifiers stay admitted.
+      for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime", "./testing.js", "./latest.js"]) admitted("kernel", specifier);
+    },
+    // Each case lints several hundred TypeScript sources; hosted runners need more than the default.
+    60_000);
+
+  it.each(sourceExtensions)("keeps refusing self-reference and URL escapes beyond the deepest module depth in %s", async (extension) => {
+    const config = await loadConfig();
+    const filename = `packages/platform/src/kernel/${"nested/".repeat(11)}usesModule.${extension}`;
+    for (const source of loadSources("./own.js", extension)) expect(moduleMessages(config, source, filename)).toEqual([]);
+    for (const specifier of ["@openlup/platform/composition", "@OpenLup/platform/composition", "file:///packages/platform/src/composition/index.js", "././own.js", "./bridge.testFixtures.js"]) {
+      for (const source of loadSources(specifier, extension)) {
+        expect(moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining('packages/platform module "kernel"'));
+      }
+    }
+    for (const source of loadSources("../composition/index.js", extension)) {
+      expect(moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining("A file under packages/platform stays package-local"));
+    }
+  });
+
+  it("declares exactly the inventoried edges between modules; only the composer may declare more", async () => {
+    const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
+      PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;
+    };
+    const ts = (await import("typescript")).default;
+    const actual = new Map(Object.keys(graph).map((module) => [module, { values: new Set<string>(), types: new Set<string>() }]));
+    const files = (directory: string): string[] => readdirSync(directory, { withFileTypes: true })
+      .flatMap((entry) => entry.isDirectory() ? files(join(directory, entry.name)) : /\.(?:ts|tsx|js|mjs|cjs)$/.test(entry.name) ? [join(directory, entry.name)] : []);
+    for (const path of files(platformSource)) {
+      const module = relative(platformSource, path).split(sep)[0]!;
+      const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+      const edge = (specifier: string, typeOnly: boolean) => {
+        if (!specifier.startsWith(".")) return;
+        const target = relative(platformSource, resolve(dirname(path), specifier)).split(sep)[0]!;
+        if (target !== module) actual.get(module)![typeOnly ? "types" : "values"].add(target);
+      };
+      const visit = (node: import("typescript").Node): void => {
+        if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+          const clause = ts.isImportDeclaration(node) ? node.importClause : undefined;
+          const named = ts.isImportDeclaration(node) ? (clause && !clause.name && clause.namedBindings && ts.isNamedImports(clause.namedBindings) ? clause.namedBindings.elements : undefined)
+            : (node.exportClause && ts.isNamedExports(node.exportClause) ? node.exportClause.elements : undefined);
+          const typeOnly = (ts.isImportDeclaration(node) ? clause?.isTypeOnly === true : node.isTypeOnly) || (named !== undefined && named.length > 0 && named.every((element) => element.isTypeOnly));
+          edge(node.moduleSpecifier.text, typeOnly);
+        }
+        if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteral(node.arguments[0]) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
+          || (ts.isIdentifier(node.expression) && node.expression.text === "require")
+          || (ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "module" && node.expression.name.text === "require"))) edge(node.arguments[0].text, false);
+        if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference) && ts.isStringLiteral(node.moduleReference.expression)) edge(node.moduleReference.expression.text, node.isTypeOnly);
+        if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) edge(node.argument.literal.text, true);
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+    for (const [module, { values, types }] of actual) {
+      const typesOnly = [...types].filter((target) => !values.has(target)).sort();
+      if (module === "composition") {
+        for (const target of [...values, ...typesOnly]) expect(graph[module]!.values).toContain(target);
+        continue;
+      }
+      expect({ module, values: [...values].sort(), types: typesOnly }).toEqual({ module, values: [...graph[module]!.values].sort(), types: [...graph[module]!.types].sort() });
+    }
+  });
 });
