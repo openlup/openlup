@@ -13,3 +13,13 @@ export {
   type PostgresPlatformJobRunLedgerOptions,
 } from "./postgres.js";
 export { JOB_RUN_LEDGER_MIGRATIONS, JOB_RUN_LEDGER_SQL_URL, JOB_RUN_LEDGER_V3_SQL_URL } from "./sql.js";
+export {
+  createManagedJobRunCalls,
+  createSupabasePlatformJobRunLedger,
+  platformJobInvocationForDriver,
+  type ManagedJobRunOptions,
+  type PlatformJobClient,
+  type PlatformJobDriver,
+  type PlatformJobSupabaseClient,
+  type SupabasePlatformJobRunLedgerOptions,
+} from "./supabase.js";

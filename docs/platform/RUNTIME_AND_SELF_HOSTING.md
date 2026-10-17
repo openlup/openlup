@@ -29,7 +29,7 @@ use the package's `authorizeCron` guard through `api/_cron/authorizeCron.ts`.
 The package's Node runtime, scheduler and node host are not yet composed by the
 public reference server; the module's composition change does that.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-7788098979c46ed1078d805f50d6928427d19d9ab28facfe4ad24acd6a628110","reason":"Handler tests distinguish real default adopter-policy refusal from explicit unit compositions. Concrete GET/POST requests retain bearer validation, production pg_cron refusal, configured claim driver mapping and default unconfigured refusal; they no longer reconstruct unpublished scheduler migrations. No runtime route, policy or scheduler installation changes."} -->
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-fd5a90ad2b860bc0c6e417ac662e9975bb07822bfe72f103b3381683ee6324a9","reason":"The health endpoint's handler moves into @openlup/platform/bff as a generic health handler over the package's response envelope; server/bff/health.ts binds it with the same contract, reads and responses. Runtime routes, health semantics and the runtime model described here are unchanged."} -->
 
 ## Self-host boundary
 

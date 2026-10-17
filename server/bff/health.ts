@@ -1,10 +1,6 @@
 import { withObservedRoute } from "../_lib/observability/route.js";
-import type { VercelRequest, VercelResponse } from "../_lib/types/vercel.js";
-import {
-  sendBffError,
-  sendBffSuccess,
-  sendMethodNotAllowed,
-} from "../_lib/bff/response.js";
+import { createHealthHandler } from "@openlup/platform/bff";
+import { bffResponder } from "../_lib/bff/response.js";
 import {
   BFF_DOMAINS,
   bffHealthDataSchema,
@@ -19,35 +15,18 @@ import {
   type HostedRuntimeCompatibilityEnv,
 } from "../adapters/vercel/runtimeProvenance.js";
 
-function handler(req: VercelRequest, res: VercelResponse): void {
-  if (req.method !== "GET") {
-    sendMethodNotAllowed(res, ["GET"]);
-    return;
-  }
-
-  const provenance = resolveReleaseProvenance();
-  const result = bffHealthDataSchema.safeParse({
+const handler = createHealthHandler({
+  responder: bffResponder,
+  contract: bffHealthDataSchema,
+  read: () => ({
     status: "ok",
     service: "openlup-bff",
     contractVersion: "2026-05-29.wave-2",
     domains: BFF_DOMAINS,
-    ...provenance,
+    ...resolveReleaseProvenance(),
     emailPresentationId: emailPresentation.id,
-  });
-
-  if (!result.success) {
-    sendBffError(res, "INTERNAL", "Health contract is invalid");
-    return;
-  }
-
-  sendBffSuccess(
-    res,
-    result.data,
-    {
-      contractVersion: result.data.contractVersion,
-    },
-  );
-}
+  }),
+});
 
 export function resolveReleaseProvenance(
   env: RuntimeProvenanceEnv & HostedRuntimeCompatibilityEnv = process.env,
