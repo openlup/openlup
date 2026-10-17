@@ -253,7 +253,18 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     // The SDK-absent phase uses only npm's default cache. Legacy peer mode prevents automatic peer installs;
     // physical and independent resolution checks below prove what omission flags cannot.
     const install = (packages: string[], sdkPresent = false) => process.stdout.write(command("npm", ["install", sdkPresent ? "--prefer-offline" : "--offline", "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages], consumer, isolatedConsumerEnv()));
-    install([...tarballs, locked("zod"), locked("@types/node")]);
+    // The offline phase installs only local tarballs: npm ci caches the lockfile's tarballs but not their
+    // registry metadata, so a cold runner cannot resolve version specs offline. Pack the locked runtime and
+    // type inputs from the root's installed directories, as the Outbox proof does.
+    const packInstalled = (name: string): string => {
+      const directory = join(checkout, "node_modules", name);
+      if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) throw new Error(`Consumer input ${name} must be an ordinary installed directory`);
+      const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
+      if (`${name}@${version}` !== locked(name)) throw new Error(`Consumer input ${name} differs from the lockfile`);
+      const [info] = JSON.parse(command("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", artifacts], directory, isolatedConsumerEnv()));
+      return join(artifacts, info.filename);
+    };
+    install([...tarballs, ...["zod", "@types/node", "undici-types"].map(packInstalled)]);
     assertConsumerIsolation(consumer, checkout);
     assertExportInventory(consumer);
     for (const entry of NON_ADAPTER_ENTRIES) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
