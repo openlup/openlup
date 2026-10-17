@@ -5,7 +5,6 @@ export const CUSTOMER_ACCOUNT_UI_FLAG = "VITE_COMMERCE_V2_W12_CUSTOMER_AUTH_UI";
 export const ADMIN_OMS_UI_FLAG = "VITE_ADMIN_OMS_UI_ENABLED";
 export const ACCOUNT_ORDER_FLOW_FLAG = "VITE_ACCOUNT_ORDER_FLOW_ENABLED";
 export const ADMIN_RISK_UI_FLAG = "VITE_ADMIN_RISK_UI_ENABLED";
-export const PUBLIC_HOMEPAGE_PERSONALIZATION_FLAG = "VITE_PUBLIC_HOMEPAGE_PERSONALIZATION_ENABLED";
 
 export const HIDDEN_SURFACE_PATHS = [
   "/v2",
@@ -20,8 +19,6 @@ export const HIDDEN_SURFACE_PATHS = [
   "/build-your-box/payment-failed",
   "/build-your-box/payment",
   "/build-your-box/tpay-simulator",
-  "/zrob-puszke",
-  "/your-dog-on-a-can",
 ] as const;
 
 export const CUSTOMER_ACCOUNT_SURFACE_PATHS = [
@@ -85,17 +82,4 @@ export function isAdminRiskSurfaceAllowed(
 
 function isTrue(value: string | boolean | undefined): boolean {
   return value === true || value === "true";
-}
-
-/**
- * Build-time gate for the /v2 hero personalization variant. Off by default; when
- * on, the hero fetches the personalization bundle and renders a personalized
- * headline for recognised returning visitors (else the generic headline). The
- * server generation + endpoint have their own (server-side) flag; this only
- * governs the client render.
- */
-export function isHomepagePersonalizationEnabled(
-  env: HiddenSurfaceEnv = import.meta.env,
-): boolean {
-  return isTrue(env[PUBLIC_HOMEPAGE_PERSONALIZATION_FLAG]);
 }

@@ -3,19 +3,6 @@ import {
   type CheckoutCookieResponse,
   type CheckoutPaymentContinuationMinter,
 } from "../../domains/commerce/checkoutPaymentContinuationCredential.js";
-export function personalizationDeclensionEnabled(): boolean {
-  return process.env.COMMERCE_PERSONALIZATION_DECLENSION_ENABLED === "true";
-}
-
-export function composeCheckoutPersonalizationCookies(
-  buildCookies: (clientId: string, secret: string) => string[],
-): ((clientId: string) => string[]) | undefined {
-  const secret = process.env.PERSONALIZATION_COOKIE_SECRET;
-  return personalizationDeclensionEnabled() && secret
-    ? (clientId) => buildCookies(clientId, secret)
-    : undefined;
-}
-
 export function composeCheckoutPaymentContinuationMinter(): CheckoutPaymentContinuationMinter | undefined {
   const codec = createCheckoutPaymentContinuationCodec(
     process.env.COMMERCE_CHECKOUT_RESUME_TOKEN_SECRET,

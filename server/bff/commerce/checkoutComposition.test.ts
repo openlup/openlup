@@ -1,23 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PSP_PROVIDER_KINDS } from "../../../src/domains/payment/pspIntegrationPlan.js";
 
-import {
-  composeCheckoutPaymentContinuationMinter,
-  composeCheckoutPersonalizationCookies,
-} from "./checkoutComposition.js";
+import { composeCheckoutPaymentContinuationMinter } from "./checkoutComposition.js";
 
 const originalSecret = process.env.COMMERCE_CHECKOUT_RESUME_TOKEN_SECRET;
-const originalPersonalizationFlag = process.env.COMMERCE_PERSONALIZATION_DECLENSION_ENABLED;
-const originalPersonalizationSecret = process.env.PERSONALIZATION_COOKIE_SECRET;
 
 afterEach(() => {
   if (originalSecret === undefined) delete process.env.COMMERCE_CHECKOUT_RESUME_TOKEN_SECRET;
   else process.env.COMMERCE_CHECKOUT_RESUME_TOKEN_SECRET = originalSecret;
-  if (originalPersonalizationFlag === undefined) {
-    delete process.env.COMMERCE_PERSONALIZATION_DECLENSION_ENABLED;
-  } else process.env.COMMERCE_PERSONALIZATION_DECLENSION_ENABLED = originalPersonalizationFlag;
-  if (originalPersonalizationSecret === undefined) delete process.env.PERSONALIZATION_COOKIE_SECRET;
-  else process.env.PERSONALIZATION_COOKIE_SECRET = originalPersonalizationSecret;
 });
 
 describe("checkout continuation composition", () => {
@@ -28,11 +18,11 @@ describe("checkout continuation composition", () => {
     expect(composeCheckoutPaymentContinuationMinter()).toBeUndefined();
   });
 
-  it("appends the continuation cookie without replacing personalization cookies", () => {
+  it("appends the continuation cookie without replacing cookies already set", () => {
     process.env.COMMERCE_CHECKOUT_RESUME_TOKEN_SECRET = "s".repeat(32);
     const setHeader = vi.fn();
     const res = {
-      getHeader: vi.fn().mockReturnValue(["openlup_personalization=existing; Path=/"]),
+      getHeader: vi.fn().mockReturnValue(["openlup_existing=value; Path=/"]),
       setHeader,
     };
 
@@ -46,19 +36,9 @@ describe("checkout continuation composition", () => {
     });
 
     expect(setHeader).toHaveBeenCalledWith("Set-Cookie", [
-      "openlup_personalization=existing; Path=/",
+      "openlup_existing=value; Path=/",
       expect.stringContaining("__Host-openlup_checkout_continuation="),
     ]);
   });
 
-  it("keeps personalization minting behind its flag and injected cookie builder", () => {
-    process.env.COMMERCE_PERSONALIZATION_DECLENSION_ENABLED = "true";
-    process.env.PERSONALIZATION_COOKIE_SECRET = "personalization-secret";
-    const buildCookies = vi.fn().mockReturnValue(["openlup_personalization=signed; Path=/"]);
-
-    expect(composeCheckoutPersonalizationCookies(buildCookies)?.("client-1")).toEqual([
-      "openlup_personalization=signed; Path=/",
-    ]);
-    expect(buildCookies).toHaveBeenCalledWith("client-1", "personalization-secret");
-  });
 });

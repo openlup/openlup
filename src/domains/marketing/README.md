@@ -14,8 +14,8 @@ top-level domain.
   targeting, and conversion-readiness read models.
 - `marketing/research` - survey/research response contracts, admin read models,
   and public survey submit orchestration.
-- `marketing/tools` - lead-generation utilities such as the pet personalizer,
-  quizzes, calculators, and future acquisition tools. ⚠️ Withheld by the
+- `marketing/tools` - lead-generation utilities such as quizzes, calculators,
+  and future acquisition tools. ⚠️ Withheld by the
   deployment overlay: neither the subdomain's shared module nor its server
   module is part of the published tree, so a published tree carries no
   tool contracts, ports, or generation handler.

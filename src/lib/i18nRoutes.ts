@@ -16,7 +16,6 @@ export type RouteKey =
   | "configuratorPaymentFailed"
   | "configuratorPayment"
   | "configuratorTpaySimulator"
-  | "petPersonalizer"
   | "customerLogin"
   | "customerAuthCallback"
   | "customerDashboard"
@@ -48,7 +47,6 @@ export const routeMap: Record<RouteKey, LocalizedRoute> = {
   configuratorPaymentFailed: { pl: "/skomponuj-pakiet/platnosc-nieudana", en: "/build-your-box/payment-failed" },
   configuratorPayment: { pl: "/skomponuj-pakiet/platnosc", en: "/build-your-box/payment" },
   configuratorTpaySimulator: { pl: "/skomponuj-pakiet/tpay-simulator", en: "/build-your-box/tpay-simulator" },
-  petPersonalizer: { pl: "/zrob-puszke", en: "/your-dog-on-a-can" },
   customerLogin: { pl: "/zaloguj-sie", en: "/sign-in" },
   customerAuthCallback: { pl: "/konto/auth/callback", en: "/account/auth/callback" },
   customerDashboard: { pl: "/konto", en: "/account" },

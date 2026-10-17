@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-925d9e165e1838a0406761bb0baf78f21d506196a314189795ea04c61046224f","reason":"ESLint adds the module graph that Architecture and extensions, internal boundaries, requires inside packages/platform/src: a module's production files import their own files and other modules only through their declared entries, with a type-aware variant for type-only edges, and refuse non-canonical relative paths, package specifiers with dot or empty segments, specifiers holding control characters, spaces, backslashes or percent signs, the package's own name, other spellings of the @openlup scope, test or fixture files and URLs at any depth, using the same core rules as the existing package boundaries. Other packages' rules, required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-afe9019eeb0f2386b4adf522f5dcb0e6c5fbb21c9ccba5f9b83bba9255da4395","reason":"The root manifest and lockfile drop the openai and sharp dependencies, which no remaining source imports, and the Vitest coverage configuration drops the removed personalizer excludes. Required contributor commands, their order and the checks described here are unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-9a719591f66282787260ebee03d29b1ada6e4a5860b1fcf34be7e58323a8aac7","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports; refused deep, type, direction, self-reference, URL, control-character, non-canonical relative, climbing package, scope-spelling and test-file paths at every depth; and an inventory check that the declared edges equal the actual imports between modules, with only the composer declaring more. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-4749486038366760e7147ec91bc31d857125917a4f0f51f28ffa79c497f67632","reason":"The zero-coverage assertion drops the excludes for the removed personalizer paths. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

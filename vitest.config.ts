@@ -53,8 +53,8 @@ const durationManifest: DurationSections = durationManifestFile
 //
 // Metacharacters are split into two classes, because an exclusion entry is a
 // literal path and this repository really does ship test files whose names are
-// dynamic route segments: `api/bff/[...path].test.ts`, `api/c/[slug].test.ts`,
-// `server/bff/catalog/products/[slug].test.ts` and two more.
+// dynamic route segments: `api/bff/[...path].test.ts` and
+// `server/bff/admin/marketing/prelaunch/leads/[sourceRef].test.ts`.
 //
 //   REFUSED: `*`, `?`, `{`, `}` - these mean "this caller sent a glob". No file
 //   in this tree is named with them, so a loud refusal stays the honest answer
@@ -236,12 +236,6 @@ export default defineConfig({
         // Dev-only visual harnesses (DEV-gated routes, never in prod bundles):
         // they render real components with fixtures for diffing, not coverage targets.
         "**/__harness__/**",
-        // pet-personalizer: feature module, tests planned as follow-up wave.
-        // Exclude from threshold to unblock first ship.
-        "src/pages/pet-personalizer/**",
-        "src/components/pet-personalizer/**",
-        "src/lib/pet-personalizer/**",
-        "src/types/pet-personalizer.ts",
       ],
     },
   },

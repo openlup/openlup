@@ -346,14 +346,6 @@
       "class": "public-output"
     },
     {
-      "path": "api/c/[slug].test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "api/c/[slug].ts",
-      "class": "public-output"
-    },
-    {
       "path": "api/cron/abandoned-cart-reminder.test.ts",
       "class": "public-output"
     },
@@ -407,14 +399,6 @@
     },
     {
       "path": "api/cron/checkout-recovery-dispatch.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "api/cron/cleanup.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "api/cron/cleanup.ts",
       "class": "public-output"
     },
     {
@@ -707,10 +691,6 @@
     },
     {
       "path": "config/payment-ui-contract.json",
-      "class": "public-output"
-    },
-    {
-      "path": "config/pl-first-names-declension.json",
       "class": "public-output"
     },
     {
@@ -3450,42 +3430,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/_lib/facades/blob.facade.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/facades/blob.facade.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/facades/declension.facade.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/facades/declension.facade.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/facades/eventsLogger.facade.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/facades/imageGen.facade.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/facades/imageGen.facade.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/facades/ocr.facade.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/facades/ocr.facade.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/_lib/observability/environment.test.ts",
       "class": "public-output"
     },
@@ -3650,18 +3594,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/_lib/services/identity.service.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/services/imageValidator.service.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/services/maskGenerator.service.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/_lib/services/rateLimiter.service.test.ts",
       "class": "public-output"
     },
@@ -3675,10 +3607,6 @@
     },
     {
       "path": "server/_lib/services/rateLimiterPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/_lib/services/textValidator.service.ts",
       "class": "public-output"
     },
     {
@@ -6047,30 +5975,6 @@
     },
     {
       "path": "server/adapters/supabase/payment/tpaySubscriptionActivation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/personalization/personalization.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/personalization/personalization.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/personalization/personalizationLead.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/personalization/personalizationLead.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/personalization/personalizationRead.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/personalization/personalizationRead.ts",
       "class": "public-output"
     },
     {
@@ -8527,14 +8431,6 @@
     },
     {
       "path": "server/domains/commerce/checkoutPaymentLinkTokenStorePort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/checkoutPersonalizationMint.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/checkoutPersonalizationMint.ts",
       "class": "public-output"
     },
     {
@@ -11795,6 +11691,14 @@
     },
     {
       "path": "server/runtime/outbox/referenceContribution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/outbox/retiredEventHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/outbox/retiredEventHandlers.ts",
       "class": "public-output"
     },
     {

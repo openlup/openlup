@@ -153,7 +153,7 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-07d6d061ef321fdd30ba56e58878562210f3799f4fa3da1eb8be658fddaed28f","reason":"The package configuration adds packages/platform to the unreleased list. An unreleased package is private and never in a release set, so preview compatibility, set versioning and release preparation described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-febb9fa1c07232380c22dc47c3fb5a964afe952342679cf2ec7327439158cdd9","reason":"The removed personalization feature's first-name declension dictionary is deleted and its checkout mint file leaves the commerce structural slice; no contract, registry entry or compatibility rule described here changes."} -->
 
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement

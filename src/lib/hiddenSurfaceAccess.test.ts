@@ -74,7 +74,7 @@ describe("hidden surface access", () => {
 
   it("pins every new hidden PL/EN surface for smoke coverage", () => {
     expect(HIDDEN_SURFACE_PATHS).toContain("/build-your-box/payment");
-    expect(HIDDEN_SURFACE_PATHS).toContain("/your-dog-on-a-can");
+    expect(HIDDEN_SURFACE_PATHS).not.toContain("/your-dog-on-a-can");
     expect(CUSTOMER_ACCOUNT_SURFACE_PATHS).toContain("/account/payment/recover");
     expect(ADMIN_OMS_SURFACE_PATHS).toContain("/admin/orders");
     expect(ADMIN_RISK_SURFACE_PATHS).toContain("/admin/risk");

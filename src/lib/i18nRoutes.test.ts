@@ -24,7 +24,6 @@ describe("i18nRoutes", () => {
     expect(localizedPath("configuratorPaymentFailed", "en")).toBe("/build-your-box/payment-failed");
     expect(localizedPath("configuratorPayment", "en")).toBe("/build-your-box/payment");
     expect(localizedPath("configuratorTpaySimulator", "en")).toBe("/build-your-box/tpay-simulator");
-    expect(localizedPath("petPersonalizer", "en")).toBe("/your-dog-on-a-can");
     expect(localizedPath("customerLogin", "en")).toBe("/sign-in");
     expect(localizedPath("customerAuthCallback", "en")).toBe("/account/auth/callback");
     expect(localizedPath("customerDashboard", "en")).toBe("/account");
@@ -60,7 +59,7 @@ describe("i18nRoutes", () => {
   it("maps alternate languages for new hidden routes", () => {
     expect(alternatePathForLang("/skomponuj-pakiet/platnosc", "en")).toBe("/build-your-box/payment");
     expect(alternatePathForLang("/build-your-box/payment-failed", "pl")).toBe("/skomponuj-pakiet/platnosc-nieudana");
-    expect(alternatePathForLang("/zrob-puszke", "en")).toBe("/your-dog-on-a-can");
+    expect(alternatePathForLang("/zrob-puszke", "en")).toBe("/en");
     expect(alternatePathForLang("/account/payment/recover", "pl")).toBe("/konto/platnosc/napraw");
   });
 
