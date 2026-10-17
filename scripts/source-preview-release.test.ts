@@ -400,6 +400,56 @@ describe("exact reviewed replacement admission in both gates", () => {
       for (const bytes of sql) expect(isExpandOnlyPlatformForward(bytes)).toBe(false);
     } finally { sample.cleanup(); }
   });
+  it("admits a feature merged as a merge commit after its separately merged control, although it branched before it", () => {
+    const sample = fixture();
+    try {
+      sample.run(["checkout", "-b", "feature", sample.rootCommit]);
+      sample.apply(sample.change); sample.commit("Feature");
+      sample.run(["checkout", "--detach", sample.approval]);
+      // Resolve generated metadata on the main side; commit() regenerates it for the merged tree.
+      sample.run(["merge", "--no-ff", "--no-commit", "-X", "ours", "feature"]);
+      const head = sample.commit("Merge feature after separate control");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
+  });
+  it("refuses a feature merged before its control even with merge commits", () => {
+    const sample = fixture();
+    try {
+      sample.run(["checkout", "-b", "feature", sample.rootCommit]);
+      sample.apply(sample.change); sample.commit("Feature");
+      sample.run(["checkout", "--detach", sample.rootCommit]);
+      sample.run(["merge", "--no-ff", "--no-commit", "feature"]);
+      sample.commit("Merge feature before control");
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      const head = sample.commit("Late reviewed control");
+      // Required CI compares against the mainline base before the feature was merged.
+      for (const gate of gates({ ...sample, approval: sample.rootCommit }, head)) expect(gate).toThrow(/reviewed replacement/u);
+    } finally { sample.cleanup(); }
+  });
+  it("refuses a merged branch whose own earlier commit carries its control", () => {
+    const sample = fixture();
+    try {
+      sample.run(["checkout", "-b", "feature", sample.rootCommit]);
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); sample.commit("Branch-local control");
+      sample.apply(sample.change); sample.commit("Feature on its own control");
+      sample.run(["checkout", "--detach", sample.rootCommit]);
+      sample.run(["merge", "--no-ff", "--no-commit", "feature"]);
+      const head = sample.commit("Merge self-approving branch");
+      expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+    } finally { sample.cleanup(); }
+  });
+  it("refuses a merged feature that carries its own control", () => {
+    const sample = fixture();
+    try {
+      sample.run(["checkout", "-b", "feature", sample.rootCommit]);
+      sample.apply({ ...sample.change, [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.commit("Self-authorized feature");
+      sample.run(["checkout", "--detach", sample.rootCommit]);
+      sample.run(["merge", "--no-ff", "--no-commit", "feature"]);
+      const head = sample.commit("Merge self-authorized feature");
+      expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+    } finally { sample.cleanup(); }
+  });
   it.each(["one byte", "another path", "additional SQL", "old definition", "missing signature", "duplicate signature", "same feature approval"])("refuses %s in required CI and release prepare", (probe) => {
     const sample = fixture((registry, bytes) => {
       if (probe === "old definition") registry.replacementForwards[0]!.functions[0]!.beforeSha256 = "0".repeat(64);
