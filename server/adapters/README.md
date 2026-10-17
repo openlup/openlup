@@ -69,4 +69,4 @@ at 2,000 rows. It needs SELECT on those three columns, not event payload access
 or direct INSERT. The unbound winback adapter does not establish a runtime
 writer requirement. Tests retain the window's old-versus-recent reminder signal.
 
-<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-3272da9087d82a78516469fe63e35ffee419caee1f595c8b4ae2300af164369c","reason":"Test-only delta. Two tests under server/adapters/s3 prove the platform's s3 blob capability against the reference compose's local S3-compatible service and that service's configuration interpolation. No adapter boundary, port, export or row described here changes."} -->
+<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-c651fd5203d25ad71a086d053a632ddca09f25e67e98034815b8bd919a0e631e","reason":"Test-only delta. The role-free lane confinement test exempts the package consumer proof file, which calls the lane as a package consumer rather than as a reference binding; the binding and every adapter row described here are unchanged."} -->

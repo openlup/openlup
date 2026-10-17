@@ -1,6 +1,6 @@
 # @openlup/platform
 
-Development preview. This package joins core and outbox in the publishable set at 0.14.0; this configuration does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
+Development preview. This package joins core and outbox in the publishable set from the next set version; this configuration does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
