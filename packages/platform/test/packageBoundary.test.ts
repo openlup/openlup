@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 
 // The package's own source reads no environment variable and imports no provider SDK: the
 // application passes the environment and every provider client in. The only external client it
@@ -45,6 +46,21 @@ const files = sources(SOURCE_ROOT).map((path) => ({
 }));
 
 describe("package source boundary", () => {
+  it("typechecks the blob declarations without the optional S3 SDK", () => {
+    const options: ts.CompilerOptions = {
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      strict: true, noEmit: true, types: ["node"], target: ts.ScriptTarget.ES2022,
+    };
+    const host = ts.createCompilerHost(options);
+    const fileExists = host.fileExists;
+    const readFile = host.readFile;
+    const blocked = (path: string) => path.replaceAll("\\", "/").includes("/node_modules/@aws-sdk/");
+    host.fileExists = (path) => !blocked(path) && fileExists(path);
+    host.readFile = (path) => blocked(path) ? undefined : readFile(path);
+    const program = ts.createProgram([join(SOURCE_ROOT, "../dist/blob/index.d.ts")], options, host);
+    expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
+  });
+
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
       "kernel/platformKernel.ts", "bff/dispatch.ts", "composition/composeBundle.ts", "composition/nodeHost.ts",

@@ -79,7 +79,10 @@ export type ComposeBundle = (env: Env) => PlatformBundle;
 /** Build the deployment's composition root from its port binders. */
 export function createBundleComposer(binders: PlatformBundleBinders = {}): ComposeBundle {
   const bindBlob = binders.blob ?? ((capability: string, env: Env) => {
-    const settings = capability === "supabase" ? readSupabaseDataGatewayEnv(env) : null;
+    const settings = capability === "supabase" ? readSupabaseDataGatewayEnv({
+      ...env,
+      SUPABASE_URL: env.SUPABASE_URL?.trim() || env.VITE_SUPABASE_URL?.trim(),
+    }) : null;
     const createSupabaseClient = binders.createSupabaseClient;
     return bindBlobPort(capability, env, {
       supabaseStorageClient: settings && createSupabaseClient

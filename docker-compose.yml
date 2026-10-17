@@ -19,15 +19,15 @@ services:
     image: versity/versitygw:v1.0.10@sha256:9078144b88346d96467afd05f8573d05ae661bd41e11e079c3472b9678d6ad6d
     profiles:
       - local-storage
+    # Missing credentials become invalid gateway options: refusal happens only when this
+    # service starts, rather than during interpolation of an inactive profile.
     command:
-      - --access
-      - ${OBJECT_STORAGE_ACCESS_KEY:?OBJECT_STORAGE_ACCESS_KEY must name the local storage access key}
-      - --secret
-      - ${OBJECT_STORAGE_SECRET_KEY:?OBJECT_STORAGE_SECRET_KEY must name the local storage secret key}
+      - "${OBJECT_STORAGE_ACCESS_KEY:+--access=}${OBJECT_STORAGE_ACCESS_KEY:---object-storage-access-key-required}"
+      - "${OBJECT_STORAGE_SECRET_KEY:+--secret=}${OBJECT_STORAGE_SECRET_KEY:---object-storage-secret-key-required}"
       - posix
       - /data
     ports:
-      - "127.0.0.1:${OBJECT_STORAGE_PORT:?OBJECT_STORAGE_PORT must be a run-scoped loopback port}:7070"
+      - "127.0.0.1:${OBJECT_STORAGE_PORT:-}:7070"
     tmpfs:
       - /data
     read_only: true

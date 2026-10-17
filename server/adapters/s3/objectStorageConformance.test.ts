@@ -11,7 +11,7 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { dockerAvailable, reservePort } from "../../../tests/helpers/postgresContainer.js";
 
@@ -24,6 +24,7 @@ const BUCKET = "objects";
 
 let endpoint = "";
 let ready = false;
+let infrastructureAvailable = false;
 
 /** The object-storage image the reference compose pins, so this proof follows the compose file. */
 function composeStorageImage(): string {
@@ -84,11 +85,12 @@ async function runStep(step: string): Promise<Record<string, unknown>> {
 }
 
 beforeAll(async () => {
-  if (!(await dockerAvailable())) return;
+  infrastructureAvailable = await dockerAvailable();
+  if (!infrastructureAvailable) return;
   const port = await reservePort();
   endpoint = `http://127.0.0.1:${port}`;
   await exec("docker", [
-    "run", "-d", "--rm", "--name", CONTAINER, "-p", `127.0.0.1:${port}:7070`,
+    "run", "--pull=never", "-d", "--rm", "--name", CONTAINER, "-p", `127.0.0.1:${port}:7070`,
     "--read-only", "--tmpfs", "/data", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
     composeStorageImage(), "--access", ACCESS_KEY, "--secret", SECRET_KEY, "posix", "/data",
   ]);
@@ -99,13 +101,34 @@ afterAll(async () => {
   await exec("docker", ["rm", "-f", CONTAINER]).catch(() => {});
 });
 
-function requireStorage(ctx: { skip: (note?: string) => void }): void {
-  if (!ready) ctx.skip("Docker or the object-storage image unavailable on this machine");
+function requireStorage(ctx: { skip: (note?: string) => void }, available: boolean, initialized: boolean): void {
+  if (!available) return ctx.skip("Docker unavailable on this machine");
+  if (!initialized) throw new Error("Object-storage bucket initialization exhausted its retries");
 }
+
+describe("object storage setup outcome", () => {
+  it("skips only when infrastructure is unavailable", () => {
+    const skip = vi.fn();
+    requireStorage({ skip }, false, false);
+    expect(skip).toHaveBeenCalledExactlyOnceWith("Docker unavailable on this machine");
+  });
+
+  it("fails after initialization retries are exhausted with infrastructure available", () => {
+    const skip = vi.fn();
+    expect(() => requireStorage({ skip }, true, false)).toThrow("Object-storage bucket initialization exhausted its retries");
+    expect(skip).not.toHaveBeenCalled();
+  });
+
+  it("continues after successful initialization", () => {
+    const skip = vi.fn();
+    requireStorage({ skip }, true, true);
+    expect(skip).not.toHaveBeenCalled();
+  });
+});
 
 describe("s3 blob capability on the reference object storage", () => {
   it("is ready, then uploads, reads back, lists and deletes through the composed blob port", async (ctx) => {
-    requireStorage(ctx);
+    requireStorage(ctx, infrastructureAvailable, ready);
     expect(await runStep("roundtrip")).toEqual({
       readiness: { ok: true },
       upload: { url: `${endpoint}/${BUCKET}/docs/report.txt`, pathname: "docs/report.txt" },
@@ -119,7 +142,7 @@ describe("s3 blob capability on the reference object storage", () => {
   }, 120_000);
 
   it("refuses an anonymous read and a wrong secret", async (ctx) => {
-    requireStorage(ctx);
+    requireStorage(ctx, infrastructureAvailable, ready);
     expect(await runStep("refusal")).toEqual({
       anonymousOk: false, anonymousLeaks: false, wrongSecretStatus: 403, intruderExists: false,
     });

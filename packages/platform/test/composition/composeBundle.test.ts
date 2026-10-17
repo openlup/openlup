@@ -102,6 +102,8 @@ describe("bundle composition", () => {
   it.each([
     { PLATFORM_BUNDLE: "node-supabase", SUPABASE_URL: "https://data.example.test" },
     { PLATFORM_BUNDLE: "node-supabase", VITE_SUPABASE_URL: "https://data.example.test" },
+    { PLATFORM_BUNDLE: "node-supabase", SUPABASE_URL: "", VITE_SUPABASE_URL: "https://data.example.test" },
+    { PLATFORM_BUNDLE: "node-supabase", SUPABASE_URL: " \t", VITE_SUPABASE_URL: "https://data.example.test" },
     { PLATFORM_BUNDLE: "node-postgres", PLATFORM_BLOB: "supabase", SUPABASE_URL: "https://data.example.test" },
   ])("binds working Supabase Storage through the default composer with %j", async (selection) => {
     const upload = vi.fn(async () => ({ data: {}, error: null }));

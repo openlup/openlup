@@ -7,13 +7,17 @@ function fakeSdk() {
   return {
     S3Client: class {
       constructor(config: unknown) { sdk.configs.push(config); }
-      async send(command: { name: string; input: unknown }) { sdk.sent.push({ command: command.name, input: command.input }); return { Contents: [] }; }
+      async send(command: unknown) {
+        const { name, input } = command as { name: string; input: unknown };
+        sdk.sent.push({ command: name, input });
+        return { Contents: [] };
+      }
     },
     PutObjectCommand: command("put"),
     HeadObjectCommand: command("head"),
     DeleteObjectCommand: command("delete"),
     ListObjectsV2Command: command("list"),
-  } as never;
+  };
 }
 
 import { createS3ClientFromEnv } from "../../src/blob/s3Client.js";

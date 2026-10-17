@@ -12,7 +12,18 @@ import { createRequire } from "node:module";
 import type { S3ObjectClient } from "./s3.js";
 
 type Env = Record<string, string | undefined>;
-export type S3Sdk = typeof import("@aws-sdk/client-s3");
+export interface S3Sdk {
+  S3Client: new (config: {
+    region: string;
+    endpoint?: string;
+    forcePathStyle: boolean;
+    credentials?: { accessKeyId: string; secretAccessKey: string };
+  }) => { send(command: unknown): ReturnType<S3ObjectClient["listObjectsV2"]> };
+  PutObjectCommand: new (input: Parameters<S3ObjectClient["putObject"]>[0]) => unknown;
+  HeadObjectCommand: new (input: Parameters<S3ObjectClient["headObject"]>[0]) => unknown;
+  DeleteObjectCommand: new (input: Parameters<S3ObjectClient["deleteObject"]>[0]) => unknown;
+  ListObjectsV2Command: new (input: Parameters<S3ObjectClient["listObjectsV2"]>[0]) => unknown;
+}
 
 function setting(env: Env, name: string): string | undefined {
   const value = env[name]?.trim();
