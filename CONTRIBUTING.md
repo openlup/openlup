@@ -522,6 +522,12 @@ condition, since Node allows a condition object as a target. A subpath pattern
 alias such as `#name/*` is not matched as a pattern. Published Tree CI runs lint
 in the `typecheck` job.
 
+The [import-boundary test matrix](scripts/packages/eslint-import-map.test.ts)
+reuses one linter per loaded configuration across that configuration's samples.
+Each import-map scenario loads its own configuration. Both boundary helpers
+reject parser failures and unmatched files before checking the expected rule;
+the complete syntax, path-depth and package matrix remains collected.
+
 `npm run lint` first checks file-leading blank-line suppressions with
 `scripts/ast-grep/check-filewide-ignore.mjs`; this check cannot be suppressed
 by an ast-grep directive. It then scans with the structural rules in
