@@ -2326,6 +2326,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/scheduler/cronSecret.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/scheduler/handlers.ts",
       "class": "public-output"
     },
@@ -2487,6 +2491,10 @@
     },
     {
       "path": "packages/platform/test/scheduler/cronGuard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/scheduler/cronSecret.test.ts",
       "class": "public-output"
     },
     {

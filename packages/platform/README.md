@@ -10,7 +10,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | --- | --- |
 | `./http` | Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
-| `./scheduler` | Job registry, node-cron scheduler with per-job advisory locks, hosted cron verification, the cron entrypoint guard and direct job bindings |
+| `./scheduler` | Job registry, node-cron scheduler with per-job advisory locks, hosted cron verification, the cron entrypoint guard (it compares the presented bearer token with `CRON_SECRET` in constant time) and direct job bindings |
 | `./blob` | Filesystem, S3-compatible, Supabase Storage and Vercel Blob adapters, and `bindBlobPort` |
 | `./data` | Supabase and node-postgres data gateways, the role-free transaction lane, the query builder and the data bindings |
 | `./migrations` | The node-postgres `MigrationRunnerPort` |
