@@ -34,7 +34,12 @@ const jobs = [
   { jobId: "nightly-report", schedule: "0 6 * * *", path: "/api/cron/nightly-report" },
   { jobId: "queue-drain", schedule: "*/4 * * * *", path: "/api/cron/queue-drain" },
 ];
-const env = { PLATFORM_BUNDLE: "node-supabase", APP_BASE_URL: "https://example.test", CRON_SECRET: "host-key" };
+// A node-supabase environment that satisfies every capability readiness check.
+const env = {
+  PLATFORM_BUNDLE: "node-supabase", APP_BASE_URL: "https://example.test", CRON_SECRET: "host-key",
+  DATABASE_URL: "postgres://localhost/lock", SUPABASE_URL: "https://data.example.test", SUPABASE_SERVICE_ROLE_KEY: "service-key",
+  BLOB_FS_ROOT: "/synthetic/objects", BLOB_FS_BASE_URL: "https://objects.example.test",
+};
 
 function cronFixture() {
   const callbacks: Array<() => void | Promise<void>> = [];
@@ -92,7 +97,7 @@ describe("host readiness and boot order", () => {
   });
 
   it("refuses a bundle with no bound HTTP runtime", () => {
-    expect(() => hostFixture("vercel-supabase").host.assertBundleReady({}))
+    expect(() => hostFixture("vercel-supabase").host.assertBundleReady({ CRON_SECRET: "host-key", BLOB_READ_WRITE_TOKEN: "blob-token" }))
       .toThrow('[serve.node] bundle "vercel-supabase" has no http runtime (expected node bundle)');
   });
 
@@ -243,7 +248,7 @@ describe("host scheduled execution", () => {
     vi.stubGlobal("fetch", fetch);
     deps.scheduledJobHandlers.mockReturnValue({ "queue-drain": first });
     const selected = [jobs[1]];
-    const result = await host.serveNode({ env, cron, listen: false, schedulerJobs: selected, scheduledJobHandlers: { "queue-drain": direct } });
+    const result = await host.serveNode({ env, cron, listen: false, advisoryLock: lockFixture(), schedulerJobs: selected, scheduledJobHandlers: { "queue-drain": direct } });
     expect(deps.loadSchedulerJobs).not.toHaveBeenCalled();
     expect(result.registeredJobs).toEqual(["queue-drain"]);
     expect(deps.createHttpRuntime.mock.calls[0][0].schedulerJobs).toBe(selected);
@@ -255,11 +260,13 @@ describe("host scheduled execution", () => {
   });
 
   it.each(["host-key", "", undefined])("bridges with GET and only adds bearer auth for a configured secret %s", async (CRON_SECRET) => {
-    const { host } = hostFixture();
+    const { host, bundle } = hostFixture();
+    // Readiness refuses a missing CRON_SECRET; a descriptor that permits one still bridges without it.
+    bundle.descriptor = { ...bundle.descriptor, readReadiness: () => ({ ok: true }) };
     const { cron, callbacks } = cronFixture();
     const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal("fetch", fetch);
-    const result = await host.serveNode({ env: { ...env, CRON_SECRET }, cron, listen: false });
+    const result = await host.serveNode({ env: { ...env, CRON_SECRET }, cron, listen: false, advisoryLock: lockFixture() });
     for (const callback of callbacks) await callback();
     expect(fetch.mock.calls).toEqual(jobs.map(({ path }) => [
       `https://example.test${path}`, { method: "GET", headers: CRON_SECRET ? { Authorization: `Bearer ${CRON_SECRET}` } : {} },
@@ -541,5 +548,22 @@ describe("scheduler profile hooks", () => {
     expect(profile.projectJobs).toHaveBeenCalledOnce();
     expect(profile.validateSchedule).not.toHaveBeenCalled();
     expect(profile.validateJob).not.toHaveBeenCalled();
+  });
+});
+
+describe("capability readiness at the boot gate", () => {
+  it("refuses Node scheduling without DATABASE_URL before any lock, admission or timer exists", async () => {
+    const { host, deps } = hostFixture();
+    const { cron } = cronFixture();
+    await expect(host.serveNode({ env: { ...env, DATABASE_URL: "" }, cron, listen: false }))
+      .rejects.toThrow('[serve.node] bundle "node-supabase" not ready: OPENLUP_E_ENV_MISSING: DATABASE_URL (scheduler lock)');
+    expect(createEnvAdvisoryLock).not.toHaveBeenCalled();
+    expect(deps.admitHost).not.toHaveBeenCalled();
+    expect(cron.schedule).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unknown PLATFORM_BUNDLE at the boot gate", () => {
+    expect(() => hostFixture().host.assertBundleReady({ ...env, PLATFORM_BUNDLE: "edge-cluster" }))
+      .toThrow('not ready: unknown PLATFORM_BUNDLE "edge-cluster"');
   });
 });
