@@ -54,7 +54,8 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
           git fetch --no-tags --quiet origin main
-          git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD
+          # On main's first-parent line: a commit inside a pull request merged as a merge commit does not count.
+          git rev-list --first-parent FETCH_HEAD | grep -qx "$TARGET_COMMIT"
       - name: Check required contexts before running target code
         env:
           GH_TOKEN: ${{ github.token }}
@@ -106,7 +107,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"
           git fetch --no-tags --quiet origin main
-          git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD || { echo "::error::$TARGET_COMMIT is not on main"; exit 1; }
+          git rev-list --first-parent FETCH_HEAD | grep -qx "$TARGET_COMMIT" || { echo "::error::$TARGET_COMMIT is not on main's first-parent line"; exit 1; }
           for context in dco typecheck install-proof test self-check gitleaks; do
             verdict="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_COMMIT/check-runs?check_name=$context&filter=latest&per_page=100" \
               --jq '[.check_runs[] | select(.app.slug == "github-actions")] | if length > 0 and all(.conclusion == "success") then "passed" else "missing" end')"

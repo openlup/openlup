@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-9a719591f66282787260ebee03d29b1ada6e4a5860b1fcf34be7e58323a8aac7","reason":"The import-map test proves the platform module graph: admitted own and declared-entry imports; refused deep, type, direction, self-reference, URL, control-character, non-canonical relative, climbing package, scope-spelling and test-file paths at every depth; and an inventory check that the declared edges equal the actual imports between modules, with only the composer declaring more. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-bc973326fc86a63d068d25c5bb4a0544d116981c82193843018170ecc84ece2a","reason":"Merge-commit landing support. The package release gate accepts only a target on main's first-parent line, and release prepare finds the mainline commit, squash or merge, that introduced each reviewed forward; DATA_AND_MIGRATIONS and DEVELOPMENT_AND_RELEASE state the rules. Admission, release-gate and release tests add merge-history fixtures and plants, and the source-preview workflow test pins the new first-parent check. The contributor commands and checks described here are unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -219,7 +219,7 @@ run; each comment names its job. The inherited `native-review` job additionally
 checks exact-candidate admission when the maintainer enables `OPENLUP_NATIVE_QUEUE`;
 its six required dependencies and merge-group metadata controls remain unchanged:
 
-<!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-f225cf3ee88ddcdea046bd5f3928719c623a16d2631587630596ce9e1a995045","reason":"The unprivileged per-tag pack job builds the exact workspace core peer before outbox packing on a fresh runner. The release owner documents this prerequisite. It still checks and scans only the selected package and preserves identity, npm version, permissions, provenance and all required CI contexts; contributor verification commands are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
 The test job runs the shared package gate before broad root tests. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
@@ -982,7 +982,9 @@ reading, exact merge scope and protected release approval still apply.
    and pre-push accept the review while its fork point is unchanged. Do not
    rebase or merge `main` to catch up (see [Merge queue](#merge-queue)).
 6. **Open a ready pull request** within your delivery authority, using the
-   template.
+   template. End its description with your `Signed-off-by:` line: the merge
+   commit takes its message from the description, and the DCO check certifies
+   merge commits too.
 7. **Submit the source receipt** right away. `PR` is the pull request number,
    and the dispatch is a GitHub write within your delivery authority:
 
@@ -1025,7 +1027,7 @@ reading, exact merge scope and protected release approval still apply.
       it has expired, refresh it and resubmit the source receipt (step 7).
     - If the log shows neither line, no usable source receipt was found:
       submit it (step 7).
-12. **Confirm the merge**: the squash commit on `main` and its push run.
+12. **Confirm the merge**: the merge commit on `main` and its push run.
 
 A repair commit restarts from step 3 for the new candidate.
 
@@ -1134,6 +1136,10 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   cycles 4 and 5 before the merge and was refused → a validator rule change
   must accept or explicitly migrate in-flight lineages; prove it against every
   live session's stored state just before merge, not only its current cycle.
+- 2026-10-17, stacked-PR proof on module branches: squash landings defeat
+  stacking, because any insertion into a shared list next to a predecessor's
+  conflicts once it squash-lands → a merge-commit queue fixes it, because the
+  merge base becomes the predecessor's head.
 - 2026-10-17, M02 package pull requests: stacked pull requests that each
   regenerate one shared record (a doc-impact marker, a contract digest)
   conflict once the lower one squash-lands → stack only pull requests without
@@ -1146,8 +1152,11 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
 ### Merge queue
 
-`main` takes squash merges through GitHub's merge queue, which
-builds and checks the fresh integration tree itself. The
+`main` takes merge commits through GitHub's merge queue, which
+builds and checks the fresh integration tree itself. A merge commit's message
+is the pull request description, so the description ends with the author's
+`Signed-off-by:` line; the DCO check certifies the merge commit and the merge
+group's tip like any other commit. The
 [base-move and receipt plan](docs/platform/plans/ci-base-move-and-receipts.md)
 records why these rules exist.
 
@@ -1158,8 +1167,8 @@ records why these rules exist.
   fresh full review.
 - **Arming.** Arm auto-merge only under actual merge authority, and only after
   the required checks, the native review and any required maintainer read:
-  `gh pr merge <PR> --auto --squash --author-email <address>`. Use the
-  maintainer's configured author address.
+  `gh pr merge <PR> --auto --author-email <address>`; the queue sets the merge
+  method. Use the maintainer's configured author address.
 - **Receipts.** While native admission is active, a supervisor with task
   delivery authority does two things:
   - submits one source receipt per reviewed pull-request head, as soon as the
@@ -1185,26 +1194,31 @@ records why these rules exist.
     carry-over refusal: stop and report it. An expired receipt or review needs the
     re-review and resubmission described in step 7.
 
-**Stacked pull requests.** `main` takes squash merges, so a stacked branch keeps
-its old fork point after its predecessor lands. Stack only pull requests that
-share no single-instance record: a line each of them regenerates as one
-combined value, such as a doc-impact marker for a unit and section, the
-source-release contract's aggregate digests, the publication catalogue or a
-lockfile entry. Otherwise the stacked branch's combined line conflicts with the
-one its predecessor brought to `main`.
+**Stacked pull requests.** Once a predecessor merges, the merge base of a pull
+request stacked on it is the predecessor's head, so the stacked change merges
+onto `main` without conflict, even where it regenerates the same records or
+inserts lines next to the predecessor's. Stack pull requests that build on each
+other or touch the same shared files:
 - A stacked branch contains its predecessors, and its generated files are
-  computed on that cumulative tree. Each is opened against `main` and reviewed
-  on its cumulative diff from its fork point, predecessors' paths included. Arm
-  it once it is reviewed and green and its predecessors have merged; queue
-  admission takes only the first queue entry.
+  computed on that cumulative tree. Its doc-impact answers cover its own change:
+  compute them with `--policy --docs-base <predecessor head>`.
+- Open it against its predecessor's branch and review it on its cumulative diff
+  from its fork point, predecessors' paths included.
+- When the predecessor merges, GitHub retargets the pull request to `main`,
+  because head branches are deleted on merge. Mark it draft and ready again so
+  its checks rerun against `main`, then submit its source receipt and arm it:
+  the receipt and queue admission require a pull request against `main`, and
+  admission takes only the first queue entry. Its local fork point has moved to
+  the predecessor's head, so local `verify` reports the move; hosted admission
+  checks the reviewed base and head, so an unchanged head needs no new review.
 - Before relying on carry-over, check `git merge-tree --write-tree` of the queue
-  base and the head. Only a result equal to the reviewed tree carries the source
-  review over ("unchanged tree"). Otherwise the run-keyed receipt with two
-  integration reviews applies, or a conflict needs the next step.
-- Pull requests that share a single-instance record are prepared in parallel
-  and merged in turn. When a predecessor has merged, merge `main` into the next
-  one once (do not rebase), regenerate the shared records and get a fresh full
-  review, as for a textual conflict.
+  base and the head. When nothing besides its predecessors has entered `main`
+  since its fork point, the result equals the reviewed tree and the source
+  review carries over ("unchanged tree"). Otherwise the run-keyed receipt with
+  two integration reviews applies.
+- If another change on `main` conflicts with it, merge `main` into it once (do
+  not rebase), regenerate its shared records and get a fresh full review, as
+  for a textual conflict.
 - If a predecessor changes, merge its new head into each stacked pull request
   above it (do not rebase); each result is reviewed again under the usual repair
   rules and budget.

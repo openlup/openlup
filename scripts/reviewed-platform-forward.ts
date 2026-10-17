@@ -270,8 +270,8 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   let approval = base;
   if (release) {
     // A preview can include the earlier control PR and later feature PRs. The approval must
-    // already exist in the parent of the commit that first introduces each SQL file.
-    const commits = git(root, ["log", "--format=%H", "--diff-filter=A", `${base}..${head}`, "--", path]).toString("utf8").trim().split("\n").filter(Boolean);
+    // already exist in the parent of the mainline commit that first introduces each SQL file.
+    const commits = git(root, ["log", "--first-parent", "--format=%H", "--diff-filter=A", `${base}..${head}`, "--", path]).toString("utf8").trim().split("\n").filter(Boolean);
     if (commits.length !== 1) throw new Error("reviewed replacement requires one unambiguous forward introduction");
     approval = git(root, ["rev-parse", `${commits[0]}^`]).toString("utf8").trim();
     git(root, ["merge-base", "--is-ancestor", approval, head]);
