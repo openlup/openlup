@@ -273,6 +273,104 @@
       "secret": false,
       "source": "packages/platform/src/kernel/platformKernel.ts",
       "blastRadius": "Public base URL that serves the S3-compatible bucket. Readiness refuses the capability without it; a wrong value produces broken object links."
+    },
+    {
+      "name": "PLATFORM_BLOB",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/kernel/platformKernel.ts",
+      "blastRadius": "Selects the blob capability (filesystem, s3, supabase or vercel-blob) instead of the bundle's own. Readiness refuses an unknown value; a wrong but valid value stores objects in another backend."
+    },
+    {
+      "name": "BLOB_SUPABASE_BUCKET",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/blob/binding.ts",
+      "blastRadius": "Supabase Storage bucket the supabase blob capability uses. Readiness refuses the capability without it; a wrong value writes to another bucket."
+    },
+    {
+      "name": "BLOB_S3_REGION",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/blob/s3Client.ts",
+      "blastRadius": "Region for the s3 blob capability's client (us-east-1 when absent). A wrong value fails signed requests."
+    },
+    {
+      "name": "BLOB_S3_ENDPOINT",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/blob/s3Client.ts",
+      "blastRadius": "Endpoint of an S3-compatible service for the s3 blob capability (the provider's default when absent). A wrong value sends objects to another service."
+    },
+    {
+      "name": "BLOB_S3_FORCE_PATH_STYLE",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/blob/s3Client.ts",
+      "blastRadius": "true selects path-style bucket addressing for an S3-compatible service. A wrong value fails requests to services that need one style."
+    },
+    {
+      "name": "BLOB_S3_ACCESS_KEY_ID",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/blob/s3Client.ts",
+      "blastRadius": "Access key id for the s3 blob capability; set together with BLOB_S3_SECRET_ACCESS_KEY, or neither to use the SDK's default credentials. Half a pair is refused."
+    },
+    {
+      "name": "BLOB_S3_SECRET_ACCESS_KEY",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": true,
+      "source": "packages/platform/src/blob/s3Client.ts",
+      "blastRadius": "Secret access key for the s3 blob capability; set together with BLOB_S3_ACCESS_KEY_ID. A leaked value grants write access to the bucket."
     }
   ]
 }

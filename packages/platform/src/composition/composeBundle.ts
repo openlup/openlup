@@ -23,6 +23,7 @@ import type {
 import { bindBlobPort } from "../blob/index.js";
 import {
   getBundleDescriptor,
+  resolveBlobCapability,
   resolveBundleId,
   type PlatformBundleDescriptor,
   type PlatformBundleId,
@@ -47,8 +48,9 @@ export interface PlatformBundle {
 }
 
 /**
- * One binder per port slot. Each receives the slot's declared capability and the environment;
- * the transactional binder also receives the bundle's data capability.
+ * One binder per port slot. Each receives the slot's capability and the environment; the blob
+ * binder receives the selected blob capability (`PLATFORM_BLOB`, else the bundle's own), and the
+ * transactional binder also receives the bundle's data capability.
  */
 export interface PlatformBundleBinders {
   http?: (capability: string, env: Env) => HttpRuntimePort | null;
@@ -74,7 +76,7 @@ export function createBundleComposer(binders: PlatformBundleBinders = {}): Compo
     const ports: PlatformBundlePorts = {
       http: binders.http?.(capabilities.http, env) ?? null,
       scheduler: null,
-      blob: bindBlob(capabilities.blob, env),
+      blob: bindBlob(resolveBlobCapability(descriptor, env), env),
       data: binders.data?.(capabilities.data, env) ?? null,
       migrations: binders.migrations?.(capabilities.migrations, env) ?? null,
       analytics: binders.analytics?.(capabilities.analytics, env) ?? null,

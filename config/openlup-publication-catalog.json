@@ -2182,6 +2182,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/blob/s3Client.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/blob/supabase.ts",
       "class": "public-output"
     },
@@ -2375,6 +2379,10 @@
     },
     {
       "path": "packages/platform/test/blob/s3.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/s3Client.test.ts",
       "class": "public-output"
     },
     {
@@ -4707,6 +4715,10 @@
     },
     {
       "path": "server/adapters/resend/transactionalEmailPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/objectStorageConformance.test.ts",
       "class": "public-output"
     },
     {

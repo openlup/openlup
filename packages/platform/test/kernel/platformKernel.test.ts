@@ -6,6 +6,7 @@ import {
   getBundleDescriptor,
   isPlatformBundleId,
   platformEnvSchema,
+  resolveBlobCapability,
   resolveBundleId,
 } from "../../src/kernel/platformKernel.js";
 
@@ -42,7 +43,7 @@ describe("platform bundle kernel", () => {
     "vercel-supabase": { CRON_SECRET: "cron-secret", BLOB_READ_WRITE_TOKEN: "blob-token" },
     "node-supabase": {
       APP_BASE_URL: "https://example.test", CRON_SECRET: "cron-secret", DATABASE_URL: "postgres://localhost/lock",
-      SUPABASE_URL: "https://data.example.test", SUPABASE_SERVICE_ROLE_KEY: "service-key",
+      SUPABASE_URL: "https://data.example.test", SUPABASE_SERVICE_ROLE_KEY: "service-key", BLOB_SUPABASE_BUCKET: "objects",
     },
     "node-postgres": {
       APP_BASE_URL: "https://example.test", CRON_SECRET: "cron-secret", DATABASE_URL: "postgres://localhost/lock",
@@ -69,6 +70,7 @@ describe("platform bundle kernel", () => {
     ["node-supabase", "DATABASE_URL", "OPENLUP_E_ENV_MISSING: DATABASE_URL (scheduler lock)"],
     ["node-supabase", "SUPABASE_SERVICE_ROLE_KEY", "OPENLUP_E_ENV_MISSING: SUPABASE_SERVICE_ROLE_KEY (blob: supabase)"],
     ["node-supabase", "SUPABASE_URL", "OPENLUP_E_ENV_MISSING: SUPABASE_URL (blob: supabase)"],
+    ["node-supabase", "BLOB_SUPABASE_BUCKET", "OPENLUP_E_ENV_MISSING: BLOB_SUPABASE_BUCKET (blob: supabase)"],
     ["node-postgres", "DATABASE_URL", "OPENLUP_E_ENV_MISSING: DATABASE_URL (scheduler lock)"],
     ["node-postgres", "BLOB_FS_ROOT", "OPENLUP_E_ENV_MISSING: BLOB_FS_ROOT (blob: filesystem)"],
     ["node-postgres", "BLOB_FS_BASE_URL", "OPENLUP_E_ENV_MISSING: BLOB_FS_BASE_URL (blob: filesystem)"],
@@ -90,6 +92,23 @@ describe("platform bundle kernel", () => {
     const { SUPABASE_URL: _url, ...withoutUrl } = READY["node-supabase"]!;
     expect(getBundleDescriptor("node-supabase").readReadiness({ ...withoutUrl, VITE_SUPABASE_URL: "https://data.example.test" }))
       .toEqual({ ok: true });
+  });
+
+  it("checks the blob capability PLATFORM_BLOB selects instead of the bundle's own", () => {
+    const base = READY["node-postgres"]!;
+    expect(getBundleDescriptor("node-postgres").readReadiness({ ...base, PLATFORM_BLOB: "s3" })).toEqual({
+      ok: false, error: "OPENLUP_E_ENV_MISSING: BLOB_S3_BUCKET (blob: s3), BLOB_S3_BASE_URL (blob: s3)",
+    });
+    expect(getBundleDescriptor("node-postgres").readReadiness({
+      ...base, BLOB_FS_ROOT: "", BLOB_FS_BASE_URL: "", PLATFORM_BLOB: "s3",
+      BLOB_S3_BUCKET: "objects", BLOB_S3_BASE_URL: "https://objects.example.test",
+    })).toEqual({ ok: true });
+    expect(getBundleDescriptor("node-postgres").readReadiness({ ...base, PLATFORM_BLOB: "tape" })).toEqual({
+      ok: false, error: 'unknown PLATFORM_BLOB "tape"; expected one of filesystem, s3, supabase, vercel-blob',
+    });
+    expect(resolveBlobCapability(getBundleDescriptor("node-postgres"), { PLATFORM_BLOB: "s3" })).toBe("s3");
+    expect(resolveBlobCapability(getBundleDescriptor("node-postgres"), { PLATFORM_BLOB: "tape" })).toBe("filesystem");
+    expect(resolveBlobCapability(getBundleDescriptor("node-postgres"), {})).toBe("filesystem");
   });
 
   it("refuses an unknown PLATFORM_BUNDLE in readiness while resolution keeps defaulting", () => {

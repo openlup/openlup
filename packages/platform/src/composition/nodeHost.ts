@@ -27,7 +27,7 @@ import {
   type ScheduledJobHandler,
   type ScheduledJobHandlerRegistry,
 } from "../scheduler/index.js";
-import type { ComposeBundle } from "./composeBundle.js";
+import type { ComposeBundle, PlatformBundlePorts } from "./composeBundle.js";
 
 type Env = Record<string, string | undefined>;
 
@@ -51,11 +51,13 @@ export interface NodeHostDependencies {
   createHttpRuntime: (input: {
     schedulerJobs: readonly ScheduledJobDeclaration[];
     staticReader: StaticAssetReader;
+    /** The composed ports (blob storage, data gateway and the rest) for routes to use. */
+    ports: PlatformBundlePorts;
   }) => HttpRuntimePort;
   /** The deployment's declared jobs, used when the caller passes none. */
   loadSchedulerJobs: () => readonly ScheduledJobDeclaration[];
   /** Transport-neutral jobs contributed to the registry; run in-process with no HTTP secret. */
-  scheduledJobs?: (env: Env) => readonly ScheduledJob[];
+  scheduledJobs?: (env: Env, ports: PlatformBundlePorts) => readonly ScheduledJob[];
   /** The job-lease port for registry jobs that declare a lease. */
   jobLease?: (env: Env) => JobLeasePort;
   /** Direct bindings the deployment and its domains contribute; caller overrides win. */
@@ -174,7 +176,7 @@ export function createNodeHost(deps: NodeHostDependencies): NodeHost {
       options.scheduledJobHandlers,
       profile?.handlers?.(env),
     );
-    const registryJobs = deps.scheduledJobs?.(env) ?? [];
+    const registryJobs = deps.scheduledJobs?.(env, bundle.ports) ?? [];
     for (const job of registryJobs) {
       if (schedulerJobs.some((declared) => declared.jobId === job.id)) {
         throw new Error(`scheduled_job_declared_twice:${job.id}`);
@@ -189,7 +191,7 @@ export function createNodeHost(deps: NodeHostDependencies): NodeHost {
       });
     }
 
-    const httpRuntime = deps.createHttpRuntime({ schedulerJobs, staticReader });
+    const httpRuntime = deps.createHttpRuntime({ schedulerJobs, staticReader, ports: bundle.ports });
 
     // Node cron invokes a direct binding where one exists. Every other job takes the HTTP
     // compatibility bridge to its own entrypoint, which the runtime mounts from the same registry,

@@ -116,3 +116,17 @@ describe("bundle composition", () => {
     expect(blob?.urlFor("objects/a.png")).toBe("https://assets.example.test/objects/a.png");
   });
 });
+
+describe("selected blob capability", () => {
+  it("binds the blob capability PLATFORM_BLOB selects", () => {
+    const blob = vi.fn(() => null);
+    createBundleComposer({ blob })({ PLATFORM_BUNDLE: "node-postgres", PLATFORM_BLOB: "s3" });
+    createBundleComposer({ blob })({ PLATFORM_BUNDLE: "node-postgres", PLATFORM_BLOB: "tape" });
+    createBundleComposer({ blob })({ PLATFORM_BUNDLE: "node-postgres" });
+    expect(blob.mock.calls.map(([capability]) => capability)).toEqual(["s3", "filesystem", "filesystem"]);
+    const s3 = createBundleComposer()({
+      PLATFORM_BUNDLE: "node-postgres", PLATFORM_BLOB: "s3", BLOB_S3_BUCKET: "objects", BLOB_S3_BASE_URL: "https://objects.example.test",
+    }).ports.blob;
+    expect(s3?.urlFor("a.txt")).toBe("https://objects.example.test/a.txt");
+  });
+});

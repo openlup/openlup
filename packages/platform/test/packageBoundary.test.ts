@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 
 // The package's own source reads no environment variable and imports no provider SDK: the
 // application passes the environment and every provider client in. The only external client it
-// imports is the optional `pg` peer, and only in the PostgreSQL adapters listed here.
+// imports are its optional peers: `pg` in the PostgreSQL adapters and `@aws-sdk/client-s3` in the
+// default S3 client, each listed here.
 
 const SOURCE_ROOT = fileURLToPath(new URL("../src", import.meta.url));
 const ENVIRONMENT_READ = new RegExp(["process", "env"].join("\\s*\\.\\s*"));
@@ -60,7 +61,8 @@ describe("package source boundary", () => {
         || specifier.startsWith("node:")
         || specifier.startsWith("@openlup/core/")
         || specifier === "zod"
-        || (specifier === "pg" && PG_ADAPTERS.has(path));
+        || (specifier === "pg" && PG_ADAPTERS.has(path))
+        || (specifier === "@aws-sdk/client-s3" && path === "blob/s3Client.ts");
       expect(allowed, `${path} imports ${specifier}`).toBe(true);
     }
   });

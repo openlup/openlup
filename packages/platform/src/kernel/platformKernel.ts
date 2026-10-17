@@ -29,10 +29,27 @@ export type { PlatformBundleReadiness };
 /** The readiness code a bundle reports when a selected capability lacks its configuration. */
 export const ENV_MISSING_CODE = "OPENLUP_E_ENV_MISSING";
 
+/** The blob capabilities a deployment can select with `PLATFORM_BLOB`. */
+export const BLOB_CAPABILITIES = ["filesystem", "s3", "supabase", "vercel-blob"] as const;
+
+export type BlobCapability = (typeof BLOB_CAPABILITIES)[number];
+
+/**
+ * The blob capability in effect: a valid `PLATFORM_BLOB` selection, else the bundle's own. An
+ * invalid selection keeps the bundle's own here and is refused by readiness.
+ */
+export function resolveBlobCapability(
+  descriptor: Pick<PlatformBundleDescriptor, "capabilities">,
+  env: PlatformEnvInput,
+): string {
+  const selected = env.PLATFORM_BLOB?.trim();
+  return selected && (BLOB_CAPABILITIES as readonly string[]).includes(selected) ? selected : descriptor.capabilities.blob;
+}
+
 /** The settings each blob capability needs; an alternative name may stand in for the first. */
 const BLOB_SETTINGS: Readonly<Record<string, ReadonlyArray<readonly string[]>>> = {
   "vercel-blob": [["BLOB_READ_WRITE_TOKEN"]],
-  supabase: [["SUPABASE_URL", "VITE_SUPABASE_URL"], ["SUPABASE_SERVICE_ROLE_KEY"]],
+  supabase: [["SUPABASE_URL", "VITE_SUPABASE_URL"], ["SUPABASE_SERVICE_ROLE_KEY"], ["BLOB_SUPABASE_BUCKET"]],
   filesystem: [["BLOB_FS_ROOT"], ["BLOB_FS_BASE_URL"]],
   s3: [["BLOB_S3_BUCKET"], ["BLOB_S3_BASE_URL"]],
 };
@@ -46,7 +63,7 @@ function present(env: PlatformEnvInput, name: string): boolean {
  * keeps defaulting); a self-host bundle needs APP_BASE_URL; then every selected capability's
  * missing settings are reported together under OPENLUP_E_ENV_MISSING: a scheduler needs
  * CRON_SECRET, Node scheduling needs DATABASE_URL for its cluster lock (never a silent no-op lock),
- * and the bundle's blob capability needs its settings.
+ * and the selected blob capability needs its settings. An unknown PLATFORM_BLOB refuses too.
  */
 function capabilityReadiness(descriptor: Pick<PlatformBundleDescriptor, "capabilities">, selfHost: boolean) {
   return (env: PlatformEnvInput): PlatformBundleReadiness => {
@@ -54,10 +71,15 @@ function capabilityReadiness(descriptor: Pick<PlatformBundleDescriptor, "capabil
     if (raw !== undefined && raw.trim() !== "" && !isPlatformBundleId(raw)) {
       return { ok: false, error: `unknown PLATFORM_BUNDLE "${raw}"; expected one of ${PLATFORM_BUNDLE_IDS.join(", ")}` };
     }
+    const selectedBlob = env.PLATFORM_BLOB;
+    if (selectedBlob !== undefined && selectedBlob.trim() !== "" && !(BLOB_CAPABILITIES as readonly string[]).includes(selectedBlob.trim())) {
+      return { ok: false, error: `unknown PLATFORM_BLOB "${selectedBlob}"; expected one of ${BLOB_CAPABILITIES.join(", ")}` };
+    }
     if (selfHost && !present(env, "APP_BASE_URL")) {
       return { ok: false, error: "APP_BASE_URL is required for self-host bundles" };
     }
-    const { scheduler, blob } = descriptor.capabilities;
+    const { scheduler } = descriptor.capabilities;
+    const blob = resolveBlobCapability(descriptor, env);
     const missing: string[] = [];
     if (scheduler === "vercel-cron" || scheduler === "node-cron") {
       if (!present(env, "CRON_SECRET")) missing.push("CRON_SECRET (scheduler)");

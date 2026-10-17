@@ -24,7 +24,18 @@ A job is `{ id, schedule, lease?, run(context) }` with a UTC cron expression. Do
 
 ## Bundle readiness
 
-`PLATFORM_BUNDLE` selects `vercel-supabase` (the default when absent), `node-supabase` or `node-postgres`. A bundle's readiness refuses, before any traffic or timer: an unknown `PLATFORM_BUNDLE` (resolution itself still falls back to the default); a self-host bundle without `APP_BASE_URL`; and, reported together under `OPENLUP_E_ENV_MISSING`, every selected capability without its settings: the scheduler without `CRON_SECRET`, Node scheduling without `DATABASE_URL` for its cluster lock (never a silent single-instance lock), and the blob capability without its settings (`BLOB_READ_WRITE_TOKEN`; `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; `BLOB_FS_ROOT` and `BLOB_FS_BASE_URL`; `BLOB_S3_BUCKET` and `BLOB_S3_BASE_URL`). The Node host checks readiness at boot.
+`PLATFORM_BUNDLE` selects `vercel-supabase` (the default when absent), `node-supabase` or `node-postgres`. A bundle's readiness refuses, before any traffic or timer: an unknown `PLATFORM_BUNDLE` (resolution itself still falls back to the default); a self-host bundle without `APP_BASE_URL`; and, reported together under `OPENLUP_E_ENV_MISSING`, every selected capability without its settings: the scheduler without `CRON_SECRET`, Node scheduling without `DATABASE_URL` for its cluster lock (never a silent single-instance lock), and the selected blob capability without its settings (see Blob storage). An unknown `PLATFORM_BLOB` is refused too. The Node host checks readiness at boot.
+
+## Blob storage
+
+`PLATFORM_BLOB` selects the blob capability; without it the bundle's own applies (filesystem for node-postgres, the local development default). `bindBlobPort` builds each one from the environment and the clients the application injects:
+
+- `filesystem`: `BLOB_FS_ROOT`, `BLOB_FS_BASE_URL`;
+- `s3`: `BLOB_S3_BUCKET`, `BLOB_S3_BASE_URL`, and a default client from `createS3ClientFromEnv` (`BLOB_S3_REGION`, `BLOB_S3_ENDPOINT`, `BLOB_S3_FORCE_PATH_STYLE`, `BLOB_S3_ACCESS_KEY_ID` with `BLOB_S3_SECRET_ACCESS_KEY`). `@aws-sdk/client-s3` is an optional peer loaded on first use, so only an application that selects S3 installs it;
+- `supabase`: a service-role client from the data-gateway settings with the injected `createClient`, and `BLOB_SUPABASE_BUCKET`;
+- `vercel-blob`: the injected `@vercel/blob` module and `BLOB_READ_WRITE_TOKEN`.
+
+The Node host passes the composed ports, blob storage included, to the HTTP runtime builder and to the jobs contributed to it. The reference repository's compose file starts a local S3-compatible service with `--profile local-storage`; a conformance test runs upload, read-back, delete and access refusal against that image. Hosted S3 provider certification is not claimed.
 
 ## What the application supplies
 
