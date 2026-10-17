@@ -1131,8 +1131,8 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
 - 2026-10-17, M02 package pull requests: independent pull requests that
   regenerate shared digest files serialize at merge → stack them.
 - 2026-10-17, parallel M02 work: parallel heavy local test runs cause load
-  timeouts → parallelize writing, serialize heavy test runs, and let hosted CI
-  decide.
+  timeouts → parallelize writing and serialize heavy test runs; a load timeout
+  is UNKNOWN and is rerun serialized, never counted as a pass.
 
 ### Merge queue
 
@@ -1180,14 +1180,15 @@ records why these rules exist.
 markers, package manifests and lockfiles, and API reports under
 `packages/*/api/`) would serialize at merge, so stack them:
 - Each branch contains its predecessors, and its generated files are computed on
-  that cumulative tree.
-- Each is opened against `main` and reviewed on its cumulative diff from its
-  fork point. It is armed once it is reviewed and green and its predecessors are
-  queued ahead of it.
-- When its predecessors are queued or merged unchanged, the group tree equals
-  the reviewed tree, so the source review carries over ("unchanged tree").
-- If a predecessor is ejected, take every pull request above it out of the
-  queue until it merges, because each one carries the predecessor's content.
+  that cumulative tree. Its approved scope and review cover the cumulative diff
+  from its fork point, predecessors' paths included.
+- Each is opened against `main` and reviewed as soon as it is ready. It is armed
+  once it is reviewed and green and its predecessors have merged; queue
+  admission takes one pull request per group.
+- If nothing else has entered `main` since its fork point, the group tree equals
+  the reviewed tree and the source review carries over ("unchanged tree").
+  Otherwise the base move touches the predecessors' reviewed paths, so the
+  run-keyed receipt with two integration reviews applies.
 - If a predecessor changes, merge its new head into each pull request above it
   (do not rebase). Each result is a new candidate, reviewed again under the usual
   repair rules and budget.
