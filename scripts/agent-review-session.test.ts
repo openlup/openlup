@@ -743,6 +743,18 @@ describe('pinned stack bases and local final proof', () => {
     expect(() => checkMergePreview({ cwd: f.cwd, target: theirs })).toThrow('merge main into this branch');
     expect(f.git('status', '--porcelain')).toBe('');
   });
+  it('accepts a valid disjoint main change through the actual default policy and inventory commands', async () => {
+    const source = process.cwd();
+    const head = execFileSync('/usr/bin/git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).trim();
+    const base = execFileSync('/usr/bin/git', ['merge-base', 'HEAD', 'origin/main'], { cwd: source, encoding: 'utf8' }).trim();
+    const f = await fixture(); f.git('fetch', '-q', '--no-tags', source, head);
+    f.git('checkout', '-q', '--detach', base);
+    await writeFile(join(f.cwd, 'README.md'), `${await readFile(join(f.cwd, 'README.md'), 'utf8')}\n<!-- Independent main change for the merge-preview contract. -->\n`);
+    f.git('add', 'README.md'); f.git('commit', '-qm', 'independent main documentation'); const main = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', head);
+    expect(checkMergePreview({ cwd: f.cwd, target: main }).basis).toBe('combined policy and inventory passed');
+    expect(f.git('rev-parse', 'HEAD')).toBe(head); expect(f.git('status', '--porcelain')).toBe('');
+  });
   it('serializes independent callers and releases only its own lease on success or failure', async () => {
     const f = await fixture(); const directory = join(f.cwd, 'lease'); const order: string[] = [];
     let release!: () => void; let entered!: () => void; const ready = new Promise<void>(resolve => { entered = resolve; }); const held = new Promise<void>(resolve => { release = resolve; });

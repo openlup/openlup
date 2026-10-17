@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   }
   if (phase === "tag" && args.length === 3) {
     const created = await createReleaseTag(root, args[0]!, args[1]!, args[2]!, token);
-    console.log(`Created ${created.tag} (${created.tagObject}) on ${args[0]}, on main's first-parent line at ${created.mainTip}`);
+    console.log(`Created ${created.tag} (${created.tagObject}) on ${args[0]}, an ancestor of main at ${created.mainTip}`);
     return;
   }
   throw new Error(USAGE);

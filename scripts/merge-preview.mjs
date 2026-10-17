@@ -42,7 +42,8 @@ export function checkMergePreview({ cwd, target = 'origin/main', checks = [
     const env = { ...processEnvironment };
     for (const name of Object.keys(env)) if (/^(?:GITHUB_|GIT_|GH_)/u.test(name) || name === 'OPENLUP_STACK_BASE') delete env[name];
     for (const [command, ...args] of checks) {
-      const run = spawnSync(command, [...args, '--docs-base', base], { cwd: directory, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 120000 });
+      const checkArgs = args.includes('--policy') ? [...args, '--docs-base', base] : args;
+      const run = spawnSync(command, checkArgs, { cwd: directory, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 120000 });
       if (run.error || run.status !== 0) throw new Error(`merge-preview: combined tree failed ${args.join(' ')}\n${run.error?.message ?? run.stderr ?? ''}\n${run.stdout ?? ''}`);
     }
     return { base, head, tree, basis: 'combined policy and inventory passed' };
