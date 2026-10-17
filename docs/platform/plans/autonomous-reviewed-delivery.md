@@ -603,7 +603,8 @@ introduction on that line.
 Prove it live right after the switch, before relying on it:
 1. The first pull request merges through the queue. The group tip and the merge
    commit on `main` pass DCO from the description's sign-off; record the merge
-   commit's actual author.
+   commit's actual author and that it has two parents, the previous `main`
+   first.
 2. A second pull request, stacked on the first and reviewed before the first
    merged, is admitted with "unchanged tree" carry-over and no new receipt.
 

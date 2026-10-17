@@ -391,7 +391,7 @@ describe("the release gate's commands, as the workflows run them", () => {
     "tag: the annotated tag on the target itself, then its reference": (source) => {
       const { base, mainTip } = cli;
       const tagged = command(source, ["tag", base, "core", "0.12.1"], {});
-      expect([tagged.status, tagged.stdout]).toEqual([0, `Created openlup-core-v0.12.1 (${TAG_OBJECT}) on ${base}, on main's first-parent line at ${mainTip}`]);
+      expect([tagged.status, tagged.stdout]).toEqual([0, `Created openlup-core-v0.12.1 (${TAG_OBJECT}) on ${base}, an ancestor of main at ${mainTip}`]);
       expect(tagged.requests).toEqual([
         { method: "POST", url: `${API}/git/tags`, body: { tag: "openlup-core-v0.12.1", message: "OpenLup package @openlup/core 0.12.1.\n", object: base, type: "commit" } },
         { method: "POST", url: `${API}/git/refs`, body: { ref: "refs/tags/openlup-core-v0.12.1", sha: TAG_OBJECT } },
