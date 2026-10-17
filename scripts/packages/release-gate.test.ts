@@ -99,6 +99,15 @@ const BEHAVIOUR: Record<string, (gate: Gate) => Promise<void>> = {
     expect(() => gate.assertOnFreshMain(fixture.clone, absent), "a commit the repository lacks").toThrow(`release gate: ${absent} is not on main, whose tip is ${fixture.mainTip}`);
     // The workflows run the gate in a checkout of main, so what is checked out does not decide.
     for (const commit of [fixture.base, fixture.mainTip]) expect(gate.assertOnFreshMain(fixture.clone, commit), `${commit} on main, the checkout off it`).toBe(fixture.mainTip);
+    // Squash history is linear, so main's first-parent line is all of its ancestry: nothing on main is newly refused.
+    expect(git(fixture.origin, ["rev-list", "--first-parent", fixture.mainTip])).toBe(git(fixture.origin, ["rev-list", fixture.mainTip]));
+    // A pull request merged as a merge commit: only the merge landed on main, not the branch's own commits.
+    const merged = git(fixture.origin, ["commit-tree", `${fixture.mainTip}^{tree}`, "-p", fixture.mainTip, "-p", fixture.side, "-m", "merge side"]);
+    git(fixture.origin, ["update-ref", "refs/heads/main", merged]);
+    try {
+      expect(() => gate.assertOnFreshMain(fixture.clone, fixture.side), "a merged branch's own commit").toThrow(`release gate: ${fixture.side} is not on main, whose tip is ${merged}`);
+      for (const commit of [fixture.mainTip, merged]) expect(gate.assertOnFreshMain(fixture.clone, commit), `${commit} on main's first-parent line`).toBe(merged);
+    } finally { git(fixture.origin, ["update-ref", "refs/heads/main", fixture.mainTip]); git(fixture.clone, ["fetch", "--quiet", "origin", "+refs/heads/main:refs/openlup-release/main"]); }
     for (const ref of ["refs/openlup-release/main", "refs/remotes/origin/main", "refs/heads/main"]) git(fixture.clone, ["update-ref", ref, fixture.mainTip]);
   },
   "required contexts: GitHub Actions ran each one and every latest run succeeded": async (gate) => {
@@ -173,13 +182,14 @@ type Defect = { control: string; plant: string; from: string; to: string };
 const DEFECTS: Defect[] = [
   { control: "main ancestry against a freshly fetched origin/main", plant: "fetch the target commit instead of main", from: "`+refs/heads/main:${FRESH_MAIN}`", to: "`+${commit}:${FRESH_MAIN}`" },
   { control: "main ancestry against a freshly fetched origin/main", plant: "no fetch: trust a local main ref", from: '  git("fetch", "--no-tags", "--quiet", "origin", `+refs/heads/main:${FRESH_MAIN}`);\n', to: "" },
-  { control: "main ancestry against a freshly fetched origin/main", plant: "ancestry against the checkout", from: 'git("merge-base", "--is-ancestor", commit, mainTip);', to: 'git("merge-base", "--is-ancestor", commit, "HEAD");' },
-  { control: "main ancestry against a freshly fetched origin/main", plant: "a failed ancestry check admitted", from: "    throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);", to: "    return mainTip;" },
+  { control: "main ancestry against a freshly fetched origin/main", plant: "ancestry against the checkout", from: 'git("rev-list", "--first-parent", mainTip)', to: 'git("rev-list", "--first-parent", "HEAD")' },
+  { control: "main ancestry against a freshly fetched origin/main", plant: "a failed ancestry check admitted", from: ") throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);", to: ") return mainTip;" },
   { control: "required contexts: GitHub Actions ran each one and every latest run succeeded", plant: "any app's run counts", from: '.filter((run) => (run.app as Json | null | undefined)?.slug === "github-actions")', to: "" },
   { control: "required contexts: GitHub Actions ran each one and every latest run succeeded", plant: "one success among failures", from: "actions.every((run) =>", to: "actions.some((run) =>" },
   { control: "required contexts: GitHub Actions ran each one and every latest run succeeded", plant: "no run counts as passed", from: "actions.length > 0 && ", to: "" },
   { control: "required contexts: GitHub Actions ran each one and every latest run succeeded", plant: "a required context dropped", from: '"install-proof", ', to: "" },
   { control: "required contexts: GitHub Actions ran each one and every latest run succeeded", plant: "a query that reads every run, not the latest", from: "&filter=latest&", to: "&filter=all&" },
+  { control: "main ancestry against a freshly fetched origin/main", plant: "any ancestor of main, not its first-parent line", from: 'git("rev-list", "--first-parent", mainTip).split("\\n").includes(commit)', to: '(() => { try { git("merge-base", "--is-ancestor", commit, mainTip); return true; } catch { return false; } })()' },
   { control: "the tag lands on the approved commit", plant: "the tag on the main tip", from: "{ tag, message, object: commit, type: \"commit\" }", to: "{ tag, message, object: mainTip, type: \"commit\" }" },
   { control: "the tag lands on the approved commit", plant: "the tag without the main ancestry", from: "const mainTip = assertOnFreshMain(root, commit);\n  const created", to: "const mainTip = commit;\n  const created" },
   { control: "the tag lands on the approved commit", plant: "the created tag object's commit unchecked", from: " || tagged.sha !== commit", to: "" },

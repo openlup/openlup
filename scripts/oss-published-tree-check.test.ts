@@ -83,7 +83,8 @@ describe("maintainer-controlled source preview workflow", () => {
     expect(loops).toHaveLength(2);
     expect(loops[1]).toBe(loops[0]);
     expect(loops[0]).toContain(`for context in ${REQUIRED_CONTEXTS.join(" ")}; do\n`);
-    expect(sourcePreviewWorkflow).toContain('git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD');
+    expect(sourcePreviewWorkflow).toContain('git rev-list --first-parent FETCH_HEAD | grep -qx "$TARGET_COMMIT"');
+    expect(sourcePreviewWorkflow).not.toContain("merge-base --is-ancestor");
     expect(sourcePreviewWorkflow).toContain('test "$(git rev-parse HEAD)" = "$TARGET_COMMIT"');
     const directory = mkdtempSync(join(tmpdir(), "openlup-preview-checks-"));
     try {
@@ -117,7 +118,7 @@ describe("maintainer-controlled source preview workflow", () => {
     expect(jobs).toEqual(["preflight", "release"]);
     const preflight = workflowJob("preflight", sourcePreviewWorkflow);
     const release = workflowJob("release", sourcePreviewWorkflow);
-    const checks = ['git merge-base --is-ancestor "$TARGET_COMMIT" FETCH_HEAD', "for context in dco typecheck install-proof test self-check gitleaks; do"];
+    const checks = ['git rev-list --first-parent FETCH_HEAD | grep -qx "$TARGET_COMMIT"', "for context in dco typecheck install-proof test self-check gitleaks; do"];
     for (const [job, ordered] of [[preflight, checks], [release, [...checks, "source-preview-release.ts prepare", "secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY"]]] as const) {
       const positions = ordered.map((step) => job.indexOf(step));
       expect(positions.every((position) => position >= 0), positions.join(",")).toBe(true);
