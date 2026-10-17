@@ -9,11 +9,11 @@ import type { HttpRuntimePort } from "@openlup/core/platform-runtime";
 
 import type { EntrypointLoader } from "../http/index.js";
 import { createNodeHttpRuntime, type NodeHttpRuntimeOptions } from "../http/index.js";
-import type { ScheduledJob } from "../scheduler/index.js";
+import type { ScheduledJobDeclaration } from "../scheduler/index.js";
 
 /** Mount only the scheduled routes declared by the job registry. */
 export function createScheduledEntrypointResolver(
-  jobs: readonly ScheduledJob[],
+  jobs: readonly ScheduledJobDeclaration[],
   load: (jobId: string) => ReturnType<EntrypointLoader>,
 ): (jobId: string) => EntrypointLoader | null {
   const declared = new Set(jobs.map((job) => job.jobId));

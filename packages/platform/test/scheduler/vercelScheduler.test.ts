@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { HttpRequest } from "../../src/http/types.js";
-import type { ScheduledJob } from "../../src/scheduler/jobRegistry.js";
+import type { ScheduledJobDeclaration } from "../../src/scheduler/jobRegistry.js";
 import { bearerToken, createVercelScheduler, verifyCronAuth } from "../../src/scheduler/vercelScheduler.js";
 
 function req(authorization?: string): HttpRequest {
   return { headers: { authorization } } as unknown as HttpRequest;
 }
 
-const JOBS: ScheduledJob[] = [
+const JOBS: ScheduledJobDeclaration[] = [
   { jobId: "cleanup", schedule: "0 3 * * *", path: "/api/cron/cleanup" },
 ];
 

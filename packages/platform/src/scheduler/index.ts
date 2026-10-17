@@ -3,7 +3,7 @@ export {
   jobRegistryFromConfig,
   loadJobRegistry,
   type PlatformRuntimeConfig,
-  type ScheduledJob,
+  type ScheduledJobDeclaration,
 } from "./jobRegistry.js";
 export {
   advisoryLockKey,
@@ -35,3 +35,13 @@ export {
   type ScheduledJobHandlerRegistry,
   type ScheduledJobInvocation,
 } from "./handlers.js";
+export {
+  createScheduledJobRegistry,
+  cronFromCadenceSeconds,
+  runScheduledJob,
+  scheduledJobsFromContribution,
+  type ScheduledJob,
+  type ScheduledJobContext,
+  type ScheduledJobRunResult,
+} from "./jobs.js";
+export { createScheduledJobHttpEntry, type ScheduledJobHttpEntryOptions } from "./httpEntry.js";

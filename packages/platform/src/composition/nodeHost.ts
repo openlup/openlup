@@ -10,21 +10,22 @@
 
 import { resolve } from "node:path";
 
-import type { HttpRuntimePort } from "@openlup/core/platform-runtime";
+import type { HttpRuntimePort, JobLeasePort } from "@openlup/core/platform-runtime";
 
 import { createDistStaticReader } from "../http/index.js";
 import type { StaticAssetReader } from "../http/index.js";
-import { createEnvAdvisoryLock, type AdvisoryLock } from "../scheduler/index.js";
 import {
-  mergeScheduledJobHandlers,
-  type ScheduledJobHandler,
-  type ScheduledJobHandlerRegistry,
-} from "../scheduler/index.js";
-import type { ScheduledJob } from "../scheduler/index.js";
-import {
+  createEnvAdvisoryLock,
   createNodeScheduler,
+  mergeScheduledJobHandlers,
+  runScheduledJob,
+  type AdvisoryLock,
   type CronScheduler,
   type NodeSchedulerAdapter,
+  type ScheduledJob,
+  type ScheduledJobDeclaration,
+  type ScheduledJobHandler,
+  type ScheduledJobHandlerRegistry,
 } from "../scheduler/index.js";
 import type { ComposeBundle } from "./composeBundle.js";
 
@@ -34,8 +35,10 @@ type Env = Record<string, string | undefined>;
 export interface NodeHostAdmission {
   kind: "node";
   nodeJobHandlers: ScheduledJobHandlerRegistry;
-  /** The jobs this process will time; empty when it does not run the scheduler. */
-  nodeJobs: readonly ScheduledJob[];
+  /** The path-declared jobs this process will time; empty when it does not run the scheduler. */
+  nodeJobs: readonly ScheduledJobDeclaration[];
+  /** The registry jobs this process will run directly; empty when it does not run the scheduler. */
+  scheduledJobs: readonly ScheduledJob[];
 }
 
 export interface NodeHostDependencies {
@@ -46,11 +49,15 @@ export interface NodeHostDependencies {
    * bundle's `http` port only proves that the bundle is a Node bundle at readiness time.
    */
   createHttpRuntime: (input: {
-    schedulerJobs: readonly ScheduledJob[];
+    schedulerJobs: readonly ScheduledJobDeclaration[];
     staticReader: StaticAssetReader;
   }) => HttpRuntimePort;
   /** The deployment's declared jobs, used when the caller passes none. */
-  loadSchedulerJobs: () => readonly ScheduledJob[];
+  loadSchedulerJobs: () => readonly ScheduledJobDeclaration[];
+  /** Transport-neutral jobs contributed to the registry; run in-process with no HTTP secret. */
+  scheduledJobs?: (env: Env) => readonly ScheduledJob[];
+  /** The job-lease port for registry jobs that declare a lease. */
+  jobLease?: (env: Env) => JobLeasePort;
   /** Direct bindings the deployment and its domains contribute; caller overrides win. */
   scheduledJobHandlers?: (env: Env) => ScheduledJobHandlerRegistry;
   /** Runs first, before readiness (for example, process-wide configuration checks). */
@@ -67,20 +74,20 @@ export interface NodeHostDependencies {
  */
 export interface NodeSchedulerProfile {
   /** Replaces the declared jobs with this profile's projection. Runs after any migration replay. */
-  projectJobs(env: Env, jobs: readonly ScheduledJob[]): readonly ScheduledJob[];
+  projectJobs(env: Env, jobs: readonly ScheduledJobDeclaration[]): readonly ScheduledJobDeclaration[];
   /** Direct bindings the profile adds; they replace the deployment's and the caller's for a job. */
   handlers?(env: Env): ScheduledJobHandlerRegistry;
   /** Runs once the advisory lock is resolved and before any job is registered. */
   validateSchedule?(input: {
     lock: AdvisoryLock | undefined;
-    jobs: readonly ScheduledJob[];
+    jobs: readonly ScheduledJobDeclaration[];
     overrides: ScheduledJobHandlerRegistry | undefined;
   }): void;
   /**
    * Runs for each job, in order, immediately before it is registered, with its direct binding if
    * any. A refusal stops the boot; jobs registered before it keep their timers, as the boot fails.
    */
-  validateJob?(job: ScheduledJob, directHandler: ScheduledJobHandler | undefined): void;
+  validateJob?(job: ScheduledJobDeclaration, directHandler: ScheduledJobHandler | undefined): void;
 }
 
 export interface ServeNodeOptions {
@@ -93,7 +100,7 @@ export interface ServeNodeOptions {
   /** Direct bindings added over the deployment's own for this boot. */
   scheduledJobHandlers?: ScheduledJobHandlerRegistry;
   /** Explicit scheduler projection; production uses the deployment's job registry. */
-  schedulerJobs?: readonly ScheduledJob[];
+  schedulerJobs?: readonly ScheduledJobDeclaration[];
   /** Optional scheduler profile applied to the declared jobs (see `NodeSchedulerProfile`). */
   schedulerProfile?: NodeSchedulerProfile;
   /**
@@ -167,9 +174,18 @@ export function createNodeHost(deps: NodeHostDependencies): NodeHost {
       options.scheduledJobHandlers,
       profile?.handlers?.(env),
     );
+    const registryJobs = deps.scheduledJobs?.(env) ?? [];
+    for (const job of registryJobs) {
+      if (schedulerJobs.some((declared) => declared.jobId === job.id)) {
+        throw new Error(`scheduled_job_declared_twice:${job.id}`);
+      }
+    }
     if (deps.admitHost && (options.listen !== false || options.cron)) {
       await deps.admitHost(env, {
-        kind: "node", nodeJobHandlers: handlers, nodeJobs: options.cron ? schedulerJobs : [],
+        kind: "node",
+        nodeJobHandlers: handlers,
+        nodeJobs: options.cron ? schedulerJobs : [],
+        scheduledJobs: options.cron ? registryJobs : [],
       });
     }
 
@@ -221,6 +237,17 @@ export function createNodeHost(deps: NodeHostDependencies): NodeHost {
           },
         });
         registeredJobs.push(job.jobId);
+      }
+      const lease = registryJobs.some((job) => job.lease) ? deps.jobLease?.(env) : undefined;
+      for (const job of registryJobs) {
+        scheduler.register({
+          jobId: job.id,
+          schedule: job.schedule,
+          handler: async () => {
+            await runScheduledJob(job, { invocation: { triggerKind: "scheduler", invocationSource: "node_cron" }, lease });
+          },
+        });
+        registeredJobs.push(job.id);
       }
     }
 
