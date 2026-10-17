@@ -1,6 +1,6 @@
 # @openlup/platform
 
-Development preview. This package joins core and outbox in the publishable set at 0.14.0; this configuration does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
+Development preview. This package joins core and outbox in the publishable set from the next set version; this configuration does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
@@ -123,4 +123,4 @@ they do not import the data entry or its PostgreSQL types. The cold proof still
 requires all five nonadapter entries to import in fresh processes and compile
 in both resolution modes with all three optional peers absent.
 
-<!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-eb85304c87b3ee2ea90bc214482011af9aa69205f2e7b9ab620f8da1e1bf3ca3","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
+<!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
