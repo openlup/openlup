@@ -588,7 +588,8 @@ records. Simulated merge-commit landings of the same stacks were clean and
 tree-equal. The owner's settings change, not this repository, enables it:
 - the `main` ruleset drops `required_linear_history` and allows the merge
   method;
-- the merge queue's `merge_method` becomes `MERGE`;
+- the repository allows merge commits (`allow_merge_commit`) and the merge queue's
+  `merge_method` becomes `MERGE`;
 - the repository's merge-commit message is the pull request body
   (`merge_commit_message: PR_BODY`).
 
