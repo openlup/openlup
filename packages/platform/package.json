@@ -1,7 +1,7 @@
 {
   "name": "@openlup/platform",
   "version": "0.14.0",
-  "private": true,
+  "private": false,
   "description": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduler, storage, data gateways and bundle composition; development preview.",
   "license": "Apache-2.0",
   "type": "module",
@@ -15,23 +15,35 @@
     "src/**",
     "sql/**",
     "README.md",
-    "LICENSE"
+    "CHANGELOG.md",
+    "LICENSE",
+    "release-gates.json"
   ],
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "test": "vitest run test",
-    "ci": "npm run build && npm run test"
+    "ci": "npm run build && npm run test && npm run api:check",
+    "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
+    "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts",
+    "ci:required": "npm run test:consumer",
+    "prepack": "npm run build",
+    "prepublishOnly": "node -e \"throw new Error('PLATFORM_DIRECTORY_PUBLISH_REFUSED')\"",
+    "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update"
   },
   "peerDependencies": {
     "@openlup/core": "0.14.0",
     "pg": "^8.22.0",
-    "@aws-sdk/client-s3": "^3.1144.0"
+    "@aws-sdk/client-s3": "^3.1144.0",
+    "@types/pg": "^8.20.0"
   },
   "peerDependenciesMeta": {
     "pg": {
       "optional": true
     },
     "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@types/pg": {
       "optional": true
     }
   },
@@ -84,5 +96,15 @@
       "import": "./dist/composition/index.js",
       "default": "./dist/composition/index.js"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openlup/openlup.git",
+    "directory": "packages/platform"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "tag": "preview"
   }
 }

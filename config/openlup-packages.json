@@ -10,16 +10,17 @@
       "name": "@openlup/outbox",
       "directory": "packages/outbox",
       "publish": true
+    },
+    {
+      "name": "@openlup/platform",
+      "directory": "packages/platform",
+      "publish": true
     }
   ],
   "unreleased": [
     {
       "directory": "packages/ui",
       "reason": "types-only scaffold with source exports; not a release artifact"
-    },
-    {
-      "directory": "packages/platform",
-      "reason": "server substrate imported with unchanged logic; becomes publishable when the reference application composes it"
     }
   ]
 }

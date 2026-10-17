@@ -298,7 +298,13 @@ const OUTBOX_SCRIPTS = {
 const PLATFORM_SCRIPTS = {
   build: "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
   test: "vitest run test",
-  ci: "npm run build && npm run test",
+  ci: "npm run build && npm run test && npm run api:check",
+  "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
+  "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts",
+  "ci:required": "npm run test:consumer",
+  prepack: "npm run build",
+  prepublishOnly: "node -e \"throw new Error('PLATFORM_DIRECTORY_PUBLISH_REFUSED')\"",
+  "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
 };
 const UI_SCRIPTS = { build: CORE_SCRIPTS.build, typecheck: "tsc -p tsconfig.json --noEmit", "test:neutrality": "node --experimental-strip-types smoke/neutrality.ts" };
 const compatibility = (diagnostics: number) => ({ typecheck: { projects: ["tsconfig.synthetic.json"], signedPreviewDebt: { unresolvedEdges: { mode: "exact-ratchet", pairs: 0, importers: 0, targets: 0, digest: "sha256-e3b0c44298fc1c149afbf4c8996fb924", pairHashes: [] }, inferenceCascades: { mode: "ceiling-ratchet", diagnostics } } } });

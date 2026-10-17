@@ -2118,6 +2118,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/CHANGELOG.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/LICENSE",
       "class": "public-output"
     },
@@ -2126,7 +2130,55 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/bff.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/blob.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/composition.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/data.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/http.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/job-ledger.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/kernel.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/migrations.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/scheduler.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/package.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/release-gates.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/scripts/api-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/scripts/consumer-proof.ts",
       "class": "public-output"
     },
     {
@@ -2475,6 +2527,10 @@
     },
     {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/optionalPeers.test.ts",
       "class": "public-output"
     },
     {
@@ -3163,6 +3219,14 @@
     },
     {
       "path": "scripts/packages/packages-check.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/platform-cold-consumer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/platform-cold-consumer.ts",
       "class": "public-output"
     },
     {
@@ -19345,7 +19409,7 @@
     },
     {
       "path": "packages/platform/package.json",
-      "digest": "sha256-ce22c20163ac042fb35cadbcaa1065fef6315526cc7d8d76583cad46900e1356"
+      "digest": "sha256-bfaffff4f0b6c74137b213fa6ea8e726528b762a22910cda32895857287c75b9"
     },
     {
       "path": "packages/ui/package.json",

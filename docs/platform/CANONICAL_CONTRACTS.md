@@ -153,7 +153,7 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-b91959d636f96b91146cda198ca2553f85b85e89a93a3162f655c6e60d02b9e2","reason":"The environment registry declares the platform's blob capability selection PLATFORM_BLOB, the Supabase Storage bucket and the S3 client settings as server-runtime entries, none exposed to the browser bundle. No contract, compatibility rule, set versioning or release preparation described here changes."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-02f1fb444d939f8c097b7b1c54bfefd39f2687faec9cc6cd28ede7f64ae6a035","reason":"The configuration delta removes the retired personalization mint from the structural source list and deletes its unused name-declension dictionary; registers blob capability selection, the Supabase bucket and S3 client settings as server-runtime inputs; and moves @openlup/platform into the publishable package set. These are feature inventory and package membership changes. The section's status, idempotency, provider-boundary and pre-1.0 set-version rules remain applicable to every publishable package; no stable compatibility or registry publication is established."} -->
 
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement

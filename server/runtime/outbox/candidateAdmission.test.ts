@@ -2,12 +2,13 @@ import { expect, it, vi } from "vitest";
 import type { OutboxHandler } from "@openlup/outbox";
 import { syntheticOutboxRow } from "@openlup/outbox/testing";
 import type { RequiredSchema } from "@openlup/core/readiness";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { admitReferenceOutbox, isUnreleasedPlatformPackage, observeReferencePackages } from "./candidateAdmission.js";
+import { admitReferenceOutbox, observeReferencePackages } from "./candidateAdmission.js";
 import { createReferenceOutbox } from "./referenceContribution.js";
 import { startPublicReferenceServer } from "../public-reference/serve.js";
+vi.mock("node:fs", { spy: true });
 function fixture(override?: OutboxHandler) {
   const query=vi.fn(async()=>({rows:[]}));const lease={claimJobRun:vi.fn(async()=>({acquired:true,runId:"run",reason:"acquired"})),finishJobRun:vi.fn(async()=>true)};
   const handler=override??{eventType:"example.created",timeoutMs:100,handle:vi.fn(async()=>({kind:"processed" as const}))};
@@ -66,42 +67,46 @@ it("reference composition preserves class prototype methods and private receiver
   const admitted=await admitReferenceOutbox(f.input);expect(admitted.admitted).toBe(true);if(!admitted.admitted)throw new Error("expected admission");
   expect(await admitted.immediate()).toMatchObject({processed:1,retried:0});expect(handler.count).toBe(1);
 });
-it("observes exactly the release-set packages and leaves out only the verified private platform package", () => {
+it("observes core, outbox and platform with their release-set versions and kinds", () => {
   const observed = observeReferencePackages();
   expect(observed.inventoryComplete).toBe(true);
-  expect(observed.loadedPackages.map((pkg) => pkg.name)).toEqual(["@openlup/core", "@openlup/outbox"]);
-  const root = mkdtempSync(join(tmpdir(), "reference-inventory-"));
-  try {
-    const write = (manifest: Record<string, unknown>) => writeFileSync(join(root, "package.json"), JSON.stringify(manifest));
-    write({ name: "@openlup/platform", private: true });
-    expect(isUnreleasedPlatformPackage(root)).toBe(true);
-    for (const manifest of [
-      { name: "@openlup/platform", private: false },
-      { name: "@openlup/platform" },
-      { name: "@openlup/unknown", private: true },
-      { name: "@openlup/unknown" },
-    ]) {
-      write(manifest);
-      expect(isUnreleasedPlatformPackage(root)).toBe(false);
-    }
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  expect(observed.loadedPackages).toEqual([
+    { name: "@openlup/core", version: "0.14.0", kind: "kernel" },
+    { name: "@openlup/outbox", version: "0.14.0", kind: "rail" },
+    { name: "@openlup/platform", version: "0.14.0", kind: "rail" },
+  ]);
 });
 
-it("still refuses an unknown installed @openlup package next to the verified platform package", () => {
-  const root = mkdtempSync(join(tmpdir(), "reference-installation-"));
+it("refuses admission when the platform package is not at the release-set version", async () => {
+  const f = fixture();
+  const observed = observeReferencePackages();
+  const loadedPackages = observed.loadedPackages.map((pkg) => pkg.name === "@openlup/platform" ? { ...pkg, version: "0.13.0" } : pkg);
+  const refused = await admitReferenceOutbox({ ...f.input, loadedPackages, inventoryComplete: true });
+  expect(refused.admitted).toBe(false);
+  if (refused.admitted) throw new Error("expected refusal");
+  expect(refused.report.issues.map((issue) => issue.code)).toEqual(["OPENLUP_E_SET_MISMATCH"]);
+});
+
+it("still refuses unknown installed packages and mismatched manifest names", async () => {
+  const { readFileSync: read } = await vi.importActual<typeof import("node:fs")>("node:fs");
+  const names = vi.mocked(readdirSync);
   try {
-    const install = (name: string, manifest: Record<string, unknown>) => {
-      mkdirSync(join(root, "node_modules", "@openlup", name), { recursive: true });
-      writeFileSync(join(root, "node_modules", "@openlup", name, "package.json"), JSON.stringify(manifest));
-    };
-    install("core", { name: "@openlup/core" });
-    install("outbox", { name: "@openlup/outbox" });
-    install("platform", { name: "@openlup/platform", private: true });
-    expect(observeReferencePackages(root).inventoryComplete).toBe(true);
-    install("unknown", { name: "@openlup/unknown", private: true });
-    expect(observeReferencePackages(root).inventoryComplete).toBe(false);
-    rmSync(join(root, "node_modules", "@openlup", "unknown"), { recursive: true });
-    install("platform", { name: "@openlup/platform", private: false });
-    expect(observeReferencePackages(root).inventoryComplete).toBe(false);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+    names.mockReturnValue(["core", "outbox", "platform"] as never);
+    expect(observeReferencePackages().inventoryComplete).toBe(true);
+    names.mockReturnValue(["core", "outbox"] as never);
+    expect(observeReferencePackages()).toMatchObject({ inventoryComplete: true, loadedPackages: [{ name: "@openlup/core" }, { name: "@openlup/outbox" }] });
+    for (const missing of ["core", "outbox"]) {
+      names.mockReturnValue(["core", "outbox", "platform"].filter((name) => name !== missing) as never);
+      expect(observeReferencePackages().inventoryComplete).toBe(false);
+    }
+    names.mockReturnValue(["core", "outbox", "platform", "unknown"] as never);
+    expect(observeReferencePackages().inventoryComplete).toBe(false);
+    names.mockReturnValue(["core", "outbox", "platform"] as never);
+    const manifest = vi.mocked(readFileSync).mockImplementation((path, options) =>
+      path.toString().endsWith("/platform/package.json")
+        ? JSON.stringify({ name: "@openlup/unknown", version: "0.14.0" })
+        : read(path, options));
+    try { expect(observeReferencePackages().inventoryComplete).toBe(false); }
+    finally { manifest.mockReset(); }
+  } finally { names.mockReset(); }
 });

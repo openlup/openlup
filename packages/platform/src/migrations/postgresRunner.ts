@@ -233,7 +233,7 @@ function errorMessage(error: unknown): string {
 }
 
 async function defaultPoolFactory(env: PostgresMigrationRunnerEnv): Promise<Pool> {
-  const pg = await import("pg");
+  const pg = await import("pg").catch(peerMissing);
   const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;
   return new PoolCtor({ connectionString: env.connectionString });
 }
@@ -242,4 +242,14 @@ export function resolvePostgresMigrationRunnerEnv(
   env: Record<string, string | undefined>,
 ): PostgresMigrationRunnerEnv {
   return { connectionString: env.DATABASE_URL ?? "" };
+}
+
+/** Translate only absence of this optional peer; preserve broken SDKs and other failures. */
+function peerMissing(cause: unknown): never {
+  if (cause instanceof Error && "code" in cause
+    && (cause.code === "ERR_MODULE_NOT_FOUND" || cause.code === "MODULE_NOT_FOUND")
+    && /^Cannot find (?:package|module) ['"]pg['"]/.test(cause.message)) {
+    throw new Error("OPENLUP_E_PEER_MISSING: pg is required by the Postgres migration runner; install it alongside @openlup/platform", { cause });
+  }
+  throw cause;
 }

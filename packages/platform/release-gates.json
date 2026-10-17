@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 5,
+  "kind": "rail",
+  "compatibilityPolicies": {
+    "internal-candidate": "Development-preview API; no stable compatibility claim."
+  },
+  "packageSurface": {
+    "./http": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/http/runtime.test.ts"
+      ],
+      "entrypoint": "dist/http/index.d.ts",
+      "snapshot": "api/http.api.md"
+    },
+    "./bff": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/bff/dispatch.test.ts"
+      ],
+      "entrypoint": "dist/bff/index.d.ts",
+      "snapshot": "api/bff.api.md"
+    },
+    "./scheduler": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/scheduler/jobs.test.ts"
+      ],
+      "entrypoint": "dist/scheduler/index.d.ts",
+      "snapshot": "api/scheduler.api.md"
+    },
+    "./blob": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/blob/binding.test.ts"
+      ],
+      "entrypoint": "dist/blob/index.d.ts",
+      "snapshot": "api/blob.api.md"
+    },
+    "./data": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/data/binding.test.ts"
+      ],
+      "entrypoint": "dist/data/index.d.ts",
+      "snapshot": "api/data.api.md"
+    },
+    "./migrations": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/migrations/postgresRunner.test.ts"
+      ],
+      "entrypoint": "dist/migrations/index.d.ts",
+      "snapshot": "api/migrations.api.md"
+    },
+    "./job-ledger": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/job-ledger/postgres.test.ts"
+      ],
+      "entrypoint": "dist/job-ledger/index.d.ts",
+      "snapshot": "api/job-ledger.api.md"
+    },
+    "./kernel": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/kernel/platformKernel.test.ts"
+      ],
+      "entrypoint": "dist/kernel/index.d.ts",
+      "snapshot": "api/kernel.api.md"
+    },
+    "./composition": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/composition/composeBundle.test.ts"
+      ],
+      "entrypoint": "dist/composition/index.d.ts",
+      "snapshot": "api/composition.api.md"
+    }
+  },
+  "pack": {
+    "code": {
+      "maxPackedBytes": 131072,
+      "maxFiles": 240
+    },
+    "docs": {
+      "maxPackedBytes": 16384,
+      "maxFiles": 12
+    },
+    "maxPackedBytes": 196608,
+    "maxUnpackedBytes": 1048576,
+    "maxFiles": 256
+  }
+}
