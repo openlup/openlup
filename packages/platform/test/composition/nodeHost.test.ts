@@ -38,7 +38,7 @@ const jobs = [
 const env = {
   PLATFORM_BUNDLE: "node-supabase", APP_BASE_URL: "https://example.test", CRON_SECRET: "host-key",
   DATABASE_URL: "postgres://localhost/lock", SUPABASE_URL: "https://data.example.test", SUPABASE_SERVICE_ROLE_KEY: "service-key",
-  BLOB_FS_ROOT: "/synthetic/objects", BLOB_FS_BASE_URL: "https://objects.example.test",
+  BLOB_FS_ROOT: "/synthetic/objects", BLOB_FS_BASE_URL: "https://objects.example.test", BLOB_SUPABASE_BUCKET: "objects",
 };
 
 function cronFixture() {
@@ -155,14 +155,14 @@ describe("host readiness and boot order", () => {
   });
 
   it("skips admission and listening when neither listener nor cron is requested", async () => {
-    const { host, deps, runtime } = hostFixture();
+    const { host, deps, runtime, bundle } = hostFixture();
     const result = await host.serveNode({ env, listen: false });
     expect(deps.admitHost).not.toHaveBeenCalled();
     expect(runtime.listen).not.toHaveBeenCalled();
     expect(result.httpRuntime).toBe(runtime);
     expect(result.bundleId).toBe("node-supabase");
     expect(result.registeredJobs).toEqual([]);
-    expect(deps.createHttpRuntime).toHaveBeenCalledWith({ schedulerJobs: jobs, staticReader: expect.objectContaining({ read: expect.any(Function), readIndex: expect.any(Function) }) });
+    expect(deps.createHttpRuntime).toHaveBeenCalledWith({ schedulerJobs: jobs, staticReader: expect.objectContaining({ read: expect.any(Function), readIndex: expect.any(Function) }), ports: bundle.ports });
     await result.stop();
   });
 
@@ -561,9 +561,11 @@ describe("registry jobs on the Node host", () => {
     vi.stubGlobal("fetch", fetch);
     const run = vi.fn(async () => summary);
     const registry = [{ id: "ledger-sweep", schedule: "*/5 * * * *", run }];
-    const result = await createNodeHost({ ...deps, scheduledJobs: () => registry }).serveNode({
+    const scheduledJobs = vi.fn(() => registry);
+    const result = await createNodeHost({ ...deps, scheduledJobs }).serveNode({
       env, cron, listen: false, advisoryLock: lockFixture(),
     });
+    expect(scheduledJobs).toHaveBeenCalledExactlyOnceWith(env, deps.composeBundle.mock.results.at(-1)!.value.ports);
     expect(result.registeredJobs).toEqual(["nightly-report", "queue-drain", "ledger-sweep"]);
     expect(cron.schedule).toHaveBeenLastCalledWith("*/5 * * * *", expect.any(Function), { timezone: undefined });
     await callbacks[2]!();

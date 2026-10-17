@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-e11f6bbaee387f3462a027c7f440bd7deb03a597594cfa61ed098882499198c4","reason":"The root manifest and lockfile drop the openai and sharp dependencies, which no remaining source imports, and the Vitest coverage configuration drops the removed personalizer excludes. Required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-5a28f52b2b5ada9cb0d3badca080b1fc3ebf5aff5e58f3dcc66f84ef4d22344a","reason":"The root manifest and lockfile add a pinned @aws-sdk/client-s3 development dependency for the platform's S3 tests (the package declares it as an optional peer), and the reference compose file gains a local S3-compatible service started only with --profile local-storage; without that profile it requires no storage settings. Required contributor commands, their order and the checks described here are unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-c3d61788dfbcdde753661c65dae553d62b2b780311fe8c2e9474c6088a18d86b","reason":"The zero-coverage assertion drops the excludes for the removed personalizer paths, and the lint-heavy ESLint import-map test cases get an explicit 60-second timeout because a hosted runner took just over the default; no assertion changes. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-ae06ded26315ab142326e2044556729eaf3b502788e89b08a564fe94932cbbb1","reason":"The publication policy admits the Docker-gated object-storage conformance test, which starts a plain Node process, as an execution entrypoint. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

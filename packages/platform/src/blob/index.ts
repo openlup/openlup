@@ -1,5 +1,6 @@
 export { createFilesystemBlobStorage, type FilesystemBlobOptions } from "./filesystem.js";
 export { createS3BlobStorage, type S3BlobOptions, type S3ObjectClient } from "./s3.js";
+export { createS3ClientFromEnv } from "./s3Client.js";
 export {
   createSupabaseBlobStorage,
   type SupabaseStorageBucket,

@@ -24,10 +24,14 @@
   },
   "peerDependencies": {
     "@openlup/core": "0.14.0",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "@aws-sdk/client-s3": "^3.1144.0"
   },
   "peerDependenciesMeta": {
     "pg": {
+      "optional": true
+    },
+    "@aws-sdk/client-s3": {
       "optional": true
     }
   },
