@@ -90,7 +90,7 @@ beforeAll(async () => {
   const port = await reservePort();
   endpoint = `http://127.0.0.1:${port}`;
   await exec("docker", [
-    "run", "--pull=never", "-d", "--rm", "--name", CONTAINER, "-p", `127.0.0.1:${port}:7070`,
+    "run", "-d", "--rm", "--name", CONTAINER, "-p", `127.0.0.1:${port}:7070`,
     "--read-only", "--tmpfs", "/data", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
     composeStorageImage(), "--access", ACCESS_KEY, "--secret", SECRET_KEY, "posix", "/data",
   ]);
