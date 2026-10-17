@@ -17,4 +17,3 @@ SemVer promise.
 - Transport-neutral scheduled jobs: a `run(context)` contract, an empty job registry, a lease-aware runner and an authenticated HTTP cron entry, with a constant-time cron secret comparison.
 - Per-capability bundle readiness that refuses an unknown bundle and reports every missing scheduler, lock and blob setting together.
 - Blob capability selection with filesystem, Vercel Blob, Supabase Storage and S3 bindings; `pg`, `@types/pg` and `@aws-sdk/client-s3` are optional peers, and an adapter refuses a missing peer with `OPENLUP_E_PEER_MISSING`.
-
