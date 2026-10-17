@@ -8,6 +8,13 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.15.0]
+
+- Publishable on the npm `latest` dist-tag as `0.15.0`, from tag
+  `openlup-core-v0.15.0`.
+
+- Republish in the set that adds `@openlup/platform`; Core APIs, runtime behavior and shipped SQL are unchanged.
+
 ## [0.14.0]
 
 - Publishable on the npm `latest` dist-tag as `0.14.0`, from tag
@@ -33,7 +40,6 @@ Migration: additive API; existing scalar probes, observations, readiness codes a
 - Check package inventory, event ownership/coverage, actual bindings and qualified schema observations before admitting a new candidate.
 
 Migration: existing exports remain; compose the selected rail and bind its schema probe before activation. Unknown observations refuse the new candidate and do not stop a serving version.
-
 
 ### Changed
 

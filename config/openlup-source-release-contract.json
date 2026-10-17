@@ -10,8 +10,8 @@
   },
   "packages": {
     "manifestDigest": "sha256-8135be2087de3cd9f88ee84c936d5a5a358083905258814d554b5bba36964286",
-    "rootLockDigest": "sha256-0cd24fb73772c352f5ea326506c1643e8813373f900e19dd9f5e1e80498e19df",
-    "coreLockDigest": "sha256-0517f70395e92fc9a16ed6e0a18625a63a0335357c89d500a97fc4130dd47f74"
+    "rootLockDigest": "sha256-6aaa0be03d57e07c990c85a6eb58807879c8a888b0c953b41cc528e7f2464347",
+    "coreLockDigest": "sha256-897afe17494e77f199b9e542b05219417965b600d8347e7a6be74abb4fe44346"
   },
   "platformMigrationManifest": {
     "path": "config/platform-migration-manifest.json",
