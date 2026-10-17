@@ -4718,6 +4718,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/s3/objectStorageCompose.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/s3/objectStorageConformance.test.ts",
       "class": "public-output"
     },

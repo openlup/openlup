@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-afe9019eeb0f2386b4adf522f5dcb0e6c5fbb21c9ccba5f9b83bba9255da4395","reason":"The root manifest and lockfile drop the openai and sharp dependencies, which no remaining source imports, and the Vitest coverage configuration drops the removed personalizer excludes. Required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-837497dd376c44bc4222788752d83a4d10fdd54824f84e9a85d051f0260984eb","reason":"The root manifest and lockfile add a pinned @aws-sdk/client-s3 development dependency for the platform's S3 tests (the package declares it as an optional peer), and the reference compose file gains a local S3-compatible service started only with --profile local-storage; without that profile it requires no storage settings. Required contributor commands, their order and the checks described here are unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-4749486038366760e7147ec91bc31d857125917a4f0f51f28ffa79c497f67632","reason":"The zero-coverage assertion drops the excludes for the removed personalizer paths. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-b9cc2a76212feeb1c3433b67967ce074c145917d137510d680eb9fd96a6e001b","reason":"The publication policy admits the Docker-gated object-storage conformance test, which starts a plain Node process, as an execution entrypoint. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
