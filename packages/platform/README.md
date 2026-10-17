@@ -18,6 +18,10 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./kernel` | The bundle identifiers, descriptors and readiness |
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
 
+## Bundle readiness
+
+`PLATFORM_BUNDLE` selects `vercel-supabase` (the default when absent), `node-supabase` or `node-postgres`. A bundle's readiness refuses, before any traffic or timer: an unknown `PLATFORM_BUNDLE` (resolution itself still falls back to the default); a self-host bundle without `APP_BASE_URL`; and, reported together under `OPENLUP_E_ENV_MISSING`, every selected capability without its settings: the scheduler without `CRON_SECRET`, Node scheduling without `DATABASE_URL` for its cluster lock (never a silent single-instance lock), and the blob capability without its settings (`BLOB_READ_WRITE_TOKEN`; `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; `BLOB_FS_ROOT` and `BLOB_FS_BASE_URL`; `BLOB_S3_BUCKET` and `BLOB_S3_BASE_URL`). The Node host checks readiness at boot.
+
 ## What the application supplies
 
 The package carries no deployment identity. The application passes it every value that names a deployment or a domain:
