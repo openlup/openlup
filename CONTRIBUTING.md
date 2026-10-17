@@ -1128,6 +1128,11 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   cycles 4 and 5 before the merge and was refused → a validator rule change
   must accept or explicitly migrate in-flight lineages; prove it against every
   live session's stored state just before merge, not only its current cycle.
+- 2026-10-17, M02 package pull requests: independent pull requests that
+  regenerate shared digest files serialize at merge → stack them.
+- 2026-10-17, parallel M02 work: parallel heavy local test runs cause load
+  timeouts → parallelize writing, serialize heavy test runs, and let hosted CI
+  decide.
 
 ### Merge queue
 
@@ -1169,6 +1174,27 @@ records why these rules exist.
     defect on a pull-request run, or on a merge group whose log names no
     carry-over refusal: stop and report it. An expired receipt or review needs the
     re-review and resubmission described in step 7.
+
+**Stacked pull requests.** Pull requests that regenerate the same shared files
+(the source-release contract digests, the publication catalogue, doc-impact
+markers, package manifests and lockfiles, and API reports under
+`packages/*/api/`) would serialize at merge, so stack them:
+- Each branch contains its predecessors, and its generated files are computed on
+  that cumulative tree.
+- Each is opened against `main` and reviewed on its cumulative diff from its
+  fork point. It is armed once it is reviewed and green and its predecessors are
+  queued ahead of it.
+- When its predecessors are queued or merged unchanged, the group tree equals
+  the reviewed tree, so the source review carries over ("unchanged tree").
+- If a predecessor is ejected, take every pull request above it out of the
+  queue until it merges, because each one carries the predecessor's content.
+- If a predecessor changes, merge its new head into each pull request above it
+  (do not rebase). Each result is a new candidate, reviewed again under the usual
+  repair rules and budget.
+- A second ejection of the same head stops the stack for diagnosis.
+
+Each stacked pull request is still one concern. Stacking changes no review,
+receipt or merge rule.
 
 Use one concern per pull request. Describe the problem, the public contract that
 changes, compatibility implications, and the checks you ran. Keep adopter-owned
