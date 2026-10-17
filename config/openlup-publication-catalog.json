@@ -2314,11 +2314,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/scheduler/httpEntry.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/scheduler/index.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/scheduler/jobRegistry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/scheduler/jobs.ts",
       "class": "public-output"
     },
     {
@@ -2482,7 +2490,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/scheduler/httpEntry.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/scheduler/jobRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/scheduler/jobs.test.ts",
       "class": "public-output"
     },
     {

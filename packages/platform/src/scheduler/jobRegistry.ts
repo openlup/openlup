@@ -11,8 +11,8 @@
 
 import { readFileSync } from "node:fs";
 
-/** A single scheduled job derived from the platform-runtime single source. */
-export interface ScheduledJob {
+/** A scheduled job declared by path in the platform-runtime configuration (HTTP-invoked). */
+export interface ScheduledJobDeclaration {
   /** Stable job id used for advisory locking + job-run accounting (derived from the cron path). */
   jobId: string;
   /** Crontab expression (UTC), exactly as authored in the platform-runtime configuration. */
@@ -36,7 +36,7 @@ export function jobIdFromPath(path: string): string {
 }
 
 /** Build the job registry from the deployment's platform-runtime configuration file. */
-export function loadJobRegistry(configPath: string): ScheduledJob[] {
+export function loadJobRegistry(configPath: string): ScheduledJobDeclaration[] {
   const raw = readFileSync(configPath, "utf8");
   const config = JSON.parse(raw) as PlatformRuntimeConfig;
   const crons = config.crons ?? [];
@@ -48,7 +48,7 @@ export function loadJobRegistry(configPath: string): ScheduledJob[] {
 }
 
 /** Same registry but built from an already-parsed config object (pure; no filesystem). */
-export function jobRegistryFromConfig(config: PlatformRuntimeConfig): ScheduledJob[] {
+export function jobRegistryFromConfig(config: PlatformRuntimeConfig): ScheduledJobDeclaration[] {
   return (config.crons ?? []).map((cron) => ({
     jobId: jobIdFromPath(cron.path),
     schedule: cron.schedule,

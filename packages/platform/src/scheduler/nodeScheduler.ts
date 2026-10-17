@@ -12,7 +12,7 @@
 
 import type { SchedulerPort } from "@openlup/core/platform-runtime";
 import type { HttpRequest } from "../http/index.js";
-import type { ScheduledJob } from "./jobRegistry.js";
+import type { ScheduledJobDeclaration } from "./jobRegistry.js";
 import { verifyCronAuth } from "./vercelScheduler.js";
 import { createNoopAdvisoryLock, type AdvisoryLock } from "./advisoryLock.js";
 
@@ -33,7 +33,7 @@ interface RegisteredTimer {
 }
 
 export interface NodeSchedulerAdapter extends SchedulerPort {
-  readonly jobs: readonly ScheduledJob[];
+  readonly jobs: readonly ScheduledJobDeclaration[];
   /** Stop all registered node-cron timers (graceful shutdown). */
   stopAll(): void;
 }
@@ -46,7 +46,7 @@ export interface CreateNodeSchedulerOptions {
   /** Environment whose CRON_SECRET verifies an invocation. */
   env: CronEnv;
   /** The deployment's declared jobs (see `loadJobRegistry`). */
-  jobs: readonly ScheduledJob[];
+  jobs: readonly ScheduledJobDeclaration[];
   /** crontab timezone; jobs are authored in UTC to match Vercel. */
   timezone?: string;
   /** Structured error sink for failed job bodies (defaults to console.error). */

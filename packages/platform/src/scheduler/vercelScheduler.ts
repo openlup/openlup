@@ -10,7 +10,7 @@
 // handlers and the Node host call it instead of re-implementing the comparison.
 
 import type { PlatformHttpRequest, SchedulerPort } from "@openlup/core/platform-runtime";
-import type { ScheduledJob } from "./jobRegistry.js";
+import type { ScheduledJobDeclaration } from "./jobRegistry.js";
 import { bearerToken, cronSecretMatches } from "./cronSecret.js";
 
 type CronEnv = Record<string, string | undefined> & { CRON_SECRET?: string };
@@ -34,7 +34,7 @@ export function verifyCronAuth(req: PlatformHttpRequest, env: CronEnv): boolean 
 
 export interface VercelSchedulerAdapter extends SchedulerPort {
   /** The jobs this scheduler knows about, derived from the platform-runtime single source. */
-  readonly jobs: readonly ScheduledJob[];
+  readonly jobs: readonly ScheduledJobDeclaration[];
 }
 
 /**
@@ -46,7 +46,7 @@ export interface VercelSchedulerAdapter extends SchedulerPort {
 export function createVercelScheduler(options: {
   env: CronEnv;
   /** The deployment's declared jobs (see `loadJobRegistry`). */
-  jobs: readonly ScheduledJob[];
+  jobs: readonly ScheduledJobDeclaration[];
 }): VercelSchedulerAdapter {
   const env = options.env;
   const jobs = options.jobs;
