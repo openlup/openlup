@@ -1186,10 +1186,11 @@ combined value, such as a doc-impact marker for a unit and section, the
 source-release contract's aggregate digests, the publication catalogue or a
 lockfile entry. Otherwise the stacked branch's combined line conflicts with the
 one its predecessor brought to `main`.
-- A stacked branch contains its predecessors and is reviewed on its cumulative
-  diff from its fork point, predecessors' paths included. Arm it once it is
-  reviewed and green and its predecessors have merged; queue admission takes
-  only the first queue entry.
+- A stacked branch contains its predecessors, and its generated files are
+  computed on that cumulative tree. Each is opened against `main` and reviewed
+  on its cumulative diff from its fork point, predecessors' paths included. Arm
+  it once it is reviewed and green and its predecessors have merged; queue
+  admission takes only the first queue entry.
 - Before relying on carry-over, check `git merge-tree --write-tree` of the queue
   base and the head. Only a result equal to the reviewed tree carries the source
   review over ("unchanged tree"). Otherwise the run-keyed receipt with two
