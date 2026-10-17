@@ -10,7 +10,7 @@ import {
 } from "../../src/job-ledger/supabase.js";
 
 // Every managed call and the PostgreSQL ledger name a function the shipped SQL defines and pass
-// only its parameters.
+// only its parameters; the v3 entry points delegate to the shipped v2 functions.
 
 function functionParameters(sql: string): Map<string, string[]> {
   const functions = new Map<string, string[]>();
@@ -72,9 +72,12 @@ describe("managed v2 calls against the shipped job-run ledger SQL", () => {
 });
 
 describe("v3 calls against the shipped v3 SQL", () => {
-  it("orders the shipped migrations and defines exactly the two v3 entry points", () => {
+  it("orders the shipped migrations and defines exactly the two v3 entry points, which delegate to the v2 functions", () => {
     expect(JOB_RUN_LEDGER_MIGRATIONS.map(({ id }) => id)).toEqual(["20260809150000_job_run_ledger", "20260809150001_job_run_ledger_v3"]);
     expect([...shippedV3.keys()]).toEqual(["platform_claim_job_run_v3", "platform_finish_job_run_v3"]);
+    const v3 = readFileSync(JOB_RUN_LEDGER_V3_SQL_URL, "utf8");
+    expect(v3).toContain("FROM public.platform_claim_job_run(");
+    expect(v3).toContain("SELECT public.platform_finish_job_run_v2(");
   });
 
   it("passes only declared parameters from the managed v3 calls", async () => {
