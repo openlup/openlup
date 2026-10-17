@@ -15,6 +15,7 @@
     "src/**",
     "sql/**",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "release-gates.json"
   ],

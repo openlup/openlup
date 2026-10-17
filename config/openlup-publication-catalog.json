@@ -2118,6 +2118,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/CHANGELOG.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/LICENSE",
       "class": "public-output"
     },
