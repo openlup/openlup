@@ -114,7 +114,12 @@ For a source change:
 5. Regenerate navigation, then run the structural and impact checks.
 
 The policy check uses an explicit full base SHA or a local merge base with
-`origin/main`. Hosted checks use validated event attribution and checkout
+`origin/main`. An optional local `OPENLUP_STACK_BASE` supplies the exact pinned
+predecessor for a stacked branch and is shared with native review and final
+verification. Conflicting `--docs-base` and environment pins refuse. A normal
+branch needs no pin. This keeps own-change fingerprints stable before and after
+the predecessor lands; native admission separately requires that base on main.
+Hosted checks use validated event attribution and checkout
 identity. Missing comparison history is a refusal, not a reason to assume that
 documentation has no impact. Hosted attribution takes precedence over
 `--docs-base`. A missing hosted base is fetched from the public repository by

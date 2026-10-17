@@ -1,12 +1,14 @@
 // Native supervisor process evidence. This is not a signature, remote attestation,
 // or proof that an author-controlled report file came from a platform agent.
 import { createHash, randomUUID } from 'node:crypto';
-import { execFile } from 'node:child_process';
-import { constants } from 'node:fs';
-import { lstat, mkdir, open, readlink, realpath, rename, unlink } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
+import { accessSync, constants, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { lstat, mkdir, open, readFile, readlink, realpath, rename, rm, unlink, writeFile } from 'node:fs/promises';
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
+import { env as processEnvironment } from 'node:process';
 import { reviewTreeEntries, verifyReviewObjectGraph } from './agent-review-hook.mjs';
 
 const execute = promisify(execFile);
@@ -30,8 +32,8 @@ async function git(cwd, ...args) {
 }
 
 /** The review base is the candidate's fork point: the single merge base of HEAD
- * and the observed origin/main. It stays put while main moves ahead, and moves
- * when HEAD integrates main or main is rewritten.
+ * and the observed origin/main. An explicitly pinned predecessor may be ahead
+ * of that fork point on HEAD's ancestry; hosted admission waits for it on main.
  */
 async function forkPoint(cwd) {
   let bases;
@@ -46,11 +48,16 @@ async function forkPoint(cwd) {
  */
 export async function captureSessionCandidate(cwd, base) {
   cwd = await realpath(cwd);
-  base ??= await forkPoint(cwd);
+  const pinned = processEnvironment.OPENLUP_STACK_BASE;
+  demand(pinned === undefined || SHA.test(pinned), 'OPENLUP_STACK_BASE must be a full commit digest');
+  demand(pinned === undefined || base === undefined || base === pinned, 'stack base differs from the prepared review base');
+  base ??= pinned ?? await forkPoint(cwd);
   demand(SHA.test(base), 'base must be a full commit digest');
   const head = (await git(cwd, 'rev-parse', '--verify', 'HEAD^{commit}')).trim();
   const tree = (await git(cwd, 'rev-parse', '--verify', 'HEAD^{tree}')).trim();
-  demand(await forkPoint(cwd) === base, 'base is no longer the fork point of HEAD and observed origin/main; prepare again');
+  const fork = await forkPoint(cwd);
+  try { demand(pinned !== undefined || fork === base, 'fork point changed'); await git(cwd, 'merge-base', '--is-ancestor', fork, base); }
+  catch { throw new Error('Agent review required: base is no longer the fork point or its pinned descendant on HEAD; prepare again'); }
   const graph = await verifyReviewObjectGraph(cwd, { head, tree, base });
   const flags = (await git(cwd, 'ls-files', '-v', '-z')).split('\0').filter(Boolean);
   demand(flags.every(entry => entry[0] !== 'S' && entry[0] === entry[0].toUpperCase()), 'index flags conceal source');
@@ -90,14 +97,15 @@ export async function captureSessionCandidate(cwd, base) {
   const expectedIndex = headEntries.map(entry => `${entry.mode} ${entry.object} 0\t${entry.path}`).sort();
   const committed = new Map(headEntries.map(entry => [entry.path, entry]));
   const clean = equal(index, expectedIndex) && actual.size === committed.size && [...actual].every(([name, entry]) => entry.mode === committed.get(name)?.mode && entry.object === committed.get(name)?.object);
-  return { base, head, tree, clean, workingDigest: digest([...actual.values()]), indexDigest: digest({ index, flags: flags.sort() }), changedPaths };
+  return { base, head, tree, clean, workingDigest: digest([...actual.values()]), indexDigest: digest({ index, flags: flags.sort() }), changedPaths, ...(pinned === undefined ? {} : { stackBase: pinned }) };
 }
 
 /** Read a committed candidate as data, without checking it out or executing its
  * configuration. Hosted admission must not run a candidate with write tokens.
  * The reconstructed clean index uses the same canonical digests as local review.
  */
-export async function captureCommittedReviewCandidate(cwd, base, head) {
+export async function captureCommittedReviewCandidate(cwd, base, head, stackBase) {
+  demand(stackBase === undefined || stackBase === base, 'stack base differs from the prepared review base');
   const graph = await verifyReviewObjectGraph(cwd, { base, head });
   const entries = reviewTreeEntries(graph, graph.headTree).map(({ path, mode, object }) => ({ path, mode, object })).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   const before = new Map(reviewTreeEntries(graph, graph.baseTree).map(entry => [entry.path, entry]));
@@ -108,7 +116,7 @@ export async function captureCommittedReviewCandidate(cwd, base, head) {
   for (const entry of entries) paths([entry.path]);
   const index = entries.map(entry => `${entry.mode} ${entry.object} 0\t${entry.path}`).sort();
   const flags = entries.map(entry => `H ${entry.path}`).sort();
-  return { base, head, tree: graph.headTree, clean: true, workingDigest: digest(entries), indexDigest: digest({ index, flags }), changedPaths };
+  return { base, head, tree: graph.headTree, clean: true, workingDigest: digest(entries), indexDigest: digest({ index, flags }), changedPaths, ...(stackBase === undefined ? {} : { stackBase }) };
 }
 
 function validateIntent(intent) {
@@ -124,7 +132,9 @@ export async function pristineAgentReviewBaseline(cwd) {
 }
 
 function validateCandidate(candidate) {
-  exact(candidate, ['base', 'head', 'tree', 'clean', 'workingDigest', 'indexDigest', 'changedPaths'], 'candidate');
+  demand(candidate && typeof candidate === 'object', 'candidate schema is invalid');
+  exact(candidate, ['base', 'head', 'tree', 'clean', 'workingDigest', 'indexDigest', 'changedPaths', ...(Object.hasOwn(candidate, 'stackBase') ? ['stackBase'] : [])], 'candidate');
+  demand(!Object.hasOwn(candidate, 'stackBase') || candidate.stackBase === candidate.base, 'candidate stack base differs');
   demand(['base', 'head', 'tree'].every(field => SHA.test(candidate[field])) && ['workingDigest', 'indexDigest'].every(field => DIGEST.test(candidate[field])), 'candidate digest is invalid'); demand(typeof candidate.clean === 'boolean', 'candidate clean flag is invalid'); paths(candidate.changedPaths);
 }
 const REPAIR_RISKS = ['ordinary', 'security', 'control', 'schema', 'instructions', 'unknown'];
@@ -187,7 +197,7 @@ function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
     /(?:^|\/)(?:AGENTS|CLAUDE)(?:\.local)?\.(?:md|txt|rst)$/iu.test(path) ||
     /(?:^|\/)(?:CONTRIBUTING|SECURITY|AI_CONTRIBUTION_POLICY|AGENT_GUIDE)\.(?:md|txt|rst)$/iu.test(path) ||
-    /^scripts\/(?:agent-review|check-|oss-|dco-|run-|packages\/)/iu.test(path) ||
+    /^scripts\/(?:agent-review|check-|oss-|dco-|run-|merge-preview|verify-candidate|packages\/)/iu.test(path) ||
     /^(?:package(?:-lock)?\.json|\.git(?:attributes|ignore)|.*(?:config|policy|security|auth|migration|payment|checkout|subscription|permission|access|credential|secret|token|release|publish|deploy|schema|contract|account|login|otp|cardSetup|paymentCard|customer|invoice).*)$/iu.test(path) ||
     /^(?:packages\/core|server\/(?:bff|adapters|runtime|domains\/(?:accounting|customers|shipping))|src\/(?:integrations|pages\/account|domains\/(?:customers|shipping)))(?:\/|$)/iu.test(path) ||
     /^docs\/platform\/plans\/autonomous-reviewed-delivery/iu.test(path);
@@ -519,15 +529,167 @@ async function sessionTransaction(cwd, directory, operation) {
   try { return await operation(); }
   finally { await handle.close(); await unlink(path); }
 }
+// Local prediction and heavy proof share this existing registered entrypoint,
+// keeping independently evolving publication aggregates out of this change.
+function previewGit(cwd, args) {
+  return execFileSync('/usr/bin/git', ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'protocol.allow=never', '-C', cwd, ...args], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024, timeout: 30000,
+    env: { PATH: processEnvironment.PATH, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_NO_LAZY_FETCH: '1', GIT_GRAFT_FILE: '/dev/null', GIT_SHALLOW_FILE: '/dev/null',
+      GIT_AUTHOR_NAME: 'Local merge preview', GIT_AUTHOR_EMAIL: 'preview@example.invalid', GIT_COMMITTER_NAME: 'Local merge preview', GIT_COMMITTER_EMAIL: 'preview@example.invalid' },
+  }).trim();
+}
+export function checkMergePreview({ cwd, target = 'origin/main', checks = [
+  [process.execPath, '--experimental-strip-types', 'scripts/oss-published-tree-check.ts', '--policy'],
+  [process.execPath, '--experimental-strip-types', 'scripts/oss-published-tree-check.ts', '--inventory'],
+] }) {
+  const base = previewGit(cwd, ['rev-parse', '--verify', `${target}^{commit}`]);
+  const head = previewGit(cwd, ['rev-parse', '--verify', 'HEAD^{commit}']);
+  const sourceTree = previewGit(cwd, ['rev-parse', '--verify', 'HEAD^{tree}']);
+  if (![base, head, sourceTree].every(value => SHA.test(value))) throw new Error('merge-preview: invalid comparison identity');
+  const objects = join(previewGit(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']), 'objects');
+  if (/[\r\n]/u.test(objects)) throw new Error('merge-preview: object store path cannot be represented safely');
+  const directory = mkdtempSync(join(tmpdir(), 'openlup-merge-preview-'));
+  try {
+    previewGit(directory, ['init', '-q']);
+    mkdirSync(join(directory, '.git', 'objects', 'info'), { recursive: true });
+    writeFileSync(join(directory, '.git', 'objects', 'info', 'alternates'), `${resolve(objects)}\n`);
+    let tree;
+    try { tree = previewGit(directory, ['-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', 'merge-tree', '--write-tree', base, head]); }
+    catch (error) {
+      const conflicts = String(error.stdout ?? '').split('\n').filter(line => /^CONFLICT /u.test(line));
+      throw new Error(`merge-preview: cannot merge ${base} and ${head}; merge main into this branch, resolve and regenerate, then obtain the required fresh review. ${conflicts.join(' ')}`);
+    }
+    if (!SHA.test(tree)) throw new Error('merge-preview: prediction did not produce one tree');
+    if (tree === sourceTree) return { base, head, tree, basis: 'unchanged tree' };
+    const merged = previewGit(directory, ['commit-tree', tree, '-p', base, '-p', head, '-m', 'Local merge preview; not for publication']);
+    previewGit(directory, ['checkout', '-q', '--detach', merged]);
+    const env = { ...processEnvironment };
+    for (const name of Object.keys(env)) if (/^(?:GITHUB_|GIT_|GH_)/u.test(name) || name === 'OPENLUP_STACK_BASE') delete env[name];
+    for (const [command, ...args] of checks) {
+      const checkArgs = args.includes('--policy') ? [...args, '--docs-base', base] : args;
+      const run = spawnSync(command, checkArgs, { cwd: directory, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 120000 });
+      if (run.error || run.status !== 0) throw new Error(`merge-preview: combined tree failed ${args.join(' ')}\n${run.error?.message ?? run.stderr ?? ''}\n${run.stdout ?? ''}`);
+    }
+    return { base, head, tree, basis: 'combined policy and inventory passed' };
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+export async function heavyLeaseDirectory(cwd) {
+  return join(tmpdir(), `openlup-heavy-${createHash('sha256').update(await realpath(cwd)).digest('hex')}`);
+}
+export async function withHeavyLease(action, { directory, waitMs = 0, pollMs = 1000 } = {}) {
+  if (!directory) throw new Error('heavy verification: a worktree lease directory is required');
+  if (!Number.isSafeInteger(waitMs) || waitMs < 0 || waitMs > 1800000) throw new Error('heavy verification: invalid bounded wait');
+  const owner = { token: randomUUID(), pid: process.pid, createdAt: new Date().toISOString() };
+  const started = Date.now(); let nextNotice = 0;
+  for (;;) {
+    try { await mkdir(directory, { mode: 0o700 }); break; }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      let stat;
+      try { stat = await lstat(directory); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('heavy verification: lease path is not a regular directory');
+      if (Date.now() - started >= waitMs) throw new Error(`heavy verification: bounded wait expired; inspect ${directory}/owner.json, leave the other owner and its processes alone`);
+      if (Date.now() >= nextNotice) { console.log(`heavy verification: waiting for this worktree's output lease (${Math.floor((Date.now() - started) / 1000)}s)`); nextNotice = Date.now() + 30000; }
+      await sleep(pollMs);
+    }
+  }
+  try {
+    await writeFile(join(directory, 'owner.json'), JSON.stringify(owner), { flag: 'wx', mode: 0o600 });
+    return await action();
+  } finally {
+    const current = JSON.parse(await readFile(join(directory, 'owner.json'), 'utf8'));
+    if (current.token !== owner.token) throw new Error('heavy verification: ownership changed; refusing to remove the lease');
+    await rm(directory, { recursive: true });
+  }
+}
+export function runHeavyCommand(command, args, cwd, env = processEnvironment) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, env, stdio: 'inherit', detached: process.platform !== 'win32' });
+    const forward = signal => { try { if (process.platform === 'win32') child.kill(signal); else process.kill(-child.pid, signal); } catch (error) { if (error.code !== 'ESRCH') throw error; } };
+    const interrupt = () => forward('SIGINT'); const terminate = () => forward('SIGTERM');
+    process.on('SIGINT', interrupt); process.on('SIGTERM', terminate);
+    const cleanup = () => { process.off('SIGINT', interrupt); process.off('SIGTERM', terminate); };
+    child.once('error', error => { cleanup(); reject(error); });
+    child.once('close', (code, signal) => { cleanup(); resolve(signal ? 1 : code ?? 1); });
+  });
+}
+export function heavyCommandEnvironment(directory, parent = processEnvironment) {
+  const env = { ...parent, OPENLUP_HEAVY_ACTIVE: directory };
+  // The pin belongs to this candidate's preflight. Test fixtures and child
+  // repositories must resolve their own bases, not inherit another repo's pin.
+  delete env.OPENLUP_STACK_BASE;
+  delete env.OPENLUP_VERIFY_EXPECTED;
+  return env;
+}
+function brokerCommand(command, args, directory, resource) {
+  if (processEnvironment.CI === 'true' || processEnvironment.AI_RESOURCE_GATE_ACTIVE === '1') return [command, args];
+  for (const entry of (processEnvironment.PATH ?? '').split(delimiter).filter(Boolean)) {
+    const executable = join(entry, 'ai-resource-gate');
+    try { accessSync(executable, constants.X_OK); } catch { continue; }
+    if (!resource || !/^[a-z][a-z0-9:-]{0,127}$/u.test(resource)) throw new Error('heavy verification: select the existing broker profile with --resource, for example openlup:coverage, openlup:build or openlup:typecheck');
+    return [executable, ['run', '--wait', `${resource}:${basename(directory)}`, '--', command, ...args]];
+  }
+  return [command, args];
+}
+export async function verifyCandidateCommand({ cwd, command, args = [], resource, lease, preflight = localPreflight, snapshot = captureSessionCandidate, run = runHeavyCommand }) {
+  const directory = lease?.directory ?? await heavyLeaseDirectory(cwd);
+  if (processEnvironment.OPENLUP_HEAVY_ACTIVE === directory) throw new Error('heavy verification: nested wrapper refused; run the underlying required command directly inside the outer wrapper');
+  const before = await snapshot(cwd);
+  if (processEnvironment.OPENLUP_VERIFY_EXPECTED && JSON.stringify(before) !== processEnvironment.OPENLUP_VERIFY_EXPECTED) throw new Error('heavy verification: source changed while waiting for host capacity');
+  if (!before.clean) throw new Error('heavy verification: commit source changes before final proof');
+  await preflight(cwd, before);
+  const finish = async code => {
+    if (JSON.stringify(await snapshot(cwd, before.base)) !== JSON.stringify(before)) throw new Error('heavy verification: source changed; this run is superseded and supplies no final evidence');
+    if (code === 0 && preflight === localPreflight) await nativeReview(cwd);
+    return code;
+  };
+  // The broker admits a fresh invocation of this verifier, not the expensive
+  // command directly. It rechecks frozen identity, review and merge prediction
+  // after the host-capacity wait and before starting any heavy work.
+  const [broker, brokerArgs] = brokerCommand(process.execPath, [fileURLToPath(import.meta.url), 'verify-command', ...(resource ? ['--resource', resource] : []), '--', command, ...args], directory, resource);
+  if (broker !== process.execPath) return finish(await run(broker, brokerArgs, cwd, { ...processEnvironment, OPENLUP_VERIFY_EXPECTED: JSON.stringify(before) }));
+  return withHeavyLease(async () => {
+    if (JSON.stringify(await snapshot(cwd, before.base)) !== JSON.stringify(before)) throw new Error('heavy verification: source changed while waiting');
+    // The native evidence may expire or main may advance while this command waits.
+    await preflight(cwd, before);
+    if (JSON.stringify(await snapshot(cwd, before.base)) !== JSON.stringify(before)) throw new Error('heavy verification: source changed during cheap preflight');
+    return finish(await run(command, args, cwd, heavyCommandEnvironment(directory)));
+  }, { ...lease, directory });
+}
+async function nativeReview(cwd) {
+  if (await runHeavyCommand(process.execPath, ['scripts/agent-review-session.mjs', 'verify'], cwd) !== 0) throw new Error('heavy verification: current independent native review is required');
+}
+async function localPreflight(cwd, candidate) {
+  for (const args of [
+    ['--experimental-strip-types', 'scripts/oss-published-tree-check.ts', '--policy', '--docs-base', candidate.base],
+    ['--experimental-strip-types', 'scripts/oss-published-tree-check.ts', '--inventory'],
+  ]) if (await runHeavyCommand(process.execPath, args, cwd) !== 0) throw new Error('heavy verification: cheap policy/inventory check failed');
+  console.log(`merge-preview: ${JSON.stringify(checkMergePreview({ cwd }))}`);
+  await nativeReview(cwd);
+}
+
 async function main() {
-  const [verb, input] = process.argv.slice(2); demand(['prepare', 'record', 'verify', 'status'].includes(verb), 'use prepare <intent.json>, record <observed-report.json>, verify, or status');
+  if (process.argv[2] === 'verify-command') {
+    const options = process.argv.slice(3);
+    const resource = options[0] === '--resource' ? options.splice(0, 2)[1] : undefined;
+    const [separator, command, ...args] = options;
+    if (separator !== '--' || !command) {
+      console.error('usage: node scripts/agent-review-session.mjs verify-command [--resource <existing-broker-resource>] -- <required-check-command> [args...]');
+      process.exitCode = 2; return;
+    }
+    process.exitCode = await verifyCandidateCommand({ cwd: process.cwd(), command, args, resource });
+    return;
+  }
+  const [verb, input] = process.argv.slice(2); demand(['prepare', 'record', 'verify', 'status'].includes(verb), 'use prepare <intent.json>, record <observed-report.json>, verify, status, or verify-command [--resource <profile>] -- <command>');
   const cwd = await realpath(process.cwd()); const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   await sessionDirectory(cwd);
   const operation = async () => {
   if (verb === 'prepare') {
     const spec = await boundedJson(input ?? join(directory, 'intent.json'));
     demand(Object.keys(spec).every(key => ['intent', 'authorSessionId', 'base', 'repairRisk', 'fullRefresh', 'regroup', 'ownerContinuation', 'rethink', 'simplicityPreCheck'].includes(key)) && Object.hasOwn(spec, 'intent'), 'supervisor request schema is invalid');
-    spec.authorSessionId ??= process.env.CODEX_THREAD_ID; spec.base ??= await forkPoint(cwd);
+    spec.authorSessionId ??= processEnvironment.CODEX_THREAD_ID; spec.base ??= processEnvironment.OPENLUP_STACK_BASE ?? await forkPoint(cwd);
     let previous; try { previous = await boundedJson(path, STATE_BYTES); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     demand(previous || spec.simplicityPreCheck, 'a first request needs simplicityPreCheck: read Review lessons in CONTRIBUTING.md and name the smallest adequate alternative considered');
     let state;
