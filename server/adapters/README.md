@@ -69,4 +69,4 @@ at 2,000 rows. It needs SELECT on those three columns, not event payload access
 or direct INSERT. The unbound winback adapter does not establish a runtime
 writer requirement. Tests retain the window's old-versus-recent reminder signal.
 
-<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-3bba11de7845c19f9b4616e3c9c6245e2b908061b541e1598b33e4eb23599921","reason":"Type-name delta only. The scheduler adapter's job registry now imports the package's renamed declaration type ScheduledJobDeclaration and re-exports it under its previous name ScheduledJob, so the adapter's exports, the registry it loads and every adapter row described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-8529c917fd5b8842a0f678fb0245257b8512a079229120d31fdfffc01e85794b","reason":"Type-name delta only. The scheduler adapter's job registry now imports the package's renamed declaration type ScheduledJobDeclaration and re-exports it under its previous name ScheduledJob, so the adapter's exports, the registry it loads and every adapter row described here are unchanged."} -->
