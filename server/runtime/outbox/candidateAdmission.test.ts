@@ -93,7 +93,9 @@ it("still refuses unknown installed packages and mismatched manifest names", asy
   try {
     names.mockReturnValue(["core", "outbox", "platform"] as never);
     expect(observeReferencePackages().inventoryComplete).toBe(true);
-    for (const missing of ["core", "outbox", "platform"]) {
+    names.mockReturnValue(["core", "outbox"] as never);
+    expect(observeReferencePackages()).toMatchObject({ inventoryComplete: true, loadedPackages: [{ name: "@openlup/core" }, { name: "@openlup/outbox" }] });
+    for (const missing of ["core", "outbox"]) {
       names.mockReturnValue(["core", "outbox", "platform"].filter((name) => name !== missing) as never);
       expect(observeReferencePackages().inventoryComplete).toBe(false);
     }

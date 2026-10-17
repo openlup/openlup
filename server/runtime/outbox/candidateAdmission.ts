@@ -96,6 +96,8 @@ export function observeReferencePackages(
     if (manifest.name !== pkg) return { loadedPackages, inventoryComplete: false };
     loadedPackages.push({ name: manifest.name, version: manifest.version, kind: gates.kind });
   }
-  return { loadedPackages, inventoryComplete: ["@openlup/core", "@openlup/outbox", "@openlup/platform"].every((name) => loadedPackages.some((pkg) => pkg.name === name)) };
+  // Core and Outbox are required; Platform is a set package checked whenever it is installed, so a
+  // core-and-outbox installation (the packed Outbox proof) still completes its inventory.
+  return { loadedPackages, inventoryComplete: ["@openlup/core", "@openlup/outbox"].every((name) => loadedPackages.some((pkg) => pkg.name === name)) };
   } catch { return { loadedPackages: [], inventoryComplete: false }; }
 }
