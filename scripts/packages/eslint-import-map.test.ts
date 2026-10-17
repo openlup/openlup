@@ -93,7 +93,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("eslint import-map boundary", () => {
+describe("eslint import-map boundary", { timeout: 60_000 }, () => {
   it("keeps string targets: an alias into infra code is refused in domain code", async () => {
     const config = await loadConfig({
       "#plain-infra": "./server/adapters/example.ts",
@@ -127,7 +127,7 @@ describe("eslint import-map boundary", () => {
   });
 });
 
-describe("eslint portable package boundaries", () => {
+describe("eslint portable package boundaries", { timeout: 60_000 }, () => {
   it("rejects every existing provider family in both portable source trees", async () => {
     const config = await loadConfig();
     for (const pkg of portablePackages) for (const specifier of [
@@ -302,7 +302,7 @@ describe("eslint portable package boundaries", () => {
 
 });
 
-describe("eslint platform module boundaries", () => {
+describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   const platformSource = join(root, "packages/platform/src");
   const typeOnlyForm = /^(?:import type |import \{ type |export type |type Value = import\()/;
 

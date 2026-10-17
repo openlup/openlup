@@ -28,7 +28,7 @@ Prune defaults to 30 days for processed and 90 for discarded, in batches of 500.
 
 ## Readiness and verification
 
-<!-- openlup-doc-impact {"unit":"outbox-rail","digest":"sha256-4e5138c89746267ce29fd73f0a58659fdf2d4eca8791fced9abbefb891922000","reason":"The reference admission's installed-package inventory now skips a private (unreleased) workspace package such as @openlup/platform. Release-set observation, the fail-closed refusal of any other unexpected installation, and every Outbox API, SQL, readiness responsibility and verification step described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"outbox-rail","digest":"sha256-51a0c1f2e60a38c015ae16274d9a97d50909635f42c0a3223d3d7e19136242ea","reason":"The reference runtime adds a discard handler for an event type the application retired: the type stays in the known vocabulary, so a pending row never blocks its aggregate, and a composition that registers the handler discards such rows once with a benign reason. The rail, its claim semantics and its API are unchanged."} -->
 
 Compose the contribution with `@openlup/core/readiness`, actual loaded package metadata, selected-adapter schema observations and host bindings to the exact contribution run/handle functions before activating the exact new candidate. Only `ready` admits; `unknown` and `unsatisfied` leave the serving version running. Descriptors are inert; the builder supplies the same actual event identities and effective timeouts after lease acquisition. The default schema declaration describes catalog existence and overloads; it does not prove bodies, ACL or recovery. Use framework-free fence conformance from `./testing` and real transactional proof for your adapter. No ambient database URL is used by the packed proof.
 

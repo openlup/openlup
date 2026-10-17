@@ -72,11 +72,6 @@ const ignored = [
   /src\/vite-env\.d\.ts$/,
   /src\/integrations\/supabase\/types\.ts$/,
   /src\/components\/ui\//,
-  // pet-personalizer: feature module, tests planned as follow-up.
-  /src\/pages\/pet-personalizer\//,
-  /src\/components\/pet-personalizer\//,
-  /src\/lib\/pet-personalizer\//,
-  /src\/types\/pet-personalizer\.ts$/,
 ];
 
 const zeroLineFiles = Object.entries(summary)

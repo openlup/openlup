@@ -3,9 +3,7 @@ import { cn } from "@/lib/utils";
 /**
  * Numbered step heading atom.
  *
- * A teal circle with a step number + adjacent title, used in numbered flows
- * (e.g. the /zrob-puszke pet personalizer steps). Extracted from the local
- * StepHeading that lived in pet-personalizer/index.tsx.
+ * A teal circle with a step number + adjacent title, used in numbered flows.
  */
 interface StepBadgeProps {
   n: number;

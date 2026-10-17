@@ -29,7 +29,7 @@ use the package's `authorizeCron` guard through `api/_cron/authorizeCron.ts`.
 The package's Node runtime, scheduler and node host are not yet composed by the
 public reference server; the module's composition change does that.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-fd5a90ad2b860bc0c6e417ac662e9975bb07822bfe72f103b3381683ee6324a9","reason":"The health endpoint's handler moves into @openlup/platform/bff as a generic health handler over the package's response envelope; server/bff/health.ts binds it with the same contract, reads and responses. Runtime routes, health semantics and the runtime model described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-2ee814a9b6801d785878e80569809b1fd5914f48de9fdecd177d9a4075e6653c","reason":"Deletion delta. The removed personalization feature's share page (api/c/[slug]), its blob cleanup cron and the checkout composition's personalization cookie helpers are deleted; nothing in this tree mounted the share page or scheduled the cleanup. The runtime model, routes and scheduling described here are unchanged."} -->
 
 ## Self-host boundary
 
