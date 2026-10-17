@@ -772,8 +772,14 @@ describe('pinned stack bases and local final proof', () => {
     expect(f.git('rev-parse', 'HEAD')).toBe(sourceHead); expect(f.git('status', '--porcelain')).toBe('');
     if (aggregate) {
       f.git('update-ref', 'refs/remotes/origin/main', base);
+      const eventDirectory = await mkdtemp(join(source, '.context', 'scratch', 'foreign-hosted-event-')); directories.push(eventDirectory);
+      const eventPath = join(eventDirectory, 'event.json');
+      await writeFile(eventPath, JSON.stringify({ repository: { full_name: 'openlup/openlup', private: false }, before: base, after: main }));
+      vi.stubEnv('GITHUB_ACTIONS', 'true'); vi.stubEnv('GITHUB_REPOSITORY', 'openlup/openlup');
+      vi.stubEnv('GITHUB_EVENT_NAME', 'push'); vi.stubEnv('GITHUB_REF', 'refs/heads/main');
+      vi.stubEnv('GITHUB_SHA', main); vi.stubEnv('GITHUB_EVENT_PATH', eventPath);
       const marker = join(f.cwd, '.context', 'heavy-must-not-run');
-      const attempt = spawnSync(process.execPath, [resolve('scripts/agent-review-session.mjs'), 'verify-command', '--', process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`], { cwd: f.cwd, encoding: 'utf8', timeout: 30_000 });
+      const attempt = spawnSync(process.execPath, [resolve('scripts/agent-review-session.mjs'), 'verify-command', '--', process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`], { cwd: f.cwd, encoding: 'utf8', timeout: 30_000, env: { PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } });
       expect(attempt.error).toBeUndefined(); expect(attempt.status).toBe(1);
       expect(attempt.stderr).toContain('current independent native review is required');
       await expect(stat(marker)).rejects.toThrow();
