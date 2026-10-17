@@ -141,7 +141,7 @@ describe("host readiness and boot order", () => {
     deps.scheduledJobHandlers.mockReturnValue({ "nightly-report": earlier, "queue-drain": independent });
     const result = await host.serveNode({ env, cron, listen: false, scheduledJobHandlers: { "nightly-report": replacement } });
     expect(deps.admitHost).toHaveBeenCalledExactlyOnceWith(env, {
-      kind: "node", nodeJobs: jobs, nodeJobHandlers: { "nightly-report": replacement, "queue-drain": independent },
+      kind: "node", nodeJobs: jobs, scheduledJobs: [], nodeJobHandlers: { "nightly-report": replacement, "queue-drain": independent },
     });
     await result.stop();
   });
@@ -149,7 +149,7 @@ describe("host readiness and boot order", () => {
   it("passes no timed jobs when listening without cron", async () => {
     const { host, deps } = hostFixture();
     const result = await host.serveNode({ env, port: 0 });
-    expect(deps.admitHost).toHaveBeenCalledExactlyOnceWith(env, { kind: "node", nodeJobs: [], nodeJobHandlers: {} });
+    expect(deps.admitHost).toHaveBeenCalledExactlyOnceWith(env, { kind: "node", nodeJobs: [], scheduledJobs: [], nodeJobHandlers: {} });
     expect(result.registeredJobs).toEqual([]);
     await result.stop();
   });
@@ -548,6 +548,72 @@ describe("scheduler profile hooks", () => {
     expect(profile.projectJobs).toHaveBeenCalledOnce();
     expect(profile.validateSchedule).not.toHaveBeenCalled();
     expect(profile.validateJob).not.toHaveBeenCalled();
+  });
+});
+
+describe("registry jobs on the Node host", () => {
+  const summary = { checked: 1, updated: 1, failures: 0, skipped: false };
+
+  it("registers registry jobs after the declared ones and runs them in-process without HTTP or a secret", async () => {
+    const { deps } = hostFixture();
+    const { cron, callbacks } = cronFixture();
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const run = vi.fn(async () => summary);
+    const registry = [{ id: "ledger-sweep", schedule: "*/5 * * * *", run }];
+    const result = await createNodeHost({ ...deps, scheduledJobs: () => registry }).serveNode({
+      env, cron, listen: false, advisoryLock: lockFixture(),
+    });
+    expect(result.registeredJobs).toEqual(["nightly-report", "queue-drain", "ledger-sweep"]);
+    expect(cron.schedule).toHaveBeenLastCalledWith("*/5 * * * *", expect.any(Function), { timezone: undefined });
+    await callbacks[2]!();
+    expect(run).toHaveBeenCalledExactlyOnceWith({
+      invocation: { triggerKind: "scheduler", invocationSource: "node_cron" }, signal: undefined,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("claims the lease for a leased registry job through the deployment's lease port", async () => {
+    const { deps } = hostFixture();
+    const { cron, callbacks } = cronFixture();
+    const lease = {
+      claimJobRun: vi.fn(async () => ({ acquired: false, runId: null, reason: "lease_held" })),
+      finishJobRun: vi.fn(async () => true),
+    };
+    const jobLease = vi.fn(() => lease);
+    const run = vi.fn(async () => summary);
+    await createNodeHost({
+      ...deps, loadSchedulerJobs: () => [], jobLease,
+      scheduledJobs: () => [{ id: "ledger-sweep", schedule: "* * * * *", lease: { seconds: 90 }, run }],
+    }).serveNode({ env, cron, listen: false, advisoryLock: lockFixture() });
+    await callbacks[0]!();
+    expect(jobLease).toHaveBeenCalledExactlyOnceWith(env);
+    expect(lease.claimJobRun).toHaveBeenCalledExactlyOnceWith(
+      "ledger-sweep", { triggerKind: "scheduler", invocationSource: "node_cron" }, 90,
+    );
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("refuses a registry job whose id is also a path-declared job, before admission", async () => {
+    const { deps } = hostFixture();
+    const { cron } = cronFixture();
+    await expect(createNodeHost({
+      ...deps, scheduledJobs: () => [{ id: "queue-drain", schedule: "* * * * *", run: vi.fn() }],
+    }).serveNode({ env, cron, listen: false, advisoryLock: lockFixture() })).rejects.toThrow("scheduled_job_declared_twice:queue-drain");
+    expect(deps.admitHost).not.toHaveBeenCalled();
+  });
+
+  it("hands admission the registry jobs only when the host runs timers", async () => {
+    const registry = [{ id: "ledger-sweep", schedule: "* * * * *", run: vi.fn() }];
+    const timed = hostFixture();
+    await createNodeHost({ ...timed.deps, scheduledJobs: () => registry }).serveNode({
+      env, cron: cronFixture().cron, listen: false, advisoryLock: lockFixture(),
+    });
+    expect(timed.deps.admitHost).toHaveBeenCalledWith(env, expect.objectContaining({ scheduledJobs: registry }));
+    const untimed = hostFixture();
+    untimed.runtime.listen.mockResolvedValue(undefined);
+    await createNodeHost({ ...untimed.deps, scheduledJobs: () => registry }).serveNode({ env, port: 0 });
+    expect(untimed.deps.admitHost).toHaveBeenCalledWith(env, expect.objectContaining({ scheduledJobs: [], nodeJobs: [] }));
   });
 });
 

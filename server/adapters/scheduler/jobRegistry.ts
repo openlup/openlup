@@ -5,9 +5,16 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadJobRegistry as loadPlatformJobRegistry, type ScheduledJob } from "@openlup/platform/scheduler";
+import {
+  loadJobRegistry as loadPlatformJobRegistry,
+  type ScheduledJobDeclaration as ScheduledJob,
+} from "@openlup/platform/scheduler";
 
-export { jobIdFromPath, jobRegistryFromConfig, type ScheduledJob } from "@openlup/platform/scheduler";
+export {
+  jobIdFromPath,
+  jobRegistryFromConfig,
+  type ScheduledJobDeclaration as ScheduledJob,
+} from "@openlup/platform/scheduler";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 // server/adapters/scheduler/ -> repo root is three levels up.

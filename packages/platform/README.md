@@ -10,13 +10,17 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | --- | --- |
 | `./http` | Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
-| `./scheduler` | Job registry, node-cron scheduler with per-job advisory locks, hosted cron verification, the cron entrypoint guard (it compares the presented bearer token with `CRON_SECRET` in constant time) and direct job bindings |
+| `./scheduler` | Transport-neutral scheduled jobs (`ScheduledJob`, the job registry, the lease-aware runner and the authenticated HTTP cron entry), path-declared jobs from configuration, the node-cron scheduler with per-job advisory locks, hosted cron verification, the cron entrypoint guard (it compares the presented bearer token with `CRON_SECRET` in constant time) and direct job bindings |
 | `./blob` | Filesystem, S3-compatible, Supabase Storage and Vercel Blob adapters, and `bindBlobPort` |
 | `./data` | Supabase and node-postgres data gateways, the role-free transaction lane, the query builder and the data bindings |
 | `./migrations` | The node-postgres `MigrationRunnerPort` |
 | `./job-ledger` | The job-run ledger port, its PostgreSQL and managed (Supabase) adapters, the managed v2/v3 compatibility calls and the location of its SQL |
 | `./kernel` | The bundle identifiers, descriptors and readiness |
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
+
+## Scheduled jobs
+
+A job is `{ id, schedule, lease?, run(context) }` with a UTC cron expression. Domains and packages contribute jobs to `createScheduledJobRegistry`, which refuses duplicate ids and ships empty. The Node host runs registry jobs on its own timers and calls `run` directly, with no HTTP request and no secret. `createScheduledJobHttpEntry` mounts the same job behind the cron guard for a hosted cron. A job that declares `lease` runs only after the injected job-lease port grants it; a lease held elsewhere skips the run, and a finish the port refuses fails the run. `scheduledJobsFromContribution` turns a contribution's cadence schedules into jobs and refuses a cadence that no cron expression matches exactly; a contribution run that reports a failed outcome fails the job.
 
 ## Bundle readiness
 
