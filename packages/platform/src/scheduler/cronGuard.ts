@@ -1,5 +1,5 @@
 import type { HttpRequest } from "../http/index.js";
-import { bearerToken } from "./vercelScheduler.js";
+import { bearerToken, cronSecretMatches } from "./cronSecret.js";
 
 export { bearerToken };
 
@@ -8,8 +8,8 @@ export interface CronAuthDenied {
   body: Record<string, unknown>;
 }
 
-// Shared cron entrypoint guard: method allowlist + CRON_SECRET presence + bearer
-// match. Returns a response to return verbatim when denied, or null when the
+// Shared cron entrypoint guard: method allowlist + CRON_SECRET presence + constant-time bearer
+// match (see ./cronSecret.ts). Returns a response to return verbatim when denied, or null when the
 // request is authorized. Per-job flag kill-switches and provider/env readiness
 // checks intentionally stay in each job — they differ per job and must run after
 // this guard but before any ledger write.
@@ -23,7 +23,7 @@ export function authorizeCron(
   if (!env.CRON_SECRET) {
     return { status: 503, body: { ok: false, error: "cron_secret_required" } };
   }
-  if (bearerToken(req) !== env.CRON_SECRET) {
+  if (!cronSecretMatches(bearerToken(req), env.CRON_SECRET)) {
     return { status: 401, body: { ok: false, error: "unauthorized" } };
   }
   return null;

@@ -27,6 +27,7 @@ export {
   type VercelSchedulerAdapter,
 } from "./vercelScheduler.js";
 export { authorizeCron, type CronAuthDenied } from "./cronGuard.js";
+export { cronSecretMatches } from "./cronSecret.js";
 export {
   mergeScheduledJobHandlers,
   type ScheduledInvocationSource,
