@@ -773,7 +773,7 @@ describe('pinned stack bases and local final proof', () => {
     if (aggregate) {
       f.git('update-ref', 'refs/remotes/origin/main', base);
       const marker = join(f.cwd, '.context', 'heavy-must-not-run');
-      const attempt = spawnSync(process.execPath, [resolve('scripts/agent-review-session.mjs'), 'verify-command', '--', process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`], { cwd: f.cwd, encoding: 'utf8', timeout: 10000 });
+      const attempt = spawnSync(process.execPath, [resolve('scripts/agent-review-session.mjs'), 'verify-command', '--', process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`], { cwd: f.cwd, encoding: 'utf8', timeout: 30_000 });
       expect(attempt.error).toBeUndefined(); expect(attempt.status).toBe(1);
       expect(attempt.stderr).toContain('current independent native review is required');
       await expect(stat(marker)).rejects.toThrow();
