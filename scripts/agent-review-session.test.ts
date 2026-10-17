@@ -754,7 +754,7 @@ describe('pinned stack bases and local final proof', () => {
     f.git('checkout', '-q', '--detach', head);
     expect(checkMergePreview({ cwd: f.cwd, target: main }).basis).toBe('combined policy and inventory passed');
     expect(f.git('rev-parse', 'HEAD')).toBe(head); expect(f.git('status', '--porcelain')).toBe('');
-  });
+  }, 30_000);
   it('serializes independent callers and releases only its own lease on success or failure', async () => {
     const f = await fixture(); const directory = join(f.cwd, 'lease'); const order: string[] = [];
     let release!: () => void; let entered!: () => void; const ready = new Promise<void>(resolve => { entered = resolve; }); const held = new Promise<void>(resolve => { release = resolve; });

@@ -118,7 +118,7 @@ describe("attributable source and owner impact", () => {
     expect(impact(root, resolveDocumentationBase(root, { env }).base).failures).toEqual([]);
     expect(impact(root, resolveDocumentationBase(root, { env: {} }).base).failures).toHaveLength(1);
     expect(() => resolveDocumentationBase(root, { env, base })).toThrow('differs');
-    const merged = git(root, 'commit-tree', git(root, 'rev-parse', `${predecessor}^{tree}`), '-p', base, '-p', predecessor, '-m', 'merge predecessor');
+    const merged = git(root, '-c', 'user.name=Documentation Test', '-c', 'user.email=test@example.org', 'commit-tree', git(root, 'rev-parse', `${predecessor}^{tree}`), '-p', base, '-p', predecessor, '-m', 'merge predecessor');
     git(root, 'update-ref', 'refs/remotes/origin/main', merged);
     expect(impact(root, resolveDocumentationBase(root, { env }).base).failures).toEqual([]);
     expect(impact(root, resolveDocumentationBase(root, { env: {} }).base).failures).toEqual([]);
