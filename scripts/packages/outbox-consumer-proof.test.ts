@@ -33,9 +33,11 @@ function rehash(packs: string) {
 function fixture() {
   const target = realpathSync(mkdtempSync(join(scratch, "fixture-"))), packs = join(target, "packs"); cpSync(basePacks, packs, { recursive: true });
   // This is a test-input subset, with no checkout or Git identity. Tooling is explicit.
-  const files = ["config/openlup-packages.json", "packages/core/package.json", "packages/outbox/package.json", "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
+  const config = JSON.parse(readFileSync(join(root, "config/openlup-packages.json"), "utf8"));
+  const directories = config.packages.filter((entry: { publish: boolean }) => entry.publish).map((entry: { directory: string }) => entry.directory);
+  const files = ["config/openlup-packages.json", ...directories.map((directory: string) => `${directory}/package.json`), "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
   for (const file of files) { mkdirSync(dirname(join(target, file)), { recursive: true }); cpSync(join(root, file), join(target, file)); }
-  writeFileSync(join(target, "package.json"), '{"type":"module","workspaces":["packages/core","packages/outbox"]}\n'); mkdirSync(join(target, "node_modules"));
+  writeFileSync(join(target, "package.json"), JSON.stringify({ type: "module", workspaces: directories }) + "\n"); mkdirSync(join(target, "node_modules"));
   cpSync(join(root, "node_modules/zod"), join(target, "node_modules/zod"), { recursive: true });
   for (const name of ["typescript", "pg"]) symlinkSync(join(root, "node_modules", name), join(target, "node_modules", name), "dir");
   return { target, packs };

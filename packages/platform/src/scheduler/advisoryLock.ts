@@ -111,7 +111,7 @@ export function createEnvAdvisoryLock(
 }
 
 async function connectDedicatedClient(connectionString: string): Promise<AdvisoryLockQuerier> {
-  const pg = await import("pg");
+  const pg = await import("pg").catch(peerMissing);
   const ClientCtor = (pg.default?.Client ?? pg.Client) as typeof import("pg").Client;
   const client = new ClientCtor({ connectionString });
   await client.connect();
@@ -132,4 +132,14 @@ export function createNoopAdvisoryLock(): AdvisoryLock {
       /* no-op */
     },
   };
+}
+
+/** Translate only absence of this optional peer; preserve broken SDKs and other failures. */
+function peerMissing(cause: unknown): never {
+  if (cause instanceof Error && "code" in cause
+    && (cause.code === "ERR_MODULE_NOT_FOUND" || cause.code === "MODULE_NOT_FOUND")
+    && /^Cannot find (?:package|module) ['"]pg['"]/.test(cause.message)) {
+    throw new Error("OPENLUP_E_PEER_MISSING: pg is required by the Postgres scheduler advisory lock; install it alongside @openlup/platform", { cause });
+  }
+  throw cause;
 }

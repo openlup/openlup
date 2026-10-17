@@ -47,7 +47,8 @@ export function createS3ClientFromEnv(env: Env, loadSdk: () => S3Sdk = loadS3Sdk
   let loaded: { sdk: S3Sdk; client: InstanceType<S3Sdk["S3Client"]> } | null = null;
   const connect = async () => {
     if (loaded) return loaded;
-    const sdk = loadSdk();
+    let sdk: S3Sdk;
+    try { sdk = loadSdk(); } catch (cause) { peerMissing(cause); }
     loaded = {
       sdk,
       client: new sdk.S3Client({
@@ -77,4 +78,14 @@ export function createS3ClientFromEnv(env: Env, loadSdk: () => S3Sdk = loadS3Sdk
       return client.send(new sdk.ListObjectsV2Command(input));
     },
   };
+}
+
+/** Translate only absence of this optional peer; preserve broken SDKs and other failures. */
+function peerMissing(cause: unknown): never {
+  if (cause instanceof Error && "code" in cause
+    && (cause.code === "ERR_MODULE_NOT_FOUND" || cause.code === "MODULE_NOT_FOUND")
+    && /^Cannot find (?:package|module) ['"]@aws-sdk\/client-s3['"]/.test(cause.message)) {
+    throw new Error("OPENLUP_E_PEER_MISSING: @aws-sdk/client-s3 is required by the S3 blob capability; install it alongside @openlup/platform", { cause });
+  }
+  throw cause;
 }

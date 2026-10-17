@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-837497dd376c44bc4222788752d83a4d10fdd54824f84e9a85d051f0260984eb","reason":"The root manifest and lockfile add a pinned @aws-sdk/client-s3 development dependency for the platform's S3 tests (the package declares it as an optional peer), and the reference compose file gains a local S3-compatible service started only with --profile local-storage; without that profile it requires no storage settings. Required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-77c15873f99c7c8af274b2e7292f81ba29481a74eca83573efbe851bf66c638f","reason":"The root manifest and lockfile remove the unused openai and sharp dependencies, add pinned @aws-sdk/client-s3 test tooling and record platform's optional SDK/type peers. Compose adds an opt-in local-storage S3-compatible service; the inactive profile requires no storage settings. Vitest removes obsolete personalization coverage exclusions and updates its dynamic-path examples, retaining the projects, required selectors and thresholds. Contributor commands, their order and the shared package-gate discovery described in this section remain unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-b9cc2a76212feeb1c3433b67967ce074c145917d137510d680eb9fd96a6e001b","reason":"The publication policy admits the Docker-gated object-storage conformance test, which starts a plain Node process, as an execution entrypoint. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-15e5041e701d742413c243dfdf5741ab0915e217e625ef2ef24529b4f97fde0a","reason":"The tooling delta removes obsolete personalization exceptions from the zero-coverage checker, declares the object-storage conformance test and platform API/consumer scripts as public execution paths, and refreshes platform's package-command digest. The new cold-consumer proof requires verified core/platform artifacts, checks optional-peer isolation and refusals, compiles declarations in both module modes and exercises installed adapters with owned fixtures and a disposable database; companion tests falsify isolation, export, type-leak and refusal evidence. Platform's README owns these package-specific assertions. The existing shared gate still discovers publishable packages and requires their API and consumer scripts; no contributor command, required selector, threshold or gate order changes."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

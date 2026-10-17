@@ -161,7 +161,7 @@ function buildJwtClaims(claims: ActorClaims): string | null {
 // Lazy default: only import `pg` and build the Pool when actually invoked, so typecheck/test paths
 // that never run work do not load the driver. SET LOCAL keeps pooled-connection reuse safe.
 async function defaultPoolFactory(env: PostgresDataGatewayEnv): Promise<Pool> {
-  const pg = await import("pg");
+  const pg = await import("pg").catch(peerMissing);
   const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;
   const TypeOverridesCtor = (pg.default?.TypeOverrides ?? pg.TypeOverrides) as typeof import("pg").TypeOverrides;
   return new PoolCtor({
@@ -173,4 +173,14 @@ async function defaultPoolFactory(env: PostgresDataGatewayEnv): Promise<Pool> {
 /** Resolve the gateway env from process env (DATABASE_URL), mirroring the supabase binding shape. */
 export function resolvePostgresDataGatewayEnv(env: Record<string, string | undefined>): PostgresDataGatewayEnv {
   return { connectionString: env.DATABASE_URL ?? "" };
+}
+
+/** Translate only absence of this optional peer; preserve broken SDKs and other failures. */
+function peerMissing(cause: unknown): never {
+  if (cause instanceof Error && "code" in cause
+    && (cause.code === "ERR_MODULE_NOT_FOUND" || cause.code === "MODULE_NOT_FOUND")
+    && /^Cannot find (?:package|module) ['"]pg['"]/.test(cause.message)) {
+    throw new Error("OPENLUP_E_PEER_MISSING: pg is required by the Postgres data gateway; install it alongside @openlup/platform", { cause });
+  }
+  throw cause;
 }

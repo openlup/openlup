@@ -1,10 +1,12 @@
 # @openlup/platform
 
-Development preview, unreleased. This package is private in this tree and is not published; the module's final pull request, in which the reference application composes it, makes it publishable. No stable API is claimed.
+Development preview. This package joins core and outbox in the publishable set at 0.14.0; this configuration does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
 ## Package surface
+
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its nine experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -62,6 +64,61 @@ The package carries no deployment identity. The application passes it every valu
 
 The package SQL and the reference application's platform migration chain are alternative install paths, never applied together: the reference chain defines all four job-control functions itself, with plain `CREATE FUNCTION`, so it fails on a database where the package SQL already created them. The package file `20260809150001_job_run_ledger_v3` has a migration identity no reference migration uses. Importing the package never applies SQL.
 
+## Optional peers
+
+`pg`, `@types/pg` and `@aws-sdk/client-s3` are optional peers. Install `pg` and
+`@types/pg` alongside this package when selecting PostgreSQL adapters; install
+`@aws-sdk/client-s3` when selecting S3 blob storage. Loading an unselected adapter
+never installs or initializes its SDK. The PostgreSQL scheduler lock also loads
+`pg` only on its first operation.
+
+A selected capability whose SDK is absent rejects its first loading operation
+with `OPENLUP_E_PEER_MISSING: <package> is required by <capability>; install it
+alongside @openlup/platform`. The original module-resolution error is the cause.
+A broken SDK, a missing transitive dependency or a provider error propagates
+unchanged. Blob `exists` retains its boolean contract and returns false on a
+failed HEAD; use an upload or list operation to observe an S3 loading refusal.
+
 ## Verification
 
 This package's tests are part of the repository's required test selection; from this directory, `npm test` runs them alone. The tests rewrite the originating application's characterization with neutral names and synthetic data, and a boundary test refuses any environment read or provider import in the package source.
+
+`npm run api:check` compares each of the nine declaration entry graphs with the
+committed `api/*.api.md` reports. After building, deliberately regenerate them
+with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
+this package, and review the declaration changes.
+
+The source-checkout binding `npm run test:consumer` runs
+[`platform-cold-consumer.ts`](../../scripts/packages/platform-cold-consumer.ts).
+It requires the cold package producer's verified `OPENLUP_PACK_MANIFEST` and
+exact `OPENLUP_PACK_COMMIT`; it never substitutes a workspace build or repacks
+on refusal. `ci:required` invokes that proof; API checks remain in the shared
+cheap phase. The producer must include publishable core and platform tarballs;
+the package inventory includes both at the same set version. Cold packing requires a clean committed package tree; an uncommitted preparation cannot produce the manifest.
+
+The proof installs those tarballs, locked Zod and explicit Node type tooling
+offline from the default npm cache into an OS temporary directory outside the checkout.
+It verifies optional-peer absence physically and through both CommonJS and ESM
+resolution, refuses symlinks and ancestor package sources, checks the complete
+export classification, imports every nonadapter entry with an empty environment,
+and compiles its types in strict NodeNext and Bundler modes without skipping
+library checks. A type leak fails the proof even if runtime imports pass.
+
+It then checks actual missing-SDK refusals, installs the three peers at the root
+lockfile's exact versions using `npm install --prefer-offline --no-audit --fund=false`
+and the default npm cache, compiles all adapter declarations and runs the real SDKs against owned
+in-memory fixtures: S3 upload/HEAD/list/delete through the real SDK and
+deterministic invalid-URL refusals after the default SDK/driver loads.
+These fixtures contact no live provider. The PostgreSQL adapters then run their SQL conformance
+against a disposable database: the CI job's pinned PostgreSQL service when the job supplies its
+identity (`OPENLUP_PROOF_SERVICE_CONTAINER` and `OPENLUP_PROOF_SERVICE_PORT`), as the outbox proof
+uses it, or otherwise an owned, labelled container of the same pinned image. There is no skip:
+without either the proof fails. Temporary consumer files, the proof database and an owned container
+are removed on completion. Missing cached packages fail the initial offline installation;
+the SDK-present install can fetch missing registry metadata or packages. Neither
+phase redirects npm to an empty temporary cache.
+
+The composition declarations describe the injected Supabase factory structurally;
+they do not import the data entry or its PostgreSQL types. The cold proof still
+requires all five nonadapter entries to import in fresh processes and compile
+in both resolution modes with all three optional peers absent.

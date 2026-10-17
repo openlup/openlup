@@ -44,7 +44,7 @@ contract, not to a browser client or provider response.
 
 `npm run lint` enforces the import side of this in
 [eslint.config.js](../../eslint.config.js). A package under `packages/` imports
-nothing outside its own directory, except `@openlup/outbox` and the unreleased
+nothing outside its own directory, except `@openlup/outbox` and
 `@openlup/platform` may import the exact public exports of their declared
 `@openlup/core` dependency. Workspace
 imports, including imports inside packages, use only subpaths their target's
@@ -56,10 +56,10 @@ route code; its tests may compose a domain with an adapter. The same provider
 SDK restriction applies to non-test production source in `packages/core/src`
 and `packages/ui/src` as well as `packages/outbox/src`; their tests retain
 package isolation and exact-export checks. `packages/platform` is not portable
-in that sense: its PostgreSQL adapters load `pg` and its default S3 client
-loads `@aws-sdk/client-s3` on first use, both optional peers, and it receives
-the `@vercel/blob` module and the Supabase client factory from the application
-instead of importing those SDKs. The checks cover
+in that sense: its PostgreSQL adapters load the optional `pg` peer (with optional
+`@types/pg` declarations), its S3 adapter loads optional `@aws-sdk/client-s3`, and
+it receives the `@vercel/blob` module and the Supabase client factory from the
+application instead of importing those SDKs. The checks cover
 literal import and re-export specifiers, plain-template dynamic imports,
 type imports, and literal/plain-template `require` and `module.require`
 loads. A specifier held in a variable or reached through an alias still needs
@@ -76,7 +76,7 @@ of semantic or dataflow analysis; see the precise scope and exceptions in
 
 <!-- openlup-doc-impact {"unit":"server","digest":"sha256-d5d89b8d54383fbd28577394c31d3f634e093b6995ab43826ce34616cd9cafcf","reason":"Deletion delta. The removed personalization feature's server facades and services (blob, declension, events logger, image generation, OCR, identity, image and text validation, mask generation) are deleted, and two commerce handlers lose never-injected optional personalization hooks; no server boundary described here changes."} -->
 
-The runnable server substrate lives in the unreleased `@openlup/platform`
+The runnable server substrate lives in the development-preview `@openlup/platform`
 package: the Node HTTP runtime and its fixed request order, BFF dispatch,
 scheduling with job leases, blob and data adapters, the node-postgres migration
 runner and bundle composition. Every deployment value reaches it as an option or
@@ -179,6 +179,11 @@ inside a distribution:
 | `rail` | runtime infrastructure capabilities emit into or record through | the kernel |
 | `capability` | a complete capability, including its processes, schema and local contracts | the kernel and rails |
 | `implementation` | one port bound to one provider or runtime | the kernel, rails and the responsibility it implements |
+
+The runnable foundation in `@openlup/platform` declares `rail`: its HTTP,
+scheduling, storage and data facilities supply runtime infrastructure over core
+ports. Its publishable catalogue entry joins the same preview release set as
+outbox; it does not establish that a registry release has occurred.
 
 - **No I/O in the kernel.** It imports no database driver, provider SDK or
   `node:` module, and is no HTTP or scheduled-job entrypoint.
