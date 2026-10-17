@@ -205,8 +205,11 @@ hard signer isolation. No model API, backend, new host or copied authentication
 is required. Review grants no publication, merge, secret or settings authority.
 
 
-The rethink reviews the approach, not the last finding. It groups every finding
-card so far by class, names the pattern and its root cause, and tests the
+The rethink reviews the approach, not the last finding. It first questions the
+goal, the criteria and the checking tool: do the criteria demand more than this
+guide does, for example lint that must stop deliberate evasion although review
+handles that; is the enforcing mechanism the wrong tool; and can part of the
+change be removed instead of hardened? It groups every finding card so far by class, names the pattern and its root cause, and tests the
 approach against the simplicity rule above. One recurring class means
 whack-a-mole: look for the cause rather than the next instance. It records the
 simpler alternatives considered, such as removing the cause, reusing an existing

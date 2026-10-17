@@ -1058,7 +1058,9 @@ Cycles 1–3 are automatic; cycle 3 is a full review by two fresh full reviewers
 A cycle 3 that did not pass pauses the task for a rethink before cycle 4. The
 supervisor writes the rethink with one fresh cold simplicity reviewer; it is not
 an owner gate. The record groups every finding card so far by class, names the
-pattern and root cause, checks the approach against the simplicity rule in the
+pattern and root cause, first questions whether the criteria or the checking
+tool demand more than the repository's rules and what could be removed instead
+of hardened, checks the approach against the simplicity rule in the
 [agent guide](AGENTS.md#change-and-verification-rules), lists the simpler
 alternatives considered and records one decision: keep the approach with
 evidence that findings converge, change it within the same intent and scope,
@@ -1119,6 +1121,13 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
 - 2026-10-15, M02 module-boundary lint rule: cycles 0–2 each found another
   import-specifier escape → replace a growing denylist with an allowlist of the
   canonical forms, or reuse the resolver.
+- 2026-10-15, the same rule and the owner's review of the rethink: hardening a
+  checker cycle after cycle → question the criterion and the tool first.
+- 2026-10-15, the review-cycle rule change itself: its compatibility proof
+  checked an in-flight lineage at cycle 3, which then reached old-rule owner
+  cycles 4 and 5 before the merge and was refused → a validator rule change
+  must accept or explicitly migrate in-flight lineages; prove it against every
+  live session's stored state just before merge, not only its current cycle.
 
 ### Merge queue
 
