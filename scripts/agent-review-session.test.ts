@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
-import { agentReviewIdentities, agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview } from './agent-review-session.mjs';
-import { checkMergePreview } from './merge-preview.mjs';
-import { heavyCommandEnvironment, heavyLeaseDirectory, verifyCandidateCommand, withHeavyLease } from './verify-candidate.mjs';
+import { agentReviewIdentities, agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, checkMergePreview, heavyCommandEnvironment, heavyLeaseDirectory, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview, verifyCandidateCommand, withHeavyLease } from './agent-review-session.mjs';
+import { deriveSourceReleaseContract } from './oss-source-release-contract.ts';
 
 const base = 'a'.repeat(40);
 const candidate = { base, head: 'b'.repeat(40), tree: 'c'.repeat(40), clean: true, workingDigest: 'd'.repeat(64), indexDigest: 'e'.repeat(64), changedPaths: ['source.txt'] };
@@ -743,17 +743,41 @@ describe('pinned stack bases and local final proof', () => {
     expect(() => checkMergePreview({ cwd: f.cwd, target: theirs })).toThrow('merge main into this branch');
     expect(f.git('status', '--porcelain')).toBe('');
   });
-  it('accepts a valid disjoint main change through the actual default policy and inventory commands', async () => {
+  it.each([false, true])('accepts disjoint main through the actual default policy and inventory commands (aggregate: %s)', async aggregate => {
     const source = process.cwd();
     const head = execFileSync('/usr/bin/git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).trim();
     const base = execFileSync('/usr/bin/git', ['merge-base', 'HEAD', 'origin/main'], { cwd: source, encoding: 'utf8' }).trim();
     const f = await fixture(); f.git('fetch', '-q', '--no-tags', source, head);
     f.git('checkout', '-q', '--detach', base);
-    await writeFile(join(f.cwd, 'README.md'), `${await readFile(join(f.cwd, 'README.md'), 'utf8')}\n<!-- Independent main change for the merge-preview contract. -->\n`);
-    f.git('add', 'README.md'); f.git('commit', '-qm', 'independent main documentation'); const main = f.git('rev-parse', 'HEAD');
-    f.git('checkout', '-q', '--detach', head);
+    if (aggregate) {
+      const path = 'scripts/independent-main-preview.test.ts';
+      await writeFile(join(f.cwd, path), 'export {};\n');
+      const cataloguePath = join(f.cwd, 'config/openlup-publication-catalog.json');
+      const catalogue = JSON.parse(await readFile(cataloguePath, 'utf8'));
+      catalogue.publicPaths.push({ path, class: 'public-output' });
+      catalogue.publicPaths.sort((left: { path: string }, right: { path: string }) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+      await writeFile(cataloguePath, `${JSON.stringify(catalogue, null, 2)}\n`);
+      await writeFile(join(f.cwd, 'config/openlup-source-release-contract.json'), deriveSourceReleaseContract(path => readFileSync(join(f.cwd, path))).contents);
+    } else {
+      await writeFile(join(f.cwd, 'README.md'), `${await readFile(join(f.cwd, 'README.md'), 'utf8')}\n<!-- Independent main change for the merge-preview contract. -->\n`);
+    }
+    f.git('add', '.'); f.git('commit', '-qm', 'independent main change'); const main = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', aggregate ? base : head);
+    if (aggregate) {
+      await writeFile(join(f.cwd, 'README.md'), `${await readFile(join(f.cwd, 'README.md'), 'utf8')}\n<!-- Independent source change without aggregate ownership. -->\n`);
+      f.git('add', 'README.md'); f.git('commit', '-qm', 'independent source documentation');
+    }
+    const sourceHead = f.git('rev-parse', 'HEAD');
     expect(checkMergePreview({ cwd: f.cwd, target: main }).basis).toBe('combined policy and inventory passed');
-    expect(f.git('rev-parse', 'HEAD')).toBe(head); expect(f.git('status', '--porcelain')).toBe('');
+    expect(f.git('rev-parse', 'HEAD')).toBe(sourceHead); expect(f.git('status', '--porcelain')).toBe('');
+    if (aggregate) {
+      f.git('update-ref', 'refs/remotes/origin/main', base);
+      const marker = join(f.cwd, '.context', 'heavy-must-not-run');
+      const attempt = spawnSync(process.execPath, [resolve('scripts/agent-review-session.mjs'), 'verify-command', '--', process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`], { cwd: f.cwd, encoding: 'utf8', timeout: 10000 });
+      expect(attempt.error).toBeUndefined(); expect(attempt.status).toBe(1);
+      expect(attempt.stderr).toContain('current independent native review is required');
+      await expect(stat(marker)).rejects.toThrow();
+    }
   }, 30_000);
   it('serializes independent callers and releases only its own lease on success or failure', async () => {
     const f = await fixture(); const directory = join(f.cwd, 'lease'); const order: string[] = [];
@@ -787,7 +811,7 @@ describe('pinned stack bases and local final proof', () => {
       expect(args).toContain(`openlup:coverage:${(await heavyLeaseDirectory(cwd)).split('/').at(-1)}`);
       for (const policy of ['--cpu', '--memory-mb', '--lane', '--queue-timeout', '--execution-timeout']) expect(args).not.toContain(policy);
       expect(env.VITEST_MAX_WORKERS).toBe(processEnvironment.VITEST_MAX_WORKERS);
-      expect(args.slice(-7)).toEqual([process.execPath, resolve('scripts/verify-candidate.mjs'), '--resource', 'openlup:coverage', '--', 'required-command', 'argument']);
+      expect(args.slice(-8)).toEqual([process.execPath, resolve('scripts/agent-review-session.mjs'), 'verify-command', '--resource', 'openlup:coverage', '--', 'required-command', 'argument']);
       vi.stubEnv('OPENLUP_VERIFY_EXPECTED', env.OPENLUP_VERIFY_EXPECTED!); vi.stubEnv('AI_RESOURCE_GATE_ACTIVE', '1'); admitted = true;
       return verifyCandidateCommand({ cwd, command: 'required-command', args: ['argument'], resource: 'openlup:coverage', preflight, snapshot, run: heavy });
     };

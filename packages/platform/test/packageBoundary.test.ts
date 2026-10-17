@@ -2,10 +2,12 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 
 // The package's own source reads no environment variable and imports no provider SDK: the
 // application passes the environment and every provider client in. The only external client it
-// imports is the optional `pg` peer, and only in the PostgreSQL adapters listed here.
+// imports are its optional peers: `pg` in the PostgreSQL adapters and `@aws-sdk/client-s3` in the
+// default S3 client, each listed here.
 
 const SOURCE_ROOT = fileURLToPath(new URL("../src", import.meta.url));
 const ENVIRONMENT_READ = new RegExp(["process", "env"].join("\\s*\\.\\s*"));
@@ -44,6 +46,38 @@ const files = sources(SOURCE_ROOT).map((path) => ({
 }));
 
 describe("package source boundary", () => {
+  it("typechecks the blob declarations without the optional S3 SDK", () => {
+    const options: ts.CompilerOptions = {
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      strict: true, noEmit: true, types: ["node"], target: ts.ScriptTarget.ES2022,
+    };
+    const host = ts.createCompilerHost(options);
+    const fileExists = host.fileExists;
+    const readFile = host.readFile;
+    const blocked = (path: string) => path.replaceAll("\\", "/").includes("/node_modules/@aws-sdk/");
+    host.fileExists = (path) => !blocked(path) && fileExists(path);
+    host.readFile = (path) => blocked(path) ? undefined : readFile(path);
+    const program = ts.createProgram([join(SOURCE_ROOT, "../dist/blob/index.d.ts")], options, host);
+    expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
+  });
+
+  it("typechecks the composition declarations without pg and references no data-module declarations", () => {
+    const options: ts.CompilerOptions = {
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      strict: true, noEmit: true, types: ["node"], target: ts.ScriptTarget.ES2022,
+    };
+    const host = ts.createCompilerHost(options);
+    const fileExists = host.fileExists;
+    const readFile = host.readFile;
+    const blocked = (path: string) => /\/node_modules\/(?:pg|@types\/pg)\//.test(path.replaceAll("\\", "/"));
+    host.fileExists = (path) => !blocked(path) && fileExists(path);
+    host.readFile = (path) => blocked(path) ? undefined : readFile(path);
+    const program = ts.createProgram([join(SOURCE_ROOT, "../dist/composition/index.d.ts")], options, host);
+    expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
+    const declarations = program.getSourceFiles().map((file) => file.fileName.replaceAll("\\", "/"));
+    expect(declarations.filter((name) => name.includes("/dist/data/"))).toEqual([]);
+  });
+
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
       "kernel/platformKernel.ts", "bff/dispatch.ts", "composition/composeBundle.ts", "composition/nodeHost.ts",
@@ -60,7 +94,8 @@ describe("package source boundary", () => {
         || specifier.startsWith("node:")
         || specifier.startsWith("@openlup/core/")
         || specifier === "zod"
-        || (specifier === "pg" && PG_ADAPTERS.has(path));
+        || (specifier === "pg" && PG_ADAPTERS.has(path))
+        || (specifier === "@aws-sdk/client-s3" && path === "blob/s3Client.ts");
       expect(allowed, `${path} imports ${specifier}`).toBe(true);
     }
   });
@@ -88,6 +123,10 @@ describe("package source boundary", () => {
         || (crossModule !== null && crossModule[1] !== ownModule && crossModule[2] === "index.js");
       expect(allowed, `${path} imports ${specifier}`).toBe(true);
     }
+  });
+
+  it.each(files.filter(({ path }) => path.startsWith("blob/")))("$path has no data-module imports, including types", ({ source }) => {
+    expect(specifiers(source).filter((specifier) => specifier.startsWith("../data/"))).toEqual([]);
   });
 
   it("recognizes the forms it refuses", () => {

@@ -69,4 +69,4 @@ at 2,000 rows. It needs SELECT on those three columns, not event payload access
 or direct INSERT. The unbound winback adapter does not establish a runtime
 writer requirement. Tests retain the window's old-versus-recent reminder signal.
 
-<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-8529c917fd5b8842a0f678fb0245257b8512a079229120d31fdfffc01e85794b","reason":"Type-name delta only. The scheduler adapter's job registry now imports the package's renamed declaration type ScheduledJobDeclaration and re-exports it under its previous name ScheduledJob, so the adapter's exports, the registry it loads and every adapter row described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-3272da9087d82a78516469fe63e35ffee419caee1f595c8b4ae2300af164369c","reason":"Test-only delta. Two tests under server/adapters/s3 prove the platform's s3 blob capability against the reference compose's local S3-compatible service and that service's configuration interpolation. No adapter boundary, port, export or row described here changes."} -->

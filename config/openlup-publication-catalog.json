@@ -2182,6 +2182,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/blob/s3Client.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/blob/supabase.ts",
       "class": "public-output"
     },
@@ -2375,6 +2379,10 @@
     },
     {
       "path": "packages/platform/test/blob/s3.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/blob/s3Client.test.ts",
       "class": "public-output"
     },
     {
@@ -2958,10 +2966,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/merge-preview.mjs",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/mint-customer-session-with-retry.test.ts",
       "class": "public-output"
     },
@@ -3367,10 +3371,6 @@
     },
     {
       "path": "scripts/vercel-function-tsconfig-contract.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/verify-candidate.mjs",
       "class": "public-output"
     },
     {
@@ -4715,6 +4715,14 @@
     },
     {
       "path": "server/adapters/resend/transactionalEmailPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/objectStorageCompose.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/s3/objectStorageConformance.test.ts",
       "class": "public-output"
     },
     {

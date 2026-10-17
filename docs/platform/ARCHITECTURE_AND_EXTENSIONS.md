@@ -56,9 +56,10 @@ route code; its tests may compose a domain with an adapter. The same provider
 SDK restriction applies to non-test production source in `packages/core/src`
 and `packages/ui/src` as well as `packages/outbox/src`; their tests retain
 package isolation and exact-export checks. `packages/platform` is not portable
-in that sense: its PostgreSQL adapters load `pg`, its only optional peer, and
-it receives the `@vercel/blob` module and the Supabase client factory from the
-application instead of importing those SDKs. The checks cover
+in that sense: its PostgreSQL adapters load `pg` and its default S3 client
+loads `@aws-sdk/client-s3` on first use, both optional peers, and it receives
+the `@vercel/blob` module and the Supabase client factory from the application
+instead of importing those SDKs. The checks cover
 literal import and re-export specifiers, plain-template dynamic imports,
 type imports, and literal/plain-template `require` and `module.require`
 loads. A specifier held in a variable or reached through an alias still needs

@@ -11,3 +11,27 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+  # Local S3-compatible object storage for the s3 blob capability (PLATFORM_BLOB=s3), started only
+  # with `--profile local-storage`. Point BLOB_S3_ENDPOINT at the published loopback port, set
+  # BLOB_S3_FORCE_PATH_STYLE=true, and reuse the access key pair below as the BLOB_S3_* credentials.
+  object-storage:
+    image: versity/versitygw:v1.0.10@sha256:9078144b88346d96467afd05f8573d05ae661bd41e11e079c3472b9678d6ad6d
+    profiles:
+      - local-storage
+    # Missing credentials become invalid gateway options: refusal happens only when this
+    # service starts, rather than during interpolation of an inactive profile.
+    command:
+      - "${OBJECT_STORAGE_ACCESS_KEY:+--access=}${OBJECT_STORAGE_ACCESS_KEY:---object-storage-access-key-required}"
+      - "${OBJECT_STORAGE_SECRET_KEY:+--secret=}${OBJECT_STORAGE_SECRET_KEY:---object-storage-secret-key-required}"
+      - posix
+      - /data
+    ports:
+      - "127.0.0.1:${OBJECT_STORAGE_PORT:-}:7070"
+    tmpfs:
+      - /data
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

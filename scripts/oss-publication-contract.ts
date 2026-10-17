@@ -2,6 +2,7 @@
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "packages/outbox/scripts/api-contract.ts", "packages/outbox/scripts/consumer-proof.ts", "packages/outbox/vitest.config.ts",
   "packages/platform/vitest.config.ts",
+  "server/adapters/s3/objectStorageConformance.test.ts",
   "scripts/packages/outbox-consumer-proof.ts", "scripts/packages/outbox-disposable-postgres.ts", "scripts/packages/pack-manifest-input.ts", "scripts/packages/required-package-gates.ts", "scripts/packages/required-package-gates.test.ts",
   "packages/core/scripts/api-contract.ts", "packages/core/scripts/core-package-consumer-smoke.ts",
   "packages/core/scripts/documentation-contract.ts", "packages/core/scripts/refuse-publish.ts",
@@ -13,7 +14,6 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/agent-review-controller.mjs", "scripts/agent-review-controller.test.ts",
   "scripts/agent-review-gate.mjs", "scripts/agent-review-gate.test.ts", "scripts/agent-review-hook.mjs",
   "scripts/agent-review-hosted.mjs", "scripts/agent-review-hosted.test.ts",
-  "scripts/verify-candidate.mjs",
   "scripts/ast-grep/check-filewide-ignore.mjs",
   "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",

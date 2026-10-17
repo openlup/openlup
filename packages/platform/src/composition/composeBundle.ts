@@ -20,9 +20,11 @@ import type {
   TransactionalRuntimePort,
 } from "@openlup/core/platform-runtime";
 
-import { bindBlobPort } from "../blob/index.js";
+import { bindBlobPort, type SupabaseStorageClient } from "../blob/index.js";
+import { createServiceClient, readSupabaseDataGatewayEnv } from "../data/index.js";
 import {
   getBundleDescriptor,
+  resolveBlobCapability,
   resolveBundleId,
   type PlatformBundleDescriptor,
   type PlatformBundleId,
@@ -47,10 +49,20 @@ export interface PlatformBundle {
 }
 
 /**
- * One binder per port slot. Each receives the slot's declared capability and the environment;
- * the transactional binder also receives the bundle's data capability.
+ * One binder per port slot. Each receives the slot's capability and the environment; the blob
+ * binder receives the selected blob capability (`PLATFORM_BLOB`, else the bundle's own), and the
+ * transactional binder also receives the bundle's data capability.
  */
 export interface PlatformBundleBinders {
+  /**
+   * The supabase-js `createClient` used by the default Supabase Storage blob binder. Declared
+   * structurally here so the composition entry's declarations reference no data-module type.
+   */
+  createSupabaseClient?: (
+    url: string,
+    key: string,
+    options?: { auth?: { persistSession?: boolean; autoRefreshToken?: boolean } },
+  ) => unknown;
   http?: (capability: string, env: Env) => HttpRuntimePort | null;
   scheduler?: (capability: string, env: Env) => SchedulerPort | null;
   /** Defaults to `bindBlobPort`. */
@@ -66,7 +78,18 @@ export type ComposeBundle = (env: Env) => PlatformBundle;
 
 /** Build the deployment's composition root from its port binders. */
 export function createBundleComposer(binders: PlatformBundleBinders = {}): ComposeBundle {
-  const bindBlob = binders.blob ?? ((capability: string, env: Env) => bindBlobPort(capability, env));
+  const bindBlob = binders.blob ?? ((capability: string, env: Env) => {
+    const settings = capability === "supabase" ? readSupabaseDataGatewayEnv({
+      ...env,
+      SUPABASE_URL: env.SUPABASE_URL?.trim() || env.VITE_SUPABASE_URL?.trim(),
+    }) : null;
+    const createSupabaseClient = binders.createSupabaseClient;
+    return bindBlobPort(capability, env, {
+      supabaseStorageClient: settings && createSupabaseClient
+        ? () => createServiceClient(settings, createSupabaseClient) as SupabaseStorageClient
+        : undefined,
+    });
+  });
   return function composeBundle(env: Env): PlatformBundle {
     const id = resolveBundleId(env);
     const descriptor = getBundleDescriptor(id);
@@ -74,7 +97,7 @@ export function createBundleComposer(binders: PlatformBundleBinders = {}): Compo
     const ports: PlatformBundlePorts = {
       http: binders.http?.(capabilities.http, env) ?? null,
       scheduler: null,
-      blob: bindBlob(capabilities.blob, env),
+      blob: bindBlob(resolveBlobCapability(descriptor, env), env),
       data: binders.data?.(capabilities.data, env) ?? null,
       migrations: binders.migrations?.(capabilities.migrations, env) ?? null,
       analytics: binders.analytics?.(capabilities.analytics, env) ?? null,

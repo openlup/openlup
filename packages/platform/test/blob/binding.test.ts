@@ -27,24 +27,43 @@ describe("bindBlobPort", () => {
     expect(port!.urlFor("a.png")).toBe("https://files.example.com/a.png");
   });
 
-  it("binds s3 only with a client factory + bucket + base url", () => {
-    const factory = (): S3ObjectClient => ({
-      putObject: () => Promise.resolve({}),
+  it("binds s3 with the default client, or an injected factory, once bucket and base url are set", async () => {
+    const putObject = vi.fn(() => Promise.resolve({}));
+    const factory = vi.fn((): S3ObjectClient => ({
+      putObject,
       headObject: () => Promise.resolve({}),
       deleteObject: () => Promise.resolve({}),
       listObjectsV2: () => Promise.resolve({ Contents: [] }),
-    });
-    expect(bindBlobPort("s3", { BLOB_S3_BUCKET: "b", BLOB_S3_BASE_URL: "https://cdn" })).toBeNull();
-    const port = bindBlobPort(
-      "s3",
-      { BLOB_S3_BUCKET: "b", BLOB_S3_BASE_URL: "https://cdn" },
-      { s3ClientFactory: factory },
-    );
-    expect(port).not.toBeNull();
+    }));
+    expect(bindBlobPort("s3", { BLOB_S3_BUCKET: "b" })).toBeNull();
+    expect(bindBlobPort("s3", { BLOB_S3_BASE_URL: "https://cdn" })).toBeNull();
+    // B4: the default client binds without an injected factory (the SDK loads on first use).
+    expect(bindBlobPort("s3", { BLOB_S3_BUCKET: "b", BLOB_S3_BASE_URL: "https://cdn" })?.urlFor("k")).toBe("https://cdn/k");
+    const env = { BLOB_S3_BUCKET: "b", BLOB_S3_BASE_URL: "https://cdn" };
+    const port = bindBlobPort("s3", env, { s3ClientFactory: factory });
+    await port!.upload("objects/a.txt", Buffer.from("a"));
+    expect(factory).toHaveBeenCalledExactlyOnceWith(env);
+    expect(putObject).toHaveBeenCalledWith(expect.objectContaining({ Bucket: "b", Key: "objects/a.txt" }));
   });
 
-  it("returns null for supabase (bound at the storage call-site) and unknown kinds", () => {
-    expect(bindBlobPort("supabase", {})).toBeNull();
+  it("binds supabase storage only with the injected storage client factory and bucket", async () => {
+    const upload = vi.fn(async () => ({ data: {}, error: null }));
+    const supabaseStorageClient = vi.fn(() => ({
+      storage: { from: vi.fn(() => ({ upload, remove: vi.fn(), list: vi.fn(), getPublicUrl: (path: string) => ({ data: { publicUrl: `https://data.example.test/${path}` } }) })) },
+    }));
+    const env = { BLOB_SUPABASE_BUCKET: "objects" };
+    expect(bindBlobPort("supabase", env)).toBeNull();
+    expect(bindBlobPort("supabase", { ...env, BLOB_SUPABASE_BUCKET: "" }, { supabaseStorageClient })).toBeNull();
+    expect(bindBlobPort("supabase", {}, { supabaseStorageClient })).toBeNull();
+    expect(supabaseStorageClient).not.toHaveBeenCalled();
+    const port = bindBlobPort("supabase", env, { supabaseStorageClient });
+    await port!.upload("a.txt", Buffer.from("a"));
+    expect(supabaseStorageClient).toHaveBeenCalledExactlyOnceWith();
+    expect(supabaseStorageClient.mock.results[0]!.value.storage.from).toHaveBeenCalledWith("objects");
+    expect(upload).toHaveBeenCalledOnce();
+  });
+
+  it("returns null for unknown kinds", () => {
     expect(bindBlobPort("nonsense", {})).toBeNull();
   });
 });
