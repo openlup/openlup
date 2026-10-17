@@ -426,6 +426,18 @@ describe("exact reviewed replacement admission in both gates", () => {
       for (const gate of gates({ ...sample, approval: sample.rootCommit }, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
   });
+  it("refuses a merged branch whose own earlier commit carries its control", () => {
+    const sample = fixture();
+    try {
+      sample.run(["checkout", "-b", "feature", sample.rootCommit]);
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); sample.commit("Branch-local control");
+      sample.apply(sample.change); sample.commit("Feature on its own control");
+      sample.run(["checkout", "--detach", sample.rootCommit]);
+      sample.run(["merge", "--no-ff", "--no-commit", "feature"]);
+      const head = sample.commit("Merge self-approving branch");
+      expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+    } finally { sample.cleanup(); }
+  });
   it("refuses a merged feature that carries its own control", () => {
     const sample = fixture();
     try {

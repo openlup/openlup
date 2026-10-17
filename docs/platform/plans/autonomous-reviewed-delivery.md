@@ -594,7 +594,10 @@ tree-equal. The owner's settings change, not this repository, enables it:
 
 No review, receipt, carry-over or DCO rule changes. The DCO check already
 certifies merge commits, so each description ends with the author's
-`Signed-off-by:` line.
+`Signed-off-by:` line. Merge commits make a merged branch's own commits
+ancestors of `main`, so the release gates accept only a target on `main`'s
+first-parent line, and release prepare finds each reviewed forward's
+introduction on that line.
 
 Prove it live right after the switch, before relying on it:
 1. The first pull request merges through the queue. The group tip and the merge

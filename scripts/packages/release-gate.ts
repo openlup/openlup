@@ -53,7 +53,8 @@ async function github(path: string, token: string | undefined, fetcher: GateFetc
 }
 
 /**
- * `commit` is an ancestor of origin's `main` fetched now; returns that `main` commit. It is decided
+ * `commit` landed on origin's `main` fetched now: it is on main's first-parent line, so a commit inside
+ * a pull request merged as a merge commit does not count. Returns that `main` commit. It is decided
  * by the commit's SHA in the repository at `root`, which need not have it checked out: the release
  * workflows run the gate in a checkout of main and check the target out only after it passes.
  */
@@ -62,11 +63,7 @@ export function assertOnFreshMain(root: string, commit: string): string {
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   git("fetch", "--no-tags", "--quiet", "origin", `+refs/heads/main:${FRESH_MAIN}`);
   const mainTip = git("rev-parse", "--verify", `${FRESH_MAIN}^{commit}`);
-  try {
-    git("merge-base", "--is-ancestor", commit, mainTip);
-  } catch {
-    throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);
-  }
+  if (!git("rev-list", "--first-parent", mainTip).split("\n").includes(commit)) throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);
   return mainTip;
 }
 
