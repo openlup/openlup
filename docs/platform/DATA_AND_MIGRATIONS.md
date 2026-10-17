@@ -178,7 +178,9 @@ follow. This control installs approval data, without shipping the runtime forwar
 
 Required PR/merge-group self-check requires the allowlist bytes to predate the
 feature comparison base. Release prepare uses the same checker and requires
-the identical allowlist in the parent of each forward's introduction commit.
+the identical allowlist in the first parent of the mainline commit, squash or
+merge, that introduces each forward; a feature branch's own earlier commits do
+not count.
 Thus a release can include a prior control PR followed by feature PRs without
 allowing a feature to approve itself. Missing history refuses. Existing history,
 version and manifest rules still apply, and the expand-only predicate is unchanged.

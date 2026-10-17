@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-449a4dbfa3feb7be6f7af5d8cdb12720468816549f04d0a6cc9c01beb750968c","reason":"Test-only delta. The admission suite adds two-parent merge-group fixtures and a stacked-predecessor option proving that native admission is unchanged when the queue lands merge commits: unchanged-tree and disjoint-base carry-over, a stacked pull request after its predecessor merged, and the run-keyed route. The admission code and the commands and checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-6ee21167012e7fb461b066b2c061915db80e44737b50bceeebaf573b42294596","reason":"Merge-commit landing support. Release prepare now finds the mainline commit, squash or merge, that introduced each reviewed forward (git log --first-parent), so a feature branch's own commits no longer stand in for it; DATA_AND_MIGRATIONS states the rule. Admission and release tests add two-parent merge fixtures. The contributor commands and checks described here are unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
