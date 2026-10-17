@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-4749486038366760e7147ec91bc31d857125917a4f0f51f28ffa79c497f67632","reason":"The zero-coverage assertion drops the excludes for the removed personalizer paths. Required selectors keep their order and no check is removed or weakened."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-5ff78799b32d3c388ee6d975aec753b2784d86f60a9702fee8436ffad271b0ba","reason":"The zero-coverage assertion drops the excludes for the removed personalizer paths, and the lint-heavy ESLint import-map test cases get an explicit 60-second timeout because a hosted runner took just over the default; no assertion changes. Required selectors keep their order and no check is removed or weakened."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
