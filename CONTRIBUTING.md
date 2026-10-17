@@ -862,7 +862,7 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-e23f5b124da515a37baee7ec68971f347f56f2e0c3a38fe498e0e293bb3565dc","reason":"Test-only delta. The neutral catalog extension fixture adds a second installed type whose count pack dimension declares the net-content role, and asserts that an option differing from the SKU net content refuses. The file stays in the complete root Vitest diagnostic scope and outside the required test selectors; the test commands and CI jobs described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-6a1435b8ef768292203f116e94ecb7909cd607ea309ce824499a0a05aeabbd75","reason":"Test-only delta. The browser proof that playwright.ssg.config.ts already selects is added: each SSG route of the public-reference manifest is served as its prerendered document and must hydrate with unchanged markup and no page error. It runs after the build through that existing configuration; no test command, required selector or CI job described here changes."} -->
 
 ## Pull requests
 
