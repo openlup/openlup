@@ -11,15 +11,11 @@
 
 import type { PlatformHttpRequest, SchedulerPort } from "@openlup/core/platform-runtime";
 import type { ScheduledJob } from "./jobRegistry.js";
+import { bearerToken, cronSecretMatches } from "./cronSecret.js";
 
 type CronEnv = Record<string, string | undefined> & { CRON_SECRET?: string };
 
-/** Extract the Bearer token from a request Authorization header (case-insensitive). */
-export function bearerToken(req: PlatformHttpRequest): string | null {
-  const auth = req.headers.authorization;
-  const header = Array.isArray(auth) ? auth[0] : auth;
-  return header?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? null;
-}
+export { bearerToken } from "./cronSecret.js";
 
 /**
  * Verify a cron invocation is authentic. Fail-CLOSED:
@@ -33,7 +29,7 @@ export function verifyCronAuth(req: PlatformHttpRequest, env: CronEnv): boolean 
   if (!expected) {
     return false;
   }
-  return bearerToken(req) === expected;
+  return cronSecretMatches(bearerToken(req), expected);
 }
 
 export interface VercelSchedulerAdapter extends SchedulerPort {
