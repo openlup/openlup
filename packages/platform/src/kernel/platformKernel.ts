@@ -26,54 +26,87 @@ export const isPlatformBundleId = createPlatformBundleIdGuard(PLATFORM_BUNDLE_ID
 export type PlatformBundleDescriptor = CorePlatformBundleDescriptor & { id: PlatformBundleId };
 export type { PlatformBundleReadiness };
 
-function requiresAppBaseUrl(env: PlatformEnvInput): PlatformBundleReadiness {
-  if (!env.APP_BASE_URL || env.APP_BASE_URL.trim() === "") {
-    return { ok: false, error: "APP_BASE_URL is required for self-host bundles" };
-  }
-  return { ok: true };
+/** The readiness code a bundle reports when a selected capability lacks its configuration. */
+export const ENV_MISSING_CODE = "OPENLUP_E_ENV_MISSING";
+
+/** The settings each blob capability needs; an alternative name may stand in for the first. */
+const BLOB_SETTINGS: Readonly<Record<string, ReadonlyArray<readonly string[]>>> = {
+  "vercel-blob": [["BLOB_READ_WRITE_TOKEN"]],
+  supabase: [["SUPABASE_URL", "VITE_SUPABASE_URL"], ["SUPABASE_SERVICE_ROLE_KEY"]],
+  filesystem: [["BLOB_FS_ROOT"], ["BLOB_FS_BASE_URL"]],
+  s3: [["BLOB_S3_BUCKET"], ["BLOB_S3_BASE_URL"]],
+};
+
+function present(env: PlatformEnvInput, name: string): boolean {
+  return typeof env[name] === "string" && env[name]!.trim() !== "";
+}
+
+/**
+ * Per-capability readiness, in this order: an unknown PLATFORM_BUNDLE refuses (resolution itself
+ * keeps defaulting); a self-host bundle needs APP_BASE_URL; then every selected capability's
+ * missing settings are reported together under OPENLUP_E_ENV_MISSING: a scheduler needs
+ * CRON_SECRET, Node scheduling needs DATABASE_URL for its cluster lock (never a silent no-op lock),
+ * and the bundle's blob capability needs its settings.
+ */
+function capabilityReadiness(descriptor: Pick<PlatformBundleDescriptor, "capabilities">, selfHost: boolean) {
+  return (env: PlatformEnvInput): PlatformBundleReadiness => {
+    const raw = env.PLATFORM_BUNDLE;
+    if (raw !== undefined && raw.trim() !== "" && !isPlatformBundleId(raw)) {
+      return { ok: false, error: `unknown PLATFORM_BUNDLE "${raw}"; expected one of ${PLATFORM_BUNDLE_IDS.join(", ")}` };
+    }
+    if (selfHost && !present(env, "APP_BASE_URL")) {
+      return { ok: false, error: "APP_BASE_URL is required for self-host bundles" };
+    }
+    const { scheduler, blob } = descriptor.capabilities;
+    const missing: string[] = [];
+    if (scheduler === "vercel-cron" || scheduler === "node-cron") {
+      if (!present(env, "CRON_SECRET")) missing.push("CRON_SECRET (scheduler)");
+    }
+    if (scheduler === "node-cron" && !present(env, "DATABASE_URL")) missing.push("DATABASE_URL (scheduler lock)");
+    for (const names of BLOB_SETTINGS[blob] ?? []) {
+      if (!names.some((name) => present(env, name))) missing.push(`${names[0]} (blob: ${blob})`);
+    }
+    return missing.length === 0 ? { ok: true } : { ok: false, error: `${ENV_MISSING_CODE}: ${missing.join(", ")}` };
+  };
+}
+
+function descriptor(
+  id: PlatformBundleId,
+  capabilities: PlatformBundleDescriptor["capabilities"],
+  selfHost: boolean,
+): PlatformBundleDescriptor {
+  return { id, capabilities, readReadiness: capabilityReadiness({ capabilities }, selfHost) };
 }
 
 const DESCRIPTORS: readonly PlatformBundleDescriptor[] = [
-  {
-    id: "vercel-supabase",
-    capabilities: {
-      http: "vercel",
-      scheduler: "vercel-cron",
-      blob: "vercel-blob",
-      data: "supabase",
-      migrations: "supabase",
-      analytics: "vercel",
-      transactional: "application",
-    },
-    readReadiness: () => ({ ok: true }),
-  },
-  {
-    id: "node-supabase",
-    capabilities: {
-      http: "node",
-      scheduler: "node-cron",
-      blob: "supabase",
-      data: "supabase",
-      migrations: "supabase",
-      analytics: "gtm",
-      transactional: "node",
-    },
-    readReadiness: requiresAppBaseUrl,
-  },
-  {
-    id: "node-postgres",
-    capabilities: {
-      http: "node",
-      scheduler: "node-cron",
-      blob: "filesystem",
-      data: "postgres",
-      migrations: "postgres",
-      analytics: "noop",
-      transactional: "node",
-    },
-    readReadiness: requiresAppBaseUrl,
-  },
-] as const;
+  descriptor("vercel-supabase", {
+    http: "vercel",
+    scheduler: "vercel-cron",
+    blob: "vercel-blob",
+    data: "supabase",
+    migrations: "supabase",
+    analytics: "vercel",
+    transactional: "application",
+  }, false),
+  descriptor("node-supabase", {
+    http: "node",
+    scheduler: "node-cron",
+    blob: "supabase",
+    data: "supabase",
+    migrations: "supabase",
+    analytics: "gtm",
+    transactional: "node",
+  }, true),
+  descriptor("node-postgres", {
+    http: "node",
+    scheduler: "node-cron",
+    blob: "filesystem",
+    data: "postgres",
+    migrations: "postgres",
+    analytics: "noop",
+    transactional: "node",
+  }, true),
+];
 
 const registry = createPlatformBundleRegistry({
   descriptors: DESCRIPTORS,

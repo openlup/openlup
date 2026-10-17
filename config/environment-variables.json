@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Public-build environment variables for the bounded reference tree.",
+  "description": "Environment variables for the bounded reference tree: public-build values the browser bundle may carry, and the server-runtime settings platform capabilities read.",
   "variables": [
     {
       "name": "VITE_SUPABASE_PUBLISHABLE_KEY",
@@ -203,6 +203,76 @@
       "secret": false,
       "source": "src/domains/shipping/inpostGeowidgetLoader.ts",
       "blastRadius": "Public InPost Geowidget v5 browsing token (JWT) baked into the browser bundle. Empty => the map picker is disabled and the list fallback is used; wrong/expired values break only the InPost map overlay."
+    },
+    {
+      "name": "BLOB_READ_WRITE_TOKEN",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": true,
+      "source": "packages/platform/src/kernel/platformKernel.ts",
+      "blastRadius": "Vercel Blob credential for the vercel-blob capability; the store id in it also forms public object URLs. Readiness refuses the capability without it; a wrong value writes to, or links into, another store."
+    },
+    {
+      "name": "BLOB_FS_ROOT",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/kernel/platformKernel.ts",
+      "blastRadius": "Directory the filesystem blob capability stores objects under. Readiness refuses the capability without it; a wrong value loses access to stored objects."
+    },
+    {
+      "name": "BLOB_FS_BASE_URL",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/kernel/platformKernel.ts",
+      "blastRadius": "Public base URL that serves the filesystem blob directory. Readiness refuses the capability without it; a wrong value produces broken object links."
+    },
+    {
+      "name": "BLOB_S3_BUCKET",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/kernel/platformKernel.ts",
+      "blastRadius": "Bucket the S3-compatible blob capability stores objects in. Readiness refuses the capability without it; a wrong value writes to another bucket."
+    },
+    {
+      "name": "BLOB_S3_BASE_URL",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "packages/platform/src/kernel/platformKernel.ts",
+      "blastRadius": "Public base URL that serves the S3-compatible bucket. Readiness refuses the capability without it; a wrong value produces broken object links."
     }
   ]
 }

@@ -153,7 +153,7 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-febb9fa1c07232380c22dc47c3fb5a964afe952342679cf2ec7327439158cdd9","reason":"The removed personalization feature's first-name declension dictionary is deleted and its checkout mint file leaves the commerce structural slice; no contract, registry entry or compatibility rule described here changes."} -->
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-f2545204e4c01bd2f69037bbf9ecbf63cad723105cefef15a608b19e499b4ac3","reason":"The environment registry declares the five blob settings the platform's bundle readiness requires (BLOB_READ_WRITE_TOKEN, BLOB_FS_ROOT, BLOB_FS_BASE_URL, BLOB_S3_BUCKET, BLOB_S3_BASE_URL) as server-runtime entries, exposing nothing to the browser bundle. The removed personalization feature's first-name declension dictionary is deleted and its checkout mint file leaves the commerce structural slice. No contract, compatibility rule, set versioning or release preparation described here changes."} -->
 
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement

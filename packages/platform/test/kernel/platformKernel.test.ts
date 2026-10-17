@@ -36,25 +36,72 @@ describe("platform bundle kernel", () => {
     expect(getBundleDescriptor("vercel-supabase").capabilities.transactional).toBe("application");
   });
 
-  it.each(["node-supabase", "node-postgres"] as const)("%s needs only APP_BASE_URL for readiness", (id) => {
-    const descriptor = getBundleDescriptor(id);
-    expect(descriptor.readReadiness({ APP_BASE_URL: "https://example.test" })).toEqual({ ok: true });
-    expect(descriptor.readReadiness({
-      APP_BASE_URL: "https://example.test", CRON_SECRET: "", DATABASE_URL: "",
-      BLOB_READ_WRITE_TOKEN: "", BLOB_FS_ROOT: "", BLOB_FS_BASE_URL: "",
-      BLOB_S3_BUCKET: "", BLOB_S3_BASE_URL: "",
-    })).toEqual({ ok: true });
+  // B3 amends the former witness (node bundles ready with APP_BASE_URL alone; the default bundle
+  // always ready): every selected capability now reports its missing settings.
+  const READY: Record<string, Record<string, string>> = {
+    "vercel-supabase": { CRON_SECRET: "cron-secret", BLOB_READ_WRITE_TOKEN: "blob-token" },
+    "node-supabase": {
+      APP_BASE_URL: "https://example.test", CRON_SECRET: "cron-secret", DATABASE_URL: "postgres://localhost/lock",
+      SUPABASE_URL: "https://data.example.test", SUPABASE_SERVICE_ROLE_KEY: "service-key",
+    },
+    "node-postgres": {
+      APP_BASE_URL: "https://example.test", CRON_SECRET: "cron-secret", DATABASE_URL: "postgres://localhost/lock",
+      BLOB_FS_ROOT: "/synthetic/objects", BLOB_FS_BASE_URL: "https://objects.example.test",
+    },
+  };
+
+  it.each(Object.keys(READY))("%s is ready with every capability configured", (id) => {
+    expect(getBundleDescriptor(id as never).readReadiness(READY[id]!)).toEqual({ ok: true });
+  });
+
+  it.each(["node-supabase", "node-postgres"] as const)("%s still refuses a missing or blank APP_BASE_URL first", (id) => {
     for (const APP_BASE_URL of [undefined, "", "   "]) {
-      expect(descriptor.readReadiness({ APP_BASE_URL })).toEqual({
+      expect(getBundleDescriptor(id).readReadiness({ ...READY[id], APP_BASE_URL })).toEqual({
         ok: false, error: "APP_BASE_URL is required for self-host bundles",
       });
     }
   });
 
-  it("keeps the default bundle ready regardless of environment readiness inputs", () => {
-    const descriptor = getBundleDescriptor("vercel-supabase");
-    for (const env of [{}, { CRON_SECRET: "" }, { APP_BASE_URL: "   ", DATABASE_URL: "" }]) {
-      expect(descriptor.readReadiness(env)).toEqual({ ok: true });
+  it.each([
+    ["vercel-supabase", "CRON_SECRET", "OPENLUP_E_ENV_MISSING: CRON_SECRET (scheduler)"],
+    ["vercel-supabase", "BLOB_READ_WRITE_TOKEN", "OPENLUP_E_ENV_MISSING: BLOB_READ_WRITE_TOKEN (blob: vercel-blob)"],
+    ["node-supabase", "CRON_SECRET", "OPENLUP_E_ENV_MISSING: CRON_SECRET (scheduler)"],
+    ["node-supabase", "DATABASE_URL", "OPENLUP_E_ENV_MISSING: DATABASE_URL (scheduler lock)"],
+    ["node-supabase", "SUPABASE_SERVICE_ROLE_KEY", "OPENLUP_E_ENV_MISSING: SUPABASE_SERVICE_ROLE_KEY (blob: supabase)"],
+    ["node-supabase", "SUPABASE_URL", "OPENLUP_E_ENV_MISSING: SUPABASE_URL (blob: supabase)"],
+    ["node-postgres", "DATABASE_URL", "OPENLUP_E_ENV_MISSING: DATABASE_URL (scheduler lock)"],
+    ["node-postgres", "BLOB_FS_ROOT", "OPENLUP_E_ENV_MISSING: BLOB_FS_ROOT (blob: filesystem)"],
+    ["node-postgres", "BLOB_FS_BASE_URL", "OPENLUP_E_ENV_MISSING: BLOB_FS_BASE_URL (blob: filesystem)"],
+  ])("%s without %s refuses with OPENLUP_E_ENV_MISSING", (id, name, error) => {
+    for (const value of [undefined, "", "   "]) {
+      expect(getBundleDescriptor(id as never).readReadiness({ ...READY[id], [name]: value })).toEqual({ ok: false, error });
+    }
+  });
+
+  it("reports every missing setting of a bundle together, in capability order", () => {
+    expect(getBundleDescriptor("node-postgres").readReadiness({ APP_BASE_URL: "https://example.test" })).toEqual({
+      ok: false,
+      error: "OPENLUP_E_ENV_MISSING: CRON_SECRET (scheduler), DATABASE_URL (scheduler lock), "
+        + "BLOB_FS_ROOT (blob: filesystem), BLOB_FS_BASE_URL (blob: filesystem)",
+    });
+  });
+
+  it("accepts the browser Supabase URL as the storage URL alternative", () => {
+    const { SUPABASE_URL: _url, ...withoutUrl } = READY["node-supabase"]!;
+    expect(getBundleDescriptor("node-supabase").readReadiness({ ...withoutUrl, VITE_SUPABASE_URL: "https://data.example.test" }))
+      .toEqual({ ok: true });
+  });
+
+  it("refuses an unknown PLATFORM_BUNDLE in readiness while resolution keeps defaulting", () => {
+    expect(resolveBundleId({ PLATFORM_BUNDLE: "edge-cluster" })).toBe("vercel-supabase");
+    for (const id of PLATFORM_BUNDLE_IDS) {
+      expect(getBundleDescriptor(id).readReadiness({ ...READY[id], PLATFORM_BUNDLE: "edge-cluster" })).toEqual({
+        ok: false,
+        error: 'unknown PLATFORM_BUNDLE "edge-cluster"; expected one of vercel-supabase, node-supabase, node-postgres',
+      });
+    }
+    for (const PLATFORM_BUNDLE of [undefined, "", "  "]) {
+      expect(getBundleDescriptor("vercel-supabase").readReadiness({ ...READY["vercel-supabase"], PLATFORM_BUNDLE })).toEqual({ ok: true });
     }
   });
 
