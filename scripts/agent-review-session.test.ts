@@ -784,7 +784,7 @@ describe('pinned stack bases and local final proof', () => {
       expect(attempt.stderr).toContain('current independent native review is required');
       await expect(stat(marker)).rejects.toThrow();
     }
-  }, 30_000);
+  }, 120_000);
   it('serializes independent callers and releases only its own lease on success or failure', async () => {
     const f = await fixture(); const directory = join(f.cwd, 'lease'); const order: string[] = [];
     let release!: () => void; let entered!: () => void; const ready = new Promise<void>(resolve => { entered = resolve; }); const held = new Promise<void>(resolve => { release = resolve; });

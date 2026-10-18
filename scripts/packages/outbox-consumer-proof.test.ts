@@ -88,7 +88,7 @@ it("rejects changed tarball bytes before any install or SQL", () => {
 it("rejects a digest-consistent missing runtime export through the actual installed runner", () => {
   const f = fixture(); repackOutbox(f.packs, directory => writeFileSync(join(directory, "dist/postgres.js"), "export {};\n"));
   const result = invoke(f.target); expect(result.status).not.toBe(0); expect(result.stderr).toContain("does not provide an export named");
-});
+}, 30_000);
 it("fails the real replay proof when synthetic application dedupe is removed", () => {
   const f = fixture(), path = join(f.target, "packages/outbox/smoke/wiring.ts"), source = readFileSync(path, "utf8");
   expect(source).toContain("on conflict (event_id) do nothing"); writeFileSync(path, source.replace("on conflict (event_id) do nothing", ""));

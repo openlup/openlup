@@ -48,9 +48,9 @@ use one canonical domain owner unless a narrower workflow route applies.
 
 | Surface | Purpose | Canonical owner | Selectors |
 | --- | --- | --- | --- |
-| repository | Repository entrypoints, build configuration and contributor setup | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `*` |
+| repository | Repository entrypoints, build configuration and contributor setup | [CONTRIBUTING.md](../../CONTRIBUTING.md#commands-and-lint-rules) | `*` |
 | public-policy | Public contribution policy and community governance | [CONTRIBUTING.md](../../CONTRIBUTING.md#pull-requests) | `.github/**` |
-| public-checks | Hosted execution ownership and the checks contributors must run | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `.github/workflows/**` |
+| public-checks | Hosted execution ownership and the checks contributors must run | [CONTRIBUTING.md](../../CONTRIBUTING.md#required-and-raw-checks) | `.github/workflows/**` |
 | documentation | Public documentation navigation and current writing guidance | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/**` |
 | history | Dated public implementation plans, with no runtime authority | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/platform/plans/**` |
 | configuration | Machine-readable platform configuration and contract inputs | [docs/platform/CANONICAL_CONTRACTS.md](CANONICAL_CONTRACTS.md#compatibility-posture) | `config/**` |
@@ -65,10 +65,12 @@ use one canonical domain owner unless a narrower workflow route applies.
 | packages | Package API, exports, release-shape and consumer boundaries | [packages/core/README.md](../../packages/core/README.md) | `packages/**` |
 | core | Portable neutral core kernels and their package verification | [packages/core/README.md](../../packages/core/README.md) | `packages/core/**` |
 | subscription-kernel | Pure lifecycle, retry, cycle and deterministic-clock behavior | [packages/core/docs/SUBSCRIPTION_ENGINE.md](../../packages/core/docs/SUBSCRIPTION_ENGINE.md) | `packages/core/src/subscription/**` |
-| tooling | Public tooling and the actual execution owner of each check | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `scripts/**` |
+| tooling | Public tooling and the actual execution owner of each check | [CONTRIBUTING.md](../../CONTRIBUTING.md#package-policy-and-release-checks) | `scripts/**` |
+| lint-rules | Structural lint rules, their rule tests and suppression checks | [CONTRIBUTING.md](../../CONTRIBUTING.md#commands-and-lint-rules) | `scripts/ast-grep/**` |
+| native-review | Native review session, gate and queue admission tooling | [CONTRIBUTING.md](../../CONTRIBUTING.md#required-and-raw-checks) | `scripts/agent-review-*` |
 | docs-impact | Documentation change impact and same-owner review enforcement | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#impact) | `scripts/documentation-impact*.ts`; `scripts/documentation-git*.ts` |
 | docs-export | Generated documentation navigation and the checked bundle consumer boundary | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#exporting) | `scripts/documentation-bundle*.ts`; `scripts/documentation-navigation*.ts`; `.gitignore` |
-| tests | Integration and browser test sources; execution requires their declared owner | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `tests/**`; `src/test/**` |
+| tests | Integration and browser test sources; execution requires their declared owner | [CONTRIBUTING.md](../../CONTRIBUTING.md#test-scope-and-diagnostics) | `tests/**`; `src/test/**` |
 | assets | Static public assets and their reference build consumption | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#runtime-model) | `public/**` |
 | operations | Deployment recipes and operational interface boundaries | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#self-host-boundary) | `deploy/**`; `mcp/**` |
 | subscription-renewal | Read the actual renewal invocation, preflight, attempt and charge path | [docs/platform/SUBSCRIPTION_WORKFLOWS.md](SUBSCRIPTION_WORKFLOWS.md#renew-one-cycle) | `server/bff/subscriptions/renewal-ticks.ts`; `server/domains/subscription/subscriptionRenewalInvocation.ts`; `server/domains/subscription/chargeSubscriptionCycleOffSession.ts` |

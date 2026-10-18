@@ -8,7 +8,7 @@
         "*"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#commands-and-lint-rules"
     },
     {
       "id": "public-policy",
@@ -26,7 +26,7 @@
         ".github/workflows/**"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#required-and-raw-checks"
     },
     {
       "id": "documentation",
@@ -170,7 +170,25 @@
         "scripts/**"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#package-policy-and-release-checks"
+    },
+    {
+      "id": "lint-rules",
+      "when": "Structural lint rules, their rule tests and suppression checks",
+      "paths": [
+        "scripts/ast-grep/**"
+      ],
+      "doc": "CONTRIBUTING.md",
+      "anchor": "#commands-and-lint-rules"
+    },
+    {
+      "id": "native-review",
+      "when": "Native review session, gate and queue admission tooling",
+      "paths": [
+        "scripts/agent-review-*"
+      ],
+      "doc": "CONTRIBUTING.md",
+      "anchor": "#required-and-raw-checks"
     },
     {
       "id": "docs-impact",
@@ -201,7 +219,7 @@
         "src/test/**"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#test-scope-and-diagnostics"
     },
     {
       "id": "assets",

@@ -7,8 +7,8 @@ import {
   assertDocumentationNavigation, documentationSection, markdownHeadings, normalizeDocumentation,
   readDocumentationState, resolveDocumentationOwner, type DocumentationSurface,
 } from "./documentation-routing.ts";
-import { checkDocumentationImpact, renderNoImpactComment, resolveDocumentationBase } from "./documentation-impact.ts";
-import { readDocumentationIndex, readDocumentationTree } from "./documentation-git.ts";
+import { checkDocumentationImpact, renderDocumentationImpact, renderNoImpactComment, renderNoImpactTrailer, resolveDocumentationBase, type DocumentationObligation } from "./documentation-impact.ts";
+import { documentationDigest, readDocumentationCandidate, readDocumentationIndex, readDocumentationTree, type DocumentationObject } from "./documentation-git.ts";
 
 const fetchMock = vi.hoisted(() => ({ source: "", calls: [] as { args: string[]; options: ExecFileSyncOptions }[] }));
 vi.mock("node:child_process", async (original) => {
@@ -53,9 +53,20 @@ function fixture(): { root: string; base: string; surfaces: DocumentationSurface
 }
 function impact(root: string, base: string) { return checkDocumentationImpact(root, readDocumentationState(root), base); }
 function sectionUpdate(root: string): void { write(root, OWNER, ownerText.replace("preserves replay safety", "preserves replay safety and refuses reordered events")); }
+/** The previous rule's version-2 digest, which also binds the owner section's current text. */
+function legacyDigest(root: string, base: string, obligation: DocumentationObligation): string {
+  const before = readDocumentationTree(root, base), state = readDocumentationState(root), after = readDocumentationCandidate(root, state.paths);
+  const bind = (object: DocumentationObject | undefined) => object ? { mode: object.mode, digest: object.digest } : null;
+  const oldSurfaces = JSON.parse(before.get("config/doc-routing.json")!.contents.toString("utf8")).surfaces as DocumentationSurface[];
+  return documentationDigest(JSON.stringify({ version: 2, unit: obligation.unit, doc: obligation.doc, anchor: obligation.anchor,
+    source: obligation.changedPaths.map(path => ({ path, before: bind(before.get(path)), after: bind(after.get(path)), ownership: {
+      before: before.has(path) ? resolveDocumentationOwner({ surfaces: oldSurfaces }, path) : null, after: after.has(path) ? resolveDocumentationOwner(state, path) : null,
+    } })), section: documentationDigest(normalizeDocumentation(documentationSection(readFileSync(join(root, OWNER), "utf8"), obligation.anchor))),
+  }));
+}
 function review(root: string, base: string): void {
   const obligation = impact(root, base).obligations.find((row) => row.unit === "domain-demo")!;
-  const comment = renderNoImpactComment(obligation, "This internal implementation change preserves the documented replay contract.");
+  const comment = renderNoImpactComment({ ...obligation, digest: legacyDigest(root, base, obligation) }, "This internal implementation change preserves the documented replay contract.");
   write(root, OWNER, ownerText.replace("## Other", `${comment}\n\n## Other`));
 }
 
@@ -207,12 +218,12 @@ describe("attributable source and owner impact", () => {
     for (const bad of ['<!-- openlup-doc-impact {"unit":"domain-demo"} -->', "<!-- openlup-doc-impact bad JSON -->", "<!-- openlup-doc-impact unterminated"])
       { write(root, OWNER, ownerText.replace("## Other", `${bad}\n## Other`)); expect(impact(root, base).failures.join("\n")).toMatch(/comment|JSON/); }
   });
-  it("binds source modes and unchanged section content, not the base commit", () => {
+  it("binds source modes, not the owner prose or the base commit", () => {
     const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); review(root, base);
     chmodSync(join(root, SOURCE), 0o755); expect(impact(root, base).failures).toHaveLength(1); chmodSync(join(root, SOURCE), 0o644);
     const oldDigest = impact(root, base).obligations[0]!.digest;
     write(root, OWNER, readFileSync(join(root, OWNER), "utf8").replace("preserves replay safety", "preserves a new contract"));
-    expect(impact(root, base).obligations[0]!.digest).not.toBe(oldDigest);
+    expect(impact(root, base).obligations[0]!.digest).toBe(oldDigest);
     expect(impact(root, base).obligations[0]?.status).toBe("updated");
     git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "commit", "--allow-empty", "-qm", "new base");
     const nextBase = git(root, "rev-parse", "HEAD"); write(root, OWNER, ownerText); review(root, base);
@@ -256,7 +267,8 @@ describe("attributable source and owner impact", () => {
       write(root, OWNER, ownerText.replace("## Other", `${example.replace("RECEIPT", "")}\n## Other`));
       const exampleBase = commit(root);
       write(root, SOURCE, "export const value = 2;\n");
-      const comment = renderNoImpactComment(impact(root, exampleBase).obligations[0]!, "The documented replay boundary remains unchanged.");
+      const obligation = impact(root, exampleBase).obligations[0]!;
+      const comment = renderNoImpactComment({ ...obligation, digest: legacyDigest(root, exampleBase, obligation) }, "The documented replay boundary remains unchanged.");
       write(root, OWNER, ownerText.replace("## Other", `${example.replace("RECEIPT", comment)}\n## Other`));
       expect(impact(root, exampleBase).obligations[0]?.status).toBe("unanswered");
     }
@@ -280,6 +292,119 @@ describe("attributable source and owner impact", () => {
   });
   it("does not exempt functional guidance merely because a line starts Updated", () => {
     expect(normalizeDocumentation("Updated: replay must refuse duplicate events")).toContain("replay");
+  });
+});
+
+function commitTrailer(root: string, line: string): string {
+  git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "commit", "--allow-empty", "-qm", "doc impact", "-m", line);
+  return git(root, "rev-parse", "HEAD");
+}
+function answer(root: string, base: string, reason = "The documented replay boundary stays correct."): string {
+  return commitTrailer(root, renderNoImpactTrailer(impact(root, base).obligations.find(row => row.unit === "domain-demo")!, reason));
+}
+function merge(root: string, ref: string, message = "merge fixture"): string {
+  git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "merge", "--no-ff", "-qm", message, ref);
+  return git(root, "rev-parse", "HEAD");
+}
+
+describe("commit trailer documentation answers", () => {
+  it("accepts every matching non-merge answer and prints every reason and commit", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const first = answer(root, base, "Replay remains unchanged."); const second = answer(root, base, "The refusal boundary also stays correct.");
+    const result = impact(root, base); expect(result.failures).toEqual([]);
+    expect(result.obligations[0]?.status).toBe("no-impact");
+    expect(result.obligations[0]?.answers).toEqual([{ source: "trailer", commit: second, reason: "The refusal boundary also stays correct." }, { source: "trailer", commit: first, reason: "Replay remains unchanged." }]);
+    expect(renderDocumentationImpact(result).join("\n")).toContain(`(${first.slice(0, 12)}): "Replay remains unchanged."`);
+    expect(renderDocumentationImpact(result).join("\n")).toContain(`(${second.slice(0, 12)}): "The refusal boundary also stays correct."`);
+  });
+  it("ignores a matching answer in the base history", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); const line = renderNoImpactTrailer(impact(root, base).obligations[0]!, "Replay stays correct.");
+    write(root, SOURCE, "export const value = 1;\n"); const moved = commitTrailer(root, line);
+    write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    expect(impact(root, moved).obligations[0]?.status).toBe("unanswered");
+  });
+  it.each([false, true])("ignores answers carried only by a merge (hosted first-parent base: %s)", hosted => {
+    const { root, base } = fixture(); git(root, "checkout", "-qb", "topic"); write(root, SOURCE, "export const value = 2;\n"); const topic = commit(root);
+    const line = renderNoImpactTrailer(impact(root, base).obligations[0]!, "Replay stays correct.");
+    git(root, "checkout", "-qb", "integration", base);
+    if (!hosted) { write(root, "README.md", `[Owner](${OWNER})\n\nIndependent prose.\n`); commit(root); }
+    const comparison = git(root, "rev-parse", "HEAD"); merge(root, topic, `Merge\n\n${line}`);
+    expect(impact(root, comparison).obligations[0]?.status).toBe("unanswered");
+  });
+  it.each(["trailer", "section"])("keeps a %s answer's binding when main edits owner prose", kind => {
+    const { root, base } = fixture(); git(root, "checkout", "-qb", "topic"); write(root, SOURCE, "export const value = 2;\n");
+    if (kind === "section") review(root, base);
+    commit(root); if (kind === "trailer") answer(root, base);
+    const topic = git(root, "rev-parse", "HEAD"); git(root, "checkout", "-qb", "integration", base);
+    sectionUpdate(root); const moved = commit(root); merge(root, topic);
+    const result = impact(root, moved);
+    expect(result.obligations[0]?.status).toBe(kind === "trailer" ? "no-impact" : "unanswered");
+    if (kind === "trailer") expect(result.failures).toEqual([]);
+  });
+  it("merges independent answers for the same unit without editing a shared line", () => {
+    const { root, base } = fixture(); const heads: string[] = [];
+    for (const [branch, path] of [["one", SOURCE], ["two", "src/domains/demo/other.ts"]]) {
+      git(root, "checkout", "-qb", branch!, base); write(root, path!, "export const value = 2;\n"); commit(root); heads.push(answer(root, base));
+    }
+    git(root, "checkout", "-qb", "integration", base); let comparison = base;
+    for (const head of heads) { const merged = merge(root, head); expect(impact(root, comparison).failures).toEqual([]); comparison = merged; }
+    expect(readFileSync(join(root, OWNER), "utf8")).toBe(ownerText);
+  });
+  it("expires after source edits and accepts a later answer for the new digest", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root); answer(root, base);
+    write(root, SOURCE, "export const value = 3;\n"); commit(root); expect(impact(root, base).obligations[0]?.status).toBe("unanswered");
+    answer(root, base); expect(impact(root, base).failures).toEqual([]);
+  });
+  it.each(["source", "routing"])("expires when the base changes the covered path's %s", kind => {
+    const { root, base, surfaces } = fixture(); write(root, SOURCE, "export const value = 2;\n"); const line = renderNoImpactTrailer(impact(root, base).obligations[0]!, "Replay stays correct.");
+    write(root, SOURCE, "export const value = 1;\n");
+    if (kind === "source") write(root, SOURCE, "export const value = 3;\n");
+    else { surfaces[1] = { ...surfaces[1]!, anchor: "#other" }; write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces })); }
+    const moved = commit(root);
+    if (kind === "routing") { surfaces[1] = { ...surfaces[1]!, anchor: "#canonical" }; write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces })); }
+    write(root, SOURCE, "export const value = 2;\n"); commit(root); commitTrailer(root, line);
+    const obligation = impact(root, moved).obligations.find(row => row.unit === "domain-demo" && row.anchor === "#canonical")!;
+    expect(obligation.status).toBe("unanswered"); expect(line).not.toContain(obligation.digest);
+  });
+  it.each(["unit", "digest"])("ignores a %s mismatch", field => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const obligation = impact(root, base).obligations[0]!;
+    commitTrailer(root, renderNoImpactTrailer({ ...obligation, [field]: field === "unit" ? "other-unit" : `sha256-${"0".repeat(64)}` }, "Replay stays correct."));
+    expect(impact(root, base).obligations[0]?.status).toBe("unanswered");
+  });
+  it.each(["bad JSON", "null", "[]", '{"unit":"domain-demo"}', JSON.stringify({ unit: "bad_unit", digest: `sha256-${"0".repeat(64)}`, reason: "why" }), JSON.stringify({ unit: "domain-demo", digest: "bad", reason: "why" }), JSON.stringify({ unit: "domain-demo", digest: `sha256-${"0".repeat(64)}`, reason: " " }), JSON.stringify({ unit: "domain-demo", digest: `sha256-${"0".repeat(64)}`, reason: "why", extra: true })])("reports a malformed trailer with its commit: %s", value => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root); const sha = commitTrailer(root, `OpenLup-Doc-Impact: ${value}`);
+    const result = impact(root, base); expect(result.failures.join("\n")).toContain(`malformed OpenLup-Doc-Impact trailer in ${sha.slice(0, 12)}:`);
+    expect(renderDocumentationImpact(result).filter(line => line.startsWith(`documentation: malformed OpenLup-Doc-Impact trailer in ${sha.slice(0, 12)}:`))).toHaveLength(1);
+  });
+  it("reads only exact column-zero keys and refuses a malformed record even when no answer is needed", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const line = renderNoImpactTrailer(impact(root, base).obligations[0]!, "Replay stays correct.");
+    commitTrailer(root, ` ${line}\n${line.replace("OpenLup", "Openlup")}\nOther: ${line}`);
+    expect(impact(root, base).obligations[0]?.status).toBe("unanswered");
+    commitTrailer(root, "OpenLup-Doc-Impact: {\"unit\": \u001b[31m}"); sectionUpdate(root);
+    const result = impact(root, base); expect(result.obligations[0]?.status).toBe("updated");
+    expect(result.failures).toEqual([expect.stringMatching(/^malformed OpenLup-Doc-Impact trailer in [0-9a-f]{12}: invalid JSON$/u)]);
+  });
+  it("accepts a CRLF record and prints a legacy section record's reason", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    commitTrailer(root, `${renderNoImpactTrailer(impact(root, base).obligations[0]!, "Replay stays correct.")}\r`);
+    expect(impact(root, base).failures).toEqual([]);
+    const legacy = fixture(); write(legacy.root, SOURCE, "export const value = 2;\n"); review(legacy.root, legacy.base);
+    expect(impact(legacy.root, legacy.base).failures).toEqual([]);
+    expect(impact(legacy.root, legacy.base).obligations[0]?.answers?.[0]?.source).toBe("section");
+    expect(renderDocumentationImpact(impact(legacy.root, legacy.base)).join("\n")).toContain('(section record): "This internal implementation change preserves the documented replay contract."');
+  });
+  it("refuses to read any answers in a shallow range", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root); answer(root, base);
+    const shallow = join(temporary(), "checkout"); git(root, "clone", "-q", "--depth=3", `file://${root}`, shallow);
+    expect(git(shallow, "rev-parse", "--is-shallow-repository")).toBe("true");
+    expect(impact(shallow, base).failures.join("\n")).toContain("this checkout is shallow, so no trailer could be read: fetch complete history");
+  });
+  it("renders the exact trailer format and refuses empty or multiline reasons", () => {
+    const obligation = { unit: "domain-demo", digest: `sha256-${"a".repeat(64)}` };
+    expect(renderNoImpactTrailer(obligation, 'Replay "stays" correct.')).toBe(`OpenLup-Doc-Impact: ${JSON.stringify({ ...obligation, reason: 'Replay "stays" correct.' })}`);
+    for (const reason of ["", " \t", "why\nmore", "why\rmore", "why\u2028more", "why\u2029more"]) expect(() => renderNoImpactTrailer(obligation, reason)).toThrow(/reason/);
   });
 });
 

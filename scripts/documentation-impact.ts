@@ -13,6 +13,7 @@ export type { DocumentationBase } from "./documentation-git.ts";
 export type DocumentationObligation = {
   unit: string; doc: string; anchor: string; changedPaths: string[]; digest: string;
   status: "updated" | "no-impact" | "unanswered";
+  answers?: { source: "trailer" | "section"; commit?: string; reason: string }[];
 };
 export type DocumentationImpactResult = { base: string; obligations: DocumentationObligation[]; failures: string[] };
 type ReviewComment = { unit: string; digest: string; reason: string };
@@ -43,6 +44,43 @@ function reviewComments(section: string): ReviewComment[] {
   }
   if (/^ {0,3}<!--\s*openlup-doc-impact\b/mu.test(visible.replace(/<!--\s*openlup-doc-impact\b[\s\S]*?-->/gu, ""))) throw new Error("unterminated no-impact comment");
   return result;
+}
+
+function trailerAnswers(root: string, base: string, head: string, failures: string[]): { shallow: boolean; records: (ReviewComment & { commit: string })[] } {
+  const shallow = documentationGit(root, ["rev-parse", "--is-shallow-repository"]).toString("utf8").trim() === "true";
+  if (shallow) return { shallow, records: [] };
+  const commits = documentationGit(root, ["rev-list", "--no-merges", `${base}..${head}`]).toString("utf8").trim().split("\n").filter(Boolean);
+  const records: (ReviewComment & { commit: string })[] = [];
+  if (commits.length === 0) return { shallow, records };
+  const batch = documentationGit(root, ["cat-file", "--batch"], `${commits.join("\n")}\n`, 128 * 1024 * 1024);
+  let position = 0;
+  for (const commit of commits) {
+    const newline = batch.indexOf(10, position); const header = batch.subarray(position, newline).toString("utf8");
+    const match = /^([0-9a-f]{40}) commit (\d+)$/u.exec(header);
+    if (!match || match[1] !== commit) throw new Error("documentation: unreadable commit batch");
+    const size = Number(match[2]); const start = newline + 1; const end = start + size;
+    if (!Number.isSafeInteger(size) || end >= batch.length || batch[end] !== 10) throw new Error("documentation: truncated commit batch");
+    const contents = batch.subarray(start, end).toString("utf8"); const boundary = contents.indexOf("\n\n");
+    if (boundary < 0) throw new Error("documentation: commit has no message boundary");
+    for (const line of contents.slice(boundary + 2).split("\n")) {
+      // Dot-all keeps a CR, U+2028 or U+2029 inside the record, so such a line is parsed or refused, never skipped.
+      const trailer = /^OpenLup-Doc-Impact:[ \t]*(.*?)[ \t\r]*$/su.exec(line);
+      if (!trailer) continue;
+      try {
+        let value: unknown;
+        try { value = JSON.parse(trailer[1]!); } catch { throw new Error("invalid JSON"); }
+        if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("expected a JSON object");
+        const row = value as Record<string, unknown>;
+        if (Object.keys(row).sort().join(",") !== "digest,reason,unit" || typeof row.unit !== "string" || !/^[a-z][a-z0-9-]*$/u.test(row.unit)
+          || typeof row.digest !== "string" || !/^sha256-[0-9a-f]{64}$/u.test(row.digest) || typeof row.reason !== "string" || !row.reason.trim())
+          throw new Error("needs exactly unit, digest and a nonempty reason");
+        records.push({ ...row as ReviewComment, commit });
+      } catch (error) { failures.push(`malformed OpenLup-Doc-Impact trailer in ${commit.slice(0, 12)}: ${(error as Error).message}`); }
+    }
+    position = end + 1;
+  }
+  if (position !== batch.length) throw new Error("documentation: unexpected commit batch output");
+  return { shallow, records };
 }
 
 function previousSurfaces(tree: Map<string, DocumentationObject>, state: DocumentationState): { surfaces: DocumentationSurface[]; bootstrap: boolean } {
@@ -91,12 +129,18 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
     }
   }
   const result: DocumentationImpactResult = { base: baseSHA, obligations: [], failures: [] };
+  // Read the change's own records once, so a malformed one fails even when no obligation needs it.
+  const trailers: ReturnType<typeof trailerAnswers> = inputs.size === 0 ? { shallow: false, records: [] } : trailerAnswers(root, baseSHA, headSHA, result.failures);
   for (const { owner, paths } of [...inputs.values()].sort((left, right) => identity(left.owner).localeCompare(identity(right.owner)))) {
     const changedPaths = [...paths].sort();
     const priorSection = ownerSection(before, owner); const section = ownerSection(after, owner);
     const normalized = normalizeDocumentation(section ?? "");
-    // The answer binds the change and the section, not the base commit, so an unrelated move of main keeps it valid.
+    // The answer binds the source delta and its owner, not the section prose or the base commit.
     const digest = documentationDigest(JSON.stringify({
+      version: 3, unit: owner.unit, doc: owner.doc, anchor: owner.anchor,
+      source: changedPaths.map((path) => ({ path, before: binding(before.get(path)), after: binding(after.get(path)), ownership: owners.get(path) })),
+    }));
+    const legacyDigest = documentationDigest(JSON.stringify({
       version: 2, unit: owner.unit, doc: owner.doc, anchor: owner.anchor,
       source: changedPaths.map((path) => ({ path, before: binding(before.get(path)), after: binding(after.get(path)), ownership: owners.get(path) })),
       section: documentationDigest(normalized),
@@ -111,15 +155,22 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
     const proseChanged = normalizeDocumentation(section ?? "", { includeGenerated: true }) !== normalizeDocumentation(priorSection ?? "", { includeGenerated: true });
     if (proseChanged && normalized !== normalizeDocumentation(priorSection ?? "")) { obligation.status = "updated"; continue; }
     const applicable = comments.filter((comment) => comment.unit === owner.unit);
-    const matching = applicable.filter((comment) => comment.digest === digest);
+    const matching = applicable.filter((comment) => comment.digest === legacyDigest);
     const priorComments = priorSection === null ? [] : reviewComments(priorSection);
     const fresh = matching.length === 1 && !priorComments.some((comment) => JSON.stringify(comment) === JSON.stringify(matching[0]));
-    if (applicable.length === 1 && fresh) { obligation.status = "no-impact"; continue; }
-    result.failures.push(`${owner.doc}${owner.anchor}: ${owner.unit} needs a substantive section update or one fresh no-impact comment (${digest}); source: ${changedPaths.join(", ")}`);
+    if (applicable.length === 1 && fresh) { obligation.status = "no-impact"; obligation.answers = [{ source: "section", reason: matching[0]!.reason }]; continue; }
+    const answers = trailers.records.filter((record) => record.unit === owner.unit && record.digest === digest);
+    if (answers.length) { obligation.status = "no-impact"; obligation.answers = answers.map(({ commit, reason }) => ({ source: "trailer", commit, reason })); continue; }
+    result.failures.push(`${owner.doc}${owner.anchor}: ${owner.unit} needs a substantive section update or a no-impact trailer in this change's own commits: ${renderNoImpactTrailer(obligation, "<why this section stays correct>")}; source: ${changedPaths.join(", ")}${trailers.shallow ? "; this checkout is shallow, so no trailer could be read: fetch complete history" : ""}`);
   }
   return result;
 }
 
+export function renderNoImpactTrailer(obligation: Pick<DocumentationObligation, "unit" | "digest">, reason: string): string {
+  if (!reason.trim() || /[\r\n\u2028\u2029]/u.test(reason)) throw new Error("documentation: no-impact reason must be nonempty and on one line");
+  return `OpenLup-Doc-Impact: ${JSON.stringify({ unit: obligation.unit, digest: obligation.digest, reason })}`;
+}
+// Render the compatibility record for legacy in-section answers.
 export function renderNoImpactComment(obligation: Pick<DocumentationObligation, "unit" | "digest">, reason: string): string {
   if (!reason.trim() || reason.includes("-->")) throw new Error("documentation: no-impact reason must be nonempty and cannot close its comment");
   return `<!-- openlup-doc-impact ${JSON.stringify({ unit: obligation.unit, digest: obligation.digest, reason })} -->`;
@@ -128,6 +179,8 @@ export function renderDocumentationImpact(result: DocumentationImpactResult): st
   return [
     `- documentation base: ${result.base}`,
     `- documentation obligations: ${result.obligations.length}; unanswered: ${result.obligations.filter((row) => row.status === "unanswered").length}`,
+    // Reasons are author text: print them escaped so one cannot add or forge log lines.
+    ...result.obligations.flatMap((row) => (row.answers ?? []).map((answer) => `- documentation no-impact: ${row.unit} ${row.doc}${row.anchor} (${answer.commit?.slice(0, 12) ?? "section record"}): ${JSON.stringify(answer.reason)}`)),
     ...result.failures.map((failure) => `documentation: ${failure}`),
   ];
 }

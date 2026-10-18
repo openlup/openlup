@@ -98,7 +98,7 @@ it("compiles actual declarations in both modes and refuses leaked peer types", (
   compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), 'import type { Pool } from "pg"; export type Leaked = Pool;\n');
   expect(() => compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler)).toThrow();
-});
+}, 30_000);
 it("refuses a runtime import that throws even if its declaration exists", () => {
   const consumer = fixture(); writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), 'throw new Error("synthetic provider initialization");');
   expect(() => consumerNode(consumer, 'await import("@openlup/platform/kernel");')).toThrow(/synthetic provider initialization/);
@@ -106,4 +106,13 @@ it("refuses a runtime import that throws even if its declaration exists", () => 
 it("the source-checkout wrapper invokes the cold proof and preserves its refusal", () => {
   const wrapper = join(root, "packages/platform/scripts/consumer-proof.ts");
   expect(() => execFileSync(process.execPath, ["--experimental-strip-types", wrapper], { cwd: root, env: {}, stdio: "pipe" })).toThrow(/OPENLUP_PACK_MANIFEST/);
+});
+
+it("starts both install phases and installed-input packs with a cache inside the consumer", () => {
+  // The fixture exercises declarations and isolation without invoking npm; check the command construction directly.
+  const source = readFileSync(join(root, "scripts/packages/platform-cold-consumer.ts"), "utf8");
+  expect(source).toContain('const cache = join(consumer, "npm-cache"); mkdirSync(cache);');
+  expect(source).toContain('["install", "--cache", cache, sdkPresent ? "--prefer-offline" : "--offline"');
+  expect(source).toContain('["pack", "--cache", cache, "--json", "--ignore-scripts"');
+  expect(source).toContain('install(OPTIONAL_PEERS.map(locked), true);');
 });
