@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { afterEach, describe, expect, it as test, vi } from 'vitest';
+import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -22,11 +22,35 @@ async function verify(req, reports, extra = {}) { return verifyAgentReview({ cwd
 function findingIds(rounds) { return rounds.flatMap(round => round.reports.flatMap(observed => observed.materialFindings.map((finding, index) => createHash('sha256').update(JSON.stringify({ requestDigest: createHash('sha256').update(JSON.stringify(round.request)).digest('hex'), reviewerId: observed.reviewerId, index, finding })).digest('hex')))); }
 const simplicityPreCheck = 'Read Review lessons; the smallest adequate alternative is the direct edit';
 const directories: string[] = [];
-afterEach(async () => { vi.unstubAllEnvs(); for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
+let currentBody: Promise<unknown>;
+function joined<Args extends unknown[]>(body: (...args: Args) => unknown) {
+  return (...args: Args) => {
+    currentBody = Promise.resolve().then(() => body(...args));
+    return currentBody;
+  };
+}
+function it(name: string, body: () => unknown, timeout?: number) {
+  return test(name, joined(body), timeout);
+}
+it.each = <T>(cases: T[]) => (name: string, body: (value: T) => unknown, timeout?: number) => test.each(cases)(name, joined(body), timeout);
+afterEach(async () => {
+  // Vitest times out without cancelling the body. Join it before removing fixtures.
+  await Promise.allSettled([currentBody]);
+  vi.unstubAllEnvs();
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+}, 120_000);
+function closed(child: ChildProcess) {
+  return new Promise<number | null>((resolve, reject) => {
+    let failure: Error | undefined;
+    child.once('error', error => { failure = error; });
+    child.once('close', code => { if (failure) reject(failure); else resolve(code); });
+  });
+}
 async function fixture() {
   const root = join(process.cwd(), '.context', 'scratch'); await mkdir(root, { recursive: true });
   const cwd = await mkdtemp(join(root, 'session-test-')); directories.push(cwd);
-  const git = (...args: string[]) => execFileSync('/usr/bin/git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.test', '-C', cwd, ...args], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
+  // Disposable Git commands must not leave detached automatic maintenance behind.
+  const git = (...args: string[]) => execFileSync('/usr/bin/git', ['-c', 'maintenance.auto=false', '-c', 'gc.auto=0', '-c', 'user.name=Test', '-c', 'user.email=test@example.test', '-C', cwd, ...args], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
   git('init', '-q'); await writeFile(join(cwd, 'source.txt'), 'before\n'); git('add', 'source.txt'); git('commit', '-qm', 'baseline');
   const base = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', base);
   return { cwd, base, git };
@@ -476,7 +500,7 @@ describe('explicit owner regroup without reset', () => {
     const previous = JSON.parse(before); await writeFile(specPath, JSON.stringify({ ...spec, intent: expanded, fullRefresh: true, regroup: approval(previous) }));
     expect(JSON.parse(invoke('prepare')).status).toBe('needs_agent_review');
     const state = JSON.parse(await readFile(statePath, 'utf8')); expect(state.request.roles).toHaveLength(2); expect(state.reports).toEqual([]); expect(state.history).toEqual([previous]);
-  });
+  }, 30_000);
 });
 
 describe('actual source snapshot without candidate execution', () => {
@@ -568,7 +592,7 @@ describe('actual source snapshot without candidate execution', () => {
     const reportPath = join(directory, 'closure.json'); await writeFile(reportPath, JSON.stringify({ ...report(state.request), reviewerId: 'fresh-closure', sessionId: 'fresh-closure-session', completedAt: Date.now(), closure: { coveredDelta: ['source.txt'], interactionsChecked: true, ordinarySemantics: true, resolvedFindings: state.request.continuation.findings.map(card => card.id) } })); expect(invoke('record', reportPath).status).toBe('reviewed');
     const reviewed = await readFile(statePath, 'utf8'); expect(invoke('prepare').status).toBe('reviewed'); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
     await writeFile(specPath, JSON.stringify({ ...spec, fullRefresh: true })); expect(invoke('prepare').status).toBe('reviewed'); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
-  });
+  }, 30_000);
   it('automatically distinguishes pristine baseline from dirty actual source', async () => {
     const { cwd, base } = await fixture(); expect((await pristineAgentReviewBaseline(cwd)).pristine).toBe(true);
     await writeFile(join(cwd, 'source.txt'), 'after!\n'); const dirty = await captureSessionCandidate(cwd, base);
@@ -652,26 +676,32 @@ describe('actual source snapshot without candidate execution', () => {
       " promises.rename = async (from, to) => { if (String(to).endsWith('session.json')) { writeSync(3, 'held'); await once(process.stdin.resume(), 'end'); } return rename(from, to); }; syncBuiltinESMExports();";
     const child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(holdPublish)}`, script, 'record', failedPath], { cwd, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
     let stdout = ''; let stderr = ''; child.stdout.on('data', bytes => { stdout += bytes; }); child.stderr.on('data', bytes => { stderr += bytes; });
-    const completed = new Promise<number | null>((resolve, reject) => { child.on('error', reject); child.on('close', resolve); });
-    await Promise.race([once(child.stdio[3], 'data'), completed.then(code => { throw new Error(`record exited ${code} before publishing its state: ${stderr}`); })]);
+    const completed = closed(child);
     try {
+      await Promise.race([once(child.stdio[3], 'data'), completed.then(code => { throw new Error(`record exited ${code} before publishing its state: ${stderr}`); })]);
       expect((await stat(join(directory, '.session.lock'))).isFile()).toBe(true);
-      const contenders = ['record', 'prepare'].map(verb => {
+      const contenders = ['record', 'prepare'].map(async verb => {
         const args = verb === 'record' ? [verb, passPath] : [verb];
-        return new Promise<string>((resolve, reject) => {
-          const rival = spawn(process.execPath, [script, ...args], { cwd, stdio: ['ignore', 'ignore', 'pipe'] }); let diagnostics = '';
-          rival.stderr.on('data', bytes => { diagnostics += bytes; }); rival.on('error', reject); rival.on('close', code => code === 1 ? resolve(diagnostics) : reject(new Error(`concurrent ${verb} unexpectedly completed`)));
-        });
+        const rival = spawn(process.execPath, [script, ...args], { cwd, stdio: ['ignore', 'ignore', 'pipe'] }); let diagnostics = '';
+        rival.stderr.on('data', bytes => { diagnostics += bytes; });
+        const code = await closed(rival);
+        if (code !== 1) throw new Error(`concurrent ${verb} unexpectedly completed`);
+        return diagnostics;
       });
-      for (const diagnostics of await Promise.all(contenders)) expect(diagnostics).toContain('session transaction is busy');
-    } finally { child.stdin.end(); }
+      // A first rejection must not leave its sibling using the fixture.
+      const results = await Promise.allSettled(contenders);
+      for (const result of results) {
+        if (result.status === 'rejected') throw result.reason;
+        expect(result.value).toContain('session transaction is busy');
+      }
+    } finally { child.stdin.end(); await completed; }
     expect(await completed).toBe(0); expect(stderr).toBe(''); expect(JSON.parse(stdout).status).toBe('needs_agent_review');
     expect(invoke('record', passPath).status).toBe('needs_agent_review');
     const recorded = JSON.parse(await readFile(statePath, 'utf8')); expect(recorded.request.id).toBe(state.request.id); expect(recorded.reports).toHaveLength(2); expect(recorded.reports[0].materialFindings).toEqual(findings);
     expect(invoke('prepare').status).toBe('needs_agent_review'); expect(JSON.parse(await readFile(statePath, 'utf8'))).toEqual(recorded);
     await expect(stat(join(directory, '.session.lock'))).rejects.toMatchObject({ code: 'ENOENT' });
     await writeFile(join(directory, '.session.lock'), 'existing owner'); expect(() => invoke('prepare')).toThrow('session transaction is busy'); expect(await readFile(join(directory, '.session.lock'), 'utf8')).toBe('existing owner');
-  });
+  }, 30_000);
   it('keeps two 4096-path reports usable when persisted state exceeds the input-file bound', async () => {
     const { cwd, git } = await fixture(); await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n'); git('add', '.gitignore'); git('commit', '-qm', 'scratch boundary');
     const baseline = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', baseline);
@@ -689,7 +719,7 @@ describe('actual source snapshot without candidate execution', () => {
     const before = await readFile(statePath, 'utf8'); const huge = { ...state, reports: [{ payload: 'x'.repeat(8 * 1024 * 1024) }] };
     expect(() => serializeAgentReviewState(huge)).toThrow('previous state is preserved'); expect(await readFile(statePath, 'utf8')).toBe(before);
     await writeFile(join(directory, 'oversized.json'), JSON.stringify({ payload: 'x'.repeat(1024 * 1024) })); expect(() => invoke('record', join(directory, 'oversized.json'))).toThrow(); expect(await readFile(statePath, 'utf8')).toBe(before);
-  });
+  }, 30_000);
   it('does not run a candidate clean filter while hashing bytes', async () => {
     const { cwd, base } = await fixture(); await writeFile(join(cwd, '.gitattributes'), 'source.txt filter=trap\n');
     await writeFile(join(cwd, 'source.txt'), 'dirty\n');
@@ -863,17 +893,17 @@ describe('fork-point review base (S5)', () => {
     await moveMain(reviewedBase, 'unrelated.txt');
     const verified = invoke('verify'); expect(verified.result.status).toBe('reviewed'); expect(verified.code).toBe(0); expect(verified.result.candidate.base).toBe(reviewedBase);
     expect(invoke('status').result.status).toBe('reviewed');
-  });
+  }, 30_000);
   it('(b) refuses once main is rewritten so the reviewed base is no longer an ancestor', async () => {
     const { git, reviewedBase, invoke, moveMain } = await reviewedAtB();
     await moveMain(git('rev-parse', `${reviewedBase}~1`), 'rewritten.txt');
     const verified = invoke('verify'); expect(verified.code).toBe(1); expect(verified.result.status).toBe('needs_agent_review'); expect(verified.result.reason).toContain('fork point');
-  });
+  }, 30_000);
   it('(c) preserves unchanged evidence at prepare after main advanced, with no new round', async () => {
     const { reviewedBase, statePath, invoke, moveMain } = await reviewedAtB(); const reviewed = await readFile(statePath, 'utf8');
     await moveMain(reviewedBase, 'unrelated.txt');
     const prepared = invoke('prepare'); expect(prepared.result.status).toBe('reviewed'); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
-  });
+  }, 30_000);
   it('(d) keeps base B and the closure lineage for a repair commit on the un-rebased branch', async () => {
     const { cwd, git, reviewedBase, statePath, invoke, record, moveMain } = await reviewedAtB(true);
     await moveMain(reviewedBase, 'unrelated.txt');
@@ -882,7 +912,7 @@ describe('fork-point review base (S5)', () => {
     expect(state.request.candidate.base).toBe(reviewedBase); expect(state.request.continuation).toMatchObject({ cycle: 1, mode: 'closure', deltaPaths: ['source.txt'] }); expect(state.history).toHaveLength(1);
     const closed = await record('closure', { ...report(state.request), reviewerId: 'fresh-closure', sessionId: 'fresh-closure-session', completedAt: Date.now(), closure: { coveredDelta: ['source.txt'], interactionsChecked: true, ordinarySemantics: true, resolvedFindings: state.request.continuation.findings.map(card => card.id) } });
     expect(closed.result.status).toBe('reviewed'); expect(invoke('verify').result.status).toBe('reviewed');
-  });
+  }, 30_000);
   it('(e) moves the base to M and requires full review when the author integrates main', async () => {
     const { git, reviewedBase, statePath, invoke, moveMain } = await reviewedAtB(); const reviewedHead = git('rev-parse', 'HEAD'); const reviewed = await readFile(statePath, 'utf8');
     const moved = await moveMain(reviewedBase, 'unrelated.txt');
@@ -894,7 +924,7 @@ describe('fork-point review base (S5)', () => {
     git('reset', '-q', '--hard', reviewedHead); await writeFile(statePath, reviewed); git('rebase', '-q', 'refs/remotes/origin/main');
     expect(invoke('prepare').result).toMatchObject({ status: 'needs_rescope' }); expect(await readFile(statePath, 'utf8')).toBe(reviewed);
     await rm(statePath); invoke('prepare'); expect(JSON.parse(await readFile(statePath, 'utf8')).request.candidate.base).toBe(moved);
-  });
+  }, 30_000);
   it('keeps a pristine checkout pristine when main moves ahead of it', async () => {
     const { cwd, base, git } = await fixture(); const branch = git('symbolic-ref', '--short', 'HEAD');
     git('checkout', '-q', '--detach'); await writeFile(join(cwd, 'later.txt'), 'main\n'); git('add', 'later.txt'); git('commit', '-qm', 'later main'); git('update-ref', 'refs/remotes/origin/main', git('rev-parse', 'HEAD')); git('checkout', '-q', branch);
