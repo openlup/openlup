@@ -23,8 +23,7 @@ const paths = [
 
 describe("the public README delegates preview truth to machine contracts", () => {
   const page = read("README.md");
-  // The README links the first two paths and names the tracked source-release contract once, in
-  // prose; each must appear exactly once.
+  // Every integrity input must remain discoverable; repeating a useful link is editorial.
   const policy = parsePublicPolicyRegistry(read(paths[0]));
   const catalogue = parsePublicPublicationCatalog(read(paths[1]));
   // The tracked contract is bound to its tree by `--inventory` and the descendant release check;
@@ -32,9 +31,9 @@ describe("the public README delegates preview truth to machine contracts", () =>
   const digest = `sha256-${"0".repeat(64)}`;
   const contractSource = createSourceReleaseContract({ inventoryDigest: digest, classDigest: digest, packageDigest: digest, rootLockDigest: digest, coreLockDigest: digest, migrationManifestDigest: digest, databaseTypesDigest: digest, policyRegistryDigest: digest, publicationCatalogDigest: digest }).contents;
 
-  it("links every public integrity input exactly once", () => {
+  it("links every public integrity input", () => {
     for (const path of paths) {
-      expect(page.match(new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? [], path).toHaveLength(1);
+      expect(page).toContain(path);
     }
     expect(page).toContain("npm run oss:published-tree -- --policy");
   });

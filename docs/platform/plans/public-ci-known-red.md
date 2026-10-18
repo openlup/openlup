@@ -47,6 +47,11 @@ archived inventory below.
 
 ## Archived merged checkpoint: twelve SQL obligations
 
+The one-time five-fixture neutrality recalibration ended with this checkpoint.
+Its runtime exception and introduction-only tests are retired; ordinary
+per-path, per-category shrink-only checks apply to every comparison base.
+The stored baseline source identity remains historical evidence.
+
 Measurement date: 2026-10-04. [PR #130](https://github.com/openlup/openlup/pull/130) was squash-merged as
 `e7f352bd788c6f2557316c3abde5e000772d583d`. Its comparison base was
 `c3a6c96c0ce6291a4554d51f9162dc261deed743`; exact-base

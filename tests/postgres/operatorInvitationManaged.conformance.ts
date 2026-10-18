@@ -25,9 +25,6 @@ try {
   await pool.query(["BEGIN;", readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"), defaults,
     // The shared runners use psql; node-postgres must omit only its pg_dump guard lines.
     "SET ROLE postgres;", ...migrations.map(({ contents }) => contents.replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, "")), "RESET ROLE;",
-    // FIXTURE ONLY: these exact managed permissions are absent from the committed
-    // chain. A separate reviewed managed forward must supply production grants.
-    "GRANT SELECT (email), INSERT (id, email, role, membership_state, membership_provenance, membership_accepted_at) ON public.admin_users TO service_role;",
     "NOTIFY pgrst, 'reload schema';", "COMMIT;"].join("\n"));
 } finally { await pool.end(); }
 const service = createServiceRoleClient({ url, serviceRoleKey: key });
@@ -37,7 +34,7 @@ for (let retry = 0; retry < 30; retry++) {
   if (!error) { ready = true; break; }
   await new Promise(resolve => setTimeout(resolve, 500));
 }
-assert.ok(ready, "Disposable managed API did not expose the replayed schema and fixture-only grants");
+assert.ok(ready, "Disposable managed API did not expose the replayed schema and shipped grants");
 const A = "d4200000-0000-4000-8000-000000000001";
 const T = "d4200000-0000-4000-8000-000000000002";
 const X = "d4200000-0000-4000-8000-000000000003";

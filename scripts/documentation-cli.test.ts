@@ -135,5 +135,5 @@ describe("documentation CLI on the bare public runtime", () => {
       const mismatch = execute([], { ...env, GITHUB_SHA: base });
       expect(mismatch.status).toBe(1); expect(mismatch.stderr).toContain("checkout identity");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 });

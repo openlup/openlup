@@ -148,11 +148,13 @@ const SCHEMA_BEARING_PATHS = new Set<string>([MIGRATION_MANIFEST_PATH, DATABASE_
 const isSchemaBearingSourceReleasePath = (path: string): boolean => SCHEMA_BEARING_PATHS.has(path) || path.startsWith("db/platform/migrations/") || path.startsWith("supabase/migrations/") || (path.startsWith("db/bootstrap/") && path.toLowerCase().endsWith(".sql"));
 /** Contract fields a descendant keeps from the previous release; the validator separately fixes `runtime`. */
 const PREVIOUS_RELEASE_CONTRACT_FIELDS = ["schemaVersion", "platformMigrationManifest.path", "databaseSchema", "policy.registryDigest", "repository", "release"] as const;
+const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f;
 /** A deliberately bounded SQL admission check, not a general SQL interpreter.
- * Comments and literal values cannot hide syntax; procedural/dynamic SQL refuses.
+ * Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently); procedural/dynamic SQL also refuses.
  * Existing SQL is frozen, so only new forwards pass through this predicate.
  */
 export function isExpandOnlyPlatformForward(sql: string): boolean {
+  if (Buffer.from(sql, "utf8").some(controlByte)) return false;
   const tokens: string[] = [];
   for (let index = 0; index < sql.length;) {
     const rest = sql.slice(index);
@@ -218,6 +220,12 @@ export function isExpandOnlyPlatformForward(sql: string): boolean {
   });
 }
 
+/** Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently). */
+export function assertAdmittedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
+  if (bytes.some(controlByte)) throw new Error(`migration SQL refuses control characters: ${path}`);
+  if (!isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, base, head, path, bytes, release);
+}
+
 function assertPlatformSchemaForwards(root: string, previousCommit: string, targetCommit: string, old: GitInventoryEntry[], target: GitInventoryEntry[], readOld: SourceReleaseBlobReader, readTarget: SourceReleaseBlobReader): void {
   const oldByPath = new Map(old.map((entry) => [entry.path, entry]));
   const targetByPath = new Map(target.map((entry) => [entry.path, entry]));
@@ -230,7 +238,7 @@ function assertPlatformSchemaForwards(root: string, previousCommit: string, targ
     if (before || !after || after.mode !== "100644" || !rail || path.endsWith("/00000000000000_platform_schema_baseline.sql") || path.endsWith("/00000000000000_platform_baseline.sql")) throw new Error(`descendant release refuses a schema-bearing edit, delete, mode change or unsupported addition: ${path}`);
     const contents = readTarget(path)!;
     const bytes = typeof contents === "string" ? Buffer.from(contents, "utf8") : contents;
-    if (!isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, previousCommit, targetCommit, path, bytes, true);
+    assertAdmittedPlatformForward(root, previousCommit, targetCommit, path, bytes, true);
     added.push(path);
   }
   if (added.some((path) => path.startsWith("supabase/migrations/")) && !oldByPath.has("supabase/migrations/00000000000000_platform_schema_baseline.sql")) throw new Error("descendant managed forwards require the previous frozen managed baseline");

@@ -53,8 +53,13 @@ async function boundaryMessages(config: Linter.Config[], source: string, filenam
     .map(({ message }) => message);
 }
 
-function loadSources(specifier: string, extension: string): string[] {
+function loadSources(specifier: string, extension: string, allSyntax = true): string[] {
   const quoted = JSON.stringify(specifier);
+  // Path/depth tables test rule selection; the syntax tables below exercise
+  // every loader form once per rule family, instead of multiplying both axes.
+  if (!allSyntax) return [extension === "cjs"
+    ? `const value = require(${quoted});`
+    : `import value from ${quoted};`];
   const sources = [
     `const value = import(${quoted});`,
     `const value = import(\`${specifier}\`);`,
@@ -128,6 +133,23 @@ describe("eslint import-map boundary", { timeout: 60_000 }, () => {
 });
 
 describe("eslint portable package boundaries", { timeout: 60_000 }, () => {
+  it.each(sourceExtensions)("checks every load syntax against each owning package rule in %s", async extension => {
+    const config = await loadConfig();
+    for (const pkg of ["outbox", "platform"]) {
+      const filename = `packages/${pkg}/src/usesKernel.${extension}`;
+      for (const source of loadSources("@openlup/core/readiness", extension))
+        expect(await boundaryMessages(config, source, filename)).toEqual([]);
+      for (const source of loadSources("@openlup/core/not-exported", extension))
+        expect(await boundaryMessages(config, source, filename))
+          .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
+      for (const source of loadSources("../../../outside", extension))
+        expect(await boundaryMessages(config, source, filename))
+          .toContainEqual(expect.stringContaining(`A file under packages/${pkg} stays package-local`));
+    }
+    for (const source of loadSources("pg", extension))
+      expect(await boundaryMessages(config, source, `packages/outbox/src/usesProvider.${extension}`))
+        .toContainEqual(expect.stringContaining("Portable package source must not import provider SDKs"));
+  });
   it("rejects every existing provider family in both portable source trees", async () => {
     const config = await loadConfig();
     for (const pkg of portablePackages) for (const specifier of [
@@ -246,18 +268,18 @@ describe("eslint portable package boundaries", { timeout: 60_000 }, () => {
       const config=await loadConfig();
       const filename=`packages/outbox/src/${"nested/".repeat(depth)}usesKernel.${extension}`;
       for(const specifier of ["@openlup/core/outbox","@openlup/core/readiness","@openlup/core/platform-runtime","@openlup/core/standard-schema"]){
-        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename)).toEqual([]);
+        for(const source of loadSources(specifier,extension,false))expect(await boundaryMessages(config,source,filename)).toEqual([]);
       }
       for(const specifier of ["@openlup/core/src/readiness","@openlup/core/dist/readiness/index.js","@openlup/core/not-exported","@openlup/core"]){
-        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension,false))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
       }
       for(const specifier of ["@openlup/ui","@openlup/unknown","/outside","@/outside","#outside",`${"../".repeat(depth+3)}outside`]){
-        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension,false))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("A file under packages/outbox stays package-local"));
       }
       for(const specifier of [managedProvider,cardProvider,"pg","openai","@vercel/blob"]){
-        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension,false))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("Portable package source must not import provider SDKs"));
       }
       if (depth === 0) for(const pkg of portablePackages)for(const source of loadSources("@openlup/outbox","ts"))
@@ -271,19 +293,19 @@ describe("eslint portable package boundaries", { timeout: 60_000 }, () => {
       const config=await loadConfig();
       const filename=`packages/platform/src/${"nested/".repeat(depth)}usesKernel.${extension}`;
       for(const specifier of ["@openlup/core/outbox","@openlup/core/readiness","@openlup/core/platform-runtime","@openlup/core/standard-schema"]){
-        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename)).toEqual([]);
+        for(const source of loadSources(specifier,extension,false))expect(await boundaryMessages(config,source,filename)).toEqual([]);
       }
       for(const specifier of ["@openlup/core/src/readiness","@openlup/core/dist/readiness/index.js","@openlup/core/not-exported","@openlup/core"]){
-        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension,false))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("Import a workspace package only through a subpath"));
       }
       for(const specifier of ["@openlup/ui","@openlup/outbox","@openlup/unknown","/outside","@/outside","#outside",`${"../".repeat(depth+3)}outside`]){
-        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename))
+        for(const source of loadSources(specifier,extension,false))expect(await boundaryMessages(config,source,filename))
           .toContainEqual(expect.stringContaining("A file under packages/platform stays package-local"));
       }
       // The platform adapters own their provider clients, so the portable-source SDK rule does not apply.
       for(const specifier of ["pg","@vercel/blob"]){
-        for(const source of loadSources(specifier,extension))expect(await boundaryMessages(config,source,filename)).toEqual([]);
+        for(const source of loadSources(specifier,extension,false))expect(await boundaryMessages(config,source,filename)).toEqual([]);
       }
       if (depth === 0) for(const pkg of portablePackages)for(const source of loadSources("@openlup/platform/http","ts"))
         expect(await boundaryMessages(config,source,`packages/${pkg}/src/usesPlatform.ts`))
@@ -314,6 +336,41 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       .map(({ message }) => message);
   }
 
+  it.each(sourceExtensions)("checks contracts loader syntax independently of path spelling in %s", async extension => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph, platformModuleRules } = await import("../../eslint.config.js");
+    const contractsConfig = [...config, ...platformModuleRules({ name: "@openlup/platform", directory: "platform" }, "composition", {
+      ...graph, composition: { ...graph.composition, contracts: true },
+    })] as Linter.Config[];
+    const filename = `packages/platform/src/composition/contracts/usesContracts.${extension}`;
+    const refusal = expect.stringContaining('packages/platform module "composition" contracts import only');
+    for (const specifier of ["./own.js", "@openlup/core/platform-runtime", "../server.js", "pg"]) {
+      for (const source of loadSources(specifier, extension)) {
+        const messages = await moduleMessages(contractsConfig, source, filename);
+        const requireHandle = source.startsWith("const value = require(") || source.startsWith("const value = module.require(");
+        if ((specifier === "./own.js" || specifier === "@openlup/core/platform-runtime") && !requireHandle)
+          expect(messages).toEqual([]);
+        else expect(messages).toContainEqual(refusal);
+      }
+    }
+  });
+
+  it.each(sourceExtensions)("checks module value and type edges for every load syntax in %s", async extension => {
+    const config = await loadConfig();
+    for (const [module, specifier, permission] of [
+      ["composition", "../data/index.js", "value"],
+      ["kernel", "../data/index.js", "refused"],
+      ["http", "../bff/index.js", "type"],
+      ["kernel", "@openlup/platform/composition", "refused"],
+    ]) {
+      for (const source of loadSources(specifier!, extension)) {
+        const messages = await moduleMessages(config, source, `packages/platform/src/${module}/usesModule.${extension}`);
+        if (permission === "value" || permission === "type" && typeOnlyForm.test(source)) expect(messages).toEqual([]);
+        else expect(messages).toContainEqual(expect.stringContaining(`packages/platform module "${module}"`));
+      }
+    }
+  });
+
   it.each(sourceExtensions)("isolates a declared contracts sub-entry in %s (negative plants)", async (extension) => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph, platformModuleRules } = await import("../../eslint.config.js");
@@ -324,7 +381,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const filename = `packages/platform/src/composition/contracts/${"nested/".repeat(depth)}usesContracts.${extension}`;
       const up = "../".repeat(depth + 1);
       for (const specifier of ["./own.js", "./nested/own.js", "@openlup/core/platform-runtime", ...(depth === 2 ? ["../own.js", "../../own.js"] : [])]) {
-        for (const source of loadSources(specifier, extension)) {
+        for (const source of loadSources(specifier, extension, false)) {
           const messages = await moduleMessages(contractsConfig, source, filename);
           if (source.startsWith("const value = require(") || source.startsWith("const value = module.require(")) expect(messages).toContainEqual(refusal);
           else expect(messages).toEqual([]);
@@ -339,7 +396,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
         "@OpenLup/core/platform-runtime", "/composition/contracts/index.js", "file:///composition/contracts/index.js", "#alias", "@/alias",
         ...(depth === 11 ? ["../own.js"] : []),
       ]) {
-        for (const source of loadSources(specifier, extension)) expect(await moduleMessages(contractsConfig, source, filename)).toContainEqual(refusal);
+        for (const source of loadSources(specifier, extension, false)) expect(await moduleMessages(contractsConfig, source, filename)).toContainEqual(refusal);
       }
       for (const target of ["target", '"p" + "g"', "`./${target}.js`", "42", "null"]) {
         for (const source of [
@@ -442,14 +499,14 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const up = "../".repeat(depth + 1);
       const refusal = (module: string) => expect.stringContaining(`packages/platform module "${module}"`);
       const admitted = async (module: string, specifier: string, onlyTypes = false) => {
-        for (const source of loadSources(specifier, extension)) {
+        for (const source of loadSources(specifier, extension, onlyTypes)) {
           const messages = await moduleMessages(config, source, file(module));
           if (!onlyTypes || typeOnlyForm.test(source)) expect(messages).toEqual([]);
           else expect(messages).toContainEqual(refusal(module));
         }
       };
       const refused = async (module: string, specifier: string) => {
-        for (const source of loadSources(specifier, extension)) expect(await moduleMessages(config, source, file(module))).toContainEqual(refusal(module));
+        for (const source of loadSources(specifier, extension, false)) expect(await moduleMessages(config, source, file(module))).toContainEqual(refusal(module));
       };
 
       // Own internals, from the module's files and through the source root.

@@ -105,6 +105,11 @@ be a scanned `.ts` file, refuses triple-slash type and path references and all
 meta-properties (also `new.target`), and retains member-call `require` detection
 outside contracts. Identity declares this entry; synthetic graphs also exercise these checks.
 
+
+The job-run ledger SQL asset test verifies a readable, nonempty file within the
+package SQL directory. Its SQL parity tests bind the actual adapter calls to the
+shipped routine signatures; the asset's explanatory header may be edited freely.
+
 `npm run api:check` compares each of the eleven declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
@@ -217,9 +222,11 @@ module `identity` using core's existing codes. Hosts retaining verifier-only
 admission explicitly bind `createVerifierResultOnlyEmailTrustPolicy()`.
 See the [identity policy and migration](../../docs/platform/IDENTITY.md#responsibility-and-composition)
 for the empty provider allowlist, cache/deadline, 403/503 failures and the opt-in
+`node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust` and
 `node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint` prerequisites
-and fixture-only service-role grant. Association in that disposable stack does
-not establish association under the shipped managed reference grants.
+and conformance scope. Both phases replay the committed managed chain, including
+the identity capabilities forward, and prove association under the shipped managed
+reference grants.
 Construction and imports perform no settings read or SDK initialization.
 
 
@@ -314,13 +321,14 @@ a separate transactional store and reviewed forward. No managed SQL, RPC or SDK
 dependency is added. See the
 [identity lifecycle owner](../../docs/platform/IDENTITY.md#operator-invitation-lifecycle).
 
-The committed managed chain lacks `service_role` SELECT(email) and INSERT(id,
-email, role, membership_state, membership_provenance, membership_accepted_at) on
-`admin_users`. Production use needs a separate reviewed managed grant forward.
+The managed chain's identity capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`.
 The opt-in managed conformance replays the complete committed chain with ambient
-default ACLs removed and applies exactly those permissions as a labelled
-fixture-only grant. It proves immediate membership behaviour, without claiming
-shipped-grants readiness or managed/direct lifecycle parity.
+default ACLs removed and adds no grant. It proves immediate activation,
+repeat/concurrent recovery and revoked-member refusal under the shipped grants.
+It does not establish managed/direct lifecycle parity.
 
 With a fresh local managed stack running, export its API URL, service key and
 PostgreSQL owner connection URL as `OPENLUP_MANAGED_CONFORMANCE_URL`,
