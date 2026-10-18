@@ -254,7 +254,7 @@ describe("package source boundary", () => {
         `${up}index.js`, `${up}server.js`, `${up}../data/index.js`, `${up}../http/index.js`,
         `${up}contracts/../server.js`, "./bridge.testFixtures.js", "./bridge.test.js", "././own.js", "./nested/../own.js",
         "./helper.mjs", "./helper.cjs", "./helper.mts", "./helper.cts", "./helper.ts", "./helper.tsx", "./helper.json", "./helper",
-        "./%2e%2e/server.js", "./..\\server.js", "./own.js?server", "node:fs", "pg", "@supabase/supabase-js", "zod",
+        "./%2e%2e/server.js", "./..\\server.js", "./own.js?server", "node:fs", "pg", "@example/provider-sdk", "zod",
         "@openlup/platform/example/contracts", "@openlup/core", "@openlup/core/src/private", "@openlup/core/platform-runtime/extra",
         "@OpenLup/core/platform-runtime", "/example/contracts/index.js", "file:///example/contracts/index.js", "#alias", "@/alias",
       ]) {
