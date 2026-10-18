@@ -1,10 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   APPLICATION_DEPLOYMENT_URL_KEY,
   APPLICATION_RELEASE_SHA_KEY,
+  readProcessEnvironment,
   readRuntimeProvenance,
   resolveRuntimeProvenance,
 } from "./runtimeProvenance.js";
+
+afterEach(() => vi.unstubAllEnvs());
+
+it("reads the current process environment for runtime callers and default provenance", () => {
+  vi.stubEnv("APP_RELEASE_SHA", "release-1");
+  expect(readProcessEnvironment().APP_RELEASE_SHA).toBe("release-1");
+  expect(readRuntimeProvenance().releaseSha).toBe("release-1");
+  vi.stubEnv("APP_RELEASE_SHA", "release-2");
+  expect(readProcessEnvironment().APP_RELEASE_SHA).toBe("release-2");
+  expect(readRuntimeProvenance().releaseSha).toBe("release-2");
+});
 
 describe("resolveRuntimeProvenance", () => {
   it("owns the canonical external application provenance key names", () => {

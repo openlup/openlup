@@ -180,10 +180,12 @@ describe("complete public CI", () => {
   });
   it("preserves active selectors with subscription, command-contract and fatal neutrality coverage in one discovery", () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
+    expect(createHash("sha256").update(requiredTestFloor).digest("hex")).toBe("51484fa2f1ef215691d86a1e08f18446147e7ebf7271a621925bb82cd162fe64");
     const expandedFloor = requiredTestFloor
       .replace("scripts/agent-review-controller.test.ts ", "scripts/public-ci-reuse.test.ts ")
       .replace("scripts/agent-review-hosted.test.ts ", "")
-      .replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ");
+      .replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ")
+      + " server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts";
     expect(PUBLIC_REQUIRED_TEST_COMMAND).toBe(expandedFloor);
     expect(manifest.scripts["test:required"]).toBe(expandedFloor);
     expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(expandedFloor.split(" ").slice(3));
@@ -982,4 +984,12 @@ describe("operator invitation expand-only admission", () => {
     const sql = readFileSync(new URL("../db/platform/migrations/20261018120000_identity_operator_invitations.sql", import.meta.url), "utf8");
     expect(isExpandOnlyPlatformForward(sql)).toBe(true);
   });
+});
+
+it("admits the operator challenge forward and refuses executable or privilege additions", () => {
+  const sql = readFileSync(join(ROOT, "db/platform/migrations/20261018180000_identity_operator_challenges.sql"), "utf8");
+  expect(isExpandOnlyPlatformForward(sql)).toBe(true);
+  for (const addition of ["CREATE FUNCTION public.bad() RETURNS int LANGUAGE SQL AS 'SELECT 1';", "CREATE TRIGGER bad AFTER INSERT ON public.operator_identity_challenges EXECUTE FUNCTION bad();", "CREATE POLICY bad ON public.operator_identity_challenges USING (true);", "GRANT SELECT ON public.operator_identity_challenges TO public;"]) {
+    expect(isExpandOnlyPlatformForward(sql + addition)).toBe(false);
+  }
 });

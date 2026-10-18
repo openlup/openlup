@@ -1,9 +1,11 @@
 import { createContext, useContext } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
+import type { AdminSession as Session } from '@/domains/auth/adminAuth';
+type User = Session['user'];
 
 export type AdminRole = 'admin' | 'distributor' | null;
 
 export interface AuthContextValue {
+  directOperatorAuth?: boolean;
   user: User | null;
   session: Session | null;
   loading: boolean;

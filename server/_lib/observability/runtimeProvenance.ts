@@ -47,9 +47,13 @@ export function resolveRuntimeProvenance(input: RuntimeProvenanceInput): Runtime
   };
 }
 
+export function readProcessEnvironment(): Record<string, string | undefined> {
+  return process.env;
+}
+
 /** Reads neutral runtime inputs and accepts an adapter's optional compatibility facts. */
 export function readRuntimeProvenance(
-  env: RuntimeProvenanceEnv = process.env,
+  env: RuntimeProvenanceEnv = readProcessEnvironment(),
   compatibility: RuntimeProvenanceCompatibility = {},
 ): RuntimeProvenance {
   return resolveRuntimeProvenance({

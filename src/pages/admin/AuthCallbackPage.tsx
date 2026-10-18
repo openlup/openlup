@@ -1,18 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { loadManagedAdminAuth } from '@/integrations/supabase/adminAuthPort';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from "../../lib/validation/zod.js";
-import type { Session } from '@supabase/supabase-js';
+import type { AdminSession as Session } from '@/domains/auth/adminAuth';
 import { ConfirmPasswordField } from '@/components/forms/fields/ConfirmPasswordField';
 import { PasswordField } from '@/components/forms/fields/PasswordField';
 import { Form } from '@/components/ui/form';
 import { useAuth } from '@/lib/authContext';
-import {
-  supabase,
-  initialAuthCallbackType,
-  readAuthCallbackTypeFrom,
-} from '@/integrations/supabase/client';
 import { brandMarkInverse as veliLogoWhite } from "#deployment-media";
 
 const passwordUpdateSchema = z
@@ -33,10 +29,31 @@ const fieldItemCls =
   'text-text-muted [&>label]:label-text [&>label]:mb-0 [&>label]:block [&>label]:text-text-muted [&>label>span]:text-warm-coral [&>p]:font-body [&>p]:text-xs-plus [&>p]:text-warm-coral [&>p]:mt-1';
 
 export default function AuthCallbackPage() {
+  const { directOperatorAuth } = useAuth();
+  return directOperatorAuth ? <DirectOperatorCallback /> : <ManagedAuthCallback />;
+}
+function DirectOperatorCallback() {
+  const { signInWithOtpCode } = useAuth();
+  const navigate = useNavigate();
+  const token = useRef(new URLSearchParams(window.location.hash.slice(1)).get('operator_token'));
+  const attempt = useRef<Promise<{ error: string | null }> | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    attempt.current ??= token.current ? signInWithOtpCode('', token.current) : Promise.resolve({ error: 'Operator challenge invalid or expired' });
+    void attempt.current.then(result => {
+      if (cancelled) return;
+      if (result.error) setError('Operator challenge invalid or expired');
+      else navigate('/admin', { replace: true });
+    });
+    return () => { cancelled = true; };
+  }, [navigate, signInWithOtpCode]);
+  return <div className="flex min-h-screen items-center justify-center bg-offwhite"><p>{error || 'Verifying operator sign-in…'}</p>{error && <a href="/admin/login">Return to sign in</a>}</div>;
+}
+function ManagedAuthCallback() {
   const navigate = useNavigate();
   const { refreshAdmin } = useAuth();
-  const [callbackType] = useState(() => readCallbackType());
-  const isMagicLinkCallback = callbackType === 'magiclink';
   const passwordForm = useForm<PasswordUpdateValues>({
     defaultValues: {
       confirmPassword: '',
@@ -69,6 +86,7 @@ export default function AuthCallbackPage() {
         return;
       }
 
+      const { supabase } = await loadManagedAdminAuth();
       await supabase.auth.signOut();
       if (!cancelled) {
         setError('Nie masz dostępu do panelu admina.');
@@ -77,6 +95,10 @@ export default function AuthCallbackPage() {
       }
     }
 
+    let unsubscribe = () => {};
+    void loadManagedAdminAuth().then(({ supabase, initialAuthCallbackType, readAuthCallbackTypeFrom }) => {
+    if (cancelled) return;
+    const isMagicLinkCallback = (initialAuthCallbackType ?? readAuthCallbackTypeFrom(window.location.search, window.location.hash)) === 'magiclink';
     // Supabase auto-exchanges the token from the URL hash into a session.
     // We listen for the PASSWORD_RECOVERY or SIGNED_IN event (invite counts as recovery).
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -103,16 +125,16 @@ export default function AuthCallbackPage() {
       setChecking(false);
     });
 
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, [isMagicLinkCallback, navigate, refreshAdmin]);
+    unsubscribe = () => subscription.unsubscribe();
+    });
+    return () => { cancelled = true; unsubscribe(); };
+  }, [navigate, refreshAdmin]);
 
   async function handleSubmit(values: PasswordUpdateValues) {
     setError('');
 
     setLoading(true);
+    const { supabase } = await loadManagedAdminAuth();
     const { error: updateError } = await supabase.auth.updateUser({ password: values.password });
 
     if (updateError) {
@@ -191,16 +213,5 @@ export default function AuthCallbackPage() {
         </form>
       </Form>
     </div>
-  );
-}
-
-function readCallbackType(): string | null {
-  // Prefer the value snapshotted at client init — by the time this component
-  // (a lazy admin-route chunk) mounts, `detectSessionInUrl` has usually already
-  // stripped the `type=magiclink` hash, so reading the live URL here returns
-  // null and the magic-link login is misclassified as a password-set flow.
-  return (
-    initialAuthCallbackType ??
-    readAuthCallbackTypeFrom(window.location.search, window.location.hash)
   );
 }

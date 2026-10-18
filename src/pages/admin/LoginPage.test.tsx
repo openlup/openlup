@@ -1,0 +1,20 @@
+import { render, fireEvent, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+const { verify, request } = vi.hoisted(() => ({ verify: vi.fn(async () => ({ error: null })), request: vi.fn(async () => ({ accepted: true })) }));
+vi.mock('@/lib/authContext', () => ({ useAuth: () => ({ directOperatorAuth: true, signIn: vi.fn(), signInWithOtpCode: verify }) }));
+vi.mock('@/domains/platform/adminMagicLinkClient', () => ({ requestAdminMagicLink: request }));
+import LoginPage from './LoginPage';
+afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
+it('direct shell offers email and pasted token without password or numeric code', async () => {
+  vi.stubEnv('VITE_OPERATOR_AUTH_PROVIDER_KIND', 'direct');
+  const { container } = render(<MemoryRouter><LoginPage /></MemoryRouter>);
+  expect(container.querySelector('input[type=password]')).toBeNull();
+  fireEvent.change(container.querySelector('input[type=email]')!, { target: { value: 'admin@example.invalid' } });
+  fireEvent.click(screen.getByRole('button', { name: /link/i }));
+  const token = await screen.findByLabelText('Email link token');
+  expect(token.getAttribute('inputmode')).toBe('text');
+  fireEvent.change(token, { target: { value: 'a'.repeat(43) } });
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in with token' }));
+  expect(verify).toHaveBeenCalledWith('admin@example.invalid', 'a'.repeat(43));
+});

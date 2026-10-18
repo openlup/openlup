@@ -10,6 +10,18 @@ verified email, never silently duplicate).
 - **Does not own:** session persistence, the customer account schema (`clients` is one adapter's table), email/magic-link delivery (`communications`), rate-limiting (`platform`), or any provider SDK.
 
 ## Public surface (import cross-domain ONLY these)
+
+- `adminAuth.ts` — neutral `AdminSession` shell subset and pure provider selection.
+
+The application composition passes its browser selection to `AuthProvider` through
+the `providerKind` prop; pages consume the selected mode through the auth context. Direct operator auth
+uses the browser-safe package port through the PostgreSQL HTTP adapter, persists
+in tab-scoped `sessionStorage` with document-memory fallback, and rechecks `/me`
+on restoration/focus. The shell maps package `accessToken` to `access_token`;
+expiry and sign-out clear the auth-scoped query cache. Managed browser loading
+is deferred until managed selection. See [direct human login](../../../docs/platform/IDENTITY.md#direct-human-login)
+for callback, audience and delivery limits.
+
 - `ports.ts` — `CustomerAuthPort`.
 - `types.ts` — `OAuthProviderKind`, `AuthSession`, `AuthUser`.
 - `contracts.ts` — `authReconcileResponseSchema`, `AuthReconcileErrorCode`.

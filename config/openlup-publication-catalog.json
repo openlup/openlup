@@ -1090,6 +1090,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261018180000_identity_operator_challenges.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2226,6 +2230,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261018180000_identity_operator_challenges.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -2402,6 +2410,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/contracts/operatorAuth.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/contracts/operatorInvitations.ts",
       "class": "public-output"
     },
@@ -2534,11 +2546,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/operatorAdminAuth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/operatorAuthHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/operatorIdentityVerifier.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/operatorInvitationLifecycle.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/identity/operatorInvitationPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/operatorPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/operatorSession.ts",
       "class": "public-output"
     },
     {
@@ -2559,6 +2591,10 @@
     },
     {
       "path": "packages/platform/src/identity/postgresCustomerRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/postgresOperatorIdentity.ts",
       "class": "public-output"
     },
     {
@@ -2834,6 +2870,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/identity/operatorAdminAuth.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/operatorAuthHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/operatorContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/operatorIdentityVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/identity/operatorInvitationConformance.test.ts",
       "class": "public-output"
     },
@@ -2843,6 +2895,10 @@
     },
     {
       "path": "packages/platform/test/identity/operatorInvitationLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/operatorSession.test.ts",
       "class": "public-output"
     },
     {
@@ -11806,7 +11862,35 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/auth/operatorAuthBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/operatorIdentityCommand.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/operatorIdentityCommand.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/auth/operatorInvitationConfiguration.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/operatorRoutes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/operatorRoutes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/operatorSessionBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/operatorSessionBinding.ts",
       "class": "public-output"
     },
     {
@@ -13747,6 +13831,10 @@
     },
     {
       "path": "src/domains/auth/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/auth/adminAuth.ts",
       "class": "public-output"
     },
     {
@@ -16562,6 +16650,18 @@
       "class": "public-output"
     },
     {
+      "path": "src/integrations/postgres/operatorAuthPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/integrations/postgres/operatorAuthPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/integrations/supabase/adminAuthPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/integrations/supabase/client.test.ts",
       "class": "public-output"
     },
@@ -17590,6 +17690,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/lib/useAuth.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/lib/useAuth.tsx",
       "class": "public-output"
     },
@@ -17994,6 +18098,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/admin/AuthCallbackPage.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/admin/AuthCallbackPage.tsx",
       "class": "public-output"
     },
@@ -18043,6 +18151,10 @@
     },
     {
       "path": "src/pages/admin/EmailSendsPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/LoginPage.test.tsx",
       "class": "public-output"
     },
     {
@@ -19402,6 +19514,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/operatorIdentityUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/operatorInvitationCatalogue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/operatorInvitationCatalogue.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/operatorInvitationLifecycle.test.ts",
       "class": "public-output"
     },
@@ -19661,7 +19785,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -19673,7 +19797,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-add34b8d6131ee27383ebbf3d08f5776079d9a36d0dd6ec666ab4ec0b15e47be"
+      "digest": "sha256-5f2f2c125a75a38484e34430984cf24d5079bea02c4bab7c733272fe9963308b"
     },
     {
       "path": "packages/core/package.json",

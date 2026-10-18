@@ -9,6 +9,7 @@ export type AdminAuthBindingResolution =
   | { readonly binding: AdminAuthBinding; readonly error?: undefined }
   | { readonly binding?: undefined; readonly error: "managed_admin_auth_env_required" | "direct_admin_auth_config_invalid" };
 export interface AdminAuthBindingOptions {
+  humanAuthFactory?: (env: Env) => AdminAuthPort & { close(): Promise<void> };
   checkerFactory?: PlatformOperatorCheckerFactory;
   managedAuthFactory?: (env: { url: string; anonKey: string }, accessToken: string | null) => AdminAuthPort;
 }
@@ -19,7 +20,7 @@ function managedAuthEnv(env: Env): { url: string; anonKey: string } | null {
 }
 
 /** Bind the admin authorizer selected by PLATFORM_BUNDLE. */
-export function createAdminAuthBindingResolver(defaults: Required<AdminAuthBindingOptions>) {
+export function createAdminAuthBindingResolver(defaults: Required<Pick<AdminAuthBindingOptions, "checkerFactory" | "managedAuthFactory">> & Pick<AdminAuthBindingOptions, "humanAuthFactory">) {
 return function resolveAdminAuthBinding(
   env: Env,
   options: AdminAuthBindingOptions = {},
@@ -27,21 +28,33 @@ return function resolveAdminAuthBinding(
   const bundleId = resolveBundleId(env);
   if (bundleId === "node-postgres") {
     const config = resolvePlatformOperatorAuthConfig(env);
-    if (!config.config) return { error: "direct_admin_auth_config_invalid" };
+    const humanFactory = options.humanAuthFactory ?? defaults.humanAuthFactory;
+    const humanEnabled = !!env.OPERATOR_IDENTITY_AUDIENCE && !!humanFactory;
+    if (!config.config && !humanEnabled) return { error: "direct_admin_auth_config_invalid" };
     const checkerFactory = options.checkerFactory ?? defaults.checkerFactory;
     return {
       binding: {
         identity: bundleId,
         async run(accessToken, work) {
           const scope: { checker?: PlatformOperatorChecker } = {};
-          const auth = createOperatorTokenAdminAuth(config.config, async (principalId) => {
+          const machine = config.config ? createOperatorTokenAdminAuth(config.config, async (principalId) => {
             scope.checker ??= await checkerFactory(env);
             return scope.checker.isOperatorAllowed(principalId);
-          });
+          }) : null;
+          let human: (AdminAuthPort & { close(): Promise<void> }) | undefined;
+          const auth: AdminAuthPort = { async authorize(token, restrictions) {
+            // Only a credential mismatch may select human verification; machine
+            // revocation and database errors retain their existing result.
+            const result = machine ? await machine.authorize(token, restrictions) : null;
+            if (result && (result.ok || result.code !== "UNAUTHORIZED")) return result;
+            if (!humanEnabled || !token) return result ?? { ok: false, code: "UNAUTHORIZED", message: "Operator authentication required" };
+            human ??= humanFactory!(env);
+            return human.authorize(token, restrictions);
+          } };
           try {
             return await work(auth);
           } finally {
-            await scope.checker?.close();
+            try { await scope.checker?.close(); } finally { await human?.close(); }
           }
         },
       },

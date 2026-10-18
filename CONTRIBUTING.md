@@ -988,6 +988,8 @@ CI activation and verification order remain unchanged.
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-3596f948904d4961b2dbc38a72006c3b2124a02cd29c604e736228e3d3787502","reason":"The compose container receives the optional invitation TTL. No service, route, contributor command or verification selector changes; the runtime and identity owners describe the setting and refusal behavior."} -->
 
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-0c0c63c78f506af798ad3e6dd8a73691c78bf058560a801ba8b56e5f2808e7af","reason":"Invitation upgrade conformance selects the complete prefix before the invitation migration by exact path and expects every subsequent forward. A credential-free catalogue test covers later appends and missing-path refusal. Disposable database ownership and the contributor commands remain unchanged."} -->
+
 ## Pull requests
 
 ### Local contribution handoff

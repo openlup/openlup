@@ -56,6 +56,16 @@ forward, rather than relying on a reference fixture or process startup. A missin
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
+
+The direct human-login forward `20261018180000_identity_operator_challenges`
+appends position 68 after invitations. Preserve every preceding file, digest and
+position. The identity projection carries the same bytes and canonical position;
+never install the sparse projection as a complete catalogue. Its normalized-email
+unique index refuses duplicates instead of merging principals. Recompute the live
+selected-catalog object inventory after applying the full chain. Fresh install,
+exact-prefix upgrade, replay and retention of customer, subscription and machine
+links need real-database proof; there is no managed counterpart.
+
 Identity email-trust admission changes no schema or stored identities, contact
 links or subscriptions. Its conformance runner replays the complete managed
 baseline and ordered forwards using `psql`, without a CLI migration ledger.
@@ -278,6 +288,14 @@ forward establishes neither installation-path parity nor the complete
 late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
+
+Operator challenges add one direct-only table and indexes, no function or
+privilege grants. Issuance, activation/consumption, bootstrap and retention use
+the trusted transaction lane. Before enabling direct login, verify effective
+browser-role/PUBLIC privileges, including inheritance and column grants; unsafe
+stores refuse runtime authentication. Browser sessions use tab storage through
+the existing guarded storage boundary and do not add database session rows.
+
 
 The operator invitation lifecycle preserves existing accepted membership rows and customer/principal links. Its
 direct forward `20261018120000_identity_operator_invitations` appends one catalogue

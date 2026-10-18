@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { Pool } from "pg";
+import { invitationPredecessor } from "./operatorInvitationCatalogue.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -27,15 +28,11 @@ async function operatorInvitationDatabase() {
     }
     const [fresh, upgrade] = pools;
     const current = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
-    const appended = ["db/platform/migrations/20261018120000_identity_operator_invitations.sql"];
-    if (JSON.stringify(current.forward.slice(-appended.length).map((entry: { file: string }) => entry.file)) !== JSON.stringify(appended)) {
-      throw new Error("Operator invitations must append the expected forward suffix");
-    }
     // The predecessor run proves ordered path/hash/position continuity. Its old
     // object inventory is unavailable; only the completed current chain checks
     // the real selected-catalog projection against the committed inventory hash.
     const prefixPayload = "predecessor-ledger-prefix";
-    const before = { ...current, forward: current.forward.slice(0, -appended.length),
+    const before = { ...current, forward: invitationPredecessor(current.forward),
       objectInventorySha256: createHash("sha256").update(prefixPayload).digest("hex") };
     const root = mkdtempSync(join(tmpdir(), "operator-invitation-predecessor-")); roots.push(root);
     for (const entry of [before.baseline, ...before.forward]) {
@@ -268,7 +265,8 @@ describe("operator invitations, complete canonical PostgreSQL catalogue", () => 
     await seed(db.upgrade);
     const legacy = (await db.upgrade.query("SELECT * FROM public.platform_human_memberships ORDER BY principal_id")).rows;
     const upgraded = await db.runner(db.upgrade).apply();
-    expect(upgraded.applied).toEqual(["db/platform/migrations/20261018120000_identity_operator_invitations.sql"]);
+    const current = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+    expect(upgraded.applied).toEqual(current.forward.slice(invitationPredecessor(current.forward).length).map((entry: { file: string }) => entry.file));
     expect((await db.upgrade.query("SELECT * FROM public.platform_human_memberships ORDER BY principal_id")).rows).toEqual(legacy);
     await seed(db.fresh);
     for (const pool of [db.fresh, db.upgrade]) {

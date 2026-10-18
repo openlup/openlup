@@ -80,6 +80,12 @@ export const bindBlobPort = () => ({ upload: () => fail("@aws-sdk/client-s3") })
 export const createPostgresDataGateway = () => ({ asService: () => fail("pg") });
 export const createPostgresRoleFreeTransactionLane = () => ({ run: () => fail("pg"), close: async () => {} });
 export const createPostgresMigrationRunner = () => ({ status: () => fail("pg") });
+export const createPostgresOperatorIdentityStore = () => ({ findMembership: () => fail("pg"), close: async () => {} });
+export const createOperatorSessionService = () => {};
+export const createOperatorAdminAuth = () => {};
+export const createOperatorIdentityVerifier = () => {};
+export const operatorChallengeRequestSchema = { safeParse: () => ({ success: true }) };
+export const operatorSessionSchema = { safeParse: () => ({ success: false }) };
 export const createEnvAdvisoryLock = () => ({ tryAcquire: () => fail("pg"), close: async () => {} });
 `);
   return consumer;
@@ -106,4 +112,9 @@ it("refuses a runtime import that throws even if its declaration exists", () => 
 it("the source-checkout wrapper invokes the cold proof and preserves its refusal", () => {
   const wrapper = join(root, "packages/platform/scripts/consumer-proof.ts");
   expect(() => execFileSync(process.execPath, ["--experimental-strip-types", wrapper], { cwd: root, env: {}, stdio: "pipe" })).toThrow(/OPENLUP_PACK_MANIFEST/);
+});
+
+it("classifies the browser identity entry separately from the mixed server adapter entry", () => {
+  expect(NON_ADAPTER_ENTRIES).toContain("identity/contracts");
+  expect(ADAPTER_ENTRIES).toContain("identity");
 });

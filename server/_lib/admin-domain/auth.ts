@@ -39,6 +39,7 @@ export const DISTRIBUTOR_ADMIN_BFF_ROUTES = [
 const DISTRIBUTOR_ROUTE_SET = new Set<string>(DISTRIBUTOR_ADMIN_BFF_ROUTES);
 
 export const PUBLIC_ADMIN_BFF_ROUTES = [
+  "/api/bff/admin/platform/verify-otp",
   "/api/bff/admin/platform/me",
   "/api/bff/admin/platform/magic-link",
 ] as const;

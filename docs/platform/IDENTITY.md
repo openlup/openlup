@@ -6,6 +6,12 @@ Audience: contributors reviewing the identity boundary and applications composin
 its factories. The owner is the identity module within `@openlup/platform`.
 
 ## Responsibility and composition
+
+Direct PostgreSQL human operators use the dedicated operator challenge store,
+not customer recovery. The browser-safe identity contracts export strict challenge
+and session schemas plus `OperatorBrowserAuthPort`; the server entry exports the
+operator store, session service, verifier, authorizer and HTTP handler factories.
+
 Creating a client/contact records commerce contact data. Creating an auth user
 provisions an authentication principal. Neither a typed address nor the soft-account
 link proves mailbox ownership. Reconcile may mint a contact for an existing
@@ -510,3 +516,177 @@ The unmounted reconcile source can answer the two email-trust policy refusal cod
 the original five domain refusal codes as messages,
 plus `Customer session required` and `Account reconciliation failed`.
 These endpoint-source outcomes do not activate a route.
+
+## Direct human login
+
+Select `PLATFORM_BUNDLE=node-postgres` on the server and
+`VITE_OPERATOR_AUTH_PROVIDER_KIND=direct` in the application browser build. Its
+composition root passes that configured value to `AuthProvider` as `providerKind`.
+Absence preserves managed authentication; other nonempty values refuse.
+The reference dispatcher mounts `POST /api/bff/admin/platform/magic-link`,
+`POST /api/bff/admin/platform/verify-otp` and `GET /api/bff/admin/platform/me` for
+the direct bundle. Every mounted operator handler passes through the observed
+route boundary and the deployment route policy: challenge issuance, redemption
+and `me` all use the admin mutation risk classification. The public default refuses
+all three with HTTP 503 and `adopter_policy_required` before parsing input or
+creating authentication bindings. A direct-bundle adopter must supply its
+`#deployment-route-policy` implementation to enable login and operator
+authorization, using the same policy mechanism as other admin mutation routes. Bundle selection alone does not enable authentication writes.
+The default static reference mounts none of these routes. The bounded static and
+subscription evaluation builds do not mount the admin shell; adopters must supply
+that application composition.
+When an application mounts the supplied admin shell, its login page offers email
+links and a pasted token instead of a password or numeric code. Managed login and password callbacks keep their existing flow.
+
+### Challenge delivery and redemption
+
+An existing principal is eligible with an active `admin` or `distributor`
+membership, or a live pending invitation with one of those roles. A challenge
+creates no principal, customer or membership. Unknown, revoked, disallowed and
+limited requests return the same `{ accepted: true }` response with a 400 ms
+floor. The handler sends acceptance before invoking mailbox transport, so slow
+or failed delivery cannot lengthen the observable response for eligible addresses.
+The request still awaits delivery after sending the response; it does not launch
+an untracked background task. `createOperatorSessionService.requestChallenge`
+accepts an optional asynchronous acceptance callback, called after issuance for
+every eligibility result and before delivery. Custom HTTP hosts must use it to
+send their padded generic response before transport. Delivery errors retain that
+accepted response and log only the neutral
+`operator_challenge_delivery_failed` code. Database or configuration failures
+return `UPSTREAM_UNAVAILABLE` (503).
+
+Each challenge uses 32 random bytes encoded as 43 base64url characters. Only the
+SHA-256 hash and normalized-email fingerprint persist. The database serializes
+issuance per principal: one per rolling minute, five per rolling hour, including
+consumed challenges. Tokens expire after ten minutes; requesting another leaves
+other unexpired tokens valid. Redemption rechecks current email and eligibility,
+activates a pending invitation using the existing trusted lifecycle command, and
+consumes the challenge in that same transaction. Exactly one redemption succeeds.
+Already-active operators can request and redeem new challenges without a pending
+invitation. Repeat login preserves membership role, provenance and acceptance
+time, and does not create or accept another invitation.
+Expiry equality, replay, changed email or lost eligibility returns generic
+`UNAUTHORIZED` (401). Invalid envelopes return `BAD_REQUEST` (400).
+
+Authentication writes require same-origin JSON. Origins come only from the
+strict configured `APP_BASE_URL` / `SITE_URL` resolver, never request headers.
+Compose a separate `CustomerChallengeDeliveryPort` instance for operators via
+`createOperatorSessionBinding`; its default discards without logging tokens.
+For the reference dispatcher, use
+`createReferenceBffDispatch(env => createOperatorSessionBinding(env, delivery))`
+and mount that returned dispatch function. A caller-supplied canonical operator
+route handler is preserved under the same deployment policy boundary; it is
+never shadowed by the default discard binding. The host owns the lifetime of
+bindings supplied through its route table; factory-created bindings close after
+each request.
+Injected delivery builds `/admin/auth/callback#operator_token=…` using the
+configured application origin. Interactive sign-in needs injected delivery;
+there is no default mailbox or mail transport.
+
+### First-administrator bootstrap
+
+With trusted database credentials and the complete migrated catalogue, run:
+
+```sh
+PLATFORM_BUNDLE=node-postgres node --experimental-strip-types \
+  server/runtime/auth/operatorIdentityCommand.ts \
+  bootstrap-first-administrator --email admin@example.invalid
+```
+
+The command locks the membership and invitation tables, refuses any existing
+human membership or invitation with `OPERATOR_BOOTSTRAP_ALREADY_INITIALIZED`,
+and creates an `admin` invitation. It may reuse one unambiguous principal without
+changing its ID or email. The invitation records the principal as `invited_by`
+and the bootstrap audit records a system actor. It authenticates nobody and
+issues no token. First sign-in follows normal invitation activation. No startup
+or HTTP bootstrap exists; revoked authority is never resurrected by this command.
+
+The bootstrap invitation lasts seven days. An expired invitation cannot redeem a
+challenge, and rerunning bootstrap still refuses with
+`OPERATOR_BOOTSTRAP_ALREADY_INITIALIZED`, even when no administrator has signed
+in. If another active human administrator exists, use the normal direct invitation
+issue operation to reissue the expired attempt for the same principal. If none
+exists, there is no shipped bootstrap reset or unauthenticated recovery command:
+the database owner must follow the deployment's audited recovery procedure before
+login can resume. Preserve principal IDs, customer links and invitation/audit
+history; deleting rows to rerun bootstrap or extending a deadline by hand is not
+a supported recovery route. Challenge pruning cannot renew an invitation.
+
+### Sessions and authorization
+
+Configure nonempty, distinct `OPERATOR_IDENTITY_AUDIENCE` and
+`CUSTOMER_IDENTITY_AUDIENCE`. Operator sessions reuse the existing ES256 issuer,
+key ID, private JWK and public JWKS settings, with an exact scalar operator
+audience and a fixed 900-second lifetime. Verification requires integer `iat`
+and `exp`, no future issuance and a positive lifetime of at most 900 seconds.
+Customer and dual-audience tokens cannot authenticate an operator. JWT role
+claims grant no authority: each protected request requires a live active
+membership and an allowed role (`admin` or `distributor`), then the route's role
+allowlist. Human authorization returns the verified human principal and
+`isMachineActor: false`. Authority-read failure refuses; it never becomes machine
+authority. Exact configured machine credentials retain their existing authorizer.
+Human login needs no machine credential and does not enable otherwise machine-only
+capabilities. Customer identity and subscription ownership do not change.
+
+The shell maps `accessToken` to its neutral `access_token` session subset.
+The direct adapter stores the session in `sessionStorage`, with document memory
+fallback when storage is denied. There is no refresh token. Restoration and
+window focus recheck `/me`; expiry and sign-out clear authentication and its query
+cache. A focus check clears the session on an authorization refusal (HTTP 401/403
+or a profile without an allowed operator role). A network failure or upstream
+outage retains the current tab session until a later check or its existing expiry;
+protected server requests still require live authorization. Restoration and focus
+reads never cancel a redemption in progress,
+including when the provider and callback mount together under StrictMode.
+Explicit sign-out or another successful redemption still supersedes the old attempt.
+The hook consumes the port's guarded state notifications and waits for its
+session and admin state check before reporting successful code verification.
+Both pasted-token login and the callback link therefore enter the protected
+admin shell after authorization completes, including when `/me` is delayed.
+It never signs out on a stale authorization response.
+An older check cannot clear an established newer session or cancel its pending
+redemption, regardless of which response completes first.
+A copied bearer remains usable until expiry or membership revocation.
+The callback removes its token fragment before asynchronous work and redeems once
+under StrictMode. Managed SDK initialization stays behind managed selection.
+
+### Retention and recovery
+
+With the same direct environment, run:
+
+```sh
+node --experimental-strip-types server/runtime/auth/operatorIdentityCommand.ts prune-challenges
+```
+
+Each invocation deletes at
+most 500 challenges whose expiry is more than 24 hours old, ordered by expiry
+and ID with locked-row skipping. Repeat bounded invocations as needed; there is
+no new scheduler. Live challenges and recent rate-limit history are retained.
+Signing failure after redemption leaves the challenge consumed and activation
+committed. Request another challenge; never delete an identity, relink a customer
+or reverse activation as compensation.
+
+### Installation and verification limits
+
+Apply the complete selected catalogue including
+`20261018180000_identity_operator_challenges`, at position 68. Its package SQL
+projection is byte-identical, not a second install chain. The new normalized-email
+unique index refuses duplicate principal emails; diagnose and resolve the conflict
+without silently merging identities. The forward creates only a table and indexes,
+with no privilege grants. Runtime issuance, redemption and authority reads refuse
+unexpected browser-role or PUBLIC table/column privileges, including inherited
+grants. Verify the runtime credentials and actor-role denial against the actual
+installation. No managed migration is required.
+
+Fresh installation, exact predecessor-ledger upgrade, replay, transaction races,
+retained links and live object inventory require real PostgreSQL proof. Source
+unit checks and SQL admission do not establish those outcomes or general upgrade
+support. The cold installed consumer imports both identity entries without optional
+peers and exercises the new store's explicit missing-peer refusal.
+
+The [operator database conformance](../../tests/postgres/operatorIdentityUpgrade.test.ts)
+checks consumed-challenge rate limits, expired tokens, email changes, revocation
+and effective browser privileges. Its pruning witness seeds live and recently
+expired challenges alongside older rows, then checks their retention after each
+bounded batch. Fixture timestamps share a statement timestamp so their lifetimes
+respect the same ten-minute constraint as issued challenges.

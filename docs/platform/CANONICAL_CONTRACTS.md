@@ -153,6 +153,14 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+Direct human operator sessions introduce a distinct operator audience and a
+browser provider-selection setting. The direct catalogue appends the challenges
+forward with an immutable predecessor prefix. Its normalized-email uniqueness
+constraint refuses ambiguous identities; customer links and machine credentials
+are preserved. [Identity](IDENTITY.md#direct-human-login) owns the authentication
+codes, limits and compatibility requirements; no managed migration is added.
+
+
 The environment registry declares `IDENTITY_EMAIL_VERIFYING_PROVIDERS` as an
 optional server-only value with an empty default. Managed identity hosts parse
 its comma-separated provider identifiers as explicit assertions of mailbox

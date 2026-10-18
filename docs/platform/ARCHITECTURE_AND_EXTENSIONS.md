@@ -29,6 +29,23 @@ under the existing admission, fencing and retirement contract; a second competin
 state writer is not an extension seam.
 
 ## Runtime boundaries
+
+Direct human operator authentication uses a capability-local PostgreSQL store
+and the existing invitation activation in one redemption transaction. ES256
+operator-audience tokens identify the human; every authorization reads live
+membership and applies the fail-closed role allowlist. Exact machine credentials
+retain a separate authorizer. The reference BFF dispatcher mounts the direct
+operator routes only for the selected direct bundle, wrapping both defaults and
+caller-composed handlers with the existing deployment policy boundary. All three
+operator routes, including `me`, use the admin mutation risk classification and
+require an adopter policy; dispatcher composition passes an injected
+session-binding factory through to the mounted handlers. The browser hook uses
+the auth port's guarded session notifications so an older redemption cannot sign
+out or cancel a newer session. Browser auth uses a neutral
+session subset and tab storage; managed client initialization is lazy and stays
+inside its adapter. The [operator contract](IDENTITY.md#direct-human-login) owns
+challenge limits, callback behavior and recovery; customer linking is separate.
+
 Identity email association has an injected asynchronous trust policy. The
 managed adapter reads bounded public Auth settings; the domain use case assesses
 it after existing principal lookup and before email lookup or writes, including
