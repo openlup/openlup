@@ -83,30 +83,33 @@ failed HEAD; use an upload or list operation to observe an S3 loading refusal.
 
 ## Verification
 
-This package's tests are part of the repository's required test selection; from this directory, `npm test` runs them alone. The tests rewrite the originating application's characterization with neutral names and synthetic data, and a boundary test refuses environment reads in package source. Repository lint owns provider imports and module edges.
-
-The job-run ledger SQL asset test verifies a readable, nonempty file within the
-package SQL directory. Its SQL parity tests bind the actual adapter calls to the
-shipped routine signatures; the asset's explanatory header may be edited freely.
+This package's tests are part of the repository's required test selection; from this directory, `npm test` runs them alone. The tests rewrite the originating application's characterization with neutral names and synthetic data, and a boundary test refuses any environment read or provider import in the package source.
 
 The module-boundary proof permits one optional `./<module>/contracts` export
 only when that module declares `contracts: true` in `PLATFORM_MODULE_GRAPH` in
 [`eslint.config.js`](../../eslint.config.js). Its `types`, `import` and `default`
 targets follow the module entry shape at `dist/<module>/contracts/index`.
 Contracts files may import only their own contracts subtree through canonical
-relative `.js` paths and exact public `@openlup/core` entries. ESLint enforces this allowlist for static imports and re-exports (including
-types) and literal `import()`, and refuses non-literal `import()` targets.
-It reserves the identifier names `require`, `module`, `exports`, `process`,
-`globalThis`, `global`, `__dirname`, `__filename` and `Buffer` in every value
-and type position, including local and property identifiers, and refuses
-`import.meta`. This rejects loader aliases and wrapped calls regardless of the
-load target. The repository's import-boundary tests exercise these real rules
-with positive and negative samples instead of maintaining a second classifier.
-[`packageBoundary.test.ts`](test/packageBoundary.test.ts) keeps the distinct
-package proofs: module/export correspondence, independent declarations,
-environment reads, scanned `.ts` contracts files, triple-slash references and
-meta-properties (including `new.target`). Identity declares a contracts entry;
-synthetic graphs also prove its manifest shape.
+relative `.js` paths and exact public `@openlup/core` entries. Both ESLint and
+[`packageBoundary.test.ts`](test/packageBoundary.test.ts) enforce this allowlist
+for static imports and re-exports (including types) and literal `import()`;
+they refuse non-literal `import()` targets. Both checks reserve the identifier
+names `require`, `module`, `exports`, `process`, `globalThis`, `global`,
+`__dirname`, `__filename` and `Buffer` in every value and type position,
+including local and property identifiers, and refuse every use of `import.meta`.
+This rejects loader aliases and wrapped calls regardless of the load target.
+The existing non-literal `require` member-call guard also remains, including
+computed property calls.
+The package test additionally requires every file in the contracts subtree to
+be a scanned `.ts` file, refuses triple-slash type and path references and all
+meta-properties (also `new.target`), and retains member-call `require` detection
+outside contracts. Identity declares this entry; synthetic graphs and negative
+plants also prove the checks.
+
+
+The job-run ledger SQL asset test verifies a readable, nonempty file within the
+package SQL directory. Its SQL parity tests bind the actual adapter calls to the
+shipped routine signatures; the asset's explanatory header may be edited freely.
 
 `npm run api:check` compares each of the eleven declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them

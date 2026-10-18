@@ -25,26 +25,37 @@ export async function completedMergeGroup({ eventName, ref, sha, checkout, event
       if (!response.ok) throw new Error('Evidence unavailable');
       return response.json();
     };
-    const listing = await get(`/actions/workflows/published-tree-ci.yml/runs?event=merge_group&head_sha=${sha}&per_page=100`);
-    const runs = listing.workflow_runs;
     const identity = run => positive(run?.id) && positive(run.workflow_id) && positive(run.run_attempt)
       && run.event === 'merge_group' && run.head_sha === sha && run.path === WORKFLOW
       && repository(run.repository) && repository(run.head_repository)
       && typeof run.head_branch === 'string' && run.head_branch.startsWith('gh-readonly-queue/main/');
-    if (!Array.isArray(runs) || runs.length === 0 || runs.length > 100 || listing.total_count !== runs.length
-      || new Set(runs.map(run => run?.id)).size !== runs.length || !runs.every(identity)) return false;
-    const latest = runs.reduce((a, b) => a.id > b.id ? a : b);
+    const latestRun = async () => {
+      const listing = await get(`/actions/workflows/published-tree-ci.yml/runs?event=merge_group&head_sha=${sha}&per_page=100`);
+      const runs = listing.workflow_runs;
+      if (!Array.isArray(runs) || runs.length === 0 || runs.length > 100 || listing.total_count !== runs.length
+        || new Set(runs.map(run => run?.id)).size !== runs.length || !runs.every(identity)) return undefined;
+      return runs.reduce((a, b) => a.id > b.id ? a : b);
+    };
+    const sameSuccess = (expected, observed) => identity(observed)
+      && observed.id === expected.id && observed.workflow_id === expected.workflow_id
+      && observed.run_attempt === expected.run_attempt && observed.head_branch === expected.head_branch
+      && observed.status === 'completed' && observed.conclusion === 'success';
+    const latest = await latestRun();
+    if (!latest || !sameSuccess(latest, latest)) return false;
     const run = await get(`/actions/runs/${latest.id}`);
-    if (!identity(run) || run.id !== latest.id || run.workflow_id !== latest.workflow_id || run.run_attempt !== latest.run_attempt
-      || latest.status !== 'completed' || latest.conclusion !== 'success' || run.status !== 'completed' || run.conclusion !== 'success') return false;
+    if (!sameSuccess(latest, run)) return false;
     const result = await get(`/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`);
     const jobs = result.jobs;
     if (!Array.isArray(jobs) || jobs.length > 100 || result.total_count !== jobs.length
       || !jobs.every(job => positive(job?.id)) || new Set(jobs.map(job => job.id)).size !== jobs.length) return false;
-    return CHECKS.every(name => {
+    if (!CHECKS.every(name => {
       const matches = jobs.filter(job => job.name === name);
       return matches.length === 1 && matches[0].head_sha === sha && matches[0].status === 'completed' && matches[0].conclusion === 'success';
-    });
+    })) return false;
+    // A rerun can start while the explicitly addressed old jobs remain readable.
+    // Revalidate both latest-run selection and attempt after collecting the proof.
+    if (!sameSuccess(run, await latestRun())) return false;
+    return sameSuccess(run, await get(`/actions/runs/${run.id}`));
   } catch {
     return false;
   }

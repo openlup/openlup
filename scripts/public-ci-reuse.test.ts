@@ -30,7 +30,9 @@ describe("exact-commit post-merge reuse", () => {
   it("reuses all completed group checks and reads jobs of the latest attempt", async () => {
     const f = fixture();
     expect(await completedMergeGroup(f.input)).toBe(true);
-    expect(f.calls.at(-1)).toContain("/runs/100/attempts/2/jobs?");
+    expect(f.calls[2]).toContain("/runs/100/attempts/2/jobs?");
+    expect(f.calls).toHaveLength(5);
+    expect(f.calls.at(-1)).toContain("/actions/runs/100");
   });
   it.each(["pull_request", "merge_group", "workflow_dispatch"])("never reuses on %s", async eventName => {
     const f = fixture(); f.input.eventName = eventName;
@@ -72,6 +74,25 @@ describe("exact-commit post-merge reuse", () => {
   });
   it("does not use an older successful run when the latest one failed", async () => {
     const f = fixture(); f.listing.workflow_runs.push({ ...f.run, id: 101, conclusion: "failure" }); f.listing.total_count++;
+    expect(await completedMergeGroup(f.input)).toBe(false);
+  });
+  it.each(["rerun", "new-run", "late-rerun"])("refuses %s that supersedes evidence during collection", async movement => {
+    const f = fixture();
+    const transport = f.input.fetcher;
+    let listings = 0;
+    f.input.fetcher = async (url, options) => {
+      const response = await transport(url, options);
+      if (url.includes("/runs?")) listings++;
+      if (movement === "late-rerun" ? listings === 2 : url.includes("/jobs?")) {
+        if (movement === "new-run") {
+          f.listing.workflow_runs.push({ ...f.run, id: 101, conclusion: "failure" }); f.listing.total_count++;
+        } else {
+          f.run.run_attempt = 3; f.run.status = "queued"; f.run.conclusion = "";
+          if (movement !== "late-rerun") Object.assign(f.listing.workflow_runs[0]!, f.run);
+        }
+      }
+      return response;
+    };
     expect(await completedMergeGroup(f.input)).toBe(false);
   });
   it.each([new Response("unavailable", { status: 503 }), new Response("{malformed"), new Error("network unavailable")])(

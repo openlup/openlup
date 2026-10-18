@@ -586,9 +586,9 @@ syntax tables exercise every supported loader form for each owning rule family.
 Separate path tables exercise package names, path spellings and depth boundaries
 with one canonical load. This preserves the syntax and path obligations without
 repeating their full Cartesian product. Type-only edges keep both accepted type
-loads and refused value loads. The platform package tests retain declaration,
-manifest, environment and reference checks; ESLint owns the import classifier
-for production source, with no parallel test-only implementation.
+loads and refused value loads. The platform package source proof remains: its
+provider allowlist and member-call loaders cover cases outside ESLint's current
+selectors, so that check cannot yet be removed as duplicate coverage.
 
 `npm run lint` first checks file-leading blank-line suppressions with
 `scripts/ast-grep/check-filewide-ignore.mjs`; this check cannot be suppressed
