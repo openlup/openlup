@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
-import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, assertDescendantSourceRelease, assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
+import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, assertAdmittedPlatformForward, assertDescendantSourceRelease, assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
 import { annotatedTag, assertDraft, assertNextPreview, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
@@ -369,15 +369,19 @@ describe("exact reviewed replacement admission in both gates", () => {
   const baseline = functions.map((signature) => definition(signature, 1)).join("\n");
   const paths = ["supabase/migrations/20261001000001_readiness.sql", "supabase/migrations/20261001000002_price_setup.sql", "supabase/migrations/20261001000003_starter.sql"];
   const sql = [definition(functions[0]!, 2, true), definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 2) + "\n" + definition("public.catalog_price_setup_apply(p_command text, p_fingerprint text)", 2), functions.slice(1).map((signature) => definition(signature, 2, true)).join("\n")];
-  const identityPath = "supabase/migrations/20261018160000_identity_service_role_client_link.sql";
-  const identityPrivileges = ["GRANT INSERT (email, auth_user_id, acquisition_source, lifecycle_stage) ON public.clients TO service_role;", "GRANT UPDATE (auth_user_id) ON public.clients TO service_role;"];
-  const identitySql = `-- Managed identity account-link capabilities. Baseline and prior forwards remain immutable.
+  const identityPath = "supabase/migrations/20261018160000_identity_service_role_capabilities.sql";
+  const identityPrivileges = ["GRANT INSERT (email, auth_user_id, acquisition_source, lifecycle_stage) ON public.clients TO service_role;", "GRANT UPDATE (auth_user_id) ON public.clients TO service_role;", "GRANT INSERT (id, email, role, membership_state, membership_provenance, membership_accepted_at) ON public.admin_users TO service_role;", "GRANT SELECT (email) ON public.admin_users TO service_role;"];
+  const identitySql = `-- Managed identity capabilities. Baseline and prior forwards remain immutable.
 -- Exact security admission must precede this forward. Column grants are service-only.
 
 -- Reconcile creation writes exactly these columns; every other column keeps its default.
 ${identityPrivileges[0]}
 -- Reconcile and checkout soft-account links set only a still-unset principal reference.
 ${identityPrivileges[1]}
+-- Operator activation inserts exactly these membership columns; is_machine_actor keeps its false default.
+${identityPrivileges[2]}
+-- Invitation eligibility and conflict checks read the operator address.
+${identityPrivileges[3]}
 `;
   const addIdentity = (registry: ReviewedForwardRegistry, bytes: string[]) => {
     bytes[4] = identitySql;
@@ -579,11 +583,11 @@ ${identityPrivileges[1]}
       for (const gate of gates(sample, head)) expect(gate).not.toThrow();
     } finally { sample.cleanup(); }
   });
-  it("admits the identity account-link forward next to the runtime forward after separate approval in both gates", () => {
+  it("admits the identity capabilities forward next to the runtime forward after separate approval in both gates", () => {
     const sample = fixture(addIdentity, null, true);
     try {
-      expect(sqlSha256(identitySql)).toBe("04aee8f280f44ce30c56e59b77ab4ec31157ebc708384fde6fedeaa16ac9a08d");
-      sample.apply(sample.change); const head = sample.commit("Identity account-link feature");
+      expect(sqlSha256(identitySql)).toBe("65aca3641460d0a911b11e40c16ae209c3ae3be827ad4ceca2ee56cf5f718126");
+      sample.apply(sample.change); const head = sample.commit("Identity capabilities feature");
       for (const gate of gates(sample, head)) expect(gate).not.toThrow();
     } finally { sample.cleanup(); }
   }, 30_000);
@@ -601,7 +605,34 @@ ${identityPrivileges[1]}
     }, null, true);
     try {
       sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
-      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/reviewed replacement/u);
+      // Both gates refuse these bytes at the shared admission function before the reviewed route.
+      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/migration SQL refuses control characters/u);
+    } finally { sample.cleanup(); }
+  }, 30_000);
+  it.each([
+    ["identity", "NUL", 0x00], ["identity", "vertical tab", 0x0b], ["identity", "form feed", 0x0c], ["identity", "ESC", 0x1b], ["identity", "DEL", 0x7f],
+    ["runtime", "NUL", 0x00], ["runtime", "vertical tab", 0x0b], ["runtime", "form feed", 0x0c], ["runtime", "ESC", 0x1b], ["runtime", "DEL", 0x7f],
+  ] as const)("refuse control characters in reviewed SQL forwards (parser parity): %s %s in a comment in both gates even when independently repinned", (entry, _label, byte) => {
+    const sample = fixture((registry, bytes) => {
+      if (entry === "identity") addIdentity(registry, bytes);
+      const index = entry === "identity" ? 4 : 3;
+      bytes[index] = bytes[index]!.replace("-- Managed ", `-- Managed${String.fromCharCode(byte)} `);
+      registry.runtimeForwards![entry === "identity" ? 1 : 0]!.sha256 = sqlSha256(bytes[index]!);
+    }, null, true);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
+      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/migration SQL refuses control characters/u);
+    } finally { sample.cleanup(); }
+  }, 30_000);
+  it("admits a pinned identity forward with a tab in a comment in both gates (parser parity)", () => {
+    const sample = fixture((registry, bytes) => {
+      addIdentity(registry, bytes);
+      bytes[4] = bytes[4]!.replace("-- Managed ", "-- Managed\t ");
+      registry.runtimeForwards![1]!.sha256 = sqlSha256(bytes[4]!);
+    }, null, true);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
     } finally { sample.cleanup(); }
   }, 30_000);
   it.each([
@@ -615,6 +646,18 @@ ${identityPrivileges[1]}
     "GRANT INSERT (email) ON public.clients TO authenticated;",
     "GRANT INSERT (email) ON public.clients TO anon;",
     "GRANT INSERT (email) ON public.clients TO PUBLIC;",
+    "GRANT INSERT ON public.admin_users TO service_role;",
+    "GRANT INSERT (is_machine_actor) ON public.admin_users TO service_role;",
+    "GRANT INSERT (id, email, role, is_machine_actor, membership_state, membership_provenance, membership_accepted_at) ON public.admin_users TO service_role;",
+    "GRANT INSERT (membership_revoked_by) ON public.admin_users TO service_role;",
+    "GRANT INSERT (created_at) ON public.admin_users TO service_role;",
+    "GRANT UPDATE (role) ON public.admin_users TO service_role;",
+    "GRANT SELECT (membership_revoked_at) ON public.admin_users TO service_role;",
+    "GRANT DELETE ON public.admin_users TO service_role;",
+    "GRANT INSERT (email) ON public.admin_users TO authenticated;",
+    "GRANT INSERT (email) ON public.admin_users TO anon;",
+    "GRANT INSERT (email) ON public.admin_users TO PUBLIC;",
+    "GRANT EXECUTE ON FUNCTION public.admin_revoke_admin_user(uuid,text) TO service_role;",
     "GRANT INSERT (client_id) ON public.client_consents TO service_role;",
     "GRANT DELETE ON public.clients TO service_role;",
     "GRANT TRUNCATE ON public.clients TO service_role;",
@@ -640,6 +683,7 @@ ${identityPrivileges[1]}
       else if (probe === "duplicate path") forward.path = registry.runtimeForwards![0]!.path;
       else if (probe === "invalid path") forward.path = "supabase/migrations/invalid.sql";
       else if (probe === "privilege order") forward.privileges.reverse();
+      else if (probe.includes("is_machine_actor")) { bytes[4] = probe; forward.privileges = [probe]; }
       else if (probe.includes(";")) { bytes[4] += `${probe}\n`; if (probe.startsWith("GRANT")) forward.privileges.push(probe); }
       forward.sha256 = sqlSha256(bytes[4]!);
     }, null, true);
@@ -1045,6 +1089,50 @@ describe("descendant source release check", () => {
 });
 
 describe("expand-only platform SQL admission", () => {
+  const controlCharacters = [
+    ["NUL inside a comment", "CREATE TABLE public.first (id int);\n-- example\0\n"],
+    ["VT 0x0B", "CREATE TABLE public.first (id int);\n-- example\x0b\n"],
+    ["FF 0x0C", "CREATE TABLE public.first (id int);\n-- example\x0c\n"],
+    ["ESC 0x1B", "CREATE TABLE public.first (id int);\n-- example\x1b\n"],
+    ["DEL 0x7F", "CREATE TABLE public.first (id int);\n-- example\x7f\n"],
+    ["CRLF", "CREATE TABLE public.first (id int);\r\n-- example\r\nCREATE TABLE public.example (id int);\r\n"],
+    ["bare CR", "CREATE TABLE public.first (id int);\r"],
+    ["CR in a comment", "CREATE TABLE public.first (id int);\n-- example\rCREATE TABLE public.example (id int);\n"],
+    ["CR between statements", "CREATE TABLE public.example (id int);\rCREATE TABLE public.other (id int);\n"],
+    ["CR in a string literal", "CREATE TABLE public.example (value text DEFAULT 'a\rb');\n"],
+  ] as const;
+  it.each(controlCharacters)("refuse control characters in migration SQL (parser parity with PostgreSQL): predicate, %s", (_label, sql) => {
+    expect(isExpandOnlyPlatformForward(sql)).toBe(false);
+  });
+  it.each(controlCharacters)("refuse control characters in migration SQL (parser parity with PostgreSQL): admission, %s", (_label, sql) => {
+    expect(() => assertAdmittedPlatformForward("/absent", "base", "head", "example.sql", Buffer.from(sql))).toThrow(/migration SQL refuses control characters/u);
+  });
+  it.each([
+    ["a clean LF file", "-- example\nCREATE TABLE public.example (id int);\n"],
+    ["TAB inside a comment and between tokens", "-- example\tcomment\nCREATE\tTABLE public.example (id int);\n"],
+  ])("admits %s without Git access", (_label, sql) => {
+    expect(isExpandOnlyPlatformForward(sql)).toBe(true);
+    expect(() => assertAdmittedPlatformForward("/absent", "base", "head", "example.sql", Buffer.from(sql))).not.toThrow();
+  });
+  for (const [label, sql] of [controlCharacters[0], controlCharacters[7]]) {
+    it.each(["PR-base", "descendant release"] as const)(`refuse control characters in migration SQL (parser parity with PostgreSQL): %s gate, ${label}`, (gate) => {
+      const old = { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n", "supabase/migrations/20260926000000_existing.sql": "CREATE TABLE public.existing (id int);\n" };
+      const sample = syntheticRelease({ extraFiles: old });
+      const change = { "supabase/migrations/20260927000000_example.sql": sql };
+      try {
+        if (gate === "PR-base") {
+          sample.apply(change); const head = sample.commit("Candidate");
+          expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.rootCommit, head)).toThrow(/migration SQL refuses control characters/u);
+        } else expect(() => sample.release(change)).toThrow(/migration SQL refuses control characters/u);
+      } finally { sample.cleanup(); }
+    });
+  }
+  it("refuse control characters in migration SQL (parser parity with PostgreSQL): tracked migration rails", () => {
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const paths = execFileSync("git", ["ls-files", "-z", "--", "db/platform/migrations/", "supabase/migrations/", "db/bootstrap/"], { cwd: root, encoding: "utf8" }).split("\0").filter((path) => /\.sql$/iu.test(path));
+    expect(paths.length).toBeGreaterThan(0);
+    for (const path of paths) expect(execFileSync("git", ["show", `:${path}`], { cwd: root, maxBuffer: 8 * 1024 * 1024 }).some((byte) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f), path).toBe(false);
+  });
   it.each([
     "CREATE TABLE public.example (id bigint PRIMARY KEY);",
     "ALTER TABLE public.example ADD COLUMN extra text;",

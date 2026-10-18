@@ -851,7 +851,8 @@ export interface AdminMagicLinkHandlerOptions extends IdentityResponseOptions {
     }) => Promise<MagicLinkDecision>;
     extractClientIp: (headers: HttpRequest["headers"]) => string;
     padResponseTime: (startedAt: number, floor: number) => Promise<void>;
-    resolveOrigin: (req: HttpRequest) => string | null;
+    redirectOrigins?: readonly string[];
+    resolveOrigin?: (req: HttpRequest) => string | null;
     callbackPath: string;
 }
 export declare function createAdminMagicLinkHandler(options: AdminMagicLinkHandlerOptions): (req: HttpRequest, res: HttpResponse) => Promise<void>;
@@ -967,7 +968,12 @@ export declare function createAdminUserRemoveHandler({ settingsPort, authorizeAd
 ## dist/identity/authVerifyUrl.d.ts
 
 ```ts
+import type { HttpRequest } from "../http/index.js";
 export declare function buildAuthVerifyUrl(authServiceUrl: string, actionType: string, tokenHash: string, redirectTo: string): string;
+/** Only configured HTTP(S) origins authorize the default magic-link destination. */
+export declare function createMagicLinkOriginResolver(configuredOrigins: readonly string[]): (req: HttpRequest) => string | null;
+/** Invalid return targets use the callback's default landing page. */
+export declare function normalizeMagicLinkReturnPath(value: string | undefined, origin: string): string | undefined;
 ```
 ## dist/identity/contribution.d.ts
 
@@ -1143,7 +1149,8 @@ export interface CustomerMagicLinkHandlerOptions<E extends CustomerMagicLinkEnvi
     }) => Promise<MagicLinkDecision>;
     extractClientIp: (headers: HttpRequest["headers"]) => string;
     padResponseTime: (startedAt: number, floor: number) => Promise<void>;
-    resolveOrigin: (req: HttpRequest) => string | null;
+    redirectOrigins?: readonly string[];
+    resolveOrigin?: (req: HttpRequest) => string | null;
     callbackPath: (locale: "pl" | "en") => string;
     resolveSession: typeof resolveCustomerSessionBinding;
 }

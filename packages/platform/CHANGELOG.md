@@ -43,6 +43,20 @@ positions; do not apply them again to an existing canonical migration history.
   matches beyond the ten-candidate bound are not selected. No SQL migration or
   stored address rewrite is required.
 
+- Both magic-link factories default to one configured-origin allowlist resolver;
+  request headers never supply the callback origin. Missing or invalid origins
+  refuse with `UPSTREAM_UNAVAILABLE` (503) before provider access. Unsafe customer
+  return paths are omitted for the default landing page. Explicit `resolveOrigin`
+  injection remains available.
+  Migration: Configure `redirectOrigins` with exact HTTP(S) origins (primary first).
+  The reference bindings reuse `APP_BASE_URL`, otherwise
+  `CUSTOMER_AUTH_REDIRECT_ORIGIN` for customers or `SITE_URL` for admins. Remove
+  paths, credentials, queries and fragments from those values. Local and preview
+  requests now require configuration too; an unconfigured customer request no
+  longer derives its link from the forwarded host. Direct customer session
+  challenges also refuse without origin configuration. Adopters retaining their
+  own origin policy can continue passing `resolveOrigin`.
+
 
 ## [0.15.0]
 
