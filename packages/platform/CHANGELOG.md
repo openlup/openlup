@@ -11,8 +11,10 @@ SemVer promise.
 - Add the opt-in identity envelope proof with phase `email-trust`, including
   association under the shipped managed grants (including the identity
   capabilities forward), immediate persisted-association assertions,
-  pre-existing contact linking and post-replay state checks. `--phase joint` is
-  unsupported.
+  pre-existing contact linking and post-replay state checks. Phase `joint` also
+  proves unconfirmed soft-account provisioning and first-login confirmation,
+  preserving customer/auth identities and subscription references and refusing
+  unknown addresses without creating accounts.
 - Abort managed settings transport when an assessment finishes, including
   unread error response bodies, to preserve the three-second deadline.
 - Always bind managed settings assessment for the managed reconcile route.
@@ -79,6 +81,21 @@ positions; do not apply them again to an existing canonical migration history.
   `createVerifierResultOnlyEmailTrustPolicy()`. Metadata-only verification no
   longer qualifies. Existing identities and matching account links are not rewritten.
 
+- Customer soft-account auth users are provisioned unconfirmed. Existing-user
+  magic-link verification confirms the same user without replacing customer
+  identities or links. Typed contact addresses do not prove mailbox ownership.
+  Migration: Soft-account provisioning now requires an injected trusted email
+  envelope: automatic confirmation off and all enabled non-email providers
+  declared email-verifying. Unsafe or unavailable settings return a non-fatal
+  refusal before identity creation or email-based linking, preventing anonymous
+  signup from acquiring a commerce-linked identity merely by knowing its address.
+  Pass `emailTrustPolicy` to the managed store factory and expose it on custom
+  stores; explicit verifier-result-only composition remains available to adopters.
+  The reference managed binding always reads settings, regardless of bundle.
+  Ensure the selected Auth installation can deliver and verify a
+  first-login link for an existing unconfirmed user, and run
+  `node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint`.
+  Existing identities are not rewritten.
 
 ## [0.15.0]
 

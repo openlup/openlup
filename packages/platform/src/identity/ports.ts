@@ -1,3 +1,6 @@
+import { assessEmailTrust, type EmailTrustPolicy } from "./emailTrustPolicy.js";
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
+
 export interface VerifiedPrincipal {
   principalId: string;
   email: string | null;
@@ -44,7 +47,7 @@ export type LinkClientAuthUserResult =
     }
   | {
       ok: false;
-      code: "CLIENT_NOT_FOUND" | "MACHINE_ACTOR_REFUSED" | "CLIENT_AUTH_LINK_CONFLICT";
+      code: EmailTrustFailureCode | "CLIENT_NOT_FOUND" | "MACHINE_ACTOR_REFUSED" | "CLIENT_AUTH_LINK_CONFLICT";
       message: string;
     };
 
@@ -53,14 +56,17 @@ export type SetClientAuthUserIdResult =
   | { ok: false; code: "CLIENT_AUTH_LINK_CONFLICT"; existingAuthUserId: string | null };
 
 export interface ClientAuthLinkStore {
+  emailTrustPolicy: EmailTrustPolicy;
   findClientByEmail(email: string): Promise<{ id: string; authUserId: string | null } | null>;
   findAuthUserIdByEmail(email: string): Promise<string | null>;
   findAuthUserEmailById(authUserId: string): Promise<string | null>;
+  /** Provision an unconfirmed principal; null means an existing identity needs lookup. */
   createAuthUser(email: string): Promise<string | null>;
   findAdminIdentity(authUserId: string): Promise<{ isMachineActor: boolean } | null>;
   setClientAuthUserId(clientId: string, authUserId: string): Promise<SetClientAuthUserIdResult>;
 }
 
+/** Link a commerce contact without proving mailbox ownership; failed links never delete identities. */
 export async function linkClientAuthUser(
   store: ClientAuthLinkStore,
   rawEmail: string,
@@ -76,6 +82,9 @@ export async function linkClientAuthUser(
     }
     return { ok: true, clientId: client.id, authUserId: client.authUserId, created: false, alreadyLinked: true, adminSelfLink: false };
   }
+
+  const trust = await assessEmailTrust(store.emailTrustPolicy);
+  if (!trust.trusted) return { ok: false, code: trust.code, message: "Soft-account provisioning requires a trusted email envelope." };
 
   const { authUserId, created } = await findOrCreateAuthUserId(store, email);
   const adminIdentity = await store.findAdminIdentity(authUserId);

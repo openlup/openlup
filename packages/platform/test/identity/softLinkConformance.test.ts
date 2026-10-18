@@ -9,6 +9,7 @@ import type { ManagedIdentityClient, ManagedIdentityRow } from "../../src/identi
 describe("create-first soft-account linking", () => {
   it("creates before any lookup and preserves the linked result", async () => {
     const store: ClientAuthLinkStore = {
+      emailTrustPolicy: createVerifierResultOnlyEmailTrustPolicy(),
       findClientByEmail: vi.fn(async () => ({ id: "account", authUserId: null })),
       createAuthUser: vi.fn(async () => "principal"), findAuthUserIdByEmail: vi.fn(),
       findAuthUserEmailById: vi.fn(), findAdminIdentity: vi.fn(async () => null),
@@ -32,19 +33,19 @@ describe("create-first soft-account linking", () => {
     { status: 422, message: "Address already been registered" },
   ])("maps only characterized already-registered responses: %j", async (error) => {
     const client = { auth: { admin: { createUser: vi.fn(async () => ({ data: { user: null }, error })) } } } as unknown as ManagedIdentityClient;
-    await expect(createSupabaseClientAuthLinkStore(client).createAuthUser("user@example.invalid")).resolves.toBeNull();
+    await expect(createSupabaseClientAuthLinkStore(client, createVerifierResultOnlyEmailTrustPolicy()).createAuthUser("user@example.invalid")).resolves.toBeNull();
   });
   it("propagates other create failures without directory lookup", async () => {
     const failure = new Error("identity_creation_failed");
     const client = { auth: { admin: { createUser: vi.fn(async () => ({ data: { user: null }, error: failure })) } } } as unknown as ManagedIdentityClient;
-    await expect(createSupabaseClientAuthLinkStore(client).createAuthUser("user@example.invalid")).rejects.toBe(failure);
+    await expect(createSupabaseClientAuthLinkStore(client, createVerifierResultOnlyEmailTrustPolicy()).createAuthUser("user@example.invalid")).rejects.toBe(failure);
   });
   it("uses normalized paged lookup with nextPage and retains its cap refusal", async () => {
     const listUsers = vi.fn()
       .mockResolvedValueOnce({ data: { users: [], nextPage: 2 }, error: null })
       .mockResolvedValueOnce({ data: { users: [{ id: "existing", email: " USER@example.invalid " }] }, error: null });
     const client = { auth: { admin: { listUsers } } } as unknown as ManagedIdentityClient;
-    const store = createSupabaseClientAuthLinkStore(client);
+    const store = createSupabaseClientAuthLinkStore(client, createVerifierResultOnlyEmailTrustPolicy());
     await expect(store.findAuthUserIdByEmail("user@example.invalid")).resolves.toBe("existing");
     expect(listUsers.mock.calls).toEqual([[{ page: 1, perPage: 1000 }], [{ page: 2, perPage: 1000 }]]);
     listUsers.mockReset().mockResolvedValue({ data: { users: Array.from({ length: 1000 }, () => ({ id: "other" })), nextPage: 2 }, error: null });
@@ -93,14 +94,14 @@ function contactCandidates(emails: Array<string | null>) {
 
 describe.each(["soft-link", "reconcile"] as const)("%s contact lookup", (kind) => {
   const lookup = (client: ManagedIdentityClient, email: string) => kind === "soft-link"
-    ? createSupabaseClientAuthLinkStore(client).findClientByEmail(email)
+    ? createSupabaseClientAuthLinkStore(client, createVerifierResultOnlyEmailTrustPolicy()).findClientByEmail(email)
     : createSupabaseAccountLinkStore(client).findAccountByEmail(email);
 
   it("matches a mixed-case stored contact after input normalization without creating a duplicate", async () => {
     const { client, query, row } = contactClient("Buyer@Example.COM");
     if (kind === "soft-link") {
       const store = {
-        ...createSupabaseClientAuthLinkStore(client),
+        ...createSupabaseClientAuthLinkStore(client, createVerifierResultOnlyEmailTrustPolicy()),
         createAuthUser: vi.fn(async () => "00000000-0000-4000-8000-000000000002"),
         findAdminIdentity: vi.fn(async () => null),
         setClientAuthUserId: vi.fn(async () => ({ ok: true as const, alreadyLinked: false })),
@@ -159,7 +160,7 @@ describe("exact normalized contact selection", () => {
     const email = "bıyer@example.com";
     const { client, query, rows } = contactCandidates(["BIYER@EXAMPLE.COM", " BıYER@EXAMPLE.COM ", email]);
     const store = {
-      ...createSupabaseClientAuthLinkStore(client),
+      ...createSupabaseClientAuthLinkStore(client, createVerifierResultOnlyEmailTrustPolicy()),
       createAuthUser: vi.fn(async () => "00000000-0000-4000-8000-000000000010"),
       findAdminIdentity: vi.fn(async () => null),
       setClientAuthUserId: vi.fn(async () => ({ ok: true as const, alreadyLinked: false })),

@@ -37,7 +37,11 @@ allowlist and share a policy cache for the configured origin/key/declarations.
 The direct bundle's own composition selects an explicit verifier-result-only
 binding with no settings request. A route composing managed verification and
 storage binds the managed settings policy independently of the bundle switch.
-Provider SDK construction remains in host adapters.
+The managed soft-account link store also binds this settings policy independently
+of bundle selection. Its linker checks trust before create-first provisioning or
+existing-identity lookup by email and returns a non-fatal refusal without creating
+an identity or link when trust cannot be established. Matching existing links
+retain their replay path. Provider SDK construction remains in host adapters.
 
 
 <!-- openlup-doc-impact {"unit":"browser","digest":"sha256-72979d3e343910cc061caf7f7335b82a8a1d4f0afbcec47f45b86e80632e9095","reason":"Deletion delta. The personalization route key, the homepage personalization flag and its hidden paths, and a personalizer comment are removed from browser code; no browser boundary described here changes."} -->

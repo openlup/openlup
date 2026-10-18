@@ -1,4 +1,15 @@
-export { createSupabaseClientAuthLinkStore } from "@openlup/platform/identity";
+import { createSupabaseClientAuthLinkStore as createManagedClientAuthLinkStore } from "@openlup/platform/identity";
+import { readCustomerRouteEnv } from "../../../bff/customers/shared.js";
+import { resolveSupabaseAdminAuthEnv } from "../../../_lib/admin-domain/auth.js";
+import { bindManagedIdentityEmailTrust } from "../../../runtime/auth/emailTrustBinding.js";
+
+export function createSupabaseClientAuthLinkStore(client: unknown, env: Record<string, string | undefined> = readCustomerRouteEnv()) {
+  return createManagedClientAuthLinkStore(client, { assess: async () => {
+    const managed = resolveSupabaseAdminAuthEnv(env);
+    if (!managed) throw new Error("Identity email-trust settings are not configured");
+    return bindManagedIdentityEmailTrust(env, managed).assess();
+  } });
+}
 import type { OperatorIdentityMovePort } from "../../../domains/support/operatorIdentityMove.js";
 
 /**

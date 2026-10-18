@@ -972,7 +972,21 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-81affb0f5d3767f4cd8ec6448ca178a633bdcdeff36b9b79428fb815ac9706ec","reason":"The explicitly invoked identity Auth/mail/database runner reads each successful handler's returned contact from the database immediately, requiring its normalized email and principal link before another handler can repair it. Confirmed and declared-provider scenarios also link a pre-existing unlinked contact. It replays the complete committed managed chain, including the identity capabilities forward, and proves association under the shipped grants without a fixture-only grant. Refusal snapshots, subscriber preservation and the public-catalogue fingerprint remain. The identity owner page describes these assertions. The default test command, required selectors and verification order described here are unchanged; no CI or root script is activated."} -->
+The opt-in identity Auth/mail/database runner requires
+`--phase email-trust|joint`; only the exported runner's optional `Setup.phase`
+defaults to `email-trust`. Both phases replay the complete committed managed
+chain, including the identity capabilities forward, and prove association under
+the shipped grants. Every successful handler response is followed immediately by
+a database read requiring its returned contact's normalized email and principal
+link; confirmed and declared-provider scenarios also link a pre-existing unlinked
+contact. The joint phase additionally checks unconfirmed soft provisioning and
+first-login confirmation, refuses provisioning and existing-email linking under
+automatic confirmation, preserves contact ownership after anonymous signup, and
+requires no mail or account creation for unknown-address login. Refusal snapshots,
+subscriber preservation and the public-catalogue fingerprint remain. The
+[identity conformance guide](docs/platform/IDENTITY.md#conformance-and-outstanding-evidence)
+describes prerequisites and proof limits. Default suites, required selectors,
+CI activation and verification order remain unchanged.
 
 ## Pull requests
 

@@ -153,6 +153,38 @@ in both resolution modes with all three optional peers absent.
 <!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
 
 ## Identity import candidate
+Creating a client/contact records commerce contact data, not an authentication
+identity. Creating an auth user provisions a principal. Neither a typed address
+nor a soft-account link proves mailbox ownership; reconcile may create a contact
+for an existing authenticated principal without creating that principal.
+
+Customer soft-account provisioning now creates unconfirmed auth users
+(`email_confirm:false`). The soft-account linker retains create-first lookup,
+normalized duplicate recovery and conditional linking. Checkout and paid-order
+retry are adopter composition that must call the linker. Failed links retain
+the provisioned identity for retry. Customer magic links keep
+`shouldCreateUser:false`: captured mailbox proof confirms that existing user;
+unknown addresses cannot sign themselves up through this path.
+
+The managed link store requires an injected `emailTrustPolicy`, assessed before
+creation or linking an existing identity by email. Unsafe or unavailable settings
+return a non-fatal soft-account refusal (`EMAIL_TRUST_ENVELOPE_REFUSED` or
+`EMAIL_TRUST_SETTINGS_UNAVAILABLE`) without creating an identity or link. Matching
+existing links retain their replay behaviour. The reference adapter binds managed
+settings assessment regardless of the selected bundle.
+
+**Migration:** soft-account provisioning requires a trusted envelope: automatic
+email confirmation disabled and every enabled non-email provider explicitly
+declared email-verifying. Automatic signup can otherwise confirm an unconfirmed
+user and issue a session to someone who merely knows the contact's address.
+Pass the policy to `createSupabaseClientAuthLinkStore(client, emailTrustPolicy)`;
+custom `ClientAuthLinkStore` implementations must expose `emailTrustPolicy`.
+An adopter may explicitly bind `createVerifierResultOnlyEmailTrustPolicy()` when
+its own trust boundary supplies the guarantee. Ensure the selected Auth installation can deliver and verify the
+first-login link for an existing unconfirmed user. Run the documented joint local conformance
+command after building core/platform. Existing identities, contact links,
+subscription references and migration history are not rewritten.
+
 Managed verification now requires the confirmation timestamp. Email-derived
 reconcile requires an injected `emailTrustPolicy`. Managed hosts share
 `createManagedEmailTrustPolicy` with `identityEmailTrustReadiness`; it reports
@@ -160,9 +192,10 @@ module `identity` using core's existing codes. Hosts retaining verifier-only
 admission explicitly bind `createVerifierResultOnlyEmailTrustPolicy()`.
 See the [identity policy and migration](../../docs/platform/IDENTITY.md#responsibility-and-composition)
 for the empty provider allowlist, cache/deadline, 403/503 failures and the opt-in
-`node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust` prerequisites
-and conformance scope. The committed managed chain includes the identity
-capabilities forward, so the runner proves association under the shipped managed
+`node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust` and
+`node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint` prerequisites
+and conformance scope. Both phases replay the committed managed chain, including
+the identity capabilities forward, and prove association under the shipped managed
 reference grants.
 Construction and imports perform no settings read or SDK initialization.
 

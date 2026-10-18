@@ -1,5 +1,7 @@
 import { authReconcileErrorCodeSchema } from "../../../src/domains/auth/contracts.js";
 import { afterEach, expect, it, vi } from "vitest";
+import { linkClientAuthUser } from "@openlup/platform/identity";
+import { createSupabaseClientAuthLinkStore } from "../../adapters/supabase/clients/clientAuthLink.js";
 import { bindIdentityEmailTrust } from "./emailTrustBinding.js";
 import { assessIdentityReadiness } from "./identityReadiness.js";
 
@@ -55,6 +57,25 @@ it("managed reconcile route reads settings even when the bundle environment sele
   expect(route.store.createAccount).not.toHaveBeenCalled();
   expect(route.store.linkPrincipalToAccount).not.toHaveBeenCalled();
 });
+it.each([
+  ["automatic", { mailer_autoconfirm: true, external: { email: true } }, "EMAIL_TRUST_ENVELOPE_REFUSED"],
+  ["undeclared", { mailer_autoconfirm: false, external: { email: true, opaque: true } }, "EMAIL_TRUST_ENVELOPE_REFUSED"],
+  ["malformed", {}, "EMAIL_TRUST_SETTINGS_UNAVAILABLE"],
+  ["unavailable", null, "EMAIL_TRUST_SETTINGS_UNAVAILABLE"],
+] as const)("managed soft-link composition refuses %s even with the direct bundle selected", async (scenario, settings, code) => {
+  const fetch = vi.fn().mockImplementation(async () => settings ? Response.json(settings) : new Response(null, { status: 503 }));
+  vi.stubGlobal("fetch", fetch);
+  const createUser = vi.fn(), listUsers = vi.fn(), update = vi.fn();
+  const query = { select: () => query, filter: () => query, order: () => query,
+    limit: async () => ({ data: [{ id: "81000000-0000-4000-8000-000000000003", email: "buyer@example.com", auth_user_id: null }], error: null }), update };
+  const store = createSupabaseClientAuthLinkStore({ from: () => query, auth: { admin: { createUser, listUsers } } }, {
+    PLATFORM_BUNDLE: "node-postgres", SUPABASE_URL: `https://soft-${scenario}.invalid`, SUPABASE_ANON_KEY: "public-test-key",
+  });
+  expect(await linkClientAuthUser(store, "buyer@example.com")).toMatchObject({ ok: false, code });
+  expect(fetch).toHaveBeenCalledWith(new URL(`https://soft-${scenario}.invalid/auth/v1/settings`), expect.anything());
+  expect(createUser).not.toHaveBeenCalled(); expect(listUsers).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled();
+});
+
 it("readiness distinguishes unsafe, unknown and invalid host configuration", async () => {
   expect((await assessIdentityReadiness(() => ({ assess: async () => ({ trusted: false, code: "EMAIL_TRUST_ENVELOPE_REFUSED" }) }))).state).toBe("unsatisfied");
   expect((await assessIdentityReadiness(() => ({ assess: async () => { throw new Error("offline"); } }))).state).toBe("unknown");
@@ -78,11 +99,11 @@ it("browser reconcile schema preserves the exact refusal vocabulary", () => {
   expect(authReconcileErrorCodeSchema.safeParse("UNKNOWN_REFUSAL").success).toBe(false);
 });
 
-it("observes persisted creation and existing-contact linking in the declared-provider scenario", async () => {
+it.each(["external", "automatic"])("observes persisted associations and soft-provisioning refusal in %s", async (scenario) => {
   vi.resetModules();
   type Contact = { id: string; email: string; auth_user_id: string | null };
   const fixture = {
-    email: "", rows: new Map<string, Contact>(), observations: [] as Contact[], referenceCalls: 0,
+    email: "", rows: new Map<string, Contact>(), observations: [] as Contact[], referenceCalls: 0, authEmails: new Set<string>(),
   };
   const createdId = "73000000-0000-4000-8000-000000000001";
   const existingId = "72000000-0000-4000-8000-000000000001";
@@ -90,10 +111,27 @@ it("observes persisted creation and existing-contact linking in the declared-pro
     return { principalId: email === "existing@example.com"
       ? "73000000-0000-4000-8000-000000000002" : "73000000-0000-4000-8000-000000000003", email, emailVerified: true };
   }
-  vi.doMock("../../../tests/postgres/identityEnvelopeManagedAdapter.ts", () => ({ createEnvelopeClients: () => ({ actor: {}, service: {} }) }));
+  vi.doMock("../../../tests/postgres/identityEnvelopeManagedAdapter.ts", () => ({ createEnvelopeClients: () => ({ actor: { auth: {
+    signUp: async ({ email }: { email: string }) => {
+      fixture.authEmails.add(email);
+      return { data: { session: { access_token: email } }, error: null };
+    },
+  } }, service: {} }) }));
   vi.doMock("@openlup/platform/identity", async () => ({
     ...await vi.importActual<typeof import("@openlup/platform/identity")>("@openlup/platform/identity"),
     createSupabaseIdentityVerifier: () => ({ verifyAccessToken: async (token: string) => principal(token) }),
+    createSupabaseClientAuthLinkStore: (_client: unknown, emailTrustPolicy: import("@openlup/platform/identity").EmailTrustPolicy) => ({
+      emailTrustPolicy,
+      findClientByEmail: async (email: string) => {
+        const row = [...fixture.rows.values()].find(row => row.email === email);
+        return row ? { id: row.id, authUserId: row.auth_user_id } : null;
+      },
+      createAuthUser: async (email: string) => { fixture.authEmails.add(email); return principal(email).principalId; },
+      findAdminIdentity: async () => null,
+      setClientAuthUserId: async (id: string, authUserId: string) => {
+        fixture.rows.get(id)!.auth_user_id = authUserId; return { ok: true, alreadyLinked: false };
+      },
+    }),
     createSupabaseAccountLinkStore: () => ({
       isReservedPrincipal: async () => false,
       findAccountByPrincipalId: async (id: string) => {
@@ -127,7 +165,7 @@ it("observes persisted creation and existing-contact linking in the declared-pro
   try {
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL) => {
       const url = new URL(input);
-      if (url.pathname === "/auth/v1/settings") return Response.json({ mailer_autoconfirm: false, external: { email: true, opaque: true } });
+      if (url.pathname === "/auth/v1/settings") return Response.json({ mailer_autoconfirm: scenario === "automatic", external: { email: true, opaque: scenario === "external" } });
       if (url.pathname === "/api/v1/messages") return Response.json({ messages: [{ ID: "message", To: [{ Address: fixture.email }] }] });
       if (url.pathname === "/api/v1/message/message") return Response.json({ Text: "https://envelope.invalid/auth/v1/verify?token=synthetic" });
       if (url.pathname === "/auth/v1/verify") return new Response(null, { status: 302, headers: {
@@ -139,9 +177,14 @@ it("observes persisted creation and existing-contact linking in the declared-pro
       if (source.includes("pg_catalog.pg_class")) return "unchanged-catalogue";
       if (source.includes("jsonb_agg")) return JSON.stringify([...fixture.rows.values()]);
       if (source.startsWith("INSERT INTO public.clients(id,email)")) {
-        fixture.rows.set(existingId, { id: existingId, email: "existing@example.com", auth_user_id: null }); return "";
+        const id = scenario === "automatic" ? "00000000-0000-4000-8000-000000000021" : existingId;
+        fixture.rows.set(id, { id, email: scenario === "automatic" ? "automatic-soft@example.com" : "existing@example.com", auth_user_id: null }); return "";
       }
-      if (source.startsWith("SELECT auth_user_id IS NULL")) return fixture.rows.get(existingId)?.auth_user_id === null ? "t" : "f";
+      if (source.startsWith("SELECT auth_user_id IS NULL")) {
+        const id = source.match(/WHERE id='([^']+)'/)?.[1];
+        return fixture.rows.get(id ?? "")?.auth_user_id === null ? "t" : "f";
+      }
+      if (source.startsWith("SELECT count(*) FROM auth.users")) return fixture.authEmails.has("automatic-soft@example.com") ? "1" : "0";
       if (source.startsWith("SELECT jsonb_build_object('email'")) {
         const id = source.match(/WHERE id='([^']+)'/)?.[1];
         const row = fixture.rows.get(id ?? "");
@@ -152,9 +195,9 @@ it("observes persisted creation and existing-contact linking in the declared-pro
       throw new Error("Unexpected conformance SQL");
     };
     const { runIdentityEnvelopeConformance } = await import("../../../tests/postgres/identityEnvelope.conformance.ts");
-    await runIdentityEnvelopeConformance({ scenario: "external", url: "https://envelope.invalid", anonKey: "public-test-key",
+    await runIdentityEnvelopeConformance({ scenario, url: "https://envelope.invalid", anonKey: "public-test-key",
       serviceRoleKey: "synthetic-service-key", mail: "https://mail.invalid", origin: "https://reference.invalid", externalProvider: "opaque", sql });
-    expect(fixture.observations).toEqual([
+    expect(fixture.observations).toEqual(scenario === "automatic" ? [] : [
       { id: createdId, email: "external@example.com", auth_user_id: principal("external@example.com").principalId },
       { id: existingId, email: "existing@example.com", auth_user_id: principal("existing@example.com").principalId },
     ]);

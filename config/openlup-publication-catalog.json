@@ -2762,6 +2762,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/identity/customerMagicLinkHandler.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/identity/customerMeHandler.test.ts",
       "class": "public-output"
     },
@@ -2791,6 +2795,10 @@
     },
     {
       "path": "packages/platform/test/identity/managedAccountLinkStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/managedClientAuthLink.test.ts",
       "class": "public-output"
     },
     {

@@ -1732,8 +1732,9 @@ export declare function createManagedIdentityClients(createClient: SupabaseCreat
 ## dist/identity/managedClientAuthLink.d.ts
 
 ```ts
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
 import type { ClientAuthLinkStore } from "./ports.js";
-export declare function createSupabaseClientAuthLinkStore(rawClient: unknown): ClientAuthLinkStore;
+export declare function createSupabaseClientAuthLinkStore(rawClient: unknown, emailTrustPolicy: EmailTrustPolicy): ClientAuthLinkStore;
 ```
 ## dist/identity/managedCustomerMe.d.ts
 
@@ -1847,6 +1848,8 @@ export type PlatformUserAuthenticationResult = {
 ## dist/identity/ports.d.ts
 
 ```ts
+import { type EmailTrustPolicy } from "./emailTrustPolicy.js";
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
 export interface VerifiedPrincipal {
     principalId: string;
     email: string | null;
@@ -1896,7 +1899,7 @@ export type LinkClientAuthUserResult = {
     adminSelfLink: boolean;
 } | {
     ok: false;
-    code: "CLIENT_NOT_FOUND" | "MACHINE_ACTOR_REFUSED" | "CLIENT_AUTH_LINK_CONFLICT";
+    code: EmailTrustFailureCode | "CLIENT_NOT_FOUND" | "MACHINE_ACTOR_REFUSED" | "CLIENT_AUTH_LINK_CONFLICT";
     message: string;
 };
 export type SetClientAuthUserIdResult = {
@@ -1908,18 +1911,21 @@ export type SetClientAuthUserIdResult = {
     existingAuthUserId: string | null;
 };
 export interface ClientAuthLinkStore {
+    emailTrustPolicy: EmailTrustPolicy;
     findClientByEmail(email: string): Promise<{
         id: string;
         authUserId: string | null;
     } | null>;
     findAuthUserIdByEmail(email: string): Promise<string | null>;
     findAuthUserEmailById(authUserId: string): Promise<string | null>;
+    /** Provision an unconfirmed principal; null means an existing identity needs lookup. */
     createAuthUser(email: string): Promise<string | null>;
     findAdminIdentity(authUserId: string): Promise<{
         isMachineActor: boolean;
     } | null>;
     setClientAuthUserId(clientId: string, authUserId: string): Promise<SetClientAuthUserIdResult>;
 }
+/** Link a commerce contact without proving mailbox ownership; failed links never delete identities. */
 export declare function linkClientAuthUser(store: ClientAuthLinkStore, rawEmail: string): Promise<LinkClientAuthUserResult>;
 export type AdminPrincipalRole = "admin" | "distributor";
 export type AdminAuthorizationResult = {
