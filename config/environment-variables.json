@@ -385,6 +385,20 @@
       "secret": false,
       "source": "server/runtime/auth/emailTrustBinding.ts",
       "blastRadius": "Comma-separated explicit declarations of external providers that verify email. Empty trusts no external provider; malformed declarations refuse configuration. Managed email association also requires confirmations."
+    },
+    {
+      "name": "OPERATOR_INVITATION_TTL_SECONDS",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "604800",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "server/runtime/auth/operatorInvitationConfiguration.ts",
+      "blastRadius": "Pending operator invitations expire after an integer 60..2592000 seconds; direct hosts that call the TTL parser refuse malformed values before writes. The managed reference runner does not call that parser or enforce this TTL. Active memberships do not expire."
     }
   ]
 }

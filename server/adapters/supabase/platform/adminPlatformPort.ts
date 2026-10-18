@@ -1,3 +1,4 @@
+import { managedOperatorMagicLinkEligibility } from "@openlup/platform/identity";
 import type { createClient } from "@supabase/supabase-js";
 
 import {
@@ -64,18 +65,7 @@ export function createSupabaseAdminPlatformPort(client: SupabaseClient): AdminPl
     },
 
     async checkAdminMagicLinkEligibility(email): Promise<AdminMagicLinkEligibility> {
-      const { data, error } = await client
-        .from("admin_users")
-        .select("id, role")
-        .eq("email", email)
-        .eq("membership_state", "active")
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) return "not_allowlisted";
-      if (normalizeRole(data.role) !== null) {
-        return "eligible";
-      }
-      return "role_not_allowed";
+      return managedOperatorMagicLinkEligibility(client, email);
     },
   };
 }

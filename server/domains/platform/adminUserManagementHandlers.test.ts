@@ -36,16 +36,16 @@ describe("admin user management handlers", () => {
     await createAdminUserInviteHandler({
       settingsPort,
       authorizeAdmin: authorize(),
-    })(request("POST", {}, { email: " NEW@OPENLUP.COM ", role: "admin" }), res);
+    })(request("POST", {}, { email: " NEW@EXAMPLE.COM ", role: "admin" }), res);
 
     expect(settingsPort.inviteAdminUser).toHaveBeenCalledWith({
-      email: "new@openlup.com",
+      email: "new@example.com",
       role: "admin",
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       ok: true,
-      data: { message: "Zaproszenie wysłane" },
+      data: pendingInvite,
     });
   });
 
@@ -101,13 +101,13 @@ describe("admin user management handlers", () => {
     await createAdminUserInviteHandler({
       settingsPort: createPort({ message: "" }),
       authorizeAdmin: authorize(),
-    })(request("POST", {}, { email: "new@openlup.com", role: "admin" }), invalidResponse);
+    })(request("POST", {}, { email: "new@example.com", role: "admin" }), invalidResponse);
 
     const failed = createResponse();
     await createAdminUserInviteHandler({
       settingsPort: createPort(new Error("Ten użytkownik jest już dodany")),
       authorizeAdmin: authorize(),
-    })(request("POST", {}, { email: "new@openlup.com", role: "admin" }), failed);
+    })(request("POST", {}, { email: "new@example.com", role: "admin" }), failed);
 
     expect(invalidRequest.status).toHaveBeenCalledWith(400);
     expect(invalidResponse.status).toHaveBeenCalledWith(502);
@@ -199,7 +199,7 @@ function createPort(
     }),
     inviteAdminUser: vi.fn().mockImplementation(async () => {
       if (result instanceof Error) throw result;
-      return result ?? { message: "Zaproszenie wysłane" };
+      return result ?? pendingInvite;
     }),
     removeAdminUser: vi.fn().mockImplementation(async () => {
       if (result instanceof Error) throw result;
@@ -219,3 +219,11 @@ function createResponse(): VercelResponse {
   vi.mocked(res.json).mockReturnValue(res);
   return res;
 }
+
+const pendingInvite = {
+  principalId: "10000000-0000-4000-8000-000000000001",
+  invitationId: "10000000-0000-4000-8000-000000000002",
+  membershipState: "invited", role: "admin", code: "INVITATION_CREATED",
+  invitedAt: "2030-01-01T00:00:00.000Z", expiresAt: "2030-01-01T00:01:00.000Z",
+  message: "Invitation pending until 2030-01-01T00:01:00.000Z",
+};

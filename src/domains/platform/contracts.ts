@@ -103,9 +103,22 @@ export const adminUserInviteRequestSchema = z.object({
   role: adminUserRoleSchema,
 });
 
-export const adminUserInviteResponseSchema = z.object({
+export const adminUserInviteResponseSchema = z.discriminatedUnion("membershipState", [z.object({
+  principalId: z.string().min(1),
+  invitationId: z.string().min(1),
+  membershipState: z.literal("invited"),
+  role: adminUserRoleSchema,
+  invitedAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  code: z.enum(["INVITATION_CREATED", "ALREADY_INVITED", "INVITATION_REISSUED"]),
   message: z.string().min(1).optional(),
-});
+}), z.object({
+  principalId: z.string().min(1),
+  membershipState: z.literal("active"),
+  role: adminUserRoleSchema,
+  code: z.enum(["MEMBERSHIP_CREATED", "ALREADY_ACTIVE"]),
+  message: z.string().min(1).optional(),
+})]);
 
 export const adminUserRemoveRequestSchema = z.object({
   userId: z.string().min(1),

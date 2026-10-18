@@ -40,19 +40,18 @@ describe("W2 real membership authorizer at invite/remove HTTP gates", () => {
     expect(settingsPort.removeAdminUser).not.toHaveBeenCalled();
   });
 
-  it("retains the invite use case's role-only caller check regardless of membership state", async () => {
+  it("refuses the superseded role-only invite caller even when its role is admin", async () => {
     const gateway: InviteAdminUserGateway = {
       getUser: vi.fn(async () => ({ user: { id: "caller" }, error: null })),
-      findAdminUser: vi.fn(async () => ({ id: "caller", role: "admin", membership_state: "revoked" })),
+      findAdminUser: vi.fn(async () => ({ id: "caller", role: "admin", membership_state: "revoked", is_machine_actor: false })),
       findAdminUserByEmail: vi.fn(async () => null), findAuthUserByEmail: vi.fn(async () => null),
       inviteAuthUser: vi.fn(async () => ({ user: { id: "target" }, error: null })),
-      insertAdminUser: vi.fn(async () => ({ error: null })),
     };
     const result = await runInviteAdminUserUseCase({ accessToken: "token", email: "new@example.invalid", role: "admin" }, {
-      gateway, roleNotificationPort: { sendRoleGranted: vi.fn() }, siteUrl: "https://app.example.invalid",
+      gateway, roleNotificationPort: { sendRoleGranted: vi.fn() }, siteUrl: "https://app.example.invalid", ttlSeconds: 60, invitationStore: {} as never,
     });
-    expect(result.status).toBe(200);
-    expect(gateway.inviteAuthUser).toHaveBeenCalled();
+    expect(result.status).toBe(403);
+    expect(gateway.inviteAuthUser).not.toHaveBeenCalled();
   });
 });
 

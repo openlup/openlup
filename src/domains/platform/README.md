@@ -47,6 +47,23 @@ at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
 
-<!-- openlup-doc-impact {"unit":"domain-platform","digest":"sha256-1bca28309730f041fd59b2ebad18793a57ff8ea1c9f667115474593051dff9e1","reason":"The no-ledger job exception list drops the removed blob cleanup cron entry; the remaining exceptions and the job catalogue contract described here are unchanged."} -->
 
-Admin invite/remove policy now lives in the [identity module](../../../docs/platform/IDENTITY.md). The reference bindings select the existing message table and notification locale, strip internal stable error codes and retain their prior wire fields. Platform settings remain here; the identity owner describes authorization and the characterized directory lookup.
+Admin invite/remove policy lives in the [identity module](../../../docs/platform/IDENTITY.md).
+The reference runners call the package use cases directly, pass the reference
+message catalogue and select the role-mail locale (`pl`) through the package
+inputs, and retain result codes. The notification adapter renders the supplied
+locale; reference composition maps delivery receipts. The browser client's parsed
+result accepts both response shapes. Direct pending invitations include
+`principalId`, `invitationId`, `membershipState: "invited"`, `role`, `invitedAt`,
+`expiresAt`, an outcome `code` (`INVITATION_CREATED`, `ALREADY_INVITED` or
+`INVITATION_REISSUED`) and an optional `message`. They grant no access until
+trusted acceptance. Managed results include `principalId`, `membershipState:
+"active"`, `role`, `code` (`MEMBERSHIP_CREATED` or `ALREADY_ACTIVE`) and an
+optional `message`, without an invitation ID or deadline. Managed operators appear
+in settings immediately; their notification describes active membership, without
+pending or deadline copy. Repeated active results send no further notification.
+Conflicts expose the package reason as `identityCode` in BFF error details.
+Message-only success objects and mismatched state/outcome codes are invalid.
+Removal returns `{ revoked: true }` and retains identities and customer links.
+Platform settings remain here; the identity owner describes authorization,
+directory lookup and direct invitation acceptance, expiry and cancellation.

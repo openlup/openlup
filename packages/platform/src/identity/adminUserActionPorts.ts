@@ -1,6 +1,14 @@
+import { adminUserInviteResponseSchema } from "./adminContracts.js";
 import type { IdentityAdminActionsPort } from "./adminUserHandlers.js";
 import type { runInviteAdminUserUseCase } from "./inviteAdminUserUseCase.js";
 import type { runRemoveAdminUserUseCase } from "./removeAdminUserUseCase.js";
+export interface AdminUserInviteErrorDetails {
+  identityCode?: string;
+  invitationId?: string;
+  principalId?: string;
+  membershipState?: "active";
+  role?: "admin" | "distributor";
+}
 type AdminUserActionRuntimeEnv = Record<string, string | undefined>;
 type AdminUserInviteRunner = (request: { accessToken: string | null; email: string; role: "admin" | "distributor" }, env?: AdminUserActionRuntimeEnv) => ReturnType<typeof runInviteAdminUserUseCase>;
 type AdminUserRemoveRunner = (request: { accessToken: string | null; userId: string }, env?: AdminUserActionRuntimeEnv) => ReturnType<typeof runRemoveAdminUserUseCase>;
@@ -18,11 +26,18 @@ export function createAdminUserInvitePort(options: {
         role: request.role,
       }, options.env);
       if (result.status < 200 || result.status >= 300) {
-        throw new Error(String(result.body.error ?? `invite_admin_user_http_${result.status}`));
+        const details: AdminUserInviteErrorDetails = {
+          identityCode: result.body.code,
+          ...(typeof result.body.invitationId === "string" ? { invitationId: result.body.invitationId } : {}),
+          ...(result.body.membershipState === "active" && typeof result.body.principalId === "string"
+            && (result.body.role === "admin" || result.body.role === "distributor")
+            ? { principalId: result.body.principalId, membershipState: "active", role: result.body.role } : {}),
+        };
+        throw Object.assign(new Error(String(result.body.error ?? `invite_admin_user_http_${result.status}`)), { bffCode: ({ 400: "BAD_REQUEST", 401: "UNAUTHORIZED", 403: "FORBIDDEN", 409: "CONFLICT" } as Record<number, string>)[result.status] ?? "UPSTREAM_UNAVAILABLE", inviteDetails: details });
       }
       if (result.body.error) throw new Error(result.body.error);
 
-      return { message: result.body.message };
+      return adminUserInviteResponseSchema.parse(result.body);
     },
   };
 }

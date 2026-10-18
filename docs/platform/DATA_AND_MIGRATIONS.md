@@ -279,6 +279,43 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+The operator invitation lifecycle preserves existing accepted membership rows and customer/principal links. Its
+direct forward `20261018120000_identity_operator_invitations` appends one catalogue
+unit, at position 67, and adds pending-invitation and invitation-audit tables with
+default NO ACTION principal foreign keys. The byte-identical identity projection
+retains this canonical identity and position. Lifecycle logic runs in trusted
+server TypeScript transactions; acceptance, membership and audit settle together.
+The forward uses only admitted CREATE TABLE/INDEX forms and changes no privileges.
+The real PostgreSQL conformance must verify effective actor-role denial, fresh
+complete-catalogue installation, exact predecessor-ledger upgrade and replay.
+The object-inventory SHA-256 must be refreshed from that live catalogue with the
+runner's selected-catalog-v2 projector, never guessed from SQL text.
+
+The managed invitation route inserts active native membership immediately and
+adds no SQL or RPC. It stores no pending invitation in Auth metadata and does not
+activate or compensate on first entry. Identical repeats return existing active
+membership without another notification; a unique insert race re-reads the winner.
+Failure retains the identity for retry. Re-inviting a revoked managed operator
+refuses with 409 `MANAGED_REINVITE_UNSUPPORTED`.
+
+The managed pending/expiry lifecycle remains a compatibility gap because it needs
+a transactional store. It closes later only through a separate reviewed managed
+forward. This change does not broaden SQL admission, install a managed migration
+or certify parity with the direct transaction protocol.
+
+The managed chain's identity capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`. The insert omits `is_machine_actor`,
+relying on its `NOT NULL DEFAULT false`. The opt-in
+[managed conformance module](../../tests/postgres/operatorInvitationManaged.conformance.ts)
+replays the complete committed managed chain into a fresh disposable local stack
+with ambient default ACLs removed and adds no grant. It proves immediate
+activation, repeat/concurrent recovery and revoked-member refusal under the
+shipped grants. It does not establish managed/direct lifecycle parity.
+The [package guide](../../packages/platform/README.md#operator-invitations) gives
+its local endpoints, controlled setup and exact invocation.
+
 Runtime capability regressions execute operator and support gates as
 `service_role`, including exact inactive-operator and machine-actor refusals,
 missing subjects and prohibited unrelated column access. Two independent

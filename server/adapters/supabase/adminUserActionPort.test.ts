@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSupabaseAdminUserInvitePort as createInvitePort,
   createSupabaseAdminUserRemovePort as createRemovePort,
@@ -21,11 +21,69 @@ import { runRemoveAdminUserUseCase } from "../../domains/platform/removeAdminUse
 import { APP_SITE_ORIGIN } from "../../../src/lib/brand/appBrand.js";
 import { APPLICATION_ENVIRONMENT_KEY } from "../../_lib/observability/environment.js";
 
+import * as adminAuth from "../../_lib/admin-domain/auth.js";
+import * as roleNotifications from "../email/adminRoleNotificationPort.js";
+
 describe("admin user action adapter", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const runtimeEnv = {
+    SUPABASE_URL: "https://example.invalid",
+    SUPABASE_SERVICE_ROLE_KEY: "synthetic-service-key",
+    SUPABASE_ANON_KEY: "synthetic-anon-key",
+    APP_BASE_URL: "https://admin.example.com",
+    EMAIL_ENVIRONMENT: "development",
+  };
+  const callerId = "10000000-0000-4000-8000-000000000010";
+  const principalId = "10000000-0000-4000-8000-000000000011";
+
+  it.each([
+    { role: "distributor", email: "invitee@example.com", requestedRole: "admin" as const, status: 403, code: "INVITE_FORBIDDEN", error: "Tylko admini mogą zapraszać użytkowników" },
+    { role: "admin", email: "", requestedRole: "admin" as const, status: 400, code: "EMAIL_REQUIRED", error: "Brak emaila" },
+  ])("production invite runner retains reference $code copy", async ({ role, email, requestedRole, status, code, error }) => {
+    const fixture = inviteAdminClient({ authenticatedUser: { id: callerId }, callerAdmin: { id: callerId, role } });
+    vi.spyOn(adminAuth, "createServiceRoleClient").mockReturnValue(fixture.clientFactory() as never);
+
+    await expect(runInviteAdminUserHandler({ accessToken: "synthetic-token", email, role: requestedRole }, runtimeEnv))
+      .resolves.toEqual({ status, body: { code, error } });
+    expect(fixture.insertAdminUser).not.toHaveBeenCalled();
+  });
+
+  it("production invite runner selects the reference role-mail locale and retains the active result", async () => {
+    const fixture = inviteAdminClient({
+      authenticatedUser: { id: callerId }, callerAdmin: { id: callerId, role: "admin" },
+      authUsers: [{ id: principalId, email: "invitee@example.com" }],
+    });
+    const notification = roleNotification();
+    vi.spyOn(adminAuth, "createServiceRoleClient").mockReturnValue(fixture.clientFactory() as never);
+    vi.spyOn(roleNotifications, "createAdminRoleNotificationPort").mockReturnValue(notification);
+
+    await expect(runInviteAdminUserHandler({ accessToken: "synthetic-token", email: "invitee@example.com", role: "admin" }, runtimeEnv))
+      .resolves.toEqual({ status: 200, body: {
+        ...activeInvite(principalId, "admin"), success: true, code: "MEMBERSHIP_CREATED",
+        resendId: "role-mail-1", resendIdPresent: true,
+      } });
+    expect(notification.sendRoleGranted).toHaveBeenCalledWith({
+      authUserId: principalId, email: "invitee@example.com", role: "admin", locale: "pl",
+    });
+  });
+
+  it.each([
+    { role: "distributor", userId: principalId, status: 403, code: "REMOVE_FORBIDDEN", error: "Tylko administratorzy mogą odbierać dostęp użytkownikom" },
+    { role: "admin", userId: "", status: 400, code: "USER_ID_REQUIRED", error: "Brak ID użytkownika" },
+    { role: "admin", userId: callerId, status: 403, code: "SELF_REVOKE_FORBIDDEN", error: "Nie możesz odebrać sobie dostępu" },
+  ])("production remove runner retains reference $code copy", async ({ role, userId, status, code, error }) => {
+    const fixture = removeAdminClient({ authenticatedUser: { id: callerId }, callerAdmin: { id: callerId, role } });
+    vi.spyOn(adminAuth, "createAdminAuthClient").mockReturnValue(fixture.client as never);
+
+    await expect(runRemoveAdminUserHandler({ accessToken: "synthetic-token", userId }, runtimeEnv))
+      .resolves.toEqual({ status, body: { code, error } });
+    expect(fixture.revokeAdminUser).not.toHaveBeenCalled();
+  });
   it("maps invite and remove requests through injected local runners", async () => {
     const runInviteAdminUser = vi.fn().mockResolvedValue({
       status: 200,
-      body: { message: "sent" },
+      body: pendingInvite(),
     });
     const runRemoveAdminUser = vi.fn().mockResolvedValue({
       status: 200,
@@ -38,7 +96,7 @@ describe("admin user action adapter", () => {
     }).inviteAdminUser({
       email: "admin@example.com",
       role: "admin",
-    })).resolves.toEqual({ message: "sent" });
+    })).resolves.toEqual(pendingInvite());
 
     await expect(createRemovePort({
       accessToken: "admin-token",
@@ -291,39 +349,37 @@ describe("Node invite-admin use case", () => {
     });
   });
 
-  it("returns 400 for a duplicate admin row before inspecting Auth", async () => {
-    const fixture = inviteAdminClient({ duplicateAdmin: { id: "existing-1" } });
+  it("returns existing active membership after resolving Auth without notification", async () => {
+    const fixture = inviteAdminClient({ duplicateAdmin: { id: "auth-1" }, authUsers: [{ id: "auth-1", email: "invitee@example.com" }] });
     const notification = roleNotification(undefined, fixture.events);
 
     await expect(runInvite(fixture, notification)).resolves.toEqual({
-      status: 400,
-      body: { error: "Ten użytkownik jest już dodany" },
+      status: 200,
+      body: { ...activeInvite("auth-1", "admin"), success: true },
     });
-    expect(fixture.listUsers).not.toHaveBeenCalled();
+    expect(fixture.listUsers).toHaveBeenCalledOnce();
     expect(notification.sendRoleGranted).not.toHaveBeenCalled();
   });
 
-  it("inserts an existing Auth user role before sending the role-grant notification", async () => {
-    const fixture = inviteAdminClient({ authUsers: [{ id: "auth-1", email: "jan@example.com" }] });
+  it("activates an existing Auth user before notifying", async () => {
+    const fixture = inviteAdminClient({ authUsers: [{ id: "auth-1", email: "invitee@example.com" }] });
     const notification = roleNotification(undefined, fixture.events);
 
     await expect(runInvite(fixture, notification, { role: "distributor" })).resolves.toEqual({
       status: 200,
       body: {
+        ...activeInvite("auth-1", "distributor"),
         success: true,
-        message: "Użytkownik jan@example.com już miał konto — dodano rolę Dystrybutor i wysłano powiadomienie.",
         deliveryReference: "role-mail-1",
         deliveryReferencePresent: true,
       },
     });
-    expect(fixture.insertAdminUser).toHaveBeenCalledWith({
-      id: "auth-1",
-      email: "jan@example.com",
-      role: "distributor",
-    });
+    expect(fixture.insertAdminUser).toHaveBeenCalledWith(expect.objectContaining({
+      id: "auth-1", email: "invitee@example.com", role: "distributor", membership_state: "active",
+    }));
     expect(notification.sendRoleGranted).toHaveBeenCalledWith({
       authUserId: "auth-1",
-      email: "jan@example.com",
+      email: "invitee@example.com",
       role: "distributor",
       locale: ADMIN_ROLE_NOTIFICATION_LOCALE,
     });
@@ -331,23 +387,23 @@ describe("Node invite-admin use case", () => {
     expect(fixture.inviteAuthUser).not.toHaveBeenCalled();
   });
 
-  it("prevents notification when existing-user role insertion fails", async () => {
+  it("prevents notification when existing-user invitation persistence fails", async () => {
     const fixture = inviteAdminClient({
-      authUsers: [{ id: "auth-1", email: "jan@example.com" }],
-      insertError: { message: "insert failed" },
+      authUsers: [{ id: "auth-1", email: "invitee@example.com" }],
+      invitationError: { message: "insert failed" },
     });
     const notification = roleNotification();
 
     await expect(runInvite(fixture, notification)).resolves.toEqual({
-      status: 500,
-      body: { error: "Błąd dodawania: insert failed" },
+      status: 503,
+      body: { error: "Error: insert failed" },
     });
     expect(notification.sendRoleGranted).not.toHaveBeenCalled();
     expect(fixture.inviteAuthUser).not.toHaveBeenCalled();
   });
 
-  it("returns the exact 502 after an existing-user role insert when the provider rejects notification", async () => {
-    const fixture = inviteAdminClient({ authUsers: [{ id: "auth-1", email: "jan@example.com" }] });
+  it("returns 503 with the persisted invitation when notification fails", async () => {
+    const fixture = inviteAdminClient({ authUsers: [{ id: "auth-1", email: "invitee@example.com" }] });
     const notification = roleNotification({
       ok: false,
       providerMessageId: null,
@@ -357,14 +413,14 @@ describe("Node invite-admin use case", () => {
     }, fixture.events);
 
     await expect(runInvite(fixture, notification)).resolves.toEqual({
-      status: 502,
-      body: { error: "Rola dodana, ale nie udało się wysłać powiadomienia: provider rejected" },
+      status: 503,
+      body: { principalId: "auth-1", membershipState: "active", role: "admin", error: "Membership active; notification unavailable" },
     });
     expect(fixture.events).toEqual(["insert", "notify"]);
   });
 
   it("reports an operator-disabled existing-user notification truthfully without claiming a receipt", async () => {
-    const fixture = inviteAdminClient({ authUsers: [{ id: "auth-1", email: "jan@example.com" }] });
+    const fixture = inviteAdminClient({ authUsers: [{ id: "auth-1", email: "invitee@example.com" }] });
     const notification = roleNotification({
       ok: true,
       providerMessageId: null,
@@ -376,8 +432,8 @@ describe("Node invite-admin use case", () => {
     await expect(runInvite(fixture, notification, { role: "distributor" })).resolves.toEqual({
       status: 200,
       body: {
+        ...activeInvite("auth-1", "distributor"),
         success: true,
-        message: "Użytkownik jan@example.com już miał konto — dodano rolę Dystrybutor, ale powiadomienie było wyłączone i nie zostało wysłane.",
         deliveryReference: null,
         deliveryReferencePresent: false,
       },
@@ -386,7 +442,7 @@ describe("Node invite-admin use case", () => {
   });
 
   it("reports an egress-suppressed existing-user notification without claiming it was sent", async () => {
-    const fixture = inviteAdminClient({ authUsers: [{ id: "auth-1", email: "jan@example.com" }] });
+    const fixture = inviteAdminClient({ authUsers: [{ id: "auth-1", email: "invitee@example.com" }] });
     const notification = roleNotification({
       ok: true,
       providerMessageId: null,
@@ -398,8 +454,8 @@ describe("Node invite-admin use case", () => {
     await expect(runInvite(fixture, notification)).resolves.toEqual({
       status: 200,
       body: {
+        ...activeInvite("auth-1", "admin"),
         success: true,
-        message: "Użytkownik jan@example.com już miał konto — dodano rolę Admin, ale wysłanie powiadomienia zostało zablokowane i nie zostało wysłane.",
         deliveryReference: null,
         deliveryReferencePresent: false,
       },
@@ -407,39 +463,37 @@ describe("Node invite-admin use case", () => {
     expect(fixture.events).toEqual(["insert", "notify"]);
   });
 
-  it("does not persist a role when the new Auth invite provider fails", async () => {
+  it("does not persist an invitation when the new Auth invite provider fails", async () => {
     const fixture = inviteAdminClient({ inviteError: { message: "invite failed" } });
 
     await expect(runInvite(fixture, roleNotification())).resolves.toEqual({
-      status: 500,
-      body: { error: "Błąd zaproszenia: invite failed" },
+      status: 503,
+      body: { error: "Error: operator_identity_creation_failed" },
     });
-    expect(fixture.insertAdminUser).not.toHaveBeenCalled();
     expect(fixture.events).toEqual(["invite"]);
   });
 
-  it("returns the exact 500 when role persistence fails after a new Auth invite", async () => {
-    const fixture = inviteAdminClient({ insertError: { message: "role insert failed" } });
+  it("returns 503 when invitation persistence fails after a new Auth invite", async () => {
+    const fixture = inviteAdminClient({ invitationError: { message: "role insert failed" } });
 
     await expect(runInvite(fixture, roleNotification())).resolves.toEqual({
-      status: 500,
-      body: { error: "Konto utworzone, ale błąd dodawania roli: role insert failed" },
+      status: 503,
+      body: { error: "Error: role insert failed" },
     });
     expect(fixture.events).toEqual(["invite", "insert"]);
   });
 
-  it("invites a new Auth user before persisting the role and returns the unchanged success message", async () => {
+  it("invites a new Auth user before activating membership and notifying", async () => {
     const fixture = inviteAdminClient();
 
-    await expect(runInvite(fixture, roleNotification())).resolves.toEqual({
+    await expect(runInvite(fixture, roleNotification(undefined, fixture.events))).resolves.toEqual({
       status: 200,
-      body: { success: true, message: "Zaproszenie z rolą Admin wysłane na jan@example.com" },
+      body: { ...activeInvite("new-auth-1", "admin"), success: true, deliveryReference: "role-mail-1", deliveryReferencePresent: true },
     });
-    expect(fixture.inviteAuthUser).toHaveBeenCalledWith("jan@example.com", {
+    expect(fixture.inviteAuthUser).toHaveBeenCalledWith("invitee@example.com", {
       redirectTo: "https://admin-preview.example.test/admin/auth/callback",
-      data: { admin_invite_role: "admin" },
     });
-    expect(fixture.events).toEqual(["invite", "insert"]);
+    expect(fixture.events).toEqual(["invite", "insert", "notify"]);
   });
 
   it("fails closed for a hidden preview without an explicit non-production email origin before effects", async () => {
@@ -450,7 +504,7 @@ describe("Node invite-admin use case", () => {
     };
     await expect(runInviteAdminUserHandler({
       accessToken: "admin-token",
-      email: "jan@example.com",
+      email: "invitee@example.com",
       role: "admin",
     }, env)).rejects.toThrow("invite-admin-user email origin policy failed: hidden_preview_origin_required");
     expect(resolveInviteAdminEmailOrigin(env)).toEqual({
@@ -526,6 +580,7 @@ function removeAdminClient(options: {
     data: options.callerAdmin === undefined
       ? { id: "admin-1", role: "admin" }
       : options.callerAdmin,
+    error: null,
   });
   const query = { eq: vi.fn(), maybeSingle: findCallerAdmin };
   query.eq.mockReturnValue(query);
@@ -557,13 +612,14 @@ function runInvite(
 ) {
   return runInviteAdminUserUseCase({
     accessToken: "admin-token",
-    email: "jan@example.com",
+    email: "invitee@example.com",
     role: "admin",
     ...request,
   }, {
     gateway: createInviteAdminUserGateway(fixture.clientFactory),
     roleNotificationPort: notification,
     siteUrl: "https://admin-preview.example.test",
+    activateMembership: createInviteAdminUserGateway(fixture.clientFactory).activateMembership,
   });
 }
 
@@ -590,7 +646,7 @@ function inviteAdminClient(options: {
   callerAdmin?: { id: string; role: string } | null;
   duplicateAdmin?: { id: string } | null;
   authUsers?: Array<{ id: string; email?: string | null }>;
-  insertError?: { message: string } | null;
+  invitationError?: { message: string } | null;
   inviteError?: { message: string } | null;
 } = {}) {
   const events: string[] = [];
@@ -603,17 +659,20 @@ function inviteAdminClient(options: {
     error: options.authError ?? null,
   });
   const callerAdmin = options.callerAdmin === undefined
-    ? { id: "admin-1", role: "admin" }
-    : options.callerAdmin;
+    ? { id: "admin-1", role: "admin", membership_state: "active", is_machine_actor: false }
+    : options.callerAdmin && { ...options.callerAdmin, membership_state: "active", is_machine_actor: false };
   const duplicateAdmin = options.duplicateAdmin ?? null;
-  const queryByColumn = vi.fn((column: string) => ({
-    maybeSingle: vi.fn(async () => ({
-      data: column === "id" ? callerAdmin : duplicateAdmin,
-    })),
+  const memberships = new Map<string, { id: string; role: string; membership_state: string; is_machine_actor: boolean }>();
+  if (callerAdmin) memberships.set(callerAdmin.id, callerAdmin);
+  if (duplicateAdmin) memberships.set(duplicateAdmin.id, { ...duplicateAdmin, role: "admin", membership_state: "active", is_machine_actor: false });
+  const queryByColumn = vi.fn((column: string, value: string) => ({
+    maybeSingle: vi.fn(async () => ({ data: column === "id" ? memberships.get(value) ?? null : duplicateAdmin, error: null })),
   }));
-  const insertAdminUser = vi.fn(async () => {
+  const insertAdminUser = vi.fn(async (row: { id: string; role: string; membership_state: string }) => {
     events.push("insert");
-    return { error: options.insertError ?? null };
+    if (options.invitationError) return { error: new Error(options.invitationError.message) };
+    memberships.set(row.id, { ...row, is_machine_actor: false });
+    return { error: null };
   });
   const listUsers = vi.fn(async () => ({ data: { users: options.authUsers ?? [] }, error: null }));
   const inviteAuthUser = vi.fn(async () => {
@@ -642,4 +701,16 @@ function inviteAdminClient(options: {
     insertAdminUser,
     inviteAuthUser,
   };
+}
+
+const INVITATION_ID = "10000000-0000-4000-8000-000000000001";
+const DEADLINE = "2030-01-01T00:01:00.000Z";
+function pendingInvite(principalId = "auth-1", role: "admin" | "distributor" = "admin", withCode = true) {
+  return { principalId, invitationId: INVITATION_ID, membershipState: "invited", role,
+    invitedAt: "2030-01-01T00:00:00.000Z", expiresAt: DEADLINE,
+    ...(withCode ? { code: "INVITATION_CREATED" } : {}), message: `Invitation pending until ${DEADLINE}` };
+}
+
+function activeInvite(principalId: string, role: "admin" | "distributor") {
+  return { principalId, membershipState: "active", role, message: "Operator membership active" };
 }

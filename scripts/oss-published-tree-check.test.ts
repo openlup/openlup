@@ -10,6 +10,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { isExpandOnlyPlatformForward } from "./oss-source-release-contract.ts";
 import { REQUIRED_CONTEXTS, contextPassed } from "./packages/release-gate.ts";
 import {
   PUBLIC_EXECUTION_ENTRYPOINTS,
@@ -972,5 +973,13 @@ describe("agent guidance placement", () => {
       rmSync(join(narrow, kitTemplate));
       expect(() => assertAgentGuidancePlacement(narrow, base)).toThrow("the adopter kit's dependency template is missing");
     } finally { rmSync(narrow, { recursive: true, force: true }); }
+  });
+});
+
+
+describe("operator invitation expand-only admission", () => {
+  it("admits the complete direct invitation forward through the existing predicate", () => {
+    const sql = readFileSync(new URL("../db/platform/migrations/20261018120000_identity_operator_invitations.sql", import.meta.url), "utf8");
+    expect(isExpandOnlyPlatformForward(sql)).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ export interface ManagedIdentityRow {
   auth_user_id?: string | null;
   role?: string | null;
   is_machine_actor?: boolean | null;
+  membership_state?: string;
 }
 export interface ManagedIdentityQuery extends PromiseLike<{ data: ManagedIdentityRow[] | null; error: unknown }> {
   select(columns: string): ManagedIdentityQuery;

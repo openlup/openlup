@@ -2,7 +2,7 @@
 
 OpenLup is in development preview. Contributions are welcome, but a source
 checkout is not yet a stable framework release, a supported installation, or an
-upgrade contract. The later `P1-SF` gate owns those commitments.
+upgrade contract. The later stable-framework gate owns those commitments.
 
 Start with the [platform documentation](docs/platform/README.md), then read the
 [public agent guide](docs/platform/AGENT_GUIDE.md) before changing a platform
@@ -128,8 +128,6 @@ its users or operators can observe.
    package's neutral names in its adapter.
 
 ## Development-preview checks
-
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-6d5c66507987f93428a601be7c36b0bfea80fc9632f4749abddb023350293474","reason":"The inherited contracts-boundary mechanism now admits the declared identity module row with contracts: true and only bff/data/kernel value edges and the http type edge. Its boundary semantics and the contributor commands, required selectors and verification order described here do not change; the platform guide documents the import and its incomplete runtime-schema extraction."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -988,6 +986,8 @@ subscriber preservation and the public-catalogue fingerprint remain. The
 describes prerequisites and proof limits. Default suites, required selectors,
 CI activation and verification order remain unchanged.
 
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-3596f948904d4961b2dbc38a72006c3b2124a02cd29c604e736228e3d3787502","reason":"The compose container receives the optional invitation TTL. No service, route, contributor command or verification selector changes; the runtime and identity owners describe the setting and refusal behavior."} -->
+
 ## Pull requests
 
 ### Local contribution handoff
@@ -1246,7 +1246,7 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
-- 2026-10-15, M02 module-boundary lint rule: cycles 0–2 each found another
+- 2026-10-15, module-boundary lint rule: cycles 0–2 each found another
   import-specifier escape → replace a growing denylist with an allowlist of the
   canonical forms, or reuse the resolver.
 - 2026-10-15, the same rule and the owner's review of the rethink: hardening a
@@ -1260,12 +1260,12 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   stacking, because any insertion into a shared list next to a predecessor's
   conflicts once it squash-lands → a merge-commit queue fixes it, because the
   merge base becomes the predecessor's head.
-- 2026-10-17, M02 package pull requests: stacked pull requests that each
+- 2026-10-17, module package pull requests: stacked pull requests that each
   regenerate one shared record (a doc-impact marker, a contract digest)
   conflict once the lower one squash-lands → stack only pull requests without
   single-instance records, merge `main` once before each turn otherwise, and
   check `git merge-tree` against the queue base before relying on carry-over.
-- 2026-10-17, parallel M02 work: parallel heavy local test runs cause load
+- 2026-10-17, parallel module work: parallel heavy local test runs cause load
   timeouts → parallelize writing and serialize heavy test runs; after a load
   timeout the complete gate is rerun without the concurrent load, and the
   timeout never counts as a pass.

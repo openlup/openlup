@@ -8,6 +8,10 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Preserve the reference invite/remove message catalogue and role-mail locale
+  through the package inputs. The admin `me` route retains its fail-closed
+  deployment-risk classification and public-default refusal.
+
 - Add the opt-in identity envelope proof with phase `email-trust`, including
   association under the shipped managed grants (including the identity
   capabilities forward), immediate persisted-association assertions,
@@ -21,6 +25,34 @@ SemVer promise.
   Migration: `PLATFORM_BUNDLE=node-postgres` no longer bypasses that route's
   managed email-trust policy; verifier-only trust belongs to direct composition.
 
+- Add the direct operator pending-invitation lifecycle with trusted acceptance,
+  expiry, cancellation, atomic membership/audit writes and ordered locks. Append
+  direct forward `20261018120000_identity_operator_invitations` at catalogue
+  position 67, with its byte-identical package projection. Existing memberships
+  and identity/customer links are preserved.
+- Keep managed operator invitations immediately active. Identical repeats and
+  concurrent insert losers return existing membership without another role
+  notification; failures retain identities for retry. Revoked operators refuse
+  with `MANAGED_REINVITE_UNSUPPORTED`. Inserts use the machine-actor default.
+  The reference browser accepts structured active managed and pending direct
+  results. Managed role mail uses an active-membership key without a deadline.
+  Notification failure retains the active principal ID, state and role in BFF
+  error details.
+  Migration: direct hosts apply the new forward and compose trusted acceptance
+  and TTL parsing. Managed consumers parse active results with
+  `MEMBERSHIP_CREATED`/`ALREADY_ACTIVE` instead of message-only success; duplicates
+  return existing membership instead of `ALREADY_ADDED`. Notification failure
+  returns 503 `INVITATION_NOTIFICATION_FAILED` with membership retained.
+  Managed pending/expiry remains a compatibility gap requiring a separate
+  transactional store and reviewed forward. The managed chain's identity
+  capabilities forward `20261018160000_identity_service_role_capabilities.sql`
+  grants `service_role` SELECT(email) and INSERT(id, email, role, membership_state,
+  membership_provenance, membership_accepted_at) on `admin_users`. The opt-in
+  conformance replays the complete committed chain with ambient default ACLs
+  removed and adds no grant. It proves immediate activation, repeat/concurrent
+  recovery and revoked-member refusal under the shipped grants. It does not
+  establish managed/direct lifecycle parity.
+
 - Import the identity capability and its conformance witnesses into internal
   candidate entries `./identity` and `./identity/contracts`.
 - Include the characterized create-first directory lookup, bounded normalized
@@ -28,10 +60,11 @@ SemVer promise.
 
 Migration: The identity entries are internal candidates, not a published identity release. Reference
 bindings keep application copy, origins, sender and provider setup outside the
-module. Existing module paths delegate to the package; stable codes are internal
-and the reference invite/remove wire shapes retain their prior fields. The
+module. Existing module paths delegate to the package; invite results adopt the
+structured fields and identity reasons described above, while notification
+receipts retain their reference field names. The
 contracts runtime-schema move and profile-specific readiness schema inventory
-remain pending. The four package SQL projections preserve canonical bytes and
+remain pending. The five package SQL projections preserve canonical bytes and
 positions; do not apply them again to an existing canonical migration history.
 
 - Only stored `admin` and `distributor` roles authorize. Null and unknown

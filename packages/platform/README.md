@@ -213,8 +213,8 @@ policy, rate limiting, messages, sender and deployment URLs. Factories use the
 foundation BFF envelope and accept the application's observed request-ID reader.
 The module depends only on the declared foundation entries, without changing the
 artifact's rail kind. Its schema contribution requires a host-selected inventory;
-its four SQL files are verbatim projections at canonical positions 11, 12, 29 and
-60, not an independent migration chain. The owner page maps the characterization
+its five SQL files are verbatim projections at canonical positions 11, 12, 29,
+60 and 67, not an independent migration chain. The owner page maps the characterization
 witnesses and records the remaining evidence.
 
 Identity authorizes stored operator roles only when they are `admin` or
@@ -248,3 +248,69 @@ callback's default landing page. An adopter needing its existing policy can keep
 passing `resolveOrigin`; that explicit injection overrides the default. See the
 [identity redirect contract](../../docs/platform/IDENTITY.md#magic-link-redirect-policy)
 for reference configuration and migration.
+
+
+### Operator invitations
+
+`identity/contracts` exposes distinct direct pending-invitation and managed
+active-membership results. Matching runtime schemas remain in the server entry.
+The admin-action port returns `OperatorInviteResult`, a union of those results.
+
+`createDirectOperatorInvitationStore` provides the new pending, active, expired and
+revoked lifecycle in its trusted PostgreSQL transaction lane, including ordered
+membership locks and atomic membership/audit writes. Direct callers inject the
+store and a parsed TTL. `createDirectOperatorIdentityDirectory` commits principal
+creation/reuse separately. Apply the complete direct catalogue through position
+67; the byte-identical package projection is for inspection and composition, not
+a standalone fresh chain. Direct human acceptance is a trusted command,
+unmounted from machine authentication.
+
+Managed hosts use `createInviteAdminUserGateway().activateMembership` in
+`runInviteAdminUserUseCase`. Insertion immediately creates active `admin_users`
+membership with invitation provenance; it omits `is_machine_actor` and relies on
+the database default false. The result carries principal ID, role, active state
+and `MEMBERSHIP_CREATED` or `ALREADY_ACTIVE`, without pending timestamps or an
+invitation ID. Identical repeats and concurrent insert losers return the existing
+membership without a second notification. Role differences conflict; revoked
+members refuse with `MANAGED_REINVITE_UNSUPPORTED`. Failures retain identities
+for retry, including after notification failure. No Auth metadata store,
+first-entry acceptance, expiry or compensation is used. Magic-link eligibility
+requires active membership and a known role. Authorization, removal and admin
+`me` retain their actor bindings without a service key for lifecycle state.
+
+**Migration:** direct hosts can adopt the new pending lifecycle by applying
+`20261018120000_identity_operator_invitations` after the existing direct catalogue
+and composing the store, trusted human acceptance and parsed TTL. Existing
+memberships are preserved. Managed immediate activation is retained; managed
+consumers must now parse the structured active result and its
+`MEMBERSHIP_CREATED`/`ALREADY_ACTIVE` codes instead of message-only success.
+Duplicates return existing membership rather than `ALREADY_ADDED`, and
+notification failure returns 503 `INVITATION_NOTIFICATION_FAILED` while keeping
+membership active. Managed pending/expiry remains a compatibility gap requiring
+a separate transactional store and reviewed forward. No managed SQL, RPC or SDK
+dependency is added. See the
+[identity lifecycle owner](../../docs/platform/IDENTITY.md#operator-invitation-lifecycle).
+
+The managed chain's identity capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`.
+The opt-in managed conformance replays the complete committed chain with ambient
+default ACLs removed and adds no grant. It proves immediate activation,
+repeat/concurrent recovery and revoked-member refusal under the shipped grants.
+It does not establish managed/direct lifecycle parity.
+
+With a fresh local managed stack running, export its API URL, service key and
+PostgreSQL owner connection URL as `OPENLUP_MANAGED_CONFORMANCE_URL`,
+`OPENLUP_MANAGED_CONFORMANCE_SERVICE_KEY` and
+`OPENLUP_MANAGED_CONFORMANCE_DATABASE_URL`, then run from the repository root:
+
+```sh
+npm --workspace @openlup/platform run build
+node --import tsx tests/postgres/operatorInvitationManaged.conformance.ts
+```
+
+The module refuses non-loopback endpoints, an already-installed public schema,
+and existing synthetic fixture identities. It retains synthetic identities;
+discard the disposable stack after the run. Its database owner connection must
+be able to replay the committed prerequisites, baseline and ordered forwards.

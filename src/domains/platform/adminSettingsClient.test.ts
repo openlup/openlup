@@ -67,27 +67,56 @@ describe("admin settings client", () => {
     expect(init.body).toBe(JSON.stringify({ userId: "admin-2", role: "admin" }));
   });
 
-  it("invites admin users with the admin bearer token", async () => {
+  it.each(["INVITATION_CREATED", "ALREADY_INVITED", "INVITATION_REISSUED"] as const)("preserves the direct pending invitation result %s", async (code) => {
+    const invitation = {
+      principalId: "d4000000-0000-4000-8000-000000000002",
+      invitationId: "d4000000-0000-4000-8000-000000000003",
+      membershipState: "invited" as const,
+      role: "admin" as const,
+      invitedAt: "2026-10-18T12:00:00.000Z",
+      expiresAt: "2026-10-25T12:00:00.000Z",
+      code,
+      message: "Invitation sent",
+    };
     const fetcher = vi.fn().mockResolvedValue({
       status: 200,
       json: () =>
         Promise.resolve({
           ok: true,
-          data: { message: "Zaproszenie wysłane" },
+          data: invitation,
         }),
     });
 
-    await inviteAdminUser(
+    const result = await inviteAdminUser(
       "admin-token",
-      { email: "new@openlup.com", role: "admin" },
+      { email: "member@example.com", role: "admin" },
       { fetcher },
     );
 
     const [path, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(result).toEqual(invitation);
     expect(path).toBe("/api/bff/admin/platform/admin-users/invite");
     expect(init.method).toBe("POST");
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer admin-token");
-    expect(init.body).toBe(JSON.stringify({ email: "new@openlup.com", role: "admin" }));
+    expect(init.body).toBe(JSON.stringify({ email: "member@example.com", role: "admin" }));
+  });
+
+  it.each(["MEMBERSHIP_CREATED", "ALREADY_ACTIVE"] as const)("preserves the managed active membership result %s", async (code) => {
+    const membership = {
+      principalId: "d4000000-0000-4000-8000-000000000002",
+      membershipState: "active" as const, role: "admin" as const, code,
+      message: "Operator membership active",
+    };
+    const fetcher = vi.fn().mockResolvedValue({
+      status: 200,
+      json: () => Promise.resolve({ ok: true, data: membership }),
+    });
+    await expect(inviteAdminUser("admin-token", { email: "member@example.com", role: "admin" }, { fetcher })).resolves.toEqual(membership);
+    const [path, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe("/api/bff/admin/platform/admin-users/invite");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer admin-token");
+    expect(init.body).toBe(JSON.stringify({ email: "member@example.com", role: "admin" }));
   });
 
   it("removes admin users with the admin bearer token", async () => {

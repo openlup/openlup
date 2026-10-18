@@ -6,7 +6,7 @@ export type AdminRole = "admin" | "distributor";
 /** Authorization outcome: a resolved admin `userId`, or a typed denial. */
 export type AdminAuthorization =
   | { ok: true; userId: string; role: AdminRole; isMachineActor: boolean }
-  | { ok: false; code: "UNAUTHORIZED" | "FORBIDDEN"; message: string };
+  | { ok: false; code: "UNAUTHORIZED" | "FORBIDDEN"; message: string; identityCode?: string };
 
 /** A request-bound thunk that resolves the calling admin (or a denial). */
 export type AuthorizeAdmin = () => Promise<AdminAuthorization>;

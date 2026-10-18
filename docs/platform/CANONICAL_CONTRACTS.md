@@ -160,7 +160,17 @@ verification; malformed declarations refuse configuration. This setting changes
 email-association admission, without changing stored identities or schema. See
 [identity policy and migration](IDENTITY.md#responsibility-and-composition).
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-02f1fb444d939f8c097b7b1c54bfefd39f2687faec9cc6cd28ede7f64ae6a035","reason":"The configuration delta removes the retired personalization mint from the structural source list and deletes its unused name-declension dictionary; registers blob capability selection, the Supabase bucket and S3 client settings as server-runtime inputs; and moves @openlup/platform into the publishable package set. These are feature inventory and package membership changes. The section's status, idempotency, provider-boundary and pre-1.0 set-version rules remain applicable to every publishable package; no stable compatibility or registry publication is established."} -->
+Operator invitations add a bounded TTL for direct hosts that call the parser and
+one append-only direct migration manifest row. Such hosts refuse malformed TTL
+values before writes; the managed reference runner neither calls the parser nor
+enforces invitation expiry. Its lifecycle outcome data replaces the old message-only invite
+response; active/pending-role/identity conflicts use explicit 409 identity reasons.
+Managed revoked-row reinvitation refuses with `MANAGED_REINVITE_UNSUPPORTED`.
+[Identity](IDENTITY.md#operator-invitation-lifecycle) owns the DTOs and acceptance
+boundary; [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) owns
+the direct catalogue identity and the managed pending-lifecycle compatibility gap.
+
+
 
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement

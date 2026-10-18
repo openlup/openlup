@@ -1086,6 +1086,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261018120000_identity_operator_invitations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2218,6 +2222,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261018120000_identity_operator_invitations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -2394,6 +2402,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/contracts/operatorInvitations.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/contracts/ports.ts",
       "class": "public-output"
     },
@@ -2451,6 +2463,10 @@
     },
     {
       "path": "packages/platform/src/identity/customerVerifyOtpHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/directOperatorInvitationStore.ts",
       "class": "public-output"
     },
     {
@@ -2515,6 +2531,14 @@
     },
     {
       "path": "packages/platform/src/identity/messages.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/operatorInvitationLifecycle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/operatorInvitationPorts.ts",
       "class": "public-output"
     },
     {
@@ -2807,6 +2831,18 @@
     },
     {
       "path": "packages/platform/test/identity/managedIdentityVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/operatorInvitationConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/operatorInvitationHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/operatorInvitationLifecycle.test.ts",
       "class": "public-output"
     },
     {
@@ -4258,6 +4294,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/email/adminRoleNotificationPort.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/email/adminRoleNotificationPort.ts",
       "class": "public-output"
     },
@@ -4807,6 +4847,14 @@
     },
     {
       "path": "server/adapters/postgres/omsControlPlane.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/operatorInvitations.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/operatorInvitations.ts",
       "class": "public-output"
     },
     {
@@ -11755,6 +11803,10 @@
     },
     {
       "path": "server/runtime/auth/identityReadiness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/operatorInvitationConfiguration.ts",
       "class": "public-output"
     },
     {
@@ -19347,6 +19399,14 @@
     },
     {
       "path": "tests/postgres/identityStatePreservation.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/operatorInvitationLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/operatorInvitationManaged.conformance.ts",
       "class": "public-output"
     },
     {
