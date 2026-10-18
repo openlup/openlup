@@ -1221,7 +1221,9 @@ records why these rules exist.
 - **Arming.** Arm auto-merge only under actual merge authority, and only after
   the required checks, the native review and any required maintainer read:
   `gh pr merge <PR> --auto --author-email <address>`; the queue sets the merge
-  method. Use the maintainer's configured author address.
+  method. Use the maintainer's configured author address. Confirm arming only
+  by a non-null GraphQL `mergeQueueEntry` on the pull request, never by
+  `autoMergeRequest`.
 - **Receipts.** While native admission is active, a supervisor with task
   delivery authority does two things:
   - submits one source receipt per reviewed pull-request head, as soon as the
@@ -1256,13 +1258,18 @@ other or touch the same shared files:
   computed on that cumulative tree. Export `OPENLUP_STACK_BASE` with the exact
   predecessor head for documentation, native review and final local checks.
   Its doc-impact answers and reviewed diff then cover its own change.
-- Open it as a draft against its predecessor's branch. Review its own diff with
-  predecessor context; readiness and source receipts wait for the prerequisite.
+- Open it as a draft with its predecessor's branch as the base, after
+  `npm run oss:published-tree -- --policy --docs-base <predecessor-head>` with
+  the pinned SHA. Review its own diff with predecessor context; readiness and
+  source receipts wait for the prerequisite.
 - When the predecessor merges, GitHub retargets the pull request to `main`,
-  because head branches are deleted on merge. Mark it draft and ready again so
-  its checks rerun against `main`, then submit its source receipt and arm it:
-  the receipt and queue admission require a pull request against `main`, and
-  admission takes only the first queue entry. Keep the original pin: the same
+  because head branches are deleted on merge. Continue only once the first
+  parent of `refs/pull/<PR>/merge` is `main`'s head; if that ref is stale,
+  close and reopen the pull request and check again. Then rerun its checks
+  against `main` by marking it ready; if it is already ready, convert it to
+  draft first, which clears auto-merge. Then submit its source receipt and arm
+  it: the receipt and queue admission require a pull request against `main`,
+  and admission takes only the first queue entry. Keep the original pin: the same
   unchanged candidate remains locally reviewed after its predecessor lands.
   Admission verifies the pinned base is on actual main, not merely present on
   the source branch. Each upper PR still needs its own source receipt.
