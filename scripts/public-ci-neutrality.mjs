@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, lstatSync, mkdtempSync, openSync, readFileSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -158,7 +159,24 @@ function scanSnapshots(snapshots) {
     } catch { binary.push(path); }
   }
   const invoke = (path, input, args = []) => {
-    try { return JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", path, ...args], { cwd: root, input: JSON.stringify(input), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 })); }
+    let temporary, fd;
+    try {
+      try {
+        temporary = mkdtempSync(join(tmpdir(), "openlup-neutrality-"));
+        const inputPath = join(temporary, "input.json");
+        writeFileSync(inputPath, JSON.stringify(input), { flag: "wx", mode: 0o600 });
+        fd = openSync(inputPath, "r");
+        // Fixed file EOF avoids a synchronous input-pipe shutdown stall. Remove
+        // its names before the child starts so a later timeout leaves no named copy.
+        unlinkSync(inputPath);
+        rmdirSync(temporary);
+        temporary = undefined;
+        return JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", path, ...args], { cwd: root, encoding: "utf8", stdio: [fd, "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 }));
+      } finally {
+        try { if (fd !== undefined) closeSync(fd); }
+        finally { if (temporary !== undefined) rmSync(temporary, { recursive: true, force: true }); }
+      }
+    }
     catch { throw new Error(`neutrality scanner failed: ${label(path)}`); }
   };
   const ui = invoke("packages/ui/smoke/neutrality.ts", sources, ["--counts-json"]);

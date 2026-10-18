@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -94,6 +94,35 @@ describe("tree-wide neutrality ratchet", () => {
 });
 
 describe("neutrality CLI on synthetic Git objects", () => {
+  it("preserves large Unicode scanner input and cleans temporary files on success and failure", () => {
+    const contents = `${'雪🐾 "quoted" \\ line\n'.repeat(4096)}${debt} ${debt}\n`;
+    expect(Buffer.byteLength(JSON.stringify([{ path: "unicode-data", contents }]), "utf8")).toBeGreaterThan(64 * 1024);
+    const { root, base } = fixture({ "unicode-data": contents });
+    const temporary = join(root, "temporary-input");
+    mkdirSync(temporary);
+    const run = (...options: string[]) => {
+      const result = spawnSync(process.execPath, ["scripts/public-ci-neutrality.mjs", "--base-commit", base, ...options], {
+        cwd: root, env: { ...fixtureEnvironment, TMPDIR: temporary, TMP: temporary, TEMP: temporary }, encoding: "utf8", timeout: 20_000,
+      });
+      expect(result.error).toBeUndefined();
+      expect(readdirSync(temporary)).toEqual([]);
+      return { status: result.status, output: result.stdout + result.stderr };
+    };
+    const bootstrap = run("--write-baseline");
+    expect(bootstrap.status, bootstrap.output).toBe(0);
+    expect(baseline(root).counts[hash("unicode-data")]).toEqual({ "ui-0": 2, brand: 2 });
+    const unchanged = run();
+    expect(unchanged.status, unchanged.output).toBe(0);
+    put(root, "unicode-data", `${contents}${debt}\n`);
+    const growth = run();
+    expect(growth.status, growth.output).toBe(1);
+    expect(growth.output).toContain("brand increased 2 -> 3");
+    expect(growth.output).toContain("ui-0 increased 2 -> 3");
+    put(root, "package.json", '{"type":"commonjs"}\n');
+    const failed = run();
+    expect(failed.status, failed.output).toBe(1);
+    expect(failed.output).toContain("neutrality scanner failed");
+  });
   it("bootstraps from the full measured base and refuses a candidate-derived allowance", () => {
     const { root, base } = fixture({ "existing": debt });
     const bootstrap = cli(root, base, "--write-baseline");
