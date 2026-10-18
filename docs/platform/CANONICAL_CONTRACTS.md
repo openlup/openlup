@@ -173,9 +173,12 @@ one or two files with ordered exact grants. The first pins five unchanged
 existing function identities; the checker independently limits its service
 columns and four existing callable functions, plus authenticated profile/membership
 reads and two pure index helpers. The optional second pins the identity
-account-link file with no functions or policies, only service_role INSERT on
+capabilities file with no functions or policies, only service_role INSERT on
 `clients.email`, `auth_user_id`, `acquisition_source` and `lifecycle_stage`, and
-UPDATE on `auth_user_id`.
+UPDATE on `auth_user_id`, INSERT on `admin_users.id`, `email`, `role`,
+`membership_state`, `membership_provenance` and `membership_accepted_at` for
+operator activation (`is_machine_actor` keeps its false default), and SELECT on `admin_users.email`
+for invitation eligibility and conflict checks.
 It does not authorize arbitrary runtime grants. Approval must precede the SQL
 feature's comparison base and introducing commit; registry installation alone
 does not change database permissions.

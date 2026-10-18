@@ -479,7 +479,7 @@ and regression coverage. A separate
 [exact reviewed function class](../docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 pins three managed function forwards, exactly three existing-function replacements
 and two new price-setup functions, plus an optional runtime list with the
-five-function capability forward and a second service-only identity account-link
+five-function capability forward and a second service-only identity capabilities
 forward. Both required self-check and release prepare call
 the same checker; replacement remains outside the expand-only predicate.
 Required self-check keeps the whole registry unchanged from the feature comparison

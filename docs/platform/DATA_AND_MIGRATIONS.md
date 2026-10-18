@@ -141,7 +141,7 @@ semicolon; names and defaults remain in those bytes, while signature identity
 uses argument types. Whole-file hashes additionally bind comments, grants and
 all other SQL. Earlier forwards are considered when checking the old definition.
 Missing or duplicate signatures, another path, and any changed byte refuse.
-Both gates refuse carriage returns in reviewed SQL forwards (parser parity).
+Both gates refuse control characters other than tab and line feed in reviewed SQL forwards (parser parity).
 Outside the pinned function bodies, only function definitions, transaction
 boundaries, privileges and comments on functions defined in that same file are
 accepted. Grants may target only `authenticated` or `service_role`; grants to
@@ -178,11 +178,15 @@ return shape, volatility, execution security and settings. Attributes after the
 outer dollar body refuse; only its terminating semicolon and whitespace may
 follow. This control installs approval data, without shipping the runtime forward.
 
-The optional second runtime entry admits only the identity account-link forward,
+The optional second runtime entry admits only the identity capabilities forward,
 with no functions or policy retirements. Its fixed service_role-only capabilities
 are INSERT on `clients` columns `email`, `auth_user_id`, `acquisition_source` and
 `lifecycle_stage`, and UPDATE on `auth_user_id`. Reconcile create/link and the
 checkout soft-account link consume them; other columns keep their defaults.
+Operator activation consumes INSERT on `admin_users` columns `id`, `email`,
+`role`, `membership_state`, `membership_provenance` and `membership_accepted_at`;
+`is_machine_actor` keeps its false default. Invitation eligibility and conflict checks consume
+SELECT on `admin_users.email` alongside the first entry's membership reads.
 Browser roles gain nothing. Approval installs data only, without shipping or
 executing the forward.
 
