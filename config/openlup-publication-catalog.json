@@ -12014,7 +12014,19 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/auth/identityReadiness.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/auth/identityReadiness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/identitySchema.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/operatorActionsBinding.ts",
       "class": "public-output"
     },
     {
@@ -12055,6 +12067,14 @@
     },
     {
       "path": "server/runtime/auth/privacyRoutes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/referenceIdentity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/referenceIdentity.ts",
       "class": "public-output"
     },
     {
@@ -12183,6 +12203,10 @@
     },
     {
       "path": "server/runtime/customers/customerIdentityBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/customers/customerReconcileBinding.ts",
       "class": "public-output"
     },
     {
@@ -20013,7 +20037,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -20025,7 +20049,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-2daca362b2720d0e913131306e9b36aaf0748d66b2cdd836a4db9e3e91c4242b"
+      "digest": "sha256-707c4476d9e4f5e0068fad9b042293504681105c0a7438d2de5715ba2d3e115c"
     },
     {
       "path": "packages/core/package.json",

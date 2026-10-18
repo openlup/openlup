@@ -77,10 +77,17 @@ async function fail(peer) {
   throw new Error(message, ${JSON.stringify(mode)} === "no-cause" ? undefined : { cause });
 }
 export const bindBlobPort = () => ({ upload: () => fail("@aws-sdk/client-s3") });
-export const createPostgresDataGateway = () => ({ asService: () => fail("pg") });
+export const createPostgresDataGateway = () => ({ asService: () => fail("pg"), asActor: () => fail("pg") });
+export const createPostgresCustomerMePort = () => ({});
+export const createPostgresPrivacyStore = () => ({});
 export const createPostgresRoleFreeTransactionLane = () => ({ run: () => fail("pg"), close: async () => {} });
 export const createPostgresMigrationRunner = () => ({ status: () => fail("pg") });
 export const createPostgresOperatorIdentityStore = () => ({ findMembership: () => fail("pg"), close: async () => {} });
+export const createPostgresCustomerChallengeStore = () => ({ pruneChallenges: () => fail("pg"), close: async () => {} });
+export const createDirectOperatorInvitationStore = () => ({ read: () => fail("pg"), close: async () => {} });
+export const createDirectOperatorIdentityDirectory = () => ({ ensurePrincipal: () => fail("pg"), close: async () => {} });
+export const createSupabaseIdentityVerifier = client => ({ verifyAccessToken: async token => { const { data } = await client.auth.getUser(token); return { ...data.user, emailVerified: true }; } });
+export const createSupabaseAccountLinkStore = client => ({ findAccountByPrincipalId: async id => (await client.from("clients").select("id").eq("id", id).maybeSingle()).data });
 export const createPostgresPrivacyUnitOfWork = createPostgresRoleFreeTransactionLane;
 export const createManagedPrivacyStore = () => ({ erasureSupported: false });
 export const createPersonalDataContributorRegistry = (_, options) => ({ missingContributors: options.requiredContributorIds });
@@ -111,7 +118,7 @@ it("compiles actual declarations in both modes and refuses leaked peer types", (
 });
 it("refuses a runtime import that throws even if its declaration exists", () => {
   const consumer = fixture(); writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), 'throw new Error("synthetic provider initialization");');
-  expect(() => consumerNode(consumer, 'await import("@openlup/platform/kernel");')).toThrow(/synthetic provider initialization/);
+  expect(() => consumerNode(consumer, 'await import("@openlup/platform/identity");')).toThrow(/synthetic provider initialization/);
 });
 it("the source-checkout wrapper invokes the cold proof and preserves its refusal", () => {
   const wrapper = join(root, "packages/platform/scripts/consumer-proof.ts");
@@ -121,4 +128,23 @@ it("the source-checkout wrapper invokes the cold proof and preserves its refusal
 it("classifies the browser identity entry separately from the mixed server adapter entry", () => {
   expect(NON_ADAPTER_ENTRIES).toContain("identity/contracts");
   expect(ADAPTER_ENTRIES).toContain("identity");
+});
+
+it.each(["createPostgresCustomerChallengeStore", "createDirectOperatorInvitationStore", "createDirectOperatorIdentityDirectory"])("requires a refusal from identity adapter %s", name => {
+  const consumer = refusalFixture("correct"), path = join(consumer, "node_modules/@openlup/platform/index.js");
+  const source = readFileSync(path, "utf8");
+  writeFileSync(path, source.replace(new RegExp("export const " + name + " = [^\\n]+"), "export const " + name + " = () => ({ pruneChallenges: async () => null, read: async () => null, ensurePrincipal: async () => null, close: async () => {} });"));
+  expect(() => proveAdapterRefusals(consumer)).toThrow();
+});
+it("refuses an eager identity driver import while optional peers are absent", () => {
+  const consumer = refusalFixture("correct"), path = join(consumer, "node_modules/@openlup/platform/index.js");
+  writeFileSync(path, 'import "pg";\n' + readFileSync(path, "utf8"));
+  expect(() => proveAdapterRefusals(consumer)).toThrow(/pg/);
+});
+
+it("the SDK-absent phase admits only the five supplied packages, including nested dependencies", () => {
+  for (const suffix of ["unselected-sdk", "zod/node_modules/unselected-sdk"]) {
+    const consumer = fixture(); mkdirSync(join(consumer, "node_modules", suffix), { recursive: true });
+    expect(() => assertConsumerIsolation(consumer, root)).toThrow(/Unexpected cold dependency/);
+  }
 });

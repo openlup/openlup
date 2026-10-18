@@ -17,18 +17,24 @@ import { createOperatorSessionBinding } from "./auth/operatorSessionBinding.js";
 import { privacyRoutes } from "./auth/privacyRoutes.js";
 import { operatorRoutes } from "./auth/operatorRoutes.js";
 const readEnvironment = () => process.env;
-const dispatcher = createBffDispatcher({
-  env: readEnvironment,
-  beforeDispatch: () => bootstrapAmbientSettlementProfile(),
-  // Direct privacy mounts run preflight after their observed deployment-policy boundary.
-  preflight: (req, res, route) => privacyRoutes(readEnvironment()).some(entry => entry.route === route)
-    || preflightAdminBffRoute(req, res, route),
-  notFound: (res, pathname) => {
-    sendBffError(res, "NOT_FOUND", "BFF route not found", { details: { path: pathname } });
-  },
-});
+/** Dispatch an already composed table without adding or replacing handlers. */
+export function createReferenceBffDispatcher(
+  environment = readEnvironment,
+  preflight?: import("@openlup/platform/bff").BffDispatcherOptions["preflight"],
+) {
+  return createBffDispatcher({
+    env: environment,
+    beforeDispatch: () => bootstrapAmbientSettlementProfile(environment()),
+    preflight: preflight ?? ((req, res, route) => privacyRoutes(environment()).some(entry => entry.route === route)
+      || preflightAdminBffRoute(req, res, route, environment())),
+    notFound: (res, pathname) => {
+      sendBffError(res, "NOT_FOUND", "BFF route not found", { details: { path: pathname } });
+    },
+  });
+}
 
 export function createReferenceBffDispatch(createSessionBinding = createOperatorSessionBinding): import("@openlup/platform/bff").BffDispatch {
+  const dispatcher = createReferenceBffDispatcher();
   return (routes, req, res) => dispatcher([
     ...operatorRoutes(readEnvironment(), createSessionBinding, routes), ...privacyRoutes(readEnvironment()), ...routes,
   ], req, res);

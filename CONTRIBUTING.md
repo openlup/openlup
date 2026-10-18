@@ -129,7 +129,9 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-6d2cc52879f15a4d1add2db79f3d11090f1192d8fc9aa8bf396f51a9188f6e2e","reason":"The cold consumer additionally exercises privacy contract parsing, explicit managed refusal, contributor coverage and the lazy direct transaction factory. The installed-artifact proof still requires the same manifest, physically absent optional peers and explicit adapter selection; commands and execution ownership remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-308db6d56f8693d0c8e793bae3440b7ecd942d78b1bffc4dc807bd205e4ea4fc","reason":"The installed-artifact consumer adds named identity adapter operations, structural managed clients, a closed SDK-absent package inventory and missing-peer falsifiers. The required test command adds two focused reference composition files, registered individually in the existing executable entrypoint inventory. Execution ownership, artifact isolation, peer-selection phases and other contributor commands remain unchanged."} -->
+
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-d41496e6a016bd1d5db956dfea160528714bd109fa6a59d7475b86f7a1942193","reason":"The required test command additionally selects the two identity reference composition test files. Existing build, lint, coverage, dependency installation and CI entrypoints retain their commands and execution ownership."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -927,8 +929,6 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
-
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-edc6d691b3171f72ed26bd5ce8ecb9082f58b5fe26738994bc6403eab1069e37","reason":"The existing required test command now selects operator runtime and browser authentication and the PostgreSQL identity/invitation cases explicitly. Command names, the Vitest runner, node/dom environments and execution ownership remain unchanged; database cases retain the existing disposable PostgreSQL requirement."} -->
 
 <!-- openlup-doc-impact {"unit":"tests","digest":"sha256-9bc9d077d462c3b6b310bc4a61a79297acbcacc587ac490b1e067256431d8ed6","reason":"The component journey, optional captured-mail browser proof and direct disposable PostgreSQL proof reuse the existing runners. The PostgreSQL proof uses Node for server cryptography and explicitly binds the shared storage mocks and an empty URL query to window for the browser adapter; it needs no DOM. Test commands, execution ownership and full required verification duties remain unchanged; installation proofs continue to require their owned local services."} -->
 

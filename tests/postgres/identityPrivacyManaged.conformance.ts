@@ -1,4 +1,6 @@
 /** Opt-in proof against a fresh disposable local managed stack; no fixture erasure grants. */
+import { createSchemaProbe } from "@openlup/core/readiness";
+import { identityRequiredSchema } from "../../server/runtime/auth/identitySchema.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { cwd, env } from "node:process";
@@ -17,6 +19,19 @@ try {
   const migrations = readManagedMigrationChain(cwd());
   // The shared runners use psql; node-postgres must omit only its pg_dump guard lines.
   await pool.query(["BEGIN;",readFileSync("scripts/public-reference/subscription-prereqs.sql","utf8"),defaults,"SET ROLE postgres;",...migrations.map(({ contents }) => contents.replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, "")),"RESET ROLE;","NOTIFY pgrst, 'reload schema';","COMMIT;"].join("\n"));
+  const inventory = identityRequiredSchema("node-supabase", "complete");
+  const connection = await pool.connect();
+  try {
+    const probe = createSchemaProbe(connection, async () => ({ database: "owned", version: "complete" }));
+    assert.deepEqual((await probe.observe(inventory)).objects.filter(entry => entry.present !== true), []);
+    await connection.query("BEGIN");
+    try {
+      await connection.query("ALTER TABLE public.clients DROP COLUMN created_at CASCADE");
+      assert.deepEqual((await probe.observe(inventory)).objects.filter(entry => entry.present !== true), [
+        { object: { kind: "column", name: "public.clients.created_at" }, present: false },
+      ]);
+    } finally { await connection.query("ROLLBACK"); }
+  } finally { connection.release(); }
   const client = createServiceRoleClient({url,serviceRoleKey:key});
   const created = await client.auth.admin.createUser({id:P,email:"privacy-managed@example.invalid",email_confirm:true});
   assert.equal(created.error,null); assert.equal(created.data.user?.id,P);

@@ -1,3 +1,4 @@
+import { createDirectCustomerReconcileHandler } from "../../runtime/customers/customerReconcileBinding.js";
 import { bindManagedIdentityEmailTrust } from "../../runtime/auth/emailTrustBinding.js";
 import { createReconcileAccountHandler } from "@openlup/platform/identity";
 import { customerAuthUiEnabled } from "../../_lib/config/featureFlags.js";
@@ -14,6 +15,7 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     sendBffError(res, "UPSTREAM_UNAVAILABLE", "Customer accounts are disabled");
     return;
   }
+  if (readCustomerRouteEnv().PLATFORM_BUNDLE === "node-postgres") return createDirectCustomerReconcileHandler(readCustomerRouteEnv())(req, res);
   const env = readCustomerSelfServiceEnv();
   if (!env) {
     sendBffError(res, "INTERNAL", "Supabase environment is not configured");

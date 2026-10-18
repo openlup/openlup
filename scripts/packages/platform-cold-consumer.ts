@@ -45,6 +45,10 @@ import { fileURLToPath } from "node:url";
 const owned = realpathSync(process.cwd()), require = createRequire(import.meta.url);
 const peers = ${JSON.stringify(OPTIONAL_PEERS)};
 function walk(directory) {
+  const segments = directory.slice(owned.length + 1).split(sep);
+  const packageSegments = segments.slice(segments.lastIndexOf("node_modules") + 1);
+  const isPackage = packageSegments.length === (packageSegments[0]?.startsWith("@") ? 2 : 1);
+  ${peersAbsent ? 'if (isPackage && !peers.includes(packageSegments.join("/"))) assert(["@openlup/core", "@openlup/platform", "zod", "@types/node", "undici-types"].includes(packageSegments.join("/")), "Unexpected cold dependency: " + packageSegments.join("/"));' : ''}
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     assert(!lstatSync(path).isSymbolicLink(), "Installed package tree contains a symlink: " + path);
@@ -106,7 +110,7 @@ import { bindBlobPort } from "@openlup/platform/blob";
 import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane } from "@openlup/platform/data";
 import { createPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { createEnvAdvisoryLock } from "@openlup/platform/scheduler";
-import { createPostgresOperatorIdentityStore, createOperatorSessionService, createOperatorAdminAuth, createOperatorIdentityVerifier, createPostgresPrivacyUnitOfWork, createManagedPrivacyStore, createPersonalDataContributorRegistry } from "@openlup/platform/identity";
+import { createPostgresCustomerMePort, createPostgresPrivacyStore, createPostgresCustomerChallengeStore, createDirectOperatorInvitationStore, createDirectOperatorIdentityDirectory, createSupabaseIdentityVerifier as createManagedVerifier, createSupabaseAccountLinkStore as createManagedLinkStore, createPostgresOperatorIdentityStore, createOperatorSessionService, createOperatorAdminAuth, createOperatorIdentityVerifier, createPostgresPrivacyUnitOfWork, createManagedPrivacyStore, createPersonalDataContributorRegistry } from "@openlup/platform/identity";
 import { operatorChallengeRequestSchema, operatorSessionSchema, privacyExportRequestSchema } from "@openlup/platform/identity/contracts";
 assert.equal(typeof createOperatorSessionService, "function");
 assert.equal(createManagedPrivacyStore().erasureSupported, false);
@@ -118,25 +122,36 @@ assert(operatorChallengeRequestSchema.safeParse({ email: "admin@example.invalid"
 assert(!operatorSessionSchema.safeParse({ accessToken: "incomplete" }).success);
 const manifest = { schemaVersion: 1, baseline: { file: "baseline.sql", sha256: "0".repeat(64) }, forward: [], objectInventorySha256: "0".repeat(64) };
 function postgresOperations(connectionString) {
-  return [
-    () => createPostgresDataGateway({ connectionString }).asService(async () => "service"),
-    async () => { const lane = createPostgresRoleFreeTransactionLane({ connectionString }); try { return await lane.run(async () => "transaction"); } finally { await lane.close(); } },
-    () => createPostgresMigrationRunner({ connectionString }, {
+  return {
+    data: () => createPostgresDataGateway({ connectionString }).asService(async () => "service"),
+    transaction: async () => { const lane = createPostgresRoleFreeTransactionLane({ connectionString }); try { return await lane.run(async () => "transaction"); } finally { await lane.close(); } },
+    migrations: () => createPostgresMigrationRunner({ connectionString }, {
       root: process.cwd(), lockName: "platform-cold-consumer", catalogProjectionPayload: async () => "",
       source: { readMigrations: () => ({ migrations: [{ file: "baseline.sql", content: "SELECT 1;" }], errors: [] }), readManifest: () => manifest, evaluate: () => [] },
     }).status(),
-    async () => { const lock = createEnvAdvisoryLock({ DATABASE_URL: connectionString }); try { assert.equal(await lock.tryAcquire("consumer"), true); await lock.release("consumer"); } finally { await lock.close(); } },
-    async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(async () => "privacy"); } finally { await lane.close(); } },
-    async () => { const store = createPostgresOperatorIdentityStore({ connectionString }); try { return await store.findMembership("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
-  ];
+    advisoryLock: async () => { const lock = createEnvAdvisoryLock({ DATABASE_URL: connectionString }); try { assert.equal(await lock.tryAcquire("consumer"), true); await lock.release("consumer"); } finally { await lock.close(); } },
+    privacy: async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(async () => "privacy"); } finally { await lane.close(); } },
+    operatorLogin: async () => { const store = createPostgresOperatorIdentityStore({ connectionString }); try { return await store.findMembership("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
+    customerProfile: () => createPostgresDataGateway({ connectionString }).asActor({ role: "authenticated", sub: "11111111-1111-4111-8111-111111111111" }, db => createPostgresCustomerMePort(db).getCustomerMe("11111111-1111-4111-8111-111111111111")),
+    privacyStore: async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(db => createPostgresPrivacyStore().findReceipt(db, { kind: "contact", contactId: "11111111-1111-4111-8111-111111111111" })); } finally { await lane.close(); } },
+    customerChallenge: async () => { const store = createPostgresCustomerChallengeStore({ connectionString }); try { return await store.pruneChallenges({ limit: 1 }); } finally { await store.close(); } },
+    operatorInvitation: async () => { const store = createDirectOperatorInvitationStore({ connectionString }); try { return await store.read("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
+    operatorDirectory: async () => { const directory = createDirectOperatorIdentityDirectory({ connectionString }); try { return await directory.ensurePrincipal({ email: "operator@example.invalid", redirectTo: "https://example.invalid/admin/auth/callback" }); } finally { await directory.close(); } },
+  };
 }
+const structuralClient = {
+  auth: { getUser: async () => ({ data: { user: { id: "11111111-1111-4111-8111-111111111111", email: "customer@example.invalid", email_confirmed_at: "2026-01-01T00:00:00Z" } }, error: null }) },
+  from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+};
+assert.equal((await createManagedVerifier(structuralClient).verifyAccessToken("synthetic")).emailVerified, true);
+assert.equal(await createManagedLinkStore(structuralClient).findAccountByPrincipalId("11111111-1111-4111-8111-111111111111"), null);
 `;
 
 export function proveAdapterRefusals(consumer: string): void {
   consumerNode(consumer, adapterOperations + `
 const blob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid" });
 const checks = [["@aws-sdk/client-s3", () => blob.upload("probe", Buffer.from("probe"))],
-  ...postgresOperations("postgresql://unused.invalid/consumer").map(operation => ["pg", operation])];
+  ...Object.values(postgresOperations("postgresql://unused.invalid/consumer")).map(operation => ["pg", operation])];
 for (const [peer, operation] of checks) {
   await assert.rejects(operation, error => error.message.startsWith("OPENLUP_E_PEER_MISSING: " + peer + " is required by ") && Boolean(error.cause));
 }
@@ -153,7 +168,7 @@ import { createS3ClientFromEnv } from "@openlup/platform/blob";
 const invalidBlob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid",
   BLOB_S3_ENDPOINT: "invalid endpoint", BLOB_S3_ACCESS_KEY_ID: "synthetic", BLOB_S3_SECRET_ACCESS_KEY: "synthetic" });
 await assert.rejects(() => invalidBlob.upload("probe", Buffer.from("probe")), error => error.code === "ERR_INVALID_URL");
-for (const operation of postgresOperations("postgresql://synthetic@localhost:invalid/consumer")) {
+for (const operation of Object.values(postgresOperations("postgresql://synthetic@localhost:invalid/consumer"))) {
   await assert.rejects(operation, error => error.code === "ERR_INVALID_URL");
 }
 // Inject only the transport into the real S3 SDK; execute its serializer,
@@ -226,12 +241,15 @@ function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): 
       "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon; END IF; END $$;"]);
     consumerNode(consumer, adapterOperations + `
 const operations = postgresOperations(process.argv[2]);
-assert.equal(await operations[0](), "service");
-assert.equal(await operations[1](), "transaction");
-assert.deepEqual(await operations[2](), { pending: ["baseline.sql"], applied: [] });
-await operations[3]();
-// A selected driver alone cannot enable operator login without its migrated schema.
-await assert.rejects(() => operations[4](), error => error.code === "42P01");
+assert.equal(await operations.data(), "service");
+assert.equal(await operations.transaction(), "transaction");
+assert.deepEqual(await operations.migrations(), { pending: ["baseline.sql"], applied: [] });
+await operations.advisoryLock();
+assert.equal(await operations.privacy(), "privacy");
+// Every identity adapter reaches the actual driver; this empty database lacks identity tables.
+for (const name of ["operatorLogin", "customerChallenge", "operatorInvitation", "operatorDirectory", "customerProfile", "privacyStore"]) {
+  await assert.rejects(operations[name], error => error.code === "42P01");
+}
 // Default gateway and migration pools have no public shutdown API.
 process.exit(0);
 `, [`postgresql://postgres@127.0.0.1:${port}/${database}`]);

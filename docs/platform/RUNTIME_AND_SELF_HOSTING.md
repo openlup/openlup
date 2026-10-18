@@ -23,16 +23,15 @@ uses one local transaction and leaves subscriptions unchanged. The existing `pru
 command now returns separate operator/customer counts and deletes at most 500 per
 store whose expiry is strictly older than 24 hours. No scheduler is introduced.
 
-The managed reconcile binding passes a required email-trust policy to the
-package handler even when `PLATFORM_BUNDLE` selects the direct bundle, because
-this route composes managed verification and storage. It shares a settings cache
-across requests and exposes unsafe
-settings as `EMAIL_TRUST_ENVELOPE_REFUSED` (403) and unavailable settings as
-`EMAIL_TRUST_SETTINGS_UNAVAILABLE` (503). Metadata-only mailbox verification
-no longer qualifies. `IDENTITY_EMAIL_VERIFYING_PROVIDERS` is optional and
-server-only; the default trusts no enabled external providers. See the
-[identity owner](IDENTITY.md#responsibility-and-composition) for migration and
-explicit verifier-only adoption.
+Customer reconcile selects the bundle's identity path. Direct requests read only
+the authenticated actor's existing linked contact and return `created:false` and
+`linked:false`; an absent link is `ACCOUNT_LINK_CONFLICT`. Managed requests retain
+the required email-trust policy, shared settings cache and 403/503 trust refusals.
+Direct operator invite/remove route factories use the direct invitation directory
+and store behind live human-admin authorization. The invite factory accepts a
+notification port; delivery failure retains the invitation. Public policy still
+denies before body reads or binding construction. See the
+[identity composition contract](IDENTITY.md#responsibility-and-composition).
 
 
 Managed operator invitation inserts active membership immediately. Authorization
@@ -109,6 +108,25 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+An explicitly supplied identity candidate builds its handlers from typed ports
+and snapshots its environment. Startup checks that environment against the host
+and ambient process, then admits and dispatches the same policy-wrapped route
+table, including supplied privacy handlers. Admin preflight uses the candidate's
+operator authorization binding. This candidate seam adds no default or
+subscription-profile routes. See [identity composition](IDENTITY.md#responsibility-and-composition).
+
+The shared server also accepts an explicitly supplied identity candidate through
+`startPublicReferenceServer({ identity })`. It awaits selected module, schema,
+route, adapter and email-trust readiness before creating a listener. Supply a
+trusted schema/migration observer and refresh candidate identity when artifacts,
+configuration or schema change. Unknown observations refuse admission. This seam
+does not select an identity browser profile or alter the default static or
+subscription page sets. The legacy outbox placeholder cannot be combined with
+identity module selection. Identity HTTP dispatch checks the selected deployment
+policy before buffering input; the disposable policy remains an application
+alias binding.
+
 
 The subscription reference mounts English and Polish customer login, callback
 and account routes through one customer auth provider and query client. Account

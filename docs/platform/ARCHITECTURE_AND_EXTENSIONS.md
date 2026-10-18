@@ -30,6 +30,20 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Reference identity startup composes the existing module-aware core readiness
+contract with email-trust assessment. The host selects one bundle's schema
+inventory and constructs mounted functions from typed adapter bindings under the
+installed platform version. Admission preserves all observed packages and refuses
+additional packages without composed contributions. The policy-wrapped candidate
+table is dispatched as admitted, without substituting generated privacy handlers;
+admin preflight uses the admitted operator authorizer. Candidate, host and ambient
+environments must agree before listening. Missing bindings/schema refuse; unavailable settings or migration
+history remain unknown and prevent listening. Direct reconciliation uses the
+existing actor-scoped profile reader; direct invite/remove use the existing
+owner-authority lifecycle stores. The public deployment-policy alias remains
+in front of route effects. See [identity composition](IDENTITY.md#responsibility-and-composition).
+
+
 The subscription reference uses one `CustomerAuthProvider` across login,
 callback and account routes, and mounts the same query client that the provider
 clears on logout or a principal change. Browser binding loads only the selected
@@ -78,8 +92,10 @@ it after existing principal lookup and before email lookup or writes, including
 the conflict retry. Reference host bindings parse the server-only provider
 allowlist and share a policy cache for the configured origin/key/declarations.
 The direct bundle's own composition selects an explicit verifier-result-only
-binding with no settings request. A route composing managed verification and
-storage binds the managed settings policy independently of the bundle switch.
+binding with no settings request. The mounted customer reconcile route selects
+actor-scoped linked-profile readback for `node-postgres`, without managed clients,
+settings reads or email-based association. Only its managed bundle branches bind
+the managed settings policy.
 The managed soft-account link store also binds this settings policy independently
 of bundle selection. Its linker checks trust before create-first provisioning or
 existing-identity lookup by email and returns a non-fatal refusal without creating
@@ -332,29 +348,19 @@ The publication catalogue admits the complete outbox rail to the release set.
 Catalogue admission is distinct from npm publication; reviewed release preparation
 and the protected release workflow still govern its first published minor set.
 
-The current [checker](../../packages/core/src/readiness/index.ts) requires
-exactly one contribution for every observed non-kernel package. Its
-[manifest](../../packages/core/src/readiness/contracts.ts) binds one package
-name, kind and optional `requiredSchema`. Multiple unchanged contributions with
-the same package name do not satisfy that contract.
+The current [checker](../../packages/core/src/readiness/index.ts) supports
+selected modules within one artifact while preserving its package name, version
+and kind. A loader declares the selected module inventory; each module has one
+contribution and explicit entry dependencies. Routes, ports and schedules use
+the package/module namespace and actual function identity. Legacy whole-package
+contributions remain valid without module selection.
 
-**Planned readiness prerequisite:** before adding identity as the second
-capability in platform, the public identity author must deliver a separately
-reviewed readiness adaptation under the architecture coordinator. It precedes
-the first identity-code import and requires its own scope, owner decision and
-applicable control/merge authority; this documentation grants none of them.
-First test whether lossless aggregation through the existing contribution seam
-is sufficient. Otherwise introduce the smallest explicit module representation,
-without a general loader or plugin framework. Preserve compatibility for core
-and outbox, the exact package set and artifact bindings, complete host inventory,
-module identity, required module/contract dependencies and every schema requirement,
-missing-module and duplicate/missing port, handler, route and schedule refusals,
-and actionable
-package/module diagnostics. Prove default and supported narrower compositions;
-`unknown` or `unsatisfied` must leave the serving candidate in place. Until
-that prerequisite is implemented and verified, multi-capability readiness is a
-target, not an available API. UI admission must separately establish its
-artifact role and consumer proof without inventing server workers or schema.
+[Reference identity admission](../../server/runtime/auth/referenceIdentity.ts)
+selects identity with `bff`, `data`, `kernel` and `http`, supplies the bundle's
+complete required-schema inventory, and combines that report with asynchronous
+email-trust readiness. Unknown or unsatisfied candidates cannot start listening.
+It does not aggregate the outbox helper's legacy whole-platform placeholder.
+UI admission still needs its own artifact role and consumer proof.
 
 - **The factory.** A rail or capability exposes a factory taking ports and options. It returns
   a contribution, `{ handlers, schedules, routes, manifest }`; a field that does not apply is

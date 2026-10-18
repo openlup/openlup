@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { createSchemaProbe } from "@openlup/core/readiness";
+import { identityRequiredSchema } from "../../server/runtime/auth/identitySchema.js";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations, createPostgresCustomerChallengeStore, createDirectOperatorInvitationStore, createPostgresOperatorIdentityStore } from "@openlup/platform/identity";
@@ -64,6 +66,21 @@ export function registerIdentityPrivacyConformance(): void {
       const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields }, () => receiptId), createSubscriptionsPrivacyContributor()], { requiredContributorIds: ["identity", "subscriptions"] });
       return { store, unitOfWork, operations: createPrivacyOperations({ store, unitOfWork, registry, now: () => new Date(), randomId: () => receiptId }) };
     }
+    it("probes the direct identity inventory against the complete installed catalogue", async () => {
+      const required = identityRequiredSchema("node-postgres", "complete");
+      const client = await pools[0].connect();
+      try {
+        const probe = createSchemaProbe(client, async () => ({ database: "owned", version: "complete" }));
+        expect((await probe.observe(required)).objects.filter(entry => entry.present !== true)).toEqual([]);
+        await client.query("BEGIN");
+        try {
+          await client.query("ALTER TABLE public.identity_operator_invitations DROP COLUMN invited_by");
+          expect((await probe.observe(required)).objects.filter(entry => entry.present !== true)).toEqual([
+            { object: { kind: "column", name: "public.identity_operator_invitations.invited_by" }, present: false },
+          ]);
+        } finally { await client.query("ROLLBACK"); }
+      } finally { client.release(); }
+    });
     it("active/paused veto, rollback, actual challenge redemption, scoped pseudonymization and replay", async () => {
       for (const index of [0,1]) {
         const pool = pools[index], b = binding(index);

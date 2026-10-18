@@ -274,6 +274,20 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+Reference identity composition adds no SQL or ledger entries. Direct startup
+requires the complete canonical catalogue through identity erasure receipts,
+never the sparse seven-file package projection. Its schema inventory is a
+presence check; hosts must independently observe the complete installed ledger.
+Managed startup likewise needs trustworthy committed-chain observation and
+separate effective-grant verification. The reviewed managed identity service-role
+capabilities forward supplies client INSERT(email, auth_user_id,
+acquisition_source, lifecycle_stage), UPDATE(auth_user_id), and operator
+INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) plus SELECT(email) once integrated. Until present,
+labelled conformance fixture grants remain fixture-only and cannot establish
+shipped-install readiness. No application startup grants compensate for them.
+
+
 <!-- openlup-doc-impact {"unit":"data","digest":"sha256-474c9722bba98cb05cc9b075d987ec35207dbb68fcdd7528ef88d9f953c9e38e","reason":"Customer browser adapters use new session namespaces without migrating legacy credentials. The managed adapter now also removes its effective SDK session store and completes local SDK cleanup after remote logout failure. These are browser-session changes only: database schemas, migration chains, stored customer links and the compatibility lifecycle are unchanged."} -->
 
 The direct privacy forward `20261018190000_identity_privacy_erasures` appends

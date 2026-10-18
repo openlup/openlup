@@ -7,6 +7,77 @@ its factories. The owner is the identity module within `@openlup/platform`.
 
 ## Responsibility and composition
 
+Reference hosts can pass a candidate from
+[`createReferenceIdentity`](../../server/runtime/auth/referenceIdentity.ts) to
+`startPublicReferenceServer({ identity })`. Startup composes the identity
+contribution and its `bff`, `data`, `kernel` and `http` dependencies under the
+observed platform version. The candidate's `createRoutes(ports, env)` factory receives typed customer
+verification/profile, operator authorization/actions, challenge delivery, privacy
+operations and email-trust bindings. It constructs the mounted handlers from
+those bindings; startup requires their callable operations, rather than accepting
+placeholder objects. Admin preflight uses that same operator authorizer.
+The candidate wraps its selected routes with the observed deployment policy
+before admission, and dispatches that exact table without generated replacements.
+No additional identity routes are mounted implicitly.
+Startup checks the actual mounted route functions, selected adapters and
+email-trust policy before listening. It preserves the complete observed package
+inventory: additional packages without composed contributions refuse admission,
+as do differing set versions.
+The composed environment is snapshotted. Since application handlers can also
+read the process environment, startup requires the candidate, host `env` and
+ambient environment to agree before listening; a different bundle or credential
+configuration refuses the candidate.
+Missing schema or bindings refuse; unobservable migration history or unavailable
+email-trust settings report `unknown`. A failed candidate does not affect a
+previous listener. Identity and the legacy whole-platform outbox admission cannot
+be combined through separate startup options.
+
+The host supplies a trusted `SchemaProbePort`, expected complete migration identity
+and candidate database/configuration identity. Use core's `createSchemaProbe`
+with an independent migration observer. Direct observation must validate the
+complete canonical ledger and its exact prefix; managed observation must bind a
+completed committed-chain replay to the owned live installation and chain digest.
+Object presence alone never establishes migration history or effective grants.
+Without trustworthy history, the observer returns a null version. The finite
+[bundle inventories](../../server/runtime/auth/identitySchema.ts) require every
+identity table, used column and exact function signature and exclude the other
+bundle's private objects. Direct includes subscription veto and erasure receipts;
+managed includes Auth confirmation, native membership and login quotas.
+Direct contacts require `principal_id`; managed contacts require `auth_user_id`
+and `created_at` for oldest-contact lookup. Invitation writes require
+`identity_operator_invitations.invited_by`. Public catalogue checks parse the
+shipped direct catalogue and committed managed chain independently of the
+requested inventory; disposable database proofs additionally probe the installed
+objects, including the managed runtime's externally owned Auth schema.
+
+`POST /api/bff/customers/reconcile-account` selects direct linked-profile readback
+on the direct bundle. It authenticates the customer and reads through that
+principal's actor-scoped profile port, returning `{ accountId, created: false,
+linked: false }`. Request or token email never creates or associates a contact.
+Missing links return `CONFLICT` with `ACCOUNT_LINK_CONFLICT`; missing or invalid
+sessions return 401. The direct route reads no managed provider settings.
+For `node-supabase` and `vercel-supabase`, the route reads managed settings and
+applies the email-trust policy before any email-based association.
+
+**Migration:** the mounted route previously applied managed policy even when
+`PLATFORM_BUNDLE=node-postgres`. That selection now uses direct linked-profile
+readback; the route's managed policy applies only to managed bundles. Existing
+direct sessions must already have a linked contact; reconciliation cannot create
+or repair that link by email.
+
+Invite and remove route factories select the direct directory and invitation
+store on the direct bundle, reusing the existing invitation/removal use cases.
+Live human-admin authorization and store checks remain required. The invite
+factory accepts a role-notification port; without delivery, a persisted invitation
+returns `INVITATION_NOTIFICATION_FAILED` and preserves the pending invitation.
+Retrying an existing pending invitation returns `ALREADY_INVITED` without retrying
+notification delivery.
+Managed routes retain immediate active membership. All routes remain behind
+`#deployment-route-policy`; public default denial precedes input or binding
+construction. This startup seam adds no disposable profile, browser mount or
+mailbox. Mounted fresh-install acceptance still requires application composition.
+
+
 Direct PostgreSQL human operators use the dedicated operator challenge store,
 not customer recovery. The browser-safe identity contracts export strict challenge
 and session schemas plus `OperatorBrowserAuthPort`; the server entry exports the
@@ -80,9 +151,10 @@ Customer reconciliation refuses a principal its verifier reports as unverified,
 reserved machine principals, conflicting links and a principal/account email
 mismatch. Verification is the composed verifier's decision. The managed verifier
 requires `email_confirmed_at` and ignores editable `user_metadata.email_verified`.
-The unmounted reference source `server/bff/customers/reconcile-account.ts`
-composes it with the managed email-trust policy regardless of `PLATFORM_BUNDLE`;
-selecting `node-postgres` cannot give this managed route verifier-only trust.
+The reference source `server/bff/customers/reconcile-account.ts` selects
+actor-scoped linked-profile readback for `node-postgres`. Its managed branch
+composes the managed email-trust policy; the direct branch never constructs the
+managed verifier, clients or email association.
 A host mounting reconciliation
 must inject a policy as described above; confirmation alone does not establish
 the installation's email-trust envelope. The token verifier reports every
