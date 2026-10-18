@@ -9,7 +9,8 @@ SemVer promise.
 ## [Unreleased]
 
 - Add the opt-in identity envelope proof with phase `email-trust`, including
-  its fixture-only service-role grant, immediate persisted-association assertions,
+  association under the shipped managed grants (including the identity
+  capabilities forward), immediate persisted-association assertions,
   pre-existing contact linking and post-replay state checks. `--phase joint` is
   unsupported.
 - Abort managed settings transport when an assessment finishes, including

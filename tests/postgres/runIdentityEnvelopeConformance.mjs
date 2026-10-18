@@ -78,12 +78,6 @@ async function main() {
       // Same complete committed replay and default-ACL discipline as public-ci-pgtap.
       sql([readFileSync(join(root, "scripts/public-reference/subscription-prereqs.sql"), "utf8"), defaults,
         "SET ROLE postgres;", ...migrations.map(entry => entry.contents), "RESET ROLE;",
-        // FIXTURE ONLY, never shipped: the committed managed reference grants give the service
-        // role no INSERT and no UPDATE(auth_user_id) on clients, which the identity adapters'
-        // create and link paths need. This disposable stack grants exactly those columns so
-        // the proof exercises the package against real Auth; the reference schema's own grant
-        // is a separate reviewed managed forward.
-        "GRANT INSERT (email, auth_user_id, acquisition_source, lifecycle_stage), UPDATE (auth_user_id) ON public.clients TO service_role;",
         "NOTIFY pgrst, 'reload schema';"].join("\n"));
       let apiReady = false;
       for (let attempt = 0; attempt < 30; attempt++) {
@@ -96,7 +90,7 @@ async function main() {
         } catch { /* Startup transport is bounded; no fixture assertion is retried. */ }
         await new Promise(done => setTimeout(done, 500));
       }
-      if (!apiReady) throw new Error("Owned identity API did not expose the committed schema with its fixture-only service-role grant");
+      if (!apiReady) throw new Error("Owned identity API did not expose the committed schema");
       await runIdentityEnvelopeConformance({ scenario, url: env.API_URL, anonKey: env.ANON_KEY,
         serviceRoleKey: env.SERVICE_ROLE_KEY, mail: `http://127.0.0.1:${base + 4}`,
         origin: `http://127.0.0.1:${base + 10}`, sql, externalProvider: externalProviderFixture.id });

@@ -63,9 +63,10 @@ After that replay it inserts a linked subscriber fixture before checking that
 settings-failure refusal and repeated reconciliation preserve its client and
 subscription rows. A public-catalogue fingerprint checks public relation names
 and kinds across the envelope exercises; it covers neither migration-ledger
-contents nor subscriber survival across SQL replay. The disposable stack's
-fixture-only service-role grant and the remaining shipped-grants permission gap
-are described in [identity conformance](IDENTITY.md#conformance-and-outstanding-evidence).
+contents nor subscriber survival across SQL replay. The committed managed chain
+includes `20261018160000_identity_service_role_capabilities.sql`; the runner proves
+association under those shipped grants, as described in
+[identity conformance](IDENTITY.md#conformance-and-outstanding-evidence).
 The identity SQL projection is not a standalone install chain.
 
 

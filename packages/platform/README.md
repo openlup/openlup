@@ -156,8 +156,9 @@ admission explicitly bind `createVerifierResultOnlyEmailTrustPolicy()`.
 See the [identity policy and migration](../../docs/platform/IDENTITY.md#responsibility-and-composition)
 for the empty provider allowlist, cache/deadline, 403/503 failures and the opt-in
 `node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust` prerequisites
-and fixture-only service-role grant. Association in that disposable stack does
-not establish association under the shipped managed reference grants.
+and conformance scope. The committed managed chain includes the identity
+capabilities forward, so the runner proves association under the shipped managed
+reference grants.
 Construction and imports perform no settings read or SDK initialization.
 
 
