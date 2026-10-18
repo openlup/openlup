@@ -929,7 +929,7 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-cc04a4ab5591826db58f74fefa6ff1f0e1f08ed5cfce386bb63b1990f70a8019","reason":"The opt-in identity Auth/mail runner retains email-trust and joint selection, the existing prerequisite checks and fixture-only service-role grant. Its assertions now cover refusal of soft provisioning and existing-email linking under automatic confirmation, unchanged contact ownership after anonymous signup, and no mail for unknown-address login. Omitted phase uses the existing email-trust behaviour. These are conformance assertions only: contributor commands, default suites, required selectors, CI activation and gate order described here do not change. The identity owner documents the stricter provisioning prerequisite and the proof limits."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-cc04a4ab5591826db58f74fefa6ff1f0e1f08ed5cfce386bb63b1990f70a8019","reason":"The opt-in identity Auth/mail CLI adds the joint phase and still requires --phase email-trust|joint; only the exported runner's optional Setup.phase defaults to email-trust. The existing prerequisite checks and fixture-only service-role grant remain. Its assertions now cover refusal of soft provisioning and existing-email linking under automatic confirmation, unchanged contact ownership after anonymous signup, and no mail for unknown-address login. Default suites, required selectors, CI activation and gate order described here do not change. The identity owner documents the stricter provisioning prerequisite and the proof limits."} -->
 
 ## Pull requests
 

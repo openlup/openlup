@@ -154,8 +154,9 @@ nor a soft-account link proves mailbox ownership; reconcile may create a contact
 for an existing authenticated principal without creating that principal.
 
 Customer soft-account provisioning now creates unconfirmed auth users
-(`email_confirm:false`). Checkout and paid-order retry keep the same create-first
-lookup, normalized duplicate recovery and conditional link. Failed links retain
+(`email_confirm:false`). The soft-account linker retains create-first lookup,
+normalized duplicate recovery and conditional linking. Checkout and paid-order
+retry are adopter composition that must call the linker. Failed links retain
 the provisioned identity for retry. Customer magic links keep
 `shouldCreateUser:false`: captured mailbox proof confirms that existing user;
 unknown addresses cannot sign themselves up through this path.
