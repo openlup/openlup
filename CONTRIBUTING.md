@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-a41c0c12ce14419a74d5d5616b05b2c1e8032928ba9040ff460156ba6f106a39","reason":"The import-map proof adds identity rows to the existing positive/negative table: declared foundation entries pass and deep data, composition and scheduler imports refuse. The platform cold consumer classifies the two new exports in its existing inventory: identity/contracts as a nonadapter entry, identity as an adapter entry because its declarations reach the data entry's pg types. The inherited contracts-entry tests remain. No new rule, exception, required selector or gate order is introduced."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-3447a965f2418c016f733aaa01b5ba40303b05d046ec31b582e36b67d16d8922","reason":"The shared admission function and predicate refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL), with focused and tracked-rail regression tests. The Additive forward release path in DATA_AND_MIGRATIONS documents this refusal. Contributor commands, required test selection and gate order in this section remain unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
