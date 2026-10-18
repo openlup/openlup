@@ -88,6 +88,13 @@ job-run ledger are package code too; the application binds its request-reference
 policy, health payload and contract, and ledger messages, and keeps its route
 observability and browser contracts as its own source.
 
+Identity's server logic now lives in the [identity module](IDENTITY.md), with
+flat internal files and a separate browser contracts subtree. Reference routes
+supply admission flags, redirect policy, schemas, provider clients, mail and copy.
+The module uses the foundation responder with an injected observed request-ID
+reader. Managed preflight also imports the characterized machine-write fence;
+its application-owned allowlist does not extend the direct operator-token lane.
+
 The reference outbox worker delegates to `@openlup/outbox`; application handlers and the explicit known event vocabulary remain in composition. Shared envelope, execution-context, descriptor and readiness contracts live in `@openlup/core`. The rail provides one bare worker for immediate work and lease-bound schedules for dispatched work. Its PostgreSQL executor commits each claim or settlement before resolving, with no encompassing transaction across effects.
 
 ## Extension seams

@@ -101,8 +101,8 @@ computed property calls.
 The package test additionally requires every file in the contracts subtree to
 be a scanned `.ts` file, refuses triple-slash type and path references and all
 meta-properties (also `new.target`), and retains member-call `require` detection
-outside contracts. No module declares this
-entry yet; synthetic graphs and negative plants prove the checks.
+outside contracts. Identity declares this entry; synthetic graphs and negative
+plants also prove the checks.
 
 `npm run api:check` compares each of the nine declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them
@@ -145,3 +145,22 @@ requires all five nonadapter entries to import in fresh processes and compile
 in both resolution modes with all three optional peers absent.
 
 <!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
+
+## Identity import candidate
+
+The `./identity` server entry imports the existing identity engine, authorization,
+profile readers, session adapters and BFF factories into one capability. Its
+`./identity/contracts` entry is declared browser-safe and currently exposes the
+customer auth port, value types and provider parser. Runtime-schema extraction
+is pending the contracts-boundary choice described in the
+[identity owner page](../../docs/platform/IDENTITY.md). Both entries remain an
+unpublished development-preview import candidate.
+
+Application composition supplies SDK clients/loaders, feature admission, redirect
+policy, rate limiting, messages, sender and deployment URLs. Factories use the
+foundation BFF envelope and accept the application's observed request-ID reader.
+The module depends only on the declared foundation entries, without changing the
+artifact's rail kind. Its schema contribution requires a host-selected inventory;
+its four SQL files are verbatim projections at canonical positions 11, 12, 29 and
+60, not an independent migration chain. The owner page maps the characterization
+witnesses and records the remaining evidence.

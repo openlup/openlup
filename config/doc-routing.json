@@ -541,6 +541,21 @@
       ],
       "doc": "packages/platform/README.md",
       "anchor": ""
+    },
+    {
+      "id": "identity",
+      "when": "Identity contracts, account linking, authorization, sessions and conformance",
+      "paths": [
+        "packages/platform/src/identity/**",
+        "packages/platform/test/identity/**",
+        "packages/platform/sql/20260810180001_self_host_actor_auth.sql",
+        "packages/platform/sql/20260810204057_customer_identity_read.sql",
+        "packages/platform/sql/20260814090000_customer_selfservice_recovery.sql",
+        "packages/platform/sql/20260901143000_admin_membership_authority_foundation.sql",
+        "supabase/tests/identity_customer_own_rows_test.sql"
+      ],
+      "doc": "docs/platform/IDENTITY.md",
+      "anchor": ""
     }
   ]
 }

@@ -1,7 +1,8 @@
+import { readObservedResponseContext } from "../../../_lib/observability/requestContext.js";
 import { withObservedRoute } from "../../../_lib/observability/route.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 import { sendBffError } from "../../../_lib/bff/response.js";
-import { createAdminPlatformMeHandler } from "../../../domains/platform/adminMeHandler.js";
+import { createAdminPlatformMeHandler } from "@openlup/platform/identity";
 import {
   authenticateSupabasePlatformUser,
   createSupabaseAdminPlatformPort,
@@ -18,6 +19,7 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
 
   return gateway.asActor({ role: "authenticated" }, (client) =>
     createAdminPlatformMeHandler({
+    responseRequestId: (res) => readObservedResponseContext(res)?.requestId,
       platformPort: createSupabaseAdminPlatformPort(client as never),
       authenticateUser: () => authenticateSupabasePlatformUser(client as never, accessToken),
     })(req, res),

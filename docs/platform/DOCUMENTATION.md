@@ -62,7 +62,7 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
-<!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-2bd5c8dcd101f78e125fc543a314da258ecb9566ec041d6e9b2351b75e975edf","reason":"The routing delta adds one unit that assigns packages/platform/** to that package's README, more specific than the shared packages route. No domain owner, routing precedence, impact obligation or navigation-generation rule changes."} -->
+<!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-6f1ae5dc4be65b23c6e1ab3e7525c700acf227190cbd683273a372f18ca6bbee","reason":"The new identity route assigns its package source, conformance tests, four SQL projections and own-row witness to docs/platform/IDENTITY.md. Existing ownership rules, routing precedence and impact obligations remain unchanged."} -->
 
 The [domain registry](../../src/lib/coreDomains.ts) names platform domains. The
 [publication catalogue](../../config/openlup-publication-catalog.json) supplies

@@ -1,7 +1,8 @@
+import { readObservedResponseContext } from "../../../../_lib/observability/requestContext.js";
 import { withObservedRoute } from "../../../../_lib/observability/route.js";
 import type { VercelRequest, VercelResponse } from "../../../../_lib/types/vercel.js";
 import { sendBffError } from "../../../../_lib/bff/response.js";
-import { createAdminUserRoleUpdateHandler } from "../../../../domains/platform/adminSettingsHandlers.js";
+import { createAdminUserRoleUpdateHandler } from "@openlup/platform/identity";
 import { createSupabaseAdminSettingsPort } from "../../../../adapters/supabase/platform/adminSettingsPort.js";
 import {
   authorizePlatformAdmin,
@@ -19,7 +20,8 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
 
   return gateway.asActor({ role: "authenticated" }, (client) =>
     createAdminUserRoleUpdateHandler({
-      settingsPort: createSupabaseAdminSettingsPort(client as never),
+      responseRequestId: (res) => readObservedResponseContext(res)?.requestId,
+    settingsPort: createSupabaseAdminSettingsPort(client as never),
       authorizeAdmin: () =>
         authorizePlatformAdmin(client as Parameters<typeof authorizePlatformAdmin>[0], accessToken),
     })(req, res),

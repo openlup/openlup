@@ -1122,6 +1122,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/IDENTITY.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },
@@ -2118,6 +2122,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/AGENTS.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/CHANGELOG.md",
       "class": "public-output"
     },
@@ -2147,6 +2155,14 @@
     },
     {
       "path": "packages/platform/api/http.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/identity-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/identity.api.md",
       "class": "public-output"
     },
     {
@@ -2187,6 +2203,22 @@
     },
     {
       "path": "packages/platform/sql/20260809150001_job_run_ledger_v3.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260810204057_customer_identity_read.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260814090000_customer_selfservice_recovery.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260901143000_admin_membership_authority_foundation.sql",
       "class": "public-output"
     },
     {
@@ -2315,6 +2347,202 @@
     },
     {
       "path": "packages/platform/src/http/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/adminAuthBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/adminAuthorization.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/adminContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/adminMagicLinkHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/adminMeHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/adminPreflight.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/adminUserActionPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/adminUserHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/authVerifyUrl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/contracts/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/contracts/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/contracts/providerList.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/contracts/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/contribution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerAuth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerAuthorization.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerIdentityBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerIdentityVerifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerMagicLinkHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerMeHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerSessionBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerSessionIssuer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/customerVerifyOtpHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/inviteAdminUserUseCase.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/jwtLibrary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/machineActorWriteFence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/magicLinkPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/managedAccountLinkStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/managedAdminAuthVerifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/managedAdminUserGateways.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/managedClient.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/managedClientAuthLink.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/managedCustomerMe.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/managedIdentityVerifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/messages.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/operatorTokenAdminAuth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/platformAdminAuth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/postgresCustomerMe.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/postgresCustomerRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/reconcileAccountForPrincipal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/reconcileAccountHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/removeAdminUserUseCase.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/response.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/sql.ts",
       "class": "public-output"
     },
     {
@@ -2503,6 +2731,90 @@
     },
     {
       "path": "packages/platform/test/http/staticAssets.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/adminConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/authVerifyUrl.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/contribution.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/customerMeHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/customerSessionBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/customerSessionIssuer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/inviteAdminUserUseCase.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/inviteLookupConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/managedAccountLinkStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/managedCustomerMe.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/managedIdentityVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/operatorTokenAdminAuth.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/ports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/postgresCustomerMe.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/providerList.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/reconcileAccountForPrincipal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/reconcileAccountHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/removeAdminUserUseCase.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/softLinkConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/sql.test.ts",
       "class": "public-output"
     },
     {
@@ -4050,10 +4362,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/jwt/customerSessionIssuer.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/jwt/customerSessionIssuer.ts",
       "class": "public-output"
     },
@@ -4310,10 +4618,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/platform/operatorTokenAdminAuth.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/platform/operatorTokenAdminAuth.ts",
       "class": "public-output"
     },
@@ -4463,10 +4767,6 @@
     },
     {
       "path": "server/adapters/postgres/customerCommunicationPreferences.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/customerMe.test.ts",
       "class": "public-output"
     },
     {
@@ -4863,10 +5163,6 @@
     },
     {
       "path": "server/adapters/subscriptionDeliveryAlignmentGateway.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/accountLinkStore.test.ts",
       "class": "public-output"
     },
     {
@@ -5710,10 +6006,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/customerMe.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/customerMe.ts",
       "class": "public-output"
     },
@@ -5863,10 +6155,6 @@
     },
     {
       "path": "server/adapters/supabase/fulfillmentOperationalProof.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/identityVerifier.test.ts",
       "class": "public-output"
     },
     {
@@ -7726,6 +8014,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/bff/customers/reconcile-account.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/bff/customers/shared.test.ts",
       "class": "public-output"
     },
@@ -8106,23 +8398,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/auth/authVerifyUrl.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/auth/authVerifyUrl.ts",
       "class": "public-output"
     },
     {
-      "path": "server/domains/auth/ports.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/auth/ports.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/auth/reconcileAccountForPrincipal.test.ts",
       "class": "public-output"
     },
     {
@@ -9886,10 +10166,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/customers/customerMeHandler.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/customers/customerMeHandler.ts",
       "class": "public-output"
     },
@@ -10662,10 +10938,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/platform/inviteAdminUserUseCase.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/platform/inviteAdminUserUseCase.ts",
       "class": "public-output"
     },
@@ -10827,10 +11099,6 @@
     },
     {
       "path": "server/domains/platform/promotionObservabilityEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/platform/removeAdminUserUseCase.test.ts",
       "class": "public-output"
     },
     {
@@ -11683,10 +11951,6 @@
     },
     {
       "path": "server/runtime/customers/customerIdentityBinding.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/runtime/customers/customerSessionBinding.test.ts",
       "class": "public-output"
     },
     {
@@ -13511,10 +13775,6 @@
     },
     {
       "path": "src/domains/auth/ports.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/auth/providerList.test.ts",
       "class": "public-output"
     },
     {
@@ -18535,6 +18795,10 @@
     },
     {
       "path": "supabase/tests/fulfillment_replacement_sequence_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/identity_customer_own_rows_test.sql",
       "class": "public-output"
     },
     {

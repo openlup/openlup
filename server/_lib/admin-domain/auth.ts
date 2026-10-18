@@ -1,6 +1,11 @@
+import { readObservedResponseContext } from "../observability/requestContext.js";
 import { createClient } from "@supabase/supabase-js";
 import type { VercelRequest, VercelResponse } from "../types/vercel.js";
 import type { Database } from "../../../src/integrations/supabase/types.js";
+import { createManagedIdentityClients, readBearerToken, authorizeAdminWithUser, refusesMachineActorRequest, sendMachineActorWriteRefused, resolveAdmin as resolveIdentityAdmin } from "@openlup/platform/identity";
+export { authorizeAdminWithUser, authorizeAdminBooleanWithUser, authorizeCommerceAdminWithUser, readBearerToken } from "@openlup/platform/identity";
+export type { AdminAuthorization, AuthorizeAdmin } from "@openlup/platform/identity";
+import type { AdminAuthorization } from "@openlup/platform/identity";
 import { sendBffError } from "../bff/response.js";
 
 /**
@@ -17,6 +22,7 @@ import { sendBffError } from "../bff/response.js";
  * (`kitIsDomainNeutral` guardrail).
  */
 
+const identityClients = createManagedIdentityClients(createClient);
 export type SupabaseAuthClient = ReturnType<typeof createClient<Database>>;
 export type AdminRole = "admin" | "distributor";
 
@@ -40,13 +46,6 @@ export const PUBLIC_ADMIN_BFF_ROUTES = [
 ] as const;
 
 const PUBLIC_ADMIN_ROUTE_SET = new Set<string>(PUBLIC_ADMIN_BFF_ROUTES);
-
-export function readBearerToken(req: VercelRequest): string | null {
-  const raw = req.headers.authorization;
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const match = value?.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || null;
-}
 
 export function resolveSupabaseServiceRoleEnv(env: Record<string, string | undefined>):
   | { url: string; serviceRoleKey: string }
@@ -86,84 +85,11 @@ export function createAdminAuthClient(
   env: { url: string; anonKey: string },
   accessToken: string | null,
 ): SupabaseAuthClient {
-  return createClient<Database>(env.url, env.anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: {
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    },
-  });
+  return identityClients.actor(env, accessToken) as unknown as SupabaseAuthClient;
 }
 
 export function createServiceRoleClient(env: { url: string; serviceRoleKey: string }) {
-  return createClient(env.url, env.serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-/** Authorization outcome: a resolved admin `userId`, or a typed denial. */
-export type AdminAuthorization =
-  | { ok: true; userId: string; role: AdminRole; isMachineActor: boolean }
-  | { ok: false; code: "UNAUTHORIZED" | "FORBIDDEN"; message: string };
-
-/** A request-bound thunk that resolves the calling admin (or a denial). */
-export type AuthorizeAdmin = () => Promise<AdminAuthorization>;
-
-export async function authorizeAdminWithUser(
-  client: SupabaseAuthClient,
-  accessToken: string | null,
-  options: { allowedRoles?: readonly AdminRole[] } = {},
-): Promise<AdminAuthorization> {
-  if (!accessToken) {
-    return { ok: false, code: "UNAUTHORIZED", message: "Admin session required" };
-  }
-
-  const { data: userData, error: userError } = await client.auth.getUser(accessToken);
-  if (userError || !userData.user) {
-    return { ok: false, code: "UNAUTHORIZED", message: "Admin session required" };
-  }
-
-  const { data, error } = await client
-    .from("admin_users")
-    .select("id, role, is_machine_actor")
-    .eq("id", userData.user.id)
-    .eq("membership_state", "active")
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) {
-    return { ok: false, code: "FORBIDDEN", message: "Admin role required" };
-  }
-
-  const role = normalizeAdminRole(data.role);
-  if (options.allowedRoles && !options.allowedRoles.includes(role)) {
-    return { ok: false, code: "FORBIDDEN", message: "Admin role required" };
-  }
-
-  // Fail closed: mirror the activate RPC's `COALESCE(is_machine_actor, true)` — only an
-  // explicit `false` is a human actor; anything else is treated as a machine. The DB row
-  // (`admin_users.is_machine_actor`, re-derived here and in every write RPC) is the single
-  // source of truth for actor kind — never trusted from the caller.
-  return {
-    ok: true,
-    userId: userData.user.id,
-    role,
-    isMachineActor: data.is_machine_actor !== false,
-  };
-}
-
-export function authorizeCommerceAdminWithUser(
-  client: SupabaseAuthClient,
-  accessToken: string | null,
-): Promise<AdminAuthorization> {
-  return authorizeAdminWithUser(client, accessToken, { allowedRoles: ["admin"] });
-}
-
-export async function authorizeAdminBooleanWithUser(
-  client: SupabaseAuthClient,
-  accessToken: string | null,
-  options: { allowedRoles?: readonly AdminRole[] } = {},
-): Promise<boolean> {
-  const authorization = await authorizeAdminWithUser(client, accessToken, options);
-  return authorization.ok;
+  return identityClients.service(env) as unknown as ReturnType<typeof createClient>;
 }
 
 export function allowedAdminRolesForBffRoute(route: string): readonly AdminRole[] | null {
@@ -201,31 +127,25 @@ export async function preflightAdminBffRoute(
     sendBffError(res, authz.code, authz.message);
     return false;
   }
+  if (refusesMachineActorRequest(route, req.method, authz.isMachineActor, MACHINE_ACTOR_WRITE_ROUTES)) {
+    sendMachineActorWriteRefused(res, { responseRequestId: (response) => readObservedResponseContext(response)?.requestId });
+    return false;
+  }
   return true;
 }
 
-/**
- * Shared authz gate: returns the resolved admin (`userId` + DB-derived
- * `isMachineActor`) or sends the error envelope and returns null.
- */
-export async function resolveAdmin(
-  authorizeAdmin: AuthorizeAdmin,
-  res: VercelResponse,
-): Promise<{ userId: string; role: AdminRole; isMachineActor: boolean } | null> {
-  let authz: AdminAuthorization;
-  try {
-    authz = await authorizeAdmin();
-  } catch {
-    sendBffError(res, "UPSTREAM_UNAVAILABLE", "Admin authorization failed");
-    return null;
-  }
-  if (authz.ok === false) {
-    sendBffError(res, authz.code, authz.message);
-    return null;
-  }
-  return { userId: authz.userId, role: authz.role, isMachineActor: authz.isMachineActor };
-}
 
-function normalizeAdminRole(role: unknown): AdminRole {
-  return role === "distributor" ? "distributor" : "admin";
+export const MACHINE_ACTOR_WRITE_ROUTES = [
+  "/api/bff/admin/commerce/catalog/document-proposal",
+  "/api/bff/admin/commerce/bundles/create",
+  "/api/bff/admin/commerce/bundles/update",
+  "/api/bff/admin/commerce/bundles/set-composition",
+  "/api/bff/admin/commerce/bundles/set-target-price",
+  "/api/bff/admin/commerce/bundles/archive",
+  "/api/bff/admin/commerce/bundles/restore",
+  "/api/bff/admin/commerce/bundles/clone-draft",
+] as const;
+
+export function resolveAdmin(authorizeAdmin: import("@openlup/platform/identity").AuthorizeAdmin, res: VercelResponse) {
+  return resolveIdentityAdmin(authorizeAdmin, res, { responseRequestId: (response) => readObservedResponseContext(response)?.requestId });
 }

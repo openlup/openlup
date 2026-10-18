@@ -70,3 +70,5 @@ or direct INSERT. The unbound winback adapter does not establish a runtime
 writer requirement. Tests retain the window's old-versus-recent reminder signal.
 
 <!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-c651fd5203d25ad71a086d053a632ddca09f25e67e98034815b8bd919a0e631e","reason":"Test-only delta. The role-free lane confinement test exempts the package consumer proof file, which calls the lane as a package consumer rather than as a reference binding; the binding and every adapter row described here are unchanged."} -->
+
+Identity verification, account linking, admin directory gateways, profile reads and direct session/challenge adapters now delegate to the [identity module](../../docs/platform/IDENTITY.md). The reference bindings retain SDK loading, mail delivery, sender and origin policy. The package accepts structural clients and an explicit JWT loader; the application remains responsible for selecting them.

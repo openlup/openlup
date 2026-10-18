@@ -1,3 +1,7 @@
+import { createAdminUserInvitePort, createAdminUserRemovePort } from "@openlup/platform/identity";
+import { createInviteAdminUserGateway, createRemoveAdminUserGateway } from "@openlup/platform/identity";
+export { createInviteAdminUserGateway, createRemoveAdminUserGateway } from "@openlup/platform/identity";
+import type { InviteAdminUserClient, RemoveAdminUserClient } from "@openlup/platform/identity";
 import type { AdminSettingsPort } from "../../../src/domains/platform/ports.js";
 import { readEmailOriginConfiguration, resolveEmailOrigin, type EmailOriginResolution } from "../../../src/domains/communications/email/originPolicy.js";
 import { APP_PRODUCTION_EMAIL_HOSTS, APP_SITE_ORIGIN } from "../../../src/lib/brand/appBrand.js";
@@ -37,105 +41,11 @@ export type AdminUserRemoveRunner = (
   env?: AdminUserActionRuntimeEnv,
 ) => ReturnType<typeof runRemoveAdminUserUseCase>;
 
-interface InviteAdminUserQuery {
-  select(columns: string): {
-    eq(column: string, value: string): {
-      maybeSingle(): PromiseLike<{ data: { id: string; role?: string } | null }>;
-    };
-  };
-  insert(row: { id: string; email: string; role: "admin" | "distributor" }):
-    PromiseLike<{ error: { message: string } | null }>;
+export function createSupabaseAdminUserInvitePort(options: { accessToken: string | null; env?: AdminUserActionRuntimeEnv; runInviteAdminUser?: AdminUserInviteRunner }) {
+  return createAdminUserInvitePort({ ...options, runInviteAdminUser: options.runInviteAdminUser ?? runInviteAdminUserHandler });
 }
-
-export interface InviteAdminUserClient {
-  auth: {
-    getUser(token: string): PromiseLike<{ data: { user: { id: string } | null }; error: unknown }>;
-    admin: {
-      listUsers(): PromiseLike<{ data: { users: Array<{ id: string; email?: string | null }> } | null }>;
-      inviteUserByEmail(
-        email: string,
-        options: { redirectTo: string; data: Record<string, unknown> },
-      ): PromiseLike<{
-        data: { user: { id: string } | null };
-        error: { message: string } | null;
-      }>;
-    };
-  };
-  from(table: "admin_users"): InviteAdminUserQuery;
-  rpc?: (name: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }>;
-}
-
-interface RemoveAdminUserQuery {
-  select(columns: string): {
-    eq(column: string, value: string): RemoveAdminUserQueryResult;
-  };
-}
-
-interface RemoveAdminUserQueryResult {
-  eq(column: string, value: string): RemoveAdminUserQueryResult;
-  maybeSingle(): PromiseLike<{ data: { id: string; role: string } | null; error: { message: string } | null }>;
-}
-
-export interface RemoveAdminUserClient {
-  auth: {
-    getUser(token: string): PromiseLike<{ data: { user: { id: string } | null }; error: unknown }>;
-  };
-  from(table: "admin_users"): RemoveAdminUserQuery;
-  rpc(
-    fn: "admin_revoke_admin_user",
-    args: { p_target: string; p_reason: string | null },
-  ): PromiseLike<{ error: { message: string } | null }>;
-}
-
-export function createSupabaseAdminUserInvitePort(options: {
-  accessToken: string | null;
-  env?: AdminUserActionRuntimeEnv;
-  runInviteAdminUser?: AdminUserInviteRunner;
-}): Pick<AdminSettingsPort, "inviteAdminUser"> {
-  const runInviteAdminUser = options.runInviteAdminUser ?? runInviteAdminUserHandler;
-  return {
-    async inviteAdminUser(request) {
-      const result = await runInviteAdminUser({
-        accessToken: options.accessToken,
-        email: request.email,
-        role: request.role,
-      }, options.env);
-      if (result.status < 200 || result.status >= 300) {
-        throw new Error(String(result.body.error ?? `invite_admin_user_http_${result.status}`));
-      }
-      if (result.body.error) throw new Error(result.body.error);
-
-      return { message: result.body.message };
-    },
-  };
-}
-
-export function createSupabaseAdminUserRemovePort(options: {
-  accessToken: string | null;
-  env?: AdminUserActionRuntimeEnv;
-  runRemoveAdminUser?: AdminUserRemoveRunner;
-}): Pick<AdminSettingsPort, "removeAdminUser"> {
-  const runRemoveAdminUser = options.runRemoveAdminUser ?? runRemoveAdminUserHandler;
-  return {
-    async removeAdminUser(request) {
-      const result = await runRemoveAdminUser({
-        accessToken: options.accessToken,
-        userId: request.userId,
-      }, options.env);
-      if (result.status < 200 || result.status >= 300) {
-        throw removePortError(
-          result.status,
-          String(result.body.error ?? `remove_admin_user_http_${result.status}`),
-        );
-      }
-      if (result.body.error) throw new Error(result.body.error);
-
-      if (result.body.revoked !== true) {
-        throw new Error("admin_revoke_admin_user returned an invalid response");
-      }
-      return { revoked: true };
-    },
-  };
+export function createSupabaseAdminUserRemovePort(options: { accessToken: string | null; env?: AdminUserActionRuntimeEnv; runRemoveAdminUser?: AdminUserRemoveRunner }) {
+  return createAdminUserRemovePort({ ...options, runRemoveAdminUser: options.runRemoveAdminUser ?? runRemoveAdminUserHandler });
 }
 
 export const runInviteAdminUserHandler: AdminUserInviteRunner = async (request, env = process.env) => {
@@ -189,48 +99,6 @@ export function toInviteAdminWireResult(
   };
 }
 
-export function createInviteAdminUserGateway(clientFactory: () => InviteAdminUserClient): InviteAdminUserGateway {
-  let client: InviteAdminUserClient | null = null;
-  const getClient = (): InviteAdminUserClient => client ??= clientFactory();
-
-  return {
-    async getUser(accessToken) {
-      const { data, error } = await getClient().auth.getUser(accessToken);
-      return { user: data?.user ?? null, error };
-    },
-    async findAdminUser(userId) {
-      const { data } = await getClient()
-        .from("admin_users")
-        .select("id, role")
-        .eq("id", userId)
-        .maybeSingle();
-      return data && typeof data.role === "string" ? { id: data.id, role: data.role } : null;
-    },
-    async findAdminUserByEmail(email) {
-      const { data } = await getClient()
-        .from("admin_users")
-        .select("id")
-        .eq("email", email)
-        .maybeSingle();
-      return data ? { id: data.id } : null;
-    },
-    async listAuthUsers() {
-      const { data } = await getClient().auth.admin.listUsers();
-      return data?.users ?? [];
-    },
-    async insertAdminUser(input) {
-      return await getClient().from("admin_users").insert(input);
-    },
-    async inviteAuthUser(input) {
-      const { data, error } = await getClient().auth.admin.inviteUserByEmail(input.email, {
-        redirectTo: input.redirectTo,
-        data: { admin_invite_role: input.role },
-      });
-      return { user: data.user, error };
-    },
-  };
-}
-
 export const runRemoveAdminUserHandler: AdminUserRemoveRunner = async (request, env = process.env) => {
   const config = resolveSupabaseAdminAuthEnv(env);
   if (!config) return { status: 500, body: { error: "supabase_user_auth_not_configured" } };
@@ -242,40 +110,6 @@ export const runRemoveAdminUserHandler: AdminUserRemoveRunner = async (request, 
     }, request.accessToken) as unknown as RemoveAdminUserClient
   )));
 };
-
-export function createRemoveAdminUserGateway(clientFactory: () => RemoveAdminUserClient): RemoveAdminUserGateway {
-  let client: RemoveAdminUserClient | null = null;
-  const getClient = (): RemoveAdminUserClient => client ??= clientFactory();
-
-  return {
-    async getUser(accessToken) {
-      const { data, error } = await getClient().auth.getUser(accessToken);
-      return { user: data?.user ?? null, error };
-    },
-    async findAdminUser(userId) {
-      const { data, error } = await getClient()
-        .from("admin_users")
-        .select("id, role")
-        .eq("id", userId)
-        .eq("membership_state", "active")
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    async revokeAdminUser(userId) {
-      return await getClient().rpc("admin_revoke_admin_user", {
-        p_target: userId,
-        p_reason: null,
-      });
-    },
-  };
-}
-
-function removePortError(status: number, message: string): Error {
-  const bffCode = ({ 400: "BAD_REQUEST", 403: "FORBIDDEN", 409: "CONFLICT" } as const)[status]
-    ?? "UPSTREAM_UNAVAILABLE";
-  return Object.assign(new Error(message), { bffCode });
-}
 
 export function resolveInviteAdminEmailOrigin(env: AdminUserActionRuntimeEnv): EmailOriginResolution {
   return resolveEmailOrigin({

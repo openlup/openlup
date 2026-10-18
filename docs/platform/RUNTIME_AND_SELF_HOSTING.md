@@ -31,6 +31,12 @@ public reference server; the module's composition change does that.
 
 <!-- openlup-doc-impact {"unit":"bff","digest":"sha256-2ee814a9b6801d785878e80569809b1fd5914f48de9fdecd177d9a4075e6653c","reason":"Deletion delta. The removed personalization feature's share page (api/c/[slug]), its blob cleanup cron and the checkout composition's personalization cookie helpers are deleted; nothing in this tree mounted the share page or scheduled the cleanup. The runtime model, routes and scheduling described here are unchanged."} -->
 
+Identity route files now compose [package handler factories](IDENTITY.md) with
+this application's schemas, feature admission, limiter, redirect resolver and
+observed request-ID reader. The neutral reconcile-account source has no
+personalization hook. A route source does not add it to the default empty BFF
+route table or the disposable reference profile's closed route set.
+
 ## Self-host boundary
 
 The platform target is portable PostgreSQL with a reproducible baseline and
@@ -78,7 +84,7 @@ supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
 
-<!-- openlup-doc-impact {"unit":"reference","digest":"sha256-8e1cfb83fb47995080c878d4e8a542eae8d0f06f7b4dcddb22ca1e1b6ae5ed4b","reason":"The prerender refusal test supplies an invalid lifecycle route manifest at the existing seam. Public reference selection, fail-closed availability and installation boundary described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"reference","digest":"sha256-1f127fb379d0aafa72673ee582332a0976858c686b3fe2fdf7b57c99db72550d","reason":"The reference subscription-account composition changes only the reconciler import to the identity module entry. Its confirmed-email predicate, closed routes, response mapping, setup and disposable runtime remain unchanged."} -->
 
 The Node reference start function accepts an admitted outbox candidate and a host schedule binding. For a selected rail it binds dispatch/prune before opening the listener; a refused candidate or absent schedule binding opens no listener. Host composition supplies its driver, lease, effect handlers, known vocabulary and migration observation. Immediate and scheduled work share the packed rail engine, with candidate identity checked at every entrance. The default static CLI selects no outbox adapter and provides no deployed outbox proof.
 

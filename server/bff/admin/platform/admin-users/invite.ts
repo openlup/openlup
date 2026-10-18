@@ -1,7 +1,8 @@
+import { readObservedResponseContext } from "../../../../_lib/observability/requestContext.js";
 import { withObservedRoute } from "../../../../_lib/observability/route.js";
 import type { VercelRequest, VercelResponse } from "../../../../_lib/types/vercel.js";
 import { sendBffError } from "../../../../_lib/bff/response.js";
-import { createAdminUserInviteHandler } from "../../../../domains/platform/adminSettingsHandlers.js";
+import { createAdminUserInviteHandler } from "@openlup/platform/identity";
 import { createAdminAuthClient } from "../../../../_lib/admin-domain/auth.js";
 import {
   createSupabaseAdminUserInvitePort,
@@ -23,6 +24,7 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   const client = createAdminAuthClient(env, accessToken);
 
   return createAdminUserInviteHandler({
+    responseRequestId: (res) => readObservedResponseContext(res)?.requestId,
     settingsPort: createSupabaseAdminUserInvitePort({ accessToken }),
     authorizeAdmin: () => authorizePlatformAdmin(client, accessToken),
   })(req, res);

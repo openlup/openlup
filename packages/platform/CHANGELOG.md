@@ -8,6 +8,20 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Import the identity capability and its conformance witnesses into internal
+  candidate entries `./identity` and `./identity/contracts`.
+- Include the characterized create-first directory lookup, bounded normalized
+  invite lookup and managed machine-actor write fence.
+
+Migration: This local candidate is not a published identity release. Reference
+bindings keep application copy, origins, sender and provider setup outside the
+module. Existing module paths delegate to the package; stable codes are internal
+and the reference invite/remove wire shapes retain their prior fields. The
+contracts runtime-schema move and profile-specific readiness schema inventory
+remain pending. The four package SQL projections preserve canonical bytes and
+positions; do not apply them again to an existing canonical migration history.
+
+
 ## [0.15.0]
 
 - Publishable on the npm `latest` dist-tag as `0.15.0`, from tag
