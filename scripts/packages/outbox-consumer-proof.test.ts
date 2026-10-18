@@ -149,6 +149,21 @@ it.each(["inspect-term", "remove-term", "remove-after-effect", "second-term", "c
   await driverCompletion(fixtureDriver(fixture(), "exerciseCleanupRecovery", mode));
 }, 60_000);
 
+it("keeps a denied process group present until its probe confirms absence", () => {
+  const pid = 12345, outcomes = [undefined, "EPERM", "EPERM", "ESRCH"] as const;
+  let calls = 0;
+  const probe: typeof process.kill = (target, signal) => {
+    assert.equal(target, -pid); assert.equal(signal, 0);
+    const code = outcomes[calls++];
+    if (code) throw Object.assign(new Error(code), { code });
+    return true;
+  };
+  assert.deepEqual(outcomes.map(() => fixtureGroupExists(pid, probe)), [true, true, true, false]);
+  assert.equal(calls, 4);
+  const unexpected = Object.assign(new Error("Unexpected probe failure"), { code: "EINVAL" });
+  assert.throws(() => fixtureGroupExists(pid, () => { throw unexpected; }), error => error === unexpected);
+});
+
 async function fixtureWait(ready: () => boolean, signal: AbortSignal | undefined, timeout: number, check?: () => void) {
   const deadline = performance.now() + timeout;
   while (!ready()) {
@@ -158,6 +173,17 @@ async function fixtureWait(ready: () => boolean, signal: AbortSignal | undefined
     await new Promise(done => setTimeout(done, 25));
   }
   if (signal?.aborted) throw new Error("Fixture interrupted");
+}
+function fixtureGroupExists(pid: number | undefined, probe = process.kill) {
+  if (!pid) return false;
+  try { probe(-pid, 0); return true; }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") return false;
+    // Darwin can retain a zombie-only group until reaping; EPERM never proves absence.
+    if (code === "EPERM") return true;
+    throw error;
+  }
 }
 function fixtureRemoveService(identity: string, name: string, label: string, environment: NodeJS.ProcessEnv) {
   // A TERM may reach a child before detachment. Recover at most once in this
@@ -464,7 +490,7 @@ async function exerciseRootCancellation(stage: string, f: { target: string; pack
     cwd: root, env: { ...env, VITEST_MAX_WORKERS: "1", OPENLUP_FIXTURE_CANCEL_STAGE: stage, OPENLUP_FIXTURE_WITNESS: witness }, detached: true, stdio: "ignore",
   });
   let spawnError: Error | undefined; child.once("error", error => { spawnError = error; });
-  const groupExists = () => { if (!child.pid) return false; try { process.kill(-child.pid, 0); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; } };
+  const groupExists = () => fixtureGroupExists(child.pid);
   let groupDeadline: number | undefined;
   const stop = () => { groupDeadline ??= performance.now() + 60_000; if (child.pid) { try { process.kill(-child.pid, "SIGTERM"); } catch { /* Already stopped. */ } } };
   const waitForGroup = () => fixtureWait(() => !groupExists(), undefined, Math.max(1, groupDeadline! - performance.now()));

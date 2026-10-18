@@ -9,12 +9,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-// Keep documentation falsifiers under the test file explicitly invoked by Published Tree CI.
-import "./documentation-impact.test.ts";
-import "./documentation-bundle.test.ts";
-import "./documentation-cli.test.ts";
-import "./ast-grep/check-filewide-ignore.test.ts";
-import "./ast-grep/rule-tests/portable-no-industry-contracts.test.ts";
 
 import { REQUIRED_CONTEXTS, contextPassed } from "./packages/release-gate.ts";
 import {
@@ -183,7 +177,7 @@ describe("complete public CI", () => {
     expect(workflow).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
     expect(workflow).toContain("run: node --experimental-strip-types packages/ui/smoke/neutrality.ts");
   });
-  it("preserves active required selectors and the existing fatal checks", () => {
+  it("preserves active selectors with subscription, command-contract and fatal neutrality coverage in one discovery", () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
     const expandedFloor = requiredTestFloor
       .replace("scripts/agent-review-controller.test.ts ", "scripts/public-ci-reuse.test.ts ")
@@ -198,10 +192,7 @@ describe("complete public CI", () => {
       "node scripts/public-ci-reuse.mjs",
       "npm ci",
       'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
-      "npm run test:required",
-      "npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx",
-      "npx vitest run scripts/oss-published-tree-check.test.ts",
-      "npx vitest run scripts/public-ci-neutrality.test.ts",
+      "npm run test:required -- server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts",
     ]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...PUBLIC_REQUIRED_TEST_SCOPE], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);
     for (const target of PUBLIC_REQUIRED_TEST_SCOPE) {
@@ -240,7 +231,7 @@ describe("complete public CI", () => {
     } finally { await standalone.close(); }
     expect(() => assertPublishedPackageRoutes(inventory, workflow.replace("scripts/packages/required-package-gates.ts", "scripts/packages/missing-gates.ts"))).toThrow();
   }, 30_000);
-  it("passes the full and frozen required argv to Vitest unchanged and propagates failure", () => {
+  it("passes the full, frozen required and additional argv to Vitest unchanged and propagates failure", () => {
     const scratch = join(ROOT, ".context/scratch");
     mkdirSync(scratch, { recursive: true });
     const directory = mkdtempSync(join(scratch, "public-test-argv-"));
@@ -261,6 +252,11 @@ describe("complete public CI", () => {
       expect(required.error).toBeUndefined();
       expect(required.status).toBe(29);
       expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run", ...PUBLIC_REQUIRED_TEST_SCOPE]);
+      const additional = "server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts".split(" ");
+      const combined = run(["run", ...PUBLIC_REQUIRED_TEST_SCOPE, ...additional], 29);
+      expect(combined.error).toBeUndefined();
+      expect(combined.status).toBe(29);
+      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run", ...PUBLIC_REQUIRED_TEST_SCOPE, ...additional]);
       const inherited = spawnSync(process.execPath, [join(ROOT, "scripts/run-vitest.mjs"), 'run', '--coverage'], {
         cwd: directory, encoding: 'utf8', timeout: 10000,
         env: { PATH: directory, AI_RESOURCE_GATE_ACTIVE: '1', AI_RESOURCE_GATE_LANE: 'coverage', PUBLIC_TEST_ARGV_LOG: log, PUBLIC_TEST_EXIT: '0' },
