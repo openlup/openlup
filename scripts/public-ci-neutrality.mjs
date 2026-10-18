@@ -220,7 +220,11 @@ function main() {
   const currentBytes = workingBytes();
   const scannerPins = verifyPins(parent, currentBytes, baseBytes);
   const measuredBase = scanSnapshots(baseBytes);
-  const current = scanSnapshots(currentBytes);
+  // Pinned counts-mode scanners are deterministic for these complete path/byte inputs.
+  // Reuse only this invocation's measured base after both inventories and pins passed.
+  const identicalSnapshots = baseBytes.size === currentBytes.size
+    && [...baseBytes].every(([path, bytes]) => currentBytes.get(path)?.equals(bytes));
+  const current = identicalSnapshots ? measuredBase : scanSnapshots(currentBytes);
   for (const path of current.binary) if (Object.keys(measuredBase.rows[hash(path)] ?? {}).length) throw new Error(`contaminated text became binary: ${label(path)}`);
   const baseIncreases = unreviewedDiagnosticFixtureIncreases(neutralityIncreases(measuredBase.rows, current.rows), currentBytes, base);
   if (options[0] === "--write-baseline") {

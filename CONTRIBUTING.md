@@ -773,6 +773,14 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+
+Within one ratchet invocation, the pinned counts-mode scanners reuse the measured
+base result only when the complete base and working inventories have identical
+paths and bytes, including baseline, scanner and binary files. Both inventories
+and pin checks still run; any difference executes both scanner chains. This
+relies on the current deterministic counting interfaces, so scanner changes must
+revisit that assumption. Separate CLI invocations never share scan results.
+
 For pull requests and merge groups, the required `--policy` self-check also
 compares the exact hosted event base with the checkout's Git objects. It refuses
 edits, deletions and mode changes to existing managed or portable migrations,
