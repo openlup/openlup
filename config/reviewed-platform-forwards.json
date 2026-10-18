@@ -160,6 +160,17 @@
           "beforeSha256": "94797029f65c0e641e41c2884b50e0c9703c58523dbcfa219724db4dd6bdaf5e"
         }
       ]
+    },
+    {
+      "path": "supabase/migrations/20261018160000_identity_service_role_capabilities.sql",
+      "sha256": "65aca3641460d0a911b11e40c16ae209c3ae3be827ad4ceca2ee56cf5f718126",
+      "functions": [],
+      "privileges": [
+        "GRANT INSERT (email, auth_user_id, acquisition_source, lifecycle_stage) ON public.clients TO service_role;",
+        "GRANT UPDATE (auth_user_id) ON public.clients TO service_role;",
+        "GRANT INSERT (id, email, role, membership_state, membership_provenance, membership_accepted_at) ON public.admin_users TO service_role;",
+        "GRANT SELECT (email) ON public.admin_users TO service_role;"
+      ]
     }
   ]
 }

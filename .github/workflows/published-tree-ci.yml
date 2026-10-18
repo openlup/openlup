@@ -190,14 +190,8 @@ jobs:
         run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"
       # Preserve every former protected-main selector. Full discovery has its own
       # raw diagnostic job below; its failures cannot prevent these required checks.
-      - name: Existing required root test coverage
-        run: npm run test:required
-      - name: Subscription profile composition and existing renewal modal
-        run: npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
-      - name: Materialized command-contract falsifier
-        run: npx vitest run scripts/oss-published-tree-check.test.ts
-      - name: Neutrality ratchet CLI falsifiers
-        run: npx vitest run scripts/public-ci-neutrality.test.ts
+      - name: Required root, subscription, command-contract and neutrality coverage
+        run: npm run test:required -- server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts
 
   test-full:
     name: test-full
