@@ -165,7 +165,7 @@ describe("POST /api/bff/customers/magic-link", () => {
       email: "buyer@example.com",
       options: {
         shouldCreateUser: false,
-        emailRedirectTo: "https://openlup.test/konto/auth/callback",
+        emailRedirectTo: "https://example.com/konto/auth/callback",
       },
     });
     expect(res.status).toHaveBeenCalledWith(200);
@@ -188,7 +188,7 @@ describe("POST /api/bff/customers/magic-link", () => {
       email: "buyer@example.com",
       options: {
         shouldCreateUser: false,
-        emailRedirectTo: "https://openlup.test/account/auth/callback",
+        emailRedirectTo: "https://example.com/account/auth/callback",
       },
     });
     expect(res.status).toHaveBeenCalledWith(200);
@@ -206,7 +206,7 @@ describe("POST /api/bff/customers/magic-link", () => {
 
     const call = mockSignInWithOtp.mock.calls[0]?.[0];
     const callback = new URL(call.options.emailRedirectTo);
-    expect(callback.origin).toBe("https://openlup.test");
+    expect(callback.origin).toBe("https://example.com");
     expect(callback.pathname).toBe("/konto/auth/callback");
     expect(callback.searchParams.get("returnTo")).toBe(
       "/konto/zamowienie/status?orderId=abc#payment",
@@ -238,207 +238,74 @@ describe("POST /api/bff/customers/magic-link", () => {
       email: "buyer@example.com",
       options: {
         shouldCreateUser: false,
-        emailRedirectTo: "https://openlup.test/konto/auth/callback",
+        emailRedirectTo: "https://example.com/konto/auth/callback",
       },
     });
   });
 
-  it("skips the send (but stays accepted) when no origin resolves to localhost on a deploy", async () => {
-    process.env.COMMERCE_V2_W12_CUSTOMER_AUTH_UI = "true";
-    process.env.VITE_SUPABASE_URL = "https://example.supabase.co";
-    process.env.VITE_SUPABASE_ANON_KEY = "anon-key";
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
-    // No CUSTOMER_AUTH_REDIRECT_ORIGIN, on a deploy (VERCEL set), and the
-    // request carries no forwarded host — origin would be localhost.
-    const restoreVercel = process.env.VERCEL;
-    process.env.VERCEL = "1";
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { default: handler } = await import("./magic-link.js");
-    const res = createResponse();
+  it.each(["development", "preview", "staging", "production"])(
+    "refuses missing origin configuration before provider work in %s",
+    async (environment) => {
+      enableEnv({ origin: false });
+      process.env[APPLICATION_ENVIRONMENT_KEY] = environment;
+      const { default: handler } = await import("./magic-link.js");
+      const res = createResponse();
+      await handler(spoofedRequest(), res);
+      expectOriginRefusal(res);
+      expect(mockCreateClient).not.toHaveBeenCalled();
+      expect(mockRpc).not.toHaveBeenCalled();
+      expect(mockSignInWithOtp).not.toHaveBeenCalled();
+    },
+  );
 
-    // `request` carries no x-forwarded-host, so origin can only be localhost.
-    await handler(request({ email: "buyer@example.com" }), res);
-
-    expect(mockSignInWithOtp).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ ok: true, data: { accepted: true } });
-
-    if (restoreVercel === undefined) delete process.env.VERCEL;
-    else process.env.VERCEL = restoreVercel;
-  });
-
-  it("uses the forwarded host as origin when no explicit origin is configured", async () => {
-    process.env.COMMERCE_V2_W12_CUSTOMER_AUTH_UI = "true";
-    process.env.VITE_SUPABASE_URL = "https://example.supabase.co";
-    process.env.VITE_SUPABASE_ANON_KEY = "anon-key";
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
-    const { default: handler } = await import("./magic-link.js");
-    const res = createResponse();
-
-    const req = {
-      method: "POST",
-      body: { email: "buyer@example.com" },
-      query: {},
-      headers: {
-        "x-forwarded-for": "198.51.100.1",
-        "x-forwarded-proto": "https",
-        "x-forwarded-host": "preview.example.app",
-      },
-    } as unknown as VercelRequest;
-
-    await handler(req, res);
-
-    expect(mockSignInWithOtp).toHaveBeenCalledWith({
-      email: "buyer@example.com",
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: "https://preview.example.app/konto/auth/callback",
-      },
-    });
-  });
-
-  it("prefers APP_BASE_URL over the customer compatibility origin and request host", async () => {
+  it("prefers the configured primary origin over the compatibility origin and every host header", async () => {
     enableEnv();
-    process.env[APPLICATION_ENVIRONMENT_KEY] = "production";
-    process.env.APP_BASE_URL = "https://openlup.test/path/";
-    process.env.CUSTOMER_AUTH_REDIRECT_ORIGIN = "https://legacy.example.test";
+    process.env.CUSTOMER_AUTH_REDIRECT_ORIGIN = "https://legacy.example.com";
     const { default: handler } = await import("./magic-link.js");
     const res = createResponse();
-
     await handler(spoofedRequest(), res);
-
     expect(mockSignInWithOtp).toHaveBeenCalledWith({
       email: "buyer@example.com",
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: "https://openlup.test/konto/auth/callback",
-      },
+      options: { shouldCreateUser: false, emailRedirectTo: "https://example.com/konto/auth/callback" },
     });
   });
 
-  it("keeps CUSTOMER_AUTH_REDIRECT_ORIGIN as the fallback only when APP_BASE_URL is absent or blank", async () => {
+  it("uses the existing compatibility origin only when APP_BASE_URL is blank", async () => {
     enableEnv();
     process.env.APP_BASE_URL = "  ";
-    process.env.CUSTOMER_AUTH_REDIRECT_ORIGIN = "https://legacy.example.test/";
+    process.env.CUSTOMER_AUTH_REDIRECT_ORIGIN = "https://legacy.example.com/";
     const { default: handler } = await import("./magic-link.js");
     const res = createResponse();
-
     await handler(spoofedRequest(), res);
-
     expect(mockSignInWithOtp).toHaveBeenCalledWith({
       email: "buyer@example.com",
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: "https://legacy.example.test/konto/auth/callback",
-      },
+      options: { shouldCreateUser: false, emailRedirectTo: "https://legacy.example.com/konto/auth/callback" },
     });
   });
 
-  it("refuses an invalid APP_BASE_URL instead of falling through to a compatibility origin or host", async () => {
-    enableEnv();
-    process.env.APP_BASE_URL = "not a url";
-    process.env.CUSTOMER_AUTH_REDIRECT_ORIGIN = "https://legacy.example.test";
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { default: handler } = await import("./magic-link.js");
-    const res = createResponse();
+  it.each(["not a url", "https://example.com/path", "https://user:secret@example.com", "https://example.com?query=1"])(
+    "refuses invalid primary configuration %s without compatibility or header fallback",
+    async (origin) => {
+      enableEnv();
+      process.env.APP_BASE_URL = origin;
+      process.env.CUSTOMER_AUTH_REDIRECT_ORIGIN = "https://legacy.example.com";
+      const { default: handler } = await import("./magic-link.js");
+      const res = createResponse();
+      await handler(spoofedRequest(), res);
+      expectOriginRefusal(res);
+      expect(mockCreateClient).not.toHaveBeenCalled();
+      expect(mockSignInWithOtp).not.toHaveBeenCalled();
+    },
+  );
 
-    await handler(spoofedRequest(), res);
-
-    expect(mockSignInWithOtp).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ ok: true, data: { accepted: true } });
-    expect(warn).toHaveBeenCalledWith(
-      "customer_magic_link_origin",
-      expect.stringContaining("invalid_app_base_url"),
-    );
-  });
-
-  it("fails closed (no send) in production when no configured origin is set", async () => {
-    process.env.COMMERCE_V2_W12_CUSTOMER_AUTH_UI = "true";
-    process.env.VITE_SUPABASE_URL = "https://example.supabase.co";
-    process.env.VITE_SUPABASE_ANON_KEY = "anon-key";
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
-    const restoreVercelEnv = process.env.VERCEL_ENV;
-    process.env.VERCEL_ENV = "production";
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { default: handler } = await import("./magic-link.js");
-    const res = createResponse();
-
-    const req = {
-      method: "POST",
-      body: { email: "buyer@example.com" },
-      query: {},
-      headers: { "x-forwarded-proto": "https", "x-forwarded-host": "spoofed.example.com" },
-    } as unknown as VercelRequest;
-    await handler(req, res);
-
-    expect(mockSignInWithOtp).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ ok: true, data: { accepted: true } });
-
-    if (restoreVercelEnv === undefined) delete process.env.VERCEL_ENV;
-    else process.env.VERCEL_ENV = restoreVercelEnv;
-  });
-
-  // The neutral application marker, not the hosting provider's, now decides the
-  // backstop. On a bare-Node host this route is unreachable anyway — the
-  // hidden-sandbox preview guard already 503s every customer mutation on a
-  // runtime with no staging or production hosting marker — so the neutral
-  // marker is proven here on a hosted env whose *host* class is preview, and
-  // the environment matrix itself is pinned in
-  // server/_lib/observability/environment.test.ts.
-  it("refuses the spoofable host when the neutral marker declares production", async () => {
+  it("refuses an invalid compatibility origin", async () => {
     enableEnv({ origin: false });
-    hostedAs("preview");
-    process.env[APPLICATION_ENVIRONMENT_KEY] = "production";
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    process.env.CUSTOMER_AUTH_REDIRECT_ORIGIN = "https://example.com/path";
     const { default: handler } = await import("./magic-link.js");
     const res = createResponse();
-
     await handler(spoofedRequest(), res);
-
-    expect(mockSignInWithOtp).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ ok: true, data: { accepted: true } });
-    expect(warn).toHaveBeenCalledWith(
-      "customer_magic_link_origin",
-      expect.stringContaining("missing_configured_origin_production"),
-    );
-  });
-
-  it("refuses the spoofable host on a hosted production deployment", async () => {
-    enableEnv({ origin: false });
-    hostedAs("production");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { default: handler } = await import("./magic-link.js");
-    const res = createResponse();
-
-    await handler(spoofedRequest(), res);
-
-    expect(mockSignInWithOtp).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ ok: true, data: { accepted: true } });
-    expect(warn).toHaveBeenCalledWith(
-      "customer_magic_link_origin",
-      expect.stringContaining("missing_configured_origin_production"),
-    );
-  });
-
-  it("keeps the header fallback on a hosted preview deployment", async () => {
-    enableEnv({ origin: false });
-    hostedAs("preview");
-    const { default: handler } = await import("./magic-link.js");
-    const res = createResponse();
-
-    await handler(spoofedRequest(), res);
-
-    expect(mockSignInWithOtp).toHaveBeenCalledWith({
-      email: "buyer@example.com",
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: "https://spoofed.example.com/konto/auth/callback",
-      },
-    });
+    expectOriginRefusal(res);
+    expect(mockCreateClient).not.toHaveBeenCalled();
   });
 
   it("does not send Supabase OTP when the hidden rate limit denies", async () => {
@@ -516,15 +383,10 @@ function enableEnv(options: { origin?: boolean } = {}) {
   process.env.VITE_SUPABASE_ANON_KEY = "anon-key";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
   if (options.origin !== false) {
-    process.env.APP_BASE_URL = "https://openlup.test";
+    process.env.APP_BASE_URL = "https://example.com";
   }
 }
 
-/** Marks the runtime as a hosted deployment of the given host class. */
-function hostedAs(hostClass: string) {
-  process.env.VERCEL = "1";
-  process.env[HOST_ENVIRONMENT_KEY] = hostClass;
-}
 
 function spoofedRequest() {
   return {
@@ -535,6 +397,7 @@ function spoofedRequest() {
       "x-forwarded-for": "198.51.100.1",
       "x-forwarded-proto": "https",
       "x-forwarded-host": "spoofed.example.com",
+      host: "host.example.com", origin: "https://origin.example.com", referer: "https://referer.example.com/path",
     },
   } as unknown as VercelRequest;
 }
@@ -558,4 +421,15 @@ function createResponse(): VercelResponse {
   vi.mocked(res.status).mockReturnValue(res);
   vi.mocked(res.json).mockReturnValue(res);
   return res;
+}
+
+function expectOriginRefusal(res: VercelResponse) {
+  expect(res.status).toHaveBeenCalledWith(503);
+  expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+    ok: false,
+    error: expect.objectContaining({
+      code: "UPSTREAM_UNAVAILABLE",
+      details: { reason: "magic_link_origin_not_configured" },
+    }),
+  }));
 }

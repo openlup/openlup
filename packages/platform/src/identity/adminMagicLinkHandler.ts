@@ -1,3 +1,4 @@
+import { createMagicLinkOriginResolver } from "./authVerifyUrl.js";
 import { createIdentityResponder, type IdentityResponseOptions } from "./response.js";
 import type { z } from "zod";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
@@ -14,13 +15,15 @@ export interface AdminMagicLinkHandlerOptions extends IdentityResponseOptions {
   checkAttempt: (input: { client: MagicLinkRateLimitClient; ip: string; email: string }) => Promise<MagicLinkDecision>;
   extractClientIp: (headers: HttpRequest["headers"]) => string;
   padResponseTime: (startedAt: number, floor: number) => Promise<void>;
-  resolveOrigin: (req: HttpRequest) => string | null;
+  redirectOrigins?: readonly string[];
+  resolveOrigin?: (req: HttpRequest) => string | null;
   callbackPath: string;
 }
 const ADMIN_MAGIC_LINK_RESPONSE_FLOOR_MS = 400;
 export function createAdminMagicLinkHandler(options: AdminMagicLinkHandlerOptions) {
 const { sendBffError, sendBffSuccess, sendMethodNotAllowed } = createIdentityResponder(options);
-const { requestSchema: adminMagicLinkRequestSchema, responseSchema: adminMagicLinkResponseSchema, readEnvironment: readSupabaseAdminServiceEnv, createRuntime: createAdminMagicLinkRuntime, checkAttempt: checkAndRecordAdminMagicLinkAttempt, extractClientIp, padResponseTime, resolveOrigin: readRequestOrigin } = options;
+const readRequestOrigin = options.resolveOrigin ?? createMagicLinkOriginResolver(options.redirectOrigins ?? []);
+const { requestSchema: adminMagicLinkRequestSchema, responseSchema: adminMagicLinkResponseSchema, readEnvironment: readSupabaseAdminServiceEnv, createRuntime: createAdminMagicLinkRuntime, checkAttempt: checkAndRecordAdminMagicLinkAttempt, extractClientIp, padResponseTime } = options;
 return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
   if (req.method !== "POST") {
     sendMethodNotAllowed(res, ["POST"]);
@@ -35,6 +38,16 @@ return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     return;
   }
 
+  const startedAt = Date.now();
+  const origin = readRequestOrigin(req);
+  if (!origin) {
+    await padResponseTime(startedAt, ADMIN_MAGIC_LINK_RESPONSE_FLOOR_MS);
+    sendBffError(res, "UPSTREAM_UNAVAILABLE", "Magic link origin is not configured", {
+      details: { reason: "magic_link_origin_not_configured" },
+    });
+    return;
+  }
+
   const env = readSupabaseAdminServiceEnv();
   if (!env) {
     sendBffError(res, "UPSTREAM_UNAVAILABLE", "Admin auth is not configured", {
@@ -43,7 +56,6 @@ return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     return;
   }
 
-  const startedAt = Date.now();
   const runtime = createAdminMagicLinkRuntime(env);
 
   const decision = await checkAndRecordAdminMagicLinkAttempt({
@@ -71,16 +83,11 @@ return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     }
 
     if (eligibility === "eligible") {
-      const origin = readRequestOrigin(req);
-      if (origin) {
-        const outcome = await sendMagicLink(runtime.authClient, request.data.email, origin);
-        console.info(
-          "admin_magic_link_outcome",
-          JSON.stringify({ outcome: outcome.status, code: outcome.code ?? null }),
-        );
-      } else {
-        console.warn("admin_magic_link_outcome", JSON.stringify({ outcome: "bad_origin" }));
-      }
+      const outcome = await sendMagicLink(runtime.authClient, request.data.email, origin);
+      console.info(
+        "admin_magic_link_outcome",
+        JSON.stringify({ outcome: outcome.status, code: outcome.code ?? null }),
+      );
     } else {
       console.warn("admin_magic_link_outcome", JSON.stringify({ outcome: eligibility }));
     }

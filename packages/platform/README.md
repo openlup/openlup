@@ -185,3 +185,16 @@ candidate bound is not selected. Injected structural query clients must implemen
 `filter(column, "imatch", value)` and the bounded array query. The direct customer
 challenge already compares `lower(email)` to normalized input; no migration is
 needed.
+
+Magic-link factories default to the shared strict origin resolver. Pass
+`redirectOrigins: ["https://example.com", "https://secondary.example.com:8443"]`;
+the first configured origin builds the callback and every entry must be an exact
+HTTP(S) origin, without credentials, a path, query or fragment (a root trailing
+slash is accepted). Request headers never authorize an origin. Missing or invalid
+configuration returns BFF `UPSTREAM_UNAVAILABLE` (503), with details reason
+`magic_link_origin_not_configured`, before provider access. Customer `returnTo`
+is normalized to a same-origin relative path; unsafe targets are omitted for the
+callback's default landing page. An adopter needing its existing policy can keep
+passing `resolveOrigin`; that explicit injection overrides the default. See the
+[identity redirect contract](../../docs/platform/IDENTITY.md#magic-link-redirect-policy)
+for reference configuration and migration.

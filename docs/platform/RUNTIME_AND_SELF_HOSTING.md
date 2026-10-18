@@ -37,6 +37,17 @@ observed request-ID reader. The neutral reconcile-account source has no
 personalization hook. A route source does not add it to the default empty BFF
 route table or the disposable reference profile's closed route set.
 
+Magic-link route composition now passes configured origins to the identity
+module's [shared strict default](IDENTITY.md#magic-link-redirect-policy).
+Customer routes select nonblank `APP_BASE_URL`, otherwise
+`CUSTOMER_AUTH_REDIRECT_ORIGIN`; admin routes select `APP_BASE_URL`, otherwise
+`SITE_URL`. These values must be origins without paths, credentials, query or
+fragment. Missing or invalid configuration returns 503
+(`UPSTREAM_UNAVAILABLE`, reason `magic_link_origin_not_configured`) before
+provider access, including on local and preview runtimes. No request host or
+forwarded header supplies a fallback. Valid configured flows retain quota,
+padding and non-enumerating responses. This source change activates no route.
+
 ## Self-host boundary
 
 The platform target is portable PostgreSQL with a reproducible baseline and

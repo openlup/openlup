@@ -1,3 +1,4 @@
+import { createMagicLinkOriginResolver, normalizeMagicLinkReturnPath } from "./authVerifyUrl.js";
 import { createIdentityResponder, type IdentityResponseOptions } from "./response.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import { resolveBundleId } from "../kernel/index.js";
@@ -17,14 +18,16 @@ export interface CustomerMagicLinkHandlerOptions<E extends CustomerMagicLinkEnvi
   checkAttempt: (input: { client: MagicLinkRateLimitClient; ip: string; email: string }) => Promise<MagicLinkDecision>;
   extractClientIp: (headers: HttpRequest["headers"]) => string;
   padResponseTime: (startedAt: number, floor: number) => Promise<void>;
-  resolveOrigin: (req: HttpRequest) => string | null;
+  redirectOrigins?: readonly string[];
+  resolveOrigin?: (req: HttpRequest) => string | null;
   callbackPath: (locale: "pl" | "en") => string;
   resolveSession: typeof resolveCustomerSessionBinding;
 }
 const MAGIC_LINK_RESPONSE_FLOOR_MS = 400;
 export function createCustomerMagicLinkHandler<E extends CustomerMagicLinkEnvironment>(options: CustomerMagicLinkHandlerOptions<E>) {
 const { sendBffError, sendBffSuccess, sendMethodNotAllowed } = createIdentityResponder(options);
-const { enabled: customerAuthUiEnabled, env: environment, readEnvironment: readCustomerSelfServiceEnv, createCustomerClient, createCustomerServiceClient, checkAttempt: checkAndRecordCustomerMagicLinkAttempt, extractClientIp, padResponseTime, resolveOrigin: readRequestOrigin, requestSchema: customerMagicLinkRequestSchema, responseSchema: customerMagicLinkResponseSchema, resolveSession, callbackPath: customerAuthCallbackPath } = options;
+const readRequestOrigin = options.resolveOrigin ?? createMagicLinkOriginResolver(options.redirectOrigins ?? []);
+const { enabled: customerAuthUiEnabled, env: environment, readEnvironment: readCustomerSelfServiceEnv, createCustomerClient, createCustomerServiceClient, checkAttempt: checkAndRecordCustomerMagicLinkAttempt, extractClientIp, padResponseTime, requestSchema: customerMagicLinkRequestSchema, responseSchema: customerMagicLinkResponseSchema, resolveSession, callbackPath: customerAuthCallbackPath } = options;
 return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
   if (!customerAuthUiEnabled()) {
     sendBffError(res, "UPSTREAM_UNAVAILABLE", "Customer accounts are disabled", {
@@ -50,8 +53,17 @@ return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     return;
   }
 
+  const startedAt = Date.now();
+  const origin = readRequestOrigin(req);
+  if (!origin) {
+    await padResponseTime(startedAt, MAGIC_LINK_RESPONSE_FLOOR_MS);
+    sendBffError(res, "UPSTREAM_UNAVAILABLE", "Magic link origin is not configured", {
+      details: { reason: "magic_link_origin_not_configured" },
+    });
+    return;
+  }
+
   if (resolveBundleId(environment) === "node-postgres") {
-    const startedAt = Date.now();
     const resolved = resolveSession(environment);
     if (!resolved.binding) {
       await padResponseTime(startedAt, MAGIC_LINK_RESPONSE_FLOOR_MS);
@@ -77,7 +89,6 @@ return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     return;
   }
 
-  const startedAt = Date.now();
   const anonymousAuthClient = createCustomerClient(env, null);
   const rateLimitClient = createCustomerServiceClient(env);
 
@@ -97,22 +108,17 @@ return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
   }
 
   if (decision.allowed) {
-    const origin = readRequestOrigin(req);
-    if (origin) {
-      const outcome = await sendMagicLink(
-        anonymousAuthClient,
-        request.data.email,
-        origin,
-        request.data.locale,
-        request.data.returnTo,
-      );
-      console.info(
-        "customer_magic_link_outcome",
-        JSON.stringify({ outcome: outcome.status, code: outcome.code ?? null, locale: request.data.locale }),
-      );
-    } else {
-      console.warn("customer_magic_link_outcome", JSON.stringify({ outcome: "bad_origin" }));
-    }
+    const outcome = await sendMagicLink(
+      anonymousAuthClient,
+      request.data.email,
+      origin,
+      request.data.locale,
+      normalizeMagicLinkReturnPath(request.data.returnTo, origin),
+    );
+    console.info(
+      "customer_magic_link_outcome",
+      JSON.stringify({ outcome: outcome.status, code: outcome.code ?? null, locale: request.data.locale }),
+    );
   } else {
     console.warn(
       "customer_magic_link_outcome",

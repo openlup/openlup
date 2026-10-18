@@ -11,8 +11,8 @@ The server entry is `@openlup/platform/identity`; its source is
 [`packages/platform/src/identity`](../../packages/platform/src/identity/index.ts).
 The separate `identity/contracts` entry contains browser value types, the customer
 auth port and provider-list parser. Browser hooks, pages, environment readers,
-redirect policy, feature flags, rate limiting, mail transport and route observation
-remain application composition. The send-email hook remains in the reference
+redirect configuration or an explicit resolver override, feature flags, rate
+limiting, mail transport and route observation remain application composition. The send-email hook remains in the reference
 application for the communications boundary.
 
 The module imports foundation modules only through `bff`, `data`, `http` and
@@ -84,6 +84,54 @@ table. The reference bindings retain their existing response text and receipt
 field mapping, select the existing notification locale and omit the new internal
 error-code field. Mail sender and origin remain inputs to the application's mail
 adapter; the package has no default sender or deployment URL.
+
+## Magic-link redirect policy
+
+Both `createCustomerMagicLinkHandler` and `createAdminMagicLinkHandler` default to
+[`createMagicLinkOriginResolver`](../../packages/platform/src/identity/authVerifyUrl.ts).
+`redirectOrigins` is an ordered allowlist of HTTP(S) scheme, host and port origins.
+The first entry builds the link; subsequent entries never act as fallback for an
+invalid primary. Every entry must parse as an origin without credentials, path,
+query, fragment or backslash. Surrounding whitespace and a root trailing slash
+are normalized. An empty list or any invalid entry refuses with
+`UPSTREAM_UNAVAILABLE` / HTTP 503 and details reason
+`magic_link_origin_not_configured`. This is a server configuration error, checked
+after request validation and before client construction, quota calls, eligibility
+lookups, OTP sending or a direct session challenge. The refusal receives the
+existing 400 ms padding floor and does not depend on the requested identity.
+
+The default resolver never reads Host, X-Forwarded-Host, Origin, Referer or
+forwarded scheme headers. The reference customer binding supplies a one-origin
+allowlist from nonblank `APP_BASE_URL`, falling back only when absent or blank to
+`CUSTOMER_AUTH_REDIRECT_ORIGIN`. The admin binding uses `APP_BASE_URL` with
+`SITE_URL` as that compatibility fallback. No new environment variable is added.
+Configured origins containing a path, credentials, query or fragment must be
+replaced with origins. Invalid primary values never fall through to compatibility
+configuration. Local, development, preview, staging and production all require
+an explicit origin; configure a loopback HTTP origin explicitly for local work.
+In particular, a customer request in a labelled non-production environment with
+no origin now refuses instead of mailing a forwarded-host link. Admin requests
+lose the same fallback, including the implicit local-host fallback. Cases that
+previously skipped sending and returned accepted for bad or missing origins now
+return the configuration error before consuming quota. The direct customer
+session branch also requires origin configuration before issuing a challenge.
+Default static/reference route admission remains unchanged.
+
+Customer return paths pass through
+`normalizeMagicLinkReturnPath` before being put in the callback query. It accepts
+root-relative same-origin paths, normalizes URL dot segments and preserves safe
+query/fragment data. Absolute, protocol-relative, backslash, control-character,
+encoded separator/control and nested-percent escape forms are omitted, so the
+callback uses its default landing page. A normalization that produces a leading
+`//` is also omitted. Application request schemas may impose narrower path rules
+and still return 400 before this step. Callback paths remain host-supplied.
+
+`resolveOrigin(req)` remains the existing explicit override: adopters can keep
+passing their current resolver, and its origin policy remains theirs. Valid
+configured requests retain each handler's existing quota, eligibility,
+non-enumerating accepted response and padding. The neutral conformance witness is
+[`authVerifyUrl.test.ts`](../../packages/platform/test/identity/authVerifyUrl.test.ts);
+the reference route tests pin configuration precedence and the new refusal.
 
 ## Schema continuity and readiness
 
