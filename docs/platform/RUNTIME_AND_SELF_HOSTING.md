@@ -18,7 +18,10 @@ explicit verifier-only adoption.
 Managed operator invitation inserts active membership immediately. Authorization
 and the public admin `me` source only read native membership; they do not activate
 on first entry or compensate writes, and need no service binding for invitation
-state. Removal retains its actor-authenticated revocation RPC. Magic-link
+state. The admin `me` route retains its `mutation` deployment-risk classification:
+the public default refuses it with 503 `adopter_policy_required` before handler
+execution, even though membership lookup performs no activation. Removal retains
+its actor-authenticated revocation RPC. Magic-link
 eligibility requires active membership with a known role, with the existing
 anonymous envelope, quota and padding. Pending/expiry semantics remain a managed
 compatibility gap requiring a transactional store and a later reviewed managed

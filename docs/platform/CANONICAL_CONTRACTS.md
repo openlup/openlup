@@ -160,8 +160,10 @@ verification; malformed declarations refuse configuration. This setting changes
 email-association admission, without changing stored identities or schema. See
 [identity policy and migration](IDENTITY.md#responsibility-and-composition).
 
-Operator invitations add a bounded reference invitation TTL and one append-only direct migration
-manifest row. Its lifecycle outcome data replaces the old message-only invite
+Operator invitations add a bounded TTL for direct hosts that call the parser and
+one append-only direct migration manifest row. Such hosts refuse malformed TTL
+values before writes; the managed reference runner neither calls the parser nor
+enforces invitation expiry. Its lifecycle outcome data replaces the old message-only invite
 response; active/pending-role/identity conflicts use explicit 409 identity reasons.
 Managed revoked-row reinvitation refuses with `MANAGED_REINVITE_UNSUPPORTED`.
 [Identity](IDENTITY.md#operator-invitation-lifecycle) owns the DTOs and acceptance

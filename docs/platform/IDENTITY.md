@@ -275,7 +275,9 @@ insert race re-reads the winner instead of failing; role differences return
 Managed invitations store no pending, accepted, expired or cancelled attempt in
 Auth metadata. Authorization and the public admin `me` route only read active
 native membership; neither activates on first entry nor runs compensation.
-They do not require a service key for invitation state. Managed removal retains
+The admin `me` route retains the `mutation` deployment-risk classification and
+is refused by the default public deployment policy before membership lookup.
+Neither authorization nor membership lookup requires a service key for invitation state. Managed removal retains
 its actor-authenticated revocation RPC and self/machine-target and
 last-administrator refusals. Magic-link eligibility requires active native
 membership with a stored `admin` or `distributor` role; metadata never qualifies

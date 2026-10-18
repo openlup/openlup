@@ -49,9 +49,10 @@ mounted reference interface is not proof that an adopter deployment exposes it.
 
 
 Admin invite/remove policy lives in the [identity module](../../../docs/platform/IDENTITY.md).
-The reference bindings call the package use cases directly, use their default
-English messages and retain their result codes. Notification composition still
-selects the mail locale and maps delivery receipts. The browser client's parsed
+The reference runners call the package use cases directly, pass the reference
+message catalogue and select the role-mail locale (`pl`) through the package
+inputs, and retain result codes. The notification adapter renders the supplied
+locale; reference composition maps delivery receipts. The browser client's parsed
 result accepts both response shapes. Direct pending invitations include
 `principalId`, `invitationId`, `membershipState: "invited"`, `role`, `invitedAt`,
 `expiresAt`, an outcome `code` (`INVITATION_CREATED`, `ALREADY_INVITED` or

@@ -30,5 +30,5 @@ export default withObservedRoute({
   route: "/api/bff/admin/platform/me",
   domain: "platform",
   surface: "admin",
-  risk: "read",
+  risk: "mutation",
 }, handler);

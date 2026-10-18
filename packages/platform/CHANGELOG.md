@@ -8,6 +8,10 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Preserve the reference invite/remove message catalogue and role-mail locale
+  through the package inputs. The admin `me` route retains its fail-closed
+  deployment-risk classification and public-default refusal.
+
 - Add the opt-in identity envelope proof with phase `email-trust`, including
   its fixture-only service-role grant, immediate persisted-association assertions,
   pre-existing contact linking and post-replay state checks. Phase `joint` also

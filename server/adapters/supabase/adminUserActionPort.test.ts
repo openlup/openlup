@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSupabaseAdminUserInvitePort as createInvitePort,
   createSupabaseAdminUserRemovePort as createRemovePort,
@@ -21,7 +21,65 @@ import { runRemoveAdminUserUseCase } from "../../domains/platform/removeAdminUse
 import { APP_SITE_ORIGIN } from "../../../src/lib/brand/appBrand.js";
 import { APPLICATION_ENVIRONMENT_KEY } from "../../_lib/observability/environment.js";
 
+import * as adminAuth from "../../_lib/admin-domain/auth.js";
+import * as roleNotifications from "../email/adminRoleNotificationPort.js";
+
 describe("admin user action adapter", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const runtimeEnv = {
+    SUPABASE_URL: "https://example.invalid",
+    SUPABASE_SERVICE_ROLE_KEY: "synthetic-service-key",
+    SUPABASE_ANON_KEY: "synthetic-anon-key",
+    APP_BASE_URL: "https://admin.example.com",
+    EMAIL_ENVIRONMENT: "development",
+  };
+  const callerId = "10000000-0000-4000-8000-000000000010";
+  const principalId = "10000000-0000-4000-8000-000000000011";
+
+  it.each([
+    { role: "distributor", email: "invitee@example.com", requestedRole: "admin" as const, status: 403, code: "INVITE_FORBIDDEN", error: "Tylko admini mogą zapraszać użytkowników" },
+    { role: "admin", email: "", requestedRole: "admin" as const, status: 400, code: "EMAIL_REQUIRED", error: "Brak emaila" },
+  ])("production invite runner retains reference $code copy", async ({ role, email, requestedRole, status, code, error }) => {
+    const fixture = inviteAdminClient({ authenticatedUser: { id: callerId }, callerAdmin: { id: callerId, role } });
+    vi.spyOn(adminAuth, "createServiceRoleClient").mockReturnValue(fixture.clientFactory() as never);
+
+    await expect(runInviteAdminUserHandler({ accessToken: "synthetic-token", email, role: requestedRole }, runtimeEnv))
+      .resolves.toEqual({ status, body: { code, error } });
+    expect(fixture.insertAdminUser).not.toHaveBeenCalled();
+  });
+
+  it("production invite runner selects the reference role-mail locale and retains the active result", async () => {
+    const fixture = inviteAdminClient({
+      authenticatedUser: { id: callerId }, callerAdmin: { id: callerId, role: "admin" },
+      authUsers: [{ id: principalId, email: "invitee@example.com" }],
+    });
+    const notification = roleNotification();
+    vi.spyOn(adminAuth, "createServiceRoleClient").mockReturnValue(fixture.clientFactory() as never);
+    vi.spyOn(roleNotifications, "createAdminRoleNotificationPort").mockReturnValue(notification);
+
+    await expect(runInviteAdminUserHandler({ accessToken: "synthetic-token", email: "invitee@example.com", role: "admin" }, runtimeEnv))
+      .resolves.toEqual({ status: 200, body: {
+        ...activeInvite(principalId, "admin"), success: true, code: "MEMBERSHIP_CREATED",
+        resendId: "role-mail-1", resendIdPresent: true,
+      } });
+    expect(notification.sendRoleGranted).toHaveBeenCalledWith({
+      authUserId: principalId, email: "invitee@example.com", role: "admin", locale: "pl",
+    });
+  });
+
+  it.each([
+    { role: "distributor", userId: principalId, status: 403, code: "REMOVE_FORBIDDEN", error: "Tylko administratorzy mogą odbierać dostęp użytkownikom" },
+    { role: "admin", userId: "", status: 400, code: "USER_ID_REQUIRED", error: "Brak ID użytkownika" },
+    { role: "admin", userId: callerId, status: 403, code: "SELF_REVOKE_FORBIDDEN", error: "Nie możesz odebrać sobie dostępu" },
+  ])("production remove runner retains reference $code copy", async ({ role, userId, status, code, error }) => {
+    const fixture = removeAdminClient({ authenticatedUser: { id: callerId }, callerAdmin: { id: callerId, role } });
+    vi.spyOn(adminAuth, "createAdminAuthClient").mockReturnValue(fixture.client as never);
+
+    await expect(runRemoveAdminUserHandler({ accessToken: "synthetic-token", userId }, runtimeEnv))
+      .resolves.toEqual({ status, body: { code, error } });
+    expect(fixture.revokeAdminUser).not.toHaveBeenCalled();
+  });
   it("maps invite and remove requests through injected local runners", async () => {
     const runInviteAdminUser = vi.fn().mockResolvedValue({
       status: 200,

@@ -8,7 +8,7 @@ import { APP_PRODUCTION_EMAIL_HOSTS, APP_SITE_ORIGIN } from "../../../src/lib/br
 import { readHiddenPreviewEnabled, readObservedEnvironment } from "../../_lib/observability/environment.js";
 import { createAdminAuthClient, createServiceRoleClient, resolveSupabaseAdminAuthEnv, resolveSupabaseServiceRoleEnv } from "../../_lib/admin-domain/auth.js";
 import { createAdminRoleNotificationPort, type AdminRoleNotificationClient } from "../email/adminRoleNotificationPort.js";
-import { runInviteAdminUserUseCase, type AdminRoleNotificationPort, type InviteAdminUserGateway } from "@openlup/platform/identity";
+import { identityMessages, runInviteAdminUserUseCase, type AdminRoleNotificationPort, type InviteAdminUserGateway } from "@openlup/platform/identity";
 import { runRemoveAdminUserUseCase, type RemoveAdminUserGateway } from "@openlup/platform/identity";
 import { createResendTransport as createEmailTransport } from "../../infra/email/emailTransport.js";
 
@@ -82,6 +82,8 @@ export const runInviteAdminUserHandler: AdminUserInviteRunner = async (request, 
   const result = await runInviteAdminUserUseCase(request, {
     gateway,
     activateMembership: gateway.activateMembership,
+    messages: identityMessages.pl,
+    notificationLocale: "pl",
     roleNotificationPort: {
       sendRoleGranted: (notification) => getNotificationPort().sendRoleGranted(notification),
     },
@@ -106,7 +108,7 @@ export const runRemoveAdminUserHandler: AdminUserRemoveRunner = async (request, 
   if (!config) return { status: 500, body: { error: "supabase_user_auth_not_configured" } };
 
   const actorGateway = createRemoveAdminUserGateway(() => createAdminAuthClient(config, request.accessToken) as unknown as RemoveAdminUserClient);
-  return runRemoveAdminUserUseCase(request, actorGateway);
+  return runRemoveAdminUserUseCase(request, actorGateway, identityMessages.pl);
 
 };
 

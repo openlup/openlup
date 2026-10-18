@@ -398,7 +398,7 @@
       "requiredIn": [],
       "secret": false,
       "source": "server/runtime/auth/operatorInvitationConfiguration.ts",
-      "blastRadius": "Pending operator invitations expire after an integer 60..2592000 seconds; malformed values refuse before writes. Active memberships do not expire."
+      "blastRadius": "Pending operator invitations expire after an integer 60..2592000 seconds; direct hosts that call the TTL parser refuse malformed values before writes. The managed reference runner does not call that parser or enforce this TTL. Active memberships do not expire."
     }
   ]
 }
