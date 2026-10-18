@@ -89,6 +89,19 @@ The checker reports `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`,
 its exact candidate. A host must provide complete installed metadata and selected-adapter
 observations; a report does not prove ACL, function bodies or recovery.
 
+An artifact may select logical modules through `LoadedPackage.modules`, with
+exactly one `PackageManifest.module` contribution per selected id. Artifact
+`kind` and set version still match the loaded package; `module.kind` describes
+only its logical layer. Each module keeps its own schema identity, declares its
+public `provides` entries and the entries it uses from in-artifact dependencies.
+Dependencies must exist in the selection, provide every used entry and occupy
+the same or an earlier layer (`kernel`, `rail`, `capability`, `implementation`).
+Use `package/module:id` binding keys for module ports, triggers and routes.
+Mixed modes, missing modules and duplicate owners refuse; an empty selection
+needs no contribution, and disabled modules need no SDK, port or environment.
+Legacy inputs keep their existing reports and keys. See the
+[module readiness contract](README.md#module-readiness) for validation and diagnostics.
+
 ## Using this package in an application
 
 - **Do not edit the installed package.** Do not change files under `node_modules/@openlup/`, and

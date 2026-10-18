@@ -8,6 +8,10 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add optional logical module selection, dependency/entry contracts, module-qualified bindings and module diagnostics to experimental `./readiness`. Each selected module retains an independent schema requirement within one artifact.
+
+Migration: additive API for the M03 minor set; existing manifests and loaded packages that omit module fields keep byte-identical readiness reports and binding keys. To opt an artifact in, observe `LoadedPackage.modules` and supply exactly one manifest `module` per selected id, with its logical kind, provided entries and in-artifact dependencies. Bind ports, triggers and routes as `package/module:id`; keep artifact kind/version and environment keys unchanged. Mixed modes, missing dependencies/entries and duplicate module/event/schedule/route ownership refuse using existing codes. Empty selections need no contributions; disabled modules need no bindings or schema probe. Inspect optional issue `module` when diagnosing module/schema failures. No release, publication or activation is performed by this change.
+
 ## [0.15.0]
 
 - Publishable on the npm `latest` dist-tag as `0.15.0`, from tag
