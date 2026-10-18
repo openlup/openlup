@@ -98,13 +98,17 @@ function runtimePrivilegeKeys(statement: string): string[] {
   if (execute && (execute[2] === "authenticated" ? runtimeBrowserExecutions : runtimeExecutions).has(execute[1]!)) return [`${execute[2]} EXECUTE ${execute[1]}`];
   throw new Error("reviewed replacement runtime privilege is outside the fixed capability allowlist");
 }
-// Reconcile create/link and checkout soft-account link consume only these service capabilities.
-const identityColumns: Record<string, ReadonlySet<string>> = { INSERT: new Set(["email", "auth_user_id", "acquisition_source", "lifecycle_stage"]), UPDATE: new Set(["auth_user_id"]) };
+// Reconcile create/link, checkout soft-account link and operator invitations consume only these service capabilities.
+const identityColumns: Record<string, Record<string, ReadonlySet<string>>> = {
+  clients: { INSERT: new Set(["email", "auth_user_id", "acquisition_source", "lifecycle_stage"]), UPDATE: new Set(["auth_user_id"]) },
+  admin_users: { INSERT: new Set(["id", "email", "role", "membership_state", "membership_provenance", "membership_accepted_at"]), SELECT: new Set(["email"]) },
+};
 function identityPrivilegeKeys(statement: string): string[] {
-  const grant = /^GRANT (INSERT|UPDATE) \(([a-z_, ]+)\) ON public\.clients TO service_role;$/u.exec(statement);
+  const grant = /^GRANT (INSERT|UPDATE|SELECT) \(([a-z_, ]+)\) ON public\.(clients|admin_users) TO service_role;$/u.exec(statement);
   if (grant) {
     const columns = grant[2]!.split(",").map((column) => column.trim());
-    if (columns.length > 0 && new Set(columns).size === columns.length && columns.every((column) => identityColumns[grant[1]!]!.has(column))) return columns.map((column) => `service_role ${grant[1]} clients.${column}`);
+    const allowed = identityColumns[grant[3]!]?.[grant[1]!];
+    if (allowed && columns.length > 0 && new Set(columns).size === columns.length && columns.every((column) => allowed.has(column))) return columns.map((column) => `service_role ${grant[1]} ${grant[3]}.${column}`);
   }
   throw new Error("reviewed replacement identity privilege is outside the fixed capability allowlist");
 }
@@ -294,7 +298,8 @@ function updatePolicyDefinitions(policies: Map<string, string>, bytes: Buffer): 
 
 /** Both required CI and release preparation use this exact path/byte/signature check. */
 export function assertReviewedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
-  if (bytes.includes(0x0d)) throw new Error(`reviewed replacement refuses carriage returns in a forward: ${path}`);
+  const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f;
+  if (bytes.some(controlByte)) throw new Error(`reviewed replacement refuses control characters in a forward: ${path}`);
   const targetRegistry = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);
