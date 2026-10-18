@@ -7,7 +7,6 @@ import { chmod, mkdir, link, mkdtemp, readFile, readdir, rm, stat, symlink, writ
 import { join, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { agentReviewIdentities, agentReviewReportBinding, captureAgentReviewDelta, captureSessionCandidate, checkMergePreview, heavyCommandEnvironment, heavyLeaseDirectory, prepareAgentReview, prepareAgentReviewState, pristineAgentReviewBaseline, recordAgentReview, serializeAgentReviewState, verifyAgentReview, verifyCandidateCommand, withHeavyLease } from './agent-review-session.mjs';
-import { deriveSourceReleaseContract } from './oss-source-release-contract.ts';
 
 const base = 'a'.repeat(40);
 const candidate = { base, head: 'b'.repeat(40), tree: 'c'.repeat(40), clean: true, workingDigest: 'd'.repeat(64), indexDigest: 'e'.repeat(64), changedPaths: ['source.txt'] };
@@ -757,7 +756,13 @@ describe('pinned stack bases and local final proof', () => {
       catalogue.publicPaths.push({ path, class: 'public-output' });
       catalogue.publicPaths.sort((left: { path: string }, right: { path: string }) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
       await writeFile(cataloguePath, `${JSON.stringify(catalogue, null, 2)}\n`);
-      await writeFile(join(f.cwd, 'config/openlup-source-release-contract.json'), deriveSourceReleaseContract(path => readFileSync(join(f.cwd, path))).contents);
+      // The fixture may predate a command-policy change in this candidate.
+      // Derive its independent main contract with that tree's own policy.
+      execFileSync(process.execPath, ['--input-type=module', '--eval', `
+        import { readFileSync, writeFileSync } from 'node:fs';
+        import { deriveSourceReleaseContract } from './scripts/oss-source-release-contract.ts';
+        writeFileSync('config/openlup-source-release-contract.json', deriveSourceReleaseContract(path => readFileSync(path)).contents);
+      `], { cwd: f.cwd, stdio: 'pipe' });
     } else {
       await writeFile(join(f.cwd, 'README.md'), `${await readFile(join(f.cwd, 'README.md'), 'utf8')}\n<!-- Independent main change for the merge-preview contract. -->\n`);
     }

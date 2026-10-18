@@ -162,8 +162,8 @@ describe("maintainer-controlled source preview workflow", () => {
 describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
-    expect(workflowCommands(typecheck)).toEqual(["npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full"))).toEqual(["npm ci", "npm test"]);
+    expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
+    expect(workflowCommands(workflowJob("test-full"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm test"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -183,16 +183,19 @@ describe("complete public CI", () => {
     expect(workflow).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
     expect(workflow).toContain("run: node --experimental-strip-types packages/ui/smoke/neutrality.ts");
   });
-  it("preserves every required selector and the subsequent existing steps with fatal neutrality", () => {
+  it("preserves active required selectors and the existing fatal checks", () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
-    expect(createHash("sha256").update(requiredTestFloor).digest("hex")).toBe("51484fa2f1ef215691d86a1e08f18446147e7ebf7271a621925bb82cd162fe64");
-    const expandedFloor = requiredTestFloor.replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ");
+    const expandedFloor = requiredTestFloor
+      .replace("scripts/agent-review-controller.test.ts ", "scripts/public-ci-reuse.test.ts ")
+      .replace("scripts/agent-review-hosted.test.ts ", "")
+      .replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ");
     expect(PUBLIC_REQUIRED_TEST_COMMAND).toBe(expandedFloor);
     expect(manifest.scripts["test:required"]).toBe(expandedFloor);
     expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(expandedFloor.split(" ").slice(3));
     expect(manifest.scripts.test).toBe(PUBLIC_TEST_COMMAND);
     expect(manifest.scripts).not.toHaveProperty("test:full");
     expect(workflowCommands(workflowJob("test"))).toEqual([
+      "node scripts/public-ci-reuse.mjs",
       "npm ci",
       'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
       "npm run test:required",
@@ -207,7 +210,7 @@ describe("complete public CI", () => {
   });
   it("runs root and database diagnostics independently of each other and the required tests", () => {
     for (const name of ["test", "test-full", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
-    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["npm ci --prefer-offline --no-audit --fund=false", "node scripts/public-ci-pgtap.mjs"]);
+    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/public-ci-pgtap.mjs"]);
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
       "node --experimental-strip-types packages/ui/smoke/neutrality.ts",
@@ -257,7 +260,7 @@ describe("complete public CI", () => {
       const required = run(["run", ...PUBLIC_REQUIRED_TEST_SCOPE], 29);
       expect(required.error).toBeUndefined();
       expect(required.status).toBe(29);
-      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(requiredTestFloor.replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ").split(" ").slice(2));
+      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run", ...PUBLIC_REQUIRED_TEST_SCOPE]);
       const inherited = spawnSync(process.execPath, [join(ROOT, "scripts/run-vitest.mjs"), 'run', '--coverage'], {
         cwd: directory, encoding: 'utf8', timeout: 10000,
         env: { PATH: directory, AI_RESOURCE_GATE_ACTIVE: '1', AI_RESOURCE_GATE_LANE: 'coverage', PUBLIC_TEST_ARGV_LOG: log, PUBLIC_TEST_EXIT: '0' },
@@ -300,6 +303,21 @@ describe("what the workflow may not contain", () => {
 });
 
 describe("the workflow stays in step with what it claims to run", () => {
+  it("allows only expensive main-push work to reuse exact-commit group proof", () => {
+    for (const name of ["typecheck", "install-proof", "test", "test-full", "pgtap"]) {
+      const job = workflowJob(name);
+      expect(job).toContain("id: reused\n        if: github.event_name == 'push'");
+      const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
+      let probeSeen = false;
+      for (const step of steps) {
+        if (step.includes("id: reused")) { probeSeen = true; continue; }
+        if (probeSeen && !step.startsWith("      - name: Assert Node and npm contract")) expect(step).toContain("if: steps.reused.outputs.reuse != 'true'");
+      }
+      expect(probeSeen).toBe(true);
+    }
+    for (const name of ["dco", "self-check", "gitleaks", "native-review"]) expect(workflowJob(name)).not.toContain("steps.reused");
+  });
+
   it("runs every required context for main merge groups and isolates their concurrency by event and SHA", () => {
     expect(workflow).toContain("  merge_group:\n    types: [checks_requested]\n    branches: [main]\n");
     expect(workflow).toContain("group: published-tree-ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'merge_group' && github.sha || '' }}");

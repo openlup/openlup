@@ -582,7 +582,13 @@ The [import-boundary test matrix](scripts/packages/eslint-import-map.test.ts)
 reuses one linter per loaded configuration across that configuration's samples.
 Each import-map scenario loads its own configuration. Both boundary helpers
 reject parser failures and unmatched files before checking the expected rule;
-the complete syntax, path-depth and package matrix remains collected.
+syntax tables exercise every supported loader form for each owning rule family.
+Separate path tables exercise package names, path spellings and depth boundaries
+with one canonical load. This preserves the syntax and path obligations without
+repeating their full Cartesian product. Type-only edges keep both accepted type
+loads and refused value loads. The platform package tests retain declaration,
+manifest, environment and reference checks; ESLint owns the import classifier
+for production source, with no parallel test-only implementation.
 
 `npm run lint` first checks file-leading blank-line suppressions with
 `scripts/ast-grep/check-filewide-ignore.mjs`; this check cannot be suppressed
@@ -716,6 +722,11 @@ Unmounted UI may defer interaction proof until that exact UI is selected, while
 installed authorization, money, persistence and replay controls remain tested.
 Retire dormant scenarios from the source tree rather than adding skips or
 runner exclusions; reintroduce neutral scenarios when their contract is selected.
+Remove their uncalled helper modules with them. Test a supplied tool's actual
+entrypoint or consumer; a helper retained solely for a withheld wrapper does not
+create a public acceptance obligation. SQL asset and documentation checks preserve
+readability, valid destinations and current behavior, rather than exact comment
+wording or a requirement that a useful link appear only once.
 
 The root Vitest configuration's flat per-test ceiling is 10 s outside coverage
 runs and 30 s under coverage (`scripts/ci-vitest-duration-keys.ts`). Hosted
@@ -1164,9 +1175,10 @@ intent, scope and reviewer results. Installed verify and pre-push must refuse
 missing, stale, partial or unresolved evidence; live enforcement is claimed only
 after installed refusal tests pass. These receipts do not cryptographically
 attest remote agent execution or establish hard author/signer OS separation.
-The merged authenticated verifier/controller and hosted observer remain optional
-libraries, not requirements for an external model service. Existing mechanical
-checks, DCO and applicable publication/merge authority remain required.
+The earlier signed-receipt controller and hosted observer are retired; native
+sessions retain their shared raw Git graph authentication. No external model
+service is required. Existing mechanical checks, DCO and applicable
+publication/merge authority remain required.
 
 Reuse the compact task record in the PR description instead of writing another
 manual. Explain material deviations, evidence and remaining limitations. Review
@@ -1245,6 +1257,15 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   commits.
 
 ### Merge queue
+
+After a merge, the main-push jobs may reuse the successful merge-group run for
+that exact commit. The probe validates the public repository, queue workflow,
+latest run/attempt and eight successful job executions, including both raw
+diagnostics. Missing, incomplete, contradictory or unavailable evidence runs
+the normal commands. Pull requests and merge groups always run their commands;
+DCO, policy/neutrality and secret checks also run for each main push. The six
+main-push contexts still complete, so package release checks keep their existing
+contract. This is commit equality, with no cross-commit cache or new retry.
 
 `main` takes merge commits through GitHub's merge queue, which
 builds and checks the fresh integration tree itself. A merge commit's message

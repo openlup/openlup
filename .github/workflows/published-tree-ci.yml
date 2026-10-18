@@ -1,5 +1,7 @@
 # The checks this tree runs on itself.
 #
+# Main pushes reuse expensive checks only after exact-commit merge-group proof;
+# unavailable evidence runs the ordinary commands. Event-bound cheap checks always run.
 # Six required mechanical checks preserve the protected-main contract. Full root tests
 # and pgTAP run as independent raw diagnostics; the database job creates a disposable
 # local CLI stack. The optional ninth context admits current native review only after
@@ -27,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: published-tree-ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'merge_group' && github.sha || '' }}
@@ -108,6 +111,12 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Check completed merge-group evidence for this main push
+        id: reused
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-ci-reuse.mjs
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -115,12 +124,15 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci
+        if: steps.reused.outputs.reuse != 'true'
       # NOT `npm run typecheck`. The release contract names every compiler project and carries the
       # signed preview-debt ratchet. The source-only measurement baseline is deliberately absent.
       # A new unresolved edge fails, and so does a signed edge that is gone.
       - name: Package and domain import boundaries
+        if: steps.reused.outputs.reuse != 'true'
         run: npm run lint
       - run: npm run oss:published-tree -- --typecheck
+        if: steps.reused.outputs.reuse != 'true'
 
   install-proof:
     name: install-proof
@@ -137,6 +149,12 @@ jobs:
           cache: npm
       # The public root build is the complete build truth. Its bounded chain is projected into
       # package.json and catalogued; CI does not call a source-only prebuild or deployment guard.
+      - name: Check completed merge-group evidence for this main push
+        id: reused
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-ci-reuse.mjs
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -144,8 +162,11 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci --prefer-offline --no-audit --fund=false
+        if: steps.reused.outputs.reuse != 'true'
       - run: npm run build
+        if: steps.reused.outputs.reuse != 'true'
       - name: Build the disposable subscription profile
+        if: steps.reused.outputs.reuse != 'true'
         env:
           OPENLUP_REFERENCE_PROFILE: subscription
           OPENLUP_BUILD_OUT_DIR: dist-subscription
@@ -176,6 +197,12 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Check completed merge-group evidence for this main push
+        id: reused
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-ci-reuse.mjs
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -183,7 +210,9 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci
+        if: steps.reused.outputs.reuse != 'true'
       - name: Every publishable package API and installed-artifact proof
+        if: steps.reused.outputs.reuse != 'true'
         env:
           OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
           OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}
@@ -191,12 +220,16 @@ jobs:
       # Preserve every former protected-main selector. Full discovery has its own
       # raw diagnostic job below; its failures cannot prevent these required checks.
       - name: Existing required root test coverage
+        if: steps.reused.outputs.reuse != 'true'
         run: npm run test:required
       - name: Subscription profile composition and existing renewal modal
+        if: steps.reused.outputs.reuse != 'true'
         run: npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
       - name: Materialized command-contract falsifier
+        if: steps.reused.outputs.reuse != 'true'
         run: npx vitest run scripts/oss-published-tree-check.test.ts
       - name: Neutrality ratchet CLI falsifiers
+        if: steps.reused.outputs.reuse != 'true'
         run: npx vitest run scripts/public-ci-neutrality.test.ts
 
   test-full:
@@ -213,6 +246,12 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Check completed merge-group evidence for this main push
+        id: reused
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-ci-reuse.mjs
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -220,9 +259,11 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci
+        if: steps.reused.outputs.reuse != 'true'
       # Raw full-scope result, including named existing debt. Requiredness is
       # the maintainer's ruleset decision; this job never normalizes failures.
       - name: Complete published root test run
+        if: steps.reused.outputs.reuse != 'true'
         run: npm test
 
   self-check:
@@ -293,7 +334,14 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      - name: Check completed merge-group evidence for this main push
+        id: reused
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-ci-reuse.mjs
       - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        if: steps.reused.outputs.reuse != 'true'
         with:
           version: 2.98.2
       - name: Assert Node and npm contract
@@ -303,8 +351,10 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - name: Install locked workspace dependencies
+        if: steps.reused.outputs.reuse != 'true'
         run: npm ci --prefer-offline --no-audit --fund=false
       - name: Every shipped pgTAP test against the owned managed baseline
+        if: steps.reused.outputs.reuse != 'true'
         run: node scripts/public-ci-pgtap.mjs
 
   native-review:

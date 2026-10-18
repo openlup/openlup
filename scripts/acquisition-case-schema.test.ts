@@ -51,7 +51,6 @@ describe("portable acquisition-case foundation", () => {
       expect(migration).toContain(`GRANT EXECUTE ON FUNCTION public.${signature}`);
     }
     expect((migration.match(/GRANT EXECUTE ON FUNCTION public\.acquisition_case_/g) ?? [])).toHaveLength(4);
-    expect(migration).toContain("unrelated public-schema function privileges\n-- remain unchanged");
   });
 
   it("uses owner-only keyed fingerprints and never persists raw reasons or requester keys", () => {
