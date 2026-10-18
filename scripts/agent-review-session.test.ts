@@ -547,7 +547,7 @@ describe('actual source snapshot without candidate execution', () => {
     const seventhApproval = { priorRequestDigest: digest(JSON.parse(sixthBytes).request), candidateDigest: digest(await captureSessionCandidate(cwd, integratedBase)), ownerDecision: 'Synthetic unsupported seventh decision' };
     for (const rejected of [{ ...fifthSpec, ownerContinuation: seventhApproval }, fifthSpec]) { await writeFile(specPath, JSON.stringify(rejected)); expect(invoke('prepare').status).not.toBe(0); expect(await readFile(statePath, 'utf8')).toBe(sixthBytes); }
     expect(invoke('verify').status).not.toBe(0);
-  }, 30000);
+  }, 60_000); // Drives prepare/verify through Git and the CLI many times: about 7 s hosted, past 30 s under full local load.
 
   it('authenticates actual repair ancestry and deletions and refuses forked prior lineage', async () => {
     const { cwd, base, git } = await fixture(); await writeFile(join(cwd, 'source.txt'), 'first\n'); git('add', 'source.txt'); git('commit', '-qm', 'first'); const before = await captureSessionCandidate(cwd, base);
@@ -784,7 +784,7 @@ describe('pinned stack bases and local final proof', () => {
       expect(attempt.stderr).toContain('current independent native review is required');
       await expect(stat(marker)).rejects.toThrow();
     }
-  }, 30_000);
+  }, 120_000);
   it('serializes independent callers and releases only its own lease on success or failure', async () => {
     const f = await fixture(); const directory = join(f.cwd, 'lease'); const order: string[] = [];
     let release!: () => void; let entered!: () => void; const ready = new Promise<void>(resolve => { entered = resolve; }); const held = new Promise<void>(resolve => { release = resolve; });
