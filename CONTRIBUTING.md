@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-c5ef4341acad030e2f362d89d80384aa243975e09d0b546c1c56703ecef0d2f6","reason":"The required selector inventory and its falsifier include operator runtime/browser tests and PostgreSQL identity/invitation conformance. The cold consumer classifies both identity entries and checks the new adapter missing-peer refusal; canonical SQL admission and the maintenance-command execution allowlist use existing checks. The documented command names, complete package proof and execution ownership remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-6d2cc52879f15a4d1add2db79f3d11090f1192d8fc9aa8bf396f51a9188f6e2e","reason":"The cold consumer additionally exercises privacy contract parsing, explicit managed refusal, contributor coverage and the lazy direct transaction factory. The installed-artifact proof still requires the same manifest, physically absent optional peers and explicit adapter selection; commands and execution ownership remain unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their

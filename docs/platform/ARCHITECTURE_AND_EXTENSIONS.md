@@ -30,6 +30,23 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Identity privacy uses an explicitly composed contributor registry. The identity
+package owns profile pseudonymization, cleanup and receipts; the reference owns
+the subscriptions veto on the shared transaction executor. Every assessment
+precedes every mutation, with locks held through commit. Managed composition
+supports export and refuses erasure before effects. Both direct and managed
+privacy mounts use the observed admin mutation deployment policy. Direct mounts
+apply it before authentication or privacy binding construction and take precedence
+over supplied routes; direct adopters must admit them through their deployment
+policy too. Direct mounts run admin preflight after policy admission and retain
+the handler's human-admin recheck.
+No provider SDK enters the
+contracts subtree. The reference Settings panel imports only browser contracts
+and its BFF client, and keeps personal readback in memory under a subject/session
+key. See [identity privacy](IDENTITY.md#identity-personal-data) for coverage and
+retained domain responsibilities.
+
+
 Direct human operator authentication uses a capability-local PostgreSQL store
 and the existing invitation activation in one redemption transaction. ES256
 operator-audience tokens identify the human; every authorization reads live

@@ -106,9 +106,12 @@ import { bindBlobPort } from "@openlup/platform/blob";
 import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane } from "@openlup/platform/data";
 import { createPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { createEnvAdvisoryLock } from "@openlup/platform/scheduler";
-import { createPostgresOperatorIdentityStore, createOperatorSessionService, createOperatorAdminAuth, createOperatorIdentityVerifier } from "@openlup/platform/identity";
-import { operatorChallengeRequestSchema, operatorSessionSchema } from "@openlup/platform/identity/contracts";
+import { createPostgresOperatorIdentityStore, createOperatorSessionService, createOperatorAdminAuth, createOperatorIdentityVerifier, createPostgresPrivacyUnitOfWork, createManagedPrivacyStore, createPersonalDataContributorRegistry } from "@openlup/platform/identity";
+import { operatorChallengeRequestSchema, operatorSessionSchema, privacyExportRequestSchema } from "@openlup/platform/identity/contracts";
 assert.equal(typeof createOperatorSessionService, "function");
+assert.equal(createManagedPrivacyStore().erasureSupported, false);
+assert.deepEqual(createPersonalDataContributorRegistry([], { requiredContributorIds: ["identity"] }).missingContributors, ["identity"]);
+assert(privacyExportRequestSchema.safeParse({ subject: { kind: "contact", contactId: "11111111-1111-4111-8111-111111111111" } }).success);
 assert.equal(typeof createOperatorAdminAuth, "function");
 assert.equal(typeof createOperatorIdentityVerifier, "function");
 assert(operatorChallengeRequestSchema.safeParse({ email: "admin@example.invalid" }).success);
@@ -123,6 +126,7 @@ function postgresOperations(connectionString) {
       source: { readMigrations: () => ({ migrations: [{ file: "baseline.sql", content: "SELECT 1;" }], errors: [] }), readManifest: () => manifest, evaluate: () => [] },
     }).status(),
     async () => { const lock = createEnvAdvisoryLock({ DATABASE_URL: connectionString }); try { assert.equal(await lock.tryAcquire("consumer"), true); await lock.release("consumer"); } finally { await lock.close(); } },
+    async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(async () => "privacy"); } finally { await lane.close(); } },
     async () => { const store = createPostgresOperatorIdentityStore({ connectionString }); try { return await store.findMembership("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
   ];
 }

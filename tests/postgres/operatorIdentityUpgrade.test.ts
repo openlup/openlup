@@ -20,7 +20,8 @@ const runner = (index: number, selectedRoot = process.cwd()) => createPostgresMi
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error('Operator identity conformance requires Docker PostgreSQL');
   current = JSON.parse(readFileSync('config/platform-migration-manifest.json', 'utf8'));
-  expect(current.forward.at(-1)!.file).toBe('db/platform/migrations/20261018180000_identity_operator_challenges.sql');
+  const challengeIndex = current.forward.findIndex(entry => entry.file === 'db/platform/migrations/20261018180000_identity_operator_challenges.sql');
+  expect(challengeIndex).toBeGreaterThan(0);
   for (const name of ['fresh', 'upgrade']) {
     const container = await runPostgresContainer({ name: `operator-identity-${name}-${process.pid}`, password: 'synthetic-conformance' }); containers.push(container);
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('PostgreSQL unavailable');
@@ -28,7 +29,7 @@ beforeAll(async () => {
   }
   [fresh, upgrade] = pools;
   // Exact complete predecessor catalogue, including its live object inventory.
-  const before = { ...current, forward: current.forward.slice(0, -1), objectInventorySha256: '8946821ce78565f1eb3a6c344da1a7a7fbacb514235a78d37ac38633019a3ba8' };
+  const before = { ...current, forward: current.forward.slice(0, challengeIndex), objectInventorySha256: '8946821ce78565f1eb3a6c344da1a7a7fbacb514235a78d37ac38633019a3ba8' };
   root = mkdtempSync(join(tmpdir(), 'operator-identity-upgrade-'));
   for (const entry of [before.baseline, ...before.forward]) { const file = join(root, entry.file); mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, readFileSync(entry.file)); }
   mkdirSync(join(root, 'config')); writeFileSync(join(root, 'config/platform-migration-manifest.json'), JSON.stringify(before));
@@ -187,3 +188,6 @@ it('installed ledger refuses changed hashes, paths, missing, extra and reordered
     }
   }
 });
+
+import { registerIdentityPrivacyConformance } from "./identityPrivacy.conformance.js";
+registerIdentityPrivacyConformance();

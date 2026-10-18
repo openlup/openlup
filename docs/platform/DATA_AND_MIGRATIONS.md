@@ -274,6 +274,58 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+The direct privacy forward `20261018190000_identity_privacy_erasures` appends
+position 69 and one receipt table, with default NO ACTION references and no
+functions, grants or policies. Apply it before the updated customer challenge
+store and privacy operations. Its identity SQL projection is byte-identical and
+retains the canonical path, digest and position. Preserve the complete earlier
+manifest prefix. Fresh installation, exact position-68 upgrade, replay and the
+live selected-catalog-v2 object-inventory digest require disposable PostgreSQL
+verification. Schema installation alone changes no existing identity or links.
+
+Direct erasure deletes challenges and outstanding invitations, pseudonymizes
+profile and retained identity snapshots, revokes active operator membership
+through the guarded authority, and clears only the selected contact's direct
+principal link. It never changes `clients.id` or writes `auth_user_id` and never
+cancels a subscription. Cleanup and the retained pseudonymous receipt commit in
+one transaction; replay returns the original receipt. Subscription and challenge
+relation locks precede subject locks, with bounded waits and full rollback on
+failure. Effective inherited browser/PUBLIC receipt access refuses writes.
+
+The package customer challenge store checks erasure receipts by both contact and
+principal in the transaction that calls issue/redeem, holding an `EXCLUSIVE`
+challenge-table lock through commit. Erasure takes the same conflicting lock
+before subject reads and cleanup. Thus a late challenge from an issuer that read
+before erasure cannot re-link through package redemption after erasure commits.
+Receipt reads use `ACCESS SHARE`, compatible with erasure's receipt-table
+`SHARE ROW EXCLUSIVE` lock. This guarantee covers the package adapters; hosts must
+not call the raw `customer_identity_challenge_issue` or
+`customer_identity_challenge_redeem` SQL functions directly. Those unchanged
+functions have no receipt fence. No function replacement, trigger, RLS change or
+new SQL is required for the adapter boundary.
+
+Managed erasure refuses with `MANAGED_PRIVACY_ERASURE_UNAVAILABLE`: a managed
+adopter must provide its own erasure path until a separately reviewed managed
+forward and atomic persistence capability exist. The committed column grants
+cannot perform full profile/membership pseudonymization. Managed export reports
+inaccessible fields as unavailable. No managed SQL or privilege expansion ships
+with this capability. Provider identity must be disabled rather than deleted,
+because deletion could clear immutable customer auth links. No managed provider
+mutation is composed here. See [identity privacy](IDENTITY.md#identity-personal-data)
+for retained obligations and the limits of identity completion.
+
+To run the opt-in managed privacy proof from the repository root, supply the
+local disposable-stack API URL and service key as
+`OPENLUP_MANAGED_CONFORMANCE_URL` and `OPENLUP_MANAGED_CONFORMANCE_SERVICE_KEY`.
+Set `OPENLUP_MANAGED_CONFORMANCE_DATABASE_URL` to the database owner
+(`supabase_admin`) connection, then run
+`node --experimental-strip-types tests/postgres/identityPrivacyManaged.conformance.ts`.
+Use a fresh public schema and reset the stack between proofs. The proof uses
+the shared committed migration loader and omits only the psql-only pg_dump
+`\restrict` and `\unrestrict` guard lines for node-postgres replay; migration
+SQL and erasure permissions remain unchanged.
+
+
 Operator challenges add one direct-only table and indexes, no function or
 privilege grants. Issuance, activation/consumption, bootstrap and retention use
 the trusted transaction lane. Before enabling direct login, verify effective

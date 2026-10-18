@@ -35,6 +35,7 @@ export * from "./contracts.js";
 export * from "./emailTrust.js";
 export * from "./operatorInvitations.js";
 export * from "./operatorAuth.js";
+export * from "./privacy.js";
 ```
 ## dist/identity/contracts/operatorAuth.d.ts
 
@@ -141,6 +142,72 @@ export interface CustomerAuthPort {
     }): Promise<AuthActionResult>;
     signOut(): Promise<void>;
 }
+```
+## dist/identity/contracts/privacy.d.ts
+
+```ts
+import type { OperatorSchema } from "./operatorAuth.js";
+export type PrivacySubjectRef = {
+    kind: "contact";
+    contactId: string;
+} | {
+    kind: "principal";
+    principalId: string;
+};
+export type PrivacyJson = null | boolean | number | string | PrivacyJson[] | {
+    [key: string]: PrivacyJson;
+};
+export interface PersonalDataObligation {
+    owner: string;
+    resource: string;
+    disposition: "erase" | "retain" | "unresolved";
+    reasonCode: string;
+    remote: boolean;
+}
+export interface PersonalDataDocument {
+    contributorId: string;
+    version: string;
+    data: PrivacyJson;
+    coverage: {
+        complete: boolean;
+        included: string[];
+        unavailable: string[];
+    };
+    obligations: PersonalDataObligation[];
+}
+export interface ErasureReceipt {
+    version: "identity.erasure.v1";
+    erasureId: string;
+    completedAt: string;
+    outcome: "ERASED" | "ALREADY_ERASED";
+    obligations: PersonalDataObligation[];
+}
+export interface PrivacyEraseRequest {
+    subject: PrivacySubjectRef;
+    idempotencyKey: string;
+}
+export interface PrivacyExport {
+    format: "personal-data.v1";
+    generatedAt: string;
+    subject: PrivacySubjectRef;
+    documents: PersonalDataDocument[];
+    missingContributors: string[];
+    erasure: ErasureReceipt | null;
+}
+export declare const privacySubjectSchema: OperatorSchema<PrivacySubjectRef>;
+export declare const personalDataObligationSchema: OperatorSchema<PersonalDataObligation>;
+export declare const personalDataDocumentSchema: OperatorSchema<PersonalDataDocument>;
+export declare const erasureReceiptSchema: OperatorSchema<ErasureReceipt>;
+export declare const privacyExportRequestSchema: OperatorSchema<{
+    subject: PrivacySubjectRef;
+}>;
+export declare const privacyEraseRequestSchema: OperatorSchema<PrivacyEraseRequest>;
+export declare const privacyExportResponseSchema: OperatorSchema<PrivacyExport>;
+export declare const privacyEraseResponseSchema: OperatorSchema<ErasureReceipt>;
+declare const refusalCodes: readonly ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"];
+export type PrivacyRefusalCode = typeof refusalCodes[number];
+export declare const privacyRefusalCodeSchema: OperatorSchema<PrivacyRefusalCode>;
+export {};
 ```
 ## dist/identity/contracts/providerList.d.ts
 

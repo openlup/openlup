@@ -276,7 +276,11 @@
     {
       "file": "db/platform/migrations/20261018180000_identity_operator_challenges.sql",
       "sha256": "191cf0c151a5882ad20d6043624da50afad799df739fff326d67560d3e00a031"
+    },
+    {
+      "file": "db/platform/migrations/20261018190000_identity_privacy_erasures.sql",
+      "sha256": "f39b691cb14c0e9ec1a7460d77dc46e16bca4d2448838e4882f78885a6d92351"
     }
   ],
-  "objectInventorySha256": "4dc4c0b7a83a4a49a085bf2c243d1e4223daa287912828261ee89c46d1a60627"
+  "objectInventorySha256": "f04ba91040e109ca7c79ddd73d6f31008dc735c93cedd1d536a2c006971bac65"
 }

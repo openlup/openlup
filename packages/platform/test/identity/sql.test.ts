@@ -8,7 +8,7 @@ describe("identity migration projection", () => {
     const root = new URL("../../../../", import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL("config/platform-migration-manifest.json", root), "utf8"));
     const entries = [manifest.baseline, ...manifest.forward];
-    expect(IDENTITY_MIGRATIONS.map((unit) => unit.position)).toEqual([11, 12, 29, 60, 67, 68]);
+    expect(IDENTITY_MIGRATIONS.map((unit) => unit.position)).toEqual([11, 12, 29, 60, 67, 68, 69]);
     for (const unit of IDENTITY_MIGRATIONS) {
       const canonical = readFileSync(new URL(unit.catalogPath, root));
       const projected = readFileSync(unit.url);

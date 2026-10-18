@@ -8,6 +8,16 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Mount default identity privacy routes in the shipped reference dispatcher for
+  managed bundles. Public policy refuses with `adopter_policy_required`; admitted
+  managed exports report incomplete coverage and erasure refuses without mutation.
+  Customer challenge issue/redeem reject erasure receipts for either the contact
+  or principal under the transaction lock shared with erasure, including stale
+  challenges inserted after cleanup.
+  Migration: hosts must use the package challenge adapters rather than call raw
+  challenge SQL functions directly to retain erasure re-link protection. No SQL
+  migration or declaration change is required.
+
 - Wait for direct operator session and admin state before completing pasted-token
   or callback sign-in, so delayed authorization enters the protected admin shell.
   Preserve the managed initial-session application order and retain direct tab
@@ -29,6 +39,33 @@ SemVer promise.
   Migration: all mounted direct operator routes, including `me`, use the admin
   mutation risk classification and require the adopter's deployment policy.
   Configure operator delivery through `createReferenceBffDispatch` and `createOperatorSessionBinding`.
+
+- Keep both reference admin privacy routes under deployment-policy risk
+  `mutation`. The public default refuses direct and managed requests before body/query reads
+  with 503 / `adopter_policy_required`. Direct and managed adopters reach these routes only
+  through their deployment policy, like every admin mutation route. Once admitted,
+  managed export reports incomplete coverage and erasure refuses with
+  `MANAGED_PRIVACY_ERASURE_UNAVAILABLE` without mutation. Direct mounts refuse before authentication or privacy bindings are created,
+  including when supplied routes contain the same path. Human-admin authorization
+  remains required after policy admission.
+  Migration: direct and managed hosts must bind their existing deployment policy to admit
+  these reference routes. This policy correction requires no schema migration.
+
+- Fix opt-in managed privacy conformance replay through node-postgres by omitting
+  only psql's pg_dump guard lines from the committed migration chain. Document
+  the required database owner connection; privacy assertions and grants are unchanged.
+
+- Add versioned personal-data contributors, identity export and transactional
+  direct identity erasure with subscription vetoes, challenge/invitation cleanup,
+  scoped pseudonymization, guarded operator revocation and idempotent receipts.
+  Add human-admin privacy POSTs, Settings readback and bounded customer challenge
+  expiry pruning. Managed export reports incomplete coverage; managed erasure
+  refuses with `MANAGED_PRIVACY_ERASURE_UNAVAILABLE`. Issued tokens can remain
+  valid until expiry.
+  Migration: apply the direct privacy receipt forward before the updated customer
+  challenge store or privacy operations; register required contributors and
+  declare opaque-field retention ownership. Managed adopters must provide their
+  own erasure path; no managed grants are added.
 
 - Preserve pending direct operator redemption across browser restoration and focus
   checks, including provider/callback mounting under StrictMode. Send the padded

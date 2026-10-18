@@ -62,6 +62,14 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Privacy routing additionally names the identity-owned export/erasure contracts,
+canonical receipt SQL and projection, reference privacy routes and subscription
+veto, operator Settings panel and conformance modules. These selectors retain
+previous owners' impact obligations. Package composition, runtime mounting and
+direct/managed schema limitations remain explained by their respective owners;
+generated navigation describes source locations rather than installation proof.
+
+
 Identity routing includes the direct operator challenge source and tests,
 canonical/projection SQL, runtime auth composition and browser auth seams. The
 identity guide owns their behavior; package, architecture, migration and runtime

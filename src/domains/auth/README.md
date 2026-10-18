@@ -69,3 +69,15 @@ do not load the identity contracts entry at runtime. A contact row,
 typed checkout address or soft-account link does not prove mailbox ownership.
 The [identity owner](../../../docs/platform/IDENTITY.md) describes host binding,
 cache limits and the explicit verifier-result-only migration option.
+
+## Operator privacy client
+
+`privacyClient.ts` uses browser-safe identity schemas and authenticated no-store
+POSTs to the admin identity export/erase routes. It accepts contact/principal
+references and a UUID idempotency key for erasure. Admin Settings mounts an
+identity-only panel with explicit confirmation, coverage, named refusals, retained
+obligations and receipt readback. Subject/session changes clear its in-memory
+personal data and retry key, including late responses. It writes no export into
+browser storage. Only a live human administrator may use either endpoint;
+managed erasure explicitly refuses. See the
+[identity contract](../../../docs/platform/IDENTITY.md#identity-personal-data).

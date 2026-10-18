@@ -687,3 +687,139 @@ and effective browser privileges. Its pruning witness seeds live and recently
 expired challenges alongside older rows, then checks their retention after each
 bounded batch. Fixture timestamps share a statement timestamp so their lifetimes
 respect the same ten-minute constraint as issued challenges.
+
+## Identity personal data
+
+`@openlup/platform/identity/contracts` exports strict contact/principal subject
+references, versioned contributor documents, erasure receipts and named privacy
+refusals. Each contributor declares `ownedResources` alongside its ID and version. `createPersonalDataContributorRegistry` registers explicit owners and
+versions at composition; duplicate IDs refuse, missing required contributors
+remain visible on export and refuse erasure. Every assessment completes before
+any contributor mutates data. An assessment failure rolls the transaction back.
+Identity never discovers another domain by email or cancels a subscription.
+
+`exportPersonalData` and `erasePersonalData` accept an authorized human
+administrator and an injected unit of work, registry, store, clock and ID source.
+The reference composition registers identity and a subscriptions veto in the same
+direct transaction. A `SHARE` relation lock on subscriptions holds the assessment
+through commit, including protection against concurrent insertion or activation.
+`active` refuses with `PRIVACY_ACTIVE_SUBSCRIPTION`; `paused` refuses with
+`PRIVACY_RESUMABLE_SUBSCRIPTION`. Unknown states and failed reads refuse with
+`PRIVACY_ASSESSMENT_UNAVAILABLE`. Subscriptions are read only.
+
+Resolve a subject through `clients.principal_id` on direct, or the persisted
+`auth_user_id` on managed. Equal email addresses do not join customer and operator
+principals. Direct erasure preserves `clients.id`, never writes `auth_user_id`,
+and deletes neither contact nor principal rows. It replaces email with a unique
+reserved `erased+<id>@identity.invalid` address, clears first/last name, phone and
+country, and clears the direct customer principal link. All customer challenges,
+including consumed rows, and the linked operator challenges are deleted. Pending,
+expired and cancelled invitations are deleted; accepted invitation email snapshots
+and identity-owned audit free text are redacted. Active membership is revoked
+through `platform_revoke_human_membership`; self-revocation, machine-principal and
+last-human-admin protections remain binding. Redaction of an already revoked
+membership reason uses the existing lifecycle guard without changing state or
+role or creating another revoke event. An erased principal cannot receive
+or accept another invitation. A new unrelated principal is never matched by an
+old email through this privacy operation.
+
+The identity contributor owns these profile fields and lifecycle/audit records.
+It treats other populated contact columns as opaque. `IdentityPrivacyPolicy`
+requires an explicit owner/resource/retain declaration for each such field;
+otherwise erasure returns `PRIVACY_OWNERSHIP_UNDECLARED`. The reference declares
+retention only for `lifecycle_stage` and `acquisition_source`. Nonempty metadata,
+external references and future undeclared fields therefore refuse. Export omits
+opaque payloads and reports those fields as unavailable; it excludes challenge
+hashes, provider metadata, credentials and provider tokens. Each contributor
+reports its own coverage rather than claiming a complete platform export.
+
+The direct forward `20261018190000_identity_privacy_erasures` adds a single retained
+pseudonymous receipt table. The same transaction performs identity cleanup and
+inserts the receipt with contributor versions and dispositions, without storing
+a personal export. Subject UUIDs and idempotency keys normalize hexadecimal case. A lost-response
+retry returns the original receipt and
+`ALREADY_ERASED`; a key bound to a different subject refuses with
+`PRIVACY_IDEMPOTENCY_CONFLICT`. Browser/PUBLIC effective table or column access
+to the receipt store refuses erasure with `PRIVACY_STORE_PRIVILEGES_UNSAFE`.
+Relation locks precede contact/member locks; bounded lock and statement timeouts
+roll back failed writes. The package customer challenge adapter holds an `EXCLUSIVE` lock on
+`customer_identity_challenges` from before its receipt check through issue/redeem
+and transaction commit. This conflicts with erasure's `EXCLUSIVE` challenge lock;
+a waiting operation reads the committed receipt before calling the SQL function.
+It refuses receipts for either the contact or principal, including challenges
+inserted by a stale issuer after cleanup. Receipt reads take `ACCESS SHARE`, which
+is compatible with erasure's receipt-table `SHARE ROW EXCLUSIVE` lock, avoiding a
+reverse lock-order wait. The erasure re-link guarantee applies to the package
+adapters. Hosts must not call raw `customer_identity_challenge_issue` or
+`customer_identity_challenge_redeem` SQL functions directly: those retained
+functions do not fence erasure receipts.
+
+Managed export selects only granted contact/membership columns and provider-admin
+identity fields. Country, audit/invitation history and receipts are unavailable;
+missing subscriptions coverage is explicit. Managed erasure refuses with
+`MANAGED_PRIVACY_ERASURE_UNAVAILABLE` before local or provider mutation. A managed
+adopter must provide its own erasure path until reviewed permissions and atomic
+persistence exist. No provider deletion is composed. The provider erasure port
+supports disabling an identity after committed local success; managed erasure
+does not reach that port.
+
+### Admin operations and token limits
+
+Both `POST /api/bff/admin/identity/privacy/export` and
+`POST /api/bff/admin/identity/privacy/erase` require live admin membership and an
+explicitly human actor, including in the handler for the direct bundle. Both
+routes retain deployment-policy risk `mutation`. Like invite, remove and admin
+`me`, direct and managed routes return 503 with reason `adopter_policy_required` under the
+public default before reading the request body or query. Direct and managed adopters reach
+these routes only through their `#deployment-route-policy` binding, the same
+policy mechanism used by every admin mutation route. Once that policy admits
+them, managed export reports incomplete coverage and erasure refuses with
+`MANAGED_PRIVACY_ERASURE_UNAVAILABLE` before any local or provider mutation.
+The shipped reference dispatcher mounts both privacy routes for direct and managed
+bundles without caller-supplied route entries, with the observed mutation policy enforced before
+authentication or privacy bindings are created. Supplied route entries cannot
+bypass this boundary. Admin preflight runs after policy admission, and the
+handler rechecks human-admin authority. After admission, missing
+sessions return 401; distributor or machine actors return 403; missing subjects
+return 404; live-subscription, protected-operator and idempotency conflicts return
+409. Capability, ownership, contributor and assessment refusals return 503.
+The existing BFF error details carry `privacyCode`; no adapter diagnostics or
+partial exports are returned on failure. Responses use `Cache-Control: no-store`.
+
+Admin Settings mounts an identity privacy panel accepting a contact/principal
+UUID. It displays coverage, obligations, named refusals and the committed receipt.
+Erasure requires confirmation. Documents, confirmation and the retry key live in
+component memory and clear when the subject or session changes, including when
+an older request completes later. No export is stored in browser storage.
+
+Already-issued tokens can remain cryptographically valid until expiry. Direct
+operator tokens last at most 900 seconds; customer TTL remains configured
+(default 3600 seconds, permitted range 300–86400 seconds). Revoked membership
+fails live operator authorization. The unlinked direct customer `me` returns
+403 / `FORBIDDEN`, “No customer account linked to this session.” This is not a
+claim of immediate cryptographic token revocation.
+
+`prune-challenges` now processes at most 500 operator and 500 customer challenges
+per invocation, only when expiry is strictly older than 24 hours. It preserves
+recent rate-limit history and introduces no scheduler.
+
+### Retained responsibilities
+
+| Owner | Current identity-erasure boundary |
+| --- | --- |
+| Consent and marketing | History, suppression and remote audiences remain with their owner; no reset or remote deletion is inferred. |
+| Invoices | Retained outside identity; their owner supplies document export, retention and processor handling. |
+| Subscriptions | Read-only veto and status export only; full export and lifecycle/provider retention require their owner. |
+| Orders | Retained outside identity; snapshots and remote fulfilment/payment obligations require their owner. |
+
+These are visible outstanding obligations, not successful erasure contributors.
+Identity completion never means all platform data was erased. See
+[data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) for installation
+requirements and [the package guide](../../packages/platform/README.md#personal-data)
+for composition. Disposable database proof is selected through
+`tests/postgres/operatorIdentityUpgrade.test.ts`; the local managed proof is
+`tests/postgres/identityPrivacyManaged.conformance.ts`. It loads the committed
+managed migration chain through the shared loader and omits only psql's pg_dump
+`\restrict` and `\unrestrict` guard lines for node-postgres replay. Its database
+URL must use the database owner (`supabase_admin`) connection; see the package
+guide for the three local disposable-stack settings and invocation.

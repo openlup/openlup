@@ -81,6 +81,10 @@ export const createPostgresDataGateway = () => ({ asService: () => fail("pg") })
 export const createPostgresRoleFreeTransactionLane = () => ({ run: () => fail("pg"), close: async () => {} });
 export const createPostgresMigrationRunner = () => ({ status: () => fail("pg") });
 export const createPostgresOperatorIdentityStore = () => ({ findMembership: () => fail("pg"), close: async () => {} });
+export const createPostgresPrivacyUnitOfWork = createPostgresRoleFreeTransactionLane;
+export const createManagedPrivacyStore = () => ({ erasureSupported: false });
+export const createPersonalDataContributorRegistry = (_, options) => ({ missingContributors: options.requiredContributorIds });
+export const privacyExportRequestSchema = { safeParse: () => ({ success: true }) };
 export const createOperatorSessionService = () => {};
 export const createOperatorAdminAuth = () => {};
 export const createOperatorIdentityVerifier = () => {};

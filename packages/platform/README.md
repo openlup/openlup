@@ -323,7 +323,7 @@ fixture-only grant. It proves immediate membership behaviour, without claiming
 shipped-grants readiness or managed/direct lifecycle parity.
 
 With a fresh local managed stack running, export its API URL, service key and
-PostgreSQL owner connection URL as `OPENLUP_MANAGED_CONFORMANCE_URL`,
+PostgreSQL owner (`supabase_admin`) connection URL as `OPENLUP_MANAGED_CONFORMANCE_URL`,
 `OPENLUP_MANAGED_CONFORMANCE_SERVICE_KEY` and
 `OPENLUP_MANAGED_CONFORMANCE_DATABASE_URL`, then run from the repository root:
 
@@ -336,3 +336,71 @@ The module refuses non-loopback endpoints, an already-installed public schema,
 and existing synthetic fixture identities. It retains synthetic identities;
 discard the disposable stack after the run. Its database owner connection must
 be able to replay the committed prerequisites, baseline and ordered forwards.
+
+## Personal data
+
+The experimental identity entry exposes `createPersonalDataContributorRegistry`,
+`createIdentityPersonalDataContributor`, `createPrivacyOperations`,
+`exportPersonalData`, `erasePersonalData`, `createPrivacyExportHandler` and
+`createPrivacyEraseHandler`. Browser requests, versioned contributor documents and
+receipts come from `@openlup/platform/identity/contracts`. Register every required
+contributor explicitly, with its owned fields, assessment, erase/retain operation
+and remote/retention obligations. Missing required owners refuse erasure; export
+reports missing coverage. This capability erases identity-owned data only.
+
+Direct hosts compose `createPostgresPrivacyUnitOfWork` and
+`createPostgresPrivacyStore` with the identity contributor and their domain vetoes
+using the same executor. The reference subscriptions contributor holds a relation
+lock through commit, refusing active and paused subscriptions without changing
+them. `IdentityPrivacyPolicy.retainedContactFields` names explicit retention
+owners for populated opaque columns; unknown ownership refuses. The reference
+retains lifecycle/acquisition fields, and refuses nonempty metadata or external
+references until an owner declares their disposition.
+
+Migration: apply the complete direct catalogue including
+`20261018190000_identity_privacy_erasures` before using privacy or the updated
+customer challenge store. The forward appends one receipt table at position 69
+without grants or stored functions. Direct erasure pseudonymizes identity-owned
+fields, deletes challenges and outstanding invitations, uses guarded membership
+revocation, clears only the selected contact's direct principal link, and commits
+an idempotent audit receipt atomically. Contact IDs and managed auth links never
+change. Failed writes roll back. Retained audit references are pseudonymous, not
+an assertion of anonymization. Already-issued tokens may remain valid until expiry.
+Customer challenge issuance and redemption reject a receipt for either the
+contact or principal under the same transaction-held challenge relation lock as
+erasure, including late challenges inserted after cleanup. Hosts must use the
+package adapters; calling the retained raw challenge SQL functions directly
+bypasses this erasure receipt fence.
+
+Managed hosts compose `createManagedPrivacyStore` with their structural service
+client for export. Coverage explicitly excludes inaccessible country and
+identity history/receipt fields. Managed erasure refuses with
+`MANAGED_PRIVACY_ERASURE_UNAVAILABLE`: a managed adopter must provide its own
+erasure path. The committed grants and structural client cannot provide the
+required mutations and atomic receipt. This change adds no managed forward or
+erasure grants. Provider identity is never deleted; any future composed provider
+erasure must disable it after committed local success. The managed refusal here
+occurs before reaching any provider mutation.
+
+The reference mounts authenticated human-admin export/erase POSTs and an Admin
+Settings readback panel. Direct and managed mounts require the adopter deployment
+policy under admin mutation risk; the public default returns
+`adopter_policy_required` before body/query reads, and direct mounts also refuse
+before authentication or privacy binding construction. The shipped dispatcher mounts
+both routes for managed bundles even when its caller supplies no routes. After admission,
+exports and receipts stay in memory with no-store
+responses. The maintenance `prune-challenges` command prunes separate bounded
+operator/customer batches. See [identity privacy](../../docs/platform/IDENTITY.md#identity-personal-data)
+for refusals, token limits and retained obligations.
+
+The complete direct conformance is included in
+`ai-resource-gate run --wait openlup:coverage -- npx vitest run tests/postgres/operatorIdentityUpgrade.test.ts`.
+For managed conformance, supply the same three `OPENLUP_MANAGED_CONFORMANCE_*`
+local disposable-stack settings described for operator invitations, with
+`OPENLUP_MANAGED_CONFORMANCE_DATABASE_URL` set to the database owner
+(`supabase_admin`) connection, then run
+`node --experimental-strip-types tests/postgres/identityPrivacyManaged.conformance.ts`.
+Use a fresh public schema and reset the disposable stack between proofs; the
+managed privacy proof replays the committed chain without fixture erasure grants.
+Replay through node-postgres omits only the psql-only pg_dump `\restrict` and
+`\unrestrict` guard lines; all migration SQL remains unchanged.

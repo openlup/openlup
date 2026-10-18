@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { createPostgresOperatorIdentityStore } from "@openlup/platform/identity";
+import { createPostgresOperatorIdentityStore, createPostgresCustomerChallengeStore } from "@openlup/platform/identity";
 import { readProcessEnvironment } from "../../_lib/observability/runtimeProvenance.ts";
 export async function runOperatorIdentityCommand(args: string[], env: Record<string, string | undefined>) {
   if (env.PLATFORM_BUNDLE !== "node-postgres" || !env.DATABASE_URL?.trim()) throw new Error("operator_identity_database_required");
@@ -8,7 +8,10 @@ export async function runOperatorIdentityCommand(args: string[], env: Record<str
     || (command === "prune-challenges" && !flag))) throw new Error("operator_identity_command_invalid");
   const store = createPostgresOperatorIdentityStore({ connectionString: env.DATABASE_URL });
   try {
-    return command === "bootstrap-first-administrator" ? await store.bootstrapFirstAdministrator({ email: value }) : await store.pruneChallenges({ limit: 500 });
+    if (command === "bootstrap-first-administrator") return await store.bootstrapFirstAdministrator({ email: value });
+    const customer = createPostgresCustomerChallengeStore({ connectionString: env.DATABASE_URL });
+    try { return { operator: await store.pruneChallenges({ limit: 500 }), customer: await customer.pruneChallenges({ limit: 500 }) }; }
+    finally { await customer.close(); }
   } finally { await store.close(); }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
