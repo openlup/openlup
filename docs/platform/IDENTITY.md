@@ -86,15 +86,30 @@ branch once after a concurrent create failure. The new
 returns those refusals as 400, 403, 409 or 503 and has no personalization hook.
 
 Customer soft accounts provision new auth users with `email_confirm:false`.
-The commerce contact and soft-account link are not mailbox proof. Checkout and
-paid-order retry inherit this behaviour through the managed link adapter.
+The commerce contact and soft-account link are not mailbox proof.
+`createSupabaseClientAuthLinkStore(client, emailTrustPolicy)` requires the injected
+policy on `ClientAuthLinkStore`. The linker assesses it before create-first
+provisioning or existing-identity lookup by email. An unsafe envelope returns
+`{ ok:false, code: "EMAIL_TRUST_ENVELOPE_REFUSED", message }`; unavailable,
+missing, malformed or throwing policies return `EMAIL_TRUST_SETTINGS_UNAVAILABLE`.
+These are non-fatal soft-account outcomes: callers can complete commerce without
+an identity link. No identity or link is created on refusal. Matching existing
+links return before assessment, preserving replay without a new association.
+The reference managed adapter always binds the settings-reading policy, even
+when the bundle environment selects direct storage.
 Customer magic links retain `shouldCreateUser:false`: first-login mailbox proof
 confirms the already provisioned principal. Unknown-address login creates no user.
 Neither a failed conditional link nor a failed write deletes the created identity;
 a retry recovers it through the existing duplicate lookup. Existing links and
 subscription references remain unchanged.
 
-**Migration:** the selected Auth installation must deliver and verify first-login
+**Migration:** soft-account provisioning requires a trusted envelope: automatic
+email confirmation off and all enabled non-email providers explicitly declared
+email-verifying. With automatic confirmation on, anonymous signup can confirm an
+existing unconfirmed user and obtain its session without mailbox proof. Bind the
+policy in the managed store and expose it on custom `ClientAuthLinkStore`
+implementations; an adopter may explicitly select verifier-result-only policy
+when its own trust boundary supplies that guarantee. The selected Auth installation must deliver and verify first-login
 mail for an existing unconfirmed user. Run the joint Auth/mail conformance command
 below before adopting this behaviour. Existing users are not rewritten or
 retroactively unconfirmed; no SQL projection, migration or ledger changes.
@@ -278,7 +293,10 @@ real clients, schemas, quota and padding. It consumes the captured local email's
 actual verification link, requires confirmation of the same user, rejects replayed
 and invalid verification material, and checks that provisioning replays retain
 customer/auth IDs and subscription references. An unknown address receives the
-same accepted response without creating an auth user or contact. No admin-generated
+same accepted response without sending mail or creating an auth user or contact.
+Automatic-confirmation installations refuse soft provisioning and existing-email
+linking; anonymous signup may create its own session but cannot acquire a contact
+link through the refused operation.  No admin-generated
 link, mocked delivery or owner-written confirmation substitutes for mailbox proof.
 No CI workflow, default suite or root script activates this runner.
 
@@ -354,8 +372,11 @@ Existing matching links and sessions survive envelope refusal. No route is
 newly mounted or historical identity/link rewritten by the email-trust policy.
 Customer soft-account creation now leaves the auth user unconfirmed; first login
 through the existing customer magic-link path confirms that same user after
-mailbox proof. Checkout and paid-order retry retain their existing identity/link
-and subscription IDs. Existing-user-only login, non-enumerating responses and
+mailbox proof. The linker now returns a stable non-fatal refusal before provisioning or linking
+by email when the envelope is unsafe or unavailable. The reference store reads
+managed settings regardless of the bundle environment. Matching existing links
+and subscription IDs remain unchanged. This tree contains no checkout or paid-order
+retry caller of the linker; those commerce integrations require adopter composition. Existing-user-only login, non-enumerating responses and
 padding remain unchanged.
 
 

@@ -37,6 +37,14 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
   The public map selects the neutral example; an adopter can select its own
   presentation in its application manifest without changing these adapters.
 
+The managed client-auth link binding supplies the identity package with the
+settings-reading email-trust policy, independently of bundle selection. Before
+creating or linking by email, soft provisioning requires automatic confirmation
+off and declared email-verifying providers. Unsafe or unavailable settings return
+a stable soft-account refusal without a new identity or contact link. Matching
+existing links remain replayable. See the [identity migration](../../docs/platform/IDENTITY.md#responsibility-and-composition)
+for explicit adopter policy injection and the trust boundary.
+
 ## Capability Map
 
 | Capability | Current adapters | Owns | First docs |

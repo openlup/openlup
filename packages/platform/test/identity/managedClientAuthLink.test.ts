@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { createSupabaseClientAuthLinkStore } from "../../src/identity/managedClientAuthLink.js";
 import { linkClientAuthUser } from "../../src/identity/ports.js";
 
+import { createVerifierResultOnlyEmailTrustPolicy, type EmailTrustPolicy } from "../../src/identity/emailTrustPolicy.js";
+
 const accountId = "00000000-0000-4000-8000-000000000001";
 const principalId = "00000000-0000-4000-8000-000000000002";
 const otherId = "00000000-0000-4000-8000-000000000003";
 const email = "reader@example.com";
 
-function fixture(existing = false) {
+function fixture(existing = false, policy = createVerifierResultOnlyEmailTrustPolicy()) {
   const users = new Map<string, { id: string; email: string; email_confirmed_at: string | null }>();
   if (existing) users.set(principalId, { id: principalId, email, email_confirmed_at: null });
   const contact = { id: accountId, email, auth_user_id: null as string | null };
@@ -56,11 +58,45 @@ function fixture(existing = false) {
       return query;
     },
   };
-  return { store: createSupabaseClientAuthLinkStore(client), users, contact, otherContact, events, createUser, listUsers, deleteUser,
+  return { store: createSupabaseClientAuthLinkStore(client, policy), users, contact, otherContact, events, createUser, listUsers, deleteUser,
     fail: (value: typeof failure) => { failure = value; } };
 }
 
 describe("unconfirmed soft-account provisioning", () => {
+  it.each([false, true])("untrusted envelope refuses creation and existing-email linking: existing=%s", async (existing) => {
+    const policies: EmailTrustPolicy[] = [
+      { assess: async () => ({ trusted: false, code: "EMAIL_TRUST_ENVELOPE_REFUSED" }) },
+      { assess: async () => ({ trusted: false, code: "EMAIL_TRUST_SETTINGS_UNAVAILABLE" }) },
+      { assess: async () => { throw new Error("synthetic_settings_failure"); } },
+      { assess: async () => ({ trusted: "true" }) } as unknown as EmailTrustPolicy,
+      undefined as unknown as EmailTrustPolicy,
+    ];
+    for (const [index, policy] of policies.entries()) {
+      const f = fixture(existing, policy);
+      f.store.emailTrustPolicy = policy;
+      expect(await linkClientAuthUser(f.store, email)).toEqual({ ok: false,
+        code: index === 0 ? "EMAIL_TRUST_ENVELOPE_REFUSED" : "EMAIL_TRUST_SETTINGS_UNAVAILABLE",
+        message: "Soft-account provisioning requires a trusted email envelope.",
+      });
+      expect(f.createUser).not.toHaveBeenCalled();
+      expect(f.listUsers).not.toHaveBeenCalled();
+      expect(f.events).toEqual([]);
+      expect(f.users.size).toBe(existing ? 1 : 0);
+      expect(f.contact.auth_user_id).toBeNull();
+      expect(f.otherContact.auth_user_id).toBeNull();
+      f.store.emailTrustPolicy = createVerifierResultOnlyEmailTrustPolicy();
+      expect(await linkClientAuthUser(f.store, email)).toMatchObject({ ok: true, created: !existing });
+    }
+  });
+
+  it("matching existing links survive envelope refusal without writes", async () => {
+    const f = fixture(true, { assess: vi.fn(async () => ({ trusted: false, code: "EMAIL_TRUST_ENVELOPE_REFUSED" })) });
+    f.contact.auth_user_id = principalId;
+    expect(await linkClientAuthUser(f.store, email)).toMatchObject({ ok: true, alreadyLinked: true });
+    expect(f.store.emailTrustPolicy.assess).not.toHaveBeenCalled();
+    expect(f.events).toEqual([]);
+  });
+
   it("soft_account_creation_is_unconfirmed", async () => {
     const f = fixture();
     expect(await linkClientAuthUser(f.store, "  READER@Example.COM ")).toEqual({

@@ -80,13 +80,18 @@ positions; do not apply them again to an existing canonical migration history.
   `createVerifierResultOnlyEmailTrustPolicy()`. Metadata-only verification no
   longer qualifies. Existing identities and matching account links are not rewritten.
 
-- Rename the opt-in identity envelope proof phase to `email-trust` and document
-  its fixture-only service-role grant and post-replay state checks.
-  Migration: Invoke the envelope runner with `--phase email-trust`.
 - Customer soft-account auth users are provisioned unconfirmed. Existing-user
   magic-link verification confirms the same user without replacing customer
   identities or links. Typed contact addresses do not prove mailbox ownership.
-  Migration: Ensure the selected Auth installation can deliver and verify a
+  Migration: Soft-account provisioning now requires an injected trusted email
+  envelope: automatic confirmation off and all enabled non-email providers
+  declared email-verifying. Unsafe or unavailable settings return a non-fatal
+  refusal before identity creation or email-based linking, preventing anonymous
+  signup from acquiring a commerce-linked identity merely by knowing its address.
+  Pass `emailTrustPolicy` to the managed store factory and expose it on custom
+  stores; explicit verifier-result-only composition remains available to adopters.
+  The reference managed binding always reads settings, regardless of bundle.
+  Ensure the selected Auth installation can deliver and verify a
   first-login link for an existing unconfirmed user, and run
   `node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint`.
   Existing identities are not rewritten.

@@ -160,7 +160,21 @@ the provisioned identity for retry. Customer magic links keep
 `shouldCreateUser:false`: captured mailbox proof confirms that existing user;
 unknown addresses cannot sign themselves up through this path.
 
-**Migration:** ensure the selected Auth installation can deliver and verify the
+The managed link store requires an injected `emailTrustPolicy`, assessed before
+creation or linking an existing identity by email. Unsafe or unavailable settings
+return a non-fatal soft-account refusal (`EMAIL_TRUST_ENVELOPE_REFUSED` or
+`EMAIL_TRUST_SETTINGS_UNAVAILABLE`) without creating an identity or link. Matching
+existing links retain their replay behaviour. The reference adapter binds managed
+settings assessment regardless of the selected bundle.
+
+**Migration:** soft-account provisioning requires a trusted envelope: automatic
+email confirmation disabled and every enabled non-email provider explicitly
+declared email-verifying. Automatic signup can otherwise confirm an unconfirmed
+user and issue a session to someone who merely knows the contact's address.
+Pass the policy to `createSupabaseClientAuthLinkStore(client, emailTrustPolicy)`;
+custom `ClientAuthLinkStore` implementations must expose `emailTrustPolicy`.
+An adopter may explicitly bind `createVerifierResultOnlyEmailTrustPolicy()` when
+its own trust boundary supplies the guarantee. Ensure the selected Auth installation can deliver and verify the
 first-login link for an existing unconfirmed user. Run the documented joint local conformance
 command after building core/platform. Existing identities, contact links,
 subscription references and migration history are not rewritten.

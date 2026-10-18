@@ -1732,8 +1732,9 @@ export declare function createManagedIdentityClients(createClient: SupabaseCreat
 ## dist/identity/managedClientAuthLink.d.ts
 
 ```ts
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
 import type { ClientAuthLinkStore } from "./ports.js";
-export declare function createSupabaseClientAuthLinkStore(rawClient: unknown): ClientAuthLinkStore;
+export declare function createSupabaseClientAuthLinkStore(rawClient: unknown, emailTrustPolicy: EmailTrustPolicy): ClientAuthLinkStore;
 ```
 ## dist/identity/managedCustomerMe.d.ts
 
@@ -1847,6 +1848,8 @@ export type PlatformUserAuthenticationResult = {
 ## dist/identity/ports.d.ts
 
 ```ts
+import { type EmailTrustPolicy } from "./emailTrustPolicy.js";
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
 export interface VerifiedPrincipal {
     principalId: string;
     email: string | null;
@@ -1896,7 +1899,7 @@ export type LinkClientAuthUserResult = {
     adminSelfLink: boolean;
 } | {
     ok: false;
-    code: "CLIENT_NOT_FOUND" | "MACHINE_ACTOR_REFUSED" | "CLIENT_AUTH_LINK_CONFLICT";
+    code: EmailTrustFailureCode | "CLIENT_NOT_FOUND" | "MACHINE_ACTOR_REFUSED" | "CLIENT_AUTH_LINK_CONFLICT";
     message: string;
 };
 export type SetClientAuthUserIdResult = {
@@ -1908,6 +1911,7 @@ export type SetClientAuthUserIdResult = {
     existingAuthUserId: string | null;
 };
 export interface ClientAuthLinkStore {
+    emailTrustPolicy: EmailTrustPolicy;
     findClientByEmail(email: string): Promise<{
         id: string;
         authUserId: string | null;

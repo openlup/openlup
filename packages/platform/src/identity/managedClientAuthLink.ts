@@ -1,8 +1,10 @@
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
 import type { ManagedIdentityClient, ManagedIdentityRow, ManagedIdentityUser } from "./managedClient.js";
 import type { ClientAuthLinkStore } from "./ports.js";
-export function createSupabaseClientAuthLinkStore(rawClient: unknown): ClientAuthLinkStore {
+export function createSupabaseClientAuthLinkStore(rawClient: unknown, emailTrustPolicy: EmailTrustPolicy): ClientAuthLinkStore {
   const client = rawClient as ManagedIdentityClient;
   return {
+    emailTrustPolicy,
     async findClientByEmail(email) {
       const rows = await findManagedContactsByEmail(client, email, true);
       const row = rows[0];

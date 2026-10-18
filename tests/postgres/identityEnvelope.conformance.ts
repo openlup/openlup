@@ -12,7 +12,7 @@ import { assessIdentityReadiness } from "../../server/runtime/auth/identityReadi
 import { createEnvelopeClients, createEnvelopeCustomerMagicLink } from "./identityEnvelopeManagedAdapter.ts";
 import { identityStatePreservation } from "./identityStatePreservation.conformance.ts";
 
-type Setup = { phase: "email-trust" | "joint"; scenario: string; url: string; anonKey: string; serviceRoleKey: string; mail: string; origin: string;
+type Setup = { phase?: "email-trust" | "joint"; scenario: string; url: string; anonKey: string; serviceRoleKey: string; mail: string; origin: string;
   externalProvider: string; sql: (source: string) => string };
 function response() {
   return { statusCode: 200, body: undefined as unknown, setHeader() {},
@@ -86,6 +86,20 @@ export async function runIdentityEnvelopeConformance(s: Setup) {
     return res;
   }
   if (s.scenario === "automatic") {
+    const softEmail = "automatic-soft@example.com";
+    const account = "00000000-0000-4000-8000-000000000021";
+    s.sql(`INSERT INTO public.clients(id,email) VALUES ('${account}',${quote(softEmail)});`);
+    const softStore = createSupabaseClientAuthLinkStore(clients.service, policy);
+    const refused = await linkClientAuthUser(softStore, softEmail);
+    assert.equal(refused.ok, false, "automatic confirmation admitted soft provisioning");
+    assert.ok(!refused.ok && refused.code === "EMAIL_TRUST_ENVELOPE_REFUSED");
+    assert.equal(s.sql(`SELECT count(*) FROM auth.users WHERE lower(email)=${quote(softEmail)};`), "0", "refused provisioning created an identity");
+    const signup = await clients.actor.auth.signUp({ email: softEmail, password: "Synthetic-local-password-123!" });
+    assert.equal(signup.error, null);
+    // Automatic signup may mint its own session, but cannot acquire a commerce-linked identity.
+    assert.equal(s.sql(`SELECT auth_user_id IS NULL FROM public.clients WHERE id='${account}';`), "t", "anonymous signup acquired the soft account");
+    assert.deepEqual(await linkClientAuthUser(softStore, softEmail), refused, "existing-email linking bypassed the envelope");
+    assert.equal(s.sql(`SELECT auth_user_id IS NULL FROM public.clients WHERE id='${account}';`), "t");
     const { data, error } = await clients.actor.auth.signUp({ email: "automatic@example.com", password: "Synthetic-local-password-123!" });
     assert.equal(error, null); assert.ok(data.session);
     const principal = await verifier.verifyAccessToken(data.session.access_token);
@@ -160,7 +174,7 @@ export async function runIdentityEnvelopeConformance(s: Setup) {
 /** Real first login must confirm the provisioned user, without minting a replacement. */
 async function softAccountFirstLogin(s: Setup) {
   const { service, actor } = createEnvelopeClients(s);
-  const store = createSupabaseClientAuthLinkStore(service);
+  const store = createSupabaseClientAuthLinkStore(service, bindIdentityEmailTrust({ PLATFORM_BUNDLE: "node-supabase" }, s));
   const email = "soft-account@example.com";
   const account = "00000000-0000-4000-8000-000000000011";
   const subscription = "00000000-0000-4000-8000-000000000012";
@@ -227,6 +241,11 @@ async function softAccountFirstLogin(s: Setup) {
     body: { email: unknown, locale: "en" } } as never, res as never);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { ok: true, data: { accepted: true } });
+  const mail = await fetch(`${s.mail}/api/v1/messages`, { signal: AbortSignal.timeout(3000) });
+  assert.equal(mail.status, 200);
+  const messages = await mail.json() as { messages: { To: { Address: string }[] }[] };
+  assert.equal(messages.messages.some(message => message.To.some(to => to.Address.toLowerCase() === unknown)), false,
+    "unknown-address login sent mail");
   assert.equal(userCount(unknown), "0", "unknown-address login created an auth user");
   assert.equal(s.sql(`SELECT count(*) FROM public.clients WHERE lower(email)=${quote(unknown)};`), "0");
   assert.equal(contactAndSubscription(), before);
