@@ -85,6 +85,20 @@ branch once after a concurrent create failure. The new
 [`createReconcileAccountHandler`](../../packages/platform/src/identity/reconcileAccountHandler.ts)
 returns those refusals as 400, 403, 409 or 503 and has no personalization hook.
 
+Customer soft accounts provision new auth users with `email_confirm:false`.
+The commerce contact and soft-account link are not mailbox proof. Checkout and
+paid-order retry inherit this behaviour through the managed link adapter.
+Customer magic links retain `shouldCreateUser:false`: first-login mailbox proof
+confirms the already provisioned principal. Unknown-address login creates no user.
+Neither a failed conditional link nor a failed write deletes the created identity;
+a retry recovers it through the existing duplicate lookup. Existing links and
+subscription references remain unchanged.
+
+**Migration:** the selected Auth installation must deliver and verify first-login
+mail for an existing unconfirmed user. Run the joint Auth/mail conformance command
+below before adopting this behaviour. Existing users are not rewritten or
+retroactively unconfirmed; no SQL projection, migration or ledger changes.
+
 The soft-account linker attempts identity creation first, then scans the existing
 directory only after an already-registered response. Both directory adapters
 follow `nextPage`, compare trimmed lowercase addresses, propagate lookup failures
@@ -222,6 +236,7 @@ The opt-in real Auth/mail/database proof is:
 
 ```sh
 node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust
+node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint
 ```
 
 It requires Node 24, npm 11.19.0, Docker with a running daemon, Supabase CLI
@@ -256,8 +271,16 @@ migration-ledger preservation nor subscriber survival across SQL replay.
 Package handlers exercise
 the precise mappings; the ordinary disposable profile's stricter earlier guard
 continues to reject unsuitable installations. No OAuth request is made.
-`--phase joint` is unsupported. No CI workflow, default suite or root script
-activates this runner.
+`--phase joint` additionally provisions a linked unconfirmed soft account through
+the managed package adapter, observes a null confirmation timestamp in Auth,
+and invokes the customer magic-link package handler with the reference route's
+real clients, schemas, quota and padding. It consumes the captured local email's
+actual verification link, requires confirmation of the same user, rejects replayed
+and invalid verification material, and checks that provisioning replays retain
+customer/auth IDs and subscription references. An unknown address receives the
+same accepted response without creating an auth user or contact. No admin-generated
+link, mocked delivery or owner-written confirmation substitutes for mailbox proof.
+No CI workflow, default suite or root script activates this runner.
 
 `server/runtime/auth/emailTrustBinding.test.ts` exercises the runner's database
 assertions offline with synthetic Auth/mail responses and a contact-store fixture;
@@ -271,7 +294,8 @@ The witnesses are:
 - Customer row isolation: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. It pins the reference schema's grants as they are today. Two customers each see only their own client, address, orderer profile, payment preference and account event; `authenticated` holds SELECT on those tables (on clients, column-level). The customer SELECT policies on pets, orders, order items, subscriptions, subscription lines and cycles have no `authenticated` grant behind them, so those reads are refused with SQLSTATE 42501. Anonymous reads are refused with 42501 on the customer tables and return zero rows on the three subscription tables, which hold a seeded row per customer.
 - Admin authorization: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates. The invite/remove matrix includes two additive refusal rows: an active member with a null role and an active member with an unknown role each receive 403 before either action. The witness also pins those refusals with or without a role restriction; the invite use case itself still checks only the caller's role.
 - Directory lookup: [`inviteLookupConformance.test.ts`](../../packages/platform/test/identity/inviteLookupConformance.test.ts), covering pagination, normalization, cap, errors, effect ordering and retained request spelling.
-- Contact matching: [`softLinkConformance.test.ts`](../../packages/platform/test/identity/softLinkConformance.test.ts) exercises both actual managed stores through soft linking and reconciliation with mixed-case rows, literal-match refusals, explicitly returned dotless-i and long-s lookalikes, oldest exact selection and multiple-exact-row refusal. The imported [`managedAccountLinkStore.test.ts`](../../packages/platform/test/identity/managedAccountLinkStore.test.ts) query fixture supports the bounded array lookup.
+- Soft-account provisioning: [`managedClientAuthLink.test.ts`](../../packages/platform/test/identity/managedClientAuthLink.test.ts) covers unconfirmed creation, create-first duplicate recovery, conditional linking that preserves competing and unrelated contacts, link failures without identity deletion and retries. [`customerMagicLinkHandler.test.ts`](../../packages/platform/test/identity/customerMagicLinkHandler.test.ts) pins existing-user-only sending, padding and the same accepted response for send success, unknown identity and transport failure.
+- Contact matching: [`softLinkConformance.test.ts`](../../packages/platform/test/identity/softLinkConformance.test.ts) exercises both actual managed stores through soft linking and reconciliation with mixed-case rows, literal-match refusals, explicitly returned dotless-i and long-s lookalikes, oldest exact selection and multiple-exact-row refusal. The imported [`managedAccountLinkStore.test.ts`](../../packages/platform/test/identity/managedAccountLinkStore.test.ts) query fixture supports `imatch` filtering and the bounded array lookup.
 - The imported engine, profile, session and adapter tests sit beside these witnesses; [`sql.test.ts`](../../packages/platform/test/identity/sql.test.ts) verifies canonical projection identity.
 
 The browser runtime-schema move remains pending: the existing schemas use Zod,
@@ -327,8 +351,12 @@ generic 403 response for policy refusals and its empty provider allowlist.
 The captured profile retains its stricter
 installation guard and can return its generic 503 before the package gate.
 Existing matching links and sessions survive envelope refusal. No route is
-newly mounted, soft-account creation flag changed, or historical identity/link
-rewritten by the email-trust policy.
+newly mounted or historical identity/link rewritten by the email-trust policy.
+Customer soft-account creation now leaves the auth user unconfirmed; first login
+through the existing customer magic-link path confirms that same user after
+mailbox proof. Checkout and paid-order retry retain their existing identity/link
+and subscription IDs. Existing-user-only login, non-enumerating responses and
+padding remain unchanged.
 
 
 The import intentionally brings in create-first identity resolution, the paged

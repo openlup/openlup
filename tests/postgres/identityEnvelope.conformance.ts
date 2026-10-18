@@ -4,24 +4,26 @@ import type { AddressInfo } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   createManagedEmailTrustPolicy, createReconcileAccountHandler, createSupabaseAccountLinkStore,
-  createSupabaseIdentityVerifier, type EmailTrustPolicy,
+  createSupabaseIdentityVerifier, createSupabaseClientAuthLinkStore, linkClientAuthUser,
 } from "@openlup/platform/identity";
 import { createReferenceAccountHandlers } from "../../server/runtime/public-reference/subscriptionAccount.js";
 import { bindIdentityEmailTrust } from "../../server/runtime/auth/emailTrustBinding.js";
 import { assessIdentityReadiness } from "../../server/runtime/auth/identityReadiness.js";
-import { createEnvelopeClients } from "./identityEnvelopeManagedAdapter.ts";
+import { createEnvelopeClients, createEnvelopeCustomerMagicLink } from "./identityEnvelopeManagedAdapter.ts";
 import { identityStatePreservation } from "./identityStatePreservation.conformance.ts";
 
-type Setup = { scenario: string; url: string; anonKey: string; serviceRoleKey: string; mail: string; origin: string;
+type Setup = { phase: "email-trust" | "joint"; scenario: string; url: string; anonKey: string; serviceRoleKey: string; mail: string; origin: string;
   externalProvider: string; sql: (source: string) => string };
 function response() {
   return { statusCode: 200, body: undefined as unknown, setHeader() {},
     status(code: number) { this.statusCode = code; return this; }, json(body: unknown) { this.body = body; return this; } };
 }
 const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
-async function capturedSession(s: Setup, email: string) {
+async function capturedSession(s: Setup, email: string, customerSignIn?: ReturnType<typeof createEnvelopeCustomerMagicLink>) {
   const res = response();
-  await createReferenceAccountHandlers(s, s.origin).requestSignIn({ method: "POST", headers: {}, body: { email } } as never, res as never);
+  const requestSignIn = customerSignIn ?? createReferenceAccountHandlers(s, s.origin).requestSignIn;
+  await requestSignIn({ method: "POST", headers: customerSignIn ? { "x-forwarded-for": "192.0.2.21" } : {},
+    body: customerSignIn ? { email, locale: "en" } : { email } } as never, res as never);
   assert.equal(res.statusCode, 200, "reference sign-in failed");
   for (let attempt = 0; attempt < 30; attempt++) {
     const list = await fetch(`${s.mail}/api/v1/messages`, { signal: AbortSignal.timeout(3000) });
@@ -42,7 +44,7 @@ async function capturedSession(s: Setup, email: string) {
       const fragment = new URLSearchParams(target.hash.slice(1));
       const access_token = fragment.get("access_token"), refresh_token = fragment.get("refresh_token");
       assert.ok(access_token && refresh_token, "captured mailbox proof did not establish a session");
-      return { access_token, refresh_token };
+      return { access_token, refresh_token, verificationLink: link };
     }
     await delay(1000);
   }
@@ -150,5 +152,82 @@ export async function runIdentityEnvelopeConformance(s: Setup) {
     const linked = await reconcile(existing.access_token, positivePolicy);
     assert.deepEqual((linked.body as { data: unknown }).data, { accountId, created: false, linked: true });
   }
+  if (s.phase === "joint" && s.scenario === "confirmed") await softAccountFirstLogin(s);
   assert.equal(publicCatalogueFingerprint(), beforePublicCatalogue, "proof changed the public-catalogue fingerprint");
+}
+
+
+/** Real first login must confirm the provisioned user, without minting a replacement. */
+async function softAccountFirstLogin(s: Setup) {
+  const { service, actor } = createEnvelopeClients(s);
+  const store = createSupabaseClientAuthLinkStore(service);
+  const email = "soft-account@example.com";
+  const account = "00000000-0000-4000-8000-000000000011";
+  const subscription = "00000000-0000-4000-8000-000000000012";
+  s.sql(`INSERT INTO public.clients(id,email) VALUES ('${account}',${quote(email)});
+    INSERT INTO public.subscriptions(id,client_id,cadence_days,currency,region_code,timezone,status)
+      VALUES ('${subscription}','${account}',30,'USD','ZZ','UTC','paused');`);
+  const linked = await linkClientAuthUser(store, "  SOFT-ACCOUNT@Example.COM ");
+  assert.ok(linked.ok, "soft-account link refused");
+  assert.equal(linked.created, true);
+  assert.equal(linked.clientId, account);
+  const id = linked.authUserId;
+  assert.equal(s.sql(`SELECT auth_user_id FROM public.clients WHERE id='${account}';`), id,
+    "provisioned identity was not linked to the contact");
+  const authState = () => JSON.parse(s.sql(`SELECT json_build_object('id',id,'confirmed',email_confirmed_at)
+    FROM auth.users WHERE id=${quote(id)};`)) as { id: string; confirmed: string | null };
+  const userCount = (address: string) => s.sql(`SELECT count(*) FROM auth.users WHERE lower(email)=${quote(address)};`);
+  assert.deepEqual(authState(), { id, confirmed: null }, "soft-account creation confirmed a typed address");
+  assert.equal(userCount(email), "1");
+  const contactAndSubscription = () => s.sql(`SELECT jsonb_build_object(
+    'client',(SELECT to_jsonb(c) FROM public.clients c WHERE id='${account}'),
+    'subscription',(SELECT to_jsonb(t) FROM public.subscriptions t WHERE id='${subscription}'));`);
+  const before = contactAndSubscription();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const replay = await linkClientAuthUser(store, email);
+    assert.ok(replay.ok);
+    assert.equal(replay.authUserId, id); assert.equal(replay.clientId, account);
+    assert.equal(replay.created, false); assert.equal(replay.alreadyLinked, true);
+  }
+  assert.deepEqual(authState(), { id, confirmed: null }, "provisioning replay confirmed the user");
+
+  const requestSignIn = createEnvelopeCustomerMagicLink(s);
+  const session = await capturedSession(s, email, requestSignIn);
+  const { data, error } = await actor.auth.getUser(session.access_token);
+  assert.equal(error, null);
+  assert.equal(data.user?.id, id, "first login replaced the provisioned identity");
+  assert.ok(data.user?.email_confirmed_at, "captured mailbox proof did not confirm the user");
+  assert.ok(authState().confirmed);
+  assert.equal(userCount(email), "1");
+  const replay = await linkClientAuthUser(store, email);
+  assert.ok(replay.ok);
+  assert.equal(replay.authUserId, id); assert.equal(replay.clientId, account);
+  assert.equal(replay.created, false); assert.equal(replay.alreadyLinked, true);
+  assert.equal(contactAndSubscription(), before, "first login or replay changed commerce state");
+
+  // Consume the captured link again, then malformed material: neither may yield a session.
+  const invalidLink = new URL(session.verificationLink);
+  invalidLink.searchParams.set("token", "0".repeat(64));
+  for (const link of [session.verificationLink, invalidLink]) {
+    const rejected = await fetch(link, { redirect: "manual", signal: AbortSignal.timeout(3000) });
+    if ([302, 303].includes(rejected.status)) {
+      const target = new URL(rejected.headers.get("location") ?? "", s.origin);
+      const fragment = new URLSearchParams(target.hash.slice(1));
+      assert.ok(fragment.has("error") || target.searchParams.has("error"), "invalid/replayed proof was not refused");
+      assert.equal(target.origin, s.origin); assert.equal(target.pathname, "/account/auth/callback");
+      for (const parameters of [fragment, target.searchParams]) {
+        assert.equal(parameters.has("access_token"), false); assert.equal(parameters.has("refresh_token"), false);
+      }
+    } else assert.ok([400, 401, 403, 422].includes(rejected.status), "invalid/replayed proof did not receive an Auth refusal");
+  }
+  const unknown = "unknown-login@example.com";
+  assert.equal(userCount(unknown), "0");
+  const res = response();
+  await requestSignIn({ method: "POST", headers: { "x-forwarded-for": "192.0.2.21" },
+    body: { email: unknown, locale: "en" } } as never, res as never);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true, data: { accepted: true } });
+  assert.equal(userCount(unknown), "0", "unknown-address login created an auth user");
+  assert.equal(s.sql(`SELECT count(*) FROM public.clients WHERE lower(email)=${quote(unknown)};`), "0");
+  assert.equal(contactAndSubscription(), before);
 }

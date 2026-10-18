@@ -1914,12 +1914,14 @@ export interface ClientAuthLinkStore {
     } | null>;
     findAuthUserIdByEmail(email: string): Promise<string | null>;
     findAuthUserEmailById(authUserId: string): Promise<string | null>;
+    /** Provision an unconfirmed principal; null means an existing identity needs lookup. */
     createAuthUser(email: string): Promise<string | null>;
     findAdminIdentity(authUserId: string): Promise<{
         isMachineActor: boolean;
     } | null>;
     setClientAuthUserId(clientId: string, authUserId: string): Promise<SetClientAuthUserIdResult>;
 }
+/** Link a commerce contact without proving mailbox ownership; failed links never delete identities. */
 export declare function linkClientAuthUser(store: ClientAuthLinkStore, rawEmail: string): Promise<LinkClientAuthUserResult>;
 export type AdminPrincipalRole = "admin" | "distributor";
 export type AdminAuthorizationResult = {

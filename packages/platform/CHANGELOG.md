@@ -10,8 +10,10 @@ SemVer promise.
 
 - Add the opt-in identity envelope proof with phase `email-trust`, including
   its fixture-only service-role grant, immediate persisted-association assertions,
-  pre-existing contact linking and post-replay state checks. `--phase joint` is
-  unsupported.
+  pre-existing contact linking and post-replay state checks. Phase `joint` also
+  proves unconfirmed soft-account provisioning and first-login confirmation,
+  preserving customer/auth identities and subscription references and refusing
+  unknown addresses without creating accounts.
 - Abort managed settings transport when an assessment finishes, including
   unread error response bodies, to preserve the three-second deadline.
 - Always bind managed settings assessment for the managed reconcile route.
@@ -78,6 +80,16 @@ positions; do not apply them again to an existing canonical migration history.
   `createVerifierResultOnlyEmailTrustPolicy()`. Metadata-only verification no
   longer qualifies. Existing identities and matching account links are not rewritten.
 
+- Rename the opt-in identity envelope proof phase to `email-trust` and document
+  its fixture-only service-role grant and post-replay state checks.
+  Migration: Invoke the envelope runner with `--phase email-trust`.
+- Customer soft-account auth users are provisioned unconfirmed. Existing-user
+  magic-link verification confirms the same user without replacing customer
+  identities or links. Typed contact addresses do not prove mailbox ownership.
+  Migration: Ensure the selected Auth installation can deliver and verify a
+  first-login link for an existing unconfirmed user, and run
+  `node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint`.
+  Existing identities are not rewritten.
 
 ## [0.15.0]
 

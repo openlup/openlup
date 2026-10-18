@@ -42,7 +42,7 @@ export function createSupabaseClientAuthLinkStore(rawClient: unknown): ClientAut
     async createAuthUser(email) {
       const { data, error } = await client.auth.admin.createUser({
         email,
-        email_confirm: true,
+        email_confirm: false,
       });
       if (error && isAlreadyRegistered(error)) return null;
       if (error) throw error;

@@ -148,6 +148,23 @@ in both resolution modes with all three optional peers absent.
 <!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
 
 ## Identity import candidate
+Creating a client/contact records commerce contact data, not an authentication
+identity. Creating an auth user provisions a principal. Neither a typed address
+nor a soft-account link proves mailbox ownership; reconcile may create a contact
+for an existing authenticated principal without creating that principal.
+
+Customer soft-account provisioning now creates unconfirmed auth users
+(`email_confirm:false`). Checkout and paid-order retry keep the same create-first
+lookup, normalized duplicate recovery and conditional link. Failed links retain
+the provisioned identity for retry. Customer magic links keep
+`shouldCreateUser:false`: captured mailbox proof confirms that existing user;
+unknown addresses cannot sign themselves up through this path.
+
+**Migration:** ensure the selected Auth installation can deliver and verify the
+first-login link for an existing unconfirmed user. Run the documented joint local conformance
+command after building core/platform. Existing identities, contact links,
+subscription references and migration history are not rewritten.
+
 Managed verification now requires the confirmation timestamp. Email-derived
 reconcile requires an injected `emailTrustPolicy`. Managed hosts share
 `createManagedEmailTrustPolicy` with `identityEmailTrustReadiness`; it reports
@@ -155,7 +172,7 @@ module `identity` using core's existing codes. Hosts retaining verifier-only
 admission explicitly bind `createVerifierResultOnlyEmailTrustPolicy()`.
 See the [identity policy and migration](../../docs/platform/IDENTITY.md#responsibility-and-composition)
 for the empty provider allowlist, cache/deadline, 403/503 failures and the opt-in
-`node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust` prerequisites
+`node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint` prerequisites
 and fixture-only service-role grant. Association in that disposable stack does
 not establish association under the shipped managed reference grants.
 Construction and imports perform no settings read or SDK initialization.

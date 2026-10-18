@@ -142,6 +142,7 @@ async function sendMagicLink(
     const { error } = await client.auth.signInWithOtp({
       email,
       options: {
+        // First login confirms the already provisioned principal through mailbox proof.
         shouldCreateUser: false,
         emailRedirectTo: callbackUrl.toString(),
       },

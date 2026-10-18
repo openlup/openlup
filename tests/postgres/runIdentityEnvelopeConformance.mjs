@@ -1,4 +1,4 @@
-// Opt-in envelope proof. Own every stack, keep Auth/API/mail, and refuse missing prerequisites.
+// Opt-in identity envelope and first-login proof. Own every stack, keep Auth/API/mail, and refuse missing prerequisites.
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -32,7 +32,10 @@ async function portBlock() {
   throw new Error("Identity conformance needs a free loopback port block");
 }
 async function main() {
-  if (process.argv.slice(2).join(" ") !== "--phase email-trust") throw new Error("Usage: node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust (joint is unsupported)");
+  const [flag, phase, ...extra] = process.argv.slice(2);
+  if (flag !== "--phase" || !["email-trust", "joint"].includes(phase) || extra.length) {
+    throw new Error("Usage: node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust|joint");
+  }
   if (process.versions.node.split(".")[0] !== "24" || must("npm", ["--version"]).trim() !== "11.19.0"
     || must("supabase", ["--version"]).trim() !== "2.98.2") throw new Error("Identity conformance requires Node 24, npm 11.19.0 and Supabase CLI 2.98.2");
   must("docker", ["info"]);
@@ -97,7 +100,7 @@ async function main() {
         await new Promise(done => setTimeout(done, 500));
       }
       if (!apiReady) throw new Error("Owned identity API did not expose the committed schema with its fixture-only service-role grant");
-      await runIdentityEnvelopeConformance({ scenario, url: env.API_URL, anonKey: env.ANON_KEY,
+      await runIdentityEnvelopeConformance({ phase, scenario, url: env.API_URL, anonKey: env.ANON_KEY,
         serviceRoleKey: env.SERVICE_ROLE_KEY, mail: `http://127.0.0.1:${base + 4}`,
         origin: `http://127.0.0.1:${base + 10}`, sql, externalProvider: externalProviderFixture.id });
       // No mutation or new migration can be hidden by changing checkout bytes during proof.
