@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-b242b5ab57fd6e21b1e29c85d3b014f190710dceb2a001fde2557dc880f66678","reason":"The workspace lockfile changes only the Core, Outbox and Platform versions and their exact Core peer pins for the 0.15.0 set. Required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-fe27e54326b251047bbae94af543919485559b88d1b1c28937e2f8170a85dcdb","reason":"The ESLint configuration adds an optional fixed contracts sub-entry to the existing platform module graph, allowing only canonical relative .js targets within its contracts subtree and exact public core exports, refusing non-literal load targets, and reserving ambient loader identifier names in value and type syntax plus import.meta. No module declares the entry yet. Platform's README describes this package-specific boundary; contributor setup, lint commands, check selection and gate order in this section remain unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-770168453fa44138caa7e6c49f8e1bb0105a71818a83462880fc1ba0e2837da4","reason":"The neutrality CLI still inventories both complete trees, verifies the current scanner chain and executes the actual pinned base scan before every ratchet comparison. Only exact equality of all paths and Buffer bytes lets that invocation reuse its measured base result: the current counts-mode scanners deterministically process those complete inputs. Any path or byte difference retains both scanner chains, including binary and baseline files. A new real-CLI witness checks one chain for identical inventories and both chains for seven difference classes; all 44 prior tests, helper CLI calls, 20-second limits, scanner identities, baseline allowances, required commands and CI ownership remain unchanged. This removes duplicate calculation without changing the contributor procedure or accepted neutrality semantics."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-06469722536546220062613a81ffbf4767b57cdc31fd596a9cb16126e66f1b23","reason":"The ESLint boundary tests exercise the optional platform contracts entry with synthetic graphs: canonical relative .js and exact public core imports, forbidden targets and non-literal loads, reserved ambient loader identifiers in value and type syntax, import.meta, wrapped require calls and process builtin loaders, plus browser-safe positive code. No module declares the entry yet. Platform's README explains the boundary; this section's contributor commands, required selectors, thresholds and gate order remain unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -773,6 +773,14 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+
+Within one ratchet invocation, the pinned counts-mode scanners reuse the measured
+base result only when the complete base and working inventories have identical
+paths and bytes, including baseline, scanner and binary files. Both inventories
+and pin checks still run; any difference executes both scanner chains. This
+relies on the current deterministic counting interfaces, so scanner changes must
+revisit that assumption. Separate CLI invocations never share scan results.
+
 For pull requests and merge groups, the required `--policy` self-check also
 compares the exact hosted event base with the checkout's Git objects. It refuses
 edits, deletions and mode changes to existing managed or portable migrations,

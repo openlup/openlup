@@ -201,6 +201,31 @@ function writeConsumerTsConfig(
   }, null, 2)}\n`);
 }
 
+// The same module-mode facts run in a fresh installed-artifact process and
+// compile under both consumer resolutions. No identity adapter/SDK is imported.
+function readinessModuleScenarioLines(version: string, typed: boolean): string[] {
+  return [
+    `const readinessModules${typed ? ": ReadinessInput" : ""} = {`,
+    "  candidate: { artifact: 'packed', configuration: 'modules', environment: 'test', database: 'db', schema: 'snapshot' }, inventoryComplete: true,",
+    `  loadedPackages: [{ name: '@openlup/core', version: '${version}', kind: 'kernel' }, { name: '@openlup/platform', version: '${version}', kind: 'rail', modules: ['foundation', 'identity'] }],`,
+    "  contributions: ['foundation', 'identity'].map(id => ({ handlers: [], schedules: [], routes: [], manifest: {",
+    `    name: '@openlup/platform', version: '${version}', kind: 'rail'${typed ? " as const" : ""},`,
+    `    module: { id, kind: id === 'foundation' ? 'kernel'${typed ? " as const" : ""} : 'capability'${typed ? " as const" : ""}, provides: [id === 'foundation' ? './bff' : './identity/contracts'], dependsOn: id === 'identity' ? [{ module: 'foundation', entries: ['./bff'] }] : [] },`,
+    "    emits: [], handles: [], schedules: [], routes: [], requiredPorts: ['store'], env: [],",
+    `    requiredSchema: { version: id + '-1', migration: id + '-0001.sql', objects: [{ kind: 'table'${typed ? " as const" : ""}, name: 'public.' + id }] },`,
+    "  } })), vocabulary: [], exemptions: [],",
+    "  bindings: { ports: { '@openlup/platform/foundation:store': {}, '@openlup/platform/identity:store': {} }, triggers: {}, routes: {}, env: {} },",
+    `  schemaProbe: { observe: async (req${typed ? ": RequiredSchema" : ""}) => ({ database: 'db', version: req.version, objects: req.objects.map(object => ({ object, present: true })) }) },`,
+    "};",
+    `const readinessReport${typed ? ": ReadinessReport" : ""} = await checkReadiness(readinessModules);`,
+    "if (readinessReport.state !== 'ready' || readinessReport.issues.length) throw new Error('packed module readiness failed');",
+    "readinessModules.loadedPackages[1].modules = ['foundation'];",
+    "readinessModules.contributions = readinessModules.contributions.slice(0, 1);",
+    "readinessModules.bindings.ports = { '@openlup/platform/foundation:store': {} };",
+    "if ((await checkReadiness(readinessModules)).state !== 'ready') throw new Error('disabled module readiness failed');",
+  ];
+}
+
 function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): void {
   const specifiers = Object.keys(packageJson.exports)
     .sort()
@@ -213,12 +238,13 @@ function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): 
     [
       ...fixedCatalogRuntimeImports(),
       ...fixedBoxRuntimeImports(),
-      "import { buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows } from '@openlup/core/readiness';",
+      "import { checkReadiness, buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows } from '@openlup/core/readiness';",
       `const specifiers = ${dynamicImports};`,
       "const imported = await Promise.all(specifiers.map((specifier) => import(specifier)));",
       "if (imported.length === 0) throw new Error('core package exported no public subpaths');",
       ...fixedCatalogScenarioLines(false),
       ...fixedBoxRuntimeScenarioLines(),
+      ...readinessModuleScenarioLines(packageJson.version, false),
       "if (buildGroupedPostgresSchemaProbe([]).values.length !== 3 || decodeGroupedPostgresSchemaRows([], []).length !== 0) throw new Error('grouped schema empty read failed');",
       "console.log(`core package tarball consumer ok (${imported.length} exports, total ${fixedCatalogBreakdown.orderTotalMinor})`);",
       "",
@@ -231,12 +257,13 @@ function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): 
       ...staticImports,
       ...fixedCatalogTypecheckImports(),
       ...fixedBoxTypecheckImports(),
-      "import { buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows, type PostgresSchemaCatalogEntry, type SchemaObject } from '@openlup/core/readiness';",
+      "import { checkReadiness, buildGroupedPostgresSchemaProbe, decodeGroupedPostgresSchemaRows, type PostgresSchemaCatalogEntry, type SchemaObject, type ReadinessInput, type ReadinessReport, type RequiredSchema } from '@openlup/core/readiness';",
       `const importedModules = [${staticModuleRefs}];`,
       "if (importedModules.length === 0) throw new Error('consumer typecheck imported no modules');",
       "(globalThis as Record<string, unknown>).__coreConsumerExportCounts = importedModules.map((module) => Object.keys(module).length);",
       ...fixedCatalogScenarioLines(true),
       ...fixedBoxTypecheckScenarioLines(),
+      ...readinessModuleScenarioLines(packageJson.version, true),
       "const groupedObjects: readonly SchemaObject[] = [{ kind: 'table', name: 'public.example' }];",
       "const groupedQuery: { text: string; values: readonly unknown[] } = buildGroupedPostgresSchemaProbe(groupedObjects);",
       "const groupedEntries: readonly PostgresSchemaCatalogEntry[] = decodeGroupedPostgresSchemaRows(groupedObjects, [{ ordinal: 1, present: false, shape: null }]);",

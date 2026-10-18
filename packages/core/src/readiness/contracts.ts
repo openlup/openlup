@@ -5,7 +5,7 @@ export const READINESS_CODES = ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVENT_UNHAN
 /** @beta */
 export type ReadinessCode = typeof READINESS_CODES[number];
 /** @beta */
-export interface ReadinessIssue { code: ReadinessCode; package: string; subject: string; fix: string; observation?: string }
+export interface ReadinessIssue { code: ReadinessCode; package: string; subject: string; fix: string; observation?: string; module?: string }
 /** @beta */
 export interface SchemaObject { kind: "table" | "column" | "function"; name: string; signature?: string }
 /** @beta Version is an adapter-specific migration identity, not inferred from object existence. */
@@ -16,6 +16,11 @@ export interface PackageManifest {
   emits: readonly string[]; handles: readonly string[];
   schedules: readonly { id: string; cadenceSeconds: number }[];
   routes: readonly string[]; requiredPorts: readonly string[]; env: readonly string[];
+  /** Selected logical module within this artifact; kind above remains the artifact kind. */
+  module?: {
+    id: string; kind: PackageManifest["kind"]; provides: readonly string[];
+    dependsOn: readonly { module: string; entries: readonly string[] }[];
+  };
   requiredSchema?: RequiredSchema;
 }
 /** @beta Run-bound handlers are represented by their shared inert descriptors. */
@@ -26,7 +31,7 @@ export interface Contribution {
   routes: readonly { id: string; handle: (...args: never[]) => unknown }[];
 }
 /** @beta Host-observed inventory, including core. The loader owns completeness. */
-export interface LoadedPackage { name: string; version: string; kind: PackageManifest["kind"] }
+export interface LoadedPackage { name: string; version: string; kind: PackageManifest["kind"]; modules?: readonly string[] }
 /** @beta Candidate identity must change when configuration, schema or artifact changes. */
 export interface CandidateIdentity { artifact: string; configuration: string; environment: string; database: string; schema: string }
 /** @beta */

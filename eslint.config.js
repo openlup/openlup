@@ -144,6 +144,8 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // files freely, and another module only through that module's entry
 // `<module>/index.js` along a declared edge: `values` admits any import, `types`
 // type-only imports. Every directory of packages/platform/src is a module here.
+// Optional `contracts: true` declares exactly one browser-safe sub-entry at
+// <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
   kernel: { values: [], types: [] },
   http: { values: [], types: ["bff"] },
@@ -179,8 +181,8 @@ const platformModuleEscapes = (message) => ({ message, regexes: [
 ] });
 
 // `depth` is the number of directories between the module root and the file.
-function platformModuleBoundaries(module, depth) {
-  const { values, types } = PLATFORM_MODULE_GRAPH[module];
+function platformModuleBoundaries(module, depth, graph) {
+  const { values, types } = graph[module];
   const entry = (name) => `${escapeRegex(name)}/index\\.js`;
   const toSource = `^(?:\\./)?(?:\\.\\./){${depth}}\\.\\./`;
   const message = `packages/platform module "${module}" imports its own files and other modules only through their entry <module>/index.js: `
@@ -194,9 +196,36 @@ function platformModuleBoundaries(module, depth) {
   };
 }
 
-function platformModuleRules(pkg, module) {
+// Export the same rule factory used below so synthetic graphs exercise the real wiring.
+export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) {
+  const { contracts } = graph[module];
+  if (contracts !== undefined && contracts !== true) throw new Error(`${module}: contracts must be true or omitted`);
   const ignores = testFiles(`${PLATFORM_SOURCE}/`);
   const message = `packages/platform module "${module}" imports other modules only through their entry <module>/index.js.`;
+  const contractsRules = (depth) => {
+    const segment = "[A-Za-z0-9_-][A-Za-z0-9_.-]*";
+    const relative = `(?:\\./(?:\\.\\./){0,${depth}}${depth > 0 ? `|(?:\\.\\./){1,${depth}}` : ""})${segment}(?:/${segment})*\\.js`;
+    const core = workspacePackages.find(({ name }) => name === "@openlup/core");
+    const allowed = [relative, ...core.subpaths.map((subpath) => `@openlup/core${subpath}`)];
+    const message = contracts === true
+      ? `packages/platform module "${module}" contracts import only their own contracts files and exact public core exports.`
+      : `packages/platform module "${module}" has no declared contracts entry.`;
+    const rules = boundaryRules([{ message, regexes: [contracts === true ? `^(?!(?:${allowed.join("|")})$)` : "^"] }, platformModuleEscapes(message)]);
+    // Reserve the loader-handle names in all identifier positions, including
+    // types, rather than trying to enumerate wrapped or indirect callees.
+    rules["no-restricted-syntax"].push(...[
+      "Identifier[name=/^(require|module|exports|process|globalThis|global|__dirname|__filename|Buffer)$/]",
+      "MetaProperty[meta.name='import'][property.name='meta']",
+    ].map((selector) => ({ selector, message: `${message} Contracts must not reference ambient loader identifiers or import.meta.` })));
+    // A computed load target cannot be checked against the contracts allowlist.
+    // Retain the member-call guard too: x["require"] has no require Identifier.
+    const literal = (field) => `:matches([${field}.type='Literal'][${field}.value=/^/], [${field}.type='TemplateLiteral'][${field}.expressions.length=0])`;
+    rules["no-restricted-syntax"].push(...[
+      `ImportExpression:not(${literal("source")})`,
+      `CallExpression:matches([callee.type='Identifier'][callee.name='require'], [callee.type='MemberExpression'][callee.property.name='require'][callee.computed=false], [callee.type='MemberExpression'][callee.property.value='require'][callee.computed=true]):not(${literal("arguments.0")})`,
+    ].map((selector) => ({ selector, message: `${message} Load targets must be string literals or templates without substitutions.` })));
+    return rules;
+  };
   return [
     // Beyond the deepest depth below, a file may not climb out of its directory at all; it still
     // may not reach a module through the package's own name or a URL.
@@ -205,18 +234,25 @@ function platformModuleRules(pkg, module) {
     ...Array.from({ length: MAX_PACKAGE_DEPTH - 1 }, (_, depth) => {
       const files = (extensions) => [`${PLATFORM_SOURCE}/${module}/${"*/".repeat(depth)}*.${extensions}`];
       const base = [packageIsolation(pkg, depth + 2), packageExports];
-      const { graph, typeOnly } = platformModuleBoundaries(module, depth);
+      const { graph: boundary, typeOnly } = platformModuleBoundaries(module, depth, graph);
       return [
         // No type imports in plain JavaScript: a types edge admits nothing there.
-        { files: files("{js,mjs,cjs}"), ignores, rules: boundaryRules([...base, graph, typeOnly]) },
+        { files: files("{js,mjs,cjs}"), ignores, rules: boundaryRules([...base, boundary, typeOnly]) },
         { files: files("{ts,tsx}"), ignores, rules: {
-          ...boundaryRules([...base, graph], [typeOnly]),
+          ...boundaryRules([...base, boundary], [typeOnly]),
           "@typescript-eslint/no-restricted-imports": ["error", {
             patterns: typeOnly.regexes.map((regex) => ({ regex, message: typeOnly.message, caseSensitive: true, allowTypeImports: true })),
           }],
         } },
       ];
     }).flat(),
+    // These complete allowlists replace the server rules, including type-only
+    // edges. Beyond the bounded depths, only local ./ paths and core remain.
+    { files: sourceFiles(`${PLATFORM_SOURCE}/${module}/contracts/`), ignores, rules: contractsRules(0) },
+    ...Array.from({ length: MAX_PACKAGE_DEPTH - 1 }, (_, depth) => ({
+      files: [`${PLATFORM_SOURCE}/${module}/contracts/${"*/".repeat(depth)}*.${SOURCE_EXTENSIONS}`],
+      ignores, rules: contractsRules(depth),
+    })),
   ];
 }
 
