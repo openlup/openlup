@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-b33e42e2821e8e21a3625a2c62f7f672a1797a84cf9d3c1b52bf1cb742dfe2c2","reason":"The inherited contracts-boundary mechanism now admits the declared identity module row with contracts: true and only bff/data/kernel value edges and the http type edge. Its boundary semantics and the contributor commands, required selectors and verification order described here do not change; the platform guide documents the import and its incomplete runtime-schema extraction."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-6d5c66507987f93428a601be7c36b0bfea80fc9632f4749abddb023350293474","reason":"The inherited contracts-boundary mechanism now admits the declared identity module row with contracts: true and only bff/data/kernel value edges and the http type edge. Its boundary semantics and the contributor commands, required selectors and verification order described here do not change; the platform guide documents the import and its incomplete runtime-schema extraction."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-4df3535c4e533dc5c99a1c722a912c9adbb9afa4ccc7e6a467b3d07a78150a50","reason":"The import-map proof adds identity rows to the existing positive/negative table: declared foundation entries pass and deep data, composition and scheduler imports refuse. The inherited contracts-entry tests remain. No new rule, exception, required selector or gate order is introduced."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-a41c0c12ce14419a74d5d5616b05b2c1e8032928ba9040ff460156ba6f106a39","reason":"The import-map proof adds identity rows to the existing positive/negative table: declared foundation entries pass and deep data, composition and scheduler imports refuse. The platform cold consumer classifies the two new exports in its existing inventory: identity/contracts as a nonadapter entry, identity as an adapter entry because its declarations reach the data entry's pg types. The inherited contracts-entry tests remain. No new rule, exception, required selector or gate order is introduced."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
