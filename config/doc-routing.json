@@ -577,7 +577,10 @@
         "server/runtime/customers/customerReconcileBinding.ts",
         "server/bff/customers/reconcile-account.ts",
         "server/bff/admin/platform/admin-users/invite.ts",
-        "server/bff/admin/platform/admin-users/remove.ts"
+        "server/bff/admin/platform/admin-users/remove.ts",
+        "server/runtime/auth/capturedIdentityMailbox*.ts",
+        "tests/identity/**",
+        "tests/preview/account/identity-composition.spec.ts"
       ],
       "doc": "docs/platform/IDENTITY.md",
       "anchor": ""
@@ -596,7 +599,11 @@
         "src/lib/auth/**",
         "src/integrations/supabase/customerAuthPort.ts",
         "src/integrations/supabase/customerClient.ts",
-        "src/integrations/postgres/customerAuthPort.ts"
+        "src/integrations/postgres/customerAuthPort.ts",
+        "src/public-reference/identity-main.tsx",
+        "src/public-reference/IdentityAccount.tsx",
+        "src/public-reference/IdentityAdmin.tsx",
+        "config/public-reference-identity-imports.json"
       ],
       "doc": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
       "anchor": ""

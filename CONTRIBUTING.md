@@ -129,9 +129,11 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-308db6d56f8693d0c8e793bae3440b7ecd942d78b1bffc4dc807bd205e4ea4fc","reason":"The installed-artifact consumer adds named identity adapter operations, structural managed clients, a closed SDK-absent package inventory and missing-peer falsifiers. The required test command adds two focused reference composition files, registered individually in the existing executable entrypoint inventory. Execution ownership, artifact isolation, peer-selection phases and other contributor commands remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-1782138ff3c950958a1be0c9e1db11c87bf811557d18e61fa5796e34ee737856","reason":"The public execution inventory registers the captured mailbox test and opt-in disposable identity acceptance runner, and the required-test floor includes the mailbox alongside readiness and merged composition tests. Publication admission rules, command ownership and contributor verification duties are unchanged."} -->
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-d41496e6a016bd1d5db956dfea160528714bd109fa6a59d7475b86f7a1942193","reason":"The required test command additionally selects the two identity reference composition test files. Existing build, lint, coverage, dependency installation and CI entrypoints retain their commands and execution ownership."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-068729f3310b096c6cea0b27f5468fe9efab5254276fba40946ad5d83028dfa4","reason":"The root required-test selection adds the captured mailbox while retaining readiness and merged route/profile composition coverage. Identity browser selection is opt-in; default and subscription entrypoints and existing build, lint, coverage and installation commands are unchanged."} -->
+
+
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -928,6 +930,7 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
+
 
 
 <!-- openlup-doc-impact {"unit":"tests","digest":"sha256-9bc9d077d462c3b6b310bc4a61a79297acbcacc587ac490b1e067256431d8ed6","reason":"The component journey, optional captured-mail browser proof and direct disposable PostgreSQL proof reuse the existing runners. The PostgreSQL proof uses Node for server cryptography and explicitly binds the shared storage mocks and an empty URL query to window for the browser adapter; it needs no DOM. Test commands, execution ownership and full required verification duties remain unchanged; installation proofs continue to require their owned local services."} -->

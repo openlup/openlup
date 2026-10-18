@@ -68,6 +68,14 @@ the identity guide; runtime, package and publication owners retain their
 installation, consumer and execution-contract obligations.
 
 
+
+Identity ownership includes the disposable mailbox, profile-local policy and
+opt-in acceptance sources. The browser identity owner additionally describes
+the selected entry, account/admin mounts and closed import inventory. Runtime
+and architecture owners retain the shell's admission and public-policy boundary;
+contributor owners retain verification and command-inventory obligations.
+
+
 Privacy routing additionally names the identity-owned export/erasure contracts,
 canonical receipt SQL and projection, reference privacy routes and subscription
 veto, operator Settings panel and conformance modules. These selectors retain

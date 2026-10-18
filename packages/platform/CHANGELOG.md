@@ -8,6 +8,24 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Fix disposable identity acceptance teardown: direct customer reads borrow the
+  owned query pool, and shutdown drains HTTP and route cleanup before ending the
+  pool and stopping the database. Assertion-time pool errors and cleanup failures
+  fail acceptance; late teardown disconnects no longer crash the process.
+
+- Fix the disposable identity reference's signing-key metadata so strict customer
+  and operator verifiers accept its public key before authentication proceeds.
+
+- Add an opt-in disposable identity reference shell, separate customer/operator
+  mounts, a private captured mailbox and acceptance commands for both bundles.
+  Its typed composition dispatches the admitted route table and observes packages
+  from the bundled module graph, preserving package-set and schema refusals.
+  Default and subscription browser artifacts and package declarations are unchanged.
+
+- Fix the opt-in identity acceptance runner's Node 24 module loading so build
+  tooling can resolve builtin modules. Add a service-free module-loading check;
+  installed acceptance still requires every declared prerequisite.
+
 - Repair reference identity admission: direct contacts require their principal
   link, managed lookup requires creation time, and callable typed bindings build
   the admitted handlers. Preserve observed package-set mismatches and dispatch

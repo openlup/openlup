@@ -896,4 +896,96 @@ managed migration chain through the shared loader and omits only psql's pg_dump
 URL must use the database owner (`supabase_admin`) connection; see the package
 guide for the three local disposable-stack settings and invocation.
 
-<!-- openlup-doc-impact {"unit":"identity","digest":"sha256-b490b952e16414a7d27f3b701edcf8655efbf43145c2384fc52ba564138356ca","reason":"The operator auth context changes only its code-verification comment to neutral wording. Operator sign-in, membership authorization, storage and public identity declarations are unchanged."} -->
+
+## Disposable identity reference
+
+The opt-in identity profile has a separate browser entry and closed import
+inventory. It mounts the existing customer login/callback provider and the
+operator login/callback provider, with separate session ownership. Its account
+page requires a linked customer profile; the operator landing page requires a
+recognized live role and exposes privacy controls only to administrators.
+Direct operator composition passes `providerKind="direct"`; managed composition
+omits that selector. The public static and subscription profiles retain their
+existing entrypoints and import inventories.
+
+The server shell accepts an explicit identity runtime containing the mounted
+route functions, ownership profile and the existing candidate, port bindings and
+schema observer accepted by `admitReferenceIdentity`. Callable typed ports build
+those functions through `createRoutes(ports, env)`; admission and HTTP dispatch
+use that same policy-wrapped table and its operator preflight. Request-scoped
+customer readers retain their verified actor, and operator actions retain their
+bearer across asynchronous work. The candidate snapshots the complete host
+environment, which must also match the ambient environment before listening.
+Admission must complete before listening. The shell does not manufacture schema history,
+route readiness or email-trust evidence; the selected identity composition owns
+those checks and the direct reconcile/invitation bindings. Without that
+composition the opt-in acceptance command refuses before provisioning. The
+runner uses the direct ledger or its completed owned managed replay as history,
+then probes the selected bundle's actual schema objects: direct contacts use
+`principal_id`, while managed contacts use `auth_user_id`. The disposable bundler
+observes package identities from its actual module graph, including any additional
+loaded packages; an external unresolved platform package leaves the inventory
+incomplete. Merely installed workspaces are not loaded module observations.
+Every observed package still needs a matching version and contribution.
+Both invitation paths
+capture role notifications locally; direct challenges use the private mailbox,
+and managed authentication uses the owned local mail service.
+
+The disposable profile declares its public key with signing use (`use: "sig"`),
+the ES256 algorithm and the configured key ID, as required by the strict identity
+verifier. Direct operator session construction validates this metadata before
+issuing a challenge. Customer challenge issuance and redemption do not validate
+the public verification key; customer profile reads do.
+
+Direct delivery reuses `createCapturedCustomerChallengeDelivery` with a local
+filesystem sink. Each run creates a private mailbox directory (`0700`) and
+exclusively created message files (`0600`). Customer opaque tokens, operator
+callback fragments and role notifications have separate message kinds. Reading
+and writing recheck installation ownership; symlinks and unsafe file modes
+refuse. There is no HTTP mailbox endpoint. Treat the run directory as
+credentials and remove it with its owned installation.
+
+Run the complete, opt-in installed reference proofs from the repository root:
+
+```sh
+node tests/identity/runAcceptance.mjs --bundle node-postgres
+node tests/identity/runAcceptance.mjs --bundle node-supabase
+```
+
+Both commands require the composed identity runtime, installed Node 24 and npm
+11.19.0, Docker and installed browser tooling. The direct command requires a
+cached `postgres:16` image. Managed execution additionally requires installed
+CLI 2.98.2 and the reviewed identity service-role forward in the committed chain.
+Missing prerequisites fail; neither command silently skips. Each run owns a
+random installation id, loopback services, build directory and captured mail.
+Cleanup checks container identity and labels; cleanup failure fails the run and
+retains the directory for recovery.
+
+Acceptance supplies its owned query pool to direct customer profile reads through
+the existing actor-gateway injection seam, so the composed runtime borrows that
+pool instead of opening an application-cached pool. Teardown closes the HTTP
+server, waits for mounted route work (including binding cleanup after a response),
+then ends the query pool before stopping the database. Idle-pool errors observed
+during assertions fail acceptance after cleanup; late disconnect events during
+teardown are handled without an unhandled error event. Query, route and cleanup
+failures still fail the run.
+
+The runner registers the TypeScript loader without a scoped import namespace
+so the build tooling's CommonJS builtin imports resolve on Node 24. A fast
+module-loading check runs without provisioning services:
+
+```sh
+node tests/identity/runAcceptance.mjs --bundle node-postgres --check-module-graph
+```
+
+This check loads the same acceptance module graph as the installed proof; it
+does not establish database or browser acceptance. The complete commands retain
+all prerequisite refusals.
+
+The proof invokes mounted customer sign-in/reconcile, operator sign-in,
+invitation/redemption/revocation, denial and identity privacy operations, then
+browser login, reload and logout. Direct privacy exercises active/paused
+subscription veto and receipt replay. Managed privacy expects export with its
+existing coverage limits and a no-mutation erasure refusal. These commands do
+not replace the separate complete-catalogue upgrade and adapter conformance
+suites or establish successful managed erasure.

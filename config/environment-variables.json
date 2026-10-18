@@ -426,7 +426,46 @@
       "requiredIn": [],
       "secret": false,
       "source": "src/lib/useAuth.tsx",
-      "blastRadius": "An application composition root passes this value to AuthProvider as providerKind: direct selects human operator login. Absence preserves managed authentication; unknown nonempty values refuse. The bounded reference builds do not mount the admin shell."
+      "blastRadius": "An application composition root passes this value to AuthProvider as providerKind: direct selects human operator login. Absence preserves managed authentication; unknown nonempty values refuse. The disposable identity profile mounts the operator shell using its explicit selected browser provider; the default static profile does not."
+    },
+    {
+      "name": "OPENLUP_IDENTITY_RUN_DIR",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "tests/identity/runAcceptance.mjs",
+      "blastRadius": "Private canonical directory for the disposable identity installation marker, captured messages and isolated build output."
+    },
+    {
+      "name": "OPENLUP_IDENTITY_RUN_ID",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "tests/identity/runAcceptance.mjs",
+      "blastRadius": "Random run identifier bound to the private marker, owned container and live installation nonce."
+    },
+    {
+      "name": "OPENLUP_IDENTITY_MAIL_ORIGIN",
+      "owner": "platform",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "tests/identity/runAcceptance.mjs",
+      "blastRadius": "Owned loopback managed mail catcher used only by identity browser acceptance."
     }
   ]
 }

@@ -480,3 +480,17 @@ Current migration and self-host material is evaluation-oriented. The stable-fram
 must still prove versioned upgrades, N-1 compatibility, and the complete
 expand/compatible-deploy/backfill/contract path before a stable upgrade claim is
 made.
+
+## Identity reference grants
+
+The disposable identity reference adds no migration. Its managed installed
+acceptance requires the separately reviewed forward
+supabase/migrations/20261018160000_identity_service_role_capabilities.sql.
+Once present, that forward supplies `clients` INSERT on `(email, auth_user_id,
+acquisition_source, lifecycle_stage)` and UPDATE on `auth_user_id`, plus
+`admin_users` SELECT on `email` and INSERT on `(id, email, role,
+membership_state, membership_provenance, membership_accepted_at)`.
+Until it is present, installed managed acceptance refuses. Existing labelled
+fixture-only grants in adapter conformance remain fixtures and cannot establish
+that the shipped chain supplies these permissions. The acceptance runner adds
+no compensating grants and never writes a fabricated native migration ledger.
