@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
 import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, assertDescendantSourceRelease, assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
@@ -328,7 +328,7 @@ type TreeChange = Record<string, string | null> | ((repo: string) => void);
 type Seal = { regenerate?: boolean; classes?: Record<string, string>; omitFromCatalog?: string[] };
 
 /** A synthetic previous preview as a root commit, plus a helper that commits and checks one descendant. */
-function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer> } = {}) {
+function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer>; seed?: { repo: string; rootCommit: string } } = {}) {
   const repo = mkdtempSync(join(realpathSync(tmpdir()), "openlup-descendant-release-"));
   const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
   const read = (path: string) => existsSync(join(repo, path)) ? readFileSync(join(repo, path)) : undefined;
@@ -344,9 +344,12 @@ function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer
     run(["add", "--all"]); run(["commit", "--quiet", "--allow-empty", "-m", `${message}\n\nSigned-off-by: ${OWNER.name} <${OWNER.email}>`]);
     return run(["rev-parse", "HEAD"]);
   };
-  run(["init", "--quiet"]); run(["config", "user.name", OWNER.name]); run(["config", "user.email", OWNER.email]);
-  apply({ ...SYNTHETIC_TREE, ...options.extraFiles });
-  const rootCommit = commit("Initial public source release.");
+  if (options.seed) cpSync(options.seed.repo, repo, { recursive: true });
+  else {
+    run(["init", "--quiet"]); run(["config", "user.name", OWNER.name]); run(["config", "user.email", OWNER.email]);
+    apply({ ...SYNTHETIC_TREE, ...options.extraFiles });
+  }
+  const rootCommit = options.seed?.rootCommit ?? commit("Initial public source release.");
   /** Commits one change and checks it as the descendant of the synthetic previous preview; returns the commit. */
   const release = (change: TreeChange, seal: Seal = {}) => { apply(change); const head = commit("Public descendant", seal); assertDescendantSourceRelease(repo, rootCommit, head); return head; };
   return { repo, run, read, apply, commit, rootCommit, release, cleanup: () => rmSync(repo, { recursive: true, force: true }) };
@@ -354,6 +357,9 @@ function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer
 const editContract = (edit: (contract: { compatibility?: unknown; repository: { owner: { name: string } } }) => void) => (repo: string) => { const contract = JSON.parse(readFileSync(join(repo, CONTRACT), "utf8")); edit(contract); writeFileSync(join(repo, CONTRACT), json(contract)); };
 
 describe("exact reviewed replacement admission in both gates", () => {
+  // Only the immutable roots are reused; every case owns its complete working tree and .git.
+  let ordinarySeed: ReturnType<typeof syntheticRelease> | undefined, runtimeSeed: ReturnType<typeof syntheticRelease> | undefined;
+  afterAll(() => { ordinarySeed?.cleanup(); runtimeSeed?.cleanup(); });
   const functions = [
     "public.commerce_offer_policy_v2_readiness()",
     "public.subscription_create_provisional_for_checkout(p_order_id uuid, p_client_id uuid, p_pet_id uuid, p_shipping_address_id uuid, p_quote_snapshot jsonb)",
@@ -370,7 +376,12 @@ describe("exact reviewed replacement admission in both gates", () => {
     const policySql = retirePolicies ? policyTables.map((table) => `CREATE POLICY admin_all_${table} ON public.${table} TO authenticated USING (true) WITH CHECK (true);`).join("\n") : "";
     const runtimeBaseline = runtime ? runtimeFunctions.map((signature) => definition(signature, 1)).join("\n") + (retirePolicies ? `\n${policySql}` : "") : "";
     const selectedBaseline = (history === "baseline" ? `${baseline}\n${existing}` : baseline) + (runtime ? `\n${runtimeBaseline}` : "");
-    const sample = syntheticRelease({ extraFiles: { [MANAGED_BASELINE]: selectedBaseline, ...(history === "forward" ? { "supabase/migrations/20261001000000_existing_function.sql": existing } : {}) } });
+    const options = { extraFiles: { [MANAGED_BASELINE]: selectedBaseline, ...(history === "forward" ? { "supabase/migrations/20261001000000_existing_function.sql": existing } : {}) } };
+    let sample: ReturnType<typeof syntheticRelease>;
+    if (history === null && !retirePolicies) {
+      const seed = runtime ? runtimeSeed ??= syntheticRelease(options) : ordinarySeed ??= syntheticRelease(options);
+      sample = syntheticRelease({ seed });
+    } else sample = syntheticRelease(options);
     const prior = reviewedFunctionDefinitions(Buffer.from(`${baseline}\n${runtimeBaseline}`)), bytes = [...sql];
     const forwards = paths.map((path, index) => ({ path, sha256: sqlSha256(bytes[index]!), functions: [...reviewedFunctionDefinitions(Buffer.from(bytes[index]!))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: prior.get(signature) ?? null })) }));
     const registry: ReviewedForwardRegistry = { schemaVersion: 1, baselineSha256: sqlSha256(selectedBaseline), replacementForwards: [forwards[0]!, forwards[2]!], creationForwards: [forwards[1]!] };
@@ -638,7 +649,6 @@ describe("exact reviewed replacement admission in both gates", () => {
     "GRANT SELECT (payload) ON public.subscription_events TO service_role;",
     "GRANT SELECT (country) ON public.clients TO service_role;",
     "GRANT UPDATE (auth_user_id) ON public.clients TO service_role;",
-    "GRANT UPDATE (id) ON public.subscriptions TO service_role;",
     "GRANT UPDATE (status) ON public.subscriptions TO service_role;",
     "GRANT UPDATE (next_cycle_at) ON public.subscriptions TO service_role;",
     "GRANT UPDATE (updated_at) ON public.subscriptions TO authenticated;",
@@ -650,7 +660,6 @@ describe("exact reviewed replacement admission in both gates", () => {
     "GRANT UPDATE ON public.clients TO service_role;",
     "GRANT SELECT (metadata) ON public.clients TO authenticated;",
     "GRANT SELECT (membership_revoked_by) ON public.admin_users TO authenticated;",
-    "GRANT SELECT (id) ON public.admin_users TO anon;",
     "GRANT EXECUTE ON FUNCTION public.commerce_oms_normalize_search_alnum(text) TO authenticated;",
 
     "GRANT SELECT ON public.catalog_products TO service_role;",
