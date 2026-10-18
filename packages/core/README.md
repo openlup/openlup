@@ -27,10 +27,8 @@ complete host inventory, actual schedule/route function bindings and a bounded
 schema probe. It never migrates, leases or sends. Only `ready` admits a candidate;
 `unknown` and `unsatisfied` retain the serving candidate. The host owns immutable
 artifact/configuration/schema identity and admission at every work entrance.
-A legacy artifact requires exactly one contribution per non-kernel package.
-An artifact can instead declare its selected logical modules in the host-observed
-`LoadedPackage.modules` inventory and compose one `PackageManifest.module`
-contribution per selected id. See [module readiness](#module-readiness).
+Legacy artifacts require one contribution per non-kernel package; selected logical
+modules use [module readiness](#module-readiness).
 
 For PostgreSQL catalog inspection, import `buildGroupedPostgresSchemaProbe`,
 `decodeGroupedPostgresSchemaRows` and `PostgresSchemaCatalogEntry` from
@@ -210,45 +208,12 @@ neutrality evidence, not package activation or consumer compatibility evidence.
 
 ### Module readiness
 
-For hosts composing the experimental `./readiness` API, artifact identity stays
-`name`, `version` and `kind`. An optional manifest `module` carries its own `id`,
-logical `kind`, public `provides` entries and `dependsOn` module/entry contracts.
-Each contribution retains one independent `requiredSchema` migration identity.
-Kinds follow `kernel`, `rail`, `capability`, `implementation`; dependencies may
-use the same or an earlier layer within the same artifact, and every used entry
-must appear in the dependency's `provides`. Logical kinds do not change artifact
-kind validation or the existing kernel producer exemption.
-
-Observe selected ids with `LoadedPackage.modules` and compose exactly one module
-contribution per id. An omitted inventory keeps legacy behavior only when its
-contributions also omit `module`. Mixing modes, unlisted contributions, missing
-modules/dependencies, wrong artifact versions/kinds and undeclared dependency
-entries refuse with `OPENLUP_E_SET_MISMATCH`. An empty selection with no
-contributions is ready; a disabled module needs no bindings, environment or
-schema observation. Inventory comes from the host; core adds no loader or discovery.
-
-Module ids use lowercase letters, digits and hyphens, starting with a letter or
-digit. Public entries use `.` for the root or `./` paths with nonempty letter/digit/underscore/hyphen
-segments, such as `./bff` and `./identity/contracts`. Inventory ids, provided
-entries, dependency module ids and each dependency's used entries must be unique.
-Bindings use `@openlup/package/module:id` for module ports, triggers and routes;
-legacy keys stay `@openlup/package:id`. Environment keys remain the named variables.
-Each schedule/route id has one owner within an artifact, even with different
-module-qualified keys. Event producer/consumer ownership remains global and now
-identifies modules; exemptions retain their existing rules.
-
-Issues expose optional `module` identity, including independent schema gaps and
-migration fixes. Existing issue sort keys are unchanged. Schema uncertainty in
-one selected module makes the report `unknown`; a host admits only `ready` and
-keeps its serving candidate otherwise. Inputs without either optional module
-field retain their complete legacy report, including issue order.
-
-The standalone readiness smoke tests preserve full pre-change JSON reports for
-legacy cases and inert outbox factory/reference-admission shapes, and exercise
-selection, dependency, ownership, binding and independent schema failures. The
-packed-consumer fixture also uses two modules under NodeNext and Bundler and
-imports core in a fresh process with no identity adapter SDK dependency.
-
+Selected `./readiness` modules retain independent schema requirements.
+Dependencies use the same or an earlier layer:
+`kernel`, `rail`, `capability`, `implementation`.
+See [CHANGELOG migration guidance](CHANGELOG.md#unreleased) for selection,
+bindings, refusals and diagnostics, and the source checkout's
+`api/readiness.api.md` snapshot for declarations; the host owns inventory.
 
 - [`docs/SUBSCRIPTION_ENGINE.md`](docs/SUBSCRIPTION_ENGINE.md) — what the
   `./subscription` kernel owns, its deterministic-clock contract, the
