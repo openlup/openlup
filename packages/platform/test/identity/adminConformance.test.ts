@@ -24,6 +24,8 @@ describe("W2 real membership authorizer at invite/remove HTTP gates", () => {
   it.each([
     ["revoked admin", { role: "admin", membership_state: "revoked" }, "token", 403],
     ["distributor", { role: "distributor", membership_state: "active" }, "token", 403],
+    ["null role", { role: null, membership_state: "active" }, "token", 403],
+    ["unknown role", { role: "unknown-role", membership_state: "active" }, "token", 403],
     ["valid-token non-member", null, "token", 403],
     ["anonymous", null, null, 401],
   ] as const)("refuses %s before either action", async (_label, row, token, status) => {
@@ -54,9 +56,11 @@ describe("W2 real membership authorizer at invite/remove HTTP gates", () => {
   });
 });
 
-describe("W3 current role fallback", () => {
-  it.each([null, "unknown-role"])("authorizes %s as admin today", async (role) => {
-    await expect(authorizeAdminWithUser(client({ role, membership_state: "active", is_machine_actor: false }), "token", { allowedRoles: ["admin"] })).resolves.toEqual({ ok: true, userId: "caller", role: "admin", isMachineActor: false });
+describe("W3 fail-closed operator roles (changed witness)", () => {
+  it.each([null, "unknown-role"])("refuses %s with or without a role restriction", async (role) => {
+    for (const options of [undefined, { allowedRoles: ["admin"] as const }, { allowedRoles: ["distributor"] as const }]) {
+      await expect(authorizeAdminWithUser(client({ role, membership_state: "active", is_machine_actor: false }), "token", options)).resolves.toEqual({ ok: false, code: "FORBIDDEN", message: "Admin role required" });
+    }
   });
 });
 

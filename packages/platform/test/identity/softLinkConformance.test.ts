@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { findOrCreateAuthUserId, linkClientAuthUser, type ClientAuthLinkStore } from "../../src/identity/ports.js";
 import { createSupabaseClientAuthLinkStore } from "../../src/identity/managedClientAuthLink.js";
+import { createSupabaseAccountLinkStore } from "../../src/identity/managedAccountLinkStore.js";
+import { reconcileAccountForPrincipal } from "../../src/identity/reconcileAccountForPrincipal.js";
 import type { ManagedIdentityClient } from "../../src/identity/managedClient.js";
 
 describe("create-first soft-account linking", () => {
@@ -47,5 +49,73 @@ describe("create-first soft-account linking", () => {
     listUsers.mockReset().mockResolvedValue({ data: { users: Array.from({ length: 1000 }, () => ({ id: "other" })), nextPage: 2 }, error: null });
     await expect(store.findAuthUserIdByEmail("user@example.invalid")).rejects.toThrow("auth_user_lookup_cap_exceeded");
     expect(listUsers).toHaveBeenCalledTimes(5);
+  });
+});
+
+
+// Simulate the database's case-sensitive eq and case-insensitive regex operators.
+// The rows are deliberately mixed-case; the use cases supply normalized input.
+function contactClient(storedEmail: string) {
+  const row = { id: "00000000-0000-4000-8000-000000000001", email: storedEmail, auth_user_id: null };
+  let matches = false;
+  const query = {
+    select: vi.fn(() => query),
+    eq: vi.fn((_column: string, value: string) => { matches = storedEmail === value; return query; }),
+    filter: vi.fn((column: string, operator: string, pattern: string) => {
+      expect([column, operator]).toEqual(["email", "imatch"]);
+      matches = new RegExp(pattern, "i").test(storedEmail);
+      return query;
+    }),
+    order: vi.fn(() => query),
+    limit: vi.fn(async () => ({ data: matches ? [row] : [], error: null })),
+    maybeSingle: vi.fn(async () => ({ data: matches ? row : null, error: null })),
+  };
+  return { client: { from: () => query } as unknown as ManagedIdentityClient, query, row };
+}
+
+describe.each(["soft-link", "reconcile"] as const)("%s contact lookup", (kind) => {
+  const lookup = (client: ManagedIdentityClient, email: string) => kind === "soft-link"
+    ? createSupabaseClientAuthLinkStore(client).findClientByEmail(email)
+    : createSupabaseAccountLinkStore(client).findAccountByEmail(email);
+
+  it("matches a mixed-case stored contact after input normalization without creating a duplicate", async () => {
+    const { client, query, row } = contactClient("Buyer@Example.COM");
+    if (kind === "soft-link") {
+      const store = {
+        ...createSupabaseClientAuthLinkStore(client),
+        createAuthUser: vi.fn(async () => "00000000-0000-4000-8000-000000000002"),
+        findAdminIdentity: vi.fn(async () => null),
+        setClientAuthUserId: vi.fn(async () => ({ ok: true as const, alreadyLinked: false })),
+      };
+      expect(await linkClientAuthUser(store, "  BUYER@example.com ")).toMatchObject({ ok: true, clientId: row.id });
+      expect(store.setClientAuthUserId).toHaveBeenCalledWith(row.id, "00000000-0000-4000-8000-000000000002");
+    } else {
+      const store = {
+        ...createSupabaseAccountLinkStore(client),
+        isReservedPrincipal: vi.fn(async () => false),
+        findAccountByPrincipalId: vi.fn(async () => null),
+        createAccount: vi.fn(async () => { throw new Error("unique_lower_email"); }),
+        linkPrincipalToAccount: vi.fn(async () => ({ ok: true as const, alreadyLinked: false })),
+      };
+      expect(await reconcileAccountForPrincipal(store, { principalId: "00000000-0000-4000-8000-000000000002", email: "  BUYER@example.com ", emailVerified: true })).toEqual({ ok: true, accountId: row.id, created: false, linked: true });
+      expect(store.createAccount).not.toHaveBeenCalled();
+    }
+    expect(query.filter).toHaveBeenCalledWith("email", "imatch", "^buyer@example\\.com$");
+    expect(query.eq).not.toHaveBeenCalledWith("email", expect.anything());
+  });
+
+  it.each([
+    ["a_b@example.com", "axb@example.com"],
+    ["a%b@example.com", "axxb@example.com"],
+    ["a\\b@example.com", "ab@example.com"],
+    ["a*b@example.com", "axxb@example.com"],
+    ["a+b@example.com", "aab@example.com"],
+    ["a.b@example.com", "axb@example.com"],
+    ["a|b@example.com", "a@example.com"],
+    ["buyer@example.com", "otherbuyer@example.com"],
+    ["buyer@example.com", "buyer@example.com.invalid"],
+  ])("matches %s literally and refuses %s", async (email, other) => {
+    expect(await lookup(contactClient(email.toUpperCase()).client, email)).not.toBeNull();
+    expect(await lookup(contactClient(other).client, email)).toBeNull();
   });
 });

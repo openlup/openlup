@@ -4,7 +4,7 @@ import { createSupabaseAccountLinkStore } from "../../src/identity/managedAccoun
 function fakeClient(results: Array<{ data?: unknown; error?: unknown }>): SupabaseClient {
   const queue = [...results];
   const chain: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "is", "update", "insert"]) {
+  for (const method of ["select", "eq", "filter", "is", "update", "insert"]) {
     chain[method] = () => chain;
   }
   const next = async () => queue.shift() ?? { data: null, error: null };

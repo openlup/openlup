@@ -166,3 +166,16 @@ artifact's rail kind. Its schema contribution requires a host-selected inventory
 its four SQL files are verbatim projections at canonical positions 11, 12, 29 and
 60, not an independent migration chain. The owner page maps the characterization
 witnesses and records the remaining evidence.
+
+Identity authorizes stored operator roles only when they are `admin` or
+`distributor`; null and unknown values return `FORBIDDEN` (HTTP 403). The reference
+admin-profile reader reports those rows as non-admin, and admin magic links do
+not send for them while retaining the generic accepted response, padding and
+quota. Adopters needing legacy role mapping must do it in their own adapter
+before passing the role to the package; there is no package fallback option.
+
+Both managed contact stores match normalized addresses case-insensitively,
+including mixed-case stored contacts. They use an anchored, escaped `imatch`
+filter so address characters remain literal. Injected structural query clients
+must implement `filter(column, "imatch", value)`. The direct customer challenge
+already compares `lower(email)` to normalized input; no migration is needed.

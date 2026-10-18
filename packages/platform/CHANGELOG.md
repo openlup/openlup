@@ -21,6 +21,19 @@ contracts runtime-schema move and profile-specific readiness schema inventory
 remain pending. The four package SQL projections preserve canonical bytes and
 positions; do not apply them again to an existing canonical migration history.
 
+- Only stored `admin` and `distributor` roles authorize. Null and unknown
+  roles refuse with 403, do not qualify for an admin magic link and are reported
+  as non-admin by the reference profile reader. Magic-link acceptance, response
+  padding and quota remain unchanged.
+  Migration: Adopters relying on null/unknown role mapping must map those values
+  in their own adapter before the package sees the role.
+- Both managed contact stores match normalized email case-insensitively,
+  with literal address matching. Mixed-case contact rows now match for soft
+  linking and reconciliation instead of disappearing behind an exact filter.
+  Migration: Mixed-case rows now resolve to the existing contact; injected query
+  clients must support the escaped, anchored `imatch` filter. No schema or stored
+  address rewrite is required; the direct challenge lookup already uses lower(email).
+
 
 ## [0.15.0]
 

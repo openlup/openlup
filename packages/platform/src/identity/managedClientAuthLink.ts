@@ -7,7 +7,8 @@ export function createSupabaseClientAuthLinkStore(rawClient: unknown): ClientAut
       const { data, error } = await client
         .from("clients")
         .select("id, auth_user_id")
-        .eq("email", email)
+        // Anchor and quote regex syntax so contact characters cannot widen the match.
+        .filter("email", "imatch", `^${email.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`)
         .order("created_at", { ascending: true })
         .limit(1);
       if (error) throw error;

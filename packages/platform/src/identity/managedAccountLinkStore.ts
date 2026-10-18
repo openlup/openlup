@@ -25,7 +25,8 @@ export function createSupabaseAccountLinkStore(rawClient: unknown): AccountLinkS
       const { data, error } = await client
         .from("clients")
         .select("id, email, auth_user_id")
-        .eq("email", email)
+        // Anchor and quote regex syntax so contact characters cannot widen the match.
+        .filter("email", "imatch", `^${email.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`)
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
