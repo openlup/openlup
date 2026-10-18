@@ -719,6 +719,9 @@ export type AdminAuthBindingResolution = {
     readonly error: "managed_admin_auth_env_required" | "direct_admin_auth_config_invalid";
 };
 export interface AdminAuthBindingOptions {
+    humanAuthFactory?: (env: Env) => AdminAuthPort & {
+        close(): Promise<void>;
+    };
     checkerFactory?: PlatformOperatorCheckerFactory;
     managedAuthFactory?: (env: {
         url: string;
@@ -726,7 +729,7 @@ export interface AdminAuthBindingOptions {
     }, accessToken: string | null) => AdminAuthPort;
 }
 /** Bind the admin authorizer selected by PLATFORM_BUNDLE. */
-export declare function createAdminAuthBindingResolver(defaults: Required<AdminAuthBindingOptions>): (env: Env, options?: AdminAuthBindingOptions) => AdminAuthBindingResolution;
+export declare function createAdminAuthBindingResolver(defaults: Required<Pick<AdminAuthBindingOptions, "checkerFactory" | "managedAuthFactory">> & Pick<AdminAuthBindingOptions, "humanAuthFactory">): (env: Env, options?: AdminAuthBindingOptions) => AdminAuthBindingResolution;
 export {};
 ```
 ## dist/identity/adminAuthorization.d.ts
@@ -1016,6 +1019,45 @@ export declare function normalizeMagicLinkReturnPath(value: string | undefined, 
 /** Browser-safe email-association refusal codes. */
 export declare const EMAIL_TRUST_FAILURE_CODES: readonly ["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"];
 export type EmailTrustFailureCode = typeof EMAIL_TRUST_FAILURE_CODES[number];
+```
+## dist/identity/contracts/operatorAuth.d.ts
+
+```ts
+export interface OperatorSession {
+    accessToken: string;
+    expiresAt: string;
+    user: {
+        id: string;
+        email: string;
+    };
+}
+export interface OperatorChallengeRequest {
+    email: string;
+}
+export interface OperatorChallengeVerification {
+    token: string;
+}
+export interface OperatorBrowserAuthPort {
+    getSession(): Promise<OperatorSession | null>;
+    requestChallenge(email: string): Promise<void>;
+    verifyChallenge(token: string): Promise<OperatorSession>;
+    signOut(): Promise<void>;
+    onAuthStateChange(listener: (session: OperatorSession | null) => void): () => void;
+}
+/** Strict parsers keep the contracts entry independent of the server validator. */
+export interface OperatorSchema<T> {
+    parse(value: unknown): T;
+    safeParse(value: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: Error;
+    };
+}
+export declare const operatorChallengeRequestSchema: OperatorSchema<OperatorChallengeRequest>;
+export declare const operatorChallengeVerificationSchema: OperatorSchema<OperatorChallengeVerification>;
+export declare const operatorSessionSchema: OperatorSchema<OperatorSession>;
 ```
 ## dist/identity/contracts/operatorInvitations.d.ts
 
@@ -1333,7 +1375,7 @@ export declare function createCustomerVerifyOtpHandler(options: IdentityResponse
 ## dist/identity/directOperatorInvitationStore.d.ts
 
 ```ts
-import { type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
+import { type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
 import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
 /** Owner-authority lane, never the actor gateway. One transaction per command. */
 export declare function createDirectOperatorInvitationStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): OperatorInvitationStore & {
@@ -1350,6 +1392,8 @@ export declare function createDirectOperatorIdentityDirectory(env: PostgresDataG
     }>;
     close: () => Promise<void>;
 };
+/** Trusted authentication only; caller owns the transaction, including challenge consumption. */
+export declare function acceptDirectOperatorInvitationInTransaction(db: PgQueryExecutor, id: string): Promise<import("./contracts/operatorInvitations.js").OperatorInvitationAcceptance>;
 ```
 ## dist/identity/emailTrustPolicy.d.ts
 
@@ -1432,6 +1476,12 @@ export * from "./identityReadiness.js";
 export * from "./operatorInvitationPorts.js";
 export * from "./operatorInvitationLifecycle.js";
 export * from "./directOperatorInvitationStore.js";
+export * from "./operatorPorts.js";
+export * from "./operatorSession.js";
+export * from "./operatorIdentityVerifier.js";
+export * from "./operatorAdminAuth.js";
+export * from "./operatorAuthHandlers.js";
+export * from "./postgresOperatorIdentity.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -1930,6 +1980,50 @@ export type IdentityMessages = typeof en;
 export declare const identityMessages: Readonly<Record<"en" | "pl", IdentityMessages>>;
 export {};
 ```
+## dist/identity/operatorAdminAuth.d.ts
+
+```ts
+import type { AdminAuthPort, IdentityVerifierPort } from "./ports.js";
+import type { OperatorIdentityStore } from "./operatorPorts.js";
+export declare function createOperatorAdminAuth(options: {
+    verifier: IdentityVerifierPort;
+    authority: Pick<OperatorIdentityStore, "findMembership">;
+}): AdminAuthPort;
+```
+## dist/identity/operatorAuthHandlers.d.ts
+
+```ts
+import { type IdentityResponseOptions } from "./response.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { createOperatorSessionService } from "./operatorSession.js";
+export interface OperatorAuthMessages {
+    invalidRequest: string;
+    forbidden: string;
+    unauthorized: string;
+    unavailable: string;
+}
+export declare function createOperatorAuthHandlers(options: IdentityResponseOptions & {
+    sessions: ReturnType<typeof createOperatorSessionService>;
+    origin: string;
+    messages: OperatorAuthMessages;
+    padResponseTime(startedAt: number, minimumMs: number): Promise<void>;
+}): {
+    requestChallenge(req: HttpRequest, res: HttpResponse): Promise<void>;
+    verifyChallenge(req: HttpRequest, res: HttpResponse): Promise<void>;
+};
+```
+## dist/identity/operatorIdentityVerifier.d.ts
+
+```ts
+import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
+import type { IdentityVerifierPort } from "./ports.js";
+export declare function createOperatorIdentityVerifier(config: {
+    issuer: string;
+    audience: string;
+    customerAudience: string;
+    jwks: string;
+}, loadJwt: IdentityJwtLibraryLoader): IdentityVerifierPort;
+```
 ## dist/identity/operatorInvitationLifecycle.d.ts
 
 ```ts
@@ -1975,6 +2069,64 @@ export interface OperatorInvitationStore {
         revoked: true;
     }>;
 }
+```
+## dist/identity/operatorPorts.d.ts
+
+```ts
+export interface OperatorIdentity {
+    principalId: string;
+    email: string;
+}
+export interface OperatorMembership extends OperatorIdentity {
+    membershipState: string;
+    role: unknown;
+}
+export interface OperatorIdentityStore {
+    issue(input: {
+        email: string;
+        tokenHash: string;
+    }): Promise<{
+        deliverable: false;
+    } | {
+        deliverable: true;
+        email: string;
+        expiresAt: string;
+    }>;
+    /** Activation and consumption commit together before signing. */
+    redeem(input: {
+        tokenHash: string;
+    }): Promise<OperatorIdentity | null>;
+    findMembership(principalId: string): Promise<OperatorMembership | null>;
+    bootstrapFirstAdministrator(input: {
+        email: string;
+    }): Promise<{
+        principalId: string;
+        membershipState: "invited";
+    }>;
+    pruneChallenges(input: {
+        limit: number;
+    }): Promise<{
+        deleted: number;
+    }>;
+    close(): Promise<void>;
+}
+```
+## dist/identity/operatorSession.d.ts
+
+```ts
+import type { CustomerChallengeDeliveryPort, CustomerSessionIssuerPort } from "./ports.js";
+import type { OperatorIdentityStore } from "./operatorPorts.js";
+import type { OperatorSession } from "./contracts/operatorAuth.js";
+export declare function createOperatorSessionService(options: {
+    store: OperatorIdentityStore;
+    delivery: CustomerChallengeDeliveryPort;
+    issuer: CustomerSessionIssuerPort;
+    generateToken?: () => string;
+    deliveryFailed?: (code: "operator_challenge_delivery_failed") => void;
+}): {
+    requestChallenge(email: string, accept?: () => Promise<void>): Promise<void>;
+    verifyChallenge(token: string): Promise<OperatorSession | null>;
+};
 ```
 ## dist/identity/operatorTokenAdminAuth.d.ts
 
@@ -2162,6 +2314,15 @@ export type PostgresCustomerChallengeStore = CustomerChallengeStore & {
 };
 export declare function createPostgresCustomerChallengeStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresCustomerChallengeStore;
 ```
+## dist/identity/postgresOperatorIdentity.d.ts
+
+```ts
+import type { OperatorIdentityStore } from "./operatorPorts.js";
+/** Dedicated owner lane: no actor gateway, customer writes or machine grants. */
+export declare function createPostgresOperatorIdentityStore(env: {
+    connectionString: string;
+}): OperatorIdentityStore;
+```
 ## dist/identity/reconcileAccountForPrincipal.d.ts
 
 ```ts
@@ -2276,6 +2437,12 @@ export declare const IDENTITY_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261018120000_identity_operator_invitations.sql";
     readonly position: 67;
     readonly sha256: "b73034908bd5e27819bcd421d17037a0f00a24aa3df1be1f8f9ca411bf984349";
+    readonly url: URL;
+}, {
+    readonly id: "20261018180000_identity_operator_challenges";
+    readonly catalogPath: "db/platform/migrations/20261018180000_identity_operator_challenges.sql";
+    readonly position: 68;
+    readonly sha256: "191cf0c151a5882ad20d6043624da50afad799df739fff326d67560d3e00a031";
     readonly url: URL;
 }];
 ```

@@ -12,6 +12,24 @@ SemVer promise.
   through the package inputs. The admin `me` route retains its fail-closed
   deployment-risk classification and public-default refusal.
 
+- Apply the existing observed route and deployment policy boundary to all mounted
+  direct operator routes, including caller-composed handlers. Preserve injected
+  challenge delivery through dispatcher session-binding composition. Consume
+  guarded browser auth notifications so an older authorization check cannot sign
+  out an established newer session or cancel its pending redemption.
+  Migration: all mounted direct operator routes, including `me`, use the admin
+  mutation risk classification and require the adopter's deployment policy.
+  Configure operator delivery through `createReferenceBffDispatch` and `createOperatorSessionBinding`.
+
+- Preserve pending direct operator redemption across browser restoration and focus
+  checks, including provider/callback mounting under StrictMode. Send the padded
+  generic challenge acceptance before mailbox delivery so slow transports do not
+  reveal eligibility. Repeat active-operator login preserves membership and
+  invitation history.
+  Migration: custom operator HTTP hosts must send their padded accepted response
+  in the optional `requestChallenge(email, accept)` callback before delivery;
+  calls without that callback retain their existing delivery-waiting behavior.
+
 - Add the opt-in identity envelope proof with phase `email-trust`, including
   its fixture-only service-role grant, immediate persisted-association assertions,
   pre-existing contact linking and post-replay state checks. Phase `joint` also
@@ -57,7 +75,7 @@ module. Existing module paths delegate to the package; invite results adopt the
 structured fields and identity reasons described above, while notification
 receipts retain their reference field names. The
 contracts runtime-schema move and profile-specific readiness schema inventory
-remain pending. The five package SQL projections preserve canonical bytes and
+remain pending. The six package SQL projections preserve canonical bytes and
 positions; do not apply them again to an existing canonical migration history.
 
 - Only stored `admin` and `distributor` roles authorize. Null and unknown
@@ -122,6 +140,30 @@ positions; do not apply them again to an existing canonical migration history.
   first-login link for an existing unconfirmed user, and run
   `node tests/postgres/runIdentityEnvelopeConformance.mjs --phase joint`.
   Existing identities are not rewritten.
+
+- Direct operator invitations remain pending until trusted acceptance, expire
+  lazily at a configurable deadline and preserve attempts without repeat mail.
+  Direct storage provides transactional acceptance, cancellation, revoked
+  re-invitation and audit. Removal retains identities.
+  Migration: Apply direct forward `20261018120000_identity_operator_invitations`
+  through the complete canonical catalogue. Bind the direct invitation store and
+  parsed TTL (default 604800 seconds, range 60..2592000); consume lifecycle
+  fields and 409 identity reasons in place of message-only results. Replace
+  immediate-membership invite writers on the direct bundle. Direct human login
+  requires the operator-challenges forward described below. Managed invitations
+  retain immediate activation as described above; no managed lifecycle migration
+  is introduced.
+
+- Added direct PostgreSQL human operator login with single-use email challenges,
+  operator-audience ES256 sessions and live membership/role authorization. First
+  direct sign-in activates pending direct invitations. Added explicit first-administrator
+  bootstrap and bounded challenge pruning, tab-scoped browser sessions, and
+  lazy managed browser authentication selection.
+  Migration: apply the appended operator-challenges forward through the complete
+  selected catalogue and configure a distinct operator audience. Resolve normalized
+  duplicate principal emails without merging identities. Customer links and machine
+  credentials remain intact. Challenge delivery defaults to discard; inject delivery
+  for interactive login. No managed migration is required.
 
 ## [0.15.0]
 

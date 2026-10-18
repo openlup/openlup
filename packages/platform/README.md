@@ -148,6 +148,36 @@ in both resolution modes with all three optional peers absent.
 <!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
 
 ## Identity import candidate
+
+The direct operator API adds `createPostgresOperatorIdentityStore`,
+`createOperatorSessionService`, `createOperatorIdentityVerifier`,
+`createOperatorAdminAuth` and `createOperatorAuthHandlers` to `./identity`.
+`./identity/contracts` exposes strict operator challenge/session schemas and
+`OperatorBrowserAuthPort` without a server or provider import. Challenge delivery
+and session signing use the existing structural ports. Operator handlers send
+the padded generic acceptance before awaiting mailbox delivery, keeping delivery
+latency out of the response. Custom HTTP composition uses the session service's
+optional acceptance callback for the same ordering. Restoration reads preserve
+in-flight browser redemption; explicit sign-out still cancels it. Active operator
+login needs no pending invitation and preserves membership and invitation history. The new store's public
+signature exposes no driver types and loads its optional driver only on use.
+
+Apply the complete direct catalogue through position 68 before enabling human
+login; `sql/20261018180000_identity_operator_challenges.sql` is its exact projection.
+Configure a distinct operator audience and an adopter deployment route policy:
+the public policy refuses all mounted operator routes, including `me`, with
+`adopter_policy_required` before input or authentication-binding construction. The reference dispatcher accepts a
+session-binding factory through `createReferenceBffDispatch`; use it to compose
+separate operator delivery. Caller-supplied operator handlers retain the same
+policy boundary. The browser hook consumes guarded auth-port notifications rather
+than signing out from a stale post-redemption check. Use the
+explicit bootstrap/prune commands in the [identity guide](../../docs/platform/IDENTITY.md#direct-human-login).
+The bounded reference browser builds do not mount the admin shell; application
+composition must mount the provided pages and hook. First redemption activates the existing invitation and consumes the challenge in
+one transaction. Live membership, not a JWT role, authorizes each request. The
+cold consumer includes both identity entries and the new adapter's missing-peer
+refusal; real concurrency and upgrade proof needs the complete PostgreSQL chain.
+
 Creating a client/contact records commerce contact data, not an authentication
 identity. Creating an auth user provisions a principal. Neither a typed address
 nor a soft-account link proves mailbox ownership; reconcile may create a contact

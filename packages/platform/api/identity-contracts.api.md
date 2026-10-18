@@ -34,6 +34,46 @@ export * from "./providerList.js";
 export * from "./contracts.js";
 export * from "./emailTrust.js";
 export * from "./operatorInvitations.js";
+export * from "./operatorAuth.js";
+```
+## dist/identity/contracts/operatorAuth.d.ts
+
+```ts
+export interface OperatorSession {
+    accessToken: string;
+    expiresAt: string;
+    user: {
+        id: string;
+        email: string;
+    };
+}
+export interface OperatorChallengeRequest {
+    email: string;
+}
+export interface OperatorChallengeVerification {
+    token: string;
+}
+export interface OperatorBrowserAuthPort {
+    getSession(): Promise<OperatorSession | null>;
+    requestChallenge(email: string): Promise<void>;
+    verifyChallenge(token: string): Promise<OperatorSession>;
+    signOut(): Promise<void>;
+    onAuthStateChange(listener: (session: OperatorSession | null) => void): () => void;
+}
+/** Strict parsers keep the contracts entry independent of the server validator. */
+export interface OperatorSchema<T> {
+    parse(value: unknown): T;
+    safeParse(value: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: Error;
+    };
+}
+export declare const operatorChallengeRequestSchema: OperatorSchema<OperatorChallengeRequest>;
+export declare const operatorChallengeVerificationSchema: OperatorSchema<OperatorChallengeVerification>;
+export declare const operatorSessionSchema: OperatorSchema<OperatorSession>;
 ```
 ## dist/identity/contracts/operatorInvitations.d.ts
 

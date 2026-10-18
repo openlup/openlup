@@ -62,6 +62,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Identity routing includes the direct operator challenge source and tests,
+canonical/projection SQL, runtime auth composition and browser auth seams. The
+identity guide owns their behavior; package, architecture, migration and runtime
+owners retain their API, installation and host explanations. Generated navigation
+reflects these routes and never substitutes for those substantive owner updates.
+
+
 <!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-6f1ae5dc4be65b23c6e1ab3e7525c700acf227190cbd683273a372f18ca6bbee","reason":"The new identity route assigns its package source, conformance tests, four SQL projections and own-row witness to docs/platform/IDENTITY.md. Existing ownership rules, routing precedence and impact obligations remain unchanged."} -->
 
 The [domain registry](../../src/lib/coreDomains.ts) names platform domains. The

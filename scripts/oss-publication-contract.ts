@@ -25,6 +25,8 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/public-ci-neutrality.mjs", "scripts/public-ci-pgtap.mjs",
   "scripts/run-vitest.mjs", "scripts/site-routes.mjs", "scripts/source-preview-release.test.ts", "scripts/source-preview-release.ts",
   "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts",
+  "server/runtime/auth/operatorIdentityCommand.ts",
+  "server/runtime/auth/operatorAuthBinding.test.ts", "server/runtime/auth/operatorIdentityCommand.test.ts", "server/runtime/auth/operatorRoutes.test.ts", "server/runtime/auth/operatorSessionBinding.test.ts", "src/integrations/postgres/operatorAuthPort.test.ts", "src/lib/useAuth.test.tsx", "src/pages/admin/AuthCallbackPage.test.tsx", "src/pages/admin/LoginPage.test.tsx", "tests/postgres/operatorIdentityUpgrade.test.ts", "tests/postgres/operatorInvitationLifecycle.test.ts", "tests/postgres/operatorInvitationCatalogue.test.ts",
   "server/runtime/public-reference/serve.ts",
   "tests/postgres/runIdentityEnvelopeConformance.mjs",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",

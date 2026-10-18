@@ -11,6 +11,7 @@ import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "identity/contracts"] as const;
 // identity is an adapter entry: its PostgreSQL profile adapter declares the data entry's pg types.
+// Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger", "identity"] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -105,6 +106,13 @@ import { bindBlobPort } from "@openlup/platform/blob";
 import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane } from "@openlup/platform/data";
 import { createPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { createEnvAdvisoryLock } from "@openlup/platform/scheduler";
+import { createPostgresOperatorIdentityStore, createOperatorSessionService, createOperatorAdminAuth, createOperatorIdentityVerifier } from "@openlup/platform/identity";
+import { operatorChallengeRequestSchema, operatorSessionSchema } from "@openlup/platform/identity/contracts";
+assert.equal(typeof createOperatorSessionService, "function");
+assert.equal(typeof createOperatorAdminAuth, "function");
+assert.equal(typeof createOperatorIdentityVerifier, "function");
+assert(operatorChallengeRequestSchema.safeParse({ email: "admin@example.invalid" }).success);
+assert(!operatorSessionSchema.safeParse({ accessToken: "incomplete" }).success);
 const manifest = { schemaVersion: 1, baseline: { file: "baseline.sql", sha256: "0".repeat(64) }, forward: [], objectInventorySha256: "0".repeat(64) };
 function postgresOperations(connectionString) {
   return [
@@ -115,6 +123,7 @@ function postgresOperations(connectionString) {
       source: { readMigrations: () => ({ migrations: [{ file: "baseline.sql", content: "SELECT 1;" }], errors: [] }), readManifest: () => manifest, evaluate: () => [] },
     }).status(),
     async () => { const lock = createEnvAdvisoryLock({ DATABASE_URL: connectionString }); try { assert.equal(await lock.tryAcquire("consumer"), true); await lock.release("consumer"); } finally { await lock.close(); } },
+    async () => { const store = createPostgresOperatorIdentityStore({ connectionString }); try { return await store.findMembership("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
   ];
 }
 `;
@@ -217,6 +226,8 @@ assert.equal(await operations[0](), "service");
 assert.equal(await operations[1](), "transaction");
 assert.deepEqual(await operations[2](), { pending: ["baseline.sql"], applied: [] });
 await operations[3]();
+// A selected driver alone cannot enable operator login without its migrated schema.
+await assert.rejects(() => operations[4](), error => error.code === "42P01");
 // Default gateway and migration pools have no public shutdown API.
 process.exit(0);
 `, [`postgresql://postgres@127.0.0.1:${port}/${database}`]);

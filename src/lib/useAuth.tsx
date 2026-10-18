@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { User, Session } from '@supabase/supabase-js';
+import { loadManagedAdminAuth } from '@/integrations/supabase/adminAuthPort';
+import { createPostgresOperatorAuthPort } from '@/integrations/postgres/operatorAuthPort';
+import { isDirectOperatorAuth, type AdminSession as Session } from '@/domains/auth/adminAuth';
+type User = Session['user'];
+
+
 import { AuthContext, type AdminRole } from '@/lib/authContext';
 import { getAdminPlatformMe } from '@/domains/platform/adminMeClient';
 import { clearAuthScopedQueryCache } from '@/lib/queryClient';
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children, providerKind }: { children: ReactNode; providerKind?: string }) {
+  const [directPort] = useState(() => isDirectOperatorAuth(providerKind) ? createPostgresOperatorAuthPort() : null);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,43 +41,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(nextSession?.user ?? null);
   }, []);
 
-  // On mount: check existing session
   useEffect(() => {
     let cancelled = false;
-
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      if (cancelled) return;
-      applySession(s);
-      if (s?.user) {
-        const result = await checkAdmin(s.access_token);
-        if (!cancelled) {
-          setIsAdmin(result.isAdmin);
-          setRole(result.role);
-        }
-      }
-      if (!cancelled) setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, s) => {
-        // Only update session/user synchronously — don't do async admin check here
-        // to avoid race conditions
-        applySession(s);
-        if (!s?.user) {
-          setIsAdmin(false);
-          setRole(null);
-        }
-      }
-    );
-
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, [applySession, checkAdmin]);
+    let unsubscribe = () => {};
+    let revision = 0;
+    async function accept(next: Session | null) {
+      const current = ++revision;
+      const result = await checkAdmin(next?.access_token);
+      if (cancelled || current !== revision) return;
+      applySession(next);
+      setIsAdmin(result.isAdmin);
+      setRole(result.role);
+      setLoading(false);
+    }
+    if (directPort) {
+      unsubscribe = directPort.onAuthStateChange(next => {
+        if (!cancelled) void accept(next ? { access_token: next.accessToken, user: next.user } : null);
+      });
+      void directPort.getSession().then(next => accept(next ? { access_token: next.accessToken, user: next.user } : null));
+    } else {
+      void loadManagedAdminAuth().then(({ supabase }) => {
+        if (cancelled) return;
+        void supabase.auth.getSession().then(({ data }) => accept(data.session));
+        const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+          applySession(next);
+          if (!next) { setIsAdmin(false); setRole(null); }
+        });
+        unsubscribe = () => data.subscription.unsubscribe();
+      });
+    }
+    const focused = () => { if (directPort) void directPort.getSession(); };
+    window.addEventListener('focus', focused);
+    return () => { cancelled = true; unsubscribe(); window.removeEventListener('focus', focused); };
+  }, [applySession, checkAdmin, directPort]);
 
   async function signIn(email: string, password: string): Promise<{ error: string | null }> {
+    if (directPort) return { error: 'Password authentication unavailable' };
     try {
+      const { supabase } = await loadManagedAdminAuth();
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return { error: error.message };
       if (!data.user) return { error: 'No user returned' };
@@ -101,6 +107,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signInWithOtpCode(email: string, code: string): Promise<{ error: string | null }> {
     try {
+      if (directPort) {
+        await directPort.verifyChallenge(code);
+        return { error: null };
+      }
+      const { supabase } = await loadManagedAdminAuth();
       // The magic-link email's `Nie działa link?` code fallback is an `email`-OTP
       // code; `magiclink` is the action type Supabase sent it under.
       const { data, error } = await supabase.auth.verifyOtp({
@@ -132,7 +143,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    if (directPort) await directPort.signOut();
+    else { const { supabase } = await loadManagedAdminAuth(); await supabase.auth.signOut(); }
     applySession(null, true);
     setIsAdmin(false);
     setRole(null);
@@ -156,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applySession, checkAdmin]);
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, isAdmin, role, signIn, signInWithOtpCode, signOut, refreshAdmin }}>
+    <AuthContext.Provider value={{ directOperatorAuth: !!directPort, user, session, loading, isAdmin, role, signIn, signInWithOtpCode, signOut, refreshAdmin }}>
       {children}
     </AuthContext.Provider>
   );

@@ -92,36 +92,7 @@ export function createDirectOperatorInvitationStore(env: PostgresDataGatewayEnv,
       });
     },
     acceptOperatorInvitation(id) {
-      return run(async (db) => {
-        if (!await lock(db, id) || await machine(db, id)) return { code: "NO_INVITATION" };
-        const member = await membership(db, id);
-        if (member?.membership_state === "active") return { code: "ALREADY_ACTIVE", role: role(member.role) };
-        const pending = await invitation(db, id);
-        if (!pending) return { code: "NO_INVITATION" };
-        if (pending.phase === "expired") return { code: "INVITATION_EXPIRED" };
-        if (pending.phase !== "invited") return { code: "INVITATION_REVOKED" };
-        const clock = (await db.query("WITH stamp AS (SELECT clock_timestamp() AS at) SELECT at, at >= $1::timestamptz AS expired FROM stamp", [pending.expires_at])).rows[0]!;
-        const at = clock.at;
-        if (clock.expired === true) {
-          const expired = (await db.query("UPDATE public.identity_operator_invitations SET phase = 'expired', closed_at = expires_at WHERE principal_id = $1 RETURNING *", [id])).rows[0]!;
-          await event(db, "expire", pending, expired, null);
-          return { code: "INVITATION_EXPIRED" };
-        }
-        if (member) {
-          const setting = (await db.query("SELECT current_setting('app.platform_human_membership_revoke', true) AS previous")).rows[0]?.previous;
-          await db.query("SELECT set_config('app.platform_human_membership_revoke', 'true', true)");
-          await db.query(`UPDATE public.platform_human_memberships SET membership_state = 'active', membership_provenance = 'invitation',
-            membership_accepted_at = $2, membership_revoked_at = NULL, membership_revoked_by = NULL, membership_revocation_reason = NULL WHERE principal_id = $1`, [id, at]);
-          await db.query("UPDATE public.platform_human_memberships SET role = $2 WHERE principal_id = $1", [id, pending.role]);
-          await db.query("SELECT set_config('app.platform_human_membership_revoke', $1, true)", [setting ?? ""]);
-        } else {
-          await db.query(`INSERT INTO public.platform_human_memberships (principal_id, role, membership_state, membership_provenance, membership_accepted_at)
-            VALUES ($1, $2, 'active', 'invitation', $3)`, [id, pending.role, at]);
-        }
-        const accepted = (await db.query("UPDATE public.identity_operator_invitations SET phase = 'accepted', accepted_at = $2, closed_at = $2 WHERE principal_id = $1 RETURNING *", [id, at])).rows[0]!;
-        await event(db, "accept", pending, accepted, id);
-        return { code: "ACTIVATED", role: role(pending.role) };
-      });
+      return run((db) => acceptDirectOperatorInvitationInTransaction(db, id));
     },
     remove(input) {
       return run(async (db) => {
@@ -167,4 +138,39 @@ export function createDirectOperatorIdentityDirectory(env: PostgresDataGatewayEn
     },
     close: lane.close,
   };
+}
+
+/** Trusted authentication only; caller owns the transaction, including challenge consumption. */
+export async function acceptDirectOperatorInvitationInTransaction(db: PgQueryExecutor, id: string): Promise<import("./contracts/operatorInvitations.js").OperatorInvitationAcceptance> {
+  if (!await lock(db, id) || await machine(db, id)) return { code: "NO_INVITATION" };
+  const member = await membership(db, id);
+  if (member?.membership_state === "active") {
+    if (member.role !== "admin" && member.role !== "distributor") return { code: "NO_INVITATION" };
+    return { code: "ALREADY_ACTIVE", role: member.role };
+  }
+  const pending = await invitation(db, id);
+  if (!pending) return { code: "NO_INVITATION" };
+  if (pending.phase === "expired") return { code: "INVITATION_EXPIRED" };
+  if (pending.phase !== "invited" || (pending.role !== "admin" && pending.role !== "distributor")) return { code: "INVITATION_REVOKED" };
+  const clock = (await db.query("WITH stamp AS (SELECT clock_timestamp() AS at) SELECT at, at >= $1::timestamptz AS expired FROM stamp", [pending.expires_at])).rows[0]!;
+  const at = clock.at;
+  if (clock.expired === true) {
+    const expired = (await db.query("UPDATE public.identity_operator_invitations SET phase = 'expired', closed_at = expires_at WHERE principal_id = $1 RETURNING *", [id])).rows[0]!;
+    await event(db, "expire", pending, expired, null);
+    return { code: "INVITATION_EXPIRED" };
+  }
+  if (member) {
+    const setting = (await db.query("SELECT current_setting('app.platform_human_membership_revoke', true) AS previous")).rows[0]?.previous;
+    await db.query("SELECT set_config('app.platform_human_membership_revoke', 'true', true)");
+    await db.query(`UPDATE public.platform_human_memberships SET membership_state = 'active', membership_provenance = 'invitation',
+      membership_accepted_at = $2, membership_revoked_at = NULL, membership_revoked_by = NULL, membership_revocation_reason = NULL WHERE principal_id = $1`, [id, at]);
+    await db.query("UPDATE public.platform_human_memberships SET role = $2 WHERE principal_id = $1", [id, pending.role]);
+    await db.query("SELECT set_config('app.platform_human_membership_revoke', $1, true)", [setting ?? ""]);
+  } else {
+    await db.query(`INSERT INTO public.platform_human_memberships (principal_id, role, membership_state, membership_provenance, membership_accepted_at)
+      VALUES ($1, $2, 'active', 'invitation', $3)`, [id, pending.role, at]);
+  }
+  const accepted = (await db.query("UPDATE public.identity_operator_invitations SET phase = 'accepted', accepted_at = $2, closed_at = $2 WHERE principal_id = $1 RETURNING *", [id, at])).rows[0]!;
+  await event(db, "accept", pending, accepted, id);
+  return { code: "ACTIVATED", role: role(pending.role) };
 }

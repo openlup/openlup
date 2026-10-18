@@ -552,7 +552,17 @@
         "packages/platform/sql/20260810204057_customer_identity_read.sql",
         "packages/platform/sql/20260814090000_customer_selfservice_recovery.sql",
         "packages/platform/sql/20260901143000_admin_membership_authority_foundation.sql",
-        "supabase/tests/identity_customer_own_rows_test.sql"
+        "supabase/tests/identity_customer_own_rows_test.sql",
+        "packages/platform/sql/20261018180000_identity_operator_challenges.sql",
+        "db/platform/migrations/20261018180000_identity_operator_challenges.sql",
+        "server/runtime/auth/operator*.ts",
+        "src/integrations/postgres/operatorAuthPort*.ts",
+        "src/integrations/supabase/adminAuthPort.ts",
+        "src/lib/useAuth*",
+        "src/lib/authContext.ts",
+        "src/pages/admin/AuthCallbackPage*",
+        "src/pages/admin/LoginPage*",
+        "tests/postgres/operatorIdentityUpgrade.test.ts"
       ],
       "doc": "docs/platform/IDENTITY.md",
       "anchor": ""

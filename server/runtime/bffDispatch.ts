@@ -13,11 +13,21 @@ import { sendBffError } from "../_lib/bff/response.js";
 
 export type { RouteEntry } from "@openlup/platform/bff";
 
-export const dispatch = createBffDispatcher({
-  env: () => process.env,
+import { createOperatorSessionBinding } from "./auth/operatorSessionBinding.js";
+import { operatorRoutes } from "./auth/operatorRoutes.js";
+const readEnvironment = () => process.env;
+const dispatcher = createBffDispatcher({
+  env: readEnvironment,
   beforeDispatch: () => bootstrapAmbientSettlementProfile(),
   preflight: preflightAdminBffRoute,
   notFound: (res, pathname) => {
     sendBffError(res, "NOT_FOUND", "BFF route not found", { details: { path: pathname } });
   },
 });
+
+export function createReferenceBffDispatch(createSessionBinding = createOperatorSessionBinding): import("@openlup/platform/bff").BffDispatch {
+  return (routes, req, res) => dispatcher([
+    ...operatorRoutes(readEnvironment(), createSessionBinding, routes), ...routes,
+  ], req, res);
+}
+export const dispatch = createReferenceBffDispatch();

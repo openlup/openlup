@@ -5,6 +5,7 @@ import { MACHINE_ACTOR_WRITE_ROUTES, allowedAdminRolesForBffRoute } from "../../
 import { createSupabaseAdminAuthFromEnv } from "../../adapters/supabase/adminAuthVerifier.js";
 import { createPostgresCommunicationsControlPlanePort } from "../../adapters/postgres/communicationsControlPlane.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
+import { createOperatorHumanAuth } from "./operatorSessionBinding.js";
 type Env = Record<string, string | undefined>;
 function createPlatformOperatorChecker(env: Env): PlatformOperatorChecker {
   const connectionString = env.DATABASE_URL?.trim() ?? "";
@@ -19,6 +20,7 @@ function createPlatformOperatorChecker(env: Env): PlatformOperatorChecker {
 
 export const resolveAdminAuthBinding = createAdminAuthBindingResolver({
   checkerFactory: createPlatformOperatorChecker,
+  humanAuthFactory: createOperatorHumanAuth,
   managedAuthFactory: createSupabaseAdminAuthFromEnv,
 });
 export async function preflightAdminBffRoute(

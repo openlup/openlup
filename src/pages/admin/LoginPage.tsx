@@ -30,7 +30,7 @@ const fieldItemCls =
 const isLikelyOtpCode = (value: string): boolean => /^\d{6,8}$/.test(value.trim());
 
 export default function LoginPage() {
-  const { signIn, signInWithOtpCode } = useAuth();
+  const { signIn, signInWithOtpCode, directOperatorAuth: direct = false } = useAuth();
   const navigate = useNavigate();
   const loginForm = useForm<LoginFormInput, unknown, LoginValues>({
     defaultValues: {
@@ -83,7 +83,7 @@ export default function LoginPage() {
 
     try {
       await requestAdminMagicLink(parsedEmail.data);
-      setMagicLinkMessage('Jeśli ten adres ma dostęp, wyślemy link. Możesz też wpisać kod z e-maila poniżej.');
+      setMagicLinkMessage(direct ? 'If this address has access, a sign-in link will be sent. You can also paste its token below.' : 'Jeśli ten adres ma dostęp, wyślemy link. Możesz też wpisać kod z e-maila poniżej.');
       setMagicLinkSentTo(parsedEmail.data);
       setCode('');
       setCodeError('');
@@ -97,8 +97,8 @@ export default function LoginPage() {
   async function handleCodeSubmit() {
     setError('');
     setCodeError('');
-    if (!isLikelyOtpCode(code)) {
-      setCodeError('Wpisz kod z e-maila (6–8 cyfr).');
+    if (direct ? !/^[A-Za-z0-9_-]{43}$/.test(code.trim()) : !isLikelyOtpCode(code)) {
+      setCodeError(direct ? 'Paste the token from your email link.' : 'Wpisz kod z e-maila (6–8 cyfr).');
       return;
     }
 
@@ -140,23 +140,23 @@ export default function LoginPage() {
               name="email"
               required
             />
-            <PasswordField
+            {!direct && <PasswordField
               className={fieldItemCls}
               control={loginForm.control}
               inputClassName={inputCls}
               label="Hasło"
               name="password"
               required
-            />
+            />}
           </div>
 
-          <button
+          {!direct && <button
             type="submit"
             disabled={loading || magicLinkLoading}
             className="w-full rounded-xl bg-teal py-3 text-sm font-semibold text-void transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {loading ? 'Logowanie...' : 'Zaloguj się'}
-          </button>
+          </button>}
 
           <div className="space-y-2 text-center">
             <button
@@ -175,15 +175,15 @@ export default function LoginPage() {
           {magicLinkSentTo && (
             <div className="space-y-2 border-t border-warm-sand pt-4">
               <label htmlFor="admin-otp-code" className="block text-sm font-semibold text-text-muted">
-                Kod z e-maila
+                {direct ? 'Email link token' : 'Kod z e-maila'}
               </label>
               <input
                 id="admin-otp-code"
                 name="otp-code"
                 type="text"
-                inputMode="numeric"
+                inputMode={direct ? 'text' : 'numeric'}
                 autoComplete="one-time-code"
-                placeholder="np. 77323522"
+                placeholder={direct ? 'Email link token' : 'np. 77323522'}
                 value={code}
                 onChange={(event) => {
                   setCode(event.target.value);
@@ -204,7 +204,7 @@ export default function LoginPage() {
                 onClick={() => void handleCodeSubmit()}
                 className="w-full rounded-xl bg-teal py-3 text-sm font-semibold text-void transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {codeLoading ? 'Weryfikacja...' : 'Zaloguj kodem'}
+                {codeLoading ? 'Weryfikacja...' : direct ? 'Sign in with token' : 'Zaloguj kodem'}
               </button>
             </div>
           )}

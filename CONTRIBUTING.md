@@ -129,6 +129,8 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-c5ef4341acad030e2f362d89d80384aa243975e09d0b546c1c56703ecef0d2f6","reason":"The required selector inventory and its falsifier include operator runtime/browser tests and PostgreSQL identity/invitation conformance. The cold consumer classifies both identity entries and checks the new adapter missing-peer refusal; canonical SQL admission and the maintenance-command execution allowlist use existing checks. The documented command names, complete package proof and execution ownership remain unchanged."} -->
+
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
 ordered DROP statements before the fixed grants and rejects missing, duplicate
@@ -926,11 +928,9 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-3596f948904d4961b2dbc38a72006c3b2124a02cd29c604e736228e3d3787502","reason":"The compose container receives the optional invitation TTL. No service, route, contributor command or verification selector changes; the runtime and identity owners describe the setting and refusal behavior."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-edc6d691b3171f72ed26bd5ce8ecb9082f58b5fe26738994bc6403eab1069e37","reason":"The existing required test command now selects operator runtime and browser authentication and the PostgreSQL identity/invitation cases explicitly. Command names, the Vitest runner, node/dom environments and execution ownership remain unchanged; database cases retain the existing disposable PostgreSQL requirement."} -->
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-fd850e70e33c133d1e5164f1868da03c618e0c22e33ea502d824cb7e5b474f30","reason":"The direct Docker-backed invitation lifecycle regression adds database advisory barriers for acceptance/removal ordering and uses Vitest, while the opt-in managed conformance uses the existing tsx runner and committed migration-chain reader, omitting only psql dump guard lines for node-postgres replay. Its disposable-stack prerequisites, default-ACL revocation, exact fixture-only grants and invocation remain as described in the platform package guide. Required selectors, gate order and contributor commands in this section are unchanged."} -->
-
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-85406c7fc1b9307476e2d2e4eedb843c15627cd514e5fb47e0a7c52d40d88403","reason":"The added unit assertion exercises the existing expand-only predicate on the direct invitation forward. No checker implementation, SQL admission rule, contributor command, required selector or gate order changes."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-0c0c63c78f506af798ad3e6dd8a73691c78bf058560a801ba8b56e5f2808e7af","reason":"Invitation upgrade conformance selects the complete prefix before the invitation migration by exact path and expects every subsequent forward. A credential-free catalogue test covers later appends and missing-path refusal. Disposable database ownership and the contributor commands remain unchanged."} -->
 
 ## Pull requests
 

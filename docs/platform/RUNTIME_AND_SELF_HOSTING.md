@@ -236,6 +236,22 @@ this preview.
 
 ## Provider and host boundaries
 
+For direct human operators set `OPERATOR_IDENTITY_AUDIENCE` distinct from
+`CUSTOMER_IDENTITY_AUDIENCE`, with the existing customer identity issuer/key/JWKS
+settings. In an application that mounts the supplied admin shell, select
+`VITE_OPERATOR_AUTH_PROVIDER_KIND=direct` and pass that value to `AuthProvider`
+as `providerKind`; absence
+keeps managed auth and unknown selections refuse. Apply the complete catalogue
+through the operator-challenges forward before enabling login. The explicit
+`server/runtime/auth/operatorIdentityCommand.ts` commands bootstrap the first
+administrator invitation and prune at most 500 old challenges. Neither runs at
+startup. Operator delivery defaults to discard; compose a separate delivery port
+and use only the strict configured application origin for callback links.
+The [identity guide](IDENTITY.md#direct-human-login) documents commands, tab-session
+limits and required database acceptance. Existing machine credentials remain
+separate and human login needs none. The bounded public-reference builds do not
+mount the admin shell or provide a direct operator browser journey.
+
 `readOperatorInvitationTtl` is an available direct-host composition helper for
 `OPERATOR_INVITATION_TTL_SECONDS` (default 604800, inclusive integer bounds
 60..2592000). A direct host must call it before directory, persistence or
