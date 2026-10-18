@@ -268,7 +268,11 @@
     {
       "file": "db/platform/migrations/20260914130000_customer_diagnostic_prune_job.sql",
       "sha256": "29592b4ee510ea48507c3728595955f9701539a1e99bba7a8a17b57ead7b0758"
+    },
+    {
+      "file": "db/platform/migrations/20261018120000_identity_operator_invitations.sql",
+      "sha256": "b73034908bd5e27819bcd421d17037a0f00a24aa3df1be1f8f9ca411bf984349"
     }
   ],
-  "objectInventorySha256": "68191a5cd36431ccca93e0c4c79cc2abcb7ffde49792c92d10ee37e3e2cb5a10"
+  "objectInventorySha256": "8946821ce78565f1eb3a6c344da1a7a7fbacb514235a78d37ac38633019a3ba8"
 }

@@ -44,6 +44,19 @@ an identity or link when trust cannot be established. Matching existing links
 retain their replay path. Provider SDK construction remains in host adapters.
 
 
+Identity invitation DTOs stay in the browser contracts subtree. The server entry
+owns direct pending/accepted transitions through an injected invitation store; the host
+parses its TTL environment value before effects and supplies the parsed number.
+Managed adapters insert active native membership immediately, without Auth metadata
+or first-entry activation. The browser validates active managed results as well
+as complete direct pending results;
+shared authentication and the public admin `me` source accept only the verified
+principal before membership authorization. Direct commands use the existing trusted
+PostgreSQL transaction lane; the machine token never accepts human invitations.
+See [the identity lifecycle](IDENTITY.md#operator-invitation-lifecycle) for expiry,
+cancellation, retained identity and managed concurrency limits.
+
+
 <!-- openlup-doc-impact {"unit":"browser","digest":"sha256-72979d3e343910cc061caf7f7335b82a8a1d4f0afbcec47f45b86e80632e9095","reason":"Deletion delta. The personalization route key, the homepage personalization flag and its hidden paths, and a personalizer comment are removed from browser code; no browser boundary described here changes."} -->
 
 Browser-facing modules own portable types, validation, clients, and pure logic.

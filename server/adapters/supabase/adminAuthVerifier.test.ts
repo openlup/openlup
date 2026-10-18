@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "../../../src/integrations/supabase/types.js";
-import { createSupabaseAdminAuth } from "./adminAuthVerifier.js";
+import { createSupabaseAdminAuthFromEnv, createSupabaseAdminAuth } from "./adminAuthVerifier.js";
+
+const sdkFactory = vi.hoisted(() => vi.fn());
+vi.mock("@supabase/supabase-js", () => ({ createClient: sdkFactory }));
 
 type AdminRow = { id: string; role: string; is_machine_actor: boolean | null };
 
@@ -10,7 +11,7 @@ function adminClient(opts: {
   userError?: unknown;
   row: AdminRow | null;
   rowError?: unknown;
-}): SupabaseClient<Database> {
+}) {
   const query = {
     eq: vi.fn(),
     maybeSingle: vi.fn(async () => ({ data: opts.row, error: opts.rowError ?? null })),
@@ -26,7 +27,7 @@ function adminClient(opts: {
     from: vi.fn(() => ({
       select: vi.fn(() => query),
     })),
-  } as unknown as SupabaseClient<Database>;
+  };
 }
 
 describe("createSupabaseAdminAuth", () => {
@@ -86,5 +87,18 @@ describe("createSupabaseAdminAuth", () => {
       code: "FORBIDDEN",
       message: "Admin role required",
     });
+  });
+});
+
+
+it("reference authorization uses only the actor client and requires no service key or activation", async () => {
+  sdkFactory.mockReset();
+  const id = "d4300000-0000-4000-8000-000000000001";
+  const actor = adminClient({ user: { id }, row: { id, role: "admin", is_machine_actor: false } });
+  sdkFactory.mockReturnValueOnce(actor as never);
+  const port = createSupabaseAdminAuthFromEnv({ url: "https://example.invalid", anonKey: "synthetic-anon" }, "synthetic-token");
+  expect(await port.authorize("synthetic-token")).toMatchObject({ ok: true, principalId: id });
+  expect(sdkFactory).toHaveBeenCalledExactlyOnceWith("https://example.invalid", "synthetic-anon", {
+    auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: "Bearer synthetic-token" } },
   });
 });

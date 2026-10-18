@@ -1,3 +1,6 @@
+import type { ManagedOperatorMembershipResult, OperatorInvitationConflict } from "./contracts/operatorInvitations.js";
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
+import { assertOperatorInvitationTtl } from "./operatorInvitationLifecycle.js";
 import { identityMessages, type IdentityMessages } from "./messages.js";
 export type AdminUserInviteRole = "admin" | "distributor";
 export const ADMIN_ROLE_NOTIFICATION_LOCALE = "en" as const;
@@ -18,14 +21,9 @@ export interface InviteAdminUserGateway {
     user: { id: string } | null;
     error: unknown;
   }>;
-  findAdminUser: (userId: string) => Promise<{ id: string; role: string } | null>;
+  findAdminUser: (userId: string) => Promise<{ id: string; role: string; membership_state: string; is_machine_actor: boolean } | null>;
   findAdminUserByEmail: (email: string) => Promise<{ id: string } | null>;
   findAuthUserByEmail: (email: string) => Promise<{ id: string; email?: string | null } | null>;
-  insertAdminUser: (input: {
-    id: string;
-    email: string;
-    role: AdminUserInviteRole;
-  }) => Promise<{ error: { message: string } | null }>;
   inviteAuthUser: (input: {
     email: string;
     redirectTo: string;
@@ -42,6 +40,8 @@ export interface AdminRoleNotificationPort {
     authUserId: string;
     role: AdminUserInviteRole;
     locale: "pl" | "en";
+    invitationId?: string;
+    expiresAt?: string;
   }) => Promise<{
     ok: boolean;
     providerMessageId: string | null;
@@ -57,12 +57,17 @@ export async function runInviteAdminUserUseCase(
     gateway: InviteAdminUserGateway;
     roleNotificationPort: AdminRoleNotificationPort;
     siteUrl: string;
+
     messages?: IdentityMessages;
     notificationLocale?: "pl" | "en";
-  },
+  } & (
+    | { invitationStore: OperatorInvitationStore; ttlSeconds: number }
+    | { activateMembership: (input: { principalId: string; email: string; role: AdminUserInviteRole }) => Promise<ManagedOperatorMembershipResult | { code: OperatorInvitationConflict }> }
+  ),
 ): Promise<{ status: number; body: InviteAdminUserResponse }> {
   const messages = deps.messages ?? identityMessages.en;
   try {
+    if ("invitationStore" in deps) assertOperatorInvitationTtl(deps.ttlSeconds);
     if (!request.accessToken) {
       return { status: 401, body: { code: "UNAUTHORIZED", error: messages.unauthorized } };
     }
@@ -73,7 +78,7 @@ export async function runInviteAdminUserUseCase(
     }
 
     const callerAdmin = await deps.gateway.findAdminUser(user.id);
-    if (!callerAdmin || callerAdmin.role !== "admin") {
+    if (!callerAdmin || callerAdmin.role !== "admin" || callerAdmin.membership_state !== "active" || callerAdmin.is_machine_actor !== false) {
       return { status: 403, body: { code: "INVITE_FORBIDDEN", error: messages.inviteForbidden } };
     }
 
@@ -86,79 +91,41 @@ export async function runInviteAdminUserUseCase(
     }
     const role = request.role;
 
-    const existingAdmin = await deps.gateway.findAdminUserByEmail(request.email);
-    if (existingAdmin) {
-      return { status: 400, body: { code: "ALREADY_ADDED", error: messages.alreadyAdded } };
+    const email = request.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { status: 400, body: { code: "INVALID_EMAIL", error: "Invalid email" } };
+    const existingMembership = await deps.gateway.findAdminUserByEmail(email);
+    let principal = await deps.gateway.findAuthUserByEmail(email);
+    if (existingMembership && existingMembership.id !== principal?.id) return { status: 409, body: { code: "IDENTITY_CONFLICT", error: "IDENTITY_CONFLICT" } };
+    if (!principal) {
+      const invite = await deps.gateway.inviteAuthUser({ email, role, redirectTo: new URL("/admin/auth/callback", deps.siteUrl).toString() });
+      if (invite.error || !invite.user) {
+        // A provider duplicate race reuses the durable identity. Never delete it.
+        principal = await deps.gateway.findAuthUserByEmail(email);
+        if (!principal) throw new Error("operator_identity_creation_failed");
+      } else principal = invite.user;
     }
-
-    const existingAuthUser = await deps.gateway.findAuthUserByEmail(request.email.trim().toLowerCase());
-    if (existingAuthUser) {
-      const { error: insertError } = await deps.gateway.insertAdminUser({
-        id: existingAuthUser.id,
-        email: request.email,
-        role,
-      });
-      if (insertError) {
-        return { status: 500, body: { code: "ADMIN_INSERT_FAILED", error: messages.addFailed(insertError.message) } };
+    const issued = "invitationStore" in deps
+      ? await deps.invitationStore.issue({ actorPrincipalId: user.id, targetPrincipalId: principal.id, email, role, ttlSeconds: deps.ttlSeconds })
+      : await deps.activateMembership({ principalId: principal.id, email, role });
+    if (!("membershipState" in issued)) return { status: 409, body: { code: issued.code, error: issued.code } };
+    let delivery: Pick<InviteAdminUserResponse, "deliveryReference" | "deliveryReferencePresent"> = {};
+    if (issued.code !== "ALREADY_INVITED" && issued.code !== "ALREADY_ACTIVE") {
+      try {
+        const notification = await deps.roleNotificationPort.sendRoleGranted({ email, authUserId: principal.id, role, locale: deps.notificationLocale ?? ADMIN_ROLE_NOTIFICATION_LOCALE, ...(issued.membershipState === "invited" ? { invitationId: issued.invitationId, expiresAt: issued.expiresAt } : {}) });
+        if (!notification.ok) throw new Error("operator_invitation_notification_failed");
+        delivery = { deliveryReference: notification.skipped ? null : notification.providerMessageId, deliveryReferencePresent: !notification.skipped && Boolean(notification.providerMessageId) };
+      } catch {
+        return { status: 503, body: issued.membershipState === "invited"
+          ? { code: "INVITATION_NOTIFICATION_FAILED", error: "Invitation persisted; notification unavailable", invitationId: issued.invitationId }
+          : { ...issued, code: "INVITATION_NOTIFICATION_FAILED", error: "Membership active; notification unavailable" } };
       }
-
-      const notification = await deps.roleNotificationPort.sendRoleGranted({
-        email: request.email,
-        authUserId: existingAuthUser.id,
-        role,
-        locale: deps.notificationLocale ?? ADMIN_ROLE_NOTIFICATION_LOCALE,
-      });
-      if (!notification.ok) {
-        return {
-          status: 502,
-          body: {
-            code: "ROLE_NOTIFICATION_FAILED", error: messages.notificationFailed(notification.providerError ?? "unknown_error"),
-          },
-        };
-      }
-
-      return {
-        status: 200,
-        body: {
-          success: true,
-          message: notification.skipReason === "admin_disabled"
-            ? messages.roleAddedDisabled(request.email, role)
-            : notification.skipReason === "egress_suppressed"
-              ? messages.roleAddedSuppressed(request.email, role)
-              : messages.roleAdded(request.email, role),
-          deliveryReference: notification.skipped ? null : notification.providerMessageId,
-          deliveryReferencePresent: !notification.skipped && Boolean(notification.providerMessageId),
-        },
-      };
     }
+    return { status: 200, body: { success: true, ...issued, ...delivery, message: issued.membershipState === "invited" ? `Invitation pending until ${issued.expiresAt}` : "Operator membership active" } };
 
-    const invite = await deps.gateway.inviteAuthUser({
-      email: request.email,
-      redirectTo: new URL("/admin/auth/callback", deps.siteUrl).toString(),
-      role,
-    });
-    if (invite.error) {
-      return { status: 500, body: { code: "INVITATION_FAILED", error: messages.inviteFailed(invite.error.message) } };
-    }
-
-    const { error: insertError } = await deps.gateway.insertAdminUser({
-      id: invite.user!.id,
-      email: request.email,
-      role,
-    });
-    if (insertError) {
-      return {
-        status: 500,
-        body: { code: "ROLE_INSERT_FAILED", error: messages.roleInsertFailed(insertError.message) },
-      };
-    }
-
-    return {
-      status: 200,
-      body: { success: true, message: messages.invited(request.email, role) },
-    };
   } catch (err) {
-    return { status: 500, body: { code: "IDENTITY_ACTION_FAILED", error: String(err) } };
+    const failure = err as { identityCode?: string; bffCode?: string };
+    if (failure.identityCode) return { status: failure.bffCode === "FORBIDDEN" ? 403 : 409, body: { code: failure.identityCode, error: failure.identityCode } };
+    return { status: 503, body: { code: "IDENTITY_ACTION_FAILED", error: String(err) } };
   }
 }
 

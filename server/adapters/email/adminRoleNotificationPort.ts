@@ -63,8 +63,8 @@ export function createAdminRoleNotificationPort(input: {
 
   return {
     async sendRoleGranted(notification) {
-      const rendered = renderRoleGrantedEmail(notification.role, notification.locale, siteUrl);
-      const dedupeKey = `${ADMIN_ROLE_NOTIFICATION_SOURCE}:role-granted:${notification.authUserId}`;
+      const rendered = renderRoleGrantedEmail(notification.role, notification.locale, siteUrl, notification.expiresAt);
+      const dedupeKey = notification.invitationId ?? `admin-membership:${notification.authUserId}:${notification.role}`;
       const enabled = await notificationControl.isEnabled(
         ADMIN_ROLE_NOTIFICATION_TEMPLATE_SLUG,
         new AbortController().signal,
@@ -111,22 +111,44 @@ function renderRoleGrantedEmail(
   role: "admin" | "distributor",
   locale: Parameters<AdminRoleNotificationPort["sendRoleGranted"]>[0]["locale"],
   siteUrl: string,
+  expiresAt?: string,
 ) {
-  const localizedRoleName = roleLabel(role);
-  const roleEn = role === "admin" ? "Admin" : "Distributor";
-  const copyBrandName = emailPresentation.brand.email.copyBrandName;
+  const copy = expiresAt === undefined ? (locale === "pl" ? {
+    subject: `Uprawnienia operatora: ${role}`,
+    heading: "Uprawnienia operatora",
+    status: "Twoje uprawnienia operatora są aktywne.",
+    body: `Przyznano Ci rolę ${role}. Otwórz panel operatora, aby się zalogować.`,
+    button: "Otwórz panel operatora",
+    footer: "Jeśli nie oczekujesz tych uprawnień, skontaktuj się z zespołem aplikacji.",
+  } : {
+    subject: `Operator membership: ${role}`,
+    heading: "Operator membership",
+    status: "Your operator membership is active.",
+    body: `You have the ${role} role. Open the operator panel to sign in.`,
+    button: "Open operator panel",
+    footer: "If you did not expect this membership, contact the application team.",
+  }) : locale === "pl" ? {
+    subject: `Zaproszenie operatora: ${role}`,
+    heading: "Zaproszenie operatora",
+    status: `Zaproszenie oczekuje na przyjęcie do ${expiresAt}.`,
+    body: `Zaproszono Cię do roli ${role}. Dostęp rozpocznie się po wejściu do panelu operatora ze zweryfikowanym kontem.`,
+    button: "Otwórz panel operatora",
+    footer: "Jeśli nie oczekujesz tego zaproszenia, skontaktuj się z zespołem aplikacji.",
+  } : {
+    subject: `Operator invitation: ${role}`,
+    heading: "Operator invitation",
+    status: `Your invitation is pending until ${expiresAt}.`,
+    body: `You are invited as ${role}. Access begins when you enter the operator panel with your verified account.`,
+    button: "Open operator panel",
+    footer: "If you did not expect this invitation, contact the application team.",
+  };
   return renderEmail({
     brand: emailPresentation.emailBrandForOrigin(siteUrl),
     locale,
-    subject: `Dostęp do panelu ${copyBrandName}: ${localizedRoleName}`,
-    preheader: `Nadano Ci rolę ${localizedRoleName} w panelu ${copyBrandName}.`,
-    blocks: [
-      heading(`Dostęp do panelu ${copyBrandName}`),
-      paragraph(`Nadano Ci rolę: ${localizedRoleName}. Możesz zalogować się do panelu ${copyBrandName} przyciskiem poniżej.`),
-      paragraph(`You've been granted this ${copyBrandName} admin-panel role: ${roleEn}. Use the button below to sign in.`),
-      button("Otwórz panel / Open admin panel", `${siteUrl}/admin`),
-      paragraph(`Jeśli nie spodziewałeś się tego dostępu, skontaktuj się z zespołem ${copyBrandName}.`, { muted: true }),
-    ],
+    subject: copy.subject,
+    preheader: copy.status,
+    blocks: [heading(copy.heading), paragraph(copy.status), paragraph(copy.body),
+      button(copy.button, `${siteUrl}/admin`), paragraph(copy.footer, { muted: true })],
   });
 }
 
@@ -245,6 +267,3 @@ function hasInsertSelect(value: ReturnType<AdminRoleNotificationQuery["insert"]>
   return typeof value === "object" && value !== null && "select" in value && typeof value.select === "function";
 }
 
-function roleLabel(role: "admin" | "distributor"): string {
-  return role === "admin" ? "Admin" : "Dystrybutor";
-}

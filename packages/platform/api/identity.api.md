@@ -745,6 +745,7 @@ export type AdminAuthorization = {
     ok: false;
     code: "UNAUTHORIZED" | "FORBIDDEN";
     message: string;
+    identityCode?: string;
 };
 /** A request-bound thunk that resolves the calling admin (or a denial). */
 export type AuthorizeAdmin = () => Promise<AdminAuthorization>;
@@ -804,9 +805,35 @@ export declare const adminUserInviteRequestSchema: z.ZodObject<{
         distributor: "distributor";
     }>;
 }, z.core.$strip>;
-export declare const adminUserInviteResponseSchema: z.ZodObject<{
+export declare const adminUserInviteResponseSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    principalId: z.ZodString;
+    invitationId: z.ZodString;
+    membershipState: z.ZodLiteral<"invited">;
+    role: z.ZodEnum<{
+        admin: "admin";
+        distributor: "distributor";
+    }>;
+    invitedAt: z.ZodISODateTime;
+    expiresAt: z.ZodISODateTime;
+    code: z.ZodEnum<{
+        INVITATION_CREATED: "INVITATION_CREATED";
+        ALREADY_INVITED: "ALREADY_INVITED";
+        INVITATION_REISSUED: "INVITATION_REISSUED";
+    }>;
     message: z.ZodOptional<z.ZodString>;
-}, z.core.$strip>;
+}, z.core.$strip>, z.ZodObject<{
+    principalId: z.ZodString;
+    membershipState: z.ZodLiteral<"active">;
+    role: z.ZodEnum<{
+        admin: "admin";
+        distributor: "distributor";
+    }>;
+    code: z.ZodEnum<{
+        MEMBERSHIP_CREATED: "MEMBERSHIP_CREATED";
+        ALREADY_ACTIVE: "ALREADY_ACTIVE";
+    }>;
+    message: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>], "membershipState">;
 export declare const adminUserRemoveRequestSchema: z.ZodObject<{
     userId: z.ZodString;
 }, z.core.$strip>;
@@ -860,10 +887,12 @@ export declare function createAdminMagicLinkHandler(options: AdminMagicLinkHandl
 ## dist/identity/adminMeHandler.d.ts
 
 ```ts
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
 import { type IdentityResponseOptions } from "./response.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { PlatformUserAuthenticationResult } from "./platformAdminAuth.js";
 export interface AdminPlatformMeDeps extends IdentityResponseOptions {
+    invitationStore?: Pick<OperatorInvitationStore, "acceptOperatorInvitation">;
     platformPort: {
         getAdminMe(userId: string): Promise<{
             isAdmin: boolean;
@@ -872,7 +901,7 @@ export interface AdminPlatformMeDeps extends IdentityResponseOptions {
     };
     authenticateUser: (req: HttpRequest) => Promise<PlatformUserAuthenticationResult>;
 }
-export declare function createAdminPlatformMeHandler({ platformPort, authenticateUser, responseRequestId, }: AdminPlatformMeDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAdminPlatformMeHandler({ platformPort, invitationStore, authenticateUser, responseRequestId, }: AdminPlatformMeDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
 ## dist/identity/adminPreflight.d.ts
 
@@ -900,6 +929,13 @@ export declare function createAdminBffPreflight(options: IdentityResponseOptions
 import type { IdentityAdminActionsPort } from "./adminUserHandlers.js";
 import type { runInviteAdminUserUseCase } from "./inviteAdminUserUseCase.js";
 import type { runRemoveAdminUserUseCase } from "./removeAdminUserUseCase.js";
+export interface AdminUserInviteErrorDetails {
+    identityCode?: string;
+    invitationId?: string;
+    principalId?: string;
+    membershipState?: "active";
+    role?: "admin" | "distributor";
+}
 type AdminUserActionRuntimeEnv = Record<string, string | undefined>;
 type AdminUserInviteRunner = (request: {
     accessToken: string | null;
@@ -928,13 +964,12 @@ export {};
 import { type IdentityResponseOptions } from "./response.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { PlatformAdminAuthorizationResult } from "./platformAdminAuth.js";
+import type { OperatorInviteResult } from "./contracts/operatorInvitations.js";
 export interface IdentityAdminActionsPort {
     inviteAdminUser(request: {
         email: string;
         role: "admin" | "distributor";
-    }): Promise<{
-        message?: string;
-    }>;
+    }): Promise<OperatorInviteResult>;
     removeAdminUser(request: {
         userId: string;
     }): Promise<{
@@ -981,6 +1016,47 @@ export declare function normalizeMagicLinkReturnPath(value: string | undefined, 
 /** Browser-safe email-association refusal codes. */
 export declare const EMAIL_TRUST_FAILURE_CODES: readonly ["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"];
 export type EmailTrustFailureCode = typeof EMAIL_TRUST_FAILURE_CODES[number];
+```
+## dist/identity/contracts/operatorInvitations.d.ts
+
+```ts
+/** Pending invitations confer no authority; only accepted native memberships do. */
+export type OperatorRole = "admin" | "distributor";
+export type OperatorMembershipState = "invited" | "active" | "expired" | "revoked";
+export type OperatorInvitationOutcome = "INVITATION_CREATED" | "ALREADY_INVITED" | "INVITATION_REISSUED";
+export type OperatorInvitationConflict = "MEMBERSHIP_ALREADY_ACTIVE" | "INVITATION_ROLE_CONFLICT" | "IDENTITY_CONFLICT" | "MANAGED_REINVITE_UNSUPPORTED";
+export interface OperatorInvitation {
+    principalId: string;
+    invitationId: string;
+    membershipState: "invited";
+    role: OperatorRole;
+    invitedAt: string;
+    expiresAt: string;
+}
+export interface OperatorInvitationResult extends OperatorInvitation {
+    code: OperatorInvitationOutcome;
+    message?: string;
+}
+export interface OperatorMembershipSnapshot {
+    principalId: string;
+    membershipState: OperatorMembershipState;
+    role: OperatorRole;
+}
+export type OperatorInvitationAcceptance = {
+    code: "ACTIVATED" | "ALREADY_ACTIVE";
+    role: OperatorRole;
+} | {
+    code: "INVITATION_EXPIRED" | "INVITATION_REVOKED" | "NO_INVITATION";
+};
+/** Managed invitations activate membership immediately; no pending attempt is stored. */
+export interface ManagedOperatorMembershipResult {
+    principalId: string;
+    membershipState: "active";
+    role: OperatorRole;
+    code: "MEMBERSHIP_CREATED" | "ALREADY_ACTIVE";
+    message?: string;
+}
+export type OperatorInviteResult = OperatorInvitationResult | ManagedOperatorMembershipResult;
 ```
 ## dist/identity/contribution.d.ts
 
@@ -1254,6 +1330,27 @@ export declare function createCustomerVerifyOtpHandler(options: IdentityResponse
     resolveSession: typeof resolveCustomerSessionBinding;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
+## dist/identity/directOperatorInvitationStore.d.ts
+
+```ts
+import { type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
+/** Owner-authority lane, never the actor gateway. One transaction per command. */
+export declare function createDirectOperatorInvitationStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): OperatorInvitationStore & {
+    close(): Promise<void>;
+};
+/** Principal creation commits independently; an invitation failure leaves it reusable. */
+export declare function createDirectOperatorIdentityDirectory(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): {
+    ensurePrincipal(input: {
+        email: string;
+        redirectTo: string;
+    }): Promise<{
+        principalId: string;
+        created: boolean;
+    }>;
+    close: () => Promise<void>;
+};
+```
 ## dist/identity/emailTrustPolicy.d.ts
 
 ```ts
@@ -1332,10 +1429,15 @@ export { createVerifierResultOnlyEmailTrustPolicy } from "./emailTrustPolicy.js"
 export type { EmailTrustAssessment, EmailTrustPolicy } from "./emailTrustPolicy.js";
 export * from "./managedEmailTrustPolicy.js";
 export * from "./identityReadiness.js";
+export * from "./operatorInvitationPorts.js";
+export * from "./operatorInvitationLifecycle.js";
+export * from "./directOperatorInvitationStore.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
 ```ts
+import type { ManagedOperatorMembershipResult, OperatorInvitationConflict } from "./contracts/operatorInvitations.js";
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
 import { type IdentityMessages } from "./messages.js";
 export type AdminUserInviteRole = "admin" | "distributor";
 export declare const ADMIN_ROLE_NOTIFICATION_LOCALE: "en";
@@ -1359,6 +1461,8 @@ export interface InviteAdminUserGateway {
     findAdminUser: (userId: string) => Promise<{
         id: string;
         role: string;
+        membership_state: string;
+        is_machine_actor: boolean;
     } | null>;
     findAdminUserByEmail: (email: string) => Promise<{
         id: string;
@@ -1367,15 +1471,6 @@ export interface InviteAdminUserGateway {
         id: string;
         email?: string | null;
     } | null>;
-    insertAdminUser: (input: {
-        id: string;
-        email: string;
-        role: AdminUserInviteRole;
-    }) => Promise<{
-        error: {
-            message: string;
-        } | null;
-    }>;
     inviteAuthUser: (input: {
         email: string;
         redirectTo: string;
@@ -1395,6 +1490,8 @@ export interface AdminRoleNotificationPort {
         authUserId: string;
         role: AdminUserInviteRole;
         locale: "pl" | "en";
+        invitationId?: string;
+        expiresAt?: string;
     }) => Promise<{
         ok: boolean;
         providerMessageId: string | null;
@@ -1413,7 +1510,18 @@ export declare function runInviteAdminUserUseCase(request: {
     siteUrl: string;
     messages?: IdentityMessages;
     notificationLocale?: "pl" | "en";
-}): Promise<{
+} & ({
+    invitationStore: OperatorInvitationStore;
+    ttlSeconds: number;
+} | {
+    activateMembership: (input: {
+        principalId: string;
+        email: string;
+        role: AdminUserInviteRole;
+    }) => Promise<ManagedOperatorMembershipResult | {
+        code: OperatorInvitationConflict;
+    }>;
+})): Promise<{
     status: number;
     body: InviteAdminUserResponse;
 }>;
@@ -1526,28 +1634,37 @@ export declare function createSupabaseAdminAuthFromEnv(env: {
 ## dist/identity/managedAdminUserGateways.d.ts
 
 ```ts
+import type { AdminUserInviteRole } from "./inviteAdminUserUseCase.js";
+import type { ManagedOperatorMembershipResult, OperatorInvitationConflict } from "./contracts/operatorInvitations.js";
 import type { InviteAdminUserGateway } from "./inviteAdminUserUseCase.js";
 import type { RemoveAdminUserGateway } from "./removeAdminUserUseCase.js";
 interface InviteAdminUserQuery {
+    insert(row: {
+        id: string;
+        email: string;
+        role: AdminUserInviteRole;
+        membership_state: "active";
+        membership_provenance: "invitation";
+        membership_accepted_at: string;
+    }): PromiseLike<{
+        error: {
+            code?: string;
+            message?: string;
+        } | null;
+    }>;
     select(columns: string): {
         eq(column: string, value: string): {
             maybeSingle(): PromiseLike<{
                 data: {
                     id: string;
                     role?: string;
+                    membership_state?: string;
+                    is_machine_actor?: boolean | null;
                 } | null;
+                error?: unknown;
             }>;
         };
     };
-    insert(row: {
-        id: string;
-        email: string;
-        role: "admin" | "distributor";
-    }): PromiseLike<{
-        error: {
-            message: string;
-        } | null;
-    }>;
 }
 export interface InviteAdminUserClient {
     auth: {
@@ -1575,7 +1692,6 @@ export interface InviteAdminUserClient {
             }>;
             inviteUserByEmail(email: string, options: {
                 redirectTo: string;
-                data: Record<string, unknown>;
             }): PromiseLike<{
                 data: {
                     user: {
@@ -1589,10 +1705,6 @@ export interface InviteAdminUserClient {
         };
     };
     from(table: "admin_users"): InviteAdminUserQuery;
-    rpc?: (name: string, params: Record<string, unknown>) => PromiseLike<{
-        data: unknown;
-        error: unknown;
-    }>;
 }
 interface RemoveAdminUserQuery {
     select(columns: string): {
@@ -1632,8 +1744,18 @@ export interface RemoveAdminUserClient {
         } | null;
     }>;
 }
-export declare function createInviteAdminUserGateway(clientFactory: () => InviteAdminUserClient): InviteAdminUserGateway;
+export declare function createInviteAdminUserGateway(clientFactory: () => InviteAdminUserClient): InviteAdminUserGateway & {
+    activateMembership(input: {
+        principalId: string;
+        email: string;
+        role: AdminUserInviteRole;
+    }): Promise<ManagedOperatorMembershipResult | {
+        code: OperatorInvitationConflict;
+    }>;
+};
 export declare function createRemoveAdminUserGateway(clientFactory: () => RemoveAdminUserClient): RemoveAdminUserGateway;
+/** Managed eligibility depends only on active native membership and known roles. */
+export declare function managedOperatorMagicLinkEligibility(rawClient: unknown, email: string): Promise<"eligible" | "not_allowlisted" | "role_not_allowed">;
 export {};
 ```
 ## dist/identity/managedClient.d.ts
@@ -1652,6 +1774,7 @@ export interface ManagedIdentityRow {
     auth_user_id?: string | null;
     role?: string | null;
     is_machine_actor?: boolean | null;
+    membership_state?: string;
 }
 export interface ManagedIdentityQuery extends PromiseLike<{
     data: ManagedIdentityRow[] | null;
@@ -1806,6 +1929,52 @@ declare const en: {
 export type IdentityMessages = typeof en;
 export declare const identityMessages: Readonly<Record<"en" | "pl", IdentityMessages>>;
 export {};
+```
+## dist/identity/operatorInvitationLifecycle.d.ts
+
+```ts
+export declare function assertOperatorInvitationTtl(value: number): void;
+export declare function invitationFailure(identityCode: string, bffCode?: string): Error & {
+    identityCode: string;
+    bffCode: string;
+};
+/** Pure parser; direct hosts call it before effects and pass the number to identity. */
+export declare function parseOperatorInvitationTtl(raw?: string): number;
+```
+## dist/identity/operatorInvitationPorts.d.ts
+
+```ts
+import type { OperatorInvitationAcceptance, OperatorInvitationConflict, OperatorInvitationResult, OperatorMembershipSnapshot, OperatorRole } from "./contracts/operatorInvitations.js";
+export interface OperatorIdentityDirectoryPort {
+    ensurePrincipal(input: {
+        email: string;
+        redirectTo: string;
+    }): Promise<{
+        principalId: string;
+        created: boolean;
+    }>;
+}
+export interface OperatorInvitationStore {
+    issue(input: {
+        actorPrincipalId: string;
+        targetPrincipalId: string;
+        email: string;
+        role: OperatorRole;
+        ttlSeconds: number;
+    }): Promise<OperatorInvitationResult | {
+        code: OperatorInvitationConflict;
+    }>;
+    read(principalId: string): Promise<OperatorMembershipSnapshot | null>;
+    /** Trusted server input only: principal must come from successful authentication. */
+    acceptOperatorInvitation(principalId: string): Promise<OperatorInvitationAcceptance>;
+    remove(input: {
+        actorPrincipalId: string;
+        targetPrincipalId: string;
+        reason?: string;
+    }): Promise<{
+        revoked: true;
+    }>;
+}
 ```
 ## dist/identity/operatorTokenAdminAuth.d.ts
 
@@ -2035,6 +2204,7 @@ export declare function createReconcileAccountHandler(options: IdentityResponseO
 ## dist/identity/removeAdminUserUseCase.d.ts
 
 ```ts
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
 import { type IdentityMessages } from "./messages.js";
 export type RemoveAdminUserResponse = {
     revoked?: true;
@@ -2061,7 +2231,7 @@ export interface RemoveAdminUserGateway {
 export declare function runRemoveAdminUserUseCase(request: {
     accessToken: string | null;
     userId: string;
-}, gateway: RemoveAdminUserGateway, messages?: IdentityMessages): Promise<{
+}, gateway: RemoveAdminUserGateway, messages?: IdentityMessages, invitationStore?: Pick<OperatorInvitationStore, "remove">): Promise<{
     status: number;
     body: RemoveAdminUserResponse;
 }>;
@@ -2100,6 +2270,12 @@ export declare const IDENTITY_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20260901143000_admin_membership_authority_foundation.sql";
     readonly position: 60;
     readonly sha256: "bb4703b669d17e5a0eb4d9a4e8889d12e5286d4b5a813226a77ef2b71df8281f";
+    readonly url: URL;
+}, {
+    readonly id: "20261018120000_identity_operator_invitations";
+    readonly catalogPath: "db/platform/migrations/20261018120000_identity_operator_invitations.sql";
+    readonly position: 67;
+    readonly sha256: "b73034908bd5e27819bcd421d17037a0f00a24aa3df1be1f8f9ca411bf984349";
     readonly url: URL;
 }];
 ```

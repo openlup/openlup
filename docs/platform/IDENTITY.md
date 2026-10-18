@@ -117,9 +117,7 @@ retroactively unconfirmed; no SQL projection, migration or ledger changes.
 The soft-account linker attempts identity creation first, then scans the existing
 directory only after an already-registered response. Both directory adapters
 follow `nextPage`, compare trimmed lowercase addresses, propagate lookup failures
-and refuse after 5000 scanned users. Invite side effects retain the original
-request address. The invite use case still checks only the caller's role; the
-HTTP authorizer separately requires active membership. Only stored `admin` and
+and refuse after 5000 scanned users. The invite use case and HTTP authorizer require active human membership. Only stored `admin` and
 `distributor` roles authorize. Null and unknown roles return
 `FORBIDDEN` (HTTP 403), with or without a route-specific role restriction.
 The reference profile adapter returns `{ isAdmin: false, role: null }` for these
@@ -128,6 +126,9 @@ records quota before eligibility and returns the padded, non-enumerating
 `{ accepted: true }` response without sending. Adopters wanting legacy mapping
 must perform it in their own adapter before the package receives the role;
 identity exposes no fallback setting.
+Invitation lookup and new identity creation use trimmed lowercase addresses;
+existing durable principal, membership and customer addresses remain untouched.
+Issuance requires an active human administrator. The direct lifecycle store also checks this authority inside its transaction.
 
 Both managed contact stores find mixed-case stored addresses using the
 normalized input. Literal matching means an anchored, escaped `imatch` database
@@ -159,10 +160,7 @@ Handler factories construct the foundation BFF responder themselves. The custome
 profile factory requires the host response schema, retaining its selected currency
 policy without putting that policy in identity. Applications
 may supply the observed request-ID reader; they do not replace the responder.
-Invite/remove use cases return stable error codes and select the injected message
-table. The reference bindings retain their existing response text and receipt
-field mapping, select the existing notification locale and omit the new internal
-error-code field. Mail sender and origin remain inputs to the application's mail
+Invite/remove use cases return stable error codes. Invitation bindings expose typed conflict reasons and preserve the selected bundle result: direct pending invitations carry their deadline, while managed invitations return active membership. Receipt field mapping stays in reference composition. Mail sender and origin remain inputs to the application's mail
 adapter; the package has no default sender or deployment URL.
 
 ## Magic-link redirect policy
@@ -224,9 +222,105 @@ are available for host composition; the reference server does not invoke them
 at startup.
 
 
+## Operator invitation lifecycle
+
+The direct bundle stores pending invitations; the managed bundle activates
+membership immediately. These are distinct public contracts.
+
+Direct issue returns HTTP 200 with `INVITATION_CREATED`, `ALREADY_INVITED` or
+`INVITATION_REISSUED`, principal ID, invitation ID, `membershipState: "invited"`,
+role, issue time and deadline. A repeat retains its attempt and sends no mail.
+Different pending roles, active membership and inconsistent identities return
+409 with `INVITATION_ROLE_CONFLICT`, `MEMBERSHIP_ALREADY_ACTIVE` or
+`IDENTITY_CONFLICT`. Expired and cancelled attempts can be reissued with a new
+notification ID. Notification failure returns 503 with the persisted invitation
+ID; retry returns `ALREADY_INVITED` without another notification.
+
+`OperatorInvitationStore` owns direct issue, read, acceptance and removal.
+`acceptOperatorInvitation(principalId)` is a trusted server command: its principal
+must come from verified sign-in, never a browser target or requested role. It
+is not connected to direct machine authentication; direct human login remains
+unmounted. Pending invitations confer no access. Active membership takes
+precedence over expiry; an old accepted attempt cannot restore revoked access.
+The direct TTL defaults to 604800 seconds, with integer bounds 60..2592000.
+Direct hosts must invoke `readOperatorInvitationTtl` (or the pure
+`parseOperatorInvitationTtl`) before effects and pass its result into identity;
+the reference managed invite runner does not enforce this direct-only setting. Lazy expiry uses the serialized
+database clock, includes equality with the deadline and records one system audit
+event. No expiry job or notification retry command is added.
+
+Direct storage uses the two additive tables in forward
+`20261018120000_identity_operator_invitations`, canonical catalogue position 67.
+Each command runs in one existing owner-authority PostgreSQL transaction and
+serializes by normalized email. Actor and target memberships lock in principal
+order before authorization, preventing reciprocal lock upgrades. Membership,
+acceptance and audit commit together. Reactivation uses the existing local guard
+setting, lifecycle update and separate role update. Revocation retains
+`platform_revoke_human_membership` and its last-administrator guard. Principal
+creation/reuse commits separately before issuance; failures retain the identity
+and customer link. The forward changes no grants or policies.
+
+Managed issue inserts an active `admin_users` membership immediately with
+invitation provenance and the current acceptance timestamp. It omits
+`is_machine_actor`, relying on the database's `NOT NULL DEFAULT false`.
+HTTP 200 returns principal ID, role, `membershipState: "active"` and
+`MEMBERSHIP_CREATED` or `ALREADY_ACTIVE`, without invitation ID or expiry fields.
+An identical repeat returns existing membership without updating its role,
+provenance or acceptance time and sends no second notification. A unique-key
+insert race re-reads the winner instead of failing; role differences return
+`INVITATION_ROLE_CONFLICT`, inconsistent identities or machine targets return
+`IDENTITY_CONFLICT`, and revoked membership returns
+`MANAGED_REINVITE_UNSUPPORTED` (HTTP 409).
+
+Managed invitations store no pending, accepted, expired or cancelled attempt in
+Auth metadata. Authorization and the public admin `me` route only read active
+native membership; neither activates on first entry nor runs compensation.
+They do not require a service key for invitation state. Managed removal retains
+its actor-authenticated revocation RPC and self/machine-target and
+last-administrator refusals. Magic-link eligibility requires active native
+membership with a stored `admin` or `distributor` role; metadata never qualifies
+an invitee. Quota, padding and the non-enumerating accepted response remain.
+
+Failed insertion retains any provisioned identity for retry. A provider duplicate
+race reuses the existing principal. When the provider rejects an already-registered
+address before sending mail, the concurrent loser sends no provider invitation
+mail; only the membership-insert winner sends the role notification.
+Notification failure returns 503 with BFF code `UPSTREAM_UNAVAILABLE` and
+`error.details` containing `identityCode: "INVITATION_NOTIFICATION_FAILED"`,
+`membershipState: "active"`, `principalId` and `role`; retry
+returns `ALREADY_ACTIVE` without resending. No failure deletes an auth identity,
+principal or customer link. Managed operators appear in the active settings list
+as soon as insertion succeeds.
+
+The reference browser validates both active managed results and complete direct
+pending results, including their distinct outcome codes. Managed role mail
+describes active membership without a deadline or first-entry activation copy.
+Its delivery and timeline key is `admin-membership:<principalId>:<role>`;
+direct mail retains its invitation-attempt key and pending deadline.
+
+**Migration:** direct hosts adopting pending invitations apply the new direct
+forward and compose trusted human acceptance and TTL parsing. Existing
+memberships and customer/principal links are preserved. Managed activation stays
+immediate; managed consumers now parse the active-membership result and its
+`MEMBERSHIP_CREATED`/`ALREADY_ACTIVE` codes instead of message-only success.
+Duplicates return existing membership instead of `ALREADY_ADDED`, and
+notification failure returns 503 `INVITATION_NOTIFICATION_FAILED` with active
+membership retained. Managed pending/expiry remains a compatibility gap requiring
+a separate transactional store and reviewed forward. No managed SQL, RPC or
+grants are introduced.
+The committed managed chain still needs a reviewed forward granting
+`service_role` SELECT(email) and INSERT(id, email, role, membership_state,
+membership_provenance, membership_accepted_at) on `admin_users`. The opt-in local
+conformance applies these exact permissions as a labelled fixture-only grant;
+it establishes neither shipped-grants readiness nor transactional lifecycle parity.
+See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
+[package invocation](../../packages/platform/README.md#operator-invitations).
+
+## Schema continuity and readiness
+
 [`IDENTITY_MIGRATIONS`](../../packages/platform/src/identity/sql.ts) records the
-canonical path, SHA-256 digest and runner position of four complete units, at
-positions 11, 12, 29 and 60. The package SQL files retain every canonical byte.
+canonical path, SHA-256 digest and runner position of five complete units, at
+positions 11, 12, 29, 60 and 67. The package SQL files retain every canonical byte.
 They are a projection for inspection and host migration composition, not a
 standalone chain: earlier foundation migrations and intervening units still
 matter. Never apply a package projection on top of an already applied canonical
@@ -310,8 +404,8 @@ project include `test/identity/**` without a new selector or coverage exception.
 The witnesses are:
 
 - Customer row isolation: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. It pins the reference schema's grants as they are today. Two customers each see only their own client, address, orderer profile, payment preference and account event; `authenticated` holds SELECT on those tables (on clients, column-level). The customer SELECT policies on pets, orders, order items, subscriptions, subscription lines and cycles have no `authenticated` grant behind them, so those reads are refused with SQLSTATE 42501. Anonymous reads are refused with 42501 on the customer tables and return zero rows on the three subscription tables, which hold a seeded row per customer.
-- Admin authorization: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates. The invite/remove matrix includes two additive refusal rows: an active member with a null role and an active member with an unknown role each receive 403 before either action. The witness also pins those refusals with or without a role restriction; the invite use case itself still checks only the caller's role.
-- Directory lookup: [`inviteLookupConformance.test.ts`](../../packages/platform/test/identity/inviteLookupConformance.test.ts), covering pagination, normalization, cap, errors, effect ordering and retained request spelling.
+- Admin authorization: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates. The invite/remove matrix includes two additive refusal rows: an active member with a null role and an active member with an unknown role each receive 403 before either action. The witness also pins those refusals with or without a role restriction; the invite use case also requires active human membership.
+- Directory lookup: [`inviteLookupConformance.test.ts`](../../packages/platform/test/identity/inviteLookupConformance.test.ts), covering pagination, normalization, cap, errors, effect ordering and normalized invitation lookup without membership insertion.
 - Soft-account provisioning: [`managedClientAuthLink.test.ts`](../../packages/platform/test/identity/managedClientAuthLink.test.ts) covers unconfirmed creation, create-first duplicate recovery, conditional linking that preserves competing and unrelated contacts, link failures without identity deletion and retries. [`customerMagicLinkHandler.test.ts`](../../packages/platform/test/identity/customerMagicLinkHandler.test.ts) pins existing-user-only sending, padding and the same accepted response for send success, unknown identity and transport failure.
 - Contact matching: [`softLinkConformance.test.ts`](../../packages/platform/test/identity/softLinkConformance.test.ts) exercises both actual managed stores through soft linking and reconciliation with mixed-case rows, literal-match refusals, explicitly returned dotless-i and long-s lookalikes, oldest exact selection and multiple-exact-row refusal. The imported [`managedAccountLinkStore.test.ts`](../../packages/platform/test/identity/managedAccountLinkStore.test.ts) query fixture supports `imatch` filtering and the bounded array lookup.
 - The imported engine, profile, session and adapter tests sit beside these witnesses; [`sql.test.ts`](../../packages/platform/test/identity/sql.test.ts) verifies canonical projection identity.
@@ -398,10 +492,16 @@ no-contact creation path. Multiple exact reconciliation candidates still raise
 a lookup error, surfaced by the unmounted reconcile handler as
 `Account reconciliation failed`. Both managed lookups stop at ten candidates.
 
-Existing invite/remove response strings remain byte-identical through explicit
-message selection; new internal codes are stripped at the reference boundary.
-No sender, base URL, locale, receipt key or observed request-ID change is intended.
+Managed invitation responses now expose active membership and explicit 409
+identity reasons. The new direct responses include pending lifecycle fields and deadlines.
+Notification receipts retain their reference field names; identical repeats send
+no further mail. Node bindings retain package result codes. A new identity gets
+the provider invitation before membership insertion; failed writes retain that
+identity. Sender, base URL and request-ID selection stay in application composition.
+Managed authorization, removal and the public admin profile source keep their
+actor bindings; no service binding for lifecycle metadata is introduced. Operators enter the active settings
+list immediately; first entry does not activate or compensate membership.
 The unmounted reconcile source can answer the two email-trust policy refusal codes and
-the original five domain refusal codes as
-messages, plus `Customer session required` or `Account reconciliation failed`.
-Those are new endpoint-source outcomes, not an activation of a route.
+the original five domain refusal codes as messages,
+plus `Customer session required` and `Account reconciliation failed`.
+These endpoint-source outcomes do not activate a route.

@@ -4,6 +4,8 @@ services:
   public-reference:
     image: ${PUBLIC_REFERENCE_IMAGE:?PUBLIC_REFERENCE_IMAGE must name the helper-loaded immutable image ID}
     pull_policy: never
+    environment:
+      OPERATOR_INVITATION_TTL_SECONDS: ${OPERATOR_INVITATION_TTL_SECONDS:-604800}
     ports:
       - "127.0.0.1:${PUBLIC_REFERENCE_PORT:?PUBLIC_REFERENCE_PORT must be a run-scoped loopback port}:8080"
     read_only: true

@@ -8,8 +8,8 @@ import { APP_PRODUCTION_EMAIL_HOSTS, APP_SITE_ORIGIN } from "../../../src/lib/br
 import { readHiddenPreviewEnabled, readObservedEnvironment } from "../../_lib/observability/environment.js";
 import { createAdminAuthClient, createServiceRoleClient, resolveSupabaseAdminAuthEnv, resolveSupabaseServiceRoleEnv } from "../../_lib/admin-domain/auth.js";
 import { createAdminRoleNotificationPort, type AdminRoleNotificationClient } from "../email/adminRoleNotificationPort.js";
-import { runInviteAdminUserUseCase, type AdminRoleNotificationPort, type InviteAdminUserGateway } from "../../domains/platform/inviteAdminUserUseCase.js";
-import { runRemoveAdminUserUseCase, type RemoveAdminUserGateway } from "../../domains/platform/removeAdminUserUseCase.js";
+import { runInviteAdminUserUseCase, type AdminRoleNotificationPort, type InviteAdminUserGateway } from "@openlup/platform/identity";
+import { runRemoveAdminUserUseCase, type RemoveAdminUserGateway } from "@openlup/platform/identity";
 import { createResendTransport as createEmailTransport } from "../../infra/email/emailTransport.js";
 
 export const DEFAULT_ADMIN_ROLE_FROM_EMAIL = "OPENLUP <noreply@openlup.com>";
@@ -78,8 +78,10 @@ export const runInviteAdminUserHandler: AdminUserInviteRunner = async (request, 
     return notificationPort;
   };
 
+  const gateway = createInviteAdminUserGateway(getClient);
   const result = await runInviteAdminUserUseCase(request, {
-    gateway: createInviteAdminUserGateway(getClient),
+    gateway,
+    activateMembership: gateway.activateMembership,
     roleNotificationPort: {
       sendRoleGranted: (notification) => getNotificationPort().sendRoleGranted(notification),
     },
@@ -103,12 +105,9 @@ export const runRemoveAdminUserHandler: AdminUserRemoveRunner = async (request, 
   const config = resolveSupabaseAdminAuthEnv(env);
   if (!config) return { status: 500, body: { error: "supabase_user_auth_not_configured" } };
 
-  return runRemoveAdminUserUseCase(request, createRemoveAdminUserGateway(() => (
-    createAdminAuthClient({
-      url: config.url,
-      anonKey: config.anonKey,
-    }, request.accessToken) as unknown as RemoveAdminUserClient
-  )));
+  const actorGateway = createRemoveAdminUserGateway(() => createAdminAuthClient(config, request.accessToken) as unknown as RemoveAdminUserClient);
+  return runRemoveAdminUserUseCase(request, actorGateway);
+
 };
 
 export function resolveInviteAdminEmailOrigin(env: AdminUserActionRuntimeEnv): EmailOriginResolution {

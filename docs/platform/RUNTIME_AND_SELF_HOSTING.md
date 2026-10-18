@@ -15,6 +15,19 @@ server-only; the default trusts no enabled external providers. See the
 explicit verifier-only adoption.
 
 
+Managed operator invitation inserts active membership immediately. Authorization
+and the public admin `me` source only read native membership; they do not activate
+on first entry or compensate writes, and need no service binding for invitation
+state. Removal retains its actor-authenticated revocation RPC. Magic-link
+eligibility requires active membership with a known role, with the existing
+anonymous envelope, quota and padding. Pending/expiry semantics remain a managed
+compatibility gap requiring a transactional store and a later reviewed managed
+forward. Direct composition gains pending invitations and trusted human acceptance
+with a new canonical SQL forward; direct human login remains unmounted and
+machine authentication is unchanged. [Identity lifecycle](IDENTITY.md#operator-invitation-lifecycle)
+owns the distinct results, retries and compatibility limits.
+
+
 The platform separates browser delivery, a server-side application boundary, background work, durable data, and provider adapters. A host may choose how to run those pieces, but it must preserve the platform contracts: authenticated
 requests reach the server boundary, durable writes use the canonical data
 contract, scheduled work is observable and replay-safe, and provider adapters
@@ -219,6 +232,20 @@ second-runtime conformance remain future adoption work and are not supplied by
 this preview.
 
 ## Provider and host boundaries
+
+`readOperatorInvitationTtl` is an available direct-host composition helper for
+`OPERATOR_INVITATION_TTL_SECONDS` (default 604800, inclusive integer bounds
+60..2592000). A direct host must call it before directory, persistence or
+notification effects, then pass the parsed number to identity. Invalid values
+throw `operator_invitation_ttl_invalid`. The reference invite runner composes
+managed immediate activation and does not call this helper or enforce this TTL;
+passing the optional setting into the Compose container does not activate the
+direct lifecycle. The static profile mounts no operator route. Managed activation
+requires the existing service-role configuration in addition to session
+authentication. Failed persistence retains the provider identity and customer
+link for reuse. Managed invitations store native active membership; no Auth
+metadata grants access.
+
 
 Provider SDKs, sensitive material, signatures, and wire formats remain behind
 adapters. The platform stores canonical outcomes and may preserve sanitized

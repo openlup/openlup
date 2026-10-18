@@ -2,7 +2,7 @@
 
 OpenLup is in development preview. Contributions are welcome, but a source
 checkout is not yet a stable framework release, a supported installation, or an
-upgrade contract. The later `P1-SF` gate owns those commitments.
+upgrade contract. The later stable-framework gate owns those commitments.
 
 Start with the [platform documentation](docs/platform/README.md), then read the
 [public agent guide](docs/platform/AGENT_GUIDE.md) before changing a platform
@@ -129,8 +129,6 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-6d5c66507987f93428a601be7c36b0bfea80fc9632f4749abddb023350293474","reason":"The inherited contracts-boundary mechanism now admits the declared identity module row with contracts: true and only bff/data/kernel value edges and the http type edge. Its boundary semantics and the contributor commands, required selectors and verification order described here do not change; the platform guide documents the import and its incomplete runtime-schema extraction."} -->
-
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
 ordered DROP statements before the fixed grants and rejects missing, duplicate
@@ -146,7 +144,6 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-fe8f3b6eaec2398e21dc189729b9e2a0c2afa1062c4a3604e8d40a7c507846a6","reason":"The execution inventory registers tests/postgres/runIdentityEnvelopeConformance.mjs in the existing direct-execution allowlist. This makes the documented opt-in runner inventory-complete; it changes no contributor command, package command, required selector or gate order described here. The documentation CLI fixture routes tests/** like the real routing so that registered entrypoint stays routable; the CLI and its assertions are unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -929,7 +926,11 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-cc04a4ab5591826db58f74fefa6ff1f0e1f08ed5cfce386bb63b1990f70a8019","reason":"The opt-in identity Auth/mail CLI adds the joint phase and still requires --phase email-trust|joint; only the exported runner's optional Setup.phase defaults to email-trust. The existing prerequisite checks and fixture-only service-role grant remain. Its assertions now cover refusal of soft provisioning and existing-email linking under automatic confirmation, unchanged contact ownership after anonymous signup, and no mail for unknown-address login. Default suites, required selectors, CI activation and gate order described here do not change. The identity owner documents the stricter provisioning prerequisite and the proof limits."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-3596f948904d4961b2dbc38a72006c3b2124a02cd29c604e736228e3d3787502","reason":"The compose container receives the optional invitation TTL. No service, route, contributor command or verification selector changes; the runtime and identity owners describe the setting and refusal behavior."} -->
+
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-fd850e70e33c133d1e5164f1868da03c618e0c22e33ea502d824cb7e5b474f30","reason":"The direct Docker-backed invitation lifecycle regression adds database advisory barriers for acceptance/removal ordering and uses Vitest, while the opt-in managed conformance uses the existing tsx runner and committed migration-chain reader, omitting only psql dump guard lines for node-postgres replay. Its disposable-stack prerequisites, default-ACL revocation, exact fixture-only grants and invocation remain as described in the platform package guide. Required selectors, gate order and contributor commands in this section are unchanged."} -->
+
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-85406c7fc1b9307476e2d2e4eedb843c15627cd514e5fb47e0a7c52d40d88403","reason":"The added unit assertion exercises the existing expand-only predicate on the direct invitation forward. No checker implementation, SQL admission rule, contributor command, required selector or gate order changes."} -->
 
 ## Pull requests
 
@@ -1187,7 +1188,7 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
-- 2026-10-15, M02 module-boundary lint rule: cycles 0–2 each found another
+- 2026-10-15, module-boundary lint rule: cycles 0–2 each found another
   import-specifier escape → replace a growing denylist with an allowlist of the
   canonical forms, or reuse the resolver.
 - 2026-10-15, the same rule and the owner's review of the rethink: hardening a
@@ -1201,12 +1202,12 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   stacking, because any insertion into a shared list next to a predecessor's
   conflicts once it squash-lands → a merge-commit queue fixes it, because the
   merge base becomes the predecessor's head.
-- 2026-10-17, M02 package pull requests: stacked pull requests that each
+- 2026-10-17, module package pull requests: stacked pull requests that each
   regenerate one shared record (a doc-impact marker, a contract digest)
   conflict once the lower one squash-lands → stack only pull requests without
   single-instance records, merge `main` once before each turn otherwise, and
   check `git merge-tree` against the queue base before relying on carry-over.
-- 2026-10-17, parallel M02 work: parallel heavy local test runs cause load
+- 2026-10-17, parallel module work: parallel heavy local test runs cause load
   timeouts → parallelize writing and serialize heavy test runs; after a load
   timeout the complete gate is rerun without the concurrent load, and the
   timeout never counts as a pass.

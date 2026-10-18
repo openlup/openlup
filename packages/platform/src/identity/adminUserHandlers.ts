@@ -1,9 +1,11 @@
+import type { AdminUserInviteErrorDetails } from "./adminUserActionPorts.js";
 import { createIdentityResponder, type IdentityResponseOptions } from "./response.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import { adminUserRoleUpdateRequestSchema, adminUserRoleUpdateResponseSchema, adminUserInviteRequestSchema, adminUserInviteResponseSchema, adminUserRemoveRequestSchema, adminUserRemoveResponseSchema } from "./adminContracts.js";
 import type { PlatformAdminAuthorizationResult } from "./platformAdminAuth.js";
+import type { OperatorInviteResult } from "./contracts/operatorInvitations.js";
 export interface IdentityAdminActionsPort {
-  inviteAdminUser(request: { email: string; role: "admin" | "distributor" }): Promise<{ message?: string }>;
+  inviteAdminUser(request: { email: string; role: "admin" | "distributor" }): Promise<OperatorInviteResult>;
   removeAdminUser(request: { userId: string }): Promise<{ revoked: true }>;
   updateAdminUserRole(request: { userId: string; role: "admin" | "distributor" }): Promise<{ userId: string; role: "admin" | "distributor"; saved: true }>;
 }
@@ -104,7 +106,8 @@ export function createAdminUserInviteHandler({
 
       sendBffSuccess(res, response.data);
     } catch (error) {
-      sendBffError(res, "UPSTREAM_UNAVAILABLE", errorMessage(error, "Admin user invite failed"));
+      const failure = error as { bffCode?: string; inviteDetails?: AdminUserInviteErrorDetails };
+      sendBffError(res, (failure.bffCode ?? "UPSTREAM_UNAVAILABLE") as Parameters<typeof sendBffError>[1], errorMessage(error, "Admin user invite failed"), failure.inviteDetails ? { details: failure.inviteDetails } : {});
     }
   };
 }

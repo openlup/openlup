@@ -160,9 +160,35 @@ describe("platform contracts", () => {
         role: "admin",
       }).success,
     ).toBe(false);
-    expect(adminUserInviteResponseSchema.parse({ message: "Zaproszenie wysłane" })).toEqual({
-      message: "Zaproszenie wysłane",
-    });
+    const invitation = {
+      principalId: "d4000000-0000-4000-8000-000000000002",
+      invitationId: "d4000000-0000-4000-8000-000000000003",
+      membershipState: "invited" as const,
+      role: "admin" as const,
+      invitedAt: "2026-10-18T12:00:00.000Z",
+      expiresAt: "2026-10-25T12:00:00.000Z",
+      code: "INVITATION_CREATED" as const,
+      message: "Invitation sent",
+    };
+    for (const code of ["INVITATION_CREATED", "ALREADY_INVITED", "INVITATION_REISSUED"]) {
+      expect(adminUserInviteResponseSchema.parse({ ...invitation, code })).toEqual({ ...invitation, code });
+    }
+    expect(adminUserInviteResponseSchema.safeParse({ ...invitation, expiresAt: undefined }).success).toBe(false);
+    expect(adminUserInviteResponseSchema.safeParse({ ...invitation, code: "MEMBERSHIP_CREATED" }).success).toBe(false);
+    expect(adminUserInviteResponseSchema.safeParse({ message: "Invitation sent" }).success).toBe(false);
+  });
+
+  it.each(["MEMBERSHIP_CREATED", "ALREADY_ACTIVE"])("validates active managed membership result %s", (code) => {
+    const membership = {
+      principalId: "d4000000-0000-4000-8000-000000000002",
+      membershipState: "active", role: "admin", code,
+      message: "Operator membership active",
+    };
+    expect(adminUserInviteResponseSchema.parse(membership)).toEqual(membership);
+    expect(adminUserInviteResponseSchema.safeParse({ ...membership, principalId: "" }).success).toBe(false);
+    expect(adminUserInviteResponseSchema.safeParse({ ...membership, role: "owner" }).success).toBe(false);
+    expect(adminUserInviteResponseSchema.safeParse({ ...membership, code: "INVITATION_CREATED" }).success).toBe(false);
+    expect(adminUserInviteResponseSchema.safeParse({ ...membership, membershipState: "invited" }).success).toBe(false);
   });
 
   it("validates admin user remove contracts", () => {

@@ -1,3 +1,4 @@
+import type { OperatorInvitationStore } from "./operatorInvitationPorts.js";
 import { identityMessages, type IdentityMessages } from "./messages.js";
 export type RemoveAdminUserResponse = {
   revoked?: true;
@@ -18,6 +19,7 @@ export async function runRemoveAdminUserUseCase(
   request: { accessToken: string | null; userId: string },
   gateway: RemoveAdminUserGateway,
   messages: IdentityMessages = identityMessages.en,
+  invitationStore?: Pick<OperatorInvitationStore, "remove">,
 ): Promise<{ status: number; body: RemoveAdminUserResponse }> {
   try {
     if (!request.accessToken) {
@@ -42,6 +44,16 @@ export async function runRemoveAdminUserUseCase(
       return { status: 403, body: { code: "SELF_REVOKE_FORBIDDEN", error: messages.selfRemoveForbidden } };
     }
 
+    if (invitationStore) {
+      try {
+        await invitationStore.remove({ actorPrincipalId: user.id, targetPrincipalId: request.userId });
+        return { status: 200, body: { revoked: true } };
+      } catch (error) {
+        const failure = error as { identityCode?: string; bffCode?: string; message?: string };
+        if (failure.identityCode) return { status: failure.bffCode === "FORBIDDEN" ? 403 : failure.bffCode === "BAD_REQUEST" ? 400 : 409, body: { code: failure.identityCode, error: failure.identityCode } };
+        return mapRevokeError(failure.message ?? "revoke_failed", messages);
+      }
+    }
     const { error: revokeError } = await gateway.revokeAdminUser(request.userId);
     if (revokeError) {
       return mapRevokeError(revokeError.message, messages);

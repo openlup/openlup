@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   authenticateSupabasePlatformUser,
@@ -6,6 +6,7 @@ import {
 } from "./adminPlatformPort.js";
 
 describe("createSupabaseAdminPlatformPort", () => {
+  afterEach(() => vi.restoreAllMocks());
   it("returns admin role state for a known admin user", async () => {
     const maybeSingle = vi.fn().mockResolvedValue({ data: { role: "distributor" }, error: null });
     const query = { eq: vi.fn(), maybeSingle };
@@ -67,6 +68,7 @@ describe("createSupabaseAdminPlatformPort", () => {
     const query = { eq: vi.fn(), maybeSingle };
     query.eq.mockReturnValue(query);
     const client = {
+      auth: { admin: { listUsers: vi.fn(async () => ({ data: { users: [] }, error: null })) } },
       from: vi.fn(() => ({
         select: vi.fn(() => query),
       })),
@@ -77,6 +79,17 @@ describe("createSupabaseAdminPlatformPort", () => {
     ).resolves.toBe("not_allowlisted");
     expect(query.eq).toHaveBeenCalledWith("membership_state", "active");
   });
+  it("ignores invitation metadata and never reads the directory for a nonmember", async () => {
+    const query = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn(async () => ({ data: null, error: null })) };
+    query.select.mockReturnValue(query); query.eq.mockReturnValue(query);
+    const listUsers = vi.fn(async () => ({ data: { users: [{ id: "10000000-0000-4000-8000-000000000001", email: "invitee@example.com", app_metadata: { operator_invitation: { phase: "invited" } } }] }, error: null }));
+    const client = { from: vi.fn(() => query), auth: { admin: { listUsers } } };
+    await expect(createSupabaseAdminPlatformPort(client as never).checkAdminMagicLinkEligibility(" INVITEE@example.com ")).resolves.toBe("not_allowlisted");
+    expect(query.eq).toHaveBeenCalledWith("email", "invitee@example.com");
+    expect(query.eq).toHaveBeenCalledWith("membership_state", "active");
+    expect(listUsers).not.toHaveBeenCalled();
+  });
+
 });
 
 describe("authenticateSupabasePlatformUser", () => {

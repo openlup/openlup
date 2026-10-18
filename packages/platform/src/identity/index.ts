@@ -45,3 +45,7 @@ export { createVerifierResultOnlyEmailTrustPolicy } from "./emailTrustPolicy.js"
 export type { EmailTrustAssessment, EmailTrustPolicy } from "./emailTrustPolicy.js";
 export * from "./managedEmailTrustPolicy.js";
 export * from "./identityReadiness.js";
+
+export * from "./operatorInvitationPorts.js";
+export * from "./operatorInvitationLifecycle.js";
+export * from "./directOperatorInvitationStore.js";
