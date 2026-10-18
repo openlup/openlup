@@ -1,6 +1,6 @@
 import { operatorSessionSchema, type OperatorBrowserAuthPort, type OperatorSession } from '@openlup/platform/identity/contracts';
 import { z } from '@/lib/validation/zod';
-import { requestBff } from '@/lib/bff/client';
+import { BffClientError, requestBff } from '@/lib/bff/client';
 import { getAdminPlatformMe } from '@/domains/platform/adminMeClient';
 import { readStorageItem, removeStorageItem, writeStorageItem } from '@/lib/browserStorage';
 import { requestAdminMagicLink } from '@/domains/platform/adminMagicLinkClient';
@@ -38,7 +38,10 @@ export function createPostgresOperatorAuthPort(): OperatorBrowserAuthPort {
       }
       try {
         if (!session || !await authorized(session)) { if (version === generation) apply(null); return memory; }
-      } catch { if (version === generation) apply(null); return memory; }
+      } catch (error) {
+        if (version === generation && error instanceof BffClientError && (error.status === 401 || error.status === 403)) apply(null);
+        return memory;
+      }
       if (version !== generation) return memory;
       apply(session);
       return session;

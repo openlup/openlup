@@ -245,7 +245,13 @@ keeps managed auth and unknown selections refuse. Apply the complete catalogue
 through the operator-challenges forward before enabling login. The explicit
 `server/runtime/auth/operatorIdentityCommand.ts` commands bootstrap the first
 administrator invitation and prune at most 500 old challenges. Neither runs at
-startup. Operator delivery defaults to discard; compose a separate delivery port
+startup. The bootstrap invitation expires after seven days; rerunning bootstrap
+still refuses once any invitation exists. An active human administrator can
+reissue an expired invitation. Without one, recovery requires the database
+owner's audited deployment procedure; no bootstrap-reset command is supplied.
+Preserve identity and audit history; see
+[bootstrap recovery](IDENTITY.md#first-administrator-bootstrap).
+Operator delivery defaults to discard; compose a separate delivery port
 and use only the strict configured application origin for callback links.
 The [identity guide](IDENTITY.md#direct-human-login) documents commands, tab-session
 limits and required database acceptance. Existing machine credentials remain

@@ -598,6 +598,17 @@ and the bootstrap audit records a system actor. It authenticates nobody and
 issues no token. First sign-in follows normal invitation activation. No startup
 or HTTP bootstrap exists; revoked authority is never resurrected by this command.
 
+The bootstrap invitation lasts seven days. An expired invitation cannot redeem a
+challenge, and rerunning bootstrap still refuses with
+`OPERATOR_BOOTSTRAP_ALREADY_INITIALIZED`, even when no administrator has signed
+in. If another active human administrator exists, use the normal direct invitation
+issue operation to reissue the expired attempt for the same principal. If none
+exists, there is no shipped bootstrap reset or unauthenticated recovery command:
+the database owner must follow the deployment's audited recovery procedure before
+login can resume. Preserve principal IDs, customer links and invitation/audit
+history; deleting rows to rerun bootstrap or extending a deadline by hand is not
+a supported recovery route. Challenge pruning cannot renew an invitation.
+
 ### Sessions and authorization
 
 Configure nonempty, distinct `OPERATOR_IDENTITY_AUDIENCE` and
@@ -618,11 +629,18 @@ The shell maps `accessToken` to its neutral `access_token` session subset.
 The direct adapter stores the session in `sessionStorage`, with document memory
 fallback when storage is denied. There is no refresh token. Restoration and
 window focus recheck `/me`; expiry and sign-out clear authentication and its query
-cache. Restoration and focus reads never cancel a redemption in progress,
+cache. A focus check clears the session on an authorization refusal (HTTP 401/403
+or a profile without an allowed operator role). A network failure or upstream
+outage retains the current tab session until a later check or its existing expiry;
+protected server requests still require live authorization. Restoration and focus
+reads never cancel a redemption in progress,
 including when the provider and callback mount together under StrictMode.
 Explicit sign-out or another successful redemption still supersedes the old attempt.
-The hook consumes the port's guarded state notifications instead of applying a
-second post-redemption session or signing out on a stale authorization response.
+The hook consumes the port's guarded state notifications and waits for its
+session and admin state check before reporting successful code verification.
+Both pasted-token login and the callback link therefore enter the protected
+admin shell after authorization completes, including when `/me` is delayed.
+It never signs out on a stale authorization response.
 An older check cannot clear an established newer session or cancel its pending
 redemption, regardless of which response completes first.
 A copied bearer remains usable until expiry or membership revocation.

@@ -8,6 +8,15 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Wait for direct operator session and admin state before completing pasted-token
+  or callback sign-in, so delayed authorization enters the protected admin shell.
+  Preserve the managed initial-session application order and retain direct tab
+  sessions on transient focus-check failures; authorization refusals still clear
+  them. Document expired first-administrator invitation recovery limits.
+  Migration: successful direct code verification now waits for the browser's
+  authorization check before resolving; transient focus-check outages preserve
+  the current session until its existing expiry or a later authorization refusal.
+
 - Preserve the reference invite/remove message catalogue and role-mail locale
   through the package inputs. The admin `me` route retains its fail-closed
   deployment-risk classification and public-default refusal.

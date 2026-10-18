@@ -18,6 +18,7 @@ export function AuthProvider({ children, providerKind }: { children: ReactNode; 
   const [role, setRole] = useState<AdminRole>(null);
   const principalRef = useRef<string | null>(null);
   const sessionRef = useRef<Session | null>(null);
+  const directAcceptance = useRef<Promise<void>>(Promise.resolve());
 
   const checkAdmin = useCallback(async (accessToken: string | null | undefined): Promise<{ isAdmin: boolean; role: AdminRole }> => {
     if (!accessToken) return { isAdmin: false, role: null };
@@ -56,13 +57,27 @@ export function AuthProvider({ children, providerKind }: { children: ReactNode; 
     }
     if (directPort) {
       unsubscribe = directPort.onAuthStateChange(next => {
-        if (!cancelled) void accept(next ? { access_token: next.accessToken, user: next.user } : null);
+        if (!cancelled) directAcceptance.current = accept(next ? { access_token: next.accessToken, user: next.user } : null);
       });
-      void directPort.getSession().then(next => accept(next ? { access_token: next.accessToken, user: next.user } : null));
+      const initialRevision = revision;
+      void directPort.getSession().then(next => {
+        if (revision === initialRevision) return accept(next ? { access_token: next.accessToken, user: next.user } : null);
+      });
     } else {
       void loadManagedAdminAuth().then(({ supabase }) => {
         if (cancelled) return;
-        void supabase.auth.getSession().then(({ data }) => accept(data.session));
+        void supabase.auth.getSession().then(async ({ data }) => {
+          if (cancelled) return;
+          applySession(data.session);
+          if (data.session?.user) {
+            const result = await checkAdmin(data.session.access_token);
+            if (!cancelled) {
+              setIsAdmin(result.isAdmin);
+              setRole(result.role);
+            }
+          }
+          if (!cancelled) setLoading(false);
+        });
         const { data } = supabase.auth.onAuthStateChange((_event, next) => {
           applySession(next);
           if (!next) { setIsAdmin(false); setRole(null); }
@@ -109,6 +124,11 @@ export function AuthProvider({ children, providerKind }: { children: ReactNode; 
     try {
       if (directPort) {
         await directPort.verifyChallenge(code);
+        let acceptance: Promise<void>;
+        do {
+          acceptance = directAcceptance.current;
+          await acceptance;
+        } while (acceptance !== directAcceptance.current);
         return { error: null };
       }
       const { supabase } = await loadManagedAdminAuth();

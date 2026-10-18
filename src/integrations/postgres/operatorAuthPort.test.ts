@@ -1,9 +1,9 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-vi.mock('@/lib/bff/client', () => ({ requestBff: vi.fn() }));
+vi.mock('@/lib/bff/client', async importOriginal => ({ ...await importOriginal<typeof import('@/lib/bff/client')>(), requestBff: vi.fn() }));
 vi.mock('@/domains/platform/adminMeClient', () => ({ getAdminPlatformMe: vi.fn() }));
 vi.mock('@/domains/platform/adminMagicLinkClient', () => ({ requestAdminMagicLink: vi.fn() }));
-import { requestBff } from '@/lib/bff/client';
+import { BffClientError, requestBff } from '@/lib/bff/client';
 import { getAdminPlatformMe } from '@/domains/platform/adminMeClient';
 import { createPostgresOperatorAuthPort } from './operatorAuthPort';
 const KEY = 'openlup.operator.session.v1';
@@ -78,5 +78,23 @@ it.each(['denied', 'failed'])('a stale %s restoration returns the session establ
   finish();
   expect(await restoring).toEqual(session);
   expect(JSON.parse(window.sessionStorage.getItem(KEY)!)).toEqual(session);
+  await port.signOut();
+});
+
+it.each([
+  { label: 'network failure', error: new TypeError('network unavailable'), retained: true },
+  { label: 'upstream outage', error: new BffClientError({ code: 'UPSTREAM_UNAVAILABLE', message: 'Unavailable' }, 503), retained: true },
+  { label: 'unauthorized', error: new BffClientError({ code: 'UNAUTHORIZED', message: 'Unauthorized' }, 401), retained: false },
+  { label: 'forbidden', error: new BffClientError({ code: 'FORBIDDEN', message: 'Forbidden' }, 403), retained: false },
+])('focus revalidation handles $label without confusing transient failure with refusal', async ({ error, retained }) => {
+  const port = createPostgresOperatorAuthPort();
+  await port.verifyChallenge('a'.repeat(43));
+  const listener = vi.fn();
+  port.onAuthStateChange(listener);
+  vi.mocked(getAdminPlatformMe).mockRejectedValueOnce(error);
+  expect(await port.getSession()).toEqual(retained ? session : null);
+  expect(window.sessionStorage.getItem(KEY)).toBe(retained ? JSON.stringify(session) : null);
+  if (retained) expect(listener).not.toHaveBeenCalled();
+  else expect(listener).toHaveBeenCalledExactlyOnceWith(null);
   await port.signOut();
 });
