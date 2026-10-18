@@ -188,20 +188,25 @@ current section.
 
 Only the change's own non-merge commits between the comparison base and `HEAD`
 count. The base's history and merge commits never answer, including the merge
-queue's synthetic tip, whose message is the pull-request description. Records
-matching no current obligation are ignored; a malformed record in a change with
-obligations fails the check. A shallow checkout reads no answers; fetch complete
-history before relying on trailers. Every accepted reason is printed by
-`--policy` for review.
+queue's synthetic tip, whose message is the pull-request description.
+This relies on the merge queue building merge commits; a squash or rebase queue
+would need its own rule.
+Records matching no current obligation are ignored; a malformed record in a
+change with obligations fails the check. A shallow checkout reads no trailers
+and checks a legacy comment only against the current section; fetch complete
+history. Every accepted reason is printed by `--policy` for review.
 
 For compatibility, an in-section `openlup-doc-impact` comment accepted by the
 previous rule still answers: exactly one fresh record for the unit in its owner
-section, with that rule's digest, which also binds the section's text. Only
-comments already written in open pull requests qualify; the digest `--policy`
-reports now is the trailer's and never satisfies this path. It remains until
-those pull requests have merged. Existing comments on `main` answer nothing new
-and are removed with this compatibility path. Comments inside fenced or inline
-code never answer an obligation.
+section. The comment's digest is the previous rule's, which also binds the owner
+section's text; that text may be the section at the candidate or at any of the
+change's own non-merge commits, so an edit of the section on `main` does not
+expire it either, while a source or mapping change still does. Only comments
+already written in open pull requests qualify; the digest `--policy` reports
+now is the trailer's and never satisfies this path. It remains until those pull
+requests have merged; existing comments on `main` answer nothing new and are
+removed with this compatibility path. Comments inside fenced or inline code
+never answer an obligation.
 
 The checker also keeps the previous owner's obligation when routing changes or
 a source disappears. Cosmetic edits, records and generated/provenance blocks

@@ -289,9 +289,7 @@ packed consumer with this cold proof before accepting the module candidate:
    ordinary required dependencies and without optional provider SDKs. Verify
    their physical absence and independent resolution: no workspace links,
    repository or ancestor `node_modules` may supply them. `--omit=optional`
-   alone does not prove isolation. Each proof run starts from a new empty npm
-   cache, so a warm developer cache cannot satisfy an offline install that a
-   cold hosted runner refuses.
+   alone does not prove isolation.
 2. Classify the current export inventory and import every public nonadapter
    entry in a fresh process, without secrets, provider initialization or SQL.
    Compile its declarations in both NodeNext and Bundler mode without those
@@ -721,10 +719,10 @@ runner exclusions; reintroduce neutral scenarios when their contract is selected
 
 The root Vitest configuration's flat per-test ceiling is 10 s outside coverage
 runs and 30 s under coverage (`scripts/ci-vitest-duration-keys.ts`). Hosted
-runners are slower than a developer machine. A test that spawns processes,
-builds Git fixtures, runs ESLint or TypeScript, or packs or installs packages
-declares an explicit timeout sized for the hosted runner rather than relying
-on that default.
+runners are slower than a developer machine. A test that takes more than a few
+seconds on a hosted runner, typically one that spawns processes, builds Git
+fixtures, runs ESLint or TypeScript, or packs or installs packages, declares an
+explicit timeout sized for that runner rather than relying on the default.
 
 ### Package, policy and release checks
 

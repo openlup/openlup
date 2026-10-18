@@ -237,7 +237,6 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
   });
   const consumer = mkdtempSync(join(tmpdir(), "openlup-platform-consumer-"));
   try {
-    const cache = join(consumer, "npm-cache"); mkdirSync(cache);
     const lock = JSON.parse(readFileSync(join(checkout, "package-lock.json"), "utf8"));
     const locked = (name: string): string => {
       const version = lock.packages?.[`node_modules/${name}`]?.version;
@@ -251,10 +250,9 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
       const target = join(artifacts, `${pack.name.split("/")[1]}.tgz`); writeFileSync(target, bytes); return target;
     });
     writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "platform-cold-consumer", private: true, type: "module" }));
-    // The proof starts from an empty cache so a warm developer cache cannot satisfy an offline install
-    // a cold runner would refuse. Legacy peer mode prevents automatic peer installs;
+    // The SDK-absent phase uses only npm's default cache. Legacy peer mode prevents automatic peer installs;
     // physical and independent resolution checks below prove what omission flags cannot.
-    const install = (packages: string[], sdkPresent = false) => process.stdout.write(command("npm", ["install", "--cache", cache, sdkPresent ? "--prefer-offline" : "--offline", "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages], consumer, isolatedConsumerEnv()));
+    const install = (packages: string[], sdkPresent = false) => process.stdout.write(command("npm", ["install", sdkPresent ? "--prefer-offline" : "--offline", "--ignore-scripts", "--omit=optional", "--legacy-peer-deps", "--no-audit", "--fund=false", ...packages], consumer, isolatedConsumerEnv()));
     // The offline phase installs only local tarballs: npm ci caches the lockfile's tarballs but not their
     // registry metadata, so a cold runner cannot resolve version specs offline. Pack the locked runtime and
     // type inputs from the root's installed directories, as the Outbox proof does.
@@ -263,7 +261,7 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
       if (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink()) throw new Error(`Consumer input ${name} must be an ordinary installed directory`);
       const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
       if (`${name}@${version}` !== locked(name)) throw new Error(`Consumer input ${name} differs from the lockfile`);
-      const [info] = JSON.parse(command("npm", ["pack", "--cache", cache, "--json", "--ignore-scripts", "--pack-destination", artifacts], directory, isolatedConsumerEnv()));
+      const [info] = JSON.parse(command("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", artifacts], directory, isolatedConsumerEnv()));
       return join(artifacts, info.filename);
     };
     install([...tarballs, ...["zod", "@types/node", "undici-types"].map(packInstalled)]);

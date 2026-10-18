@@ -8,7 +8,7 @@ import {
   readDocumentationState, resolveDocumentationOwner, type DocumentationSurface,
 } from "./documentation-routing.ts";
 import { checkDocumentationImpact, renderDocumentationImpact, renderNoImpactComment, renderNoImpactTrailer, resolveDocumentationBase, type DocumentationObligation } from "./documentation-impact.ts";
-import { documentationDigest, readDocumentationCandidate, readDocumentationIndex, readDocumentationTree, type DocumentationObject } from "./documentation-git.ts";
+import { documentationDigest, readDocumentationCandidate, readDocumentationIndex, readDocumentationObjects, readDocumentationTree, type DocumentationObject } from "./documentation-git.ts";
 
 const fetchMock = vi.hoisted(() => ({ source: "", calls: [] as { args: string[]; options: ExecFileSyncOptions }[] }));
 vi.mock("node:child_process", async (original) => {
@@ -121,6 +121,15 @@ describe("public documentation routing", () => {
 });
 
 describe("attributable source and owner impact", () => {
+  it("reads mixed object batches and missing paths while refusing nonliteral specs", () => {
+    const { root, base } = fixture(); const blob = git(root, "rev-parse", `${base}:${SOURCE}`), tree = git(root, "rev-parse", `${base}^{tree}`);
+    const objects = readDocumentationObjects(root, [base, tree, blob, `${base}:${SOURCE}`, `${base}:missing.md`, "f".repeat(40)]);
+    expect(objects[0]?.toString()).toContain(`tree ${tree}\n`); expect(objects[1]?.length).toBeGreaterThan(0);
+    expect(objects[2]?.toString()).toBe("export const value = 1;\n"); expect(objects[3]).toEqual(objects[2]);
+    expect(objects.slice(4)).toEqual([null, null]); expect(readDocumentationObjects(root, [])).toEqual([]);
+    for (const spec of ["HEAD", `${base}^{tree}`, `${base}\n`, `${base}:${SOURCE}\n`, `${base}:../escape`, `${base}:/absolute`, `${base}:`])
+      expect(() => readDocumentationObjects(root, [spec])).toThrow(/invalid object spec|invalid repository-relative path/);
+  });
   it("uses the same pinned predecessor as native review without changing hosted event precedence", () => {
     const { root, base } = fixture();
     write(root, "src/domains/demo/other.ts", "export const other = 2;\n"); review(root, base); const predecessor = commit(root);
@@ -338,8 +347,76 @@ describe("commit trailer documentation answers", () => {
     const topic = git(root, "rev-parse", "HEAD"); git(root, "checkout", "-qb", "integration", base);
     sectionUpdate(root); const moved = commit(root); merge(root, topic);
     const result = impact(root, moved);
-    expect(result.obligations[0]?.status).toBe(kind === "trailer" ? "no-impact" : "unanswered");
-    if (kind === "trailer") expect(result.failures).toEqual([]);
+    expect(result.obligations[0]?.status).toBe("no-impact");
+    expect(result.failures).toEqual([]);
+  });
+  it("keeps P1's own-head legacy answer after main adds a heading and paragraph in its section", () => {
+    const { root, base } = fixture(); git(root, "checkout", "-qb", "topic"); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    review(root, base); const topic = commit(root);
+    expect(impact(root, base).failures).toEqual([]);
+    git(root, "checkout", "-qb", "integration", base);
+    write(root, OWNER, ownerText.replace("The contract", "### Heading\n\nAdditional guidance from main.\n\nThe contract"));
+    const moved = commit(root); merge(root, topic);
+    const result = impact(root, moved);
+    expect(result.failures).toEqual([]); expect(result.obligations[0]?.status).toBe("no-impact");
+    expect(result.obligations[0]?.answers?.[0]?.source).toBe("section");
+  }, 15_000);
+  it("refuses a legacy digest for section text absent from the candidate and every own commit", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const obligation = impact(root, base).obligations[0]!; sectionUpdate(root);
+    const digest = legacyDigest(root, base, obligation);
+    write(root, OWNER, ownerText.replace("## Other", `${renderNoImpactComment({ ...obligation, digest }, "Replay stays correct.")}\n\n## Other`)); commit(root);
+    const result = impact(root, base); expect(result.obligations[0]?.status).toBe("unanswered"); expect(result.failures).toHaveLength(1);
+  }, 15_000);
+  it("never takes a legacy digest's section text from a merge commit", () => {
+    // Negative plant: the only tree carrying the section text the digest binds is a merge commit's (an evil merge resolution).
+    const { root, base } = fixture(); git(root, "checkout", "-qb", "side"); write(root, "README.md", `[Owner](${OWNER})\n\nSide prose.\n`); const side = commit(root);
+    git(root, "checkout", "-qb", "topic", base); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    git(root, "-c", "user.name=Documentation Test", "-c", "user.email=test@example.org", "merge", "--no-ff", "--no-commit", "-q", side);
+    sectionUpdate(root); const obligation = impact(root, base).obligations.find((row) => row.unit === "domain-demo")!;
+    const digest = legacyDigest(root, base, obligation); commit(root);
+    expect(git(root, "rev-list", "--parents", "-n", "1", "HEAD").split(" ")).toHaveLength(3);
+    write(root, OWNER, ownerText.replace("## Other", `${renderNoImpactComment({ ...obligation, digest }, "Replay stays correct.")}\n\n## Other`)); commit(root);
+    const result = impact(root, base); expect(result.obligations.find((row) => row.unit === "domain-demo")?.status).toBe("unanswered");
+  }, 15_000);
+  it("expires a legacy answer when the change edits its covered source after the record", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); review(root, base); commit(root);
+    expect(impact(root, base).failures).toEqual([]);
+    write(root, SOURCE, "export const value = 3;\n"); commit(root);
+    const result = impact(root, base); expect(result.obligations[0]?.status).toBe("unanswered"); expect(result.failures).toHaveLength(1);
+  }, 15_000);
+  it("never accepts the reported version-3 digest in a section comment", () => {
+    const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root);
+    const obligation = impact(root, base).obligations[0]!;
+    write(root, OWNER, ownerText.replace("## Other", `${renderNoImpactComment(obligation, "Replay stays correct.")}\n\n## Other`)); commit(root);
+    const result = impact(root, base); expect(result.obligations[0]?.status).toBe("unanswered"); expect(result.failures).toHaveLength(1);
+  }, 15_000);
+  it("expires a legacy answer when moved main changes its covered source despite matching own prose", () => {
+    const { root } = fixture(); const source = "export const value = 1;\n\n// Separate implementation.\n// Preserve distance between independent edits.\n\nexport const other = 1;\n";
+    write(root, SOURCE, source); const base = commit(root); git(root, "checkout", "-qb", "topic");
+    write(root, SOURCE, source.replace("value = 1", "value = 2")); review(root, base); const topic = commit(root);
+    expect(impact(root, base).failures).toEqual([]);
+    git(root, "checkout", "-qb", "integration", base);
+    write(root, SOURCE, source.replace("other = 1", "other = 2")); sectionUpdate(root); const moved = commit(root); merge(root, topic);
+    const result = impact(root, moved); expect(result.obligations[0]?.status).toBe("unanswered"); expect(result.failures).toHaveLength(1);
+  }, 15_000);
+  it.each([false, true])("in a shallow clone checks legacy answers only against current prose (main edited: %s)", changed => {
+    const { root, base } = fixture(); git(root, "checkout", "-qb", "topic"); write(root, SOURCE, "export const value = 2;\n");
+    review(root, base); const topic = commit(root); git(root, "checkout", "-qb", "integration", base);
+    if (changed) sectionUpdate(root); else write(root, "README.md", `[Owner](${OWNER})\n\nIndependent main prose.\n`);
+    const moved = commit(root); merge(root, topic);
+    const shallow = join(temporary(), "checkout"); git(root, "clone", "-q", "--depth=2", `file://${root}`, shallow);
+    expect(git(shallow, "rev-parse", "--is-shallow-repository")).toBe("true");
+    const result = impact(shallow, moved); expect(result.obligations[0]?.status).toBe(changed ? "unanswered" : "no-impact");
+    if (!changed) { expect(result.failures).toEqual([]); expect(result.obligations[0]?.answers?.[0]?.source).toBe("section"); }
+    else expect(result.failures).toHaveLength(1);
+  }, 15_000);
+  it("escapes Unicode line separators and direction controls in printed reasons", () => {
+    const characters = "\u0085\u2028\u2029\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069";
+    const lines = renderDocumentationImpact({ base: "a".repeat(40), failures: [], obligations: [{ unit: "domain-demo", doc: OWNER, anchor: "#canonical", changedPaths: [SOURCE], digest: `sha256-${"a".repeat(64)}`, status: "no-impact", answers: [{ source: "section", reason: `Replay${characters}stays correct.` }] }] });
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain('"Replay\\u0085\\u2028\\u2029\\u200e\\u200f\\u202a\\u202b\\u202c\\u202d\\u202e\\u2066\\u2067\\u2068\\u2069stays correct."');
+    for (const character of characters) expect(lines[2]).not.toContain(character);
   });
   it("merges independent answers for the same unit without editing a shared line", () => {
     const { root, base } = fixture(); const heads: string[] = [];
@@ -395,7 +472,7 @@ describe("commit trailer documentation answers", () => {
     expect(impact(legacy.root, legacy.base).obligations[0]?.answers?.[0]?.source).toBe("section");
     expect(renderDocumentationImpact(impact(legacy.root, legacy.base)).join("\n")).toContain('(section record): "This internal implementation change preserves the documented replay contract."');
   });
-  it("refuses to read any answers in a shallow range", () => {
+  it("refuses to read trailers in a shallow range", () => {
     const { root, base } = fixture(); write(root, SOURCE, "export const value = 2;\n"); commit(root); answer(root, base);
     const shallow = join(temporary(), "checkout"); git(root, "clone", "-q", "--depth=3", `file://${root}`, shallow);
     expect(git(shallow, "rev-parse", "--is-shallow-repository")).toBe("true");

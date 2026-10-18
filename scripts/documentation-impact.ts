@@ -4,7 +4,7 @@ import {
   type DocumentationOwner, type DocumentationState, type DocumentationSurface,
 } from "./documentation-routing.ts";
 import {
-  documentationDigest, documentationGit, readDocumentationCandidate, readDocumentationIndex, readDocumentationTree,
+  documentationDigest, documentationGit, readDocumentationCandidate, readDocumentationIndex, readDocumentationObjects, readDocumentationTree,
   type DocumentationObject,
 } from "./documentation-git.ts";
 export { resolveDocumentationBase } from "./documentation-git.ts";
@@ -46,21 +46,16 @@ function reviewComments(section: string): ReviewComment[] {
   return result;
 }
 
-function trailerAnswers(root: string, base: string, head: string, failures: string[]): { shallow: boolean; records: (ReviewComment & { commit: string })[] } {
+function trailerAnswers(root: string, base: string, head: string, failures: string[]): { shallow: boolean; commits: string[]; records: (ReviewComment & { commit: string })[] } {
   const shallow = documentationGit(root, ["rev-parse", "--is-shallow-repository"]).toString("utf8").trim() === "true";
-  if (shallow) return { shallow, records: [] };
+  if (shallow) return { shallow, commits: [], records: [] };
   const commits = documentationGit(root, ["rev-list", "--no-merges", `${base}..${head}`]).toString("utf8").trim().split("\n").filter(Boolean);
   const records: (ReviewComment & { commit: string })[] = [];
-  if (commits.length === 0) return { shallow, records };
-  const batch = documentationGit(root, ["cat-file", "--batch"], `${commits.join("\n")}\n`, 128 * 1024 * 1024);
-  let position = 0;
-  for (const commit of commits) {
-    const newline = batch.indexOf(10, position); const header = batch.subarray(position, newline).toString("utf8");
-    const match = /^([0-9a-f]{40}) commit (\d+)$/u.exec(header);
-    if (!match || match[1] !== commit) throw new Error("documentation: unreadable commit batch");
-    const size = Number(match[2]); const start = newline + 1; const end = start + size;
-    if (!Number.isSafeInteger(size) || end >= batch.length || batch[end] !== 10) throw new Error("documentation: truncated commit batch");
-    const contents = batch.subarray(start, end).toString("utf8"); const boundary = contents.indexOf("\n\n");
+  const objects = readDocumentationObjects(root, commits);
+  for (const [index, commit] of commits.entries()) {
+    const object = objects[index];
+    if (object === null || object === undefined) throw new Error("documentation: unreadable commit batch");
+    const contents = object.toString("utf8"); const boundary = contents.indexOf("\n\n");
     if (boundary < 0) throw new Error("documentation: commit has no message boundary");
     for (const line of contents.slice(boundary + 2).split("\n")) {
       // Dot-all keeps a CR, U+2028 or U+2029 inside the record, so such a line is parsed or refused, never skipped.
@@ -77,10 +72,8 @@ function trailerAnswers(root: string, base: string, head: string, failures: stri
         records.push({ ...row as ReviewComment, commit });
       } catch (error) { failures.push(`malformed OpenLup-Doc-Impact trailer in ${commit.slice(0, 12)}: ${(error as Error).message}`); }
     }
-    position = end + 1;
   }
-  if (position !== batch.length) throw new Error("documentation: unexpected commit batch output");
-  return { shallow, records };
+  return { shallow, commits, records };
 }
 
 function previousSurfaces(tree: Map<string, DocumentationObject>, state: DocumentationState): { surfaces: DocumentationSurface[]; bootstrap: boolean } {
@@ -130,7 +123,8 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
   }
   const result: DocumentationImpactResult = { base: baseSHA, obligations: [], failures: [] };
   // Read the change's own records once, so a malformed one fails even when no obligation needs it.
-  const trailers: ReturnType<typeof trailerAnswers> = inputs.size === 0 ? { shallow: false, records: [] } : trailerAnswers(root, baseSHA, headSHA, result.failures);
+  const trailers: ReturnType<typeof trailerAnswers> = inputs.size === 0 ? { shallow: false, commits: [], records: [] } : trailerAnswers(root, baseSHA, headSHA, result.failures);
+  const ownDocuments = new Map<string, (Buffer | null)[]>();
   for (const { owner, paths } of [...inputs.values()].sort((left, right) => identity(left.owner).localeCompare(identity(right.owner)))) {
     const changedPaths = [...paths].sort();
     const priorSection = ownerSection(before, owner); const section = ownerSection(after, owner);
@@ -140,11 +134,12 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
       version: 3, unit: owner.unit, doc: owner.doc, anchor: owner.anchor,
       source: changedPaths.map((path) => ({ path, before: binding(before.get(path)), after: binding(after.get(path)), ownership: owners.get(path) })),
     }));
-    const legacyDigest = documentationDigest(JSON.stringify({
+    const legacyDigestFor = (text: string) => documentationDigest(JSON.stringify({
       version: 2, unit: owner.unit, doc: owner.doc, anchor: owner.anchor,
       source: changedPaths.map((path) => ({ path, before: binding(before.get(path)), after: binding(after.get(path)), ownership: owners.get(path) })),
-      section: documentationDigest(normalized),
+      section: documentationDigest(text),
     }));
+    const legacyDigest = legacyDigestFor(normalized);
     const obligation: DocumentationObligation = { unit: owner.unit, doc: owner.doc, anchor: owner.anchor, changedPaths, digest, status: "unanswered" };
     result.obligations.push(obligation);
     let comments: ReviewComment[];
@@ -155,7 +150,18 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
     const proseChanged = normalizeDocumentation(section ?? "", { includeGenerated: true }) !== normalizeDocumentation(priorSection ?? "", { includeGenerated: true });
     if (proseChanged && normalized !== normalizeDocumentation(priorSection ?? "")) { obligation.status = "updated"; continue; }
     const applicable = comments.filter((comment) => comment.unit === owner.unit);
-    const matching = applicable.filter((comment) => comment.digest === legacyDigest);
+    let matching = applicable.filter((comment) => comment.digest === legacyDigest);
+    if (applicable.length && !matching.length && trailers.commits.length) {
+      // Open pull requests' records survive an owner-section edit on main, as trailers do.
+      if (!ownDocuments.has(owner.doc)) ownDocuments.set(owner.doc, readDocumentationObjects(root, trailers.commits.map((commit) => `${commit}:${owner.doc}`)));
+      const sections = new Set<string>();
+      for (const document of ownDocuments.get(owner.doc)!) {
+        if (document === null) continue;
+        try { sections.add(normalizeDocumentation(documentationSection(document.toString("utf8"), owner.anchor))); } catch { /* Missing historical anchors cannot answer. */ }
+      }
+      const digests = new Set([...sections].map(legacyDigestFor));
+      matching = applicable.filter((comment) => digests.has(comment.digest));
+    }
     const priorComments = priorSection === null ? [] : reviewComments(priorSection);
     const fresh = matching.length === 1 && !priorComments.some((comment) => JSON.stringify(comment) === JSON.stringify(matching[0]));
     if (applicable.length === 1 && fresh) { obligation.status = "no-impact"; obligation.answers = [{ source: "section", reason: matching[0]!.reason }]; continue; }
@@ -180,7 +186,7 @@ export function renderDocumentationImpact(result: DocumentationImpactResult): st
     `- documentation base: ${result.base}`,
     `- documentation obligations: ${result.obligations.length}; unanswered: ${result.obligations.filter((row) => row.status === "unanswered").length}`,
     // Reasons are author text: print them escaped so one cannot add or forge log lines.
-    ...result.obligations.flatMap((row) => (row.answers ?? []).map((answer) => `- documentation no-impact: ${row.unit} ${row.doc}${row.anchor} (${answer.commit?.slice(0, 12) ?? "section record"}): ${JSON.stringify(answer.reason)}`)),
+    ...result.obligations.flatMap((row) => (row.answers ?? []).map((answer) => `- documentation no-impact: ${row.unit} ${row.doc}${row.anchor} (${answer.commit?.slice(0, 12) ?? "section record"}): ${JSON.stringify(answer.reason).replace(/[\u0085\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`)}`)),
     ...result.failures.map((failure) => `documentation: ${failure}`),
   ];
 }
