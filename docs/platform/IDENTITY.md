@@ -39,9 +39,36 @@ directory only after an already-registered response. Both directory adapters
 follow `nextPage`, compare trimmed lowercase addresses, propagate lookup failures
 and refuse after 5000 scanned users. Invite side effects retain the original
 request address. The invite use case still checks only the caller's role; the
-HTTP authorizer separately requires active membership. Null and unknown stored
-roles still normalize to admin in that authorizer. Those are characterized
-compatibility behaviors, not a new authorization policy.
+HTTP authorizer separately requires active membership. Only stored `admin` and
+`distributor` roles authorize. Null and unknown roles return
+`FORBIDDEN` (HTTP 403), with or without a route-specific role restriction.
+The reference profile adapter returns `{ isAdmin: false, role: null }` for these
+rows, and its magic-link eligibility refuses them. The magic-link handler still
+records quota before eligibility and returns the padded, non-enumerating
+`{ accepted: true }` response without sending. Adopters wanting legacy mapping
+must perform it in their own adapter before the package receives the role;
+identity exposes no fallback setting.
+
+Both managed contact stores find mixed-case stored addresses using the
+normalized input. Literal matching means an anchored, escaped `imatch` database
+prefilter followed by exact equality of `email.trim().toLowerCase()` with that
+input. Escaping keeps `_`, `%`, backslash and `*` literal; the exact comparison
+rejects Unicode lookalikes widened by the database's case-insensitive regex.
+A shared private helper selects email and fetches at most ten candidates.
+Soft linking preserves ascending creation order and chooses the oldest accepted
+row. Reconciliation accepts a single exact row and throws the existing
+`PGRST116` multiple-row error when more than one is accepted, before any link or
+create. Missing email is never accepted. A match outside the candidate bound is
+not selected: soft linking can return `CLIENT_NOT_FOUND`, while reconciliation
+can attempt creation and retain its existing create-failure retry/error path.
+Structural clients must implement `filter(column, "imatch", value)` and bounded
+array results for both lookups. Both managed bundles share these stores.
+The direct challenge adapter calls `customer_identity_challenge_issue`;
+its existing portable SQL already normalizes the input at line 105 and compares
+`lower(email) = v_email` at line 113 of
+`db/platform/migrations/20260814090000_customer_selfservice_recovery.sql`.
+Direct profile reads select by principal ID, not email. No direct application SQL
+needs correction, and no existing migration or package projection is changed.
 
 Managed admin preflight re-derives machine status from the membership row and
 refuses non-GET/HEAD methods unless the host's explicit write-route list permits
@@ -83,8 +110,9 @@ project include `test/identity/**` without a new selector or coverage exception.
 The witnesses are:
 
 - W1: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. It pins the reference schema's grants as they are today. Two customers each see only their own client, address, orderer profile, payment preference and account event; `authenticated` holds SELECT on those tables (on clients, column-level). The customer SELECT policies on pets, orders, order items, subscriptions, subscription lines and cycles have no `authenticated` grant behind them, so those reads are refused with SQLSTATE 42501. Anonymous reads are refused with 42501 on the customer tables and return zero rows on the three subscription tables, which hold a seeded row per customer.
-- W2/W3: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates and retaining the role fallback and role-only use-case behavior.
+- W2/W3: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates. The invite/remove matrix includes two additive refusal rows: an active member with a null role and an active member with an unknown role each receive 403 before either action. W3 also pins those refusals with or without a role restriction; the invite use case itself still checks only the caller's role.
 - W4: [`inviteLookupConformance.test.ts`](../../packages/platform/test/identity/inviteLookupConformance.test.ts), covering pagination, normalization, cap, errors, effect ordering and retained request spelling.
+- Contact matching: [`softLinkConformance.test.ts`](../../packages/platform/test/identity/softLinkConformance.test.ts) exercises both actual managed stores through soft linking and reconciliation with mixed-case rows, literal-match refusals, explicitly returned dotless-i and long-s lookalikes, oldest exact selection and multiple-exact-row refusal. The imported [`managedAccountLinkStore.test.ts`](../../packages/platform/test/identity/managedAccountLinkStore.test.ts) query fixture supports the bounded array lookup.
 - The imported engine, profile, session and adapter tests sit beside these witnesses; [`sql.test.ts`](../../packages/platform/test/identity/sql.test.ts) verifies canonical projection identity.
 
 The browser runtime-schema move remains pending: the existing schemas use Zod,
@@ -140,6 +168,14 @@ identity that cannot be found throws `auth_user_registered_but_unresolved`.
 Managed machine writes outside the supplied allowlist now return 403 with
 `Human operator required` and `machine_actor_write_refused`. Direct operator
 writes retain their exemption.
+
+Managed contact linking discards regex-only Unicode lookalikes. When an older
+lookalike and an exact normalized contact are returned together, soft linking
+selects the oldest exact contact. A lone lookalike now produces
+`CLIENT_NOT_FOUND` for soft linking; reconciliation follows its existing
+no-contact creation path. Multiple exact reconciliation candidates still raise
+a lookup error, surfaced by the unmounted reconcile handler as
+`Account reconciliation failed`. Both managed lookups stop at ten candidates.
 
 Existing invite/remove response strings remain byte-identical through explicit
 message selection; new internal codes are stripped at the reference boundary.

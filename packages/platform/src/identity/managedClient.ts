@@ -16,6 +16,7 @@ export interface ManagedIdentityRow {
 export interface ManagedIdentityQuery extends PromiseLike<{ data: ManagedIdentityRow[] | null; error: unknown }> {
   select(columns: string): ManagedIdentityQuery;
   eq(column: string, value: string): ManagedIdentityQuery;
+  filter(column: string, operator: "imatch", value: string): ManagedIdentityQuery;
   is(column: string, value: null): ManagedIdentityQuery;
   order(column: string, options: { ascending: boolean }): ManagedIdentityQuery;
   limit(count: number): ManagedIdentityQuery;
@@ -41,6 +42,7 @@ export interface ManagedIdentityClient {
     };
   };
 }
+
 export function createManagedIdentityClients(createClient: SupabaseCreateClient) {
   const actor = (env: { url: string; anonKey: string }, accessToken: string | null): ManagedIdentityClient =>
     createClient(env.url, env.anonKey, {

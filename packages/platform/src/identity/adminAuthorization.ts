@@ -38,7 +38,7 @@ export async function authorizeAdminWithUser(
   }
 
   const role = normalizeAdminRole(data.role);
-  if (options.allowedRoles && !options.allowedRoles.includes(role)) {
+  if (role === null || (options.allowedRoles && !options.allowedRoles.includes(role))) {
     return { ok: false, code: "FORBIDDEN", message: "Admin role required" };
   }
 
@@ -94,8 +94,8 @@ export async function resolveAdmin(
   return { userId: authz.userId, role: authz.role, isMachineActor: authz.isMachineActor };
 }
 
-function normalizeAdminRole(role: unknown): AdminRole {
-  return role === "distributor" ? "distributor" : "admin";
+function normalizeAdminRole(role: unknown): AdminRole | null {
+  return role === "admin" || role === "distributor" ? role : null;
 }
 export function readBearerToken(req: HttpRequest): string | null {
   const raw = req.headers.authorization;

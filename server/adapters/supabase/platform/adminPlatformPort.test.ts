@@ -23,8 +23,8 @@ describe("createSupabaseAdminPlatformPort", () => {
     expect(query.eq).toHaveBeenCalledWith("membership_state", "active");
   });
 
-  it("returns non-admin state when the admin row is absent", async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+  it.each([null, { role: null }, { role: "unknown-role" }])("returns non-admin state for an absent or invalid role: %j", async (data) => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data, error: null });
     const query = { eq: vi.fn(), maybeSingle };
     query.eq.mockReturnValue(query);
     const client = {
@@ -42,7 +42,7 @@ describe("createSupabaseAdminPlatformPort", () => {
   it.each([
     ["admin", "eligible"],
     ["distributor", "eligible"],
-    [null, "eligible"],
+    [null, "role_not_allowed"],
     ["support", "role_not_allowed"],
   ] as const)("checks admin magic-link eligibility for role %s", async (role, expected) => {
     const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "admin-1", role }, error: null });

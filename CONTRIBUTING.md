@@ -138,8 +138,9 @@ or additional policy operations. Both PR and release-history tests check these
 refusals and require approval before the forward's introducing commit. These
 checks admit one reviewed contraction; they do not grant general policy edits.
 
-The reviewed runtime-forward checker admits one exact pinned SQL file and a
-fixed set of current capabilities. Tests exercise both PR history and release
+The reviewed runtime-forward checker admits an exact pinned five-function SQL
+file and an optional identity account-link file with fixed service-only client
+writes. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,
 writes, functions and changed execution attributes. The control must already
 exist before the SQL feature's base and introducing commit. Passing these tests
@@ -868,9 +869,14 @@ workflow checks the target against the previous preview with
 check admits additive forwards and the separate exact reviewed function class under
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#additive-forward-release-path).
 Reviewed function forwards use the same checker in required self-check and release
-prepare. Their whole-file bytes, signatures and old/new definitions are pinned in
-`config/reviewed-platform-forwards.json`; the feature PR cannot change its own
-approval. The three replacements are not expand-only. See
+prepare. Their whole-file bytes, signatures, old/new definitions and runtime
+privileges are pinned in `config/reviewed-platform-forwards.json`. The runtime
+list admits the five-function capability forward and an optional service-only
+identity account-link forward. Required self-check keeps the whole registry
+unchanged from the feature comparison base; release compares each forward's own
+entry, list position and shared registry fields with its introduction parent, so later
+controls may append approvals. A feature cannot approve itself. These forwards
+are not expand-only. See
 [the exact class](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 and its refusal tests in `scripts/source-preview-release.test.ts`.
 It refuses edits or deletions of migration history, unapproved non-expand-only SQL, a
