@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, createPublicPublicationCatalog, packageExecutionDigest } from "./oss-publication-policy.ts";
-import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, assertDescendantSourceRelease, assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
+import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, assertAdmittedPlatformForward, assertDescendantSourceRelease, assertNoOverdueRemovals, createSourceReleaseContract, deriveSourceReleaseContract, isExpandOnlyPlatformForward, overdueRemovals, removalMarkerLines, removalScanBlobs, splitRemovalScanBatch, type SourceReleaseContractInput } from "./oss-source-release-contract.ts";
 import { annotatedTag, assertDraft, assertNextPreview, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
@@ -605,7 +605,8 @@ ${identityPrivileges[3]}
     }, null, true);
     try {
       sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
-      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/reviewed replacement refuses control characters in a forward/u);
+      // Both gates refuse these bytes at the shared admission function before the reviewed route.
+      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/migration SQL refuses control characters/u);
     } finally { sample.cleanup(); }
   }, 30_000);
   it.each([
@@ -620,7 +621,7 @@ ${identityPrivileges[3]}
     }, null, true);
     try {
       sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
-      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/reviewed replacement refuses control characters in a forward/u);
+      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/migration SQL refuses control characters/u);
     } finally { sample.cleanup(); }
   }, 30_000);
   it("admits a pinned identity forward with a tab in a comment in both gates (parser parity)", () => {
@@ -1088,6 +1089,50 @@ describe("descendant source release check", () => {
 });
 
 describe("expand-only platform SQL admission", () => {
+  const controlCharacters = [
+    ["NUL inside a comment", "CREATE TABLE public.first (id int);\n-- example\0\n"],
+    ["VT 0x0B", "CREATE TABLE public.first (id int);\n-- example\x0b\n"],
+    ["FF 0x0C", "CREATE TABLE public.first (id int);\n-- example\x0c\n"],
+    ["ESC 0x1B", "CREATE TABLE public.first (id int);\n-- example\x1b\n"],
+    ["DEL 0x7F", "CREATE TABLE public.first (id int);\n-- example\x7f\n"],
+    ["CRLF", "CREATE TABLE public.first (id int);\r\n-- example\r\nCREATE TABLE public.example (id int);\r\n"],
+    ["bare CR", "CREATE TABLE public.first (id int);\r"],
+    ["CR in a comment", "CREATE TABLE public.first (id int);\n-- example\rCREATE TABLE public.example (id int);\n"],
+    ["CR between statements", "CREATE TABLE public.example (id int);\rCREATE TABLE public.other (id int);\n"],
+    ["CR in a string literal", "CREATE TABLE public.example (value text DEFAULT 'a\rb');\n"],
+  ] as const;
+  it.each(controlCharacters)("refuse control characters in migration SQL (parser parity with PostgreSQL): predicate, %s", (_label, sql) => {
+    expect(isExpandOnlyPlatformForward(sql)).toBe(false);
+  });
+  it.each(controlCharacters)("refuse control characters in migration SQL (parser parity with PostgreSQL): admission, %s", (_label, sql) => {
+    expect(() => assertAdmittedPlatformForward("/absent", "base", "head", "example.sql", Buffer.from(sql))).toThrow(/migration SQL refuses control characters/u);
+  });
+  it.each([
+    ["a clean LF file", "-- example\nCREATE TABLE public.example (id int);\n"],
+    ["TAB inside a comment and between tokens", "-- example\tcomment\nCREATE\tTABLE public.example (id int);\n"],
+  ])("admits %s without Git access", (_label, sql) => {
+    expect(isExpandOnlyPlatformForward(sql)).toBe(true);
+    expect(() => assertAdmittedPlatformForward("/absent", "base", "head", "example.sql", Buffer.from(sql))).not.toThrow();
+  });
+  for (const [label, sql] of [controlCharacters[0], controlCharacters[7]]) {
+    it.each(["PR-base", "descendant release"] as const)(`refuse control characters in migration SQL (parser parity with PostgreSQL): %s gate, ${label}`, (gate) => {
+      const old = { "supabase/migrations/00000000000000_platform_schema_baseline.sql": "select 1;\n", "supabase/migrations/20260926000000_existing.sql": "CREATE TABLE public.existing (id int);\n" };
+      const sample = syntheticRelease({ extraFiles: old });
+      const change = { "supabase/migrations/20260927000000_example.sql": sql };
+      try {
+        if (gate === "PR-base") {
+          sample.apply(change); const head = sample.commit("Candidate");
+          expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.rootCommit, head)).toThrow(/migration SQL refuses control characters/u);
+        } else expect(() => sample.release(change)).toThrow(/migration SQL refuses control characters/u);
+      } finally { sample.cleanup(); }
+    });
+  }
+  it("refuse control characters in migration SQL (parser parity with PostgreSQL): tracked migration rails", () => {
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const paths = execFileSync("git", ["ls-files", "-z", "--", "db/platform/migrations/", "supabase/migrations/", "db/bootstrap/"], { cwd: root, encoding: "utf8" }).split("\0").filter((path) => /\.sql$/iu.test(path));
+    expect(paths.length).toBeGreaterThan(0);
+    for (const path of paths) expect(execFileSync("git", ["show", `:${path}`], { cwd: root, maxBuffer: 8 * 1024 * 1024 }).some((byte) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f), path).toBe(false);
+  });
   it.each([
     "CREATE TABLE public.example (id bigint PRIMARY KEY);",
     "ALTER TABLE public.example ADD COLUMN extra text;",

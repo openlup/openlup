@@ -40,6 +40,7 @@ the earlier check does not replace that release-time comparison.
 The self-check validates the manifest's shape and history, while the portable
 runner checks `objectInventorySha256` against its live selected catalogue after
 applying the chain. That runtime check remains required for database acceptance.
+Both gates refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL).
 
 The release producer refuses destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`,
 `TYPE` or `COLUMN`, and `TRUNCATE`), renames, schema moves, ownership transfers
