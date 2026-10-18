@@ -83,6 +83,16 @@ failed HEAD; use an upload or list operation to observe an S3 loading refusal.
 
 This package's tests are part of the repository's required test selection; from this directory, `npm test` runs them alone. The tests rewrite the originating application's characterization with neutral names and synthetic data, and a boundary test refuses any environment read or provider import in the package source.
 
+The module-boundary proof permits one optional `./<module>/contracts` export
+only when that module declares `contracts: true` in `PLATFORM_MODULE_GRAPH` in
+[`eslint.config.js`](../../eslint.config.js). Its `types`, `import` and `default`
+targets follow the module entry shape at `dist/<module>/contracts/index`.
+Contracts files may import only their own contracts subtree through canonical
+relative paths and exact public `@openlup/core` entries. Both ESLint and
+[`packageBoundary.test.ts`](test/packageBoundary.test.ts) refuse server files,
+other modules and every other dependency, including type imports. No module
+declares this entry yet; synthetic graphs and negative plants prove the checks.
+
 `npm run api:check` compares each of the nine declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from

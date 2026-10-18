@@ -314,6 +314,40 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       .map(({ message }) => message);
   }
 
+  it.each(sourceExtensions)("isolates a declared contracts sub-entry in %s (negative plants)", async (extension) => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph, platformModuleRules } = await import("../../eslint.config.js");
+    const syntheticGraph = { ...graph, composition: { ...graph.composition, contracts: true } };
+    const contractsConfig = [...config, ...platformModuleRules({ name: "@openlup/platform", directory: "platform" }, "composition", syntheticGraph)] as Linter.Config[];
+    const refusal = expect.stringContaining('packages/platform module "composition" contracts import only');
+    for (const depth of [0, 2, 11]) {
+      const filename = `packages/platform/src/composition/contracts/${"nested/".repeat(depth)}usesContracts.${extension}`;
+      const up = "../".repeat(depth + 1);
+      for (const specifier of ["./own.js", "./nested/own.js", "@openlup/core/platform-runtime", ...(depth === 2 ? ["../own.js", "../../own.js"] : [])]) {
+        for (const source of loadSources(specifier, extension)) expect(await moduleMessages(contractsConfig, source, filename)).toEqual([]);
+      }
+      for (const specifier of [
+        `${up}index.js`, `${up}server.js`, `${up}../data/index.js`, `${up}../http/index.js`,
+        `${up}contracts/../server.js`, "./bridge.testFixtures.js", "./bridge.test.js", "././own.js", "./nested/../own.js",
+        "./%2e%2e/server.js", "./..\\server.js", "./own.js?server", "node:fs", "pg", managedProvider, "zod", "some-new-sdk",
+        "@openlup/platform/composition/contracts", "@openlup/core", "@openlup/core/src/private", "@openlup/core/platform-runtime/extra",
+        "@OpenLup/core/platform-runtime", "/composition/contracts/index.js", "file:///composition/contracts/index.js", "#alias", "@/alias",
+        ...(depth === 11 ? ["../own.js"] : []),
+      ]) {
+        for (const source of loadSources(specifier, extension)) expect(await moduleMessages(contractsConfig, source, filename)).toContainEqual(refusal);
+      }
+      // No graph declaration admits even an otherwise safe contracts import.
+      for (const source of loadSources("./own.js", extension)) {
+        expect(await moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining("has no declared contracts entry"));
+      }
+    }
+    for (const contracts of [false, "contracts", ["contracts", "client"]]) {
+      expect(() => platformModuleRules({ name: "@openlup/platform", directory: "platform" }, "composition", {
+        ...graph, composition: { ...graph.composition, contracts },
+      })).toThrow("contracts must be true or omitted");
+    }
+  });
+
   it("declares exactly the package's module directories, each edge to another declared module", async () => {
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
       PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;

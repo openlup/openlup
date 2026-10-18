@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, posix, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
@@ -25,19 +25,73 @@ function sources(directory: string): string[] {
   });
 }
 
-function withoutComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+function specifiers(source: string): string[] {
+  const found: string[] = [];
+  const add = (node: ts.Node | undefined) => {
+    if (node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))) found.push(node.text);
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) add(node.moduleSpecifier);
+    if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
+      || (ts.isIdentifier(node.expression) && node.expression.text === "require")
+      || (ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression)
+        && node.expression.expression.text === "module" && node.expression.name.text === "require"))) add(node.arguments[0]);
+    if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) add(node.moduleReference.expression);
+    if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) add(node.argument.literal);
+    ts.forEachChild(node, visit);
+  };
+  visit(ts.createSourceFile("boundary.ts", source, ts.ScriptTarget.Latest, true));
+  return found;
 }
 
-function specifiers(source: string): string[] {
-  const code = withoutComments(source);
-  const found = [
-    ...code.matchAll(/(?:^|[\s;}])from\s+["']([^"']+)["']/g),
-    ...code.matchAll(/\bimport\s+["']([^"']+)["']/g),
-    ...code.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g),
-    ...code.matchAll(/\brequire\s*\(\s*["']([^"']+)["']\s*\)/g),
-  ];
-  return found.map((match) => match[1]!);
+type ModuleGraph = Record<string, { contracts?: unknown }>;
+
+// Read the declaration without importing repository tooling across the package
+// boundary. Only the fixed contracts flag is relevant to this package proof.
+function readModuleGraph(source: string): ModuleGraph {
+  const file = ts.createSourceFile("eslint.config.js", source, ts.ScriptTarget.Latest, true);
+  const declaration = file.statements.filter(ts.isVariableStatement).flatMap((statement) => [...statement.declarationList.declarations])
+    .find((node) => ts.isIdentifier(node.name) && node.name.text === "PLATFORM_MODULE_GRAPH");
+  if (!declaration?.initializer || !ts.isObjectLiteralExpression(declaration.initializer)) throw new Error("Missing literal PLATFORM_MODULE_GRAPH");
+  return Object.fromEntries(declaration.initializer.properties.map((module) => {
+    if (!ts.isPropertyAssignment(module) || !ts.isObjectLiteralExpression(module.initializer)
+      || !(ts.isIdentifier(module.name) || ts.isStringLiteral(module.name))) throw new Error("Expected a literal module declaration");
+    const contracts = module.initializer.properties.filter((property) => ts.isPropertyAssignment(property)
+      && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) && property.name.text === "contracts");
+    if (contracts.length > 1) throw new Error("Duplicate contracts declaration");
+    const flag = contracts[0] as ts.PropertyAssignment | undefined;
+    return [module.name.text, flag ? { contracts: flag.initializer.kind === ts.SyntaxKind.TrueKeyword ? true : flag.initializer.getText(file) } : {}];
+  }));
+}
+
+const graph = readModuleGraph(readFileSync(fileURLToPath(new URL("../../../eslint.config.js", import.meta.url)), "utf8"));
+const coreEntries = Object.keys(JSON.parse(readFileSync(fileURLToPath(new URL("../../core/package.json", import.meta.url)), "utf8")).exports)
+  .map((entry) => `@openlup/core${entry === "." ? "" : entry.slice(1)}`);
+
+function contractsImportAllowed(file: string, specifier: string, graph: ModuleGraph): boolean {
+  const module = file.split("/")[0]!;
+  if (graph[module]?.contracts !== true) return false;
+  if (coreEntries.includes(specifier)) return true;
+  // Canonical relative forms only; normalize after validating, so a mid-path
+  // climb, URL or alternate separator cannot disappear during resolution.
+  if (!/^(?:\.\/)?(?:\.\.\/)*(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(specifier)
+    || !specifier.startsWith(".") || /(?:^|\/)[^/]*\.test(?:Fixtures)?(?:\.[^/]*)?$/.test(specifier)) return false;
+  return posix.normalize(posix.join(posix.dirname(file), specifier)).startsWith(`${module}/contracts/`);
+}
+
+function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Record<string, unknown>, hasFile: (path: string) => boolean): void {
+  expect(Object.keys(graph).sort()).toEqual([...modules].sort());
+  const entries = modules.flatMap((module) => {
+    expect(graph[module]!.contracts === undefined || graph[module]!.contracts === true, `${module} contracts declaration`).toBe(true);
+    return [module, ...(graph[module]!.contracts === true ? [`${module}/contracts`] : [])];
+  });
+  expect(Object.keys(exports).sort()).toEqual(entries.map((entry) => `./${entry}`).sort());
+  for (const entry of entries) {
+    expect(hasFile(`${entry}/index.ts`), `${entry}/index.ts`).toBe(true);
+    expect(exports[`./${entry}`]).toEqual({
+      types: `./dist/${entry}/index.d.ts`, import: `./dist/${entry}/index.js`, default: `./dist/${entry}/index.js`,
+    });
+  }
 }
 
 const files = sources(SOURCE_ROOT).map((path) => ({
@@ -89,6 +143,11 @@ describe("package source boundary", () => {
   });
 
   it.each(files)("$path imports only relative modules, node built-ins, core, zod and the allowed pg adapters", ({ path, source }) => {
+    if (path.split("/")[1] === "contracts") {
+      expect(graph[path.split("/")[0]!]!.contracts, `${path} must declare contracts in the module graph`).toBe(true);
+      for (const specifier of specifiers(source)) expect(contractsImportAllowed(path, specifier, graph), `${path} imports ${specifier}`).toBe(true);
+      return;
+    }
     for (const specifier of specifiers(source)) {
       const allowed = specifier.startsWith(".")
         || specifier.startsWith("node:")
@@ -100,26 +159,26 @@ describe("package source boundary", () => {
     }
   });
 
-  it("gives every module exactly one public entry, declared as its package subpath", () => {
+  it("gives every module its public entry and exactly its declared contracts sub-entry", () => {
     const modules = readdirSync(SOURCE_ROOT, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
     const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
-      exports: Record<string, { import: string; types: string }>;
+      exports: Record<string, unknown>;
     };
-    expect(Object.keys(manifest.exports).sort()).toEqual(modules.map((name) => `./${name}`));
-    for (const name of modules) {
-      expect(existsSync(join(SOURCE_ROOT, name, "index.ts")), `${name}/index.ts`).toBe(true);
-      expect(manifest.exports[`./${name}`]).toEqual({
-        types: `./dist/${name}/index.d.ts`, import: `./dist/${name}/index.js`, default: `./dist/${name}/index.js`,
-      });
-    }
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)));
   });
 
   it.each(files)("$path reaches another module only through that module's public entry", ({ path, source }) => {
     const ownModule = path.split("/")[0];
     for (const specifier of specifiers(source).filter((value) => value.startsWith("."))) {
+      if (path.split("/")[1] === "contracts") {
+        expect(contractsImportAllowed(path, specifier, graph), `${path} imports ${specifier}`).toBe(true);
+        continue;
+      }
       const crossModule = /^\.\.\/([^/]+)\/(.+)$/.exec(specifier);
       const sameModule = /^\.\/[^/]+$/.test(specifier);
-      const allowed = sameModule
+      const ownContracts = graph[ownModule!]!.contracts === true
+        && contractsImportAllowed(path, specifier, graph);
+      const allowed = sameModule || ownContracts
         || (crossModule !== null && crossModule[1] !== ownModule && crossModule[2] === "index.js");
       expect(allowed, `${path} imports ${specifier}`).toBe(true);
     }
@@ -127,6 +186,62 @@ describe("package source boundary", () => {
 
   it.each(files.filter(({ path }) => path.startsWith("blob/")))("$path has no data-module imports, including types", ({ source }) => {
     expect(specifiers(source).filter((specifier) => specifier.startsWith("../data/"))).toEqual([]);
+  });
+
+  it("accepts only the single declared contracts export with the normal export shape (negative plants)", () => {
+    const moduleGraph = readModuleGraph('export const PLATFORM_MODULE_GRAPH = { example: { contracts: true } };');
+    const entry = (name: string) => ({ types: `./dist/${name}/index.d.ts`, import: `./dist/${name}/index.js`, default: `./dist/${name}/index.js` });
+    const exports = { "./example": entry("example"), "./example/contracts": entry("example/contracts") };
+    const hasFile = (path: string) => ["example/index.ts", "example/contracts/index.ts"].includes(path);
+    expect(() => assertModuleExports(["example"], moduleGraph, exports, hasFile)).not.toThrow();
+    const undeclared: ModuleGraph = { example: {} };
+    expect(() => assertModuleExports(["example"], undeclared, { "./example": entry("example") }, hasFile)).not.toThrow();
+    for (const invalid of [
+      { "./example": entry("example") },
+      { ...exports, "./example/contracts/extra": entry("example/contracts/extra") },
+      { ...exports, "./example/client": entry("example/client") },
+      { ...exports, "./example/contracts": entry("example") },
+      { ...exports, "./example/contracts": { types: "./dist/example/contracts/index.d.ts", import: "./dist/example/contracts/index.js" } },
+    ]) expect(() => assertModuleExports(["example"], moduleGraph, invalid, hasFile)).toThrow();
+    expect(() => assertModuleExports(["example"], undeclared, exports, hasFile)).toThrow();
+    expect(() => assertModuleExports(["example"], moduleGraph, exports, (path) => path === "example/index.ts")).toThrow();
+    for (const contracts of [false, "contracts", ["contracts", "client"]]) {
+      const invalidGraph = readModuleGraph(`export const PLATFORM_MODULE_GRAPH = { example: { contracts: ${JSON.stringify(contracts)} } };`);
+      expect(() => assertModuleExports(["example"], invalidGraph, exports, hasFile)).toThrow();
+    }
+  });
+
+  it("refuses server, neighbour and dependency imports from synthetic contracts (negative plants)", () => {
+    const moduleGraph: ModuleGraph = { example: { contracts: true } };
+    for (const file of ["example/contracts/index.ts", "example/contracts/nested/value.ts"]) {
+      const up = file.includes("/nested/") ? "../../" : "../";
+      for (const specifier of ["./own.js", "./nested/own.js", ...coreEntries, ...(up === "../../" ? ["../own.js"] : [])]) {
+        expect(contractsImportAllowed(file, specifier, moduleGraph), `${file} imports ${specifier}`).toBe(true);
+      }
+      for (const specifier of [
+        `${up}index.js`, `${up}server.js`, `${up}../data/index.js`, `${up}../http/index.js`,
+        `${up}contracts/../server.js`, "./bridge.testFixtures.js", "./bridge.test.js", "././own.js", "./nested/../own.js",
+        "./%2e%2e/server.js", "./..\\server.js", "./own.js?server", "node:fs", "pg", "@supabase/supabase-js", "zod",
+        "@openlup/platform/example/contracts", "@openlup/core", "@openlup/core/src/private", "@openlup/core/platform-runtime/extra",
+        "@OpenLup/core/platform-runtime", "/example/contracts/index.js", "file:///example/contracts/index.js", "#alias", "@/alias",
+      ]) {
+        // Exercise extraction and the same predicate used by the real source scan.
+        for (const source of [
+          `import type { Value } from ${JSON.stringify(specifier)};`,
+          `export * from ${JSON.stringify(specifier)};`,
+          `const value = import(\`${specifier.replaceAll("\\", "\\\\")}\`);`,
+          `module.require(${JSON.stringify(specifier)});`,
+          `import value = require(${JSON.stringify(specifier)});`,
+          `type Value = import(${JSON.stringify(specifier)}).Value;`,
+        ]) {
+          expect(specifiers(source)).toEqual([specifier]);
+          expect(() => {
+            for (const imported of specifiers(source)) expect(contractsImportAllowed(file, imported, moduleGraph)).toBe(true);
+          }).toThrow();
+        }
+      }
+    }
+    expect(contractsImportAllowed("example/contracts/index.ts", "./own.js", { example: {} })).toBe(false);
   });
 
   it("recognizes the forms it refuses", () => {

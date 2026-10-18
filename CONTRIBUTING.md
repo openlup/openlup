@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-b242b5ab57fd6e21b1e29c85d3b014f190710dceb2a001fde2557dc880f66678","reason":"The workspace lockfile changes only the Core, Outbox and Platform versions and their exact Core peer pins for the 0.15.0 set. Required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-2fafeab9802a2dcd1b3acf62d1ad34b712b3e213bb707e93bb5b1d84f9d3e1ba","reason":"The ESLint configuration adds an optional fixed contracts sub-entry to the existing platform module graph, allowing only canonical relative imports within its contracts subtree and exact public core exports. No module declares the entry yet. Platform's README describes this package-specific boundary; contributor setup, lint commands, check selection and gate order in this section remain unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-f126286c5df4bdbccfac979015033c877088a3201fb66bcec44b183741bc4f9a","reason":"The tooling delta removes obsolete personalization exceptions from the zero-coverage checker, declares the object-storage conformance test and platform API/consumer scripts as public execution paths, and refreshes platform's package-command digest. The new cold-consumer proof requires verified core/platform artifacts, checks optional-peer isolation and refusals, compiles declarations in both module modes and exercises installed adapters with owned fixtures and a disposable database; companion tests falsify isolation, export, type-leak and refusal evidence. Platform's README owns these package-specific assertions. The existing shared gate still discovers publishable packages and requires their API and consumer scripts; no contributor command, required selector, threshold or gate order changes."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-9d54e200064687330b91983971b0b8747c576fede57227a7335eeb642a560d8b","reason":"The existing ESLint boundary test gains synthetic graph declarations and negative import plants for the optional platform contracts entry, across supported source extensions and shallow, nested and depth-fallback paths. These exercise the production rule factory without adding a real module or export. Platform's README owns the boundary explanation; this section's contributor commands, required selectors, thresholds and gate order are unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
