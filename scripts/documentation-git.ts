@@ -116,11 +116,15 @@ export function resolveDocumentationBase(root: string, options: { base?: string;
     }
     return { ...resolved, head };
   }
-  if (options.base !== undefined) {
-    if (!SHA.test(options.base)) throw new Error("documentation: explicit base must be a full commit SHA");
-    fullCommit(root, options.base);
-    try { documentationGit(root, ["merge-base", "--is-ancestor", options.base, head]); } catch { throw new Error("documentation: explicit base is not an ancestor of HEAD"); }
-    return { base: options.base, head, provenance: "explicit" };
+  const pinned = env.OPENLUP_STACK_BASE;
+  if (pinned !== undefined && options.base !== undefined && pinned !== options.base)
+    throw new Error("documentation: OPENLUP_STACK_BASE differs from --docs-base");
+  const explicit = options.base ?? pinned;
+  if (explicit !== undefined) {
+    if (!SHA.test(explicit)) throw new Error("documentation: explicit base must be a full commit SHA");
+    fullCommit(root, explicit);
+    try { documentationGit(root, ["merge-base", "--is-ancestor", explicit, head]); } catch { throw new Error("documentation: explicit base is not an ancestor of HEAD"); }
+    return { base: explicit, head, provenance: "explicit" };
   }
   const base = documentationGit(root, ["merge-base", "origin/main", head]).toString("utf8").trim();
   if (!SHA.test(base)) throw new Error("documentation: no merge base with origin/main");

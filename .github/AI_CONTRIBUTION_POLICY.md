@@ -128,7 +128,14 @@ execution approach within actual authority; it cannot restart the counter,
 bypass review or merge automatically.
 Changed intent requires explicit regrouping. The review base is the candidate's
 fork point, the single `git merge-base HEAD origin/main`, so `main` moving ahead does not
-by itself make a review stale. An ancestor-preserving base integration, such as
+by itself make a review stale. An optional `OPENLUP_STACK_BASE` can instead pin
+an exact predecessor between that fork point and HEAD. The candidate binds this
+pin, its own delta and the complete tree. Local checks use it consistently;
+hosted source and group admission require the reviewed base on current main,
+including for equal trees and integration receipts. Landing that predecessor
+alone preserves the exact review without refreshing its expiry or resetting
+history. No pin is needed for an independent PR, whose existing rules remain.
+An ancestor-preserving base integration, such as
 merging `main` to resolve a textual conflict, requires fresh full-scope review
 within the same budget; a rebase discards that lineage and never restarts the
 counter or drops findings. This nonqueue route admits no cross-base reuse; the

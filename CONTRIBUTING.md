@@ -160,6 +160,57 @@ kit whose `docs/platform/adopter-kit/dependabot.template.yml` group misses a
 published `@openlup/*` package. Move such a file or extend the pattern; do not
 add an exception.
 
+### Local stack bases and heavy verification
+
+Ordinary independent pull requests use the existing fork-point base. Stacking
+is optional. For an upper branch, export `OPENLUP_STACK_BASE=<full-predecessor-SHA>`
+before documentation checks, native `prepare`/`record`/`verify`, and final local
+verification. The pin must be an ancestor of HEAD and a descendant of its fork
+point. It becomes part of the reviewed candidate (`stackBase`); changing or
+removing it does not reuse an old review. Documentation uses that same base,
+including its no-impact fingerprints. Hosted event attribution still wins.
+
+Review the upper change relative to this exact predecessor, with the predecessor's
+contracts as context. Source and group admission independently require the
+reviewed base to have reached actual `main`; neither an unchanged group tree nor
+full integration reviews may waive that prerequisite. A predecessor-only landing
+then preserves the upper candidate, coverage, reports, expiry and repair history.
+Default unstacked reviews retain their existing fork-point refusal rules.
+
+For each heavy final local command, use:
+
+```sh
+node scripts/agent-review-session.mjs verify-command --resource openlup:coverage -- npm run test:required
+```
+
+Keep every required command below, including package gates and coverage; this
+wrapper adds no test selection, cache, stamp or authority. It first checks the
+clean committed candidate, policy, inventory, predicted merge and native review.
+When the predicted tree differs from HEAD, the existing policy/inventory checks
+run on that combined tree in a disposable checkout. A conflict or stale aggregate
+stops before expensive work; resolve by merging main and regenerate, never rebase
+the reviewed lineage merely for freshness. This is local early feedback, not
+hosted admission or a claim of deployment readiness.
+
+Output exclusion is scoped to the real worktree, so separate projects and task
+worktrees do not wait for unrelated output directories. When `ai-resource-gate`
+is installed on PATH, the wrapper additionally uses its bounded host CPU/RAM
+admission; CI and an already brokered process keep their existing scheduler.
+Its resource key is per worktree; host capacity alone coordinates independent
+projects. Select the existing broker profile for the actual command with
+`--resource` (for example `openlup:coverage`, `openlup:build` or
+`openlup:typecheck`). An installed broker requires this explicit selection;
+the wrapper supplies no CPU, memory, worker-count or timeout policy of its own.
+The broker's configured admission policy and refusal remain binding. A busy
+worktree output lease refuses immediately. The lease is released only by its owner;
+inspect a stranded owner before cleanup. Nested wrappers refuse immediately:
+wrap the underlying required command once. The stack pin is removed from heavy
+child environments so independent test repositories resolve their own bases.
+Preflight is repeated after waiting, source identity is checked after execution,
+and native review is checked again after success. A changed source or expired
+review supplies no final evidence. Existing maintainer-local stamps and hooks
+remain required where installed.
+
 ### Optional SonarQube Cloud diagnostics
 
 The SonarQube Cloud OSS pilot uses one public project and automatic analysis of
@@ -347,8 +398,9 @@ the author's simplicity pre-check. Every cycle retains every prior round and
 finding. An unchanged prepare preserves evidence and expiry. See the
 [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
 for the exact request/candidate bindings. Its review base is the
-candidate's fork point, `git merge-base HEAD origin/main`: a review stays current
-while `main` moves ahead, and verify refuses it once that fork point changes. A
+candidate's fork point, `git merge-base HEAD origin/main`, unless an explicit
+`OPENLUP_STACK_BASE` pins the predecessor as described above. A default review
+stays current while `main` moves ahead and its fork point is unchanged. A
 bounded routine code change gets one cold correctness review only when its
 actual paths avoid known control and trust boundaries and that reviewer
 confirms ordinary semantics.
@@ -358,8 +410,9 @@ budget. Run the focused
 `scripts/agent-review-session.test.ts` regressions while changing that contract;
 fixtures do not prove installed enforcement. Installed verification must refuse
 workflow drift before expensive checks or replacement of prior logs, and acquire
-a shared heavy-verification lock before running those checks. An existing lock
-is refused without stealing it or disturbing another task's checks. The required
+an output lock scoped to the actual task worktree before running those checks.
+An existing lock is refused without stealing it or disturbing another task's
+checks; unrelated worktrees use the host broker's capacity limits. The required
 six-job commands remain unchanged; exact-candidate review evidence may be reused
 by pre-push, but this process adds no general test-result cache. The local
 verification stamp records that one exact clean tree passed. Pre-push requires
@@ -1200,22 +1253,23 @@ onto `main` without conflict, even where it regenerates the same records or
 inserts lines next to the predecessor's. Stack pull requests that build on each
 other or touch the same shared files:
 - A stacked branch contains its predecessors, and its generated files are
-  computed on that cumulative tree. Its doc-impact answers cover its own change:
-  compute them with `--policy --docs-base <predecessor head>`.
-- Open it against its predecessor's branch and review it on its cumulative diff
-  from its fork point, predecessors' paths included.
+  computed on that cumulative tree. Export `OPENLUP_STACK_BASE` with the exact
+  predecessor head for documentation, native review and final local checks.
+  Its doc-impact answers and reviewed diff then cover its own change.
+- Open it as a draft against its predecessor's branch. Review its own diff with
+  predecessor context; readiness and source receipts wait for the prerequisite.
 - When the predecessor merges, GitHub retargets the pull request to `main`,
   because head branches are deleted on merge. Mark it draft and ready again so
   its checks rerun against `main`, then submit its source receipt and arm it:
   the receipt and queue admission require a pull request against `main`, and
-  admission takes only the first queue entry. Its local fork point has moved to
-  the predecessor's head, so local `verify` reports the move; hosted admission
-  checks the reviewed base and head, so an unchanged head needs no new review.
+  admission takes only the first queue entry. Keep the original pin: the same
+  unchanged candidate remains locally reviewed after its predecessor lands.
+  Admission verifies the pinned base is on actual main, not merely present on
+  the source branch. Each upper PR still needs its own source receipt.
 - Before relying on carry-over, check `git merge-tree --write-tree` of the queue
-  base and the head. When nothing besides its predecessors has entered `main`
-  since its fork point, the result equals the reviewed tree and the source
-  review carries over ("unchanged tree"). Otherwise the run-keyed receipt with
-  two integration reviews applies.
+  base and the head. The canonical carry-over rule applies: unchanged tree or
+  exact disjoint application relative to the reviewed predecessor. Other base
+  changes require the run-keyed receipt with two integration reviews.
 - If another change on `main` conflicts with it, merge `main` into it once (do
   not rebase), regenerate its shared records and get a fresh full review, as
   for a textual conflict.

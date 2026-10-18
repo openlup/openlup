@@ -63,6 +63,16 @@ export function parseNativeAdmission(bytes) {
   demand(value.source?.request && Array.isArray(value.source.reports) && (value.integration === null || value.integration?.request && Array.isArray(value.integration.reports)), 'native states are missing');
   return value;
 }
+// A pinned predecessor can be reviewed before landing, but cannot bring its own
+// unreviewed changes into main through an unchanged-tree or integration receipt.
+async function assertMainPrerequisite(api, candidate) {
+  const root = `/repos/${REPOSITORY}`;
+  const main = await api.get(`${root}/git/ref/heads/main`);
+  demand(main.ref === 'refs/heads/main' && main.object?.type === 'commit' && SHA.test(main.object.sha), 'current main identity is invalid');
+  const comparison = await api.get(`${root}/compare/${candidate.base}...${main.object.sha}`);
+  demand(comparison.base_commit?.sha === candidate.base && comparison.merge_base_commit?.sha === candidate.base
+    && ['identical', 'ahead'].includes(comparison.status), 'reviewed base or pinned predecessor has not landed on current main');
+}
 export async function observeNativeAdmission(api, input) {
   const root = `/repos/${REPOSITORY}`;
   const run = await api.get(`${root}/actions/runs/${input.targetRunId}`);
@@ -71,6 +81,7 @@ export async function observeNativeAdmission(api, input) {
   const pr = await api.get(`${root}/pulls/${input.prNumber}`);
   demand(pr.number === input.prNumber && pr.state === 'open' && pr.draft === false && !pr.merged && pr.base?.repo?.id === REPOSITORY_ID && pr.base.ref === 'main' && SHA.test(pr.head?.sha), 'PR is not the current open main candidate');
   const source = input.source.request.candidate;
+  await assertMainPrerequisite(api, source);
   demand(source.head === pr.head.sha, 'PR head changed after source review');
   const commit = await api.get(`${root}/git/commits/${source.head}`);
   demand(commit.sha === source.head && commit.tree?.sha === source.tree, 'reviewed source tree differs');
@@ -93,7 +104,7 @@ export async function observeNativeAdmission(api, input) {
   return { event: run.event, workflowId: run.workflow_id, runId: run.id, attempt: run.run_attempt, prNumber: pr.number, sourceHead: source.head, sourceTree: source.tree, entryId: entry.id, enqueuedAt: entry.enqueuedAt, base: entry.baseCommit.oid, head: run.head_sha, tree: group.tree.sha, ref: ref.ref };
 }
 async function verifyReviewState(cwd, state, now) {
-  const candidate = await captureCommittedReviewCandidate(cwd, state.request.candidate.base, state.request.candidate.head);
+  const candidate = await captureCommittedReviewCandidate(cwd, state.request.candidate.base, state.request.candidate.head, state.request.candidate.stackBase);
   const result = await verifyAgentReview({ cwd, ...state, snapshot: async () => candidate, now });
   demand(result.status === 'reviewed', result.reason ?? 'complete independent native review is missing');
   return candidate;
@@ -106,9 +117,11 @@ async function git(cwd, ...args) {
 }
 /** A source review carries over to a merge group that is exactly the reviewed change on a base whose net change since the reviewed base avoids its paths and that machinery. */
 export async function carryOverSourceReview(cwd, candidate, group) {
+  try { await git(cwd, 'merge-base', '--is-ancestor', candidate.base, group.base); }
+  catch { throw new Error('Native admission refused: reviewed base or pinned predecessor is not an ancestor of the queue base'); }
   if (group.tree === candidate.tree) return 'unchanged tree';
   let predicted;
-  try { await git(cwd, 'merge-base', '--is-ancestor', candidate.base, group.base); predicted = (await git(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predicted = null; }
+  try { predicted = (await git(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predicted = null; }
   demand(predicted === group.tree, 'group is not exactly the reviewed change on its queue base; integration review required');
   const moved = (await git(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
   const own = new Set(candidate.changedPaths);
@@ -164,6 +177,7 @@ export async function observeSourceAdmission(api, input, target = null) {
   const pr = await api.get(`${root}/pulls/${input.target.prNumber}`);
   demand(pr.number === input.target.prNumber && pr.state === 'open' && pr.draft === false && !pr.merged && pr.base?.repo?.id === REPOSITORY_ID && pr.base.ref === 'main' && SHA.test(pr.head?.sha), 'PR is not the current open main candidate');
   const source = input.source.request.candidate;
+  await assertMainPrerequisite(api, source);
   demand(source.head === input.target.sourceHead && pr.head.sha === source.head, 'PR head changed after source review');
   const commit = await api.get(`${root}/git/commits/${source.head}`);
   demand(commit.sha === source.head && commit.tree?.sha === source.tree, 'reviewed source tree differs');

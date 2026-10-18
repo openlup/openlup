@@ -258,6 +258,12 @@ describe("complete public CI", () => {
       expect(required.error).toBeUndefined();
       expect(required.status).toBe(29);
       expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(requiredTestFloor.replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ").split(" ").slice(2));
+      const inherited = spawnSync(process.execPath, [join(ROOT, "scripts/run-vitest.mjs"), 'run', '--coverage'], {
+        cwd: directory, encoding: 'utf8', timeout: 10000,
+        env: { PATH: directory, AI_RESOURCE_GATE_ACTIVE: '1', AI_RESOURCE_GATE_LANE: 'coverage', PUBLIC_TEST_ARGV_LOG: log, PUBLIC_TEST_EXIT: '0' },
+      });
+      expect(inherited.status).toBe(0);
+      expect(JSON.parse(readFileSync(log, 'utf8'))).toEqual(['run', '--coverage']);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

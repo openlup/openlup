@@ -41,7 +41,8 @@ Implementation order:
    Once criteria, review and checks pass, stop optional edits.
 4. Update existing contributor/agent guidance and intent together. Installed
    verification refuses workflow drift before expensive commands, and serializes
-   heavy local verify runs without stealing another task's lock. Exact-candidate
+   heavy local verify runs sharing worktree outputs without stealing another
+   task's lock. Exact-candidate
    receipts remain reusable by pre-push; no general test-result cache is added.
 5. Run focused regression and refusal checks, then two dogfooding passes: first
    exercise the real installed CLI and hooks, batch material fixes, and then
@@ -207,7 +208,7 @@ escalate, missing prior coverage and erased findings refuse, reduced reviews
 cannot renew expiry, and a third automatic continuation stays blocked. Exercise full-review escalation
 without resetting the counter, plus dirty/stale lineage and concurrent prepare.
 Installed verification must refuse workflow drift before expensive commands or
-replacement of prior logs. Its shared heavy-check lock refuses overlapping verify
+replacement of prior logs. Its heavy-check lock in the same worktree refuses overlapping verify
 without stealing another task's lock or interfering with its checks. Perform two
 installed CLI/hook dogfooding passes, batching material repairs between them; repeat
 affected scenarios and report observed reviewer counts and limitations. No general
@@ -254,7 +255,16 @@ request records it; continuations do not repeat it.
 candidate, role floor and request binding, then stores bounded session state in
 `.context/scratch/agent-review/session.json`. The candidate's base is its fork
 point, `git merge-base HEAD origin/main`; evidence stays current while `main`
-moves ahead and that fork point is unchanged. An unchanged candidate retains its
+moves ahead and that fork point is unchanged. For an optional stack,
+`OPENLUP_STACK_BASE` pins an exact predecessor on HEAD's ancestry at or above
+that fork point. The candidate additionally binds `stackBase`, equal to `base`;
+the same environment pin is required for local prepare, record and verify.
+Committed hosted reconstruction preserves that field. Admission verifies through
+the live main ref and immutable GitHub comparison that the reviewed base is
+already on main; it repeats this check during admission. Group carry-over also
+checks ancestry before accepting tree equality. Neither source nor integration
+receipts can introduce a pending predecessor. Ordinary unpinned sessions keep
+their existing shape and fork-point refusal behavior. An unchanged candidate retains its
 request and reports. A committed repair adds a bounded `history` round and a
 version-2 request with `continuation`: cycle, review mode, prior-round digest,
 actual delta paths, neutral finding cards and repair risk. The optional top-level `repairRisk`
@@ -588,12 +598,16 @@ records. Simulated merge-commit landings of the same stacks were clean and
 tree-equal. The owner's settings change, not this repository, enables it:
 - the `main` ruleset drops `required_linear_history` and allows the merge
   method;
-- the repository allows merge commits (`allow_merge_commit`) and the merge queue's
+- the repository allows merge commits (`allow_merge_commit: true`) and the merge queue's
   `merge_method` becomes `MERGE`;
 - the repository's merge-commit message is the pull request body
-  (`merge_commit_message: PR_BODY`).
+  (`merge_commit_message: PR_BODY`, with `merge_commit_title: PR_TITLE`);
+- head-branch deletion and retargeting are verified; when automatic deletion is
+  unavailable, explicitly retarget the upper PR after the predecessor lands.
 
-No review, receipt, carry-over or DCO rule changes. The DCO check already
+The merge method itself changes no review floor, expiry, receipt or DCO rule.
+The separately authorized stack-base implementation below binds local own-delta
+reviews and requires their prerequisites on main. The DCO check already
 certifies merge commits, so each description ends with the author's
 `Signed-off-by:` line. Merge commits make a merged branch's own commits
 ancestors of `main`, so the release gates accept only a target on `main`'s
@@ -606,7 +620,37 @@ Prove it live right after the switch, before relying on it:
    commit's actual author and that it has two parents, the previous `main`
    first.
 2. A second pull request, stacked on the first and reviewed before the first
-   merged, is admitted with "unchanged tree" carry-over and no new receipt.
+   merged, is admitted with "unchanged tree" carry-over using its own source
+   receipt, with no run-keyed integration receipt.
 
 If either step fails, the owner restores the squash settings and the guidance
 change is reverted.
+
+### Stack-base and local proof implementation (2026-10-17)
+
+Outcome: update the same bounded PR with optional immutable predecessor bases,
+early merged-tree policy/inventory proof and coordinated heavy local commands.
+The direct owner instruction authorizes implementation and updating this PR;
+settings, merge, release, adopter rollout and queue-capacity changes remain out
+of scope. Acceptance preserves native identity, complete coverage, reviewers,
+expiry, repair history, DCO and all required commands. Ordinary PRs remain a
+first-class path with no stack configuration.
+
+The smallest adequate implementation shares one explicit pin, uses existing
+policy/inventory checks in a disposable predicted checkout, and wraps heavy
+commands with a bounded output lease for their real worktree. An installed host
+resource broker handles aggregate CPU/RAM capacity across independent projects,
+using the explicitly selected existing profile for each command. This wrapper
+does not define a new CPU/RAM, worker-count or execution-time budget;
+there is no new daemon, dependency, shared result cache or test selector. Native
+review and cheap checks precede waiting, and are revalidated before final proof.
+The wrapper does not install itself in npm or CI pre-scripts and creates no
+reusable verification stamp. Existing installed hooks retain their authority.
+
+Regression simulations cover unchanged independent bases, pinned own-delta
+review before/after predecessor landing, missing or rewritten prerequisites,
+disjoint and sensitive base moves, textual conflict, clean-but-invalid generated
+aggregates, independent worktree resource identities, owned contention refusal, nested
+wrapper refusal, child-environment isolation and source mutation during proof.
+The current source tests are the falsifiers; live GitHub queue activation remains
+the separate two-step proof above.
