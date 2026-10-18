@@ -42,6 +42,7 @@ export interface ManagedIdentityClient {
     };
   };
 }
+
 export function createManagedIdentityClients(createClient: SupabaseCreateClient) {
   const actor = (env: { url: string; anonKey: string }, accessToken: string | null): ManagedIdentityClient =>
     createClient(env.url, env.anonKey, {

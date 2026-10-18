@@ -175,7 +175,13 @@ quota. Adopters needing legacy role mapping must do it in their own adapter
 before passing the role to the package; there is no package fallback option.
 
 Both managed contact stores match normalized addresses case-insensitively,
-including mixed-case stored contacts. They use an anchored, escaped `imatch`
-filter so address characters remain literal. Injected structural query clients
-must implement `filter(column, "imatch", value)`. The direct customer challenge
-already compares `lower(email)` to normalized input; no migration is needed.
+including mixed-case stored contacts. Literal matching uses an anchored, escaped
+`imatch` database prefilter plus an exact `email.trim().toLowerCase()` comparison
+with the normalized input. Unicode regex folding alone cannot establish identity.
+Both lookups select email and fetch at most ten candidates. Soft linking selects
+the oldest accepted contact; reconciliation requires a single accepted contact
+and throws the existing multiple-row error if several remain. A match beyond the
+candidate bound is not selected. Injected structural query clients must implement
+`filter(column, "imatch", value)` and the bounded array query. The direct customer
+challenge already compares `lower(email)` to normalized input; no migration is
+needed.

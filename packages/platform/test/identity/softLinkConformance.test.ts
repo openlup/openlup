@@ -3,7 +3,7 @@ import { findOrCreateAuthUserId, linkClientAuthUser, type ClientAuthLinkStore } 
 import { createSupabaseClientAuthLinkStore } from "../../src/identity/managedClientAuthLink.js";
 import { createSupabaseAccountLinkStore } from "../../src/identity/managedAccountLinkStore.js";
 import { reconcileAccountForPrincipal } from "../../src/identity/reconcileAccountForPrincipal.js";
-import type { ManagedIdentityClient } from "../../src/identity/managedClient.js";
+import type { ManagedIdentityClient, ManagedIdentityRow } from "../../src/identity/managedClient.js";
 
 describe("create-first soft-account linking", () => {
   it("creates before any lookup and preserves the linked result", async () => {
@@ -73,6 +73,23 @@ function contactClient(storedEmail: string) {
   return { client: { from: () => query } as unknown as ManagedIdentityClient, query, row };
 }
 
+// Return database candidates directly: PostgreSQL imatch can fold Unicode
+// characters that JavaScript's case-insensitive regex does not fold.
+function contactCandidates(emails: Array<string | null>) {
+  const rows: ManagedIdentityRow[] = emails.map((email, index) => ({
+    id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    email, auth_user_id: null,
+  }));
+  const query = {
+    select: vi.fn(() => query),
+    filter: vi.fn(() => query),
+    order: vi.fn(() => query),
+    limit: vi.fn(async () => ({ data: rows, error: null })),
+    maybeSingle: vi.fn(async () => ({ data: rows[0] ?? null, error: null })),
+  };
+  return { client: { from: () => query } as unknown as ManagedIdentityClient, query, rows };
+}
+
 describe.each(["soft-link", "reconcile"] as const)("%s contact lookup", (kind) => {
   const lookup = (client: ManagedIdentityClient, email: string) => kind === "soft-link"
     ? createSupabaseClientAuthLinkStore(client).findClientByEmail(email)
@@ -117,5 +134,62 @@ describe.each(["soft-link", "reconcile"] as const)("%s contact lookup", (kind) =
   ])("matches %s literally and refuses %s", async (email, other) => {
     expect(await lookup(contactClient(email.toUpperCase()).client, email)).not.toBeNull();
     expect(await lookup(contactClient(other).client, email)).toBeNull();
+  });
+
+  it.each([
+    ["bıyer@example.com", "BIYER@EXAMPLE.COM"],
+    ["buſer@example.com", "BUSER@EXAMPLE.COM"],
+  ])("rejects database Unicode-folded candidates for %s", async (email, widened) => {
+    const { client, query } = contactCandidates([widened]);
+    expect(await lookup(client, email)).toBeNull();
+    expect(query.select).toHaveBeenCalledWith("id, email, auth_user_id");
+    expect(query.limit).toHaveBeenCalledWith(10);
+  });
+
+  it("rejects candidates without an email", async () => {
+    const { client, rows } = contactCandidates([null, null]);
+    delete rows[1].email;
+    expect(await lookup(client, "buyer@example.com")).toBeNull();
+  });
+});
+
+describe("exact normalized contact selection", () => {
+  it("soft-links the oldest exact candidate after discarding an older widened row", async () => {
+    const email = "bıyer@example.com";
+    const { client, query, rows } = contactCandidates(["BIYER@EXAMPLE.COM", " BıYER@EXAMPLE.COM ", email]);
+    const store = {
+      ...createSupabaseClientAuthLinkStore(client),
+      createAuthUser: vi.fn(async () => "00000000-0000-4000-8000-000000000010"),
+      findAdminIdentity: vi.fn(async () => null),
+      setClientAuthUserId: vi.fn(async () => ({ ok: true as const, alreadyLinked: false })),
+    };
+    expect(await linkClientAuthUser(store, email)).toMatchObject({ ok: true, clientId: rows[1].id });
+    expect(store.setClientAuthUserId).toHaveBeenCalledWith(rows[1].id, "00000000-0000-4000-8000-000000000010");
+    expect(query.order).toHaveBeenCalledWith("created_at", { ascending: true });
+    expect(query.limit).toHaveBeenCalledWith(10);
+  });
+
+  it("reconciles the single exact candidate after discarding a widened row", async () => {
+    const email = "buſer@example.com";
+    const { client, rows } = contactCandidates(["BUSER@EXAMPLE.COM", ` ${email} `]);
+    expect(await createSupabaseAccountLinkStore(client).findAccountByEmail(email)).toEqual({
+      id: rows[1].id, email: rows[1].email, principalId: null,
+    });
+  });
+
+  it("fails reconciliation closed on multiple exact candidates before linking or creating", async () => {
+    const { client } = contactCandidates(["BUYER@example.com", " buyer@example.com "]);
+    const store = {
+      ...createSupabaseAccountLinkStore(client),
+      isReservedPrincipal: vi.fn(async () => false),
+      findAccountByPrincipalId: vi.fn(async () => null),
+      linkPrincipalToAccount: vi.fn(async () => ({ ok: true as const, alreadyLinked: false })),
+      createAccount: vi.fn(async () => ({ id: "00000000-0000-4000-8000-000000000010" })),
+    };
+    await expect(reconcileAccountForPrincipal(store, {
+      principalId: "00000000-0000-4000-8000-000000000010", email: "buyer@example.com", emailVerified: true,
+    })).rejects.toMatchObject({ code: "PGRST116" });
+    expect(store.linkPrincipalToAccount).not.toHaveBeenCalled();
+    expect(store.createAccount).not.toHaveBeenCalled();
   });
 });
