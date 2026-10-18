@@ -3,16 +3,10 @@ import { createAdminMagicLinkHandler } from "@openlup/platform/identity";
 import { withObservedRoute } from "../../../_lib/observability/route.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 import {
-  sendBffError,
-  sendBffSuccess,
-  sendMethodNotAllowed,
-} from "../../../_lib/bff/response.js";
-import {
   readSupabaseAdminServiceEnv,
 } from "../../../_lib/admin-domain/auth.js";
 import {
   createAdminMagicLinkRuntime,
-  type AdminMagicLinkAuthClient,
 } from "../../../adapters/supabase/platform/adminPlatformPort.js";
 import {
   adminMagicLinkRequestSchema,
@@ -29,7 +23,6 @@ import {
 } from "../../../_lib/observability/environment.js";
 import { padResponseTime } from "../../../_lib/timing.js";
 
-const ADMIN_MAGIC_LINK_RESPONSE_FLOOR_MS = 400;
 const ADMIN_AUTH_CALLBACK_PATH = "/admin/auth/callback";
 
 async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {

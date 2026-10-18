@@ -82,5 +82,4 @@ export interface AuthEmailPersistencePort {
   }): Promise<void>;
 }
 
-export { linkClientAuthUser, findOrCreateAuthUserId } from "@openlup/platform/identity";
-export type { VerifiedPrincipal, IdentityVerifierPort, CustomerChallengeStore, CustomerChallengeDeliveryPort, CustomerSessionIssuerPort, LinkClientAuthUserResult, SetClientAuthUserIdResult, ClientAuthLinkStore, AdminPrincipalRole, AdminAuthorizationResult, AdminAuthPort, CustomerAccount, CreateAccountInput, LinkPrincipalResult, AccountLinkStore } from "@openlup/platform/identity";
+export type { VerifiedPrincipal, IdentityVerifierPort, AdminAuthPort } from "@openlup/platform/identity";

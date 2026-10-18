@@ -4,18 +4,12 @@ import { withObservedRoute } from "../../_lib/observability/route.js";
 import { customerAuthUiEnabled } from "../../_lib/config/featureFlags.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import {
-  sendBffError,
-  sendBffSuccess,
-  sendMethodNotAllowed,
-} from "../../_lib/bff/response.js";
-import {
   customerMagicLinkRequestSchema,
   customerMagicLinkResponseSchema,
 } from "../../../src/domains/customers/contracts.js";
 import {
   checkAndRecordCustomerMagicLinkAttempt,
   extractClientIp,
-  type CustomerMagicLinkRateLimitClient,
 } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
 import {
   deployedRuntimeAssumed,
@@ -27,9 +21,7 @@ import {
   createCustomerClient,
   createCustomerServiceClient,
   readCustomerSelfServiceEnv,
-  type CustomerSupabaseClient,
 } from "./shared.js";
-import { resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 import { resolveCustomerSessionBinding } from "../../runtime/customers/customerSessionBinding.js";
 
 type SessionResolver = typeof resolveCustomerSessionBinding;

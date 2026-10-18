@@ -1,4 +1,3 @@
-export { createPostgresCustomerChallengeStore, type PostgresCustomerChallengeStore } from "@openlup/platform/identity";
 import { customerCommunicationPreferencesResponseSchema } from "../../../src/domains/communications/customerPreferencesContracts.js";
 import type { CustomerCommunicationPreferencesPort } from "../../domains/communications/customerCommunicationPreferencesHandler.js";
 

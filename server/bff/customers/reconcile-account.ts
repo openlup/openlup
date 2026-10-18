@@ -4,8 +4,8 @@ import { withObservedRoute } from "../../_lib/observability/route.js";
 import { readObservedResponseContext } from "../../_lib/observability/requestContext.js";
 import { sendBffError } from "../../_lib/bff/response.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
-import { createSupabaseIdentityVerifier } from "../../adapters/supabase/identityVerifier.js";
-import { createSupabaseAccountLinkStore } from "../../adapters/supabase/accountLinkStore.js";
+import { createSupabaseIdentityVerifier } from "@openlup/platform/identity";
+import { createSupabaseAccountLinkStore } from "@openlup/platform/identity";
 import { createCustomerClients, readCustomerSelfServiceEnv, readBearerToken } from "./shared.js";
 
 async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {

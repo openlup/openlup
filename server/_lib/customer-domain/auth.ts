@@ -1,8 +1,5 @@
 import { createManagedIdentityClients } from "@openlup/platform/identity";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { CustomerUserAuthenticationResult } from "../../domains/customers/customerAuth.js";
-import type { IdentityVerifierPort } from "../../domains/auth/ports.js";
-import { createSupabaseIdentityVerifier } from "../../adapters/supabase/identityVerifier.js";
 
 const identityClients = createManagedIdentityClients(createClient);
 export type CustomerSupabaseClient = SupabaseClient;
