@@ -55,11 +55,12 @@ export function createSupabaseAdminPlatformPort(client: SupabaseClient): AdminPl
         .maybeSingle();
       if (error) throw error;
 
-      if (!data) {
+      const role = normalizeRole(data?.role);
+      if (role === null) {
         return { isAdmin: false, role: null };
       }
 
-      return { isAdmin: true, role: normalizeRole(data.role) };
+      return { isAdmin: true, role };
     },
 
     async checkAdminMagicLinkEligibility(email): Promise<AdminMagicLinkEligibility> {
@@ -71,7 +72,7 @@ export function createSupabaseAdminPlatformPort(client: SupabaseClient): AdminPl
         .maybeSingle();
       if (error) throw error;
       if (!data) return "not_allowlisted";
-      if (data.role === null || data.role === "admin" || data.role === "distributor") {
+      if (normalizeRole(data.role) !== null) {
         return "eligible";
       }
       return "role_not_allowed";
@@ -95,6 +96,6 @@ export async function authenticateSupabasePlatformUser(
   return { ok: true, userId: data.user.id };
 }
 
-function normalizeRole(role: string | null): AdminUserRole {
-  return role === "distributor" ? "distributor" : "admin";
+function normalizeRole(role: unknown): AdminUserRole | null {
+  return role === "admin" || role === "distributor" ? role : null;
 }

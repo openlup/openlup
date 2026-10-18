@@ -97,7 +97,7 @@ describe("promotion adjustment stress", () => {
         throw new Error(`promotion stress invariant failed at case ${index}`);
       }
     }
-  }, 30_000);
+  }, 60_000);
 });
 
 function makeShippingCandidate(

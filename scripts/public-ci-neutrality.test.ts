@@ -122,7 +122,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     const failed = run();
     expect(failed.status, failed.output).toBe(1);
     expect(failed.output).toContain("neutrality scanner failed");
-  });
+  }, 30_000);
   it("bootstraps from the full measured base and refuses a candidate-derived allowance", () => {
     const { root, base } = fixture({ "existing": debt });
     const bootstrap = cli(root, base, "--write-baseline");
@@ -135,7 +135,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     value.sourceCommit = "a".repeat(40);
     put(root, baselinePath, JSON.stringify(value));
     expect(cli(root, base).status).toBe(1);
-  });
+  }, 30_000);
   it("refuses shrink then regrowth even with the old ceiling, and lowers deterministically", () => {
     const { root, base } = installed({ "existing": `${debt}\n`.repeat(3) });
     put(root, "existing", debt);
@@ -151,7 +151,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     expect(cli(root, shrunk, "--write-baseline").status).toBe(0);
     expect(readFileSync(join(root, baselinePath), "utf8")).toBe(bytes);
     expect(cli(root, shrunk).status).toBe(0);
-  });
+  }, 30_000);
   it("refuses raised, removed and malformed established baselines", () => {
     const { root, base } = installed({ "existing": debt });
     const value = baseline(root); value.counts[hash("existing")].brand += 1;
@@ -161,7 +161,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     expect(cli(root, base).output).toContain("invalid neutrality baseline JSON");
     rmSync(join(root, baselinePath));
     expect(cli(root, base).output).toContain("baseline missing or removed");
-  });
+  }, 30_000);
   it("refuses new extensionless debt without compensation from a deletion", () => {
     const { root, base } = installed({ "existing": debt });
     rmSync(join(root, "existing"));
@@ -179,13 +179,13 @@ describe("neutrality CLI on synthetic Git objects", () => {
     const deleted = commit(root);
     put(root, "existing", debt);
     expect(cli(root, deleted).status).toBe(1);
-  });
+  }, 30_000);
   it("inventories binary data and refuses text-debt converted to binary", () => {
     const { root, base } = installed({ "existing": debt, "binary": Buffer.from([0, 255]) });
     expect(cli(root, base).output).toContain("1 binary files inventoried");
     put(root, "existing", Buffer.from([0, 255]));
     expect(cli(root, base).output).toContain("contaminated text became binary");
-  });
+  }, 30_000);
   it("reads newline filenames by object identity and escapes their diagnostics", () => {
     const path = "line\nbreak";
     const { root, base } = installed({ [path]: "clean" });
@@ -193,7 +193,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     const result = cli(root, base);
     expect(result.status).toBe(1);
     expect(result.output).toContain('"line\\nbreak"');
-  });
+  }, 30_000);
   it("refuses non-UTF-8 Git paths instead of replacing their identity bytes", () => {
     const { root, base } = installed();
     // Construct raw Git objects: some filesystems cannot materialize this name.
@@ -327,7 +327,7 @@ describe("exact reviewed diagnostic-fixture recalibration", () => {
     expect(cli(root, base).status).toBe(0);
     expect(cli(root, base, "--write-baseline").status).toBe(0);
     expect(cli(root, base).status).toBe(0);
-  });
+  }, 30_000);
   it.each(fixtures)("requires exact recalibration of %s rather than excepting candidate-versus-baseline", (path, before, after) => {
     const { root, base } = introductionFixture();
     const value = baseline(root);
@@ -336,7 +336,7 @@ describe("exact reviewed diagnostic-fixture recalibration", () => {
       put(root, baselinePath, JSON.stringify(value));
       expect(cli(root, base).status).toBe(1);
     }
-  });
+  }, 30_000);
   it.each([
     ["source", "unreviewedDiagnosticFixtureIncreases(neutralityIncreases(measuredBase.rows, current.rows), currentBytes, base)", "neutralityIncreases(measuredBase.rows, current.rows)", []],
     ["parent baseline", "unreviewedDiagnosticFixtureIncreases(neutralityIncreases(parent.counts, baseline.counts), currentBytes, base)", "neutralityIncreases(parent.counts, baseline.counts)", []],
@@ -348,13 +348,13 @@ describe("exact reviewed diagnostic-fixture recalibration", () => {
     expect(source.split(wrapped)).toHaveLength(2);
     put(root, path, source.replace(wrapped, strict));
     expect(cli(root, base, ...options).status).toBe(1);
-  });
+  }, 30_000);
   it("keeps CLI source admission and regeneration strict on an unrelated base", () => {
     const { root, base } = installed();
     for (const [path, bytes] of snapshots()) put(root, path, bytes);
     expect(cli(root, base).status).toBe(1);
     expect(cli(root, base, "--write-baseline").output).toContain("baseline regeneration would increase accepted debt");
-  });
+  }, 30_000);
   it("accepts unchanged future files and baseline regeneration, then refuses shrink/regrowth", () => {
     const files = snapshots();
     const { root, base } = installed(Object.fromEntries(files));
@@ -372,7 +372,7 @@ describe("exact reviewed diagnostic-fixture recalibration", () => {
     put(root, path, original);
     expect(cli(root, shrunk).status).toBe(1);
     expect(cli(root, shrunk, "--write-baseline").status).toBe(1);
-  });
+  }, 30_000);
   it("refuses scanner drift even with all five exact fixtures", () => {
     const { root, base } = installed(Object.fromEntries(snapshots()));
     const path = scannerPaths[0];

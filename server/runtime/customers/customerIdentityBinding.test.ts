@@ -26,11 +26,11 @@ const ENV = {
 describe("customer identity binding", () => {
   it("reuses the bundle-cached direct gateway behind a request-scoped actor-only facade", () => {
     const source = readFileSync(
-      "server/runtime/customers/customerIdentityBinding.ts",
+      "packages/platform/src/identity/customerIdentityBinding.ts",
       "utf8",
     );
 
-    expect(source).toContain('bindRequestActorDataPort("", env)');
+    expect(source).toContain('defaults.bindRequestActorDataPort("", env)');
     expect(source).not.toContain("createPostgresDataGateway");
     expect(source).not.toContain("asService");
   });
@@ -72,6 +72,38 @@ describe("customer identity binding", () => {
       );
       expect(authenticate).toHaveBeenCalledWith(client, "customer-token");
       expect(createPort).toHaveBeenCalledWith(client);
+    },
+  );
+
+  it.each(MANAGED_BUNDLES)(
+    "reads %s managed settings from process environment instead of the passed environment",
+    (bundle) => {
+      vi.stubEnv("SUPABASE_URL", "https://process.example.com");
+      vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "process-public-key");
+      try {
+        const managedPort = port(null);
+        const createClient = vi.fn(() => ({}));
+        const binding = createCustomerIdentityBinding(
+          REQUEST,
+          {
+            PLATFORM_BUNDLE: bundle,
+            SUPABASE_URL: "https://passed.example.com",
+            VITE_SUPABASE_PUBLISHABLE_KEY: "passed-public-key",
+          },
+          {
+            createManagedClient: createClient,
+            createManagedPort: () => managedPort,
+          },
+        );
+
+        expect(binding?.mePort).toBe(managedPort);
+        expect(createClient).toHaveBeenCalledExactlyOnceWith(
+          { url: "https://process.example.com", anonKey: "process-public-key" },
+          "customer-token",
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
     },
   );
 

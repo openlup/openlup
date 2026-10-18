@@ -8,6 +8,29 @@ export type DocumentationObject = { mode: string; digest: string; contents: Buff
 export type DocumentationBase = { base: string; head: string; provenance: "explicit" | "merge-base" | "pull-request" | "merge-group" | "push" };
 const SHA = /^[0-9a-f]{40}$/u;
 export const documentationDigest = (bytes: string | Buffer): string => `sha256-${createHash("sha256").update(bytes).digest("hex")}`;
+export function readDocumentationObjects(root: string, specs: string[]): (Buffer | null)[] {
+  for (const spec of specs) {
+    const match = /^([0-9a-f]{40})(?::(.+))?$/u.exec(spec);
+    if (!match || /[\r\n]/u.test(spec)) throw new Error("documentation: invalid object spec");
+    if (match[2] !== undefined) assertDocumentationPath(match[2]);
+  }
+  if (specs.length === 0) return [];
+  const batch = documentationGit(root, ["cat-file", "--batch"], `${specs.join("\n")}\n`, 128 * 1024 * 1024);
+  let position = 0;
+  const objects = specs.map((spec) => {
+    const newline = batch.indexOf(10, position);
+    if (newline < 0) throw new Error("documentation: truncated object batch");
+    const header = batch.subarray(position, newline).toString("utf8");
+    if (header === `${spec} missing`) { position = newline + 1; return null; }
+    const match = /^([0-9a-f]{40}) [^\s]+ (\d+)$/u.exec(header);
+    if (!match || (SHA.test(spec) && match[1] !== spec)) throw new Error("documentation: unreadable object batch");
+    const size = Number(match[2]); const start = newline + 1; const end = start + size;
+    if (!Number.isSafeInteger(size) || end >= batch.length || batch[end] !== 10) throw new Error("documentation: truncated object batch");
+    position = end + 1; return batch.subarray(start, end);
+  });
+  if (position !== batch.length) throw new Error("documentation: unexpected object batch output");
+  return objects;
+}
 function fullCommit(root: string, ref: string): string {
   const sha = documentationGit(root, ["rev-parse", "--verify", `${ref}^{commit}`]).toString("utf8").trim();
   if (!SHA.test(sha)) throw new Error(`documentation: cannot resolve commit ${ref}`);

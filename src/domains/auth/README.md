@@ -15,8 +15,8 @@ verified email, never silently duplicate).
 - `contracts.ts` — `authReconcileResponseSchema`, `AuthReconcileErrorCode`.
 
 ## Where the code lives
-- Shared/frontend: `src/domains/auth/`
-- Server (pure): `server/domains/auth/` (`reconcileAccountForPrincipal.ts`, `ports.ts`)
+- Browser values and provider parsing: `@openlup/platform/identity/contracts`; the old paths re-export it. Runtime Zod schemas remain in `src/domains/auth/contracts.ts` pending the isolated validator boundary.
+- Server identity policy: `@openlup/platform/identity`; the former `server/domains/auth/` paths delegate there. Email-hook ports remain application source.
 - Reference adapters (outside this domain):
   `src/integrations/supabase/customerAuthPort.ts` and
   `src/integrations/postgres/customerAuthPort.ts`, selected by
@@ -37,4 +37,8 @@ at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
 
-<!-- openlup-doc-impact {"unit":"domain-auth","digest":"sha256-f25e1e3b41dad3096070405d6c8774e113769332de199a5f4ad0fc6920afc26f","reason":"Comment-only delta. The verify-URL builder and its test name a downstream operator probe and a retired Edge copy by role instead of by path. The auth contracts and flows described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"domain-auth","digest":"sha256-f3647d9c03866df6516d7b882708f91723f21b6bd888b869355a828928cbc105","reason":"Server re-export files for the reconcile engine and the auth verify-URL helper are removed and the server ports file drops identity-only re-exports nothing imports; callers import @openlup/platform/identity directly. The browser compatibility files described here are unchanged, and the email-hook ports stay application source."} -->
+
+The [identity module owner](../../../docs/platform/IDENTITY.md) maps the import,
+characterized lookup/fence differences, conformance witnesses and incomplete
+readiness/schema evidence.

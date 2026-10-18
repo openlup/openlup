@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its nine experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its eleven experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -19,6 +19,8 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./job-ledger` | The job-run ledger port, its PostgreSQL and managed (Supabase) adapters, the managed v2/v3 compatibility calls and the location of its SQL |
 | `./kernel` | The bundle identifiers, descriptors and readiness |
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
+| `./identity` | Experimental capability: identity engine, authorization, profile readers, session adapters and BFF factories |
+| `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 
 ## Scheduled jobs
 
@@ -101,10 +103,10 @@ computed property calls.
 The package test additionally requires every file in the contracts subtree to
 be a scanned `.ts` file, refuses triple-slash type and path references and all
 meta-properties (also `new.target`), and retains member-call `require` detection
-outside contracts. No module declares this
-entry yet; synthetic graphs and negative plants prove the checks.
+outside contracts. Identity declares this entry; synthetic graphs and negative
+plants also prove the checks.
 
-`npm run api:check` compares each of the nine declaration entry graphs with the
+`npm run api:check` compares each of the eleven declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.
@@ -141,7 +143,45 @@ phase redirects npm to an empty temporary cache.
 
 The composition declarations describe the injected Supabase factory structurally;
 they do not import the data entry or its PostgreSQL types. The cold proof still
-requires all five nonadapter entries to import in fresh processes and compile
+requires all six nonadapter entries (including `./identity/contracts`) to import in fresh processes and compile
 in both resolution modes with all three optional peers absent.
 
 <!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
+
+## Identity import candidate
+
+The `./identity` server entry imports the existing identity engine, authorization,
+profile readers, session adapters and BFF factories into one capability. Its
+`./identity/contracts` entry is declared browser-safe and currently exposes the
+customer auth port, value types and provider parser. Runtime-schema extraction
+is pending the contracts-boundary choice described in the
+[identity owner page](../../docs/platform/IDENTITY.md). Both entries remain an
+unpublished development-preview import candidate.
+
+Application composition supplies SDK clients/loaders, feature admission, redirect
+policy, rate limiting, messages, sender and deployment URLs. Factories use the
+foundation BFF envelope and accept the application's observed request-ID reader.
+The module depends only on the declared foundation entries, without changing the
+artifact's rail kind. Its schema contribution requires a host-selected inventory;
+its four SQL files are verbatim projections at canonical positions 11, 12, 29 and
+60, not an independent migration chain. The owner page maps the characterization
+witnesses and records the remaining evidence.
+
+Identity authorizes stored operator roles only when they are `admin` or
+`distributor`; null and unknown values return `FORBIDDEN` (HTTP 403). The reference
+admin-profile reader reports those rows as non-admin, and admin magic links do
+not send for them while retaining the generic accepted response, padding and
+quota. Adopters needing legacy role mapping must do it in their own adapter
+before passing the role to the package; there is no package fallback option.
+
+Both managed contact stores match normalized addresses case-insensitively,
+including mixed-case stored contacts. Literal matching uses an anchored, escaped
+`imatch` database prefilter plus an exact `email.trim().toLowerCase()` comparison
+with the normalized input. Unicode regex folding alone cannot establish identity.
+Both lookups select email and fetch at most ten candidates. Soft linking selects
+the oldest accepted contact; reconciliation requires a single accepted contact
+and throws the existing multiple-row error if several remain. A match beyond the
+candidate bound is not selected. Injected structural query clients must implement
+`filter(column, "imatch", value)` and the bounded array query. The direct customer
+challenge already compares `lower(email)` to normalized input; no migration is
+needed.

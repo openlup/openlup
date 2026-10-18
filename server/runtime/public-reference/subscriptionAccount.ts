@@ -5,8 +5,8 @@ import { createCustomerClients, createCustomerClient, createCustomerServiceClien
 import { readBearerToken } from "../../_lib/admin-domain/auth.js";
 import { checkAndRecordCustomerMagicLinkAttempt, extractClientIp, type CustomerMagicLinkRateLimitClient } from "../../_lib/rate-limit/customerMagicLinkRateLimit.js";
 import { padResponseTime } from "../../_lib/timing.js";
-import { reconcileAccountForPrincipal } from "../../domains/auth/reconcileAccountForPrincipal.js";
-import { createSupabaseAccountLinkStore } from "../../adapters/supabase/accountLinkStore.js";
+import { reconcileAccountForPrincipal } from "@openlup/platform/identity";
+import { createSupabaseAccountLinkStore } from "@openlup/platform/identity";
 import { createCustomerAccountHandler } from "../../domains/customers/customerAccountHandler.js";
 import { createSupabaseCustomerSelfServicePort } from "../../adapters/supabase/customerSelfService.js";
 import { createCustomerDeliveryAlignmentRowsReader } from "../../adapters/subscriptionDeliveryAlignmentGateway.js";

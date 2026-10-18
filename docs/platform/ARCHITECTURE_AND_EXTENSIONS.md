@@ -74,7 +74,7 @@ of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
 
-<!-- openlup-doc-impact {"unit":"server","digest":"sha256-d5d89b8d54383fbd28577394c31d3f634e093b6995ab43826ce34616cd9cafcf","reason":"Deletion delta. The removed personalization feature's server facades and services (blob, declension, events logger, image generation, OCR, identity, image and text validation, mask generation) are deleted, and two commerce handlers lose never-injected optional personalization hooks; no server boundary described here changes."} -->
+<!-- openlup-doc-impact {"unit":"server","digest":"sha256-9cfdf7128ab62cd3a5e27dbf32460c1b005f8617537f7483950832afc55587a7","reason":"The admin-domain kit drops an uncalled managed-only preflight copy and its unused imports; the dispatcher keeps using the runtime auth binding's preflight. The customer kit, the runtime auth binding and the customer session binding drop unused imports and re-exports. A characterization test pins the reference customer binding's existing process-wide managed read settings independently of the passed bundle-selection environment. No runtime boundary described here changes."} -->
 
 The runnable server substrate lives in the development-preview `@openlup/platform`
 package: the Node HTTP runtime and its fixed request order, BFF dispatch,
@@ -87,6 +87,13 @@ values. The BFF envelope, observed request context, health route and managed
 job-run ledger are package code too; the application binds its request-reference
 policy, health payload and contract, and ledger messages, and keeps its route
 observability and browser contracts as its own source.
+
+Identity's server logic now lives in the [identity module](IDENTITY.md), with
+flat internal files and a separate browser contracts subtree. Reference routes
+supply admission flags, redirect policy, schemas, provider clients, mail and copy.
+The module uses the foundation responder with an injected observed request-ID
+reader. Managed preflight also imports the characterized machine-write fence;
+its application-owned allowlist does not extend the direct operator-token lane.
 
 The reference outbox worker delegates to `@openlup/outbox`; application handlers and the explicit known event vocabulary remain in composition. Shared envelope, execution-context, descriptor and readiness contracts live in `@openlup/core`. The rail provides one bare worker for immediate work and lease-bound schedules for dispatched work. Its PostgreSQL executor commits each claim or settlement before resolving, with no encompassing transaction across effects.
 

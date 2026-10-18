@@ -103,6 +103,28 @@
       ],
       "entrypoint": "dist/composition/index.d.ts",
       "snapshot": "api/composition.api.md"
+    },
+    "./identity": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/identity/adminConformance.test.ts"
+      ],
+      "entrypoint": "dist/identity/index.d.ts",
+      "snapshot": "api/identity.api.md"
+    },
+    "./identity/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/identity/contracts.test.ts"
+      ],
+      "entrypoint": "dist/identity/contracts/index.d.ts",
+      "snapshot": "api/identity-contracts.api.md"
     }
   },
   "pack": {

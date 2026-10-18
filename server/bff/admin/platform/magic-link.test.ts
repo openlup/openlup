@@ -129,7 +129,6 @@ describe("POST /api/bff/admin/platform/magic-link", () => {
   it.each([
     ["admin", "admin"],
     ["distributor", "distributor"],
-    ["legacy null", null],
   ])("sends an OTP for an allowlisted %s operator", async (_label, role) => {
     enableEnv();
     mockMaybeSingle.mockResolvedValue({ data: { id: "admin-1", role }, error: null });
@@ -181,17 +180,22 @@ describe("POST /api/bff/admin/platform/magic-link", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it("stays accepted but does not send OTP for a non-eligible admin role", async () => {
+  it.each([null, "unknown-role"])("stays accepted with padding and quota but sends no OTP for role %s", async (role) => {
     enableEnv();
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    mockMaybeSingle.mockResolvedValue({ data: { id: "admin-1", role: "support" }, error: null });
+    mockMaybeSingle.mockResolvedValue({ data: { id: "admin-1", role }, error: null });
     const { default: handler } = await import("./magic-link.js");
     const res = createResponse();
 
     await handler(request({ email: "support@example.com" }), res);
 
     expect(mockSignInWithOtp).not.toHaveBeenCalled();
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    expect(mockRpc).toHaveBeenCalledWith("public_record_admin_magic_link_attempt", expect.objectContaining({ p_email_hash: expect.stringMatching(/^[0-9a-f]{64}$/), p_max_per_ip: 5, p_max_per_email: 3, p_window_minutes: 60 }));
+    const { padResponseTime } = await import("../../../_lib/timing.js");
+    expect(padResponseTime).toHaveBeenCalledWith(expect.any(Number), 400);
     expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ ok: true, data: { accepted: true } });
   });
 
   it("does not send OTP when the hidden rate limit denies", async () => {

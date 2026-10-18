@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-fe27e54326b251047bbae94af543919485559b88d1b1c28937e2f8170a85dcdb","reason":"The ESLint configuration adds an optional fixed contracts sub-entry to the existing platform module graph, allowing only canonical relative .js targets within its contracts subtree and exact public core exports, refusing non-literal load targets, and reserving ambient loader identifier names in value and type syntax plus import.meta. No module declares the entry yet. Platform's README describes this package-specific boundary; contributor setup, lint commands, check selection and gate order in this section remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-6d5c66507987f93428a601be7c36b0bfea80fc9632f4749abddb023350293474","reason":"The inherited contracts-boundary mechanism now admits the declared identity module row with contracts: true and only bff/data/kernel value edges and the http type edge. Its boundary semantics and the contributor commands, required selectors and verification order described here do not change; the platform guide documents the import and its incomplete runtime-schema extraction."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -147,7 +147,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-06469722536546220062613a81ffbf4767b57cdc31fd596a9cb16126e66f1b23","reason":"The ESLint boundary tests exercise the optional platform contracts entry with synthetic graphs: canonical relative .js and exact public core imports, forbidden targets and non-literal loads, reserved ambient loader identifiers in value and type syntax, import.meta, wrapped require calls and process builtin loaders, plus browser-safe positive code. No module declares the entry yet. Platform's README explains the boundary; this section's contributor commands, required selectors, thresholds and gate order remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-a41c0c12ce14419a74d5d5616b05b2c1e8032928ba9040ff460156ba6f106a39","reason":"The import-map proof adds identity rows to the existing positive/negative table: declared foundation entries pass and deep data, composition and scheduler imports refuse. The platform cold consumer classifies the two new exports in its existing inventory: identity/contracts as a nonadapter entry, identity as an adapter entry because its declarations reach the data entry's pg types. The inherited contracts-entry tests remain. No new rule, exception, required selector or gate order is introduced."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -426,8 +426,9 @@ jobs run against the queue's actual group checkout. DCO checks the complete
 event-base-to-group range, including the synthetic tip; missing sign-off fails
 without an exemption. Documentation impact uses the event's exact group base,
 head, ref and tree, rather than inferring a PR head or using a stale local base.
-A no-impact record binds the change and its owner section, not the base commit,
-so it stays valid in a group whose base moved for unrelated reasons. A
+A no-impact trailer binds the change and its owner, not the owner section's
+prose or the base commit, so it stays valid in a group whose base moved for
+unrelated reasons, including an edit of that section. A
 pull-request checkout is identified by `GITHUB_SHA` and its exact event base and
 head parents; the payload's `merge_commit_sha` is not compared, because a
 `synchronize` payload can carry a lagging value.
@@ -541,6 +542,8 @@ queue identity before success. See the [queue follow-up plan](docs/platform/plan
 for the one-source pilot, bounded rebuild recovery and activation falsifiers.
 Freshness is checked at admission, not guaranteed at the later merge; same-name
 checks from a malicious writer remain outside this process-evidence boundary.
+
+### Commands and lint rules
 
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
@@ -658,6 +661,8 @@ isolation remains an ESLint responsibility. The existing packed-core audit
 also refuses the configured provider content, including the Vercel SDK
 namespace, in actual package artifacts. These checks add no command or CI job.
 
+### Test scope and diagnostics
+
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating
 the directories and preserves its raw failure result. The required `test` job
@@ -697,6 +702,31 @@ loads the lint configuration with a conditional `imports` map.
 The public test job separately runs the materialized command-contract
 falsifiers, which also run in the complete root scope.
 
+The root test command has no directory or file filters. It collects the shipped
+Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
+including `src/lib/*Boundary*` and `*Guardrails*`. Playwright specifications
+retain their separate browser/profile runners; the root Vitest command does not
+claim browser journey evidence.
+
+Keep executable tests tied to a current offered contract, installed safety
+boundary or selected reference behaviour. Historical migration spellings,
+withheld commands, deployment inventory counts and adopter presentation are not
+platform acceptance requirements. Removing an obsolete assertion requires its
+ended duty or equivalent surviving proof; a similar test name is insufficient.
+Unmounted UI may defer interaction proof until that exact UI is selected, while
+installed authorization, money, persistence and replay controls remain tested.
+Retire dormant scenarios from the source tree rather than adding skips or
+runner exclusions; reintroduce neutral scenarios when their contract is selected.
+
+The root Vitest configuration's flat per-test ceiling is 10 s outside coverage
+runs and 30 s under coverage (`scripts/ci-vitest-duration-keys.ts`). Hosted
+runners are slower than a developer machine. A test that takes more than a few
+seconds on a hosted runner, typically one that spawns processes, builds Git
+fixtures, runs ESLint or TypeScript, or packs or installs packages, declares an
+explicit timeout sized for that runner rather than relying on the default.
+
+### Package, policy and release checks
+
 `npm run packages:check` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each
 package as released or as unreleased. A released package `packages/<name>` is
@@ -735,22 +765,6 @@ packs only that publishable package and requires its manifest version to be
 `<version>`. The command publishes nothing;
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) describes how
 the protected release approval leads to direct OIDC publication.
-
-The root test command has no directory or file filters. It collects the shipped
-Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
-including `src/lib/*Boundary*` and `*Guardrails*`. Playwright specifications
-retain their separate browser/profile runners; the root Vitest command does not
-claim browser journey evidence.
-
-Keep executable tests tied to a current offered contract, installed safety
-boundary or selected reference behaviour. Historical migration spellings,
-withheld commands, deployment inventory counts and adopter presentation are not
-platform acceptance requirements. Removing an obsolete assertion requires its
-ended duty or equivalent surviving proof; a similar test name is insufficient.
-Unmounted UI may defer interaction proof until that exact UI is selected, while
-installed authorization, money, persistence and replay controls remain tested.
-Retire dormant scenarios from the source tree rather than adding skips or
-runner exclusions; reintroduce neutral scenarios when their contract is selected.
 
 The `pgtap` job uses Supabase CLI **2.98.2** and a fresh local database stack,
 replays the shipped managed baseline and every published forward in filename
@@ -1167,7 +1181,8 @@ maintenance cost; findings need a concrete mechanism and effect, not a quota.
 
 Include the affected documentation owners and what changed in their explanations.
 For a scoped no-impact record, challenge its reasoning as well as its fresh
-fingerprint: a hash identifies the delta and owner text, not semantic correctness.
+fingerprint: a hash identifies the delta and its owner, not semantic correctness.
+`--policy` prints every accepted reason.
 Keep generic corrections upstream; separately owned applications document their
 selected immutable release and own composition. Their private operations and
 adoption state are not public platform documentation inputs.
@@ -1216,6 +1231,24 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   timeouts → parallelize writing and serialize heavy test runs; after a load
   timeout the complete gate is rerun without the concurrent load, and the
   timeout never counts as a pass.
+- 2026-10-18, M03 P-contracts lint boundary: each review cycle found another
+  call shape that loads a module (wrapped `require`, `module.require`, process
+  builtins) → refuse the ambient loader identifiers themselves, and
+  `import.meta`, instead of chasing callee shapes.
+- 2026-10-18, M03 P-contracts and B0: a renamed fixture or new path failed the
+  neutrality ratchet only in the hosted self-check → run
+  `node scripts/public-ci-neutrality.mjs` and
+  `node --experimental-strip-types packages/ui/smoke/neutrality.ts` locally
+  before every push.
+- 2026-10-18, M02 C1, making `@openlup/platform` publishable: code, checks and
+  fixtures that assumed the package was private or outside the release set had
+  to change with the flag → grep every reader of the package's
+  `publish`/`private` state (package inventory, package and release checks,
+  consumer fixtures) before flipping it.
+- 2026-10-18, OSS programme doc-impact records: one marker per unit, bound to
+  the section prose, made every open pull request conflict on, or expire with,
+  a hot section → bind the answer to the change and keep it in the change's own
+  commits.
 
 ### Merge queue
 

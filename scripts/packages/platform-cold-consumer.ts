@@ -9,8 +9,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition"] as const;
-export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger"] as const;
+export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "identity/contracts"] as const;
+// identity is an adapter entry: its PostgreSQL profile adapter declares the data entry's pg types.
+export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger", "identity"] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 

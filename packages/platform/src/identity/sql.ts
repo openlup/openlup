@@ -1,0 +1,7 @@
+/** A projection of canonical migration units, never a second migration chain. */
+export const IDENTITY_MIGRATIONS = [
+  { id: "20260810180001_self_host_actor_auth", catalogPath: "db/platform/migrations/20260810180001_self_host_actor_auth.sql", position: 11, sha256: "84c80d328785151f1fdb5fc4b69220469ffb9c8579054c473ead910a273dfe7b", url: new URL("../../sql/20260810180001_self_host_actor_auth.sql", import.meta.url) },
+  { id: "20260810204057_customer_identity_read", catalogPath: "db/platform/migrations/20260810204057_customer_identity_read.sql", position: 12, sha256: "1aa626c0187a4ed9d08f152540e0d17c68cd678d2caf3e896ac444b5a38aafe3", url: new URL("../../sql/20260810204057_customer_identity_read.sql", import.meta.url) },
+  { id: "20260814090000_customer_selfservice_recovery", catalogPath: "db/platform/migrations/20260814090000_customer_selfservice_recovery.sql", position: 29, sha256: "ca7f58994533727eb58da148d549ff986fe8f55bb2ffc9eaf61e7d239675ba2e", url: new URL("../../sql/20260814090000_customer_selfservice_recovery.sql", import.meta.url) },
+  { id: "20260901143000_admin_membership_authority_foundation", catalogPath: "db/platform/migrations/20260901143000_admin_membership_authority_foundation.sql", position: 60, sha256: "bb4703b669d17e5a0eb4d9a4e8889d12e5286d4b5a813226a77ef2b71df8281f", url: new URL("../../sql/20260901143000_admin_membership_authority_foundation.sql", import.meta.url) },
+] as const;

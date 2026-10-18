@@ -8,6 +8,42 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Import the identity capability and its conformance witnesses into internal
+  candidate entries `./identity` and `./identity/contracts`.
+- Include the characterized create-first directory lookup, bounded normalized
+  invite lookup and managed machine-actor write fence.
+
+Migration: The identity entries are internal candidates, not a published identity release. Reference
+bindings keep application copy, origins, sender and provider setup outside the
+module. Existing module paths delegate to the package; stable codes are internal
+and the reference invite/remove wire shapes retain their prior fields. The
+contracts runtime-schema move and profile-specific readiness schema inventory
+remain pending. The four package SQL projections preserve canonical bytes and
+positions; do not apply them again to an existing canonical migration history.
+
+- Only stored `admin` and `distributor` roles authorize. Null and unknown
+  roles refuse with 403, do not qualify for an admin magic link and are reported
+  as non-admin by the reference profile reader. Magic-link acceptance, response
+  padding and quota remain unchanged.
+  Migration: Adopters relying on null/unknown role mapping must map those values
+  in their own adapter before the package sees the role.
+- Both managed contact stores match normalized email case-insensitively,
+  with literal address matching: an anchored, escaped `imatch` database prefilter
+  followed by an exact trimmed lowercase comparison. Mixed-case contact rows now match for soft
+  linking and reconciliation instead of disappearing behind an exact filter.
+  Migration: Mixed-case rows now resolve to the existing contact; injected query
+  clients must support the escaped, anchored `imatch` filter. No schema or stored
+  address rewrite is required; the direct challenge lookup already uses lower(email).
+- Reject Unicode lookalike email candidates returned by the managed contact
+  prefilter before linking. Both stores inspect at most ten candidates; soft
+  linking chooses the oldest exact normalized match, and reconciliation refuses
+  multiple exact matches through its existing multiple-row error path.
+  Migration: Injected query clients must return email in bounded array results
+  for both lookups. Regex-only matches no longer resolve to another contact;
+  matches beyond the ten-candidate bound are not selected. No SQL migration or
+  stored address rewrite is required.
+
+
 ## [0.15.0]
 
 - Publishable on the npm `latest` dist-tag as `0.15.0`, from tag
