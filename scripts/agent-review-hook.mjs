@@ -17,43 +17,76 @@ async function git(cwd, ...args) {
   return stdout.trim();
 }
 
-/** Read raw objects once, authenticating type, length and Git object digest.
- * Bounded full-history proof deliberately refuses incomplete/shallow graphs.
+/** Authenticate the complete graph without retaining historical blob contents.
+ * The cumulative byte bound covers the review delta and both bound snapshots;
+ * every other object still has the same individual byte bound and raw proof.
  */
-export async function readReviewObjects(cwd, objects) {
+export async function readReviewObjects(cwd, objects, boundedObjects = objects) {
   refuse(Array.isArray(objects) && objects.length > 0 && objects.length <= OBJECT_LIMIT && new Set(objects).size === objects.length && objects.every(object => /^[a-f0-9]{40}$/u.test(object)), 'object inventory exceeds bounds or is invalid');
-  const bytes = await new Promise((resolve, reject) => {
+  const bounded = new Set(boundedObjects);
+  const inventory = new Set(objects);
+  refuse([...bounded].every(object => inventory.has(object)), 'bounded inventory differs from authenticated inventory');
+  return new Promise((resolve, reject) => {
     const child = spawn('/usr/bin/git', ['--no-replace-objects', '--no-optional-locks', '-c', `safe.directory=${cwd}`, '-c', 'protocol.allow=never', '-c', 'core.commitGraph=false', '-C', cwd, 'cat-file', '--batch'], { env: { PATH: '/usr/bin:/bin', LANG: 'C', GIT_NO_LAZY_FETCH: '1', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_GRAFT_FILE: '/dev/null', GIT_SHALLOW_FILE: '/dev/null' }, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
-    const chunks = []; let count = 0; let errors = 0; let failure;
-    const stop = message => { failure ??= new Error(`Review hook refused: ${message}`); child.kill('SIGKILL'); };
+    const result = new Map(); let header = Buffer.alloc(0); let current; let count = 0; let errors = 0; let failure;
+    const stop = error => { failure ??= error instanceof Error ? error : new Error(`Review hook refused: ${error}`); child.kill('SIGKILL'); };
     const timer = setTimeout(() => stop('object authentication exceeded timeout'), 30000);
-    child.stdout.on('data', chunk => { count += chunk.length; if (count > OBJECT_BYTES) stop('object authentication exceeds byte bound'); else chunks.push(chunk); });
+    child.stdout.on('data', chunk => {
+      if (failure) return;
+      try {
+        let offset = 0;
+        while (offset < chunk.length) {
+          refuse(result.size < objects.length, 'object stream has unexpected trailing bytes');
+          if (!current) {
+            const end = chunk.indexOf(10, offset);
+            const part = chunk.subarray(offset, end < 0 ? chunk.length : end);
+            refuse(header.length + part.length <= 128, 'object header is invalid');
+            header = Buffer.concat([header, part]);
+            if (end < 0) break;
+            const match = /^([a-f0-9]{40}) (blob|tree|commit) (\d+)$/u.exec(header.toString('ascii'));
+            refuse(match && match[1] === objects[result.size] && Number.isSafeInteger(Number(match[3])), 'object identity or type is invalid');
+            const size = Number(match[3]); const wireSize = header.length + size + 2;
+            if (bounded.has(match[1])) count += wireSize;
+            refuse(wireSize <= OBJECT_BYTES && count <= OBJECT_BYTES, 'object authentication exceeds byte bound');
+            current = { object: match[1], type: match[2], size, remaining: size, hash: createHash('sha1').update(`${match[2]} ${size}\0`), parts: [], retain: match[2] !== 'blob' || bounded.has(match[1]) };
+            header = Buffer.alloc(0); offset = end + 1;
+          }
+          const length = Math.min(current.remaining, chunk.length - offset);
+          const part = chunk.subarray(offset, offset + length);
+          current.hash.update(part);
+          if (current.retain) current.parts.push(part);
+          current.remaining -= length; offset += length;
+          if (current.remaining || offset === chunk.length) break;
+          refuse(chunk[offset] === 10, 'object content is incomplete'); offset += 1;
+          refuse(current.hash.digest('hex') === current.object, 'object digest differs from its claimed identity');
+          result.set(current.object, { type: current.type, size: current.size, ...(current.retain ? { bytes: Buffer.concat(current.parts) } : {}) });
+          current = undefined;
+        }
+      } catch (error) { stop(error); }
+    });
     child.stderr.on('data', chunk => { errors += chunk.length; if (errors > 64 * 1024) stop('object diagnostics exceed bounds'); });
     child.on('error', error => { clearTimeout(timer); reject(error); });
     child.stdin.on('error', () => stop('object authentication refused input'));
-    child.on('close', code => { clearTimeout(timer); if (failure) reject(failure); else if (code !== 0) reject(new Error('Review hook refused: object authentication failed')); else resolve(Buffer.concat(chunks)); });
+    child.on('close', code => {
+      clearTimeout(timer);
+      if (failure) reject(failure);
+      else if (code !== 0) reject(new Error('Review hook refused: object authentication failed'));
+      else if (current || header.length || result.size !== objects.length) reject(new Error('Review hook refused: object content is incomplete'));
+      else resolve(result);
+    });
     child.stdin.end(`${objects.join('\n')}\n`);
   });
-  const result = new Map(); let offset = 0;
-  for (const object of objects) {
-    const end = bytes.indexOf(10, offset);
-    refuse(end >= offset && end - offset <= 128, 'object header is invalid');
-    const match = /^([a-f0-9]{40}) (blob|tree|commit) (\d+)$/u.exec(bytes.subarray(offset, end).toString('ascii'));
-    refuse(match && match[1] === object && Number.isSafeInteger(Number(match[3])), 'object identity or type is invalid');
-    const size = Number(match[3]); const start = end + 1; offset = start + size + 1;
-    refuse(offset <= bytes.length && bytes[offset - 1] === 10, 'object content is incomplete');
-    const content = bytes.subarray(start, start + size);
-    refuse(createHash('sha1').update(`${match[2]} ${size}\0`).update(content).digest('hex') === object, 'object digest differs from its claimed identity');
-    result.set(object, { type: match[2], bytes: content });
-  }
-  refuse(offset === bytes.length, 'object stream has unexpected trailing bytes');
-  return result;
 }
 
 export async function verifyReviewObjectGraph(cwd, { head, base, tree }) {
   refuse([head, base].every(object => /^[a-f0-9]{40}$/u.test(object)), 'graph roots are invalid');
   const inventory = (await git(cwd, 'rev-list', '--objects', '--no-object-names', head, base, '--')).split('\n').filter(Boolean);
-  const objects = await readReviewObjects(cwd, inventory);
+  // Do not trust the base's local object store: historical objects are still
+  // authenticated. Only their accumulated bytes cease to consume task budget.
+  const delta = (await git(cwd, 'rev-list', '--objects', '--no-object-names', `${base}..${head}`, '--')).split('\n').filter(Boolean);
+  const snapshots = (await git(cwd, 'rev-list', '--objects', '--no-object-names', '--no-walk', head, base, '--')).split('\n').filter(Boolean);
+  const bounded = new Set([...delta, ...snapshots]);
+  const objects = await readReviewObjects(cwd, inventory, [...bounded]);
   const references = new Map(); const parents = new Map(); const trees = new Map();
   for (const [object, entry] of objects) {
     const links = [];
@@ -103,7 +136,13 @@ export async function verifyReviewObjectGraph(cwd, { head, base, tree }) {
   while (ancestry.length) { const current = ancestry.pop(); if (seen.has(current)) continue; seen.add(current); ancestry.push(...parents.get(current)); }
   refuse(seen.has(base), 'base is not an authenticated ancestor of candidate');
   refuse(tree === undefined || trees.get(head) === tree, 'candidate tree differs from authenticated commit');
-  return { headTree: trees.get(head), baseTree: trees.get(base), objectCount: objects.size, objects, references };
+  let authenticatedBytes = 0; let boundedBytes = 0;
+  for (const [object, entry] of objects) {
+    const bytes = object.length + entry.type.length + String(entry.size).length + entry.size + 4;
+    authenticatedBytes += bytes;
+    if (bounded.has(object)) boundedBytes += bytes;
+  }
+  return { headTree: trees.get(head), baseTree: trees.get(base), objectCount: objects.size, authenticatedBytes, boundedBytes, objects, references };
 }
 
 export function reviewTreeEntries(graph, tree) {
