@@ -3,11 +3,12 @@ import { env as processEnvironment } from "node:process";
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, generateKeyPairSync, randomUUID, type KeyObject } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { spawn } from "node:child_process";
-import { build } from "vite";
+import { execFileSync, spawn } from "node:child_process";
+import { build, type Plugin, type UserConfig } from "vite";
+import { tmpdir } from "node:os";
 import react from "@vitejs/plugin-react";
 import { Pool } from "pg";
 import { createPostgresDataGateway } from "@openlup/platform/data";
@@ -425,4 +426,75 @@ export async function runAcceptance(setup: Setup) {
   finally {
     await ownedDatabase.close(server);
   }
+}
+
+/** Compare static and subscription inputs only when explicitly invoked with history. */
+function profileSettings(config: UserConfig) {
+  const { plugins, ...settings } = config;
+  const flattened = ((plugins ?? []) as unknown[]).flat(Infinity) as Plugin[];
+  const document = flattened.find(plugin => plugin.name === "public-reference-document")!.transformIndexHtml as { order: string; handler: () => string };
+  const auth = flattened.find(plugin => plugin.name === "public-reference-auth-settings")!;
+  const resolved = { env: {} };
+  (auth.configResolved as (config: typeof resolved) => void)(resolved);
+  return { settings: structuredClone(settings), plugins: flattened.map(plugin => plugin.name), document: { order: document.order, html: document.handler() }, auth: resolved.env };
+}
+
+async function proveProfilePredecessor(args: string[]) {
+  assert.ok(args.length === 0 || (args.length === 2 && args[0] === "--base"), "Usage: node --import tsx tests/identity/acceptance.conformance.ts --profile-predecessor [--base <full-predecessor-commit>]");
+  const predecessor = args.length ? args[1] : processEnvironment.OPENLUP_STACK_BASE;
+  assert.ok(predecessor && /^[a-f0-9]{40}$/.test(predecessor), "Supply --base or OPENLUP_STACK_BASE naming the exact ancestor predecessor; no default or skip is permitted");
+  execFileSync("git", ["merge-base", "--is-ancestor", predecessor, "HEAD"], { stdio: "pipe" });
+  const before = (file: string) => execFileSync("git", ["show", `${predecessor}:${file}`], { maxBuffer: 32 * 1024 * 1024 });
+  for (const file of ["config/public-reference-subscription-imports.json", "package-lock.json"]) assert.deepEqual(readFileSync(file), before(file), file);
+  const manifest = JSON.parse(readFileSync("package.json", "utf8")), priorManifest = JSON.parse(before("package.json").toString());
+  for (const field of ["imports", "dependencies", "devDependencies"]) assert.deepEqual(manifest[field], priorManifest[field], `package.json ${field}`);
+
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "identity-profile-predecessor-")));
+  const keys = ["OPENLUP_REFERENCE_PROFILE", "OPENLUP_BUILD_TARGET", "VITE_COMMERCE_AUTH_PROVIDER_KIND"] as const;
+  const environment = keys.map(key => [key, processEnvironment[key]] as const);
+  try {
+    symlinkSync(resolve("node_modules"), join(directory, "node_modules"), "dir");
+    for (const profile of ["", "subscription"]) {
+      processEnvironment.OPENLUP_REFERENCE_PROFILE = profile;
+      processEnvironment.OPENLUP_BUILD_TARGET = "public-reference";
+      processEnvironment.VITE_COMMERCE_AUTH_PROVIDER_KIND = "postgres";
+      const { publicReferenceViteConfig } = await import(`${pathToFileURL(resolve("vite.public-reference.config.ts")).href}?profile=${profile}`);
+      const config = publicReferenceViteConfig();
+      const settings = profileSettings(config);
+      const modules = new Set<string>();
+      const collect: Plugin = { name: "profile-predecessor-inputs", load(id) { modules.add(id); }, moduleParsed(info) { modules.add(info.id); } };
+      await build({ ...config, configFile: false, logLevel: "silent", plugins: [...(config.plugins ?? []), collect], build: { ...config.build, write: false } });
+      const entry = join(directory, `baseline-${profile || "default"}.ts`);
+      writeFileSync(entry, before("vite.public-reference.config.ts").toString().replace('const configDir = typeof __dirname === "string" ? __dirname : import.meta.dirname;', `const configDir = ${JSON.stringify(process.cwd())};`));
+      const output = join(directory, profile || "default");
+      await build({ configFile: false, logLevel: "silent", build: { ssr: entry, outDir: output, rollupOptions: { output: { entryFileNames: "baseline.mjs" } } } });
+      const baseline = (await import(pathToFileURL(join(output, "baseline.mjs")).href)).publicReferenceViteConfig();
+      assert.deepEqual(settings, profileSettings(baseline), `${profile || "default"} configuration, document and auth settings`);
+      const inputs = new Set(["index.html", ...[...modules].map(id => id.replace(/\?.*$/, "")).filter(id => isAbsolute(id) && !id.split("/").includes("node_modules")).map(id => relative(process.cwd(), id))]);
+      assert.ok(inputs.has(`src/public-reference/${profile === "subscription" ? "subscription-main" : "main"}.tsx`), "Expected profile entry must be built");
+      for (const file of [...inputs].sort()) {
+        // Workspace outputs have no prior blob; compare their tracked compiler inputs.
+        let source = file.replace(/^(packages\/[^/]+)\/dist\/(.*)\.js$/, "$1/src/$2.ts");
+        if (source !== file) {
+          if (!existsSync(source)) source = source.replace(/\.ts$/, ".tsx");
+          for (const name of ["package.json", "tsconfig.build.json"]) {
+            const input = `${file.split("/").slice(0, 2).join("/")}/${name}`;
+            assert.deepEqual(readFileSync(input), before(input), input);
+          }
+        }
+        assert.deepEqual(readFileSync(source), before(source), source);
+      }
+    }
+    console.log("Default and subscription profile inputs match the explicit predecessor.");
+  } finally {
+    for (const [key, value] of environment) {
+      if (value === undefined) delete processEnvironment[key]; else processEnvironment[key] = value;
+    }
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  assert.equal(process.argv[2], "--profile-predecessor", "Usage: node --import tsx tests/identity/acceptance.conformance.ts --profile-predecessor [--base <full-predecessor-commit>]");
+  await proveProfilePredecessor(process.argv.slice(3));
 }

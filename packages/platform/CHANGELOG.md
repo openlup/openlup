@@ -8,6 +8,14 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Refuse disposable identity acceptance when any owned container publishes a
+  port outside explicit IPv4 or IPv6 loopback, before issuing challenges.
+  Migration: local managed stacks that publish on wildcard interfaces must use
+  loopback-only bindings. Required profile-isolation checks run without Git
+  history; a separate opt-in compatibility proof requires an explicit ancestor
+  predecessor and compares build inputs; browser acceptance requests
+  operator links through the mounted form and checks the rendered logout view.
+
 - Fix disposable identity acceptance teardown: direct customer reads borrow the
   owned query pool, and shutdown drains HTTP and route cleanup before ending the
   pool and stopping the database. Assertion-time pool errors and cleanup failures

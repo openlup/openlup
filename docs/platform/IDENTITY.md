@@ -958,6 +958,11 @@ cached `postgres:16` image. Managed execution additionally requires installed
 CLI 2.98.2 and the reviewed identity service-role forward in the committed chain.
 Missing prerequisites fail; neither command silently skips. Each run owns a
 random installation id, loopback services, build directory and captured mail.
+Before issuing challenges, the runner checks every published port of each owned
+container in both Docker inspection views. Only explicit `127.0.0.1` and `::1`
+bindings are accepted; empty, wildcard and other host addresses refuse, including
+on secondary ports. Ownership rechecks repeat this publication check. The direct
+mailbox remains a filesystem sink without a listening socket.
 Cleanup checks container identity and labels; cleanup failure fails the run and
 retains the directory for recovery.
 
@@ -985,7 +990,31 @@ all prerequisite refusals.
 The proof invokes mounted customer sign-in/reconcile, operator sign-in,
 invitation/redemption/revocation, denial and identity privacy operations, then
 browser login, reload and logout. Direct privacy exercises active/paused
-subscription veto and receipt replay. Managed privacy expects export with its
-existing coverage limits and a no-mutation erasure refusal. These commands do
+subscription veto and receipt replay. Operator browser login requests its link
+through the mounted login form and follows captured mail; logout and subsequent
+protected navigation must render the login form again. Managed privacy expects
+export with its existing coverage limits and a no-mutation erasure refusal. These commands do
 not replace the separate complete-catalogue upgrade and adapter conformance
 suites or establish successful managed erasure.
+
+The required profile-isolation tests run without Git history or a predecessor
+variable. They build the separate closed profiles, check their generated HTML
+entries and import inventories, and require explicit identity selection. Default
+and subscription graphs must exclude identity-only files and resolve
+`#deployment-route-policy` to the public closed policy even if no built module
+uses the alias.
+
+Byte compatibility with a predecessor is a separate opt-in proof. From the
+repository root, after building core and platform, run either command:
+
+```sh
+node --import tsx tests/identity/acceptance.conformance.ts --profile-predecessor --base "$OPENLUP_STACK_BASE"
+OPENLUP_STACK_BASE="$OPENLUP_STACK_BASE" node --import tsx tests/identity/acceptance.conformance.ts --profile-predecessor
+```
+
+Supply the full predecessor commit in `--base` or `OPENLUP_STACK_BASE`. The proof
+refuses a missing base, an invalid commit or a non-ancestor; it never defaults to
+HEAD or skips. It compares default and subscription build settings, generated
+HTML and public auth settings, every reachable first-party build input, package
+resolution inputs and the subscription import inventory with that predecessor.
+This service-free proof is outside Vitest and the required test selectors.

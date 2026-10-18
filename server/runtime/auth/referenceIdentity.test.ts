@@ -116,10 +116,9 @@ it.each([true, false])("mounted direct reconcile reads the actor link (linked=%s
 });
 
 import { env as processEnvironment } from "node:process";
-import { execFileSync } from "node:child_process";
 import { chmodSync, mkdtempSync, realpathSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
@@ -128,7 +127,7 @@ import { buildIdentityReferenceRuntime, createIdentityAcceptanceDatabase, identi
 import { EventEmitter } from "node:events";
 import type { Server } from "node:http";
 import type { Pool } from "pg";
-import { acceptanceBundle, assertContainerOwnership } from "../../../tests/identity/runAcceptance.mjs";
+import { acceptanceBundle, assertContainerOwnership, assertLoopbackPortBindings } from "../../../tests/identity/runAcceptance.mjs";
 import { build, type Plugin } from "vite";
 import { enforceDeploymentRoutePolicy, validateIdentityReferenceProfile, withIdentityReferencePolicy, IDENTITY_ROUTES } from "./referenceIdentityPolicy.js";
 import { enforceDeploymentRoutePolicy as publicPolicy } from "../../_lib/publicDeploymentPolicies.js";
@@ -199,40 +198,57 @@ it("identity listener refuses missing composition and unsuccessful admission", a
   await expect(startPublicReferenceServer({ env, port: 58422, identity })).rejects.toThrow("match its owned origin");
   expect(listener).not.toHaveBeenCalled();
 });
-it("builds default, subscription and identity with separate closed import inventories", async () => {
-  const subscriptionInventory = readFileSync("config/public-reference-subscription-imports.json", "utf8");
-  for (const [profile, provider] of [["", "postgres"], ["subscription", "postgres"], ["identity", "postgres"], ["identity", "supabase"]]) {
-    vi.resetModules(); vi.stubEnv("OPENLUP_REFERENCE_PROFILE", profile); vi.stubEnv("OPENLUP_BUILD_TARGET", "public-reference");
-    vi.stubEnv("VITE_COMMERCE_AUTH_PROVIDER_KIND", provider);
-    const { publicReferenceViteConfig } = await import("../../../vite.public-reference.config.ts");
-    const config = publicReferenceViteConfig();
-    const modules = new Set<string>();
-    const collect: Plugin = { name: "identity-test-modules", moduleParsed(info) { modules.add(info.id); } };
-    const candidate = await build({ ...config, configFile: false, logLevel: "silent", plugins: [...(config.plugins ?? []), collect], build: { ...config.build, write: false } });
-    if (profile !== "identity") {
-      const directory = realpathSync(mkdtempSync(join(tmpdir(), "identity-build-baseline-"))); directories.push(directory);
-      symlinkSync(resolve("node_modules"), join(directory, "node_modules"), "dir");
-      const before = execFileSync("git", ["show", `${processEnvironment.OPENLUP_STACK_BASE ?? "HEAD"}:vite.public-reference.config.ts`], { encoding: "utf8" });
-      const entry = join(directory, "baseline.ts");
-      writeFileSync(entry, before.replace('const configDir = typeof __dirname === "string" ? __dirname : import.meta.dirname;', `const configDir = ${JSON.stringify(process.cwd())};`));
-      await build({ configFile: false, logLevel: "silent", build: { ssr: entry, outDir: join(directory, "config"), rollupOptions: { output: { entryFileNames: "baseline.mjs" } } } });
-      const baselineConfig = (await import(pathToFileURL(join(directory, "config/baseline.mjs")).href)).publicReferenceViteConfig();
-      const baseline = await build({ ...baselineConfig, configFile: false, logLevel: "silent", build: { ...baselineConfig.build, write: false } });
-      const emitted = (result: unknown) => (Array.isArray(result) ? result : [result]).flatMap((item: { output: Array<{ fileName: string; type: string; code?: string; source?: string | Uint8Array }> }) => item.output.map(file => ({ path: file.fileName, contents: file.code ?? String(file.source) }))).sort((a, b) => a.path.localeCompare(b.path));
-      expect(emitted(candidate)).toEqual(emitted(baseline));
-    }
-    expect([...modules].some(id => id.endsWith("/identity-main.tsx"))).toBe(profile === "identity");
-    expect([...modules].some(id => id.endsWith("/subscription-main.tsx"))).toBe(profile === "subscription");
-    if (!profile) expect([...modules].some(id => id.includes("/src/pages/"))).toBe(false);
-    if (profile === "identity") {
-      const document = (config.plugins as Array<{ name?: string; transformIndexHtml?: { handler: () => string } }>).find(plugin => plugin.name === "public-reference-document")!.transformIndexHtml!.handler();
-      expect(document).toContain(`data-identity-auth="${provider === "postgres" ? "direct" : "managed"}"`);
-      for (const page of ["/src/pages/account/LoginPage.tsx", "/src/pages/admin/LoginPage.tsx", "/src/pages/admin/IdentityPrivacyPanel.tsx"]) expect([...modules].some(id => id.endsWith(page))).toBe(true);
-      const guard = (config.plugins as Plugin[]).find(plugin => plugin.name === "public-reference-import-closure")!;
-      expect(() => (guard.load as (id: string) => void)(resolve("src/public-reference/SubscriptionAccount.tsx"))).toThrow("closed inventory");
-    }
+vi.mock("node:fs", async original => {
+  const fs = await original<typeof import("node:fs")>();
+  return { ...fs, readFileSync: vi.fn(fs.readFileSync) };
+});
+it.each([
+  ["", "postgres"], ["subscription", "postgres"], ["unrecognized", "postgres"],
+  ["identity", "postgres"], ["identity", "supabase"],
+])("builds a separate closed profile only by explicit selection (profile=%s, provider=%s)", async (profile, provider) => {
+  vi.resetModules(); vi.stubEnv("OPENLUP_REFERENCE_PROFILE", profile); vi.stubEnv("OPENLUP_BUILD_TARGET", "public-reference");
+  vi.stubEnv("VITE_COMMERCE_AUTH_PROVIDER_KIND", provider);
+  vi.mocked(readFileSync).mockClear();
+  const { publicReferenceViteConfig } = await import("../../../vite.public-reference.config.ts");
+  const config = publicReferenceViteConfig();
+  const configurationInputs = vi.mocked(readFileSync).mock.calls.map(([file]) => relative(process.cwd(), resolve(String(file))));
+  const identity = profile === "identity", subscription = profile === "subscription";
+  const entry = `src/public-reference/${identity ? "identity-main" : subscription ? "subscription-main" : "main"}.tsx`;
+  const document = (config.plugins as Plugin[]).find(plugin => plugin.name === "public-reference-document")!.transformIndexHtml as { handler: () => string };
+  expect(document.handler()).toContain(`src="/${entry}"`);
+  expect(document.handler().includes('data-openlup-profile="identity"')).toBe(identity);
+  const modules = new Set<string>();
+  const collect: Plugin = {
+    name: "identity-test-modules",
+    async buildStart() {
+      if (!identity) {
+        const policy = await this.resolve("#deployment-route-policy", resolve(entry));
+        expect(policy?.id).toBe(resolve("server/_lib/publicDeploymentPolicies.ts"));
+      }
+    },
+    load(id) { modules.add(id); }, moduleParsed(info) { modules.add(info.id); },
+  };
+  await build({ ...config, configFile: false, logLevel: "silent", plugins: [...(config.plugins ?? []), collect], build: { ...config.build, write: false } });
+  const inputs = new Set(["index.html", ...configurationInputs, ...[...modules].map(id => id.replace(/\?.*$/, "")).filter(isAbsolute).map(id => relative(process.cwd(), id))]);
+  expect(inputs.has(entry)).toBe(true);
+  expect([...modules].some(id => id.endsWith("/identity-main.tsx"))).toBe(identity);
+  expect([...modules].some(id => id.endsWith("/subscription-main.tsx"))).toBe(subscription);
+  if (!identity) {
+    const identityFiles = ["src/public-reference/identity-main.tsx", "src/public-reference/IdentityAccount.tsx", "src/public-reference/IdentityAdmin.tsx", "config/public-reference-identity-imports.json", "server/runtime/auth/referenceIdentityPolicy.ts"];
+    expect([...inputs].filter(file => identityFiles.includes(file))).toEqual([]);
+    expect(configurationInputs).toEqual(subscription ? ["config/public-reference-subscription-imports.json"] : []);
+    if (subscription) {
+      const inventory = JSON.parse(readFileSync("config/public-reference-subscription-imports.json", "utf8")).files as string[];
+      expect(inventory.length).toBeGreaterThan(0);
+      expect([...inventory, "index.html"].filter(file => identityFiles.includes(file))).toEqual([]);
+    } else expect([...modules].some(id => id.includes("/src/pages/"))).toBe(false);
+  } else {
+    expect(configurationInputs).toEqual(["config/public-reference-identity-imports.json"]);
+    expect(document.handler()).toContain(`data-identity-auth="${provider === "postgres" ? "direct" : "managed"}"`);
+    for (const page of ["/src/pages/account/LoginPage.tsx", "/src/pages/admin/LoginPage.tsx", "/src/pages/admin/IdentityPrivacyPanel.tsx"]) expect([...modules].some(id => id.endsWith(page))).toBe(true);
+    const guard = (config.plugins as Plugin[]).find(plugin => plugin.name === "public-reference-import-closure")!;
+    expect(() => (guard.load as (id: string) => void)(resolve("src/public-reference/SubscriptionAccount.tsx"))).toThrow("closed inventory");
   }
-  expect(readFileSync("config/public-reference-subscription-imports.json", "utf8")).toBe(subscriptionInventory);
 }, 60000);
 
 it("reference landing pages require the linked profile and live recognized operator role", async () => {
@@ -265,6 +281,92 @@ it("acceptance refuses missing selectors and cleanup identity mismatches", () =>
   expect(() => assertContainerOwnership(container, expected)).not.toThrow();
   expect(() => assertContainerOwnership({ ...container, Id: "b".repeat(64) }, expected)).toThrow("ownership mismatch");
   expect(() => assertContainerOwnership({ ...container, Config: { Labels: { [expected.label]: "another-run" } } }, expected)).toThrow("ownership mismatch");
+});
+it("acceptance permits unpublished ports and explicit IPv4/IPv6 loopback bindings", () => {
+  const Ports = { "80/tcp": null, "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "58421" }, { HostIp: "::1", HostPort: "58421" }] };
+  expect(() => assertLoopbackPortBindings({ NetworkSettings: { Ports }, HostConfig: { PortBindings: Ports } })).not.toThrow();
+  expect(() => assertLoopbackPortBindings({ NetworkSettings: { Ports: {} }, HostConfig: { PortBindings: null } })).not.toThrow();
+});
+it.each(["0.0.0.0", "::", "", "192.0.2.1", undefined])("acceptance refuses every wildcard or non-loopback publication (%s) in either inspect view", HostIp => {
+  for (const view of ["NetworkSettings", "HostConfig"]) {
+    const container = { NetworkSettings: { Ports: {} }, HostConfig: { PortBindings: {} } };
+    const ports = view === "NetworkSettings" ? container.NetworkSettings.Ports : container.HostConfig.PortBindings;
+    Object.assign(ports, { "5432/tcp": [{ HostIp: "127.0.0.1" }], "8025/tcp": [{ HostIp: "::1" }, { HostIp }] });
+    expect(() => assertLoopbackPortBindings(container)).toThrow("loopback only");
+  }
+});
+it("acceptance refuses missing port inspection data", () => {
+  expect(() => assertLoopbackPortBindings({ NetworkSettings: { Ports: {} } })).toThrow("bindings unavailable");
+  expect(() => assertLoopbackPortBindings({ HostConfig: { PortBindings: {} } })).toThrow("bindings unavailable");
+});
+it("browser acceptance requests the operator challenge through its login form and observes the form after logout", async () => {
+  const { profile } = setup();
+  const { mkdirSync } = await import("node:fs");
+  const mailbox = join(profile.directory, "mailbox"); mkdirSync(mailbox);
+  const input = { bundle: "node-postgres", customerEmail: "customer@example.com", adminEmail: "administrator@example.com", contactId };
+  writeFileSync(join(profile.directory, "browser-input.json"), JSON.stringify(input));
+  vi.stubEnv("OPENLUP_IDENTITY_RUN_DIR", profile.directory); vi.stubEnv("OPENLUP_IDENTITY_RUN_ID", runId);
+  let path = "", customer = false, operator = false, email = "", exported = false, loginObservations = 0;
+  const formRequests = vi.fn(() => {
+    expect(path).toBe("/admin/login"); expect(email).toBe(input.adminEmail);
+    writeFileSync(join(mailbox, "operator.json"), JSON.stringify({ kind: "operator", challenge: { email }, callback: `${profile.origin}/admin/auth/callback#synthetic` }));
+  });
+  const loginField = () => ({
+    fill: async (value: string) => { expect(path).toBe("/admin/login"); email = value; },
+    visible: () => { loginObservations++; return path === "/admin/login" && !operator; },
+  });
+  // Replay the real spec with deterministic browser/mailbox doubles. This checks the
+  // acceptance driver's interactions; installed browser/runtime proof stays opt-in.
+  const page = {
+    async goto(target: string) {
+      path = new URL(target, profile.origin).pathname;
+      if (path === "/admin/auth/callback") { operator = true; path = "/admin"; }
+      if (path === "/admin" && !operator) path = "/admin/login";
+      if (path === "/account" && !customer) path = "/sign-in";
+    },
+    async reload() {},
+    getByLabel: () => ({ fill: async () => {} }),
+    getByTestId: () => ({ textContent: async () => contactId }),
+    locator(selector: string) {
+      if (selector === 'form input[name="email"]') return loginField();
+      expect(selector).toBe("#customer-otp-code");
+      return { fill: async () => {}, press: async () => { customer = true; path = "/account"; } };
+    },
+    getByRole(role: string, options: { name: string | RegExp }) {
+      return {
+        visible: () => role === "heading" && options.name === "Your identity account" ? customer && path === "/account"
+          : role === "heading" && options.name === "Export coverage and retained obligations" ? exported
+          : operator && path === "/admin",
+        async click() {
+          if (options.name instanceof RegExp) {
+            expect(role).toBe("button"); expect(options.name.test("link")).toBe(true); formRequests();
+          }
+          else if (options.name === "Request sign-in") writeFileSync(join(mailbox, "customer.json"), JSON.stringify({ kind: "customer", challenge: { email: input.customerEmail, token: "synthetic" } }));
+          else if (options.name === "Export identity data") exported = true;
+          else {
+            expect(options.name).toBe("Sign out");
+            if (path === "/admin") { operator = false; path = "/admin/login"; }
+            else { customer = false; path = "/sign-in"; }
+          }
+        },
+      };
+    },
+  };
+  const driverExpect = Object.assign((value: unknown) => {
+    if (value === page) return { toHaveURL: (url: string) => expect(`${profile.origin}${path}`).toBe(url) };
+    if (value && typeof value === "object" && "visible" in value) return { toBeVisible: () => expect((value as { visible: () => boolean }).visible()).toBe(true) };
+    return expect(value);
+  }, { poll: expect.poll });
+  const register = Object.assign(vi.fn<(name: string, journey: (fixtures: unknown) => Promise<void>) => void>(), { use: vi.fn() });
+  const post = vi.fn(() => { throw new Error("Browser acceptance bypassed the login form"); });
+  vi.doMock("@playwright/test", () => ({ test: register, expect: driverExpect }));
+  try {
+    await import("../../../tests/preview/account/identity-composition.spec.js");
+    expect(register).toHaveBeenCalledOnce();
+    await register.mock.calls[0][1]({ page, request: { post }, baseURL: profile.origin });
+    expect(formRequests).toHaveBeenCalledOnce(); expect(post).not.toHaveBeenCalled();
+    expect(loginObservations).toBe(2);
+  } finally { vi.doUnmock("@playwright/test"); }
 });
 function acceptanceDatabase() {
   const query = vi.fn(async (_text: string, _values?: unknown[]) => ({ rows: [{ id: contactId, email: "customer@example.invalid", first_name: null, last_name: null, lifecycle_stage: "lead" }] }));
@@ -307,7 +409,7 @@ it("acceptance request database failures propagate and release the client before
 });
 it.each([false, true])("acceptance ends its pool even without a running server (close failure=%s)", async failed => {
   const { pool, owned } = acceptanceDatabase();
-  const closing = owned.close(failed ? { close: callback => callback(new Error("synthetic server close failure")) } as unknown as Server : undefined);
+  const closing = owned.close(failed ? { close: (callback: (error?: Error) => void) => callback(new Error("synthetic server close failure")) } as unknown as Server : undefined);
   if (failed) await expect(closing).rejects.toThrow("synthetic server close failure");
   else await closing;
   expect(pool.end).toHaveBeenCalledOnce();

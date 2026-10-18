@@ -27,6 +27,19 @@ export function assertContainerOwnership(container, expected) {
   if (container.Id !== expected.containerId || !/^[a-f0-9]{64}$/.test(container.Id)
     || container.Config?.Labels?.[expected.label] !== expected.value) throw new Error("Identity acceptance container ownership mismatch");
 }
+export function assertLoopbackPortBindings(container) {
+  for (const ports of [container.NetworkSettings?.Ports, container.HostConfig?.PortBindings]) {
+    if (ports === null) continue;
+    if (!ports || typeof ports !== "object" || Array.isArray(ports)) throw new Error("Identity acceptance port bindings unavailable");
+    for (const bindings of Object.values(ports)) {
+      // Null is Docker's representation of an exposed but unpublished port.
+      if (bindings === null) continue;
+      if (!Array.isArray(bindings) || bindings.some(binding => !["127.0.0.1", "::1"].includes(binding?.HostIp))) {
+        throw new Error("Identity acceptance services must publish on loopback only");
+      }
+    }
+  }
+}
 async function freePort() {
   return new Promise((done, reject) => {
     const server = createServer(); server.once("error", reject);
@@ -73,6 +86,7 @@ export async function main(args = process.argv.slice(2)) {
         "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image]);
       owned = { containerId, label: "com.openlup.identity.run", value: runId };
       const container = inspect(containerId); assertContainerOwnership(container, owned); ids.push(owned);
+      assertLoopbackPortBindings(container);
       const binding = container.NetworkSettings.Ports["5432/tcp"];
       if (binding.length !== 1 || binding[0].HostIp !== "127.0.0.1") throw new Error("Identity database must bind loopback only");
       database = `postgresql://postgres:${password}@127.0.0.1:${binding[0].HostPort}/postgres`;
@@ -97,6 +111,7 @@ export async function main(args = process.argv.slice(2)) {
         const expected = { containerId: container.Id, label: "com.supabase.cli.project", value: project };
         assertContainerOwnership(container, expected); ids.push(expected);
       }
+      for (const container of containers) assertLoopbackPortBindings(container);
       const container = inspect(`supabase_db_${project}`); owned = ids.find(entry => entry.containerId === container.Id);
       if (!owned) throw new Error("Managed database has no matching project label");
       const password = container.Config.Env.find(value => value.startsWith("POSTGRES_PASSWORD="))?.slice(18);
@@ -106,7 +121,10 @@ export async function main(args = process.argv.slice(2)) {
     }
     const marker = { version: 1, runId, bundle, origin, containerId: owned.containerId };
     writeFileSync(join(directory, "identity-owner.json"), JSON.stringify(marker), { mode: 0o600 });
-    const assertContainer = () => { for (const entry of ids) assertContainerOwnership(inspect(entry.containerId), entry); };
+    const assertContainer = () => { for (const entry of ids) {
+      const container = inspect(entry.containerId);
+      assertContainerOwnership(container, entry); assertLoopbackPortBindings(container);
+    } };
     const { runAcceptance } = await loadAcceptanceModule();
     await runAcceptance({ bundle, directory, database, origin, runId, auth, assertContainer });
     console.log(`Identity acceptance ${bundle}: passed`);

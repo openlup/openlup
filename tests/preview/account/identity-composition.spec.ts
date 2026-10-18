@@ -58,9 +58,10 @@ test("customer and operator mounts preserve linked profiles, reload sessions and
     await page.getByRole("button", { name: "Sign out", exact: true }).click(); await expect(page).toHaveURL(`${baseURL}/sign-in`);
     await page.goto("/account"); await expect(page).toHaveURL(`${baseURL}/sign-in`);
 
-    // Requesting through the mounted endpoint avoids depending on the existing operator page's copy.
+    await page.goto("/admin/login");
+    await page.locator('form input[name="email"]').fill(input.adminEmail);
     const operatorBefore = localIds(), operatorManagedBefore = await managedIds();
-    const issued = await request.post(`${baseURL}/api/bff/admin/platform/magic-link`, { headers: { origin: baseURL! }, data: { email: input.adminEmail } }); expect(issued.status()).toBe(200);
+    await page.getByRole("button", { name: /link/i }).click();
     const callback = input.bundle === "node-postgres" ? (await localChallenge("operator", input.adminEmail, operatorBefore)).callback : await managedLink(input.adminEmail, operatorManagedBefore);
     expect(Boolean(callback)).toBe(true); await page.goto(callback!);
     await expect(page.getByRole("heading", { name: "Identity administration", exact: true })).toBeVisible();
@@ -70,6 +71,8 @@ test("customer and operator mounts preserve linked profiles, reload sessions and
     await expect(page.getByRole("heading", { name: "Export coverage and retained obligations", exact: true })).toBeVisible();
     await page.reload(); await expect(page.getByRole("heading", { name: "Identity administration", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Sign out", exact: true }).click(); await expect(page).toHaveURL(`${baseURL}/admin/login`);
+    await expect(page.locator('form input[name="email"]')).toBeVisible();
     await page.goto("/admin"); await expect(page).toHaveURL(`${baseURL}/admin/login`);
+    await expect(page.locator('form input[name="email"]')).toBeVisible();
   } catch { throw new Error("Identity browser journey failed; credential-bearing details suppressed"); }
 });

@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-1782138ff3c950958a1be0c9e1db11c87bf811557d18e61fa5796e34ee737856","reason":"The public execution inventory registers the captured mailbox test and opt-in disposable identity acceptance runner, and the required-test floor includes the mailbox alongside readiness and merged composition tests. Publication admission rules, command ownership and contributor verification duties are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-0d960fad6815b43db539b14c62023266210332b4482efa8c0cb0f10c70d9eeca","reason":"The execution inventory registers the opt-in identity conformance module alongside the acceptance runner and mailbox test. The required-test floor retains mailbox, readiness and composition coverage; predecessor byte comparison runs only through the explicit conformance command documented by the identity owner. Existing publication admission rules, contributor commands and verification duties remain unchanged."} -->
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-068729f3310b096c6cea0b27f5468fe9efab5254276fba40946ad5d83028dfa4","reason":"The root required-test selection adds the captured mailbox while retaining readiness and merged route/profile composition coverage. Identity browser selection is opt-in; default and subscription entrypoints and existing build, lint, coverage and installation commands are unchanged."} -->
 
