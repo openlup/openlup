@@ -30,7 +30,7 @@ function rehash(packs: string) {
   for (const entry of manifest.packages) { const bytes = readFileSync(join(packs, entry.filename)); entry.sha256 = createHash("sha256").update(bytes).digest("hex"); entry.integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`; }
   writeFileSync(path, JSON.stringify(manifest));
 }
-function fixture() {
+function fixture(copyZod = true) {
   const target = realpathSync(mkdtempSync(join(scratch, "fixture-"))), packs = join(target, "packs"); cpSync(basePacks, packs, { recursive: true });
   // This is a test-input subset, with no checkout or Git identity. Tooling is explicit.
   const config = JSON.parse(readFileSync(join(root, "config/openlup-packages.json"), "utf8"));
@@ -38,7 +38,7 @@ function fixture() {
   const files = ["config/openlup-packages.json", ...directories.map((directory: string) => `${directory}/package.json`), "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
   for (const file of files) { mkdirSync(dirname(join(target, file)), { recursive: true }); cpSync(join(root, file), join(target, file)); }
   writeFileSync(join(target, "package.json"), JSON.stringify({ type: "module", workspaces: directories }) + "\n"); mkdirSync(join(target, "node_modules"));
-  cpSync(join(root, "node_modules/zod"), join(target, "node_modules/zod"), { recursive: true });
+  if (copyZod) cpSync(join(root, "node_modules/zod"), join(target, "node_modules/zod"), { recursive: true });
   for (const name of ["typescript", "pg"]) symlinkSync(join(root, "node_modules", name), join(target, "node_modules", name), "dir");
   return { target, packs };
 }
@@ -133,20 +133,20 @@ async function driverCompletion(child: ReturnType<typeof spawn>) {
   assert.equal(code, 0, `${stdout} ${stderr}`);
 }
 it.each(["direct", "package-group"] as const)("handles repeated interruption through %s, drops only its database and preserves the owned service", async mode => {
-  await driverCompletion(fixtureDriver(fixture(), "exerciseInterruption", mode));
+  await driverCompletion(fixtureDriver(fixture(false), "exerciseInterruption", mode));
 }, 60_000);
 it.each(["container-response", "container-owner-mismatch", "database-response"] as const)("cleans owned startup effects after %s", async mode => {
-  await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
+  await driverCompletion(fixtureDriver(fixture(false), "exerciseStartupLoss", mode));
 }, 90_000);
 it.each(["cleanup-inspect", "cleanup-remove", "cleanup-drop"] as const)("finishes actual owned cleanup despite group cancellation during %s", async mode => {
-  await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
+  await driverCompletion(fixtureDriver(fixture(false), "exerciseStartupLoss", mode));
 }, 90_000);
 it.each(["service-created", "proof-ready"] as const)("cleans its owned resources before releasing the root cancellation lock at %s", async stage => {
-  await driverCompletion(fixtureDriver(fixture(), "exerciseRootCancellation", stage));
+  await driverCompletion(fixtureDriver(fixture(false), "exerciseRootCancellation", stage));
 }, 120_000);
 
 it.each(["inspect-term", "remove-term", "remove-after-effect", "second-term", "cross-phase-term", "wrong-owner", "nonzero", "timeout", "deadline"] as const)("retains owned cleanup effects, refusal and original budget after %s", async mode => {
-  await driverCompletion(fixtureDriver(fixture(), "exerciseCleanupRecovery", mode));
+  await driverCompletion(fixtureDriver(fixture(false), "exerciseCleanupRecovery", mode));
 }, 60_000);
 
 it("keeps a denied process group present until its probe confirms absence", () => {
