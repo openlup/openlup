@@ -186,8 +186,7 @@ Operator activation consumes INSERT on `admin_users` columns `id`, `email`,
 `role`, `membership_state`, `membership_provenance` and `membership_accepted_at`;
 `is_machine_actor` keeps its false default. Invitation eligibility and conflict checks consume
 SELECT on `admin_users.email` alongside the first entry's membership reads.
-Browser roles gain nothing. Approval installs data only, without shipping or
-executing the forward.
+Browser roles gain nothing; the approved identity forward now ships in the managed chain.
 
 Required PR/merge-group self-check requires the whole allowlist to remain unchanged
 from the feature comparison base. Release prepare compares each forward's own

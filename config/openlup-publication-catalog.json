@@ -18478,6 +18478,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261018160000_identity_service_role_capabilities.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -18763,6 +18767,10 @@
     },
     {
       "path": "supabase/tests/fulfillment_replacement_sequence_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/identity_capability_test.sql",
       "class": "public-output"
     },
     {
