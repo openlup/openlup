@@ -380,3 +380,50 @@ describe("exact reviewed diagnostic-fixture recalibration", () => {
     expect(cli(root, base).output).toContain("scanner pin drift");
   });
 });
+
+describe("neutrality scan reuse", () => {
+  it("reuses scanner results only for exact complete inventories within one invocation", () => {
+    const { root } = fixture({ "ordinary.txt": "alpha\n", "binary.dat": Buffer.from([0, 1, 2]) });
+    const checker = "scripts/public-ci-neutrality.mjs";
+    const source = readFileSync(join(root, checker), "utf8");
+    const anchor = "const invoke = (path, input, args = []) => {";
+    expect(source.split(anchor)).toHaveLength(2);
+    // Instrument only the copied checker. Real scanner argv, code and pins stay
+    // unchanged; .git is outside its inventory and belongs to fixture cleanup.
+    const log = ".git/neutrality-invocations";
+    put(root, checker, source.replace(anchor, `${anchor}\n    writeFileSync(join(root, ${JSON.stringify(log)}), JSON.stringify(path) + "\\n", { flag: "a" });`));
+    const instrumentedBase = commit(root);
+    const bootstrap = cli(root, instrumentedBase, "--write-baseline");
+    expect(bootstrap.status, bootstrap.output).toBe(0);
+    const base = commit(root);
+    const pair = [scannerPaths[3], scannerPaths[2]];
+    const run = (expected: string[], label: string, ...options: string[]) => {
+      put(root, log, "");
+      const result = cli(root, base, ...options);
+      expect(result.status, `${label}: ${result.output}`).toBe(0);
+      const calls = readFileSync(join(root, log), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      expect(calls, label).toEqual(expected);
+    };
+    run(pair, "identical check");
+    run(pair, "identical regeneration", "--write-baseline");
+    const differences: Array<[string, () => void]> = [
+      ["same-length clean content", () => put(root, "ordinary.txt", "omega\n")],
+      ["addition", () => put(root, "added.txt", "new\n")],
+      ["deletion", () => rmSync(join(root, "ordinary.txt"))],
+      ["same-byte rename", () => renameSync(join(root, "ordinary.txt"), join(root, "renamed.txt"))],
+      ["same-size replaced path", () => {
+        rmSync(join(root, "ordinary.txt"));
+        put(root, "replacement.txt", "other\n");
+      }],
+      ["binary-only content", () => put(root, "binary.dat", Buffer.from([0, 1, 3]))],
+      ["baseline-only formatting", () => put(root, baselinePath, `${JSON.stringify(baseline(root))}\n\n`)],
+    ];
+    for (const [difference, change] of differences) {
+      git(root, ["checkout", "--", "."]);
+      for (const path of ["added.txt", "renamed.txt", "replacement.txt"]) rmSync(join(root, path), { force: true });
+      change();
+      run([...pair, ...pair], difference);
+    }
+  });
+
+});
