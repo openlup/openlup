@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its nine experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its eleven experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -104,7 +104,7 @@ meta-properties (also `new.target`), and retains member-call `require` detection
 outside contracts. Identity declares this entry; synthetic graphs and negative
 plants also prove the checks.
 
-`npm run api:check` compares each of the nine declaration entry graphs with the
+`npm run api:check` compares each of the eleven declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.

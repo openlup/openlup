@@ -21,8 +21,11 @@ subtree. Managed adapters accept structural clients; token adapters accept a JWT
 library loader. Loading the server entry reads no environment, initializes no SDK
 and executes no SQL. A host selects the adapter and supplies its configuration.
 
-Customer reconciliation refuses unverified email, reserved machine principals,
-conflicting links and a principal/account email mismatch. It retries the email
+Customer reconciliation refuses a principal its verifier reports as unverified,
+reserved machine principals, conflicting links and a principal/account email
+mismatch. Verification is the composed verifier's decision: the managed verifier
+also accepts `user_metadata.email_verified`, which a user can edit, so a host
+mounting reconciliation composes a confirmation-only verifier. It retries the email
 branch once after a concurrent create failure. The new
 [`createReconcileAccountHandler`](../../packages/platform/src/identity/reconcileAccountHandler.ts)
 returns those refusals as 400, 403 or 409 and has no personalization hook.
@@ -75,7 +78,7 @@ The repository's existing `packages/platform` required selector and Vitest node
 project include `test/identity/**` without a new selector or coverage exception.
 The witnesses are:
 
-- W1: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. It pins the reference schema's grants as they are today. Two customers each see only their own client, address, orderer profile, payment preference and account event; `authenticated` holds SELECT on those tables (on clients, column-level). The customer SELECT policies on pets, orders, order items, subscriptions, subscription lines and cycles have no `authenticated` grant behind them, so those reads are refused with SQLSTATE 42501. Anonymous reads are refused with 42501 on the customer tables and return zero rows on the three subscription tables.
+- W1: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. It pins the reference schema's grants as they are today. Two customers each see only their own client, address, orderer profile, payment preference and account event; `authenticated` holds SELECT on those tables (on clients, column-level). The customer SELECT policies on pets, orders, order items, subscriptions, subscription lines and cycles have no `authenticated` grant behind them, so those reads are refused with SQLSTATE 42501. Anonymous reads are refused with 42501 on the customer tables and return zero rows on the three subscription tables, which hold a seeded row per customer.
 - W2/W3: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates and retaining the role fallback and role-only use-case behavior.
 - W4: [`inviteLookupConformance.test.ts`](../../packages/platform/test/identity/inviteLookupConformance.test.ts), covering pagination, normalization, cap, errors, effect ordering and retained request spelling.
 - The imported engine, profile, session and adapter tests sit beside these witnesses; [`sql.test.ts`](../../packages/platform/test/identity/sql.test.ts) verifies canonical projection identity.

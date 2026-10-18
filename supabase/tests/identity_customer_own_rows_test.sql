@@ -28,6 +28,20 @@ INSERT INTO public.customer_payment_preferences (id, client_id, scope, method_ki
 INSERT INTO public.customer_account_events (id, client_id, event_type, entity_type) VALUES
   ('e3200000-0000-4000-8000-000000000001', 'e3200000-0000-4000-8000-000000000001', 'identity_fixture', 'identity_fixture'),
   ('e3200000-0000-4000-8000-000000000002', 'e3200000-0000-4000-8000-000000000002', 'identity_fixture', 'identity_fixture');
+-- Seeded subscription rows make the dormant-policy and anonymous zero-row witnesses non-vacuous.
+INSERT INTO public.catalog_products (id, slug, name) VALUES
+  ('e3300000-0000-4000-8000-000000000001', 'identity-own-rows-product', 'Identity fixture product');
+INSERT INTO public.catalog_skus (id, product_id, sku, title, pet_type, net_weight_g, kcal_per_unit) VALUES
+  ('e3300000-0000-4000-8000-000000000002', 'e3300000-0000-4000-8000-000000000001', 'IDENTITY-OWN-ROWS', 'Identity fixture SKU', 'other', 400, 350);
+INSERT INTO public.subscriptions (id, client_id, cadence_days, currency, status) VALUES
+  ('e3200000-0000-4000-8000-000000000001', 'e3200000-0000-4000-8000-000000000001', 30, 'EUR', 'pending_activation'),
+  ('e3200000-0000-4000-8000-000000000002', 'e3200000-0000-4000-8000-000000000002', 30, 'EUR', 'pending_activation');
+INSERT INTO public.subscription_lines (id, subscription_id, variant_id, qty) VALUES
+  ('e3200000-0000-4000-8000-000000000001', 'e3200000-0000-4000-8000-000000000001', 'e3300000-0000-4000-8000-000000000002', 1),
+  ('e3200000-0000-4000-8000-000000000002', 'e3200000-0000-4000-8000-000000000002', 'e3300000-0000-4000-8000-000000000002', 1);
+INSERT INTO public.subscription_cycles (id, subscription_id, cycle_number, status, engine_idempotency_key) VALUES
+  ('e3200000-0000-4000-8000-000000000001', 'e3200000-0000-4000-8000-000000000001', 0, 'planned', 'identity-own-rows-cycle-a'),
+  ('e3200000-0000-4000-8000-000000000002', 'e3200000-0000-4000-8000-000000000002', 0, 'planned', 'identity-own-rows-cycle-b');
 RESET ROLE;
 SET LOCAL row_security = on;
 -- Clear the legacy single-claim setting so the claims below own the identity.
