@@ -29,6 +29,16 @@ under the existing admission, fencing and retirement contract; a second competin
 state writer is not an extension seam.
 
 ## Runtime boundaries
+Identity email association has an injected asynchronous trust policy. The
+managed adapter reads bounded public Auth settings; the domain use case assesses
+it after existing principal lookup and before email lookup or writes, including
+the conflict retry. Reference host bindings parse the server-only provider
+allowlist and share a policy cache for the configured origin/key/declarations.
+The direct bundle's own composition selects an explicit verifier-result-only
+binding with no settings request. A route composing managed verification and
+storage binds the managed settings policy independently of the bundle switch.
+Provider SDK construction remains in host adapters.
+
 
 <!-- openlup-doc-impact {"unit":"browser","digest":"sha256-72979d3e343910cc061caf7f7335b82a8a1d4f0afbcec47f45b86e80632e9095","reason":"Deletion delta. The personalization route key, the homepage personalization flag and its hidden paths, and a personalizer comment are removed from browser code; no browser boundary described here changes."} -->
 
@@ -163,8 +173,8 @@ The intended distribution roles are:
 | --- | --- |
 | `@openlup/core` | Existing I/O-free kernel; retain its published coordinates and exports. |
 | `@openlup/outbox` | Existing outbox rail; retain its published coordinates and algorithm owner. |
-| `@openlup/platform` | Planned backend distribution, beginning with runnable foundation (M02), then identity (M03) at `@openlup/platform/identity`. |
-| UI | Target distribution role in M19; this does not reserve an npm name or establish a published library. The foundation shell remains reference-application source. |
+| `@openlup/platform` | Planned backend distribution, beginning with the runnable foundation, then identity at `@openlup/platform/identity`. |
+| UI | Target distribution role; this does not reserve an npm name or establish a published library. The foundation shell remains reference-application source. |
 
 These are target roles, not an inventory of published artifacts. The
 [package catalogue](../../config/openlup-packages.json), installed manifests
@@ -268,7 +278,7 @@ exactly one contribution for every observed non-kernel package. Its
 name, kind and optional `requiredSchema`. Multiple unchanged contributions with
 the same package name do not satisfy that contract.
 
-**Planned prerequisite (M03/B0):** before adding identity as the second
+**Planned readiness prerequisite:** before adding identity as the second
 capability in platform, the public identity author must deliver a separately
 reviewed readiness adaptation under the architecture coordinator. It precedes
 the first identity-code import and requires its own scope, owner decision and
@@ -323,7 +333,7 @@ artifact role and consumer proof without inventing server workers or schema.
   [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
   distinguishes source history, tarball projection and an existing store.
 - **Readiness adaptation release.** A public readiness API or behaviour change
-  needs the next minor set, chosen against the actual registry. Merging B0 does
+  needs the next minor set, chosen against the actual registry. Merging the readiness adaptation does
   not require an immediate separate release: prefer one compatible set with
   completed identity, proving intermediate work with built workspace candidates
   and real tarballs in disposable consumers. A separate earlier set needs a
@@ -344,7 +354,7 @@ artifact role and consumer proof without inventing server workers or schema.
 
 ## Compatibility posture
 
-Development-preview seams may change. `P1-SF` is the later gate for stable
+Development-preview seams may change. The stable-framework requirements are the later gate for stable
 extension contracts, a versioned release/BOM, a thin adopter app, conformance
 coverage, and upgrade tooling. Until that gate is complete, this document is a
 boundary contract for preview work rather than a support promise.

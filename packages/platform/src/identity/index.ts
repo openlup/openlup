@@ -40,3 +40,8 @@ export * from "./managedAdminUserGateways.js";
 export * from "./jwtLibrary.js";
 export * from "./platformAdminAuth.js";
 export * from "./adminContracts.js";
+export * from "./contracts/emailTrust.js";
+export { createVerifierResultOnlyEmailTrustPolicy } from "./emailTrustPolicy.js";
+export type { EmailTrustAssessment, EmailTrustPolicy } from "./emailTrustPolicy.js";
+export * from "./managedEmailTrustPolicy.js";
+export * from "./identityReadiness.js";

@@ -21,11 +21,11 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 - [Published CI completeness](plans/public-ci-completeness.md) — complete CI observation, preserved required coverage and separate repair work.
 - [Autonomous reviewed delivery](plans/autonomous-reviewed-delivery.md) — native review, its evidence and queue admission.
-- [Base-move tolerance and pull-request receipts](plans/ci-base-move-and-receipts.md) — the executed CI-parity programme, merge-queue review carry-over (W4), the fork-point review base (W5) and the deferred items.
+- [Base-move tolerance and pull-request receipts](plans/ci-base-move-and-receipts.md) — the executed CI-parity programme, merge-queue review carry-over, the fork-point review base and the deferred items.
 
 ## Preview boundary
 
-The intended topology is one platform monorepo plus separately owned adopter applications. A source preview may make the platform available for evaluation; it does not make a source checkout an upgrade contract. Stable-framework claims wait for the separate `P1-SF` gate: a versioned release/BOM, a thin adopter app, public extension and conformance contracts, upgrade tooling, and passing public installation, build, test, compatibility, provenance, and independent-adopter evidence.
+The intended topology is one platform monorepo plus separately owned adopter applications. A source preview may make the platform available for evaluation; it does not make a source checkout an upgrade contract. Stable-framework claims wait for the stable-framework requirements: a versioned release/BOM, a thin adopter app, public extension and conformance contracts, upgrade tooling, and passing public installation, build, test, compatibility, provenance, and independent-adopter evidence.
 
 For contribution rules, read [CONTRIBUTING.md](../../CONTRIBUTING.md). For responsible disclosure and sensitive-material handling, read [SECURITY.md](../../SECURITY.md).
 

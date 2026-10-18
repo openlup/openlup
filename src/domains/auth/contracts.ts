@@ -1,3 +1,4 @@
+import { EMAIL_TRUST_FAILURE_CODES } from "@openlup/platform/identity/contracts";
 import { z } from "../../lib/validation/zod.js";
 
 // Generic auth account-reconcile contract — the BFF response that tells the UI
@@ -29,9 +30,11 @@ export type AuthReconcileResponse = z.infer<typeof authReconcileResponseSchema>;
  * `ReconcileAccountErrorCode` in `server/domains/auth`.
  */
 export const authReconcileErrorCodeSchema = z.enum([
+  ...EMAIL_TRUST_FAILURE_CODES,
   "NO_VERIFIED_EMAIL",
   "RESERVED_PRINCIPAL_REFUSED",
   "ACCOUNT_LINK_CONFLICT",
   "EMAIL_OWNED_BY_OTHER_PRINCIPAL",
+  "PRINCIPAL_EMAIL_MISMATCH",
 ]);
 export type AuthReconcileErrorCode = z.infer<typeof authReconcileErrorCodeSchema>;

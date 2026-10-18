@@ -1,3 +1,4 @@
+import { bindManagedIdentityEmailTrust } from "../../runtime/auth/emailTrustBinding.js";
 import { createReconcileAccountHandler } from "@openlup/platform/identity";
 import { customerAuthUiEnabled } from "../../_lib/config/featureFlags.js";
 import { withObservedRoute } from "../../_lib/observability/route.js";
@@ -6,7 +7,7 @@ import { sendBffError } from "../../_lib/bff/response.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { createSupabaseIdentityVerifier } from "@openlup/platform/identity";
 import { createSupabaseAccountLinkStore } from "@openlup/platform/identity";
-import { createCustomerClients, readCustomerSelfServiceEnv, readBearerToken } from "./shared.js";
+import { createCustomerClients, readCustomerRouteEnv, readCustomerSelfServiceEnv, readBearerToken } from "./shared.js";
 
 async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (!customerAuthUiEnabled()) {
@@ -22,6 +23,7 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   return createReconcileAccountHandler({
     verifier: createSupabaseIdentityVerifier(clients.customerClient),
     store: createSupabaseAccountLinkStore(clients.serviceClient),
+    emailTrustPolicy: { assess: () => bindManagedIdentityEmailTrust(readCustomerRouteEnv(), env).assess() },
     responseRequestId: (response) => readObservedResponseContext(response)?.requestId,
   })(req, res);
 }

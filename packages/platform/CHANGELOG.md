@@ -8,6 +8,16 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add the opt-in identity envelope proof with phase `email-trust`, including
+  its fixture-only service-role grant, immediate persisted-association assertions,
+  pre-existing contact linking and post-replay state checks. `--phase joint` is
+  unsupported.
+- Abort managed settings transport when an assessment finishes, including
+  unread error response bodies, to preserve the three-second deadline.
+- Always bind managed settings assessment for the managed reconcile route.
+  Migration: `PLATFORM_BUNDLE=node-postgres` no longer bypasses that route's
+  managed email-trust policy; verifier-only trust belongs to direct composition.
+
 - Import the identity capability and its conformance witnesses into internal
   candidate entries `./identity` and `./identity/contracts`.
 - Include the characterized create-first directory lookup, bounded normalized
@@ -56,6 +66,17 @@ positions; do not apply them again to an existing canonical migration history.
   longer derives its link from the forwarded host. Direct customer session
   challenges also refuse without origin configuration. Adopters retaining their
   own origin policy can continue passing `resolveOrigin`.
+
+- Managed identity verification requires the provider confirmation timestamp.
+  Email-based account association requires an injected trust policy; the managed
+  default checks cached public Auth settings and fails closed for unsafe or
+  unavailable settings. The readiness helper identifies module `identity`. The
+  browser reconcile contract lists the two refusal codes and
+  `PRINCIPAL_EMAIL_MISMATCH`, which the engine already returned.
+  Migration: Bind an email-trust policy at reconcile composition. Declare trusted
+  email-verifying providers explicitly, or deliberately bind
+  `createVerifierResultOnlyEmailTrustPolicy()`. Metadata-only verification no
+  longer qualifies. Existing identities and matching account links are not rewritten.
 
 
 ## [0.15.0]

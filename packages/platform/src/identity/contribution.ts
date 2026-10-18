@@ -22,7 +22,7 @@ export function createIdentityContribution(options: {
       },
       requiredSchema: options.requiredSchema,
       emits: [], handles: [], schedules: [], routes: routes.map((route) => route.id),
-      requiredPorts: options.requiredPorts ?? [], env: [],
+      requiredPorts: [...new Set(["emailTrustPolicy", ...(options.requiredPorts ?? [])])], env: [],
     },
     handlers: [], schedules: [], routes,
   };

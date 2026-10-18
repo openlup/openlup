@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-a41c0c12ce14419a74d5d5616b05b2c1e8032928ba9040ff460156ba6f106a39","reason":"The import-map proof adds identity rows to the existing positive/negative table: declared foundation entries pass and deep data, composition and scheduler imports refuse. The platform cold consumer classifies the two new exports in its existing inventory: identity/contracts as a nonadapter entry, identity as an adapter entry because its declarations reach the data entry's pg types. The inherited contracts-entry tests remain. No new rule, exception, required selector or gate order is introduced."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-fe8f3b6eaec2398e21dc189729b9e2a0c2afa1062c4a3604e8d40a7c507846a6","reason":"The execution inventory registers tests/postgres/runIdentityEnvelopeConformance.mjs in the existing direct-execution allowlist. This makes the documented opt-in runner inventory-complete; it changes no contributor command, package command, required selector or gate order described here. The documentation CLI fixture routes tests/** like the real routing so that registered entrypoint stays routable; the CLI and its assertions are unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -929,7 +929,7 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-6a1435b8ef768292203f116e94ecb7909cd607ea309ce824499a0a05aeabbd75","reason":"Test-only delta. The browser proof that playwright.ssg.config.ts already selects is added: each SSG route of the public-reference manifest is served as its prerendered document and must hydrate with unchanged markup and no page error. It runs after the build through that existing configuration; no test command, required selector or CI job described here changes."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-64819e757e9f47f49f53548bc46094b535d0abf2c38b21fc11f610d9cce75ee2","reason":"The explicitly invoked identity Auth/mail/database runner now reads each successful handler's returned contact from the database immediately, requiring its normalized email and principal link before another handler can repair it. Confirmed and declared-provider scenarios also link a pre-existing unlinked contact. It retains the fixture-only service-role grant, refusal snapshots, subscriber preservation and public-catalogue fingerprint. The identity owner page describes these assertions. The default test command, required selectors and verification order described here are unchanged; no CI or root script is activated."} -->
 
 ## Pull requests
 

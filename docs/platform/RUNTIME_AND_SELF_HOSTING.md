@@ -3,6 +3,17 @@
 Status: development-preview contract. No recipe in this document is a supported production deployment or a stable installer promise.
 
 ## Runtime model
+The managed reconcile binding passes a required email-trust policy to the
+package handler even when `PLATFORM_BUNDLE` selects the direct bundle, because
+this route composes managed verification and storage. It shares a settings cache
+across requests and exposes unsafe
+settings as `EMAIL_TRUST_ENVELOPE_REFUSED` (403) and unavailable settings as
+`EMAIL_TRUST_SETTINGS_UNAVAILABLE` (503). Metadata-only mailbox verification
+no longer qualifies. `IDENTITY_EMAIL_VERIFYING_PROVIDERS` is optional and
+server-only; the default trusts no enabled external providers. See the
+[identity owner](IDENTITY.md#responsibility-and-composition) for migration and
+explicit verifier-only adoption.
+
 
 The platform separates browser delivery, a server-side application boundary, background work, durable data, and provider adapters. A host may choose how to run those pieces, but it must preserve the platform contracts: authenticated
 requests reach the server boundary, durable writes use the canonical data
@@ -62,6 +73,16 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+The subscription profile supplies a managed email-trust policy to its existing
+reconcile call with an empty external-provider allowlist. The reference server
+retains its existing startup admission; identity readiness helpers are available
+for separate host composition. Existing links continue, and new email association
+fails closed after cache expiry. The profile retains its existing generic
+`FORBIDDEN` (403) response for reconciliation refusals. Its stricter disposable
+installation guard still runs first on routes and can return a generic 503
+before reconciliation. The [local envelope conformance runner](IDENTITY.md#conformance-and-outstanding-evidence)
+exercises package mappings separately without weakening that guard.
+
 
 The default public reference remains a static, read-only site. An evaluator may
 explicitly select a separate local Node + managed Supabase subscription profile
@@ -226,7 +247,7 @@ for the accompanying `OPENLUP_` configuration rename.
 ## Preview posture
 
 Development-preview source may be evaluated, but it is not a stable release,
-an upgrade channel, or a supported self-host commitment. `P1-SF` must establish
+an upgrade channel, or a supported self-host commitment. The stable-framework requirements must establish
 a versioned release/BOM, a thin adopter application, conformance coverage,
 upgrade tooling, public installation/build/test evidence, and compatibility
 proof before those claims are available.

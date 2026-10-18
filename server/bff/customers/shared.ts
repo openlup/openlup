@@ -75,8 +75,13 @@ export function createCustomerReferenceReadComposition(
       return { ...authorization, accessToken };
     },
     actorPort: (accessToken: string) =>
-      dependencies.bindActor(accessToken, process.env),
+      dependencies.bindActor(accessToken, readCustomerRouteEnv()),
   };
+}
+
+/** The process environment that customer route composition reads. */
+export function readCustomerRouteEnv(): Record<string, string | undefined> {
+  return process.env;
 }
 
 export function customerSelfServiceEnabled(

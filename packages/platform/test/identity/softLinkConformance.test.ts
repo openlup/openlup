@@ -3,6 +3,7 @@ import { findOrCreateAuthUserId, linkClientAuthUser, type ClientAuthLinkStore } 
 import { createSupabaseClientAuthLinkStore } from "../../src/identity/managedClientAuthLink.js";
 import { createSupabaseAccountLinkStore } from "../../src/identity/managedAccountLinkStore.js";
 import { reconcileAccountForPrincipal } from "../../src/identity/reconcileAccountForPrincipal.js";
+import { createVerifierResultOnlyEmailTrustPolicy } from "../../src/identity/emailTrustPolicy.js";
 import type { ManagedIdentityClient, ManagedIdentityRow } from "../../src/identity/managedClient.js";
 
 describe("create-first soft-account linking", () => {
@@ -114,7 +115,7 @@ describe.each(["soft-link", "reconcile"] as const)("%s contact lookup", (kind) =
         createAccount: vi.fn(async () => { throw new Error("unique_lower_email"); }),
         linkPrincipalToAccount: vi.fn(async () => ({ ok: true as const, alreadyLinked: false })),
       };
-      expect(await reconcileAccountForPrincipal(store, { principalId: "00000000-0000-4000-8000-000000000002", email: "  BUYER@example.com ", emailVerified: true })).toEqual({ ok: true, accountId: row.id, created: false, linked: true });
+      expect(await reconcileAccountForPrincipal(store, { principalId: "00000000-0000-4000-8000-000000000002", email: "  BUYER@example.com ", emailVerified: true }, createVerifierResultOnlyEmailTrustPolicy())).toEqual({ ok: true, accountId: row.id, created: false, linked: true });
       expect(store.createAccount).not.toHaveBeenCalled();
     }
     expect(query.filter).toHaveBeenCalledWith("email", "imatch", "^buyer@example\\.com$");
@@ -188,7 +189,7 @@ describe("exact normalized contact selection", () => {
     };
     await expect(reconcileAccountForPrincipal(store, {
       principalId: "00000000-0000-4000-8000-000000000010", email: "buyer@example.com", emailVerified: true,
-    })).rejects.toMatchObject({ code: "PGRST116" });
+    }, createVerifierResultOnlyEmailTrustPolicy())).rejects.toMatchObject({ code: "PGRST116" });
     expect(store.linkPrincipalToAccount).not.toHaveBeenCalled();
     expect(store.createAccount).not.toHaveBeenCalled();
   });

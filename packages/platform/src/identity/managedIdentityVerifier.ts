@@ -10,12 +10,10 @@ export function createSupabaseIdentityVerifier(rawClient: unknown): IdentityVeri
       if (error || !data.user) return null;
 
       const user = data.user;
-      const metadataVerified = (user.user_metadata as { email_verified?: unknown } | null)
-        ?.email_verified === true;
       return {
         principalId: user.id,
         email: user.email ?? null,
-        emailVerified: Boolean(user.email_confirmed_at) || metadataVerified,
+        emailVerified: Boolean(user.email_confirmed_at),
       };
     },
   };
