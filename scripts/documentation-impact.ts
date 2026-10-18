@@ -4,7 +4,7 @@ import {
   type DocumentationOwner, type DocumentationState, type DocumentationSurface,
 } from "./documentation-routing.ts";
 import {
-  documentationDigest, documentationGit, readDocumentationCandidate, readDocumentationIndex, readDocumentationTree,
+  documentationDigest, documentationGit, readDocumentationCandidate, readDocumentationIndex, readDocumentationObjects, readDocumentationTree,
   type DocumentationObject,
 } from "./documentation-git.ts";
 export { resolveDocumentationBase } from "./documentation-git.ts";
@@ -13,6 +13,7 @@ export type { DocumentationBase } from "./documentation-git.ts";
 export type DocumentationObligation = {
   unit: string; doc: string; anchor: string; changedPaths: string[]; digest: string;
   status: "updated" | "no-impact" | "unanswered";
+  answers?: { source: "trailer" | "section"; commit?: string; reason: string }[];
 };
 export type DocumentationImpactResult = { base: string; obligations: DocumentationObligation[]; failures: string[] };
 type ReviewComment = { unit: string; digest: string; reason: string };
@@ -43,6 +44,36 @@ function reviewComments(section: string): ReviewComment[] {
   }
   if (/^ {0,3}<!--\s*openlup-doc-impact\b/mu.test(visible.replace(/<!--\s*openlup-doc-impact\b[\s\S]*?-->/gu, ""))) throw new Error("unterminated no-impact comment");
   return result;
+}
+
+function trailerAnswers(root: string, base: string, head: string, failures: string[]): { shallow: boolean; commits: string[]; records: (ReviewComment & { commit: string })[] } {
+  const shallow = documentationGit(root, ["rev-parse", "--is-shallow-repository"]).toString("utf8").trim() === "true";
+  if (shallow) return { shallow, commits: [], records: [] };
+  const commits = documentationGit(root, ["rev-list", "--no-merges", `${base}..${head}`]).toString("utf8").trim().split("\n").filter(Boolean);
+  const records: (ReviewComment & { commit: string })[] = [];
+  const objects = readDocumentationObjects(root, commits);
+  for (const [index, commit] of commits.entries()) {
+    const object = objects[index];
+    if (object === null || object === undefined) throw new Error("documentation: unreadable commit batch");
+    const contents = object.toString("utf8"); const boundary = contents.indexOf("\n\n");
+    if (boundary < 0) throw new Error("documentation: commit has no message boundary");
+    for (const line of contents.slice(boundary + 2).split("\n")) {
+      // Dot-all keeps a CR, U+2028 or U+2029 inside the record, so such a line is parsed or refused, never skipped.
+      const trailer = /^OpenLup-Doc-Impact:[ \t]*(.*?)[ \t\r]*$/su.exec(line);
+      if (!trailer) continue;
+      try {
+        let value: unknown;
+        try { value = JSON.parse(trailer[1]!); } catch { throw new Error("invalid JSON"); }
+        if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("expected a JSON object");
+        const row = value as Record<string, unknown>;
+        if (Object.keys(row).sort().join(",") !== "digest,reason,unit" || typeof row.unit !== "string" || !/^[a-z][a-z0-9-]*$/u.test(row.unit)
+          || typeof row.digest !== "string" || !/^sha256-[0-9a-f]{64}$/u.test(row.digest) || typeof row.reason !== "string" || !row.reason.trim())
+          throw new Error("needs exactly unit, digest and a nonempty reason");
+        records.push({ ...row as ReviewComment, commit });
+      } catch (error) { failures.push(`malformed OpenLup-Doc-Impact trailer in ${commit.slice(0, 12)}: ${(error as Error).message}`); }
+    }
+  }
+  return { shallow, commits, records };
 }
 
 function previousSurfaces(tree: Map<string, DocumentationObject>, state: DocumentationState): { surfaces: DocumentationSurface[]; bootstrap: boolean } {
@@ -91,16 +122,24 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
     }
   }
   const result: DocumentationImpactResult = { base: baseSHA, obligations: [], failures: [] };
+  // Read the change's own records once, so a malformed one fails even when no obligation needs it.
+  const trailers: ReturnType<typeof trailerAnswers> = inputs.size === 0 ? { shallow: false, commits: [], records: [] } : trailerAnswers(root, baseSHA, headSHA, result.failures);
+  const ownDocuments = new Map<string, (Buffer | null)[]>();
   for (const { owner, paths } of [...inputs.values()].sort((left, right) => identity(left.owner).localeCompare(identity(right.owner)))) {
     const changedPaths = [...paths].sort();
     const priorSection = ownerSection(before, owner); const section = ownerSection(after, owner);
     const normalized = normalizeDocumentation(section ?? "");
-    // The answer binds the change and the section, not the base commit, so an unrelated move of main keeps it valid.
+    // The answer binds the source delta and its owner, not the section prose or the base commit.
     const digest = documentationDigest(JSON.stringify({
+      version: 3, unit: owner.unit, doc: owner.doc, anchor: owner.anchor,
+      source: changedPaths.map((path) => ({ path, before: binding(before.get(path)), after: binding(after.get(path)), ownership: owners.get(path) })),
+    }));
+    const legacyDigestFor = (text: string) => documentationDigest(JSON.stringify({
       version: 2, unit: owner.unit, doc: owner.doc, anchor: owner.anchor,
       source: changedPaths.map((path) => ({ path, before: binding(before.get(path)), after: binding(after.get(path)), ownership: owners.get(path) })),
-      section: documentationDigest(normalized),
+      section: documentationDigest(text),
     }));
+    const legacyDigest = legacyDigestFor(normalized);
     const obligation: DocumentationObligation = { unit: owner.unit, doc: owner.doc, anchor: owner.anchor, changedPaths, digest, status: "unanswered" };
     result.obligations.push(obligation);
     let comments: ReviewComment[];
@@ -111,15 +150,33 @@ export function checkDocumentationImpact(root: string, state: DocumentationState
     const proseChanged = normalizeDocumentation(section ?? "", { includeGenerated: true }) !== normalizeDocumentation(priorSection ?? "", { includeGenerated: true });
     if (proseChanged && normalized !== normalizeDocumentation(priorSection ?? "")) { obligation.status = "updated"; continue; }
     const applicable = comments.filter((comment) => comment.unit === owner.unit);
-    const matching = applicable.filter((comment) => comment.digest === digest);
+    let matching = applicable.filter((comment) => comment.digest === legacyDigest);
+    if (applicable.length && !matching.length && trailers.commits.length) {
+      // Open pull requests' records survive an owner-section edit on main, as trailers do.
+      if (!ownDocuments.has(owner.doc)) ownDocuments.set(owner.doc, readDocumentationObjects(root, trailers.commits.map((commit) => `${commit}:${owner.doc}`)));
+      const sections = new Set<string>();
+      for (const document of ownDocuments.get(owner.doc)!) {
+        if (document === null) continue;
+        try { sections.add(normalizeDocumentation(documentationSection(document.toString("utf8"), owner.anchor))); } catch { /* Missing historical anchors cannot answer. */ }
+      }
+      const digests = new Set([...sections].map(legacyDigestFor));
+      matching = applicable.filter((comment) => digests.has(comment.digest));
+    }
     const priorComments = priorSection === null ? [] : reviewComments(priorSection);
     const fresh = matching.length === 1 && !priorComments.some((comment) => JSON.stringify(comment) === JSON.stringify(matching[0]));
-    if (applicable.length === 1 && fresh) { obligation.status = "no-impact"; continue; }
-    result.failures.push(`${owner.doc}${owner.anchor}: ${owner.unit} needs a substantive section update or one fresh no-impact comment (${digest}); source: ${changedPaths.join(", ")}`);
+    if (applicable.length === 1 && fresh) { obligation.status = "no-impact"; obligation.answers = [{ source: "section", reason: matching[0]!.reason }]; continue; }
+    const answers = trailers.records.filter((record) => record.unit === owner.unit && record.digest === digest);
+    if (answers.length) { obligation.status = "no-impact"; obligation.answers = answers.map(({ commit, reason }) => ({ source: "trailer", commit, reason })); continue; }
+    result.failures.push(`${owner.doc}${owner.anchor}: ${owner.unit} needs a substantive section update or a no-impact trailer in this change's own commits: ${renderNoImpactTrailer(obligation, "<why this section stays correct>")}; source: ${changedPaths.join(", ")}${trailers.shallow ? "; this checkout is shallow, so no trailer could be read: fetch complete history" : ""}`);
   }
   return result;
 }
 
+export function renderNoImpactTrailer(obligation: Pick<DocumentationObligation, "unit" | "digest">, reason: string): string {
+  if (!reason.trim() || /[\r\n\u2028\u2029]/u.test(reason)) throw new Error("documentation: no-impact reason must be nonempty and on one line");
+  return `OpenLup-Doc-Impact: ${JSON.stringify({ unit: obligation.unit, digest: obligation.digest, reason })}`;
+}
+// Render the compatibility record for legacy in-section answers.
 export function renderNoImpactComment(obligation: Pick<DocumentationObligation, "unit" | "digest">, reason: string): string {
   if (!reason.trim() || reason.includes("-->")) throw new Error("documentation: no-impact reason must be nonempty and cannot close its comment");
   return `<!-- openlup-doc-impact ${JSON.stringify({ unit: obligation.unit, digest: obligation.digest, reason })} -->`;
@@ -128,6 +185,8 @@ export function renderDocumentationImpact(result: DocumentationImpactResult): st
   return [
     `- documentation base: ${result.base}`,
     `- documentation obligations: ${result.obligations.length}; unanswered: ${result.obligations.filter((row) => row.status === "unanswered").length}`,
+    // Reasons are author text: print them escaped so one cannot add or forge log lines.
+    ...result.obligations.flatMap((row) => (row.answers ?? []).map((answer) => `- documentation no-impact: ${row.unit} ${row.doc}${row.anchor} (${answer.commit?.slice(0, 12) ?? "section record"}): ${JSON.stringify(answer.reason).replace(/[\u0085\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`)}`)),
     ...result.failures.map((failure) => `documentation: ${failure}`),
   ];
 }

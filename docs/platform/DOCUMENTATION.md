@@ -124,8 +124,8 @@ For a source change:
 1. Resolve its documentation impact against the comparison base.
 2. Read each affected canonical section and follow its source and test links.
 3. Update the explanation where behavior or the public boundary changed.
-4. If the section remains correct, record a scoped no-impact explanation at
-   that owner, tied to the source delta and unchanged owner text.
+4. If the section remains correct, record a scoped no-impact explanation as a
+   commit trailer in the change itself, tied to the source delta and its owner.
 5. Regenerate navigation, then run the structural and impact checks.
 
 The policy check uses an explicit full base SHA or a local merge base with
@@ -158,7 +158,7 @@ review or live queue activation.
 
 Generated output, whitespace, a review date or an unrelated paragraph cannot
 satisfy an affected section's obligation. A scoped no-impact explanation must
-be refreshed when its source delta or owner text changes. Its fingerprint binds
+be refreshed when its source delta or ownership changes. Its fingerprint binds
 the scope; it does not prove semantic correctness, reviewer identity or owner
 approval. Review the reason as carefully as a changed paragraph.
 The candidate includes staged, unstaged and nonignored untracked paths. If a pending
@@ -177,26 +177,52 @@ npm run oss:published-tree -- --policy --docs-update
 ```
 
 An unanswered obligation reports its owner, changed paths and current digest.
-If the existing explanation remains correct, place a reasoned comment in that
-owner section using the reported unit and digest:
+If the existing explanation remains correct, put the reported trailer on its
+own line in a commit message of the change. The policy output prints the exact
+line to complete:
 
-```html
-<!-- openlup-doc-impact {"unit":"<reported-unit>","digest":"<reported-digest>","reason":"Explain which behavior stayed the same and why the source delta does not change this section."} -->
+```text
+OpenLup-Doc-Impact: {"unit":"<reported-unit>","digest":"<reported-digest>","reason":"…"}
 ```
 
-Examples inside fenced blocks do not count as records.
+For example, record the explanation in an empty signed commit:
 
-**What a record's digest binds:** the unit, the owner document and anchor, the
-before and after content, mode and ownership of each changed path, and the
-normalized owner section. It does not bind the comparison base commit.
+```sh
+git commit --allow-empty -s -m "docs: record no-impact for <unit>" -m 'OpenLup-Doc-Impact: {"unit":"<reported-unit>","digest":"<reported-digest>","reason":"Explain why this section stays correct."}'
+```
 
-**When a record expires:** when the source delta, the mapping or the normalized
-owner section changes. An unrelated move of `main` keeps it valid, so a pull
-request is checked the same way on its merge ref and in a merge group. A base
-change to a path the record covers, or to its owner section, still expires it.
-A record identical to one already in the base is not fresh. Freshness compares
-with the base only: a record that left the section can answer the identical
-change again.
+**What a record's digest binds:** the unit, the owner document and anchor, and
+the before and after content, mode and ownership of each changed path. It does
+not bind the owner section's prose or the comparison base commit.
+
+**When a record expires:** when the source delta or mapping changes, including
+a base change to a path the record covers. An edit of the owner section on
+`main` does not expire it, so independent pull requests never edit the same
+line to answer the same unit. Reviewers still read the reason against the
+current section.
+
+Only the change's own non-merge commits between the comparison base and `HEAD`
+count. The base's history and merge commits never answer, including the merge
+queue's synthetic tip, whose message is the pull-request description.
+This relies on the merge queue building merge commits; a squash or rebase queue
+would need its own rule.
+Records matching no current obligation are ignored; a malformed record in a
+change with obligations fails the check. A shallow checkout reads no trailers
+and checks a legacy comment only against the current section; fetch complete
+history. Every accepted reason is printed by `--policy` for review.
+
+For compatibility, an in-section `openlup-doc-impact` comment accepted by the
+previous rule still answers: exactly one fresh record for the unit in its owner
+section. The comment's digest is the previous rule's, which also binds the owner
+section's text; that text may be the section at the candidate or at any of the
+change's own non-merge commits, so an edit of the section on `main` does not
+expire it either, while a source or mapping change still does. Only comments
+already written in open pull requests qualify; the digest `--policy` reports
+now is the trailer's and never satisfies this path. It remains until those pull
+requests have merged; existing comments on `main` answer nothing new and are
+removed with this compatibility path. Comments inside fenced or inline code
+never answer an obligation.
+
 The checker also keeps the previous owner's obligation when routing changes or
 a source disappears. Cosmetic edits, records and generated/provenance blocks
 are excluded from the substantive comparison. Adding irrelevant prose can still

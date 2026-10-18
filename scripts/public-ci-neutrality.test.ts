@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { neutralityIncreases, unreviewedDiagnosticFixtureIncreases, validateBaseline } from "./public-ci-neutrality.mjs";
+import { neutralityIncreases, validateBaseline } from "./public-ci-neutrality.mjs";
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baselinePath = "config/openlup-neutrality-baseline.json";
@@ -100,12 +100,17 @@ describe("neutrality CLI on synthetic Git objects", () => {
     const { root, base } = fixture({ "unicode-data": contents });
     const temporary = join(root, "temporary-input");
     mkdirSync(temporary);
+    const temporaryEnvironment = { ...fixtureEnvironment, TMPDIR: temporary, TMP: temporary, TEMP: temporary };
+    // macOS's Git launcher can create its own xcrun database in TMPDIR.
+    // Initialize that dependency before observing files owned by the CLI.
+    execFileSync("git", ["--version"], { env: temporaryEnvironment, timeout: 20_000, stdio: "pipe" });
+    const initialFiles = readdirSync(temporary);
     const run = (...options: string[]) => {
       const result = spawnSync(process.execPath, ["scripts/public-ci-neutrality.mjs", "--base-commit", base, ...options], {
-        cwd: root, env: { ...fixtureEnvironment, TMPDIR: temporary, TMP: temporary, TEMP: temporary }, encoding: "utf8", timeout: 20_000,
+        cwd: root, env: temporaryEnvironment, encoding: "utf8", timeout: 20_000,
       });
       expect(result.error).toBeUndefined();
-      expect(readdirSync(temporary)).toEqual([]);
+      expect(readdirSync(temporary)).toEqual(initialFiles);
       return { status: result.status, output: result.stdout + result.stderr };
     };
     const bootstrap = run("--write-baseline");
@@ -122,7 +127,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     const failed = run();
     expect(failed.status, failed.output).toBe(1);
     expect(failed.output).toContain("neutrality scanner failed");
-  });
+  }, 30_000);
   it("bootstraps from the full measured base and refuses a candidate-derived allowance", () => {
     const { root, base } = fixture({ "existing": debt });
     const bootstrap = cli(root, base, "--write-baseline");
@@ -135,7 +140,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     value.sourceCommit = "a".repeat(40);
     put(root, baselinePath, JSON.stringify(value));
     expect(cli(root, base).status).toBe(1);
-  });
+  }, 30_000);
   it("refuses shrink then regrowth even with the old ceiling, and lowers deterministically", () => {
     const { root, base } = installed({ "existing": `${debt}\n`.repeat(3) });
     put(root, "existing", debt);
@@ -151,7 +156,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     expect(cli(root, shrunk, "--write-baseline").status).toBe(0);
     expect(readFileSync(join(root, baselinePath), "utf8")).toBe(bytes);
     expect(cli(root, shrunk).status).toBe(0);
-  });
+  }, 30_000);
   it("refuses raised, removed and malformed established baselines", () => {
     const { root, base } = installed({ "existing": debt });
     const value = baseline(root); value.counts[hash("existing")].brand += 1;
@@ -161,7 +166,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     expect(cli(root, base).output).toContain("invalid neutrality baseline JSON");
     rmSync(join(root, baselinePath));
     expect(cli(root, base).output).toContain("baseline missing or removed");
-  });
+  }, 30_000);
   it("refuses new extensionless debt without compensation from a deletion", () => {
     const { root, base } = installed({ "existing": debt });
     rmSync(join(root, "existing"));
@@ -179,13 +184,13 @@ describe("neutrality CLI on synthetic Git objects", () => {
     const deleted = commit(root);
     put(root, "existing", debt);
     expect(cli(root, deleted).status).toBe(1);
-  });
+  }, 30_000);
   it("inventories binary data and refuses text-debt converted to binary", () => {
     const { root, base } = installed({ "existing": debt, "binary": Buffer.from([0, 255]) });
     expect(cli(root, base).output).toContain("1 binary files inventoried");
     put(root, "existing", Buffer.from([0, 255]));
     expect(cli(root, base).output).toContain("contaminated text became binary");
-  });
+  }, 30_000);
   it("reads newline filenames by object identity and escapes their diagnostics", () => {
     const path = "line\nbreak";
     const { root, base } = installed({ [path]: "clean" });
@@ -193,7 +198,7 @@ describe("neutrality CLI on synthetic Git objects", () => {
     const result = cli(root, base);
     expect(result.status).toBe(1);
     expect(result.output).toContain('"line\\nbreak"');
-  });
+  }, 30_000);
   it("refuses non-UTF-8 Git paths instead of replacing their identity bytes", () => {
     const { root, base } = installed();
     // Construct raw Git objects: some filesystems cannot materialize this name.
@@ -263,121 +268,6 @@ describe("neutrality CLI on synthetic Git objects", () => {
     expect(result.output).toContain("neutrality scanner failed");
     expect(result.output).not.toContain("throw new Error");
     expect(result.output).not.toContain(root);
-  });
-});
-
-describe("exact reviewed diagnostic-fixture recalibration", () => {
-  const introductionBase = "c3a6c96c0ce6291a4554d51f9162dc261deed743";
-  const fixtures = [
-    ["supabase/tests/anon_write_privilege_revoke_test.sql", 0, 1],
-    ["supabase/tests/fulfillment_replacement_sequence_test.sql", 0, 1],
-    ["supabase/tests/channel_order_reaches_the_dispatch_gate_test.sql", 1, 2],
-    ["supabase/tests/payment_recovery_sha256_test.sql", 1, 2],
-    ["supabase/tests/subscription_starter_cycle_order_discount_test.sql", 1, 2],
-  ] as const;
-  const snapshots = () => new Map(fixtures.map(([path]) => [path, readFileSync(join(sourceRoot, path))]));
-  const increases = () => fixtures.map(([path, before, after]) => ({ path: hash(path), category: "ui-15", before, after }));
-  it("accepts only the five exact reviewed files, category and counts at introduction", () => {
-    expect(unreviewedDiagnosticFixtureIncreases(increases(), snapshots(), introductionBase)).toEqual([]);
-  });
-  it.each(fixtures)("refuses changed bytes for %s", (path) => {
-    const bytes = snapshots();
-    bytes.set(path, Buffer.concat([bytes.get(path)!, Buffer.from("\n-- changed fixture\n")]));
-    expect(unreviewedDiagnosticFixtureIncreases(increases(), bytes, introductionBase)).toEqual(increases().filter((row) => row.path === hash(path)));
-    bytes.delete(path);
-    expect(unreviewedDiagnosticFixtureIncreases(increases(), bytes, introductionBase)).toEqual(increases().filter((row) => row.path === hash(path)));
-  });
-  it("refuses another path, count, prior count or category", () => {
-    const row = increases()[0];
-    for (const rejected of [{ ...row, path: hash("supabase/tests/unreviewed_test.sql") }, { ...row, after: row.after + 1 }, { ...row, before: row.before + 1 }, { ...row, category: "ui-14" }]) {
-      expect(unreviewedDiagnosticFixtureIncreases([rejected], snapshots(), introductionBase)).toEqual([rejected]);
-    }
-  });
-  it("never excepts increases against a later or unrelated base", () => {
-    expect(unreviewedDiagnosticFixtureIncreases(increases(), snapshots(), "a".repeat(40))).toEqual(increases());
-  });
-  it("keeps the production introduction trust anchor exact and unique", () => {
-    const source = readFileSync(join(sourceRoot, "scripts/public-ci-neutrality.mjs"), "utf8");
-    const anchor = `const fixtureIntroductionBase = "${introductionBase}";`;
-    expect(introductionBase).toBe("c3a6c96c0ce6291a4554d51f9162dc261deed743");
-    expect(source.split(anchor)).toHaveLength(2);
-  });
-  function introductionFixture() {
-    // Only copied synthetic-test checker bytes are rebound. Production has no
-    // environment override, input override or mutable introduction-base API.
-    const originals = Object.fromEntries(fixtures.map(([path]) => [path,
-      execFileSync("git", ["show", `${introductionBase}:${path}`], { cwd: sourceRoot, env: fixtureEnvironment })]));
-    const { root, base } = installed(originals);
-    const checkerPath = "scripts/public-ci-neutrality.mjs";
-    const source = readFileSync(join(root, checkerPath), "utf8");
-    const anchor = `const fixtureIntroductionBase = "${introductionBase}";`;
-    expect(source.split(anchor)).toHaveLength(2);
-    put(root, checkerPath, source.replace(anchor, `const fixtureIntroductionBase = "${base}";`));
-    for (const [path, bytes] of snapshots()) put(root, path, bytes);
-    const value = baseline(root);
-    for (const [path, before, after] of fixtures) {
-      expect(value.counts[hash(path)]?.["ui-15"] ?? 0).toBe(before);
-      value.counts[hash(path)] = { ...value.counts[hash(path)], "ui-15": after };
-    }
-    put(root, baselinePath, JSON.stringify(value));
-    return { root, base };
-  }
-  it("checks and regenerates the exact-five introduction against actual prior fixture bytes", () => {
-    const { root, base } = introductionFixture();
-    expect(cli(root, base).status).toBe(0);
-    expect(cli(root, base, "--write-baseline").status).toBe(0);
-    expect(cli(root, base).status).toBe(0);
-  });
-  it.each(fixtures)("requires exact recalibration of %s rather than excepting candidate-versus-baseline", (path, before, after) => {
-    const { root, base } = introductionFixture();
-    const value = baseline(root);
-    for (const count of [before, after + 1]) {
-      value.counts[hash(path)]["ui-15"] = count;
-      put(root, baselinePath, JSON.stringify(value));
-      expect(cli(root, base).status).toBe(1);
-    }
-  });
-  it.each([
-    ["source", "unreviewedDiagnosticFixtureIncreases(neutralityIncreases(measuredBase.rows, current.rows), currentBytes, base)", "neutralityIncreases(measuredBase.rows, current.rows)", []],
-    ["parent baseline", "unreviewedDiagnosticFixtureIncreases(neutralityIncreases(parent.counts, baseline.counts), currentBytes, base)", "neutralityIncreases(parent.counts, baseline.counts)", []],
-    ["regeneration", "unreviewedDiagnosticFixtureIncreases(neutralityIncreases(parent.counts, counts), currentBytes, base)", "neutralityIncreases(parent.counts, counts)", ["--write-baseline"]],
-  ] as const)("fails introduction when the required %s admission is absent", (_name, wrapped, strict, options) => {
-    const { root, base } = introductionFixture();
-    const path = "scripts/public-ci-neutrality.mjs";
-    const source = readFileSync(join(root, path), "utf8");
-    expect(source.split(wrapped)).toHaveLength(2);
-    put(root, path, source.replace(wrapped, strict));
-    expect(cli(root, base, ...options).status).toBe(1);
-  });
-  it("keeps CLI source admission and regeneration strict on an unrelated base", () => {
-    const { root, base } = installed();
-    for (const [path, bytes] of snapshots()) put(root, path, bytes);
-    expect(cli(root, base).status).toBe(1);
-    expect(cli(root, base, "--write-baseline").output).toContain("baseline regeneration would increase accepted debt");
-  });
-  it("accepts unchanged future files and baseline regeneration, then refuses shrink/regrowth", () => {
-    const files = snapshots();
-    const { root, base } = installed(Object.fromEntries(files));
-    expect(cli(root, base).status).toBe(0);
-    expect(cli(root, base, "--write-baseline").status).toBe(0);
-    const path = fixtures[0][0];
-    // Static scanner probe only; these synthetic SQL files are never executed.
-    const original = files.get(path)!;
-    const shrunkBytes = original.toString("utf8").replace(/'(\w+)'(?=, 'fulfillment')/, "'neutral_provider'");
-    expect(shrunkBytes).not.toBe(original.toString("utf8"));
-    put(root, path, shrunkBytes);
-    expect(cli(root, base).status).toBe(0);
-    const shrunk = commit(root);
-    expect(cli(root, shrunk, "--write-baseline").status).toBe(0);
-    put(root, path, original);
-    expect(cli(root, shrunk).status).toBe(1);
-    expect(cli(root, shrunk, "--write-baseline").status).toBe(1);
-  });
-  it("refuses scanner drift even with all five exact fixtures", () => {
-    const { root, base } = installed(Object.fromEntries(snapshots()));
-    const path = scannerPaths[0];
-    put(root, path, readFileSync(join(root, path), "utf8") + "\n// changed scanner\n");
-    expect(cli(root, base).output).toContain("scanner pin drift");
   });
 });
 

@@ -40,6 +40,7 @@ the earlier check does not replace that release-time comparison.
 The self-check validates the manifest's shape and history, while the portable
 runner checks `objectInventorySha256` against its live selected catalogue after
 applying the chain. That runtime check remains required for database acceptance.
+Both gates refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL).
 
 The release producer refuses destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`,
 `TYPE` or `COLUMN`, and `TRUNCATE`), renames, schema moves, ownership transfers
@@ -72,9 +73,10 @@ After that replay it inserts a linked subscriber fixture before checking that
 settings-failure refusal and repeated reconciliation preserve its client and
 subscription rows. A public-catalogue fingerprint checks public relation names
 and kinds across the envelope exercises; it covers neither migration-ledger
-contents nor subscriber survival across SQL replay. The disposable stack's
-fixture-only service-role grant and the remaining shipped-grants permission gap
-are described in [identity conformance](IDENTITY.md#conformance-and-outstanding-evidence).
+contents nor subscriber survival across SQL replay. The committed managed chain
+includes `20261018160000_identity_service_role_capabilities.sql`; the runner proves
+association under those shipped grants, as described in
+[identity conformance](IDENTITY.md#conformance-and-outstanding-evidence).
 The identity SQL projection is not a standalone install chain.
 
 
@@ -162,14 +164,15 @@ semicolon; names and defaults remain in those bytes, while signature identity
 uses argument types. Whole-file hashes additionally bind comments, grants and
 all other SQL. Earlier forwards are considered when checking the old definition.
 Missing or duplicate signatures, another path, and any changed byte refuse.
+Both gates refuse control characters other than tab and line feed in reviewed SQL forwards (parser parity).
 Outside the pinned function bodies, only function definitions, transaction
 boundaries, privileges and comments on functions defined in that same file are
 accepted. Grants may target only `authenticated` or `service_role`; grants to
 `PUBLIC` or `anon`, other schemas, unrelated statements and unterminated dollar
 bodies refuse even if the whole-file hash was separately repinned.
 
-The optional runtime list pins one additional forward and exactly five existing
-functions: the `admin_clients_search_v3` and `subscription_list_due_for_renewal`
+The optional runtime list pins one or two additional forwards. Its first entry
+pins exactly five existing functions: the `admin_clients_search_v3` and `subscription_list_due_for_renewal`
 readers, and the `customer_support_absorb_lead_v1`,
 `marketing_rehome_client_lead_v1` and `customer_support_correct_subject_email_v1`
 invokers. Its ordered privilege statements grant only `service_role` the fixed
@@ -181,7 +184,7 @@ existing pure `commerce_oms_normalize_search_text` /
 `commerce_oms_normalize_search_digits` helpers needed by client expression indexes.
 The checker fixes the allowed tables, operations, columns and signatures
 independently of the registry, including separate authenticated read/helper sets;
-repinning cannot admit additional capabilities,
+repinning the first runtime forward cannot admit additional capabilities,
 table-wide permissions, INSERT, DELETE, TRUNCATE or an unlisted recipient.
 SELECT and UPDATE are separate capabilities; duplicates within either operation
 refuse. These direct service UPDATE permissions require security admission even
@@ -198,14 +201,26 @@ return shape, volatility, execution security and settings. Attributes after the
 outer dollar body refuse; only its terminating semicolon and whitespace may
 follow. This control installs approval data, without shipping the runtime forward.
 
-Required PR/merge-group self-check requires the allowlist bytes to predate the
-feature comparison base. Release prepare uses the same checker and requires
-the identical allowlist in the first parent of the mainline commit, squash or
-merge, that introduces each forward; a feature branch's own earlier commits do
-not count.
-Thus a release can include a prior control PR followed by feature PRs without
-allowing a feature to approve itself. Missing history refuses. Existing history,
-version and manifest rules still apply, and the expand-only predicate is unchanged.
+The optional second runtime entry admits only the identity capabilities forward,
+with no functions or policy retirements. Its fixed service_role-only capabilities
+are INSERT on `clients` columns `email`, `auth_user_id`, `acquisition_source` and
+`lifecycle_stage`, and UPDATE on `auth_user_id`. Reconcile create/link and the
+checkout soft-account link consume them; other columns keep their defaults.
+Operator activation consumes INSERT on `admin_users` columns `id`, `email`,
+`role`, `membership_state`, `membership_provenance` and `membership_accepted_at`;
+`is_machine_actor` keeps its false default. Invitation eligibility and conflict checks consume
+SELECT on `admin_users.email` alongside the first entry's membership reads.
+Browser roles gain nothing; the approved identity forward now ships in the managed chain.
+
+Required PR/merge-group self-check requires the whole allowlist to remain unchanged
+from the feature comparison base. Release prepare compares each forward's own
+entry and list position, and every registry field outside the forward lists
+(schema version, baseline hash and any other key), with the first parent of the
+mainline commit, squash or merge, that introduces it; a feature branch's own
+earlier commits do not count. Only other forwards' entries may differ, so a later
+control may append approvals without stranding an unreleased forward. A feature still cannot approve itself. Missing history refuses. Existing
+history, version and manifest rules still apply, and the expand-only predicate
+is unchanged.
 Admission is process evidence of exact reviewed bytes, not proof of live schema
 compatibility or authorization to release. Independent control review and the
 affected database behavior tests remain required.
@@ -360,18 +375,16 @@ a transactional store. It closes later only through a separate reviewed managed
 forward. This change does not broaden SQL admission, install a managed migration
 or certify parity with the direct transaction protocol.
 
-The committed managed chain does not grant `service_role` SELECT on
-`admin_users.email`, required by the membership reader, or INSERT on
-`(id, email, role, membership_state, membership_provenance,
-membership_accepted_at)`, required by invitation insertion. The insert omits
-`is_machine_actor`, relying on its `NOT NULL DEFAULT false`. Production use needs
-a separate reviewed managed forward granting exactly those columns. No such
-grant ships here. The opt-in
+The managed chain's identity capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`. The insert omits `is_machine_actor`,
+relying on its `NOT NULL DEFAULT false`. The opt-in
 [managed conformance module](../../tests/postgres/operatorInvitationManaged.conformance.ts)
 replays the complete committed managed chain into a fresh disposable local stack
-with ambient default ACLs removed, then applies those exact permissions as a
-labelled fixture-only grant. It proves immediate activation, repeat/concurrent
-recovery and revoked-member refusal without claiming shipped-grants readiness.
+with ambient default ACLs removed and adds no grant. It proves immediate
+activation, repeat/concurrent recovery and revoked-member refusal under the
+shipped grants. It does not establish managed/direct lifecycle parity.
 The [package guide](../../packages/platform/README.md#operator-invitations) gives
 its local endpoints, controlled setup and exact invocation.
 

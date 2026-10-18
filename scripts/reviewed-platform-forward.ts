@@ -98,6 +98,20 @@ function runtimePrivilegeKeys(statement: string): string[] {
   if (execute && (execute[2] === "authenticated" ? runtimeBrowserExecutions : runtimeExecutions).has(execute[1]!)) return [`${execute[2]} EXECUTE ${execute[1]}`];
   throw new Error("reviewed replacement runtime privilege is outside the fixed capability allowlist");
 }
+// Reconcile create/link, checkout soft-account link and operator invitations consume only these service capabilities.
+const identityColumns: Record<string, Record<string, ReadonlySet<string>>> = {
+  clients: { INSERT: new Set(["email", "auth_user_id", "acquisition_source", "lifecycle_stage"]), UPDATE: new Set(["auth_user_id"]) },
+  admin_users: { INSERT: new Set(["id", "email", "role", "membership_state", "membership_provenance", "membership_accepted_at"]), SELECT: new Set(["email"]) },
+};
+function identityPrivilegeKeys(statement: string): string[] {
+  const grant = /^GRANT (INSERT|UPDATE|SELECT) \(([a-z_, ]+)\) ON public\.(clients|admin_users) TO service_role;$/u.exec(statement);
+  if (grant) {
+    const columns = grant[2]!.split(",").map((column) => column.trim());
+    const allowed = identityColumns[grant[3]!]?.[grant[1]!];
+    if (allowed && columns.length > 0 && new Set(columns).size === columns.length && columns.every((column) => allowed.has(column))) return columns.map((column) => `service_role ${grant[1]} ${grant[3]}.${column}`);
+  }
+  throw new Error("reviewed replacement identity privilege is outside the fixed capability allowlist");
+}
 const hash = (value: unknown) => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
 
 export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegistry {
@@ -117,25 +131,27 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
   if (replaced.size !== replacements.size || [...replacements].some((signature) => !replaced.has(signature))) throw new Error("reviewed replacement registry must bind exactly the three approved existing signatures");
   if (signatures.size !== replacements.size + creations.size || [...creations].some((signature) => !signatures.has(signature) || replaced.has(signature))) throw new Error("reviewed replacement registry must also bind exactly the two companion creations");
   if (raw.runtimeForwards !== undefined) {
-    if (!Array.isArray(raw.runtimeForwards) || raw.runtimeForwards.length !== 1) throw new Error("reviewed replacement runtime registry requires exactly one forward");
-    const forward = raw.runtimeForwards[0]!;
-    if (!/^supabase\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== runtimeReplacements.size || !Array.isArray(forward.privileges) || forward.privileges.length === 0) throw new Error("reviewed replacement runtime registry has an invalid forward");
-    const runtimeSignatures = new Set<string>();
-    for (const binding of forward.functions) {
-      if (!runtimeReplacements.has(binding.signature) || runtimeSignatures.has(binding.signature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed replacement runtime registry has an invalid or duplicate existing signature");
-      runtimeSignatures.add(binding.signature);
-    }
-    if (new Set(forward.privileges).size !== forward.privileges.length) throw new Error("reviewed replacement runtime registry has duplicate privileges");
-    if (forward.retiredPolicies !== undefined) {
-      if (!Array.isArray(forward.retiredPolicies) || forward.retiredPolicies.length !== runtimeRetiredPolicies.size) throw new Error("reviewed replacement runtime requires exactly eight retired browser policies");
-      const retired = new Set<string>();
-      for (const binding of forward.retiredPolicies) {
-        if (Object.keys(binding).sort().join(",") !== "beforeSha256,name,table" || runtimeRetiredPolicies.get(binding.table) !== binding.name || retired.has(binding.table) || !hash(binding.beforeSha256)) throw new Error("reviewed replacement runtime has invalid or duplicate retired policy");
-        retired.add(binding.table);
+    if (!Array.isArray(raw.runtimeForwards) || raw.runtimeForwards.length < 1 || raw.runtimeForwards.length > 2) throw new Error("reviewed replacement runtime registry requires one or two forwards");
+    for (const [index, forward] of raw.runtimeForwards.entries()) {
+      if (!/^supabase\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== (index === 0 ? runtimeReplacements.size : 0) || (index === 1 && "retiredPolicies" in forward) || !Array.isArray(forward.privileges) || forward.privileges.length === 0) throw new Error("reviewed replacement runtime registry has an invalid forward");
+      paths.add(forward.path);
+      const runtimeSignatures = new Set<string>();
+      for (const binding of forward.functions) {
+        if (!runtimeReplacements.has(binding.signature) || runtimeSignatures.has(binding.signature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed replacement runtime registry has an invalid or duplicate existing signature");
+        runtimeSignatures.add(binding.signature);
       }
+      if (new Set(forward.privileges).size !== forward.privileges.length) throw new Error("reviewed replacement runtime registry has duplicate privileges");
+      if (forward.retiredPolicies !== undefined) {
+        if (!Array.isArray(forward.retiredPolicies) || forward.retiredPolicies.length !== runtimeRetiredPolicies.size) throw new Error("reviewed replacement runtime requires exactly eight retired browser policies");
+        const retired = new Set<string>();
+        for (const binding of forward.retiredPolicies) {
+          if (Object.keys(binding).sort().join(",") !== "beforeSha256,name,table" || runtimeRetiredPolicies.get(binding.table) !== binding.name || retired.has(binding.table) || !hash(binding.beforeSha256)) throw new Error("reviewed replacement runtime has invalid or duplicate retired policy");
+          retired.add(binding.table);
+        }
+      }
+      const privilegeKeys = forward.privileges.flatMap(index === 0 ? runtimePrivilegeKeys : identityPrivilegeKeys);
+      if (new Set(privilegeKeys).size !== privilegeKeys.length) throw new Error("reviewed replacement runtime registry has duplicate privilege capabilities");
     }
-    const privilegeKeys = forward.privileges.flatMap(runtimePrivilegeKeys);
-    if (new Set(privilegeKeys).size !== privilegeKeys.length) throw new Error("reviewed replacement runtime registry has duplicate privilege capabilities");
   }
   return raw;
 }
@@ -240,9 +256,29 @@ function blob(root: string, revision: string, path: string): Buffer | undefined 
   return git(root, ["cat-file", "blob", match[1]!]);
 }
 
-export function assertUnchangedForwardApproval(root: string, base: string, head: string): void {
+export function assertUnchangedForwardApproval(root: string, base: string, head: string, path?: string): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
-  if (!before || !after || !before.equals(after)) throw new Error("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
+  if (before && after) {
+    if (path === undefined && before.equals(after)) return;
+    // Release pins each approval's content and position so later controls may append unrelated approvals.
+    if (path !== undefined) {
+      try {
+        const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
+        const binding = (registry: ReviewedForwardRegistry) => {
+          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards"] as const) {
+            const index = registry[list]?.findIndex((entry) => entry.path === path) ?? -1;
+            if (index >= 0) return { list, index, entry: registry[list]![index] };
+          }
+          return null;
+        };
+        const canonical = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
+        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards"].includes(key)));
+        const previous = binding(prior), next = binding(current);
+        if (canonical(shared(prior)) === canonical(shared(current)) && previous && next && canonical(previous) === canonical(next)) return;
+      } catch { /* Invalid historical approvals cannot authorize a release. */ }
+    }
+  }
+  throw new Error("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
 }
 
 /** Pin the actual policy statement, not a registry-supplied predicate. */
@@ -262,11 +298,13 @@ function updatePolicyDefinitions(policies: Map<string, string>, bytes: Buffer): 
 
 /** Both required CI and release preparation use this exact path/byte/signature check. */
 export function assertReviewedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
+  const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f;
+  if (bytes.some(controlByte)) throw new Error(`reviewed replacement refuses control characters in a forward: ${path}`);
   const targetRegistry = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);
   const forward = [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? [])].find((entry) => entry.path === path);
-  if (!forward || sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
+  if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   let approval = base;
   if (release) {
     // A preview can include the earlier control PR and later feature PRs. The approval must
@@ -276,7 +314,8 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     approval = git(root, ["rev-parse", `${commits[0]}^`]).toString("utf8").trim();
     git(root, ["merge-base", "--is-ancestor", approval, head]);
   }
-  assertUnchangedForwardApproval(root, approval, head);
+  assertUnchangedForwardApproval(root, approval, head, release ? path : undefined);
+  if (sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   const baseline = blob(root, approval, MANAGED_BASELINE);
   if (!baseline || sqlSha256(baseline) !== registry.baselineSha256) throw new Error("reviewed replacement immutable baseline drifted");
   const names = new Set(forward.functions.map(({ signature }) => signature.split("(")[0]!));
@@ -300,6 +339,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const definitions = reviewedFunctionDefinitions(bytes);
   if (registry.runtimeForwards?.includes(forward as RuntimeForwardBinding)) {
     const runtime = forward as RuntimeForwardBinding;
+    const identity = registry.runtimeForwards[1] === runtime;
     const privileges: string[] = [];
     const retiredPolicies: string[] = [];
     const headerAttributes = (statement: string) => {
@@ -312,20 +352,20 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     for (const statement of sqlStatements(bytes.toString("utf8"))) {
       if (/^(?:BEGIN|COMMIT);$/iu.test(statement)) continue;
       const header = /^CREATE OR REPLACE FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) RETURNS /iu.exec(identityHeaderSql(statement));
-      if (header) {
+      if (header && !identity) {
         const signature = functionSignature(header[1]!, header[2]!);
         const preceding = priorStatements.get(signature);
         if (!runtimeReplacements.has(signature) || !preceding || headerAttributes(statement) !== headerAttributes(preceding)) throw new Error("reviewed replacement runtime function attributes drifted");
         continue;
       }
       const retired = /^DROP POLICY ([a-z_]+) ON public\.([a-z_]+);$/u.exec(statement);
-      if (retired) {
+      if (retired && !identity) {
         const binding = runtime.retiredPolicies?.[retiredPolicies.length];
         if (privileges.length || !binding || binding.name !== retired[1] || binding.table !== retired[2] || priorPolicies.get(`${binding.table}.${binding.name}`) !== binding.beforeSha256) throw new Error("reviewed replacement runtime policy retirement differs from exact ordered preimages");
         retiredPolicies.push(statement);
         continue;
       }
-      runtimePrivilegeKeys(statement);
+      (identity ? identityPrivilegeKeys : runtimePrivilegeKeys)(statement);
       privileges.push(statement);
     }
     if (retiredPolicies.length !== (runtime.retiredPolicies?.length ?? 0)) throw new Error("reviewed replacement runtime has missing policy retirements");
