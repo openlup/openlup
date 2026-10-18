@@ -50,7 +50,10 @@ not mailbox proof. Reconcile requires an injected email-trust policy before
 email-based lookup/link/create. Existing principal links retain their matching
 path. `EMAIL_TRUST_ENVELOPE_REFUSED` is HTTP 403 / `FORBIDDEN`;
 `EMAIL_TRUST_SETTINGS_UNAVAILABLE` is HTTP 503 / `UPSTREAM_UNAVAILABLE`.
-The browser schema includes both package-owned refusal codes. A contact row,
+The browser schema includes both package-owned refusal codes through a local
+literal tuple checked exhaustively against the package's code type. This keeps
+the schema's package dependency type-only, so subscription reference builds
+do not load the identity contracts entry at runtime. A contact row,
 typed checkout address or soft-account link does not prove mailbox ownership.
 The [identity owner](../../../docs/platform/IDENTITY.md) describes host binding,
 cache limits and the explicit verifier-result-only migration option.
