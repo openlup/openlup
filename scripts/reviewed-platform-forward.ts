@@ -294,6 +294,7 @@ function updatePolicyDefinitions(policies: Map<string, string>, bytes: Buffer): 
 
 /** Both required CI and release preparation use this exact path/byte/signature check. */
 export function assertReviewedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
+  if (bytes.includes(0x0d)) throw new Error(`reviewed replacement refuses carriage returns in a forward: ${path}`);
   const targetRegistry = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);

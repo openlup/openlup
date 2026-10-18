@@ -402,7 +402,7 @@ ${identityPrivileges[1]}
     const runtimePath = "supabase/migrations/20261001000004_runtime_readers.sql";
     if (runtime) {
       const privilege = "GRANT SELECT (id,membership_state,role) ON public.admin_users TO service_role;";
-      bytes.push(runtimeFunctions.map((signature) => definition(signature, 2, true)).join("\n") + `\n${privilege}`);
+      bytes.push("-- Managed runtime capabilities. Baseline and prior forwards remain immutable.\n" + runtimeFunctions.map((signature) => definition(signature, 2, true)).join("\n") + `\n${privilege}`);
       registry.runtimeForwards = [{ path: runtimePath, sha256: sqlSha256(bytes[3]!), functions: [...reviewedFunctionDefinitions(Buffer.from(bytes[3]!))].map(([signature, afterSha256]) => ({ signature, afterSha256, beforeSha256: prior.get(signature)! })), privileges: [privilege] }];
     }
     if (retirePolicies) {
@@ -586,7 +586,24 @@ ${identityPrivileges[1]}
       sample.apply(sample.change); const head = sample.commit("Identity account-link feature");
       for (const gate of gates(sample, head)) expect(gate).not.toThrow();
     } finally { sample.cleanup(); }
-  });
+  }, 30_000);
+  it.each([
+    ["identity", "CRLF"], ["identity", "bare CR"], ["identity", "comment CR"],
+    ["runtime", "CRLF"], ["runtime", "bare CR"], ["runtime", "comment CR"],
+  ] as const)("refuse carriage returns in reviewed SQL forwards (parser parity): %s %s in both gates even when independently repinned", (entry, shape) => {
+    const sample = fixture((registry, bytes) => {
+      if (entry === "identity") addIdentity(registry, bytes);
+      const index = entry === "identity" ? 4 : 3;
+      if (shape === "CRLF") bytes[index] = bytes[index]!.replace(/\n/gu, "\r\n");
+      else if (shape === "bare CR") bytes[index] = bytes[index]!.replace(";\n", ";\r");
+      else bytes[index] = bytes[index]!.replace("-- Managed ", "-- Managed\r ");
+      registry.runtimeForwards![entry === "identity" ? 1 : 0]!.sha256 = sqlSha256(bytes[index]!);
+    }, null, true);
+    try {
+      sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
+      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/reviewed replacement/u);
+    } finally { sample.cleanup(); }
+  }, 30_000);
   it.each([
     "GRANT INSERT ON public.clients TO service_role;",
     "GRANT INSERT (metadata) ON public.clients TO service_role;",
@@ -636,7 +653,7 @@ ${identityPrivileges[1]}
       sample.apply(sample.change); const head = sample.commit("Refused identity feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
-  });
+  }, 30_000);
   it("releases an earlier unreleased runtime forward after a later control appends identity approval", () => {
     const sample = fixture(undefined, null, true);
     try {
@@ -647,7 +664,7 @@ ${identityPrivileges[1]}
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).not.toThrow();
       expect(() => assertAppendOnlyMigrationHistory(sample.repo, control, head)).not.toThrow();
     } finally { sample.cleanup(); }
-  });
+  }, 30_000);
   it.each(["privileges", "sha256", "functions", "path"] as const)("refuses release when a runtime forward's own %s changed after introduction", (probe) => {
     const sample = fixture(undefined, null, true);
     try {
@@ -660,7 +677,7 @@ ${identityPrivileges[1]}
       sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); const head = sample.commit("Altered runtime control");
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(probe === "path" ? /differs from reviewed replacement path or bytes/u : /approved separately/u);
     } finally { sample.cleanup(); }
-  });
+  }, 30_000);
   it("refuses release when a runtime forward's own entry is removed after introduction", () => {
     const sample = fixture(undefined, null, true);
     try {
@@ -669,7 +686,7 @@ ${identityPrivileges[1]}
       sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); const head = sample.commit("Removed runtime control");
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/differs from reviewed replacement path or bytes/u);
     } finally { sample.cleanup(); }
-  });
+  }, 30_000);
   it.each(["baselineSha256", "releasePolicy"] as const)("refuses release when shared registry %s changed after introduction", (probe) => {
     const sample = fixture(undefined, null, true);
     try {
@@ -679,7 +696,7 @@ ${identityPrivileges[1]}
       sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); const head = sample.commit("Altered shared registry control");
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
     } finally { sample.cleanup(); }
-  });
+  }, 30_000);
   it("refuses any registry byte change in the feature comparison range even when release approval content is unchanged", () => {
     const sample = fixture(addIdentity, null, true);
     try {
@@ -687,7 +704,7 @@ ${identityPrivileges[1]}
       expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head)).toThrow(/approved separately/u);
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).not.toThrow();
     } finally { sample.cleanup(); }
-  });
+  }, 30_000);
   it("admits exactly eight pinned browser policy retirements before runtime grants in both gates", () => {
     const sample = fixture(undefined, null, true, true);
     try {

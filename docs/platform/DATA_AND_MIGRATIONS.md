@@ -140,6 +140,7 @@ semicolon; names and defaults remain in those bytes, while signature identity
 uses argument types. Whole-file hashes additionally bind comments, grants and
 all other SQL. Earlier forwards are considered when checking the old definition.
 Missing or duplicate signatures, another path, and any changed byte refuse.
+Both gates refuse carriage returns in reviewed SQL forwards (parser parity).
 Outside the pinned function bodies, only function definitions, transaction
 boundaries, privileges and comments on functions defined in that same file are
 accepted. Grants may target only `authenticated` or `service_role`; grants to
