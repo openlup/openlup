@@ -913,11 +913,12 @@ describe("expand-only platform SQL admission", () => {
     ["bare CR", "CREATE TABLE public.first (id int);\r"],
     ["CR in a comment", "CREATE TABLE public.first (id int);\n-- example\rCREATE TABLE public.example (id int);\n"],
     ["CR between statements", "CREATE TABLE public.example (id int);\rCREATE TABLE public.other (id int);\n"],
+    ["CR in a string literal", "CREATE TABLE public.example (value text DEFAULT 'a\rb');\n"],
   ] as const;
   it.each(controlCharacters)("refuse control characters in migration SQL (parser parity with PostgreSQL): predicate, %s", (_label, sql) => {
     expect(isExpandOnlyPlatformForward(sql)).toBe(false);
   });
-  it.each([...controlCharacters, ["CR in a string literal", "CREATE TABLE public.example (value text DEFAULT 'a\rb');\n"]] as const)("refuse control characters in migration SQL (parser parity with PostgreSQL): admission, %s", (_label, sql) => {
+  it.each(controlCharacters)("refuse control characters in migration SQL (parser parity with PostgreSQL): admission, %s", (_label, sql) => {
     expect(() => assertAdmittedPlatformForward("/absent", "base", "head", "example.sql", Buffer.from(sql))).toThrow(/migration SQL refuses control characters/u);
   });
   it.each([
