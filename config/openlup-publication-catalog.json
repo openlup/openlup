@@ -1094,6 +1094,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261018190000_identity_privacy_erasures.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2234,6 +2238,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261018190000_identity_privacy_erasures.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -2422,6 +2430,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/contracts/privacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/contracts/providerList.ts",
       "class": "public-output"
     },
@@ -2486,6 +2498,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/identityPersonalDataContributor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/identityReadiness.ts",
       "class": "public-output"
     },
@@ -2542,6 +2558,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/managedPrivacy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/messages.ts",
       "class": "public-output"
     },
@@ -2578,6 +2598,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/personalDataRegistry.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/platformAdminAuth.ts",
       "class": "public-output"
     },
@@ -2595,6 +2619,22 @@
     },
     {
       "path": "packages/platform/src/identity/postgresOperatorIdentity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/postgresPrivacy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/privacyHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/privacyPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/privacyUseCases.ts",
       "class": "public-output"
     },
     {
@@ -2842,6 +2882,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/identity/identityPrivacy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/identity/identityReadiness.test.ts",
       "class": "public-output"
     },
@@ -2867,6 +2911,10 @@
     },
     {
       "path": "packages/platform/test/identity/managedIdentityVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/managedPrivacy.test.ts",
       "class": "public-output"
     },
     {
@@ -2906,11 +2954,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/identity/personalDataRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/identity/ports.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/identity/postgresCustomerMe.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/privacyContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/privacyHandlers.test.ts",
       "class": "public-output"
     },
     {
@@ -7498,6 +7558,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/bff/admin/identity/privacy/erase.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/bff/admin/identity/privacy/export.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/bff/admin/inventory/atp-check.test.ts",
       "class": "public-output"
     },
@@ -11894,6 +11962,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/auth/privacyBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/privacyRoutes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/subscriptionsPrivacyContributor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/authEmailContentBinding.ts",
       "class": "public-output"
     },
@@ -13843,6 +13923,10 @@
     },
     {
       "path": "src/domains/auth/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/auth/privacyClient.ts",
       "class": "public-output"
     },
     {
@@ -18154,6 +18238,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/admin/IdentityPrivacyPanel.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/admin/LoginPage.test.tsx",
       "class": "public-output"
     },
@@ -18902,6 +18990,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/identity_privacy_capabilities_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/inherited_table_privilege_class_test.sql",
       "class": "public-output"
     },
@@ -19507,6 +19599,14 @@
     },
     {
       "path": "tests/postgres/identityEnvelopeManagedAdapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/identityPrivacy.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/identityPrivacyManaged.conformance.ts",
       "class": "public-output"
     },
     {

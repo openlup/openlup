@@ -106,9 +106,12 @@ import { bindBlobPort } from "@openlup/platform/blob";
 import { createPostgresDataGateway, createPostgresRoleFreeTransactionLane } from "@openlup/platform/data";
 import { createPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { createEnvAdvisoryLock } from "@openlup/platform/scheduler";
-import { createPostgresOperatorIdentityStore, createOperatorSessionService, createOperatorAdminAuth, createOperatorIdentityVerifier } from "@openlup/platform/identity";
-import { operatorChallengeRequestSchema, operatorSessionSchema } from "@openlup/platform/identity/contracts";
+import { createPostgresOperatorIdentityStore, createOperatorSessionService, createOperatorAdminAuth, createOperatorIdentityVerifier, createPostgresPrivacyUnitOfWork, createManagedPrivacyStore, createPersonalDataContributorRegistry } from "@openlup/platform/identity";
+import { operatorChallengeRequestSchema, operatorSessionSchema, privacyExportRequestSchema } from "@openlup/platform/identity/contracts";
 assert.equal(typeof createOperatorSessionService, "function");
+assert.equal(createManagedPrivacyStore().erasureSupported, false);
+assert.deepEqual(createPersonalDataContributorRegistry([], { requiredContributorIds: ["identity"] }).missingContributors, ["identity"]);
+assert(privacyExportRequestSchema.safeParse({ subject: { kind: "contact", contactId: "11111111-1111-4111-8111-111111111111" } }).success);
 assert.equal(typeof createOperatorAdminAuth, "function");
 assert.equal(typeof createOperatorIdentityVerifier, "function");
 assert(operatorChallengeRequestSchema.safeParse({ email: "admin@example.invalid" }).success);
@@ -124,6 +127,7 @@ function postgresOperations(connectionString) {
     }).status(),
     async () => { const lock = createEnvAdvisoryLock({ DATABASE_URL: connectionString }); try { assert.equal(await lock.tryAcquire("consumer"), true); await lock.release("consumer"); } finally { await lock.close(); } },
     async () => { const store = createPostgresOperatorIdentityStore({ connectionString }); try { return await store.findMembership("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
+    async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(async () => "privacy"); } finally { await lane.close(); } },
   ];
 }
 `;
@@ -190,6 +194,21 @@ try {
 `);
 }
 
+export function provePostgresOperations(consumer: string, connectionString: string): void {
+  consumerNode(consumer, adapterOperations + `
+const operations = postgresOperations(process.argv[2]);
+assert.equal(await operations[0](), "service");
+assert.equal(await operations[1](), "transaction");
+assert.deepEqual(await operations[2](), { pending: ["baseline.sql"], applied: [] });
+await operations[3]();
+// A selected driver alone cannot enable operator login without its migrated schema.
+await assert.rejects(() => operations[4](), error => error.code === "42P01");
+assert.equal(await operations[5](), "privacy");
+// Default gateway and migration pools have no public shutdown API.
+process.exit(0);
+`, [connectionString]);
+}
+
 // Like the outbox proof: the trusted job service when CI supplies its identity, otherwise an owned
 // labelled container; a unique database either way, and no skip when neither is available.
 function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): void {
@@ -220,17 +239,7 @@ function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): 
     // Roles are cluster-wide; create the three the gateway assumes only when they are absent.
     docker(["exec", container, "psql", "-U", "postgres", "-d", database, "-v", "ON_ERROR_STOP=1", "-c",
       "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon; END IF; END $$;"]);
-    consumerNode(consumer, adapterOperations + `
-const operations = postgresOperations(process.argv[2]);
-assert.equal(await operations[0](), "service");
-assert.equal(await operations[1](), "transaction");
-assert.deepEqual(await operations[2](), { pending: ["baseline.sql"], applied: [] });
-await operations[3]();
-// A selected driver alone cannot enable operator login without its migrated schema.
-await assert.rejects(() => operations[4](), error => error.code === "42P01");
-// Default gateway and migration pools have no public shutdown API.
-process.exit(0);
-`, [`postgresql://postgres@127.0.0.1:${port}/${database}`]);
+    provePostgresOperations(consumer, `postgresql://postgres@127.0.0.1:${port}/${database}`);
     console.log(`Platform PostgreSQL SQL conformance PASS (${service ? "job service" : "owned container"}, database ${database})`);
   } finally {
     if (service && createdDatabase) docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `DROP DATABASE IF EXISTS ${database} WITH (FORCE)`]);

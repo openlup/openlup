@@ -1100,6 +1100,72 @@ export interface ManagedOperatorMembershipResult {
 }
 export type OperatorInviteResult = OperatorInvitationResult | ManagedOperatorMembershipResult;
 ```
+## dist/identity/contracts/privacy.d.ts
+
+```ts
+import type { OperatorSchema } from "./operatorAuth.js";
+export type PrivacySubjectRef = {
+    kind: "contact";
+    contactId: string;
+} | {
+    kind: "principal";
+    principalId: string;
+};
+export type PrivacyJson = null | boolean | number | string | PrivacyJson[] | {
+    [key: string]: PrivacyJson;
+};
+export interface PersonalDataObligation {
+    owner: string;
+    resource: string;
+    disposition: "erase" | "retain" | "unresolved";
+    reasonCode: string;
+    remote: boolean;
+}
+export interface PersonalDataDocument {
+    contributorId: string;
+    version: string;
+    data: PrivacyJson;
+    coverage: {
+        complete: boolean;
+        included: string[];
+        unavailable: string[];
+    };
+    obligations: PersonalDataObligation[];
+}
+export interface ErasureReceipt {
+    version: "identity.erasure.v1";
+    erasureId: string;
+    completedAt: string;
+    outcome: "ERASED" | "ALREADY_ERASED";
+    obligations: PersonalDataObligation[];
+}
+export interface PrivacyEraseRequest {
+    subject: PrivacySubjectRef;
+    idempotencyKey: string;
+}
+export interface PrivacyExport {
+    format: "personal-data.v1";
+    generatedAt: string;
+    subject: PrivacySubjectRef;
+    documents: PersonalDataDocument[];
+    missingContributors: string[];
+    erasure: ErasureReceipt | null;
+}
+export declare const privacySubjectSchema: OperatorSchema<PrivacySubjectRef>;
+export declare const personalDataObligationSchema: OperatorSchema<PersonalDataObligation>;
+export declare const personalDataDocumentSchema: OperatorSchema<PersonalDataDocument>;
+export declare const erasureReceiptSchema: OperatorSchema<ErasureReceipt>;
+export declare const privacyExportRequestSchema: OperatorSchema<{
+    subject: PrivacySubjectRef;
+}>;
+export declare const privacyEraseRequestSchema: OperatorSchema<PrivacyEraseRequest>;
+export declare const privacyExportResponseSchema: OperatorSchema<PrivacyExport>;
+export declare const privacyEraseResponseSchema: OperatorSchema<ErasureReceipt>;
+declare const refusalCodes: readonly ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"];
+export type PrivacyRefusalCode = typeof refusalCodes[number];
+export declare const privacyRefusalCodeSchema: OperatorSchema<PrivacyRefusalCode>;
+export {};
+```
 ## dist/identity/contribution.d.ts
 
 ```ts
@@ -1413,6 +1479,17 @@ export declare function createVerifierResultOnlyEmailTrustPolicy(): EmailTrustPo
 /** Invalid, absent or throwing JavaScript bindings fail closed, including invalid results. */
 export declare function assessEmailTrust(policy: EmailTrustPolicy): Promise<EmailTrustAssessment>;
 ```
+## dist/identity/identityPersonalDataContributor.d.ts
+
+```ts
+import type { PersonalDataObligation } from "./contracts/privacy.js";
+import { type PersonalDataContributor, type PrivacyStore } from "./privacyPorts.js";
+export interface IdentityPrivacyPolicy {
+    /** Explicit dispositions for populated opaque contact fields; absence refuses erasure. */
+    retainedContactFields: Readonly<Record<string, PersonalDataObligation>>;
+}
+export declare function createIdentityPersonalDataContributor<C>(store: PrivacyStore<C>, policy: IdentityPrivacyPolicy, randomId: () => string): PersonalDataContributor<C>;
+```
 ## dist/identity/identityReadiness.d.ts
 
 ```ts
@@ -1482,6 +1559,13 @@ export * from "./operatorIdentityVerifier.js";
 export * from "./operatorAdminAuth.js";
 export * from "./operatorAuthHandlers.js";
 export * from "./postgresOperatorIdentity.js";
+export * from "./privacyPorts.js";
+export * from "./personalDataRegistry.js";
+export * from "./privacyUseCases.js";
+export * from "./identityPersonalDataContributor.js";
+export * from "./postgresPrivacy.js";
+export * from "./managedPrivacy.js";
+export * from "./privacyHandlers.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -1947,6 +2031,14 @@ export declare function createManagedEmailTrustPolicy(options: {
 import type { IdentityVerifierPort } from "./ports.js";
 export declare function createSupabaseIdentityVerifier(rawClient: unknown): IdentityVerifierPort;
 ```
+## dist/identity/managedPrivacy.d.ts
+
+```ts
+import type { ManagedIdentityClient } from "./managedClient.js";
+import { type PrivacyStore } from "./privacyPorts.js";
+/** Reads only committed service projections. No managed write or provider delete is composed. */
+export declare function createManagedPrivacyStore(): PrivacyStore<ManagedIdentityClient>;
+```
 ## dist/identity/messages.d.ts
 
 ```ts
@@ -2147,6 +2239,14 @@ export type PlatformOperatorAuthConfigResolution = {
 export declare function resolvePlatformOperatorAuthConfig(env: Record<string, string | undefined>): PlatformOperatorAuthConfigResolution;
 export declare function createOperatorTokenAdminAuth(config: PlatformOperatorAuthConfig, isOperatorAllowed: PlatformOperatorAllowlistCheck): AdminAuthPort;
 ```
+## dist/identity/personalDataRegistry.d.ts
+
+```ts
+import { type PersonalDataContributor, type PersonalDataContributorRegistry } from "./privacyPorts.js";
+export declare function createPersonalDataContributorRegistry<Context>(contributors: readonly PersonalDataContributor<Context>[], options: {
+    requiredContributorIds: readonly string[];
+}): PersonalDataContributorRegistry<Context>;
+```
 ## dist/identity/platformAdminAuth.d.ts
 
 ```ts
@@ -2311,6 +2411,11 @@ import type { CustomerChallengeStore } from "./ports.js";
 import { type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
 export type PostgresCustomerChallengeStore = CustomerChallengeStore & {
     close(): Promise<void>;
+    pruneChallenges(input: {
+        limit: number;
+    }): Promise<{
+        deleted: number;
+    }>;
 };
 export declare function createPostgresCustomerChallengeStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresCustomerChallengeStore;
 ```
@@ -2322,6 +2427,116 @@ import type { OperatorIdentityStore } from "./operatorPorts.js";
 export declare function createPostgresOperatorIdentityStore(env: {
     connectionString: string;
 }): OperatorIdentityStore;
+```
+## dist/identity/postgresPrivacy.d.ts
+
+```ts
+import { type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
+import { type PrivacyStore } from "./privacyPorts.js";
+export declare function createPostgresPrivacyStore(): PrivacyStore<PgQueryExecutor>;
+export declare function createPostgresPrivacyUnitOfWork(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): {
+    run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => Promise<T>;
+    close: () => Promise<void>;
+};
+```
+## dist/identity/privacyHandlers.d.ts
+
+```ts
+import type { HttpHandler } from "../http/index.js";
+import type { AdminAuthorizationResult } from "./ports.js";
+import { type IdentityResponseOptions } from "./response.js";
+import { type PrivacyOperations } from "./privacyPorts.js";
+export interface PrivacyHandlerDependencies extends IdentityResponseOptions {
+    authorizeAdmin: () => Promise<AdminAuthorizationResult>;
+    operations: PrivacyOperations;
+}
+export declare const createPrivacyExportHandler: (deps: PrivacyHandlerDependencies) => HttpHandler;
+export declare const createPrivacyEraseHandler: (deps: PrivacyHandlerDependencies) => HttpHandler;
+```
+## dist/identity/privacyPorts.d.ts
+
+```ts
+import type { PrivacySubjectRef, PrivacyExport, ErasureReceipt, PersonalDataDocument, PersonalDataObligation, PrivacyJson, PrivacyRefusalCode } from "./contracts/privacy.js";
+export declare class PrivacyRefusal extends Error {
+    readonly code: PrivacyRefusalCode;
+    constructor(code: PrivacyRefusalCode);
+}
+export interface AuthorizedHumanAdministrator {
+    principalId: string;
+}
+export interface ResolvedPrivacySubject {
+    contactId: string | null;
+    principalId: string | null;
+    /** Only explicitly selected identity fields; never credentials. */
+    identity: {
+        [key: string]: PrivacyJson;
+    };
+}
+export interface ErasureAssessment {
+    obligations: PersonalDataObligation[];
+}
+export interface ContributorDisposition {
+    contributorId: string;
+    version: string;
+    obligations: PersonalDataObligation[];
+}
+export interface PersonalDataContributor<Context> {
+    readonly id: string;
+    readonly version: string;
+    readonly ownedResources: readonly string[];
+    prepareErasure(context: Context): Promise<void>;
+    export(context: Context, subject: ResolvedPrivacySubject): Promise<PersonalDataDocument>;
+    assessErasure(context: Context, subject: ResolvedPrivacySubject): Promise<ErasureAssessment>;
+    eraseOrRetain(context: Context, subject: ResolvedPrivacySubject, assessment: ErasureAssessment, actor: AuthorizedHumanAdministrator): Promise<ContributorDisposition>;
+}
+export interface PersonalDataContributorRegistry<Context> {
+    readonly contributors: readonly PersonalDataContributor<Context>[];
+    readonly missingContributors: readonly string[];
+}
+export interface PrivacyUnitOfWork<Context> {
+    run<T>(work: (context: Context) => Promise<T>): Promise<T>;
+}
+export interface PrivacyStore<Context> {
+    readonly erasureSupported: boolean;
+    prepareErasure(context: Context): Promise<void>;
+    authorizeErasure(context: Context, actor: AuthorizedHumanAdministrator): Promise<void>;
+    resolve(context: Context, subject: PrivacySubjectRef, actor?: AuthorizedHumanAdministrator): Promise<ResolvedPrivacySubject | null>;
+    findReceipt(context: Context, subject: PrivacySubjectRef, key?: string): Promise<ErasureReceipt | null>;
+    eraseIdentity(context: Context, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, pseudonym: string): Promise<void>;
+    saveReceipt(context: Context, subject: ResolvedPrivacySubject, actor: AuthorizedHumanAdministrator, key: string, receipt: ErasureReceipt, dispositions: ContributorDisposition[]): Promise<void>;
+}
+export interface PrivacyUseCaseDependencies<Context> {
+    unitOfWork: PrivacyUnitOfWork<Context>;
+    registry: PersonalDataContributorRegistry<Context>;
+    store: PrivacyStore<Context>;
+    now(): Date;
+    randomId(): string;
+}
+export interface PrivacyOperations {
+    export(actor: AuthorizedHumanAdministrator, subject: PrivacySubjectRef): Promise<PrivacyExport>;
+    erase(actor: AuthorizedHumanAdministrator, input: {
+        subject: PrivacySubjectRef;
+        idempotencyKey: string;
+    }): Promise<ErasureReceipt>;
+}
+/** A host may compose this only after a committed local erasure; never delete an identity. */
+export interface ProviderIdentityErasurePort {
+    disableIdentity(input: {
+        principalId: string;
+        committedErasureId: string;
+    }): Promise<{
+        status: "disabled" | "already_disabled";
+    }>;
+}
+```
+## dist/identity/privacyUseCases.d.ts
+
+```ts
+import { type PrivacyUseCaseDependencies, type AuthorizedHumanAdministrator, type PrivacyOperations } from "./privacyPorts.js";
+import type { PrivacySubjectRef, PrivacyEraseRequest, PrivacyExport, ErasureReceipt } from "./contracts/privacy.js";
+export declare function exportPersonalData<C>(deps: PrivacyUseCaseDependencies<C>, actor: AuthorizedHumanAdministrator, input: PrivacySubjectRef): Promise<PrivacyExport>;
+export declare function erasePersonalData<C>(deps: PrivacyUseCaseDependencies<C>, actor: AuthorizedHumanAdministrator, request: PrivacyEraseRequest): Promise<ErasureReceipt>;
+export declare function createPrivacyOperations<C>(deps: PrivacyUseCaseDependencies<C>): PrivacyOperations;
 ```
 ## dist/identity/reconcileAccountForPrincipal.d.ts
 
@@ -2443,6 +2658,12 @@ export declare const IDENTITY_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261018180000_identity_operator_challenges.sql";
     readonly position: 68;
     readonly sha256: "191cf0c151a5882ad20d6043624da50afad799df739fff326d67560d3e00a031";
+    readonly url: URL;
+}, {
+    readonly id: "20261018190000_identity_privacy_erasures";
+    readonly catalogPath: "db/platform/migrations/20261018190000_identity_privacy_erasures.sql";
+    readonly position: 69;
+    readonly sha256: "f39b691cb14c0e9ec1a7460d77dc46e16bca4d2448838e4882f78885a6d92351";
     readonly url: URL;
 }];
 ```

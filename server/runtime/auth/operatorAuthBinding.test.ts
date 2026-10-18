@@ -26,3 +26,25 @@ it('human database failure becomes unavailable without invoking a machine checke
   })).toBe(false);
   expect(res.status).toHaveBeenCalledWith(503); expect(checkerFactory).not.toHaveBeenCalled(); expect(humanAuthFactory).toHaveBeenCalledOnce(); expect(humanClose).toHaveBeenCalledOnce();
 });
+
+import { createSubscriptionsPrivacyContributor } from './subscriptionsPrivacyContributor.js';
+import { createPostgresPrivacyStore, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations } from '@openlup/platform/identity';
+import type { PgQueryExecutor } from '@openlup/platform/data';
+const C = "11111111-1111-4111-8111-111111111111", P = "22222222-2222-4222-8222-222222222222", A = "33333333-3333-4333-8333-333333333333", K = "44444444-4444-4444-8444-444444444444";
+const subject = { contactId: C, principalId: P, identity: { contact: { id: C, principal_id: P, email: "person@example.com", metadata: {} }, membership: null } };
+const actor = { principalId: A };
+function executor(respond: (sql: string, values: unknown[]) => Record<string, unknown>[] = () => []) {
+  const query = vi.fn(async (sql: string, values: unknown[] = []) => ({ rows: respond(sql, values) }));
+  return { query, db: { query } as unknown as PgQueryExecutor };
+}
+it.each([["active", "PRIVACY_ACTIVE_SUBSCRIPTION"], ["paused", "PRIVACY_RESUMABLE_SUBSCRIPTION"], ["unknown", "PRIVACY_ASSESSMENT_UNAVAILABLE"]])("subscription %s veto precedes every identity mutation and never changes a subscription", async (status, code) => {
+  const { db, query } = executor(sql => sql.startsWith("SELECT status") ? [{ status }] : []);
+  const subscriptions = createSubscriptionsPrivacyContributor(); const store = createPostgresPrivacyStore();
+  store.prepareErasure = async () => {}; store.authorizeErasure = async () => {}; store.resolve = async () => structuredClone(subject); store.findReceipt = async () => null;
+  const erase = vi.spyOn(store, "eraseIdentity"); const save = vi.spyOn(store, "saveReceipt");
+  const registry = createPersonalDataContributorRegistry([createIdentityPersonalDataContributor(store, { retainedContactFields: {} }, () => K), subscriptions], { requiredContributorIds: ["identity", "subscriptions"] });
+  const ops = createPrivacyOperations({ store, registry, unitOfWork: { run: work => work(db) }, now: () => new Date(), randomId: () => K });
+  await expect(ops.erase(actor, { subject: { kind: "contact", contactId: C }, idempotencyKey: K })).rejects.toThrow(code);
+  expect(erase).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+  expect(query.mock.calls.map(([sql]) => sql)).toEqual(["LOCK TABLE public.subscriptions IN SHARE MODE", "SELECT status FROM public.subscriptions WHERE client_id = $1"]);
+});

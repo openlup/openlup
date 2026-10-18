@@ -1,4 +1,4 @@
-import { render, fireEvent, screen } from '@testing-library/react';
+import { act, render, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 const { verify, request } = vi.hoisted(() => ({ verify: vi.fn(async () => ({ error: null })), request: vi.fn(async () => ({ accepted: true })) }));
@@ -17,4 +17,64 @@ it('direct shell offers email and pasted token without password or numeric code'
   fireEvent.change(token, { target: { value: 'a'.repeat(43) } });
   fireEvent.click(screen.getByRole('button', { name: 'Sign in with token' }));
   expect(verify).toHaveBeenCalledWith('admin@example.invalid', 'a'.repeat(43));
+});
+
+const privacy = vi.hoisted(() => ({ export: vi.fn(), erase: vi.fn() }));
+vi.mock('@/domains/auth/privacyClient', () => ({ exportIdentityPersonalData: privacy.export, eraseIdentityPersonalData: privacy.erase }));
+import { IdentityPrivacyPanel } from './IdentityPrivacyPanel';
+it('privacy panel clears personal readback and confirmation on subject change, including late responses', async () => {
+  const C = '11111111-1111-4111-8111-111111111111', P = '22222222-2222-4222-8222-222222222222';
+  privacy.export.mockResolvedValueOnce({ documents: [{ data: 'person@example.com' }] });
+  render(<IdentityPrivacyPanel accessToken="synthetic-token" />);
+  fireEvent.change(screen.getByLabelText('Subject ID'), { target: { value: C } });
+  expect(screen.getByRole('button', { name: 'Erase identity data' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Export identity data' }));
+  await screen.findByText(/person@example.com/);
+  fireEvent.click(screen.getByLabelText('Confirm identity erasure for this subject'));
+  privacy.erase.mockResolvedValueOnce({ erasureId: C, outcome: 'ERASED', obligations: [] });
+  fireEvent.click(screen.getByRole('button', { name: 'Erase identity data' }));
+  await screen.findByText('Committed erasure receipt');
+  expect(privacy.erase).toHaveBeenCalledWith('synthetic-token', expect.objectContaining({ subject: { kind: 'contact', contactId: C }, idempotencyKey: expect.any(String) }));
+  fireEvent.change(screen.getByLabelText('Subject ID'), { target: { value: P } });
+  expect(screen.queryByText('Committed erasure receipt')).toBeNull();
+  expect(screen.queryByText(/person@example.com/)).toBeNull();
+  expect(screen.getByRole('button', { name: 'Erase identity data' })).toBeDisabled();
+  let finish: (value: unknown) => void = () => {};
+  privacy.export.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  fireEvent.click(screen.getByRole('button', { name: 'Export identity data' }));
+  fireEvent.change(screen.getByLabelText('Subject ID'), { target: { value: C } });
+  finish({ documents: [{ data: 'late@example.com' }] });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Export identity data' })).toBeEnabled());
+  expect(screen.queryByText(/late@example.com/)).toBeNull();
+});
+
+const C = "11111111-1111-4111-8111-111111111111";
+it("browser client uses strict contracts, authenticated POSTs and no storage or cache", async () => {
+  const { exportIdentityPersonalData, eraseIdentityPersonalData } = await vi.importActual<typeof import('@/domains/auth/privacyClient')>('@/domains/auth/privacyClient');
+  const exported = { format: "personal-data.v1", generatedAt: "2026-01-01T00:00:00.000Z", subject: { kind: "contact", contactId: C }, documents: [], missingContributors: ["identity"], erasure: null };
+  const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ ok: true, data: exported }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  expect(await exportIdentityPersonalData("synthetic-token", { kind: "contact", contactId: C }, { fetcher })).toEqual(exported);
+  expect(fetcher).toHaveBeenCalledWith("/api/bff/admin/identity/privacy/export", expect.objectContaining({ method: "POST", cache: "no-store", body: JSON.stringify({ subject: exported.subject }) }));
+  expect(new Headers(fetcher.mock.calls[0][1]?.headers).get("Authorization")).toBe("Bearer synthetic-token");
+  expect(() => eraseIdentityPersonalData("synthetic-token", { subject: { kind: "contact", contactId: C }, idempotencyKey: "invalid" }, { fetcher })).toThrow();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('privacy panel discards an export pending across an access token change', async () => {
+  let finish: (value: unknown) => void = () => {};
+  privacy.export.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  const { rerender } = render(<IdentityPrivacyPanel accessToken="old-session" />);
+  fireEvent.change(screen.getByLabelText('Subject ID'), { target: { value: C } });
+  fireEvent.click(screen.getByLabelText('Confirm identity erasure for this subject'));
+  fireEvent.click(screen.getByRole('button', { name: 'Export identity data' }));
+  expect(privacy.export).toHaveBeenCalledWith('old-session', { kind: 'contact', contactId: C });
+  rerender(<IdentityPrivacyPanel accessToken="new-session" />);
+  await act(async () => { finish({ documents: [{ data: 'old-session@example.com' }] }); });
+  expect(screen.queryByText(/old-session@example.com/)).toBeNull();
+  expect(screen.getByRole('button', { name: 'Erase identity data' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Export identity data' })).toBeEnabled();
+  privacy.export.mockResolvedValueOnce({ documents: [{ data: 'new-session@example.com' }] });
+  fireEvent.click(screen.getByRole('button', { name: 'Export identity data' }));
+  await screen.findByText(/new-session@example.com/);
+  expect(privacy.export).toHaveBeenLastCalledWith('new-session', { kind: 'contact', contactId: C });
 });

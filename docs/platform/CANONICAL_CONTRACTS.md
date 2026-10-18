@@ -153,6 +153,17 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+Identity privacy appends the direct receipt migration at position 69 while
+preserving the preceding manifest entries and SQL projection identities. Erasure
+requires this forward, explicit contributor registration and declared retention
+ownership. It preserves contact IDs and auth links, refuses active/resumable
+subscriptions, and records atomic replayable identity completion. Managed erasure
+returns `MANAGED_PRIVACY_ERASURE_UNAVAILABLE` with no managed migration or new
+grants; export exposes its narrower coverage. See
+[identity privacy](IDENTITY.md#identity-personal-data) and
+[data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle).
+
+
 Direct human operator sessions introduce a distinct operator audience and a
 browser provider-selection setting. The direct catalogue appends the challenges
 forward with an immutable predecessor prefix. Its normalized-email uniqueness

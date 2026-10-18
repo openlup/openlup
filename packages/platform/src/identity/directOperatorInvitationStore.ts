@@ -61,6 +61,7 @@ export function createDirectOperatorInvitationStore(env: PostgresDataGatewayEnv,
         const principal = await lock(db, input.targetPrincipalId);
         await lockCommandMemberships(db, input.actorPrincipalId, input.targetPrincipalId);
         await administrator(db, input.actorPrincipalId);
+        if ((await db.query("SELECT 1 FROM public.identity_privacy_erasures WHERE principal_id = $1", [input.targetPrincipalId])).rows.length) return { code: "IDENTITY_CONFLICT" };
         const email = input.email.trim().toLowerCase();
         if (!principal || String(principal.email).trim().toLowerCase() !== email || await machine(db, input.targetPrincipalId)) return { code: "IDENTITY_CONFLICT" };
         const member = await membership(db, input.targetPrincipalId);
@@ -143,6 +144,7 @@ export function createDirectOperatorIdentityDirectory(env: PostgresDataGatewayEn
 /** Trusted authentication only; caller owns the transaction, including challenge consumption. */
 export async function acceptDirectOperatorInvitationInTransaction(db: PgQueryExecutor, id: string): Promise<import("./contracts/operatorInvitations.js").OperatorInvitationAcceptance> {
   if (!await lock(db, id) || await machine(db, id)) return { code: "NO_INVITATION" };
+  if ((await db.query("SELECT 1 FROM public.identity_privacy_erasures WHERE principal_id = $1", [id])).rows.length) return { code: "INVITATION_REVOKED" };
   const member = await membership(db, id);
   if (member?.membership_state === "active") {
     if (member.role !== "admin" && member.role !== "distributor") return { code: "NO_INVITATION" };

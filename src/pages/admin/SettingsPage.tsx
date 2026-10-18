@@ -1,3 +1,4 @@
+import { IdentityPrivacyPanel } from "./IdentityPrivacyPanel";
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -134,6 +135,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="max-w-2xl space-y-6">
+        {role === 'admin' && session?.access_token && <IdentityPrivacyPanel accessToken={session.access_token} />}
         {/* Tester Cap */}
         <Card className="border-warm-sand bg-white">
           <CardHeader>

@@ -3,6 +3,26 @@
 Status: development-preview contract. No recipe in this document is a supported production deployment or a stable installer promise.
 
 ## Runtime model
+
+The reference BFF mounts `POST /api/bff/admin/identity/privacy/export` and
+`POST /api/bff/admin/identity/privacy/erase` in the shipped entrypoint, including
+managed bundles with an empty caller route table. Bundle-aware default entries
+precede supplied entries and the managed route availability fence. Both handlers recheck live admin membership and require
+an explicitly human actor; neither route is machine-write allowlisted. No-store
+responses carry versioned coverage/receipt data or a structured `privacyCode`.
+Both direct and managed routes retain risk `mutation` and the public default refuses them
+with 503 / `adopter_policy_required` before reading request bodies or queries.
+Both mounts also refuse before authentication or privacy bindings are created.
+Direct and managed adopters reach them only through `#deployment-route-policy`, like every
+admin mutation route, including invite, remove and admin `me`. After admission,
+managed export explicitly reports incomplete coverage and erasure refuses with
+`MANAGED_PRIVACY_ERASURE_UNAVAILABLE` before any mutation.
+Admin Settings adds an identity-only export/erase panel with explicit confirmation,
+retained obligations and subject/session-bound in-memory readback. Direct erasure
+uses one local transaction and leaves subscriptions unchanged. The existing `prune-challenges`
+command now returns separate operator/customer counts and deletes at most 500 per
+store whose expiry is strictly older than 24 hours. No scheduler is introduced.
+
 The managed reconcile binding passes a required email-trust policy to the
 package handler even when `PLATFORM_BUNDLE` selects the direct bundle, because
 this route composes managed verification and storage. It shares a settings cache
