@@ -975,6 +975,13 @@ export declare function createMagicLinkOriginResolver(configuredOrigins: readonl
 /** Invalid return targets use the callback's default landing page. */
 export declare function normalizeMagicLinkReturnPath(value: string | undefined, origin: string): string | undefined;
 ```
+## dist/identity/contracts/emailTrust.d.ts
+
+```ts
+/** Browser-safe email-association refusal codes. */
+export declare const EMAIL_TRUST_FAILURE_CODES: readonly ["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"];
+export type EmailTrustFailureCode = typeof EMAIL_TRUST_FAILURE_CODES[number];
+```
 ## dist/identity/contribution.d.ts
 
 ```ts
@@ -1247,6 +1254,34 @@ export declare function createCustomerVerifyOtpHandler(options: IdentityResponse
     resolveSession: typeof resolveCustomerSessionBinding;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
+## dist/identity/emailTrustPolicy.d.ts
+
+```ts
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
+export type EmailTrustAssessment = {
+    trusted: true;
+} | {
+    trusted: false;
+    code: EmailTrustFailureCode;
+};
+export interface EmailTrustPolicy {
+    assess(): Promise<EmailTrustAssessment>;
+}
+/** Explicitly retain verifier-only admission. This does not bypass mailbox verification. */
+export declare function createVerifierResultOnlyEmailTrustPolicy(): EmailTrustPolicy;
+/** Invalid, absent or throwing JavaScript bindings fail closed, including invalid results. */
+export declare function assessEmailTrust(policy: EmailTrustPolicy): Promise<EmailTrustAssessment>;
+```
+## dist/identity/identityReadiness.d.ts
+
+```ts
+import type { ReadinessIssue } from "@openlup/core/readiness";
+import { type EmailTrustPolicy } from "./emailTrustPolicy.js";
+/** The module field stays structural so older core readiness types still compile; no new core code is needed. */
+export declare function identityEmailTrustReadiness(policy: EmailTrustPolicy): Promise<readonly (ReadinessIssue & {
+    module: "identity";
+})[]>;
+```
 ## dist/identity/index.d.ts
 
 ```ts
@@ -1292,6 +1327,11 @@ export * from "./managedAdminUserGateways.js";
 export * from "./jwtLibrary.js";
 export * from "./platformAdminAuth.js";
 export * from "./adminContracts.js";
+export * from "./contracts/emailTrust.js";
+export { createVerifierResultOnlyEmailTrustPolicy } from "./emailTrustPolicy.js";
+export type { EmailTrustAssessment, EmailTrustPolicy } from "./emailTrustPolicy.js";
+export * from "./managedEmailTrustPolicy.js";
+export * from "./identityReadiness.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -1712,6 +1752,21 @@ export declare function readLinkedCustomer(rawClient: unknown, userId: string, i
 export declare function createSupabaseCustomerMePort(rawClient: unknown): CustomerMePort;
 export {};
 ```
+## dist/identity/managedEmailTrustPolicy.d.ts
+
+```ts
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
+/** Server-side assertion by the adopter, never a provider certification. */
+export declare function parseEmailVerifyingProviders(value: string): readonly string[];
+/** One immutable origin/key/allowlist binding; import and construction perform no I/O. */
+export declare function createManagedEmailTrustPolicy(options: {
+    authBaseUrl: string;
+    publicKey: string;
+    emailVerifyingProviders?: readonly string[];
+    fetch?: typeof globalThis.fetch;
+    now?: () => number;
+}): EmailTrustPolicy;
+```
 ## dist/identity/managedIdentityVerifier.d.ts
 
 ```ts
@@ -1935,13 +1990,15 @@ export declare function createPostgresCustomerChallengeStore(env: PostgresDataGa
 ## dist/identity/reconcileAccountForPrincipal.d.ts
 
 ```ts
+import { type EmailTrustPolicy } from "./emailTrustPolicy.js";
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
 import type { AccountLinkStore } from "./ports.js";
 export interface ReconcileAccountInput {
     principalId: string;
     email: string | null;
     emailVerified: boolean;
 }
-export type ReconcileAccountErrorCode = "NO_VERIFIED_EMAIL" | "RESERVED_PRINCIPAL_REFUSED" | "PRINCIPAL_EMAIL_MISMATCH" | "ACCOUNT_LINK_CONFLICT" | "EMAIL_OWNED_BY_OTHER_PRINCIPAL";
+export type ReconcileAccountErrorCode = EmailTrustFailureCode | "NO_VERIFIED_EMAIL" | "RESERVED_PRINCIPAL_REFUSED" | "PRINCIPAL_EMAIL_MISMATCH" | "ACCOUNT_LINK_CONFLICT" | "EMAIL_OWNED_BY_OTHER_PRINCIPAL";
 export type ReconcileAccountResult = {
     ok: true;
     accountId: string;
@@ -1952,11 +2009,12 @@ export type ReconcileAccountResult = {
     code: ReconcileAccountErrorCode;
     existingPrincipalId?: string | null;
 };
-export declare function reconcileAccountForPrincipal(store: AccountLinkStore, input: ReconcileAccountInput): Promise<ReconcileAccountResult>;
+export declare function reconcileAccountForPrincipal(store: AccountLinkStore, input: ReconcileAccountInput, emailTrustPolicy: EmailTrustPolicy): Promise<ReconcileAccountResult>;
 ```
 ## dist/identity/reconcileAccountHandler.d.ts
 
 ```ts
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
 import { type IdentityResponseOptions } from "./response.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { AccountLinkStore, IdentityVerifierPort } from "./ports.js";
@@ -1964,6 +2022,7 @@ import { type ReconcileAccountErrorCode } from "./reconcileAccountForPrincipal.j
 export declare function createReconcileAccountHandler(options: IdentityResponseOptions & {
     verifier: IdentityVerifierPort;
     store: AccountLinkStore;
+    emailTrustPolicy: EmailTrustPolicy;
     message?: (code: ReconcileAccountErrorCode) => string;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```

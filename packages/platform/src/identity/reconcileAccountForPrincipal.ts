@@ -1,3 +1,5 @@
+import { assessEmailTrust, type EmailTrustPolicy } from "./emailTrustPolicy.js";
+import type { EmailTrustFailureCode } from "./contracts/emailTrust.js";
 import type { AccountLinkStore } from "./ports.js";
 
 
@@ -9,6 +11,7 @@ export interface ReconcileAccountInput {
 }
 
 export type ReconcileAccountErrorCode =
+  | EmailTrustFailureCode
   | "NO_VERIFIED_EMAIL"
   | "RESERVED_PRINCIPAL_REFUSED"
   | "PRINCIPAL_EMAIL_MISMATCH"
@@ -22,6 +25,7 @@ export type ReconcileAccountResult =
 export async function reconcileAccountForPrincipal(
   store: AccountLinkStore,
   input: ReconcileAccountInput,
+  emailTrustPolicy: EmailTrustPolicy,
 ): Promise<ReconcileAccountResult> {
   const email = normalizeEmail(input.email);
   if (!email || !input.emailVerified) {
@@ -39,6 +43,9 @@ export async function reconcileAccountForPrincipal(
     }
     return { ok: true, accountId: byPrincipal.id, created: false, linked: false };
   }
+
+  const trust = await assessEmailTrust(emailTrustPolicy);
+  if (!trust.trusted) return { ok: false, code: trust.code };
 
   const viaEmail = await resolveByEmail(store, email, input.principalId);
   if (viaEmail) return viaEmail;

@@ -1,3 +1,4 @@
+import type { EmailTrustPolicy } from "./emailTrustPolicy.js";
 import { createIdentityResponder, type IdentityResponseOptions } from "./response.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { AccountLinkStore, IdentityVerifierPort } from "./ports.js";
@@ -7,6 +8,7 @@ import { readBearerToken } from "./adminAuthorization.js";
 export function createReconcileAccountHandler(options: IdentityResponseOptions & {
   verifier: IdentityVerifierPort;
   store: AccountLinkStore;
+  emailTrustPolicy: EmailTrustPolicy;
   message?: (code: ReconcileAccountErrorCode) => string;
 }) {
   const { sendBffError, sendBffSuccess, sendMethodNotAllowed } = createIdentityResponder(options);
@@ -17,10 +19,12 @@ export function createReconcileAccountHandler(options: IdentityResponseOptions &
     try {
       const principal = await options.verifier.verifyAccessToken(token);
       if (!principal) return sendBffError(res, "UNAUTHORIZED", "Customer session required");
-      const result = await reconcileAccountForPrincipal(options.store, principal);
+      const result = await reconcileAccountForPrincipal(options.store, principal, options.emailTrustPolicy);
       if (!result.ok) {
-        const status = result.code === "NO_VERIFIED_EMAIL" ? 400 : result.code === "RESERVED_PRINCIPAL_REFUSED" ? 403 : 409;
-        sendBffError(res, status === 400 ? "BAD_REQUEST" : status === 403 ? "FORBIDDEN" : "CONFLICT",
+        const code = result.code === "NO_VERIFIED_EMAIL" ? "BAD_REQUEST"
+          : result.code === "EMAIL_TRUST_SETTINGS_UNAVAILABLE" ? "UPSTREAM_UNAVAILABLE"
+          : result.code === "RESERVED_PRINCIPAL_REFUSED" || result.code === "EMAIL_TRUST_ENVELOPE_REFUSED" ? "FORBIDDEN" : "CONFLICT";
+        sendBffError(res, code,
           options.message?.(result.code) ?? result.code, { details: { code: result.code } });
         return;
       }

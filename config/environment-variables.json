@@ -371,6 +371,20 @@
       "secret": true,
       "source": "packages/platform/src/blob/s3Client.ts",
       "blastRadius": "Secret access key for the s3 blob capability; set together with BLOB_S3_ACCESS_KEY_ID. A leaked value grants write access to the bucket."
+    },
+    {
+      "name": "IDENTITY_EMAIL_VERIFYING_PROVIDERS",
+      "owner": "identity",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "server/runtime/auth/emailTrustBinding.ts",
+      "blastRadius": "Comma-separated explicit declarations of external providers that verify email. Empty trusts no external provider; malformed declarations refuse configuration. Managed email association also requires confirmations."
     }
   ]
 }

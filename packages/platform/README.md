@@ -103,8 +103,7 @@ computed property calls.
 The package test additionally requires every file in the contracts subtree to
 be a scanned `.ts` file, refuses triple-slash type and path references and all
 meta-properties (also `new.target`), and retains member-call `require` detection
-outside contracts. Identity declares this entry; synthetic graphs and negative
-plants also prove the checks.
+outside contracts. Identity declares this entry; synthetic graphs also exercise these checks.
 
 
 The job-run ledger SQL asset test verifies a readable, nonempty file within the
@@ -154,6 +153,19 @@ in both resolution modes with all three optional peers absent.
 <!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->
 
 ## Identity import candidate
+Managed verification now requires the confirmation timestamp. Email-derived
+reconcile requires an injected `emailTrustPolicy`. Managed hosts share
+`createManagedEmailTrustPolicy` with `identityEmailTrustReadiness`; it reports
+module `identity` using core's existing codes. Hosts retaining verifier-only
+admission explicitly bind `createVerifierResultOnlyEmailTrustPolicy()`.
+See the [identity policy and migration](../../docs/platform/IDENTITY.md#responsibility-and-composition)
+for the empty provider allowlist, cache/deadline, 403/503 failures and the opt-in
+`node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust` prerequisites
+and conformance scope. The committed managed chain includes the identity
+capabilities forward, so the runner proves association under the shipped managed
+reference grants.
+Construction and imports perform no settings read or SDK initialization.
+
 
 The `./identity` server entry imports the existing identity engine, authorization,
 profile readers, session adapters and BFF factories into one capability. Its

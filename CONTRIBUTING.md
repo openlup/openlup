@@ -972,7 +972,7 @@ what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-6a1435b8ef768292203f116e94ecb7909cd607ea309ce824499a0a05aeabbd75","reason":"Test-only delta. The browser proof that playwright.ssg.config.ts already selects is added: each SSG route of the public-reference manifest is served as its prerendered document and must hydrate with unchanged markup and no page error. It runs after the build through that existing configuration; no test command, required selector or CI job described here changes."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-81affb0f5d3767f4cd8ec6448ca178a633bdcdeff36b9b79428fb815ac9706ec","reason":"The explicitly invoked identity Auth/mail/database runner reads each successful handler's returned contact from the database immediately, requiring its normalized email and principal link before another handler can repair it. Confirmed and declared-provider scenarios also link a pre-existing unlinked contact. It replays the complete committed managed chain, including the identity capabilities forward, and proves association under the shipped grants without a fixture-only grant. Refusal snapshots, subscriber preservation and the public-catalogue fingerprint remain. The identity owner page describes these assertions. The default test command, required selectors and verification order described here are unchanged; no CI or root script is activated."} -->
 
 ## Pull requests
 
