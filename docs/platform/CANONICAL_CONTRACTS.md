@@ -169,9 +169,13 @@ binds that inventory and its classifications; it does not grant permissions or
 change package APIs. Runtime authority comes from the separately admitted SQL.
 
 The optional runtime-forward registry is a finite security admission: it pins
-one file, five unchanged existing function identities and ordered exact grants.
-The checker independently limits service columns and four existing callable
-functions, plus authenticated profile/membership reads and two pure index helpers.
+one or two files with ordered exact grants. The first pins five unchanged
+existing function identities; the checker independently limits its service
+columns and four existing callable functions, plus authenticated profile/membership
+reads and two pure index helpers. The optional second pins the identity
+account-link file with no functions or policies, only service_role INSERT on
+`clients.email`, `auth_user_id`, `acquisition_source` and `lifecycle_stage`, and
+UPDATE on `auth_user_id`.
 It does not authorize arbitrary runtime grants. Approval must precede the SQL
 feature's comparison base and introducing commit; registry installation alone
 does not change database permissions.
@@ -185,9 +189,11 @@ The [reviewed function-forward approval data](../../config/reviewed-platform-for
 binds exact managed SQL files and old/new function definitions. Its replacement
 list contains exactly three existing signatures in two files; a distinct creation
 list requires the two price-setup signatures to be absent before their forward.
-The registry must precede both the feature
-comparison base and the parent of its introduction; a feature cannot approve itself.
-Required self-check and release preparation share the same admission check.
+The optional runtime list pins the capability and identity forwards described above.
+Required self-check keeps the whole registry unchanged from the feature comparison
+base. Release compares each forward's own entry, list position and shared registry
+fields with its introduction parent, allowing later controls to append approvals.
+A feature cannot approve itself. Both gates share the same admission checker.
 This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see
 [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
