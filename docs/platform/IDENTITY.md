@@ -100,7 +100,7 @@ Paths below the package column are relative to `packages/platform/src/identity/`
 The table records where each source came from. A former server path that only
 re-exported the package and was imported only by identity code has been removed;
 those importers use `@openlup/platform/identity` directly. Three type and adapter
-re-exports stay while handlers of other modules still import them:
+re-exports stay while other modules still import them:
 `server/domains/platform/adminAuth.ts`, `server/domains/customers/customerAuth.ts`
 and `server/adapters/supabase/customerMe.ts`. They go when those modules move onto
 the identity entry. Former paths that still compose application policy, and the

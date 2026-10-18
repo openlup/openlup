@@ -29,7 +29,7 @@ use the package's `authorizeCron` guard through `api/_cron/authorizeCron.ts`.
 The package's Node runtime, scheduler and node host are not yet composed by the
 public reference server; the module's composition change does that.
 
-<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-9a2d3d3dbbc2f27f6d76218e0452f08cfab9b544e55e1a217fd131d4e0b34125","reason":"Import-only delta. The customer reconcile-account route imports the same symbols from @openlup/platform/identity instead of a removed re-export file. The admin and customer magic-link routes and the customer OTP route drop unused imports and an unused response-floor constant. Route admission, mounting, request context, timing and responses are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"bff","digest":"sha256-9a2d3d3dbbc2f27f6d76218e0452f08cfab9b544e55e1a217fd131d4e0b34125","reason":"Import-only delta. The customer reconcile-account route imports the same symbols from @openlup/platform/identity instead of two removed re-export files. The admin and customer magic-link routes and the customer OTP route drop unused imports and an unused response-floor constant. Route admission, mounting, request context, timing and responses are unchanged."} -->
 
 Identity route files now compose [package handler factories](IDENTITY.md) with
 this application's schemas, feature admission, limiter, redirect resolver and
