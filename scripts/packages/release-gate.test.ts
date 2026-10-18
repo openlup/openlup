@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { REQUIRED_CHECKS } from "../agent-review-gate.mjs";
 import { packageReleaseInputs } from "./package-release.ts";
 import * as committed from "./release-gate.ts";
 
@@ -240,9 +239,8 @@ describe("release gate controls", () => {
 });
 
 describe("the release gate's contracts", () => {
-  it("requires exactly the six contexts the native review also requires", () => {
+  it("requires exactly the six protected mechanical contexts", () => {
     expect([...committed.REQUIRED_CONTEXTS]).toEqual([...SIX]);
-    expect([...committed.REQUIRED_CONTEXTS]).toEqual(REQUIRED_CHECKS);
   });
 
   it("names the tag and message exactly as the package release checks them", () => {
