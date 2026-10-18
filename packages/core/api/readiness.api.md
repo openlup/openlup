@@ -92,6 +92,7 @@ export interface ReadinessIssue {
     subject: string;
     fix: string;
     observation?: string;
+    module?: string;
 }
 /** @beta */
 export interface SchemaObject {
@@ -119,6 +120,16 @@ export interface PackageManifest {
     routes: readonly string[];
     requiredPorts: readonly string[];
     env: readonly string[];
+    /** Selected logical module within this artifact; kind above remains the artifact kind. */
+    module?: {
+        id: string;
+        kind: PackageManifest["kind"];
+        provides: readonly string[];
+        dependsOn: readonly {
+            module: string;
+            entries: readonly string[];
+        }[];
+    };
     requiredSchema?: RequiredSchema;
 }
 /** @beta Run-bound handlers are represented by their shared inert descriptors. */
@@ -140,6 +151,7 @@ export interface LoadedPackage {
     name: string;
     version: string;
     kind: PackageManifest["kind"];
+    modules?: readonly string[];
 }
 /** @beta Candidate identity must change when configuration, schema or artifact changes. */
 export interface CandidateIdentity {

@@ -262,17 +262,17 @@
     }
   },
   "pack": {
-    "$budgetReason": "2026-10-18 bounded decision after the 0.15.0 set: published core measures 158710 packed/667320 unpacked bytes, 10/328 under the former 155KiB/652KiB aggregates, so the next set note would fail. Set bumps grow only the changelog; aggregates 157KiB packed/656KiB unpacked end near the unchanged docs class headroom (1629 packed bytes, about four feature-size set entries). Code/docs class and file ceilings, required files and other controls remain unchanged. Grants no release authority; later growth still requires a measured budget decision.",
+    "$budgetReason": "2026-10-18 M03 bounded decision: base code 129991 packed, aggregate 158715 packed/667249 unpacked bytes; B0 before trimming 132250, 162482/681852; final 132250, 161344/678531. B0 is core's only growth for programme module M03; identity ships in @openlup/platform. Code 132KiB, aggregates 162KiB/672KiB; docs class, file ceilings, required files and other controls unchanged. Set bumps grow only the changelog; docs stays the first binding limit for set notes. Later growth still requires a measured budget decision. Grants no release authority.",
     "code": {
-      "maxPackedBytes": 131072,
+      "maxPackedBytes": 135168,
       "maxFiles": 198
     },
     "docs": {
       "maxPackedBytes": 24576,
       "maxFiles": 12
     },
-    "maxPackedBytes": 160768,
-    "maxUnpackedBytes": 671744,
+    "maxPackedBytes": 165888,
+    "maxUnpackedBytes": 688128,
     "maxFiles": 211,
     "requiredFiles": [
       "AGENTS.md",

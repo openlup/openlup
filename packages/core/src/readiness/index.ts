@@ -7,9 +7,10 @@ export { schemaObjectKey, buildSchemaObjectProbe, createSchemaProbe, buildGroupe
 export async function checkReadiness(input: ReadinessInput): Promise<ReadinessReport> {
   const issues = declarationIssues(input);
   let unknown = issues.some((i) => ["input", "candidate", "inventory", "loaded-package", "schemaProbe", "probeTimeoutMs"].includes(i.subject));
-  const add = (code: ReadinessIssue["code"], pkg: string, subject: string, fix: string, observation?: string) => {
-    issues.push({ code, package: pkg, subject, fix, ...(observation ? { observation } : {}) });
+  const add = (code: ReadinessIssue["code"], pkg: string, subject: string, fix: string, observation?: string, module?: string) => {
+    issues.push({ code, package: pkg, subject, fix, ...(observation ? { observation } : {}), ...(module ? { module } : {}) });
   };
+  const addIssue = add;
   const report = (): ReadinessReport => ({ state: unknown ? "unknown" : issues.length ? "unsatisfied" : "ready", candidate: input?.candidate,
     loadedPackages: input?.loadedPackages ?? [], issues: issues.sort((a,b) => [a.code,a.package,a.subject,a.observation ?? ""].join("|").localeCompare([b.code,b.package,b.subject,b.observation ?? ""].join("|"))) });
   if (!input || !Array.isArray(input.loadedPackages) || !Array.isArray(input.contributions)) return report();
@@ -23,8 +24,24 @@ export async function checkReadiness(input: ReadinessInput): Promise<ReadinessRe
   for (const [name,count] of packages) if (count > 1) add("OPENLUP_E_SET_MISMATCH", name, "inventory", "Observe each loaded package exactly once.");
   for (const p of loaded) {
     if (p.version !== set || (p.kind === "kernel" && p.name !== "@openlup/core")) add("OPENLUP_E_SET_MISMATCH", p.name, "version", install);
-    if (p.kind !== "kernel" && contributions.filter((c) => c.manifest.name === p.name).length !== 1) add("OPENLUP_E_SET_MISMATCH", p.name, "contribution", "Compose exactly one contribution for each loaded non-kernel package.");
+    if (p.modules !== undefined) {
+      for (const id of (Array.isArray(p.modules) ? p.modules : [])) {
+        if (contributions.filter((c) => c.manifest.name === p.name && c.manifest.module?.id === id).length !== 1) add("OPENLUP_E_SET_MISMATCH", p.name, "contribution", "Compose exactly one contribution for each selected module.", undefined, id);
+      }
+    } else if (p.kind !== "kernel" && contributions.filter((c) => c.manifest.name === p.name).length !== 1) add("OPENLUP_E_SET_MISMATCH", p.name, "contribution", "Compose exactly one contribution for each loaded non-kernel package.");
   }
+  // Selection is observed per artifact. Refused mixed/unselected contributions
+  // do not introduce adapter, environment or schema obligations.
+  const selected = contributions.filter((c) => {
+    const m = c.manifest, p = loaded.find((p) => p.name === m.name);
+    if (m.module ? !Array.isArray(p?.modules) || !p.modules.includes(m.module.id) : p?.modules !== undefined) {
+      add("OPENLUP_E_SET_MISMATCH", m.name, "module-selection", "Match module contributions to the observed artifact selection.", undefined, m.module?.id);
+      return false;
+    }
+    return true;
+  });
+  const layers = { kernel: 0, rail: 1, capability: 2, implementation: 3 };
+  const bindings = new Map<string, string>();
   const handlers = new Map<string,string[]>(); const emitters = new Map<string,string[]>();
   const events = new Set<string>();
   for (const v of (Array.isArray(input.vocabulary) ? input.vocabulary : [])) {
@@ -33,31 +50,62 @@ export async function checkReadiness(input: ReadinessInput): Promise<ReadinessRe
       events.add(v.eventType);
     }
   }
-  for (const c of contributions) {
+  for (const c of selected) {
     const m = c.manifest;
+    const add: typeof addIssue = (code, pkg, subject, fix, observation) => addIssue(code, pkg, subject, fix, observation, m.module?.id);
+    const owner = m.module ? `${m.name}/${m.module.id}` : m.name;
+    if (m.module) {
+      for (const dependency of m.module.dependsOn) {
+        const target = selected.find((other) => other.manifest.name === m.name && other.manifest.module?.id === dependency.module)?.manifest.module;
+        if (!target) add("OPENLUP_E_SET_MISMATCH", m.name, `dependency:${dependency.module}`, "Select and compose the required module in the same artifact.");
+        else {
+          if (layers[target.kind] > layers[m.module.kind]) add("OPENLUP_E_SET_MISMATCH", m.name, `dependency:${dependency.module}`, "Depend only on modules in the same or an earlier layer.");
+          for (const entry of dependency.entries) if (!target.provides.includes(entry)) add("OPENLUP_E_SET_MISMATCH", m.name, `dependency:${dependency.module}:${entry}`, "Use an entry declared by the dependency's provides contract.");
+        }
+      }
+      for (const [type, ids] of [["schedule", m.schedules.map((s) => s.id)], ["route", m.routes]] as const) for (const id of ids) {
+        const key = `${m.name}:${type}:${id}`, previous = bindings.get(key);
+        if (previous !== undefined) add("OPENLUP_E_SET_MISMATCH", m.name, `${type}:${id}`, "Declare one module owner for each artifact schedule or route.", previous);
+        else bindings.set(key, m.module.id);
+      }
+    }
     const p = loaded.filter((p) => p.name === m.name);
     if (p.length !== 1 || p[0]?.version !== m.version || p[0]?.kind !== m.kind) add("OPENLUP_E_SET_MISMATCH", m.name, "manifest", "Match the contribution to its observed installed package.");
     for (const type of m.emits) {
       events.add(type);
-      if (m.kind !== "kernel") emitters.set(type, [...(emitters.get(type) ?? []), m.name]);
+      if (m.kind !== "kernel") emitters.set(type, [...(emitters.get(type) ?? []), owner]);
     }
     const actual = c.handlers.map((h) => h?.eventType);
     for (const type of new Set([...m.handles,...actual])) {
       if (m.handles.filter((x) => x === type).length !== 1 || actual.filter((x) => x === type).length !== 1) add("OPENLUP_E_EVENT_DUPLICATE", m.name, type, "Match each declared consumer to exactly one composed handler descriptor.");
-      else handlers.set(type, [...(handlers.get(type) ?? []), m.name]);
+      else handlers.set(type, [...(handlers.get(type) ?? []), owner]);
       events.add(type);
     }
-    for (const port of m.requiredPorts) if (!isPort(input.bindings?.ports?.[`${m.name}:${port}`])) add("OPENLUP_E_PORT_MISSING", m.name, port, "Bind the selected adapter port in composition.");
+    for (const port of m.requiredPorts) if (!isPort(input.bindings?.ports?.[`${owner}:${port}`])) add("OPENLUP_E_PORT_MISSING", m.name, port, "Bind the selected adapter port in composition.");
     for (const env of m.env) if (typeof input.bindings?.env?.[env] !== "string" || !input.bindings.env[env]?.trim()) add("OPENLUP_E_ENV_MISSING", m.name, env, "Supply the named environment variable without exposing its value.");
     for (const id of new Set([...m.schedules.map((s) => s.id),...c.schedules.map((s) => s?.id)])) {
       const declarations = m.schedules.filter((s) => s.id === id), actual = c.schedules.filter((s) => s?.id === id);
-      if (declarations.length !== 1 || actual.length !== 1 || declarations[0]?.cadenceSeconds !== actual[0]?.cadenceSeconds || typeof actual[0]?.run !== "function" || input.bindings?.triggers?.[`${m.name}:${id}`] !== actual[0]?.run) add("OPENLUP_E_SCHEDULE_UNBOUND", m.name, id, "Bind the actual schedule with its declared cadence to one host trigger.");
+      if (declarations.length !== 1 || actual.length !== 1 || declarations[0]?.cadenceSeconds !== actual[0]?.cadenceSeconds || typeof actual[0]?.run !== "function" || input.bindings?.triggers?.[`${owner}:${id}`] !== actual[0]?.run) add("OPENLUP_E_SCHEDULE_UNBOUND", m.name, id, "Bind the actual schedule with its declared cadence to one host trigger.");
     }
-    for (const id of new Set([...m.routes,...c.routes.map((r) => r?.id)])) if (m.routes.filter((r) => r === id).length !== 1 || c.routes.filter((r) => r?.id === id && typeof r.handle === "function").length !== 1 || input.bindings?.routes?.[`${m.name}:${id}`] !== c.routes.find((r) => r.id === id)?.handle) add("OPENLUP_E_PORT_MISSING", m.name, id, "Bind the declared route to its actual host entry.");
+    for (const id of new Set([...m.routes,...c.routes.map((r) => r?.id)])) if (m.routes.filter((r) => r === id).length !== 1 || c.routes.filter((r) => r?.id === id && typeof r.handle === "function").length !== 1 || input.bindings?.routes?.[`${owner}:${id}`] !== c.routes.find((r) => r.id === id)?.handle) add("OPENLUP_E_PORT_MISSING", m.name, id, "Bind the declared route to its actual host entry.");
   }
-  for (const [type,owners] of [...emitters,...handlers]) if (owners.length > 1) add("OPENLUP_E_EVENT_DUPLICATE", owners.sort().join(","), type, "Use one non-kernel producer owner and one composed consumer per event.");
-  for (const type of events) if (!handlers.has(type) && !(Array.isArray(input.exemptions) ? input.exemptions : []).some((e) => e && typeof e.reason === "string" && e.reason.trim() && typeof e.owner === "string" && typeof e.pattern === "string" && ["ignored", "dormant"].includes(e.state) && typeof e.prefix === "boolean" && (e.prefix ? type.startsWith(e.pattern) : type === e.pattern))) add("OPENLUP_E_EVENT_UNHANDLED", "@openlup/core", type, "Register a handler or an explicit owned ignored/dormant declaration.");
-  for (const c of contributions) {
+  for (const [type,owners] of [...emitters,...handlers]) if (owners.length > 1) {
+    const fix = "Use one non-kernel producer owner and one composed consumer per event.";
+    if (owners.some((owner) => selected.some((c) => c.manifest.module && `${c.manifest.name}/${c.manifest.module.id}` === owner))) {
+      for (const owner of new Set(owners)) {
+        const m = selected.find((c) => c.manifest.module && `${c.manifest.name}/${c.manifest.module.id}` === owner)?.manifest;
+        add("OPENLUP_E_EVENT_DUPLICATE", m?.name ?? owner, type, fix, [...owners].sort().join(","), m?.module?.id);
+      }
+    } else add("OPENLUP_E_EVENT_DUPLICATE", owners.sort().join(","), type, fix);
+  }
+  for (const type of events) if (!handlers.has(type) && !(Array.isArray(input.exemptions) ? input.exemptions : []).some((e) => e && typeof e.reason === "string" && e.reason.trim() && typeof e.owner === "string" && typeof e.pattern === "string" && ["ignored", "dormant"].includes(e.state) && typeof e.prefix === "boolean" && (e.prefix ? type.startsWith(e.pattern) : type === e.pattern))) {
+    const owners = selected.filter((c) => c.manifest.module && c.manifest.emits.includes(type));
+    const fix = "Register a handler or an explicit owned ignored/dormant declaration.";
+    if (owners.length) for (const c of owners) add("OPENLUP_E_EVENT_UNHANDLED", c.manifest.name, type, fix, undefined, c.manifest.module?.id);
+    else add("OPENLUP_E_EVENT_UNHANDLED", "@openlup/core", type, fix);
+  }
+  for (const c of selected) {
+    const add: typeof addIssue = (code, pkg, subject, fix, observation) => addIssue(code, pkg, subject, fix, observation, c.manifest.module?.id);
     const req = c.manifest.requiredSchema;
     if (!req) continue;
     if (issues.some((i) => ["schemaProbe", "probeTimeoutMs"].includes(i.subject))) { unknown = true; continue; }
