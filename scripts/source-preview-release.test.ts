@@ -601,7 +601,8 @@ ${identityPrivileges[1]}
     }, null, true);
     try {
       sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
-      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/reviewed replacement/u);
+      // Both gates refuse these bytes at the shared admission function, before the reviewed route.
+      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/migration SQL refuses control characters/u);
     } finally { sample.cleanup(); }
   }, 30_000);
   it.each([
