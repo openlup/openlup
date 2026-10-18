@@ -105,6 +105,11 @@ be a scanned `.ts` file, refuses triple-slash type and path references and all
 meta-properties (also `new.target`), and retains member-call `require` detection
 outside contracts. Identity declares this entry; synthetic graphs also exercise these checks.
 
+
+The job-run ledger SQL asset test verifies a readable, nonempty file within the
+package SQL directory. Its SQL parity tests bind the actual adapter calls to the
+shipped routine signatures; the asset's explanatory header may be edited freely.
+
 `npm run api:check` compares each of the eleven declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from

@@ -3050,31 +3050,11 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/agent-review-controller.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-review-controller.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-review-gate.mjs",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/agent-review-gate.test.ts",
       "class": "public-output"
     },
     {
       "path": "scripts/agent-review-hook.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-review-hosted.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-review-hosted.test.ts",
       "class": "public-output"
     },
     {
@@ -3226,30 +3206,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/core-extraction-candidate.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-command.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-package-content.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-package-content.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-package-manifest.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-snapshot.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/core-package-identity.ts",
       "class": "public-output"
     },
@@ -3258,35 +3214,11 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/customer-account-fixture-settlement.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-account-fixture-settlement.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/customer-account-stale-fixture-classification.ts",
       "class": "public-output"
     },
     {
       "path": "scripts/customer-diagnostic-history-schema.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-diagnostic-neutrality-legs.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-diagnostic-neutrality-legs.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-diagnostic-neutrality-proof.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-diagnostic-neutrality-proof.ts",
       "class": "public-output"
     },
     {
@@ -3431,14 +3363,6 @@
     },
     {
       "path": "scripts/omnipack-e2e/lifecycleEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/omnipack-e2e/seedMatrix.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/omnipack-e2e/seedMatrix.ts",
       "class": "public-output"
     },
     {
@@ -3670,14 +3594,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/pr-passthrough.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/pr-passthrough.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/prelaunch-acquisition-schema.test.ts",
       "class": "public-output"
     },
@@ -3691,6 +3607,14 @@
     },
     {
       "path": "scripts/public-ci-pgtap.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-reuse.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-reuse.test.ts",
       "class": "public-output"
     },
     {
@@ -3727,14 +3651,6 @@
     },
     {
       "path": "scripts/reference-adapters/paymentEventPortConformance.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/reference-adapters/reference-renewal-lease-fixture.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/reference-adapters/reference-renewal-lease-fixture.ts",
       "class": "public-output"
     },
     {
@@ -19745,7 +19661,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -19757,7 +19673,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-348a17832f86962d1ba0dace1473d6f2b2337d8199bedd7f782429e981671a93"
+      "digest": "sha256-add34b8d6131ee27383ebbf3d08f5776079d9a36d0dd6ec666ab4ec0b15e47be"
     },
     {
       "path": "packages/core/package.json",

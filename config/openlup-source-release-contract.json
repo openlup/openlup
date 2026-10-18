@@ -5,11 +5,11 @@
     "npm": "11.19.0"
   },
   "inventory": {
-    "digest": "sha256-0f6b3d91584834b61479e451e85b73045920c4693c85c48a45671f426db420e2",
-    "classDigest": "sha256-7e30bac9cc1dd8afc964a0c4c30d1f242bc277c145b1141f675a84b646cbe49f"
+    "digest": "sha256-35823fb3db5391f9a5ef140dccb3b3c14e035ce8eca3ff20b333ed8f6a0c0523",
+    "classDigest": "sha256-3849f80c99465a73801f152aa3863a792fee0275dc996c9050ac125fba095d7e"
   },
   "packages": {
-    "manifestDigest": "sha256-8135be2087de3cd9f88ee84c936d5a5a358083905258814d554b5bba36964286",
+    "manifestDigest": "sha256-3aa91e362d2f430cc96d5c6323cb6bdac65c380b6b0810940d51353efcb58a90",
     "rootLockDigest": "sha256-6aaa0be03d57e07c990c85a6eb58807879c8a888b0c953b41cc528e7f2464347",
     "coreLockDigest": "sha256-897afe17494e77f199b9e542b05219417965b600d8347e7a6be74abb4fe44346"
   },
@@ -25,7 +25,7 @@
   },
   "policy": {
     "registryDigest": "sha256-19738c711bef792342483d6153060495dee23b69076e260a5a344c9089c0cc03",
-    "publicationCatalogDigest": "sha256-ed86e547f9df35ee162c4909085536cbf1115fabac80f69986b32733fcbc3730"
+    "publicationCatalogDigest": "sha256-0200bf5266b5f6c5d9ca644338a624d59fffae5b469e66ad8c252bcfe4534926"
   },
   "compatibility": {
     "typecheck": {
