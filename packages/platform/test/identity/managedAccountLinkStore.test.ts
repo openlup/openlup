@@ -4,12 +4,13 @@ import { createSupabaseAccountLinkStore } from "../../src/identity/managedAccoun
 function fakeClient(results: Array<{ data?: unknown; error?: unknown }>): SupabaseClient {
   const queue = [...results];
   const chain: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "is", "update", "insert"]) {
+  for (const method of ["select", "eq", "filter", "is", "update", "insert"]) {
     chain[method] = () => chain;
   }
   const next = async () => queue.shift() ?? { data: null, error: null };
   chain.maybeSingle = next;
   chain.single = next;
+  chain.limit = next;
   return { from: () => chain } as unknown as SupabaseClient;
 }
 
@@ -26,7 +27,7 @@ describe("createSupabaseAccountLinkStore", () => {
     expect(await missing.findAccountByEmail("x@y.com")).toBeNull();
 
     const unlinked = createSupabaseAccountLinkStore(
-      fakeClient([{ data: { id: "acct-2", email: "x@y.com", auth_user_id: null } }]),
+      fakeClient([{ data: [{ id: "acct-2", email: "x@y.com", auth_user_id: null }] }]),
     );
     expect(await unlinked.findAccountByEmail("x@y.com")).toEqual({ id: "acct-2", email: "x@y.com", principalId: null });
   });

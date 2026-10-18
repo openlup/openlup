@@ -1,4 +1,4 @@
-import type { ManagedIdentityClient } from "./managedClient.js";
+import type { ManagedIdentityClient, ManagedIdentityRow } from "./managedClient.js";
 import type {
   AccountLinkStore,
   CreateAccountInput,
@@ -22,12 +22,11 @@ export function createSupabaseAccountLinkStore(rawClient: unknown): AccountLinkS
     },
 
     async findAccountByEmail(email: string): Promise<CustomerAccount | null> {
-      const { data, error } = await client
-        .from("clients")
-        .select("id, email, auth_user_id")
-        .eq("email", email)
-        .maybeSingle();
-      if (error) throw error;
+      const rows = await findManagedContactsByEmail(client, email, false);
+      if (rows.length > 1) {
+        throw Object.assign(new Error("multiple rows returned"), { code: "PGRST116" });
+      }
+      const data = rows[0];
       if (!data) return null;
       return { id: data.id, email: data.email ?? null, principalId: data.auth_user_id ?? null };
     },
@@ -86,4 +85,21 @@ export function createSupabaseAccountLinkStore(rawClient: unknown): AccountLinkS
       return { id: data!.id };
     },
   };
+}
+
+async function findManagedContactsByEmail(
+  client: ManagedIdentityClient,
+  email: string,
+  oldestFirst: boolean,
+): Promise<ManagedIdentityRow[]> {
+  const normalized = email.trim().toLowerCase();
+  // Escaping bounds the database prefilter; Unicode regex folding can still
+  // widen it, so only exact normalized addresses may cross this boundary.
+  let query = client.from("clients")
+    .select("id, email, auth_user_id")
+    .filter("email", "imatch", `^${normalized.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`);
+  if (oldestFirst) query = query.order("created_at", { ascending: true });
+  const { data, error } = await query.limit(10);
+  if (error) throw error;
+  return (data ?? []).filter((row) => row.email?.trim().toLowerCase() === normalized);
 }

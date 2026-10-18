@@ -1,17 +1,11 @@
-import type { ManagedIdentityClient, ManagedIdentityUser } from "./managedClient.js";
+import type { ManagedIdentityClient, ManagedIdentityRow, ManagedIdentityUser } from "./managedClient.js";
 import type { ClientAuthLinkStore } from "./ports.js";
 export function createSupabaseClientAuthLinkStore(rawClient: unknown): ClientAuthLinkStore {
   const client = rawClient as ManagedIdentityClient;
   return {
     async findClientByEmail(email) {
-      const { data, error } = await client
-        .from("clients")
-        .select("id, auth_user_id")
-        .eq("email", email)
-        .order("created_at", { ascending: true })
-        .limit(1);
-      if (error) throw error;
-      const row = data?.[0];
+      const rows = await findManagedContactsByEmail(client, email, true);
+      const row = rows[0];
       if (!row) return null;
       return { id: row.id, authUserId: row.auth_user_id ?? null };
     },
@@ -104,4 +98,21 @@ function isAlreadyRegistered(error: unknown): boolean {
   if (failure.code === "email_exists" || failure.code === "user_already_exists") return true;
   return failure.status === 422 && typeof failure.message === "string"
     && /already (been )?registered/i.test(failure.message);
+}
+
+async function findManagedContactsByEmail(
+  client: ManagedIdentityClient,
+  email: string,
+  oldestFirst: boolean,
+): Promise<ManagedIdentityRow[]> {
+  const normalized = email.trim().toLowerCase();
+  // Escaping bounds the database prefilter; Unicode regex folding can still
+  // widen it, so only exact normalized addresses may cross this boundary.
+  let query = client.from("clients")
+    .select("id, email, auth_user_id")
+    .filter("email", "imatch", `^${normalized.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`);
+  if (oldestFirst) query = query.order("created_at", { ascending: true });
+  const { data, error } = await query.limit(10);
+  if (error) throw error;
+  return (data ?? []).filter((row) => row.email?.trim().toLowerCase() === normalized);
 }
