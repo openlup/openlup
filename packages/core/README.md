@@ -206,6 +206,11 @@ neutrality evidence, not package activation or consumer compatibility evidence.
 
 ## Kernel Documentation
 
+- [`docs/SUBSCRIPTION_ENGINE.md`](docs/SUBSCRIPTION_ENGINE.md) — what the
+  `./subscription` kernel owns, its deterministic-clock contract, the
+  late-payment cycle-shift rule and its monotonic clamp, and how a host
+  application consumes it.
+
 ### Module readiness
 
 Selected `./readiness` modules retain independent schema requirements.
@@ -214,8 +219,3 @@ Dependencies use the same or an earlier layer:
 See [CHANGELOG migration guidance](CHANGELOG.md#unreleased) for selection,
 bindings, refusals and diagnostics, and the source checkout's
 `api/readiness.api.md` snapshot for declarations; the host owns inventory.
-
-- [`docs/SUBSCRIPTION_ENGINE.md`](docs/SUBSCRIPTION_ENGINE.md) — what the
-  `./subscription` kernel owns, its deterministic-clock contract, the
-  late-payment cycle-shift rule and its monotonic clamp, and how a host
-  application consumes it.
