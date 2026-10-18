@@ -139,8 +139,8 @@ refusals and require approval before the forward's introducing commit. These
 checks admit one reviewed contraction; they do not grant general policy edits.
 
 The reviewed runtime-forward checker admits an exact pinned five-function SQL
-file and an optional identity account-link file with fixed service-only client
-writes. Tests exercise both PR history and release
+file and an optional identity capabilities file with fixed service-only client
+writes, operator activation inserts and invitation email reads. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,
 writes, functions and changed execution attributes. The control must already
 exist before the SQL feature's base and introducing commit. Passing these tests
@@ -858,7 +858,7 @@ Reviewed function forwards use the same checker in required self-check and relea
 prepare. Their whole-file bytes, signatures, old/new definitions and runtime
 privileges are pinned in `config/reviewed-platform-forwards.json`. The runtime
 list admits the five-function capability forward and an optional service-only
-identity account-link forward. Required self-check keeps the whole registry
+identity capabilities forward. Required self-check keeps the whole registry
 unchanged from the feature comparison base; release compares each forward's own
 entry, list position and shared registry fields with its introduction parent, so later
 controls may append approvals. A feature cannot approve itself. These forwards
