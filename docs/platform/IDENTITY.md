@@ -264,11 +264,11 @@ prerequisites, startup, assertions and cleanup fail nonzero; nothing skips.
 The runner reuses the pgTAP committed-chain reader and subscription configuration
 and prerequisites. It starts separate owned confirmed, auto-confirm and external
 provider installations with Auth, API, database and captured mail enabled, removes
-inherited default grants before replay, and applies a labelled fixture-only grant:
-`GRANT INSERT (email, auth_user_id, acquisition_source, lifecycle_stage), UPDATE (auth_user_id) ON public.clients TO service_role`.
-The committed managed reference grants lack those capabilities. Successful
-association in this disposable stack therefore does not prove association under
-the shipped grants; that permission gap requires a separate managed forward.
+inherited default grants before replay, and applies the complete committed managed
+chain, including `20261018160000_identity_service_role_capabilities.sql`. That
+forward supplies the service-role client creation and linking capabilities, plus
+operator activation inserts and invitation email reads. The runner proves
+association under the shipped grants without adding fixture-only grants.
 It tests real editable metadata against cleared confirmation, auto-confirm and
 undeclared-provider 403s, actual captured mailbox proof, cache expiry followed by
 a settings-only loopback fault and 503, unchanged contacts on refusals, and an

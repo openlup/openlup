@@ -247,6 +247,14 @@ meet its budget or import a larger application's fingerprint query costs.
 
 ## Required/local/release placement and parity
 
+Execution placement update, 18 October 2026: the approved merge-latency
+optimization moves the unchanged package gate to the existing required
+`install-proof` job, after both builds, and runs the unchanged root command in
+`test` concurrently in another checkout. This supersedes the original serial
+placement below; it preserves all proofs, selectors, six required contexts and
+20-minute job limits. Local commands sharing build outputs remain serial.
+Current execution is documented in [Development and release](../DEVELOPMENT_AND_RELEASE.md).
+
 Keep existing owning `test` context, no new status. Preserve the required root
 suite, subscription step, complete core CI and both standalone falsifier suites.
 The required workflow invokes one inventory-driven `required-package-gates.ts`
