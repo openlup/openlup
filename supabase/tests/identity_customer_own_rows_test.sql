@@ -28,7 +28,7 @@ INSERT INTO public.customer_payment_preferences (id, client_id, scope, method_ki
 INSERT INTO public.customer_account_events (id, client_id, event_type, entity_type) VALUES
   ('e3200000-0000-4000-8000-000000000001', 'e3200000-0000-4000-8000-000000000001', 'identity_fixture', 'identity_fixture'),
   ('e3200000-0000-4000-8000-000000000002', 'e3200000-0000-4000-8000-000000000002', 'identity_fixture', 'identity_fixture');
--- Seeded subscription rows make the dormant-policy and anonymous zero-row witnesses non-vacuous.
+-- Seeded subscription rows make the anonymous zero-row witnesses non-vacuous.
 INSERT INTO public.catalog_products (id, slug, name) VALUES
   ('e3300000-0000-4000-8000-000000000001', 'identity-own-rows-product', 'Identity fixture product');
 INSERT INTO public.catalog_skus (id, product_id, sku, title, pet_type, net_weight_g, kcal_per_unit) VALUES

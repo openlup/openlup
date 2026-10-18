@@ -23,9 +23,13 @@ and executes no SQL. A host selects the adapter and supplies its configuration.
 
 Customer reconciliation refuses a principal its verifier reports as unverified,
 reserved machine principals, conflicting links and a principal/account email
-mismatch. Verification is the composed verifier's decision: the managed verifier
-also accepts `user_metadata.email_verified`, which a user can edit, so a host
-mounting reconciliation composes a confirmation-only verifier. It retries the email
+mismatch. Verification is the composed verifier's decision. The managed verifier
+also accepts `user_metadata.email_verified`, which a user can edit, and the
+unmounted reference source `server/bff/customers/reconcile-account.ts` composes it,
+as the contributing adopter's route does. A host that mounts reconciliation
+replaces it with its own verifier that trusts only a confirmed address (for
+example, `email_confirmed_at`); the package ships no such verifier, and the token
+verifier reports every principal as unverified. The engine retries the email
 branch once after a concurrent create failure. The new
 [`createReconcileAccountHandler`](../../packages/platform/src/identity/reconcileAccountHandler.ts)
 returns those refusals as 400, 403 or 409 and has no personalization hook.

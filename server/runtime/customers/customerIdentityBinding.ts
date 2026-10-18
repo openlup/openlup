@@ -5,7 +5,8 @@ import { bindRequestActorDataPort } from "../dataBinding.js";
 const createBinding = createCustomerIdentityBindingFactory({
   loadJwt: () => import("jose"),
   createManagedClient: createCustomerClient,
-  readManagedEnv: readCustomerSupabaseReadEnv,
+  // The managed read environment stays process-wide, as before the import; the request env selects only the bundle.
+  readManagedEnv: () => readCustomerSupabaseReadEnv(),
   bindRequestActorDataPort: (token, env) => bindRequestActorDataPort(token, env) as never,
 });
 export function createCustomerIdentityBinding(
