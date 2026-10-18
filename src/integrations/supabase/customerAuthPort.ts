@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { getCustomerSupabase } from './customerClient';
+import { clearCustomerSessionStorage, getCustomerSupabase } from './customerClient';
 import { requestCustomerMagicLink } from '@/domains/customers/customerMagicLinkClient';
 import type { CustomerAuthPort } from '@/domains/auth/ports';
 import type { AuthSession, AuthStateListener, OAuthProviderKind } from '@/domains/auth/types';
@@ -10,7 +10,7 @@ import { readCustomerReturnTo } from '@/lib/customerRecoverySession';
 // it confines the Supabase coupling so the OSS core (src/domains/auth) and the
 // UI/session code depend only on the provider-agnostic port.
 //
-// Magic-link send is a openlup BFF call (`requestCustomerMagicLink`), not a
+// Magic-link delivery is a BFF call (`requestCustomerMagicLink`), not a
 // client auth call; it lives here so the hook depends only on the port.
 
 // Email is always requested so accounts can be deduplicated server-side by
@@ -33,7 +33,8 @@ export function createSupabaseCustomerAuthPort(): CustomerAuthPort {
   const supabase = getCustomerSupabase();
   return {
     async getSession() {
-      const { data } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
       return toAuthSession(data.session);
     },
 
@@ -58,7 +59,7 @@ export function createSupabaseCustomerAuthPort(): CustomerAuthPort {
     },
 
     async verifyOtpCode({ email, token }) {
-      const { error } = await supabase.auth.verifyOtp({ email, token, type: 'magiclink' });
+      const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
       return { error: error?.message ?? null };
     },
 
@@ -79,7 +80,13 @@ export function createSupabaseCustomerAuthPort(): CustomerAuthPort {
     },
 
     async signOut() {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch { /* Local logout must complete even if remote revocation throws. */ }
+      // With the stored session removed, SDK cleanup has no bearer to send remotely.
+      clearCustomerSessionStorage();
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
     },
   };
 }

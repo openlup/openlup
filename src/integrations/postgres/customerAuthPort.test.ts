@@ -1,6 +1,4 @@
-/** @vitest-environment jsdom -- a browser storage adapter; the node env only
- * ever had a store because the shared setup fakes one on `globalThis`. */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/domains/customers/customerMagicLinkClient", () => ({
   requestCustomerMagicLink: vi.fn().mockResolvedValue(undefined),
@@ -8,6 +6,7 @@ vi.mock("@/domains/customers/customerMagicLinkClient", () => ({
 vi.mock("@/lib/bff/client", () => ({ requestBff: vi.fn() }));
 
 import { requestBff } from "@/lib/bff/client";
+import { requestCustomerMagicLink } from "@/domains/customers/customerMagicLinkClient";
 import { createPostgresCustomerAuthPort } from "./customerAuthPort";
 
 const SESSION = {
@@ -18,8 +17,18 @@ const SESSION = {
 
 describe("postgres customer auth port", () => {
   beforeEach(() => {
+    // Match the minimal browser surface used by the Node PostgreSQL proof.
+    vi.stubGlobal("window", { localStorage, sessionStorage, location: { search: "" } });
     localStorage.clear();
     vi.mocked(requestBff).mockReset().mockResolvedValue(SESSION as never);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("requests a challenge with an empty browser query and no saved return target", async () => {
+    await expect(createPostgresCustomerAuthPort().signInWithOtp({ email: SESSION.user.email, locale: "en" }))
+      .resolves.toEqual({ error: null });
+    expect(requestCustomerMagicLink).toHaveBeenCalledWith(SESSION.user.email, "en", { returnTo: null });
   });
 
   it("stores the bounded bearer session, emits it and clears it on sign-out", async () => {
@@ -33,6 +42,7 @@ describe("postgres customer auth port", () => {
       accessToken: SESSION.accessToken,
       user: SESSION.user,
     });
+    expect(JSON.parse(localStorage.getItem("customer.auth.direct.v1")!)).toMatchObject({ expiresAt: SESSION.expiresAt });
     expect(listener).toHaveBeenCalledWith({ accessToken: SESSION.accessToken, user: SESSION.user });
 
     await port.signOut();
@@ -41,12 +51,12 @@ describe("postgres customer auth port", () => {
   });
 
   it("drops an expired or malformed stored session", async () => {
-    localStorage.setItem("openlup.customer.session.v1", JSON.stringify({
+    localStorage.setItem("customer.auth.direct.v1", JSON.stringify({
       session: { accessToken: "expired", user: SESSION.user },
       expiresAt: "2000-01-01T00:00:00.000Z",
     }));
     await expect(createPostgresCustomerAuthPort().getSession()).resolves.toBeNull();
-    expect(localStorage.getItem("openlup.customer.session.v1")).toBeNull();
+    expect(localStorage.getItem("customer.auth.direct.v1")).toBeNull();
   });
 
   it("refuses unsupported identity flows explicitly", async () => {

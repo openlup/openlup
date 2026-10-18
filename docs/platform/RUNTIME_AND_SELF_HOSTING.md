@@ -109,6 +109,15 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The subscription reference mounts English and Polish customer login, callback
+and account routes through one customer auth provider and query client. Account
+entry requires a linked own-profile read. Only GET `/api/bff/customers/me` is
+added, using the identity handler with a bearer-bound customer client. Its CSP
+adds exactly the validated local auth origin to `connect-src`; static reference
+composition is unchanged. See [browser identity](IDENTITY_BROWSER_REFERENCE.md)
+for routes, code fallback, persistence reset and logout behaviour.
+
 The subscription profile supplies a managed email-trust policy to its existing
 reconcile call with an empty external-provider allowlist. The reference server
 retains its existing startup admission; identity readiness helpers are available
@@ -129,7 +138,14 @@ external payment provider, external mail service or full self-hosted platform.
 See [Evaluate a subscription account](SUBSCRIPTION_REFERENCE.md) for the exact
 setup, server command, operator setup and verification boundary.
 
-The profile build resolves `@openlup/core` through its built package exports.
+The profile build must inherit `OPENLUP_REFERENCE_PROFILE=subscription` from the
+owned environment. Invoke npm's CLI through Node with `--env-file`, as shown in
+the evaluation instructions; Node's `--run` does not load that file for its
+script. The resulting HTML carries `data-openlup-profile="subscription"`, which
+the subscription server requires before serving browser routes. Build tests
+pin both the subscription marker/entrypoint and the default static document.
+
+The profile build resolves `@openlup/core` and `@openlup/platform` through its built package exports.
 Its closed browser import list admits the corresponding `packages/core/dist`
 modules; a missing core build or an undeclared first-party import refuses the
 build. The setup command builds core before the profile, and the local Node

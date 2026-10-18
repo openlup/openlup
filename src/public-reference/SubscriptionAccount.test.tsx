@@ -1,24 +1,32 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { I18nextProvider } from "react-i18next";
+import { createReferenceI18n } from "./subscriptionMessages";
+import { CustomerAuthProvider } from "@/lib/useCustomerAuth";
+import { appQueryClient } from "@/lib/queryClient";
 
 const mocks = vi.hoisted(() => ({
   catalog: vi.fn(), checkout: vi.fn(), signIn: vi.fn(), readSession: vi.fn(), clearSession: vi.fn(),
-  getAccount: vi.fn(), applyAction: vi.fn(), reconcile: vi.fn(),
+  getAccount: vi.fn(), applyAction: vi.fn(), reconcile: vi.fn(), profile: vi.fn(),
 }));
 vi.mock("./subscriptionApi", () => ({
   loadReferenceItems: mocks.catalog,
   createReferenceSubscription: mocks.checkout,
-  requestReferenceSignIn: mocks.signIn,
-  readReferenceSession: mocks.readSession,
-  clearReferenceSession: mocks.clearSession,
 }));
 vi.mock("@/domains/customers/customerSelfServiceClient", () => ({
   getCustomerAccount: mocks.getAccount,
   applyCustomerSubscriptionAction: mocks.applyAction,
 }));
+vi.mock("@/domains/customers/customerMeClient", () => ({ getCustomerMe: mocks.profile }));
+vi.mock("@/lib/auth/customerAuthPortFactory", () => ({ getCustomerAuthBinding: async () => ({
+  port: { getSession: async () => ({ accessToken: "private-token", user: { id: "11111111-1111-4111-8111-111111111111", email: "buyer@example.com" } }),
+    onAuthStateChange: () => () => {}, signOut: mocks.clearSession },
+  reconcileAccount: true, signInOptions: { codeFormat: "numeric", socialProviders: [] },
+}) }));
 vi.mock("@/domains/customers/customerReconcileClient", () => ({ reconcileCustomerAccount: mocks.reconcile }));
 vi.mock("@/pages/account/v2/subscriptions/modals/RescheduleModal", () => ({
   RescheduleModal: ({ open, onAction, subscription }: { open: boolean; onAction: (body: unknown) => void; subscription: { subscriptionId: string } }) =>
@@ -40,12 +48,15 @@ const oldAccount = {
 const newAccount = { ...oldAccount, subscriptions: [{ ...oldAccount.subscriptions[0], nextCycleAt: "2026-10-17T12:00:00.000Z" }] };
 
 function withQuery(ui: ReactNode) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return { ...render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>), client };
+  const client = appQueryClient;
+  return { ...render(<QueryClientProvider client={client}><I18nextProvider i18n={createReferenceI18n()}><MemoryRouter initialEntries={["/account"]}><CustomerAuthProvider><Routes><Route path="/account" element={ui} /><Route path="/sign-in" element={<h1>Sign in to your account</h1>} /></Routes></CustomerAuthProvider></MemoryRouter></I18nextProvider></QueryClientProvider>), client };
 }
 
 beforeEach(() => {
+  appQueryClient.clear();
   Object.values(mocks).forEach((mock) => mock.mockReset());
+  mocks.profile.mockResolvedValue({ clientId: "22222222-2222-4222-8222-222222222222" });
+  mocks.reconcile.mockResolvedValue({});
   mocks.catalog.mockResolvedValue(catalog);
   mocks.checkout.mockResolvedValue({ orderId: "order-1", paymentStatus: "succeeded" });
   mocks.signIn.mockResolvedValue({ accepted: true });
@@ -89,10 +100,10 @@ describe("subscription reference account", () => {
   it("clears the tab session and principal cache on sign-out", async () => {
     const { client } = withQuery(<ReferenceAccount />);
     await screen.findByText(/Oct 10, 2026/);
-    expect(client.getQueryData(["reference-account", "buyer-1"])).toBeDefined();
+    expect(client.getQueryData(["reference-account", "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"])).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-    expect(mocks.clearSession).toHaveBeenCalledOnce();
-    expect(client.getQueryData(["reference-account", "buyer-1"])).toBeUndefined();
-    expect(screen.getByRole("heading", { name: "Sign in to your account" })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.clearSession).toHaveBeenCalledOnce());
+    expect(client.getQueryData(["reference-account", "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"])).toBeUndefined();
+    expect(await screen.findByRole("heading", { name: "Sign in to your account" })).toBeInTheDocument();
   });
 });

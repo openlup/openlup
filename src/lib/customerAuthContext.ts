@@ -2,10 +2,7 @@ import { createContext, useContext, type Dispatch, type SetStateAction } from 'r
 import type { AuthSession, AuthUser, OAuthProviderKind } from '@/domains/auth/types';
 import type { CustomerMeResponse } from '@/domains/customers/contracts';
 
-// Faza A W12.1 — hidden passwordless customer auth context.
-// Mirrors `authContext.ts` but for the customer session. There is NO admin check
-// here: customer auth and admin auth are fully independent. Session/user are the
-// provider-agnostic shapes from the auth domain, not Supabase types.
+// Customer session state is independent of operator authentication.
 
 export type CustomerProfile = CustomerMeResponse;
 export type CustomerAuthCallbackOutcome =
@@ -18,6 +15,7 @@ export type CustomerAuthCallbackOutcome =
   | "transport_uncertain";
 
 export interface CustomerAuthContextValue {
+  signInOptions?: import('./auth/customerAuthPortFactory').CustomerSignInOptions;
   user: AuthUser | null;
   session: AuthSession | null;
   loading: boolean;

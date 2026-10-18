@@ -21,7 +21,7 @@ const mockClearAuthScopedQueryCache = vi.hoisted(() => vi.fn());
 const diagnosticReporter = vi.hoisted(() => ({ reportCustomerJourneyDiagnostic: vi.fn() }));
 
 vi.mock("@/lib/auth/customerAuthPortFactory", () => ({
-  getCustomerAuthPort: () => mockAuthPort,
+  getCustomerAuthBinding: async () => ({ port: mockAuthPort, reconcileAccount: true, signInOptions: { codeFormat: "numeric", socialProviders: [] } }),
 }));
 
 vi.mock("@/domains/customers/customerMeClient", () => ({
@@ -116,6 +116,32 @@ describe("CustomerAuthProvider", () => {
     vi.clearAllMocks();
   });
 
+  it.each(["email", "code", "external"])("blocks late session events until explicit %s sign-in", async (method) => {
+    mockAuthPort.getSession.mockResolvedValueOnce(SESSION);
+    let finishSignOut!: () => void;
+    mockAuthPort.signOut.mockReturnValueOnce(new Promise<void>((resolve) => { finishSignOut = resolve; }));
+    render(<CustomerAuthProvider><AuthActionsCapture /></CustomerAuthProvider>);
+    await waitFor(() => expect(authActions?.profile).toEqual(PROFILE));
+
+    let logout!: Promise<void>;
+    act(() => { logout = authActions!.signOut(); });
+    await act(async () => { authStateListener?.({ ...SESSION, accessToken: "late-refresh-token" }); });
+    expect(authActions).toMatchObject({ session: null, user: null, profile: null, loading: false });
+    expect(mockGetCustomerMe).toHaveBeenCalledTimes(1);
+    await act(async () => { finishSignOut(); await logout; });
+    await act(async () => { authStateListener?.(SESSION); });
+    expect(authActions?.session).toBeNull();
+
+    await act(async () => {
+      if (method === "email") await authActions!.signInWithOtp("customer@example.com");
+      else if (method === "code") await authActions!.signInWithOtpCode("customer@example.com", "123456");
+      else await authActions!.signInWithOAuth("google", "https://example.com/account/auth/callback");
+      authStateListener?.(SESSION);
+    });
+    await waitFor(() => expect(authActions?.profile).toEqual(PROFILE));
+    expect(authActions?.session).toEqual(SESSION);
+  });
+
   it("settles to login when the initial session resolves to null", async () => {
     renderProtected();
 
@@ -125,7 +151,7 @@ describe("CustomerAuthProvider", () => {
 
   it("records closed bootstrap and sign-in action lifecycles", async () => {
     render(<CustomerAuthProvider><AuthActionsCapture /></CustomerAuthProvider>);
-    await waitFor(() => expect(authActions).not.toBeNull());
+    await waitFor(() => expect(authActions?.signInOptions).toBeDefined());
     await act(async () => {
       await authActions!.signInWithOtp("buyer@example.com");
       await authActions!.signInWithOtpCode("buyer@example.com", "123456");
@@ -280,6 +306,7 @@ describe("CustomerAuthProvider", () => {
     expect(await screen.findByText("dashboard-body")).toBeInTheDocument();
     expect(mockGetCustomerMe).toHaveBeenCalledTimes(1);
 
+    await waitFor(() => expect(authStateListener).not.toBeNull());
     act(() => {
       authStateListener?.(SESSION);
     });
@@ -320,13 +347,14 @@ describe("CustomerAuthProvider", () => {
 
     renderProtected();
 
+    await waitFor(() => expect(authStateListener).not.toBeNull());
     act(() => {
       authStateListener?.(SESSION);
     });
 
     await waitFor(() => expect(mockGetCustomerMe).toHaveBeenCalledTimes(1));
     await act(async () => {});
-    expect(document.querySelector(".animate-spin")).toBeInTheDocument();
+    expect(screen.getByText("dashboard-body")).toBeInTheDocument();
 
     await act(async () => {
       resolveSession(SESSION);

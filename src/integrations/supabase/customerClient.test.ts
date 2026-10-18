@@ -36,7 +36,7 @@ describe("customer Supabase client", () => {
       "test-anon-key",
       {
         auth: {
-          storage: localStorage,
+          storage: expect.objectContaining({ getItem: expect.any(Function), setItem: expect.any(Function), removeItem: expect.any(Function) }),
           storageKey: CUSTOMER_AUTH_STORAGE_KEY,
           persistSession: true,
           autoRefreshToken: true,
@@ -45,4 +45,27 @@ describe("customer Supabase client", () => {
       },
     );
   });
+});
+
+it("keeps the SDK storage usable when reads or writes are denied", async () => {
+  vi.resetModules();
+  const { getCustomerSupabase } = await import("./customerClient");
+  getCustomerSupabase();
+  const storage = (mockCreateClient.mock.calls[mockCreateClient.mock.calls.length - 1] as unknown as [string, string, { auth: { storage: Storage } }])[2].auth.storage;
+  const read = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => { throw new Error("denied"); });
+  const write = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => { throw new Error("denied"); });
+  try {
+    expect(storage.getItem("synthetic-key")).toBeNull();
+    expect(() => storage.setItem("synthetic-key", "synthetic-value")).not.toThrow();
+    expect(storage.getItem("synthetic-key")).toBe("synthetic-value");
+    storage.removeItem("synthetic-key");
+    expect(storage.getItem("synthetic-key")).toBeNull();
+  } finally { read.mockRestore(); write.mockRestore(); }
+});
+
+it("offers only the supported configured SDK sign-in descriptor", async () => {
+  const { customerSocialProviders } = await import("./customerClient");
+  expect(customerSocialProviders([])).toEqual([]);
+  expect(customerSocialProviders(["apple", "facebook"])).toEqual([]);
+  expect(customerSocialProviders(["google", "apple"])).toEqual([{ kind: "google", displayName: "Google" }]);
 });

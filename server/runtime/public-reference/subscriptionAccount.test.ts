@@ -60,6 +60,19 @@ describe("captured sign-in error boundary", () => {
   });
 });
 
+it("accepts compatible locale and account-root fields without changing captured account creation", async () => {
+  const res = response();
+  await createReferenceAccountHandlers(env, origin).requestSignIn({ ...request, body: { email: " Customer@Example.com ", locale: "pl", returnTo: "/konto" } } as HttpRequest, res);
+  expect(mock.otp).toHaveBeenCalledWith({ email: "customer@example.com", options: { shouldCreateUser: true, emailRedirectTo: `${origin}/konto/auth/callback` } });
+  expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, data: { accepted: true } }));
+});
+it.each(["https://external.invalid", "/account/auth/callback", "/account/orders"])("refuses an unmounted callback target %s", async (returnTo) => {
+  const res = response();
+  await createReferenceAccountHandlers(env, origin).requestSignIn({ ...request, body: { email: "customer@example.com", locale: "en", returnTo } } as HttpRequest, res);
+  expect(res.status).toHaveBeenCalledWith(400);
+  expect(mock.otp).not.toHaveBeenCalled();
+});
+
 describe("reference email trust composition", () => {
   it.each(["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"] as const)("passes required policy and preserves the reference refusal for %s", async code => {
     mock.getUser.mockResolvedValue({ data: { user: { id: "b1000000-0000-4000-8000-000000000003", email: "reference@example.com", email_confirmed_at: "2026-01-01" } }, error: null });

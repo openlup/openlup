@@ -274,6 +274,8 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+<!-- openlup-doc-impact {"unit":"data","digest":"sha256-474c9722bba98cb05cc9b075d987ec35207dbb68fcdd7528ef88d9f953c9e38e","reason":"Customer browser adapters use new session namespaces without migrating legacy credentials. The managed adapter now also removes its effective SDK session store and completes local SDK cleanup after remote logout failure. These are browser-session changes only: database schemas, migration chains, stored customer links and the compatibility lifecycle are unchanged."} -->
+
 The direct privacy forward `20261018190000_identity_privacy_erasures` appends
 position 69 and one receipt table, with default NO ACTION references and no
 functions, grants or policies. Apply it before the updated customer challenge

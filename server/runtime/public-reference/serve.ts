@@ -8,7 +8,7 @@ import {
   normalizeRuntimeReleaseSha,
 } from "../../_lib/observability/runtimeProvenance.ts";
 import { loadSiteRouteManifest } from "../../../scripts/site-routes.mjs";
-import { createSubscriptionProfile, SUBSCRIPTION_CSP, SUBSCRIPTION_PAGES } from "./subscriptionProfile.js";
+import { createSubscriptionProfile, SUBSCRIPTION_PAGES } from "./subscriptionProfile.js";
 
 const SECURITY_HEADERS = {
   "content-security-policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'",
@@ -128,7 +128,7 @@ export function createPublicReferenceServer(options: PublicReferenceServerOption
       const document = readFileSync(index, "utf8");
       if (!document.includes('data-openlup-profile="subscription"')) return response(res, 503, "Build the subscription reference first\n");
       const shell = document.replace(/<div id="root">[\s\S]*<\/div>/, '<div id="root"></div>');
-      return response(res, 200, shell, { "content-type": "text/html; charset=utf-8", "content-security-policy": SUBSCRIPTION_CSP }, request.method === "HEAD");
+      return response(res, 200, shell, { "content-type": "text/html; charset=utf-8", "content-security-policy": subscription.csp }, request.method === "HEAD");
     }
 
     const page = current.pages.get(pathname);

@@ -2,20 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { resolveSupabasePublishableKey } from './keyResolution';
-import { resolveStorageOrMemory } from '@/lib/browserStorage';
+import { createMemoryStorage, resolveStorageOrMemory } from '@/lib/browserStorage';
 
-// HIDDEN customer (passwordless) auth client — Faza A W12.1.
-//
-// This is a SEPARATE Supabase client instance from the admin singleton in
-// `./client.ts`. It MUST NOT share the admin session: it uses a DISTINCT
-// `storageKey` ('openlup-customer') so the customer's magic-link session is
-// persisted under its own localStorage namespace and can never collide with,
-// overwrite, or read the live admin session (`sb-<ref>-auth-token`). The two
-// clients run side by side; signing a customer in/out never touches admin auth.
-//
-// detectSessionInUrl is restricted to the customer callback route. The client is
-// a lazy singleton so importing App.tsx never auto-initializes a second Supabase
-// auth client on public/live pages.
+// Separate, lazy customer client; operator sessions use their own namespace.
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = resolveSupabasePublishableKey({
@@ -23,11 +12,17 @@ const SUPABASE_ANON_KEY = resolveSupabasePublishableKey({
   VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
 });
 
-export const CUSTOMER_AUTH_STORAGE_KEY = 'openlup-customer';
+export const CUSTOMER_AUTH_STORAGE_KEY = 'customer.auth.managed.v1';
 export const CUSTOMER_AUTH_CALLBACK_PATH = '/konto/auth/callback';
 export const CUSTOMER_AUTH_CALLBACK_PATH_EN = '/account/auth/callback';
 
 let customerSupabase: SupabaseClient<Database> | null = null;
+let customerSessionStorage: Pick<Storage, 'removeItem'> | null = null;
+
+/** Clear the effective store, including its same-document memory fallback. */
+export function clearCustomerSessionStorage(): void {
+  customerSessionStorage?.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
+}
 
 export function shouldDetectCustomerSessionInUrl(url: URL): boolean {
   return url.pathname === CUSTOMER_AUTH_CALLBACK_PATH || url.pathname === CUSTOMER_AUTH_CALLBACK_PATH_EN;
@@ -35,13 +30,31 @@ export function shouldDetectCustomerSessionInUrl(url: URL): boolean {
 
 export function getCustomerSupabase(): SupabaseClient<Database> {
   if (!customerSupabase) {
+    const storage = resolveStorageOrMemory('localStorage');
+    const memory = createMemoryStorage();
+    const guardedStorage = {
+      getItem(key: string) {
+        const cached = memory.getItem(key);
+        if (cached !== null) return cached;
+        try { return storage.getItem(key); } catch { return null; }
+      },
+      setItem(key: string, value: string) {
+        try { storage.setItem(key, value); memory.removeItem(key); }
+        catch { memory.setItem(key, value); }
+      },
+      removeItem(key: string) {
+        memory.removeItem(key);
+        try { storage.removeItem(key); } catch { /* Best effort. */ }
+      },
+    };
+    customerSessionStorage = guardedStorage;
     customerSupabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
         // ⛔ NEVER `localStorage` here. Reading the global throws `SecurityError`
         // in a webview with site data denied, and this constructor runs inside the
         // header's session-presence effect — so the throw took every page down
         // through `RouteErrorBoundary`, not just the account surface.
-        storage: resolveStorageOrMemory('localStorage'),
+        storage: guardedStorage,
         storageKey: CUSTOMER_AUTH_STORAGE_KEY,
         persistSession: true,
         autoRefreshToken: true,
@@ -51,4 +64,9 @@ export function getCustomerSupabase(): SupabaseClient<Database> {
   }
 
   return customerSupabase;
+}
+
+/** SDK-owned descriptors: shared pages do not know provider names. */
+export function customerSocialProviders(enabled: readonly string[]) {
+  return enabled.includes('google') ? [{ kind: 'google' as const, displayName: 'Google' }] : [];
 }

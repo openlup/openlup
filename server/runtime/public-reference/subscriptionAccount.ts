@@ -15,7 +15,11 @@ import { createCustomerSubscriptionActionHandler } from "../../domains/customers
 import { applyCustomerSubscriptionAction } from "../../adapters/supabase/customerSubscriptionAction.js";
 
 export type ReferenceHandler = (req: HttpRequest, res: HttpResponse) => Promise<unknown> | unknown;
-const requestSchema = z.object({ email: z.string().trim().toLowerCase().email().max(160) }).strict();
+const requestSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(160),
+  locale: z.enum(["en", "pl"]).optional(),
+  returnTo: z.enum(["/account", "/konto"]).optional(),
+}).strict();
 
 /** Mounted only by the validated disposable profile, never the static server. */
 export function createReferenceAccountHandlers(env: CustomerSelfServiceEnv, origin: string) {
@@ -39,7 +43,7 @@ export function createReferenceAccountHandlers(env: CustomerSelfServiceEnv, orig
         try {
           const { error } = await createCustomerClient(env, null).auth.signInWithOtp({
             email: request.data.email,
-            options: { shouldCreateUser: true, emailRedirectTo: `${origin}/account/auth/callback` },
+            options: { shouldCreateUser: true, emailRedirectTo: `${origin}${request.data.locale === "pl" ? "/konto" : "/account"}/auth/callback` },
           });
           if (error) throw error;
         } catch {

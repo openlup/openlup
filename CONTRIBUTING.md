@@ -930,7 +930,7 @@ into a stable or supported artifact.
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-edc6d691b3171f72ed26bd5ce8ecb9082f58b5fe26738994bc6403eab1069e37","reason":"The existing required test command now selects operator runtime and browser authentication and the PostgreSQL identity/invitation cases explicitly. Command names, the Vitest runner, node/dom environments and execution ownership remain unchanged; database cases retain the existing disposable PostgreSQL requirement."} -->
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-0c0c63c78f506af798ad3e6dd8a73691c78bf058560a801ba8b56e5f2808e7af","reason":"Invitation upgrade conformance selects the complete prefix before the invitation migration by exact path and expects every subsequent forward. A credential-free catalogue test covers later appends and missing-path refusal. Disposable database ownership and the contributor commands remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-9bc9d077d462c3b6b310bc4a61a79297acbcacc587ac490b1e067256431d8ed6","reason":"The component journey, optional captured-mail browser proof and direct disposable PostgreSQL proof reuse the existing runners. The PostgreSQL proof uses Node for server cryptography and explicitly binds the shared storage mocks and an empty URL query to window for the browser adapter; it needs no DOM. Test commands, execution ownership and full required verification duties remain unchanged; installation proofs continue to require their owned local services."} -->
 
 ## Pull requests
 

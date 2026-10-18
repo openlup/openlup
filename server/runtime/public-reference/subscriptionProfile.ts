@@ -1,3 +1,7 @@
+import { createCustomerMeHandler, createSupabaseCustomerMePort } from "@openlup/platform/identity";
+import { customerMeResponseSchema } from "../../../src/domains/customers/contracts.js";
+import { createCustomerClient, authenticateCustomerUser } from "../../_lib/customer-domain/auth.js";
+import { readBearerToken } from "../../_lib/admin-domain/auth.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -12,8 +16,13 @@ import { createReferenceAccountHandlers, type ReferenceHandler } from "./subscri
 import { createCapturedReferenceCheckoutHandler } from "./capturedCheckout.js";
 import { createReferenceOperatorHandler } from "./subscriptionOperator.js";
 
-export const SUBSCRIPTION_PAGES = new Set(["/subscribe", "/account", "/account/auth/callback"]);
+export const SUBSCRIPTION_PAGES = new Set(["/subscribe", "/account", "/konto", "/sign-in", "/zaloguj-sie", "/account/auth/callback", "/konto/auth/callback"]);
 export const SUBSCRIPTION_CSP = "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'";
+/** Invalid or absent input never grants an additional connection destination. */
+export function subscriptionCsp(authOrigin?: string): string {
+  try { return `${SUBSCRIPTION_CSP} ${localOrigin(authOrigin).origin}`; }
+  catch { return SUBSCRIPTION_CSP; }
+}
 const INSTANCE_KEY = "public_reference_subscription_instance";
 const BASELINE = new URL("../../../supabase/migrations/00000000000000_platform_schema_baseline.sql", import.meta.url);
 /**
@@ -107,11 +116,12 @@ export function validateSubscriptionProfile(env: NodeJS.ProcessEnv, baseline: UR
   };
   const outcome = env.OSS_REFERENCE_PAYMENT_OUTCOME;
   if (outcome !== "captured" && outcome !== "refused") throw new Error("An explicit captured payment outcome is required");
-  return { data, origin: origin.origin, outcome, assertDisposable } as const;
+  return { data, origin: origin.origin, authOrigin: database.origin, outcome, assertDisposable } as const;
 }
 
 export function createSubscriptionProfile(env: NodeJS.ProcessEnv) {
   const config = validateSubscriptionProfile(env);
+  const csp = subscriptionCsp(config.authOrigin);
   const gateway = createSupabaseDataGateway(config.data);
   const assertDisposable = () => config.assertDisposable();
   const account = createReferenceAccountHandlers(config.data, config.origin);
@@ -120,16 +130,26 @@ export function createSubscriptionProfile(env: NodeJS.ProcessEnv) {
     ["/api/bff/commerce/checkouts", { method: "POST", handler: createCapturedReferenceCheckoutHandler({ gateway, outcome: config.outcome, assertDisposable }) }],
     ["/api/bff/customers/magic-link", { method: "POST", handler: account.requestSignIn }],
     ["/api/bff/customers/reconcile-account", { method: "POST", handler: account.reconcile }],
+    ["/api/bff/customers/me", { method: "GET", handler: async (req, res) => {
+      const token = readBearerToken(req);
+      const customer = createCustomerClient(config.data, token);
+      return createCustomerMeHandler({
+        responseSchema: customerMeResponseSchema,
+        mePort: createSupabaseCustomerMePort(customer),
+        authenticateUser: () => authenticateCustomerUser(customer, token),
+      })(req, res);
+    } }],
     ["/api/bff/customers/account", { method: "GET", handler: account.account }],
     ["/api/bff/customers/subscriptions/action", { method: "POST", handler: account.renewal }],
     ["/api/bff/reference-journey/operator/subscription-readback", { method: "GET", handler: createReferenceOperatorHandler(config.data) }],
   ]);
   return {
     origin: config.origin,
+    csp,
     hasRoute: (pathname: string) => routes.has(pathname),
     async handle(request: IncomingMessage, response: ServerResponse, pathname: string) {
       const res = decorateResponse(response);
-      response.setHeader("content-security-policy", SUBSCRIPTION_CSP);
+      response.setHeader("content-security-policy", csp);
       const route = routes.get(pathname);
       if (!route) return sendBffError(res, "NOT_FOUND", "Reference route not found");
       if (request.headers.host !== new URL(config.origin).host) return sendBffError(res, "FORBIDDEN", "Reference host mismatch");

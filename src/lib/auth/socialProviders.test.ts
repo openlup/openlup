@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getEnabledSocialProviders } from '@/lib/auth/socialProviders';
 
-// Brand-layer env reader for the enabled social providers. The login surface
-// currently renders Google directly, but this list stays the source of truth
-// for enabling Apple/Facebook later — keep it covered.
+// The configured list is filtered against selected adapter capabilities.
 describe('getEnabledSocialProviders', () => {
   afterEach(() => {
     vi.unstubAllEnvs();

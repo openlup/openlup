@@ -131,7 +131,7 @@ describe("createSupabaseCustomerAuthPort", () => {
     expect(supabaseAuth.verifyOtp).toHaveBeenCalledWith({
       email: "a@b.com",
       token: "77323522",
-      type: "magiclink",
+      type: "email",
     });
 
     supabaseAuth.verifyOtp.mockResolvedValue({ error: { message: "Token has expired or is invalid" } });
@@ -139,4 +139,19 @@ describe("createSupabaseCustomerAuthPort", () => {
       error: "Token has expired or is invalid",
     });
   });
+});
+
+// The SDK documents email verification for both sign-up and sign-in codes.
+it.each([false, true])("verifies a six-digit code for confirmed=%s using the email flow", async (confirmed) => {
+  supabaseAuth.verifyOtp.mockImplementation(async (input) => ({
+    error: input.type === "email" ? null : { message: confirmed ? "wrong flow" : "confirmation code requires email flow" },
+  }));
+  const port = createSupabaseCustomerAuthPort();
+  expect(await port.verifyOtpCode({ email: "customer@example.com", token: "123456" })).toEqual({ error: null });
+  expect(supabaseAuth.verifyOtp).toHaveBeenCalledWith({ email: "customer@example.com", token: "123456", type: "email" });
+});
+
+it("propagates a session bootstrap failure instead of treating it as signed out", async () => {
+  supabaseAuth.getSession.mockResolvedValue({ data: { session: null }, error: new TypeError("transport unavailable") });
+  await expect(createSupabaseCustomerAuthPort().getSession()).rejects.toThrow("transport unavailable");
 });
