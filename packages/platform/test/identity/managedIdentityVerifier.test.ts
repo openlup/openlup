@@ -7,40 +7,40 @@ function clientReturning(result: { data: unknown; error: unknown }): SupabaseCli
 }
 
 describe("createSupabaseIdentityVerifier", () => {
-  it("returns the principal with emailVerified=true when email_confirmed_at is set", async () => {
+  it("confirmation_fact_verifies_without_metadata", async () => {
     const verifier = createSupabaseIdentityVerifier(
       clientReturning({
-        data: { user: { id: "u1", email: "a@b.com", email_confirmed_at: "2026-01-01", user_metadata: {} } },
+        data: { user: { id: "u1", email: "confirmed@example.com", email_confirmed_at: "2026-01-01", user_metadata: {} } },
         error: null,
       }),
     );
     expect(await verifier.verifyAccessToken("tok")).toEqual({
       principalId: "u1",
-      email: "a@b.com",
+      email: "confirmed@example.com",
       emailVerified: true,
     });
   });
 
-  it("treats user_metadata.email_verified as verified", async () => {
+  it("metadata_true_without_confirmation_is_unverified", async () => {
     const verifier = createSupabaseIdentityVerifier(
       clientReturning({
-        data: { user: { id: "u2", email: "c@d.com", email_confirmed_at: null, user_metadata: { email_verified: true } } },
+        data: { user: { id: "u2", email: "metadata@example.com", email_confirmed_at: null, user_metadata: { email_verified: true } } },
         error: null,
       }),
     );
-    expect(await verifier.verifyAccessToken("tok")).toMatchObject({ emailVerified: true });
+    expect(await verifier.verifyAccessToken("tok")).toMatchObject({ emailVerified: false });
   });
 
   it("reports emailVerified=false when neither signal is present", async () => {
     const verifier = createSupabaseIdentityVerifier(
       clientReturning({
-        data: { user: { id: "u3", email: "e@f.com", email_confirmed_at: null, user_metadata: {} } },
+        data: { user: { id: "u3", email: "unconfirmed@example.com", email_confirmed_at: null, user_metadata: {} } },
         error: null,
       }),
     );
     expect(await verifier.verifyAccessToken("tok")).toEqual({
       principalId: "u3",
-      email: "e@f.com",
+      email: "unconfirmed@example.com",
       emailVerified: false,
     });
   });

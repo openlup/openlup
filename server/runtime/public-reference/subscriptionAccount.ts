@@ -1,3 +1,4 @@
+import { bindIdentityEmailTrust } from "../auth/emailTrustBinding.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 import { sendBffError, sendBffSuccess } from "../../_lib/bff/response.js";
 import { z } from "../../../src/lib/validation/zod.js";
@@ -58,7 +59,7 @@ export function createReferenceAccountHandlers(env: CustomerSelfServiceEnv, orig
       const result = await reconcileAccountForPrincipal(createSupabaseAccountLinkStore(service), {
         principalId: data.user.id, email: data.user.email ?? null,
         emailVerified: Boolean(data.user.email_confirmed_at),
-      });
+      }, { assess: () => bindIdentityEmailTrust({}, env).assess() });
       if (!result.ok) return sendBffError(res, "FORBIDDEN", "This verified account cannot be linked", { details: { code: result.code } });
       sendBffSuccess(res, { accountId: result.accountId, created: result.created, linked: result.linked });
     },

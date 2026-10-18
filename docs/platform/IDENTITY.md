@@ -6,6 +6,55 @@ Audience: contributors reviewing the identity boundary and applications composin
 its factories. The owner is the identity module within `@openlup/platform`.
 
 ## Responsibility and composition
+Creating a client/contact records commerce contact data. Creating an auth user
+provisions an authentication principal. Neither a typed address nor the soft-account
+link proves mailbox ownership. Reconcile may mint a contact for an existing
+authenticated principal; it does not mint that auth user.
+
+Managed verification requires `Boolean(user.email_confirmed_at)` from the
+provider-authenticated `getUser` result. Editable `user_metadata.email_verified`
+does not qualify.
+Existing confirmations are not rewritten; their historical provenance is unknown.
+
+`reconcileAccountForPrincipal(store, input, emailTrustPolicy)` and
+`createReconcileAccountHandler({ verifier, store, emailTrustPolicy })` require an
+explicit policy. Matching existing principal links return before assessment.
+Every email lookup, conditional link, new contact and create-conflict retry is
+inside the assessed operation. Missing, malformed or throwing bindings fail
+closed. Reserved principals, unverified email and mismatched existing links
+retain their earlier refusals.
+
+The managed default uses `createManagedEmailTrustPolicy` with the verifier's
+configured origin and public key. It reads `/auth/v1/settings`, refuses redirects,
+requires boolean `mailer_autoconfirm` and a boolean `external` map, and trusts
+only disabled automatic confirmation and explicitly declared enabled non-email
+providers. Unknown enabled providers also require declaration. The server-only
+`IDENTITY_EMAIL_VERIFYING_PROVIDERS` is comma-separated, trimmed and lowercased;
+unset/blank means an empty allowlist. Wildcards, empty entries and malformed
+identifiers refuse configuration. A declaration is the adopter's assertion that
+the provider verifies email, not a certification by the platform.
+
+Valid safe or unsafe settings cache for 60 seconds; unavailable or malformed
+settings cache for 5 seconds. Each immutable policy instance coalesces concurrent
+requests. The deadline is 3 seconds including body consumption, limited to 64 KiB.
+Every completed assessment aborts outstanding transport, including an unread
+error response body.
+A failed refresh never reuses expired trust. Configuration changes can therefore
+take up to 60 seconds to affect admission in an already serving process.
+
+`EMAIL_TRUST_ENVELOPE_REFUSED` maps to HTTP 403 / `FORBIDDEN`;
+`EMAIL_TRUST_SETTINGS_UNAVAILABLE` maps to HTTP 503 / `UPSTREAM_UNAVAILABLE`.
+The two browser-safe constants/types are exported by `identity/contracts`;
+runtime schemas remain in the reference boundary. Responses expose
+neutral codes, not settings bodies, tokens or another principal's identifier.
+
+**Migration:** adopters retaining today's verifier-result rule explicitly bind
+`createVerifierResultOnlyEmailTrustPolicy()`. It disables settings assessment
+but still requires the verifier's `emailVerified` result. Managed reference
+bindings use the stricter default. The direct bundle retains its existing
+mailbox challenge and signed-session verifier (`email:null`, unverified), without
+direct email reconcile or JWT email claim consumption.
+
 
 The server entry is `@openlup/platform/identity`; its source is
 [`packages/platform/src/identity`](../../packages/platform/src/identity/index.ts).
@@ -24,15 +73,17 @@ and executes no SQL. A host selects the adapter and supplies its configuration.
 Customer reconciliation refuses a principal its verifier reports as unverified,
 reserved machine principals, conflicting links and a principal/account email
 mismatch. Verification is the composed verifier's decision. The managed verifier
-also accepts `user_metadata.email_verified`, which a user can edit, and the
-unmounted reference source `server/bff/customers/reconcile-account.ts` composes it,
-as the contributing adopter's route does. A host that mounts reconciliation
-replaces it with its own verifier that trusts only a confirmed address (for
-example, `email_confirmed_at`); the package ships no such verifier, and the token
-verifier reports every principal as unverified. The engine retries the email
+requires `email_confirmed_at` and ignores editable `user_metadata.email_verified`.
+The unmounted reference source `server/bff/customers/reconcile-account.ts`
+composes it with the managed email-trust policy regardless of `PLATFORM_BUNDLE`;
+selecting `node-postgres` cannot give this managed route verifier-only trust.
+A host mounting reconciliation
+must inject a policy as described above; confirmation alone does not establish
+the installation's email-trust envelope. The token verifier reports every
+principal as unverified. The engine retries the email
 branch once after a concurrent create failure. The new
 [`createReconcileAccountHandler`](../../packages/platform/src/identity/reconcileAccountHandler.ts)
-returns those refusals as 400, 403 or 409 and has no personalization hook.
+returns those refusals as 400, 403, 409 or 503 and has no personalization hook.
 
 The soft-account linker attempts identity creation first, then scans the existing
 directory only after an already-registered response. Both directory adapters
@@ -54,7 +105,7 @@ normalized input. Literal matching means an anchored, escaped `imatch` database
 prefilter followed by exact equality of `email.trim().toLowerCase()` with that
 input. Escaping keeps `_`, `%`, backslash and `*` literal; the exact comparison
 rejects Unicode lookalikes widened by the database's case-insensitive regex.
-A shared private helper selects email and fetches at most ten candidates.
+Each store has one private helper that selects email and fetches at most ten candidates.
 Soft linking preserves ascending creation order and chooses the oldest accepted
 row. Reconciliation accepts a single exact row and throws the existing
 `PGRST116` multiple-row error when more than one is accepted, before any link or
@@ -134,6 +185,15 @@ non-enumerating accepted response and padding. The neutral conformance witness i
 the reference route tests pin configuration precedence and the new refusal.
 
 ## Schema continuity and readiness
+`emailTrustPolicy` is a required port. `identityEmailTrustReadiness`
+returns core readiness issues with `module: "identity"`, subject
+`emailTrustPolicy`, existing code `OPENLUP_E_PORT_MISSING`, and the precise
+refusal in `observation`. The host helper `assessIdentityReadiness` maps safe
+settings to `ready`, unsafe settings to `unsatisfied`, unavailable settings to
+`unknown`, and configuration errors to `OPENLUP_E_ENV_MISSING`. These helpers
+are available for host composition; the reference server does not invoke them
+at startup.
+
 
 [`IDENTITY_MIGRATIONS`](../../packages/platform/src/identity/sql.ts) records the
 canonical path, SHA-256 digest and runner position of four complete units, at
@@ -152,14 +212,65 @@ The contribution is not installed in the reference readiness composition here.
 It uses the readiness module field (`PackageManifest.module`) directly.
 
 ## Conformance and outstanding evidence
+Email-trust unit witnesses are `managedIdentityVerifier.test.ts`,
+`emailTrustPolicy.test.ts`, `reconcileAccountForPrincipal.test.ts`,
+`reconcileAccountHandler.test.ts` and `identityReadiness.test.ts` in the
+package identity test directory. Reference bindings test policy selection,
+retained reference refusals and standalone readiness assessment.
+
+The opt-in real Auth/mail/database proof is:
+
+```sh
+node tests/postgres/runIdentityEnvelopeConformance.mjs --phase email-trust
+```
+
+It requires Node 24, npm 11.19.0, Docker with a running daemon, Supabase CLI
+2.98.2, installed dependencies (including the existing SDK and TS loader), built
+core/platform artifacts, the complete unchanged committed managed migration
+chain, a writable temporary directory and free loopback port blocks. CLI images
+must be available or downloadable in the supervisor's environment. Missing
+prerequisites, startup, assertions and cleanup fail nonzero; nothing skips.
+
+The runner reuses the pgTAP committed-chain reader and subscription configuration
+and prerequisites. It starts separate owned confirmed, auto-confirm and external
+provider installations with Auth, API, database and captured mail enabled, removes
+inherited default grants before replay, and applies the complete committed managed
+chain, including `20261018160000_identity_service_role_capabilities.sql`. That
+forward supplies the service-role client creation and linking capabilities, plus
+operator activation inserts and invitation email reads. The runner proves
+association under the shipped grants without adding fixture-only grants.
+It tests real editable metadata against cleared confirmation, auto-confirm and
+undeclared-provider 403s, actual captured mailbox proof, cache expiry followed by
+a settings-only loopback fault and 503, unchanged contacts on refusals, and an
+existing linked subscriber preserved across the settings-failure refusal and
+repeated reconciliation. Every successful handler response is followed immediately
+by a database read of its returned contact ID, requiring the verified principal's
+normalized email and `auth_user_id`. Both confirmed and declared-provider scenarios
+also associate a pre-existing unlinked contact and require its original ID.
+The subscriber fixture is inserted after committed-chain
+SQL replay, before those operations. A public-catalogue fingerprint compares
+public relation names and kinds before and after the envelope exercises; the
+subscriber check also compares its full client and subscription rows. The stack
+uses `psql` and has no CLI migration ledger. These checks establish neither
+migration-ledger preservation nor subscriber survival across SQL replay.
+Package handlers exercise
+the precise mappings; the ordinary disposable profile's stricter earlier guard
+continues to reject unsuitable installations. No OAuth request is made.
+`--phase joint` is unsupported. No CI workflow, default suite or root script
+activates this runner.
+
+`server/runtime/auth/emailTrustBinding.test.ts` exercises the runner's database
+assertions offline with synthetic Auth/mail responses and a contact-store fixture;
+it does not replace the disposable database proof.
+
 
 The repository's existing `packages/platform` required selector and Vitest node
 project include `test/identity/**` without a new selector or coverage exception.
 The witnesses are:
 
-- W1: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. It pins the reference schema's grants as they are today. Two customers each see only their own client, address, orderer profile, payment preference and account event; `authenticated` holds SELECT on those tables (on clients, column-level). The customer SELECT policies on pets, orders, order items, subscriptions, subscription lines and cycles have no `authenticated` grant behind them, so those reads are refused with SQLSTATE 42501. Anonymous reads are refused with 42501 on the customer tables and return zero rows on the three subscription tables, which hold a seeded row per customer.
-- W2/W3: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates. The invite/remove matrix includes two additive refusal rows: an active member with a null role and an active member with an unknown role each receive 403 before either action. W3 also pins those refusals with or without a role restriction; the invite use case itself still checks only the caller's role.
-- W4: [`inviteLookupConformance.test.ts`](../../packages/platform/test/identity/inviteLookupConformance.test.ts), covering pagination, normalization, cap, errors, effect ordering and retained request spelling.
+- Customer row isolation: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. It pins the reference schema's grants as they are today. Two customers each see only their own client, address, orderer profile, payment preference and account event; `authenticated` holds SELECT on those tables (on clients, column-level). The customer SELECT policies on pets, orders, order items, subscriptions, subscription lines and cycles have no `authenticated` grant behind them, so those reads are refused with SQLSTATE 42501. Anonymous reads are refused with 42501 on the customer tables and return zero rows on the three subscription tables, which hold a seeded row per customer.
+- Admin authorization: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates. The invite/remove matrix includes two additive refusal rows: an active member with a null role and an active member with an unknown role each receive 403 before either action. The witness also pins those refusals with or without a role restriction; the invite use case itself still checks only the caller's role.
+- Directory lookup: [`inviteLookupConformance.test.ts`](../../packages/platform/test/identity/inviteLookupConformance.test.ts), covering pagination, normalization, cap, errors, effect ordering and retained request spelling.
 - Contact matching: [`softLinkConformance.test.ts`](../../packages/platform/test/identity/softLinkConformance.test.ts) exercises both actual managed stores through soft linking and reconciliation with mixed-case rows, literal-match refusals, explicitly returned dotless-i and long-s lookalikes, oldest exact selection and multiple-exact-row refusal. The imported [`managedAccountLinkStore.test.ts`](../../packages/platform/test/identity/managedAccountLinkStore.test.ts) query fixture supports the bounded array lookup.
 - The imported engine, profile, session and adapter tests sit beside these witnesses; [`sql.test.ts`](../../packages/platform/test/identity/sql.test.ts) verifies canonical projection identity.
 
@@ -168,7 +279,7 @@ but the contracts boundary admits only own-contract files and public core entrie
 This candidate retains those runtime schemas in the reference application rather
 than weakening that boundary. Completing that move needs an explicit boundary
 choice. A concrete default schema inventory for each deployment profile also
-remains to be supplied and checked after B0 integration.
+remains to be supplied and checked when the readiness composition is installed.
 
 ## Source move map
 
@@ -206,6 +317,19 @@ application composition stays at the original route/runtime paths.
 | Existing identity unit tests | `packages/platform/test/identity/*.test.ts`; mixed application-composition tests remain by their bindings |
 
 ## Observable reference differences
+Managed verification requires confirmation, adds managed settings reads
+with bounded latency and process caching, and introduces the two 403/503
+association refusals and browser error codes. The managed Node subscription
+candidate retains its existing startup admission; identity readiness helpers
+are available separately. The new server-only
+provider allowlist defaults to empty. The captured reconcile route retains its
+generic 403 response for policy refusals and its empty provider allowlist.
+The captured profile retains its stricter
+installation guard and can return its generic 503 before the package gate.
+Existing matching links and sessions survive envelope refusal. No route is
+newly mounted, soft-account creation flag changed, or historical identity/link
+rewritten by the email-trust policy.
+
 
 The import intentionally brings in create-first identity resolution, the paged
 normalized invite lookup and the managed machine-write fence. The first two
@@ -228,6 +352,7 @@ a lookup error, surfaced by the unmounted reconcile handler as
 Existing invite/remove response strings remain byte-identical through explicit
 message selection; new internal codes are stripped at the reference boundary.
 No sender, base URL, locale, receipt key or observed request-ID change is intended.
-The new, unmounted reconcile source can answer the five domain refusal codes as
+The unmounted reconcile source can answer the two email-trust policy refusal codes and
+the original five domain refusal codes as
 messages, plus `Customer session required` or `Account reconciliation failed`.
 Those are new endpoint-source outcomes, not an activation of a route.

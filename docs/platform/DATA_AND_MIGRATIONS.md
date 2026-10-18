@@ -56,6 +56,19 @@ forward, rather than relying on a reference fixture or process startup. A missin
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
+Identity email-trust admission changes no schema or stored identities, contact
+links or subscriptions. Its conformance runner replays the complete managed
+baseline and ordered forwards using `psql`, without a CLI migration ledger.
+After that replay it inserts a linked subscriber fixture before checking that
+settings-failure refusal and repeated reconciliation preserve its client and
+subscription rows. A public-catalogue fingerprint checks public relation names
+and kinds across the envelope exercises; it covers neither migration-ledger
+contents nor subscriber survival across SQL replay. The committed managed chain
+includes `20261018160000_identity_service_role_capabilities.sql`; the runner proves
+association under those shipped grants, as described in
+[identity conformance](IDENTITY.md#conformance-and-outstanding-evidence).
+The identity SQL projection is not a standalone install chain.
+
 
 The canonical source manifest for `db/platform/migrations` is the existing
 [`config/platform-migration-manifest.json`](../../config/platform-migration-manifest.json).
@@ -353,7 +366,7 @@ on purpose. Neither decision may be silently undone by re-running a forward.
 
 ## Preview and stable posture
 
-Current migration and self-host material is evaluation-oriented. The `P1-SF`
-gate must still prove versioned upgrades, N-1 compatibility, and the complete
+Current migration and self-host material is evaluation-oriented. The stable-framework requirements
+must still prove versioned upgrades, N-1 compatibility, and the complete
 expand/compatible-deploy/backfill/contract path before a stable upgrade claim is
 made.

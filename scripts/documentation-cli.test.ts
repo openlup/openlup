@@ -53,7 +53,7 @@ function seed(root: string): string {
   write(root, "supabase/migrations/00000000000000_platform_schema_baseline.sql", sql);
   write(root, "config/platform-migration-manifest.json", JSON.stringify({ schemaVersion: 1, baseline: { file: portable, sha256: createHash("sha256").update(sql).digest("hex") }, forward: [], objectInventorySha256: "0".repeat(64) }));
   const surfaces = [
-    { id: "repository", when: "Public fixture contract", paths: ["*", "scripts/**", "config/**", "packages/**", "src/**", "server/**", "docs/**", "db/**", "supabase/**"], doc: "README.md", anchor: "#contract" },
+    { id: "repository", when: "Public fixture contract", paths: ["*", "scripts/**", "config/**", "packages/**", "src/**", "server/**", "docs/**", "db/**", "supabase/**", "tests/**"], doc: "README.md", anchor: "#contract" },
     { id: "domain-demo", when: "Demo replay contract", paths: ["src/domains/demo/**"], doc: "README.md", anchor: "#contract" },
   ];
   write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));

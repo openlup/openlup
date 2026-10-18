@@ -26,6 +26,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/run-vitest.mjs", "scripts/site-routes.mjs", "scripts/source-preview-release.test.ts", "scripts/source-preview-release.ts",
   "server/runtime/communications/newsletterProviderRegistry.test.ts", "server/runtime/payment/paymentAdapterRegistry.test.ts",
   "server/runtime/public-reference/serve.ts",
+  "tests/postgres/runIdentityEnvelopeConformance.mjs",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
   "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",
   "vitest.config.ts",

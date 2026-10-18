@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 
-const mock = vi.hoisted(() => ({ otp: vi.fn(), limit: vi.fn(), pad: vi.fn() }));
+const mock = vi.hoisted(() => ({ otp: vi.fn(), limit: vi.fn(), pad: vi.fn(), getUser: vi.fn(), findByEmail: vi.fn(), createAccount: vi.fn(), assess: vi.fn() }));
+vi.mock("../auth/emailTrustBinding.js", () => ({ bindIdentityEmailTrust: () => ({ assess: mock.assess }) }));
 vi.mock("../../_lib/customer-domain/auth.js", () => ({
   createCustomerServiceClient: () => ({}),
-  createCustomerClient: () => ({ auth: { signInWithOtp: mock.otp } }),
+  createCustomerClient: () => ({ auth: { signInWithOtp: mock.otp, getUser: mock.getUser } }),
+}));
+vi.mock("@openlup/platform/identity", async importOriginal => ({
+  ...await importOriginal<typeof import("@openlup/platform/identity")>(),
+  createSupabaseAccountLinkStore: () => ({ isReservedPrincipal: async () => false, findAccountByPrincipalId: async () => null,
+    findAccountByEmail: mock.findByEmail, createAccount: mock.createAccount }),
 }));
 vi.mock("../../_lib/rate-limit/customerMagicLinkRateLimit.js", () => ({
   checkAndRecordCustomerMagicLinkAttempt: mock.limit,
@@ -51,5 +57,18 @@ describe("captured sign-in error boundary", () => {
     expect(mock.otp).toHaveBeenCalledWith({ email: "buyer@example.test", options: {
       shouldCreateUser: true, emailRedirectTo: `${origin}/account/auth/callback`,
     } });
+  });
+});
+
+describe("reference email trust composition", () => {
+  it.each(["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"] as const)("passes required policy and preserves the reference refusal for %s", async code => {
+    mock.getUser.mockResolvedValue({ data: { user: { id: "b1000000-0000-4000-8000-000000000003", email: "reference@example.com", email_confirmed_at: "2026-01-01" } }, error: null });
+    mock.assess.mockResolvedValue({ trusted: false, code });
+    const res = response();
+    await createReferenceAccountHandlers(env, origin).reconcile({ method: "POST", headers: { authorization: "Bearer synthetic" } } as HttpRequest, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(mock.assess).toHaveBeenCalledOnce();
+    expect(mock.findByEmail).not.toHaveBeenCalled();
+    expect(mock.createAccount).not.toHaveBeenCalled();
   });
 });
