@@ -329,12 +329,22 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       for (const specifier of [
         `${up}index.js`, `${up}server.js`, `${up}../data/index.js`, `${up}../http/index.js`,
         `${up}contracts/../server.js`, "./bridge.testFixtures.js", "./bridge.test.js", "././own.js", "./nested/../own.js",
+        "./helper.mjs", "./helper.cjs", "./helper.mts", "./helper.cts", "./helper.ts", "./helper.tsx", "./helper.json", "./helper",
         "./%2e%2e/server.js", "./..\\server.js", "./own.js?server", "node:fs", "pg", managedProvider, "zod", "some-new-sdk",
         "@openlup/platform/composition/contracts", "@openlup/core", "@openlup/core/src/private", "@openlup/core/platform-runtime/extra",
         "@OpenLup/core/platform-runtime", "/composition/contracts/index.js", "file:///composition/contracts/index.js", "#alias", "@/alias",
         ...(depth === 11 ? ["../own.js"] : []),
       ]) {
         for (const source of loadSources(specifier, extension)) expect(await moduleMessages(contractsConfig, source, filename)).toContainEqual(refusal);
+      }
+      for (const target of ["target", '"p" + "g"', "`./${target}.js`", "42", "null"]) {
+        for (const source of [
+          `import(${target});`, `require(${target});`, `module.require(${target});`,
+          `globalThis.require(${target});`, `process.mainModule.require(${target});`, `module["require"](${target});`,
+        ]) expect(await moduleMessages(contractsConfig, source, filename)).toContainEqual(refusal);
+      }
+      for (const source of ["require();", "module.require();", "require(...targets);"]) {
+        expect(await moduleMessages(contractsConfig, source, filename)).toContainEqual(refusal);
       }
       // No graph declaration admits even an otherwise safe contracts import.
       for (const source of loadSources("./own.js", extension)) {

@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-2fafeab9802a2dcd1b3acf62d1ad34b712b3e213bb707e93bb5b1d84f9d3e1ba","reason":"The ESLint configuration adds an optional fixed contracts sub-entry to the existing platform module graph, allowing only canonical relative imports within its contracts subtree and exact public core exports. No module declares the entry yet. Platform's README describes this package-specific boundary; contributor setup, lint commands, check selection and gate order in this section remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-d91e0e13207af992487b2df54693c5373543264fb9c1f595f43d0492fee81ad0","reason":"The ESLint configuration adds an optional fixed contracts sub-entry to the existing platform module graph, allowing only canonical relative .js targets within its contracts subtree and exact public core exports, and refusing non-literal load targets. No module declares the entry yet. Platform's README describes this package-specific boundary; contributor setup, lint commands, check selection and gate order in this section remain unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-9d54e200064687330b91983971b0b8747c576fede57227a7335eeb642a560d8b","reason":"The existing ESLint boundary test gains synthetic graph declarations and negative import plants for the optional platform contracts entry, across supported source extensions and shallow, nested and depth-fallback paths. These exercise the production rule factory without adding a real module or export. Platform's README owns the boundary explanation; this section's contributor commands, required selectors, thresholds and gate order are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-a09e2b30c03ff5c077903f67d4c8a06190286939f0117fa671b978f1e66ba664","reason":"The existing ESLint boundary test gains synthetic graph declarations and negative plants for the optional platform contracts entry, including non-.js relative targets and non-literal loads across supported source extensions and shallow, nested and depth-fallback paths. These exercise the production rule factory without adding a real module or export. Platform's README owns the boundary explanation; this section's contributor commands, required selectors, thresholds and gate order are unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

@@ -88,10 +88,15 @@ only when that module declares `contracts: true` in `PLATFORM_MODULE_GRAPH` in
 [`eslint.config.js`](../../eslint.config.js). Its `types`, `import` and `default`
 targets follow the module entry shape at `dist/<module>/contracts/index`.
 Contracts files may import only their own contracts subtree through canonical
-relative paths and exact public `@openlup/core` entries. Both ESLint and
-[`packageBoundary.test.ts`](test/packageBoundary.test.ts) refuse server files,
-other modules and every other dependency, including type imports. No module
-declares this entry yet; synthetic graphs and negative plants prove the checks.
+relative `.js` paths and exact public `@openlup/core` entries. Both ESLint and
+[`packageBoundary.test.ts`](test/packageBoundary.test.ts) enforce this allowlist
+for static imports and re-exports (including types) and literal `import()`,
+`require()` and `module.require()` loads; they refuse non-literal load targets.
+The package test additionally requires every file in the contracts subtree to
+be a scanned `.ts` file, refuses triple-slash type and path references, and
+checks member-call loads such as `globalThis.require()` and
+`process.mainModule.require()` against the allowlist. No module declares this
+entry yet; synthetic graphs and negative plants prove the checks.
 
 `npm run api:check` compares each of the nine declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them

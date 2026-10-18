@@ -21,26 +21,45 @@ const PG_ADAPTERS = new Set([
 function sources(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
-    return entry.isDirectory() ? sources(path) : entry.name.endsWith(".ts") ? [path] : [];
+    if (entry.isDirectory()) return sources(path);
+    return scannedSource(relative(SOURCE_ROOT, path).split("\\").join("/")) ? [path] : [];
   });
 }
 
-function specifiers(source: string): string[] {
+function scannedSource(file: string): boolean {
+  if (file.split("/")[1] === "contracts") {
+    expect(file.endsWith(".ts"), `${file}: every contracts file must be a scanned .ts file`).toBe(true);
+  }
+  return file.endsWith(".ts");
+}
+
+function specifiers(source: string, contracts = false): string[] {
   const found: string[] = [];
+  const literal = (node: ts.Node | undefined): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral =>
+    node !== undefined && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node));
   const add = (node: ts.Node | undefined) => {
-    if (node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))) found.push(node.text);
+    if (literal(node)) found.push(node.text);
   };
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) add(node.moduleSpecifier);
     if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
       || (ts.isIdentifier(node.expression) && node.expression.text === "require")
-      || (ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression)
-        && node.expression.expression.text === "module" && node.expression.name.text === "require"))) add(node.arguments[0]);
+      || (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "require")
+      || (ts.isElementAccessExpression(node.expression) && literal(node.expression.argumentExpression)
+        && node.expression.argumentExpression.text === "require"))) {
+      if (contracts) expect(literal(node.arguments[0]), "Contracts load targets must be string literals or templates without substitutions").toBe(true);
+      add(node.arguments[0]);
+    }
     if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) add(node.moduleReference.expression);
     if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) add(node.argument.literal);
     ts.forEachChild(node, visit);
   };
-  visit(ts.createSourceFile("boundary.ts", source, ts.ScriptTarget.Latest, true));
+  const file = ts.createSourceFile("boundary.ts", source, ts.ScriptTarget.Latest, true);
+  if (contracts) {
+    expect(file.typeReferenceDirectives, "Contracts must not reference external types").toEqual([]);
+    expect(file.referencedFiles, "Contracts must not reference external files").toEqual([]);
+  }
+  visit(file);
   return found;
 }
 
@@ -75,8 +94,19 @@ function contractsImportAllowed(file: string, specifier: string, graph: ModuleGr
   // Canonical relative forms only; normalize after validating, so a mid-path
   // climb, URL or alternate separator cannot disappear during resolution.
   if (!/^(?:\.\/)?(?:\.\.\/)*(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(specifier)
-    || !specifier.startsWith(".") || /(?:^|\/)[^/]*\.test(?:Fixtures)?(?:\.[^/]*)?$/.test(specifier)) return false;
+    || !specifier.startsWith(".") || !specifier.endsWith(".js")
+    || /(?:^|\/)[^/]*\.test(?:Fixtures)?(?:\.[^/]*)?$/.test(specifier)) return false;
   return posix.normalize(posix.join(posix.dirname(file), specifier)).startsWith(`${module}/contracts/`);
+}
+
+function sourceImportAllowed(file: string, specifier: string, graph: ModuleGraph): boolean {
+  if (file.split("/")[1] === "contracts") return contractsImportAllowed(file, specifier, graph);
+  return specifier.startsWith(".")
+    || specifier.startsWith("node:")
+    || specifier.startsWith("@openlup/core/")
+    || specifier === "zod"
+    || (specifier === "pg" && PG_ADAPTERS.has(file))
+    || (specifier === "@aws-sdk/client-s3" && file === "blob/s3Client.ts");
 }
 
 function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Record<string, unknown>, hasFile: (path: string) => boolean): void {
@@ -143,19 +173,12 @@ describe("package source boundary", () => {
   });
 
   it.each(files)("$path imports only relative modules, node built-ins, core, zod and the allowed pg adapters", ({ path, source }) => {
-    if (path.split("/")[1] === "contracts") {
+    const contracts = path.split("/")[1] === "contracts";
+    if (contracts) {
       expect(graph[path.split("/")[0]!]!.contracts, `${path} must declare contracts in the module graph`).toBe(true);
-      for (const specifier of specifiers(source)) expect(contractsImportAllowed(path, specifier, graph), `${path} imports ${specifier}`).toBe(true);
-      return;
     }
-    for (const specifier of specifiers(source)) {
-      const allowed = specifier.startsWith(".")
-        || specifier.startsWith("node:")
-        || specifier.startsWith("@openlup/core/")
-        || specifier === "zod"
-        || (specifier === "pg" && PG_ADAPTERS.has(path))
-        || (specifier === "@aws-sdk/client-s3" && path === "blob/s3Client.ts");
-      expect(allowed, `${path} imports ${specifier}`).toBe(true);
+    for (const specifier of specifiers(source, contracts)) {
+      expect(sourceImportAllowed(path, specifier, graph), `${path} imports ${specifier}`).toBe(true);
     }
   });
 
@@ -221,6 +244,7 @@ describe("package source boundary", () => {
       for (const specifier of [
         `${up}index.js`, `${up}server.js`, `${up}../data/index.js`, `${up}../http/index.js`,
         `${up}contracts/../server.js`, "./bridge.testFixtures.js", "./bridge.test.js", "././own.js", "./nested/../own.js",
+        "./helper.mjs", "./helper.cjs", "./helper.mts", "./helper.cts", "./helper.ts", "./helper.tsx", "./helper.json", "./helper",
         "./%2e%2e/server.js", "./..\\server.js", "./own.js?server", "node:fs", "pg", "@supabase/supabase-js", "zod",
         "@openlup/platform/example/contracts", "@openlup/core", "@openlup/core/src/private", "@openlup/core/platform-runtime/extra",
         "@OpenLup/core/platform-runtime", "/example/contracts/index.js", "file:///example/contracts/index.js", "#alias", "@/alias",
@@ -242,6 +266,47 @@ describe("package source boundary", () => {
       }
     }
     expect(contractsImportAllowed("example/contracts/index.ts", "./own.js", { example: {} })).toBe(false);
+  });
+
+  it("refuses every contracts file the source scan cannot check (negative plants)", () => {
+    for (const directory of ["example/contracts", "example/contracts/nested"]) {
+      expect(scannedSource(`${directory}/helper.ts`)).toBe(true);
+      for (const name of ["helper.mts", "helper.cts", "helper.js", "helper.mjs", "helper.cjs", "helper.tsx", "helper.json", "helper.txt", "helper"]) {
+        expect(() => scannedSource(`${directory}/${name}`)).toThrow("every contracts file must be a scanned .ts file");
+      }
+    }
+    expect(scannedSource("example/server.js")).toBe(false);
+  });
+
+  it("refuses non-literal contracts loads (negative plants)", () => {
+    for (const target of ["target", '"p" + "g"', "`./${target}.js`", "42", "null", "...targets", ""]) {
+      const sources = [`require(${target});`, `module.require(${target});`, `globalThis.require(${target});`,
+        `process.mainModule.require(${target});`, `module["require"](${target});`];
+      if (target !== "" && target !== "...targets") sources.push(`import(${target});`);
+      for (const source of sources) expect(() => specifiers(source, true)).toThrow("Contracts load targets must be string literals");
+    }
+    for (const source of ['import("./own.js");', 'require("./own.js");', "module.require(`./own.js`);"]) {
+      expect(specifiers(source, true)).toEqual(["./own.js"]);
+    }
+  });
+
+  it("refuses triple-slash type and path references in contracts (negative plants)", () => {
+    for (const source of ['/// <reference types="node" />\nexport {};', '/// <reference path="../server.ts" />\nexport {};']) {
+      expect(() => specifiers(source, true)).toThrow("Contracts must not reference external");
+    }
+  });
+
+  it("checks member-call loads in every source file (negative plants)", () => {
+    const moduleGraph: ModuleGraph = { example: { contracts: true } };
+    for (const source of ['globalThis.require("pg");', 'process.mainModule.require("pg");', 'module["require"]("pg");']) {
+      expect(specifiers(source)).toEqual(["pg"]);
+      for (const file of ["example/server.ts", "example/contracts/index.ts"]) {
+        for (const specifier of specifiers(source, file.includes("/contracts/"))) {
+          expect(sourceImportAllowed(file, specifier, moduleGraph)).toBe(false);
+        }
+      }
+    }
+    expect(sourceImportAllowed("data/postgresGateway.ts", "pg", moduleGraph)).toBe(true);
   });
 
   it("recognizes the forms it refuses", () => {

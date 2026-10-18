@@ -204,13 +204,20 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
   const message = `packages/platform module "${module}" imports other modules only through their entry <module>/index.js.`;
   const contractsRules = (depth) => {
     const segment = "[A-Za-z0-9_-][A-Za-z0-9_.-]*";
-    const relative = `(?:\\./(?:\\.\\./){0,${depth}}${depth > 0 ? `|(?:\\.\\./){1,${depth}}` : ""})${segment}(?:/${segment})*`;
+    const relative = `(?:\\./(?:\\.\\./){0,${depth}}${depth > 0 ? `|(?:\\.\\./){1,${depth}}` : ""})${segment}(?:/${segment})*\\.js`;
     const core = workspacePackages.find(({ name }) => name === "@openlup/core");
     const allowed = [relative, ...core.subpaths.map((subpath) => `@openlup/core${subpath}`)];
     const message = contracts === true
       ? `packages/platform module "${module}" contracts import only their own contracts files and exact public core exports.`
       : `packages/platform module "${module}" has no declared contracts entry.`;
-    return boundaryRules([{ message, regexes: [contracts === true ? `^(?!(?:${allowed.join("|")})$)` : "^"] }, platformModuleEscapes(message)]);
+    const rules = boundaryRules([{ message, regexes: [contracts === true ? `^(?!(?:${allowed.join("|")})$)` : "^"] }, platformModuleEscapes(message)]);
+    // A computed target cannot be checked against the contracts allowlist.
+    const literal = (field) => `:matches([${field}.type='Literal'][${field}.value=/^/], [${field}.type='TemplateLiteral'][${field}.expressions.length=0])`;
+    rules["no-restricted-syntax"].push(...[
+      `ImportExpression:not(${literal("source")})`,
+      `CallExpression:matches([callee.type='Identifier'][callee.name='require'], [callee.type='MemberExpression'][callee.property.name='require'][callee.computed=false], [callee.type='MemberExpression'][callee.property.value='require'][callee.computed=true]):not(${literal("arguments.0")})`,
+    ].map((selector) => ({ selector, message: `${message} Load targets must be string literals or templates without substitutions.` })));
+    return rules;
   };
   return [
     // Beyond the deepest depth below, a file may not climb out of its directory at all; it still
