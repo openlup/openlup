@@ -48,7 +48,7 @@ const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run:
 
 // The workflow uses the same inventory-driven route for future packages.
 function assertPublishedPackageRoutes(inventory: string, source = workflow): void {
-  const commands = workflowCommands(workflowJob("test", source));
+  const commands = workflowCommands(workflowJob("install-proof", source));
   expect(commands).toContain('node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
   for (const { directory } of parsePackagesConfig(inventory).packages.filter(({ publish }) => publish)) {
     const manifest = JSON.parse(readFileSync(join(ROOT, directory, "package.json"), "utf8"));
@@ -188,10 +188,16 @@ describe("complete public CI", () => {
     expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(expandedFloor.split(" ").slice(3));
     expect(manifest.scripts.test).toBe(PUBLIC_TEST_COMMAND);
     expect(manifest.scripts).not.toHaveProperty("test:full");
+    expect(workflowCommands(workflowJob("install-proof"))).toEqual([
+      "node scripts/public-ci-reuse.mjs",
+      "npm ci --prefer-offline --no-audit --fund=false",
+      "npm run build",
+      "npm run build:public-reference",
+      'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
+    ]);
     expect(workflowCommands(workflowJob("test"))).toEqual([
       "node scripts/public-ci-reuse.mjs",
       "npm ci",
-      'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
       "npm run test:required -- server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts",
     ]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...PUBLIC_REQUIRED_TEST_SCOPE], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);
@@ -200,8 +206,34 @@ describe("complete public CI", () => {
     }
   });
   it("runs root and database diagnostics independently of each other and the required tests", () => {
-    for (const name of ["test", "test-full", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
+    for (const name of ["install-proof", "test", "test-full", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
+    for (const name of ["install-proof", "test"]) {
+      const job = workflowJob(name);
+      expect(job).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
+      expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
+      expect(job).toContain("      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version-file: .nvmrc\n          cache: npm\n");
+      const unconditionalPrGroup = job.replace(/^ {8}if: (?:github\.event_name == 'push'|steps\.reused\.outputs\.reuse != 'true')\n/gmu, "");
+      expect(unconditionalPrGroup).not.toMatch(/^ {4}strategy:|^ {6}(?:- | {2})if:|^ {10}ref:|continue-on-error/mu);
+      expect(job.indexOf("      - name: Assert Node and npm contract\n")).toBeGreaterThan(0);
+      expect(job.indexOf("      - run: npm ci")).toBeGreaterThan(job.indexOf("      - name: Assert Node and npm contract\n"));
+    }
+    expect(workflowJob("test")).toContain("          fetch-depth: 0\n");
+    const installProof = workflowJob("install-proof");
+    expect(installProof).toContain(`    services:
+      postgres:
+        image: postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -t 1"
+          --health-interval 1s --health-timeout 5s --health-retries 30
+`);
+    expect(installProof).toContain("          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}\n          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}\n");
+    expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
     expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/public-ci-pgtap.mjs"]);
+
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
       "node --experimental-strip-types packages/ui/smoke/neutrality.ts",
