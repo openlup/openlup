@@ -129,7 +129,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-b242b5ab57fd6e21b1e29c85d3b014f190710dceb2a001fde2557dc880f66678","reason":"The workspace lockfile changes only the Core, Outbox and Platform versions and their exact Core peer pins for the 0.15.0 set. Required contributor commands, their order and the checks described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-fe27e54326b251047bbae94af543919485559b88d1b1c28937e2f8170a85dcdb","reason":"The ESLint configuration adds an optional fixed contracts sub-entry to the existing platform module graph, allowing only canonical relative .js targets within its contracts subtree and exact public core exports, refusing non-literal load targets, and reserving ambient loader identifier names in value and type syntax plus import.meta. No module declares the entry yet. Platform's README describes this package-specific boundary; contributor setup, lint commands, check selection and gate order in this section remain unchanged."} -->
 
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-e7daa71c05b5a041d7f0933ba674ecfd49ffe3447a8bac18c4bce199f0dc245d","reason":"Source-preview tests remove two exact duplicate rows and copy two immutable initial Git fixtures into independent per-case repositories; all unique scenarios, approval/history checks and both real gates remain. The neutrality CLI now gives each unchanged pinned scanner a complete private regular-file stdin descriptor, unlinks its temporary names before execution and closes the descriptor afterward, removing a reproduced synchronous input-channel stall. The added large-Unicode witness checks exact counts, growth refusal and cleanup after success and actual scanner failure; all 43 prior test bodies, 20-second limits, scanner identities, ratchet allowances, required commands and CI ownership remain unchanged. These internal preparation and input-transport changes do not alter this section's contribution procedure or neutrality contract."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-06469722536546220062613a81ffbf4767b57cdc31fd596a9cb16126e66f1b23","reason":"The ESLint boundary tests exercise the optional platform contracts entry with synthetic graphs: canonical relative .js and exact public core imports, forbidden targets and non-literal loads, reserved ambient loader identifiers in value and type syntax, import.meta, wrapped require calls and process builtin loaders, plus browser-safe positive code. No module declares the entry yet. Platform's README explains the boundary; this section's contributor commands, required selectors, thresholds and gate order remain unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus

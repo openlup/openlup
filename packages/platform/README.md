@@ -83,6 +83,27 @@ failed HEAD; use an upload or list operation to observe an S3 loading refusal.
 
 This package's tests are part of the repository's required test selection; from this directory, `npm test` runs them alone. The tests rewrite the originating application's characterization with neutral names and synthetic data, and a boundary test refuses any environment read or provider import in the package source.
 
+The module-boundary proof permits one optional `./<module>/contracts` export
+only when that module declares `contracts: true` in `PLATFORM_MODULE_GRAPH` in
+[`eslint.config.js`](../../eslint.config.js). Its `types`, `import` and `default`
+targets follow the module entry shape at `dist/<module>/contracts/index`.
+Contracts files may import only their own contracts subtree through canonical
+relative `.js` paths and exact public `@openlup/core` entries. Both ESLint and
+[`packageBoundary.test.ts`](test/packageBoundary.test.ts) enforce this allowlist
+for static imports and re-exports (including types) and literal `import()`;
+they refuse non-literal `import()` targets. Both checks reserve the identifier
+names `require`, `module`, `exports`, `process`, `globalThis`, `global`,
+`__dirname`, `__filename` and `Buffer` in every value and type position,
+including local and property identifiers, and refuse every use of `import.meta`.
+This rejects loader aliases and wrapped calls regardless of the load target.
+The existing non-literal `require` member-call guard also remains, including
+computed property calls.
+The package test additionally requires every file in the contracts subtree to
+be a scanned `.ts` file, refuses triple-slash type and path references and all
+meta-properties (also `new.target`), and retains member-call `require` detection
+outside contracts. No module declares this
+entry yet; synthetic graphs and negative plants prove the checks.
+
 `npm run api:check` compares each of the nine declaration entry graphs with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
