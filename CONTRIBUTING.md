@@ -273,7 +273,7 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
-The test job runs the shared package gate before broad root tests. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
 A module added to an existing distribution extends that package's consumer and
 required batch; it does not need another npm workspace, runner or CI job.
@@ -328,11 +328,13 @@ npm run oss:published-tree -- --typecheck
 npm run build
 OPENLUP_REFERENCE_PROFILE=subscription OPENLUP_BUILD_OUT_DIR=dist-subscription \
   OPENLUP_SSR_OUT_DIR=dist-subscription-ssr npm run build:public-reference
-# test: package gates, then required coverage inherited from main (clean signed candidate)
+# install-proof: package gates after both builds on a clean signed candidate
+# Keep package gates before root tests locally: one checkout shares build outputs.
 GATE_PACKS="$(mktemp -d)"
 # Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
 node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
+# test: hosted CI uses a separate checkout, in parallel with install-proof.
 npm run test:required -- server/runtime/public-reference \
   src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx \
   scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts \
@@ -670,8 +672,7 @@ scope. The independent `test-full` job invokes that command without restating
 the directories and preserves its raw failure result. The required `test` job
 uses `npm run test:required -- …`, retaining every former main selector in order
 and appending the existing subscription, materialized contract, documentation
-and neutrality CLI falsifiers to the same discovery. The package gate still
-runs first and includes core's separate checks. Run `npm test` for the complete public diagnostics
+and neutrality CLI falsifiers to the same discovery. The package gate runs independently in `install-proof` and includes core's separate checks. Run `npm test` for the complete public diagnostics
 and narrower paths while iterating. Required success is not complete-suite success. The root Vitest
 configuration does not collect the standalone `packages/core` test suite with the root configuration. From the repository root, run
 `npm --workspace @openlup/core run ci` for that package's separate checks
@@ -704,8 +705,14 @@ The same directory holds the package release-shape checks and the test that
 loads the lint configuration with a conditional `imports` map.
 The public test job appends the profile and tooling falsifier selectors to
 `test:required`, so one Vitest invocation schedules all required root files.
-Package gates finish first because their cold preparation replaces package
-build outputs. The complete root scope also discovers these falsifiers.
+Hosted package gates run in `install-proof`, alongside `test`, without sharing
+checkouts, installations, package outputs or databases. The PostgreSQL job service
+belongs to `install-proof`; root SQL falsifiers retain their owned fixtures. In
+one local checkout, package gates still finish first because cold preparation
+replaces package build outputs. Both existing jobs retain their 20-minute ceiling
+and all test limits; there is no new job, dependency install or aggregate. Compare
+the longest required path and summed job durations separately. The complete root
+scope also discovers these falsifiers.
 
 The root test command has no directory or file filters. It collects the shipped
 Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
