@@ -75,6 +75,38 @@ describe("customer identity binding", () => {
     },
   );
 
+  it.each(MANAGED_BUNDLES)(
+    "reads %s managed settings from process environment instead of the passed environment",
+    (bundle) => {
+      vi.stubEnv("SUPABASE_URL", "https://process.example.com");
+      vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "process-public-key");
+      try {
+        const managedPort = port(null);
+        const createClient = vi.fn(() => ({}));
+        const binding = createCustomerIdentityBinding(
+          REQUEST,
+          {
+            PLATFORM_BUNDLE: bundle,
+            SUPABASE_URL: "https://passed.example.com",
+            VITE_SUPABASE_PUBLISHABLE_KEY: "passed-public-key",
+          },
+          {
+            createManagedClient: createClient,
+            createManagedPort: () => managedPort,
+          },
+        );
+
+        expect(binding?.mePort).toBe(managedPort);
+        expect(createClient).toHaveBeenCalledExactlyOnceWith(
+          { url: "https://process.example.com", anonKey: "process-public-key" },
+          "customer-token",
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
   it("uses exactly one hard-coded authenticated actor transaction for the direct profile read", async () => {
     const directPort = port(null);
     const gatewayClient = {};

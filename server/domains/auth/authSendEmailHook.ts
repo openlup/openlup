@@ -12,7 +12,7 @@ import { readHiddenPreviewEnabled, readObservedEnvironment } from "../../_lib/ob
 import { renderEmail } from "../../../src/domains/communications/email/render.js";
 import { readEmailOriginConfiguration, resolveEmailOrigin, type EmailOriginPolicyError } from "../../../src/domains/communications/email/originPolicy.js";
 import type { EmailBrand } from "../../../src/lib/brand/brandConfig.js";
-import { buildAuthVerifyUrl } from "./authVerifyUrl.js";
+import { buildAuthVerifyUrl } from "@openlup/platform/identity";
 import {
   AuthEmailContentUnavailableError,
   type AuthEmailContentPort,

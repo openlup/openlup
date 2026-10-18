@@ -69,6 +69,6 @@ at 2,000 rows. It needs SELECT on those three columns, not event payload access
 or direct INSERT. The unbound winback adapter does not establish a runtime
 writer requirement. Tests retain the window's old-versus-recent reminder signal.
 
-<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-c651fd5203d25ad71a086d053a632ddca09f25e67e98034815b8bd919a0e631e","reason":"Test-only delta. The role-free lane confinement test exempts the package consumer proof file, which calls the lane as a package consumer rather than as a reference binding; the binding and every adapter row described here are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-2e9b0e8b17d4bcfcb83b93d3b8b4faeb88da8c9c7f1552004944e62b3838079c","reason":"Server adapter files that only re-exported the identity package at their former paths are removed, as is an unreferenced session-issuer wrapper and identity-only exports nothing imports; reference code imports @openlup/platform/identity directly. Adapter files that still compose application policy keep their paths. No adapter rule, capability or provider boundary described here changes."} -->
 
 Identity verification, account linking, admin directory gateways, profile reads and direct session/challenge adapters now delegate to the [identity module](../../docs/platform/IDENTITY.md). The reference bindings retain SDK loading, mail delivery, sender and origin policy. The package accepts structural clients and an explicit JWT loader; the application remains responsible for selecting them.

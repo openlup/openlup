@@ -97,8 +97,12 @@ remains to be supplied and checked after B0 integration.
 ## Source move map
 
 Paths below the package column are relative to `packages/platform/src/identity/`.
-Compatibility paths delegate to the package; application composition remains at
-the original route/runtime paths.
+The table records where each source came from. Server files that only re-exported
+the package at a former path have been removed, and reference code imports
+`@openlup/platform/identity` directly. Former paths that still compose
+application policy, and the documented browser compatibility files under
+`src/domains/auth/`, remain; application composition stays at the original
+route/runtime paths.
 
 | Former source | Package source |
 | --- | --- |
@@ -114,7 +118,7 @@ the original route/runtime paths.
 | `server/adapters/supabase/adminUserActionPort.ts` | `managedAdminUserGateways.ts`, `adminUserActionPorts.ts`; sender, origin, mail transport and receipt mapping stay in the application |
 | `server/adapters/supabase/clients/clientAuthLink.ts` | `managedClientAuthLink.ts`; operator email-correction composition stays in the application |
 | `server/adapters/jwt/{customerIdentityVerifier,customerSessionIssuer}.ts` | `{customerIdentityVerifier,customerSessionIssuer}.ts`, with `jwtLibrary.ts` for host injection |
-| `server/adapters/platform/operatorTokenAdminAuth.ts` | `operatorTokenAdminAuth.ts` |
+| Former platform adapter `operatorTokenAdminAuth.ts` | `operatorTokenAdminAuth.ts` |
 | `server/adapters/postgres/{customerRecovery,customerMe}.ts` | `{postgresCustomerRecovery,postgresCustomerMe}.ts`; communication preferences stay in the application |
 | `server/domains/customers/{customerAuth,customerMeHandler}.ts` | `{customerAuth,customerMeHandler}.ts`, with local profile contracts and ports |
 | Customer magic-link and verify-OTP route bodies | `customerMagicLinkHandler.ts`, `customerVerifyOtpHandler.ts` |

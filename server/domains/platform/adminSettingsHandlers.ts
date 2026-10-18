@@ -16,7 +16,7 @@ import {
   adminSettingsUpdateResponseSchema,
 } from "../../../src/domains/platform/contracts.js";
 import type { AdminSettingsPort } from "../../../src/domains/platform/ports.js";
-import type { PlatformAdminAuthorizationResult } from "./adminAuth.js";
+import type { PlatformAdminAuthorizationResult } from "@openlup/platform/identity";
 
 export interface AdminSettingsReadDeps {
   settingsPort: Pick<AdminSettingsPort, "readSettings">;

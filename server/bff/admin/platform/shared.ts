@@ -1,4 +1,4 @@
-import type { PlatformAdminAuthorizationResult } from "../../../domains/platform/adminAuth.js";
+import type { PlatformAdminAuthorizationResult } from "@openlup/platform/identity";
 import { createSupabaseDataGateway } from "../../../adapters/supabase/dataGateway.js";
 import { readSupabaseActorDataGatewayEnv } from "../../../adapters/supabase/dataGatewayClientFactory.js";
 import {

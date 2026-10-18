@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
-import type { PlatformUserAuthenticationResult } from "./adminAuth.js";
+import type { PlatformUserAuthenticationResult } from "@openlup/platform/identity";
 import type { AdminPlatformPort } from "../../../src/domains/platform/ports.js";
 import { createAdminPlatformMeHandler } from "./adminMeHandler.js";
 

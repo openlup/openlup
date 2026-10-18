@@ -4358,10 +4358,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/jwt/customerSessionIssuer.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/localReferenceCompositionIdentity.test.ts",
       "class": "public-output"
     },
@@ -4614,10 +4610,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/platform/operatorTokenAdminAuth.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/platform/platformAlertSink.ts",
       "class": "public-output"
     },
@@ -4763,10 +4755,6 @@
     },
     {
       "path": "server/adapters/postgres/customerCommunicationPreferences.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/customerMe.ts",
       "class": "public-output"
     },
     {
@@ -5159,10 +5147,6 @@
     },
     {
       "path": "server/adapters/subscriptionDeliveryAlignmentGateway.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/accountLinkStore.ts",
       "class": "public-output"
     },
     {
@@ -6151,10 +6135,6 @@
     },
     {
       "path": "server/adapters/supabase/fulfillmentOperationalProof.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/identityVerifier.ts",
       "class": "public-output"
     },
     {
@@ -8394,15 +8374,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/auth/authVerifyUrl.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/auth/ports.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/auth/reconcileAccountForPrincipal.ts",
       "class": "public-output"
     },
     {
