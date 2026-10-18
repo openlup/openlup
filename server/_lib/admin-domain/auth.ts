@@ -1,12 +1,10 @@
 import { readObservedResponseContext } from "../observability/requestContext.js";
 import { createClient } from "@supabase/supabase-js";
-import type { VercelRequest, VercelResponse } from "../types/vercel.js";
+import type { VercelResponse } from "../types/vercel.js";
 import type { Database } from "../../../src/integrations/supabase/types.js";
-import { createManagedIdentityClients, readBearerToken, authorizeAdminWithUser, refusesMachineActorRequest, sendMachineActorWriteRefused, resolveAdmin as resolveIdentityAdmin } from "@openlup/platform/identity";
+import { createManagedIdentityClients, resolveAdmin as resolveIdentityAdmin } from "@openlup/platform/identity";
 export { authorizeAdminWithUser, authorizeAdminBooleanWithUser, authorizeCommerceAdminWithUser, readBearerToken } from "@openlup/platform/identity";
 export type { AdminAuthorization, AuthorizeAdmin } from "@openlup/platform/identity";
-import type { AdminAuthorization } from "@openlup/platform/identity";
-import { sendBffError } from "../bff/response.js";
 
 /**
  * GENERIC AGENT-OPERABLE DOMAIN KIT — domain-neutral home (`server/_lib/admin-domain/`).
@@ -98,42 +96,6 @@ export function allowedAdminRolesForBffRoute(route: string): readonly AdminRole[
   if (DISTRIBUTOR_ROUTE_SET.has(route)) return ["admin", "distributor"];
   return ["admin"];
 }
-
-export async function preflightAdminBffRoute(
-  req: VercelRequest,
-  res: VercelResponse,
-  route: string,
-): Promise<boolean> {
-  const allowedRoles = allowedAdminRolesForBffRoute(route);
-  if (!allowedRoles) return true;
-
-  const env = readSupabaseAdminAuthEnv();
-  if (!env) {
-    sendBffError(res, "INTERNAL", "Supabase environment is not configured");
-    return false;
-  }
-
-  const accessToken = readBearerToken(req);
-  const client = createAdminAuthClient(env, accessToken);
-  let authz: AdminAuthorization;
-  try {
-    authz = await authorizeAdminWithUser(client, accessToken, { allowedRoles });
-  } catch {
-    sendBffError(res, "UPSTREAM_UNAVAILABLE", "Admin authorization failed");
-    return false;
-  }
-
-  if (authz.ok === false) {
-    sendBffError(res, authz.code, authz.message);
-    return false;
-  }
-  if (refusesMachineActorRequest(route, req.method, authz.isMachineActor, MACHINE_ACTOR_WRITE_ROUTES)) {
-    sendMachineActorWriteRefused(res, { responseRequestId: (response) => readObservedResponseContext(response)?.requestId });
-    return false;
-  }
-  return true;
-}
-
 
 export const MACHINE_ACTOR_WRITE_ROUTES = [
   "/api/bff/admin/commerce/catalog/document-proposal",

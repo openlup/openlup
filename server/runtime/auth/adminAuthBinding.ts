@@ -1,5 +1,5 @@
 import { createAdminAuthBindingResolver, createAdminBffPreflight, type AdminAuthBindingOptions, type PlatformOperatorChecker } from "@openlup/platform/identity";
-export type { AdminAuthBinding, AdminAuthBindingOptions, AdminAuthBindingResolution, PlatformOperatorChecker, PlatformOperatorCheckerFactory } from "@openlup/platform/identity";
+export type { AdminAuthBindingOptions, PlatformOperatorChecker } from "@openlup/platform/identity";
 import { readObservedResponseContext } from "../../_lib/observability/requestContext.js";
 import { MACHINE_ACTOR_WRITE_ROUTES, allowedAdminRolesForBffRoute } from "../../_lib/admin-domain/auth.js";
 import { createSupabaseAdminAuthFromEnv } from "../../adapters/supabase/adminAuthVerifier.js";

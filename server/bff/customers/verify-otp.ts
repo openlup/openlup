@@ -3,8 +3,6 @@ import { createCustomerVerifyOtpHandler } from "@openlup/platform/identity";
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { customerAuthUiEnabled } from "../../_lib/config/featureFlags.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
-import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
-import { z } from "../../../src/lib/validation/zod.js";
 import { resolveCustomerSessionBinding } from "../../runtime/customers/customerSessionBinding.js";
 
 type SessionResolver = typeof resolveCustomerSessionBinding;

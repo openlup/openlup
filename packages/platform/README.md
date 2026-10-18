@@ -19,6 +19,8 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./job-ledger` | The job-run ledger port, its PostgreSQL and managed (Supabase) adapters, the managed v2/v3 compatibility calls and the location of its SQL |
 | `./kernel` | The bundle identifiers, descriptors and readiness |
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
+| `./identity` | Experimental capability: identity engine, authorization, profile readers, session adapters and BFF factories |
+| `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 
 ## Scheduled jobs
 

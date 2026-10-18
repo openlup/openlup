@@ -74,7 +74,7 @@ of semantic or dataflow analysis; see the precise scope and exceptions in
 [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
 
 
-<!-- openlup-doc-impact {"unit":"server","digest":"sha256-d5d89b8d54383fbd28577394c31d3f634e093b6995ab43826ce34616cd9cafcf","reason":"Deletion delta. The removed personalization feature's server facades and services (blob, declension, events logger, image generation, OCR, identity, image and text validation, mask generation) are deleted, and two commerce handlers lose never-injected optional personalization hooks; no server boundary described here changes."} -->
+<!-- openlup-doc-impact {"unit":"server","digest":"sha256-9cfdf7128ab62cd3a5e27dbf32460c1b005f8617537f7483950832afc55587a7","reason":"The admin-domain kit drops an uncalled managed-only preflight copy and its unused imports; the dispatcher keeps using the runtime auth binding's preflight. The customer kit, the runtime auth binding and the customer session binding drop unused imports and re-exports. A characterization test pins the reference customer binding's existing process-wide managed read settings independently of the passed bundle-selection environment. No runtime boundary described here changes."} -->
 
 The runnable server substrate lives in the development-preview `@openlup/platform`
 package: the Node HTTP runtime and its fixed request order, BFF dispatch,
