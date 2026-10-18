@@ -477,11 +477,15 @@ It refuses other statements, procedural/dynamic SQL, ambiguous escapes and
 unterminated comments or quotations. A new form needs its own reviewed predicate
 and regression coverage. A separate
 [exact reviewed function class](../docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
-pins three managed forwards, exactly three existing-function replacements and
-two new price-setup functions. Both required self-check and release prepare call
+pins three managed function forwards, exactly three existing-function replacements
+and two new price-setup functions, plus an optional runtime list with the
+five-function capability forward and a second service-only identity capabilities
+forward. Both required self-check and release prepare call
 the same checker; replacement remains outside the expand-only predicate.
-Approval must predate the feature comparison base and each release forward's
-introduction commit. Exact path, whole-file bytes, old/new definition hashes and
+Required self-check keeps the whole registry unchanged from the feature comparison
+base. Release compares each forward's own entry, list position and shared registry
+fields with its introduction parent; later controls may append approvals. A feature
+cannot approve itself. Exact path, whole-file bytes, old/new definition hashes and
 signature cardinality must match. Admission checks syntax and pinned evidence,
 not live database compatibility;
 review constraints, defaults and replay behaviour on the selected installation.

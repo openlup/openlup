@@ -375,9 +375,9 @@ The report schema in `scripts/agent-review-session.mjs` is the implementation
 contract; these files are process evidence, never cryptographic execution
 attestation.
 
-Earlier signed-receipt and hosted-observer libraries remain optional historical
-mechanisms. Their existence does not activate installed native review or grant
-permission to provision a model service.
+The earlier signed-receipt controller and hosted observer have been retired.
+Native sessions and queue admission are the active path; their shared raw Git
+object authentication remains. No model service or separate signer is required.
 
 ## Sources and attribution
 
