@@ -89,6 +89,8 @@ The checker reports `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`,
 its exact candidate. A host must provide complete installed metadata and selected-adapter
 observations; a report does not prove ACL, function bodies or recovery.
 
+See [module readiness](README.md#module-readiness) for logical modules.
+
 ## Using this package in an application
 
 - **Do not edit the installed package.** Do not change files under `node_modules/@openlup/`, and

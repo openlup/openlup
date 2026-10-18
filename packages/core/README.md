@@ -27,8 +27,8 @@ complete host inventory, actual schedule/route function bindings and a bounded
 schema probe. It never migrates, leases or sends. Only `ready` admits a candidate;
 `unknown` and `unsatisfied` retain the serving candidate. The host owns immutable
 artifact/configuration/schema identity and admission at every work entrance.
-Exactly one contribution per non-kernel package is required today; multiple
-capabilities per distribution need a future separately reviewed adaptation.
+Legacy artifacts require one contribution per non-kernel package; selected logical
+modules use [module readiness](#module-readiness).
 
 For PostgreSQL catalog inspection, import `buildGroupedPostgresSchemaProbe`,
 `decodeGroupedPostgresSchemaRows` and `PostgresSchemaCatalogEntry` from
@@ -206,9 +206,16 @@ neutrality evidence, not package activation or consumer compatibility evidence.
 
 ## Kernel Documentation
 
-<!-- openlup-doc-impact {"unit":"core","digest":"sha256-8e51804713ed34cae5286093c8036e24b5cf502a4e20bec243ce3a1481382b02","reason":"The manifest and own lockfile move from 0.14.0 to 0.15.0 for the set that first publishes @openlup/platform. API, runtime, dependency resolutions and package gates are unchanged in this preparation delta."} -->
-
 - [`docs/SUBSCRIPTION_ENGINE.md`](docs/SUBSCRIPTION_ENGINE.md) — what the
   `./subscription` kernel owns, its deterministic-clock contract, the
   late-payment cycle-shift rule and its monotonic clamp, and how a host
   application consumes it.
+
+### Module readiness
+
+Selected `./readiness` modules retain independent schema requirements.
+Dependencies use the same or an earlier layer:
+`kernel`, `rail`, `capability`, `implementation`.
+See [CHANGELOG migration guidance](CHANGELOG.md#unreleased) for selection,
+bindings, refusals and diagnostics, and the source checkout's
+`api/readiness.api.md` snapshot for declarations; the host owns inventory.
