@@ -122,22 +122,22 @@ assert(operatorChallengeRequestSchema.safeParse({ email: "admin@example.invalid"
 assert(!operatorSessionSchema.safeParse({ accessToken: "incomplete" }).success);
 const manifest = { schemaVersion: 1, baseline: { file: "baseline.sql", sha256: "0".repeat(64) }, forward: [], objectInventorySha256: "0".repeat(64) };
 function postgresOperations(connectionString) {
-  return {
-    data: () => createPostgresDataGateway({ connectionString }).asService(async () => "service"),
-    transaction: async () => { const lane = createPostgresRoleFreeTransactionLane({ connectionString }); try { return await lane.run(async () => "transaction"); } finally { await lane.close(); } },
-    migrations: () => createPostgresMigrationRunner({ connectionString }, {
+  return [
+    () => createPostgresDataGateway({ connectionString }).asService(async () => "service"),
+    async () => { const lane = createPostgresRoleFreeTransactionLane({ connectionString }); try { return await lane.run(async () => "transaction"); } finally { await lane.close(); } },
+    () => createPostgresMigrationRunner({ connectionString }, {
       root: process.cwd(), lockName: "platform-cold-consumer", catalogProjectionPayload: async () => "",
       source: { readMigrations: () => ({ migrations: [{ file: "baseline.sql", content: "SELECT 1;" }], errors: [] }), readManifest: () => manifest, evaluate: () => [] },
     }).status(),
-    advisoryLock: async () => { const lock = createEnvAdvisoryLock({ DATABASE_URL: connectionString }); try { assert.equal(await lock.tryAcquire("consumer"), true); await lock.release("consumer"); } finally { await lock.close(); } },
-    privacy: async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(async () => "privacy"); } finally { await lane.close(); } },
-    operatorLogin: async () => { const store = createPostgresOperatorIdentityStore({ connectionString }); try { return await store.findMembership("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
-    customerProfile: () => createPostgresDataGateway({ connectionString }).asActor({ role: "authenticated", sub: "11111111-1111-4111-8111-111111111111" }, db => createPostgresCustomerMePort(db).getCustomerMe("11111111-1111-4111-8111-111111111111")),
-    privacyStore: async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(db => createPostgresPrivacyStore().findReceipt(db, { kind: "contact", contactId: "11111111-1111-4111-8111-111111111111" })); } finally { await lane.close(); } },
-    customerChallenge: async () => { const store = createPostgresCustomerChallengeStore({ connectionString }); try { return await store.pruneChallenges({ limit: 1 }); } finally { await store.close(); } },
-    operatorInvitation: async () => { const store = createDirectOperatorInvitationStore({ connectionString }); try { return await store.read("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
-    operatorDirectory: async () => { const directory = createDirectOperatorIdentityDirectory({ connectionString }); try { return await directory.ensurePrincipal({ email: "operator@example.invalid", redirectTo: "https://example.invalid/admin/auth/callback" }); } finally { await directory.close(); } },
-  };
+    async () => { const lock = createEnvAdvisoryLock({ DATABASE_URL: connectionString }); try { assert.equal(await lock.tryAcquire("consumer"), true); await lock.release("consumer"); } finally { await lock.close(); } },
+    async () => { const store = createPostgresOperatorIdentityStore({ connectionString }); try { return await store.findMembership("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
+    async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(async () => "privacy"); } finally { await lane.close(); } },
+    () => createPostgresDataGateway({ connectionString }).asActor({ role: "authenticated", sub: "11111111-1111-4111-8111-111111111111" }, db => createPostgresCustomerMePort(db).getCustomerMe("11111111-1111-4111-8111-111111111111")),
+    async () => { const lane = createPostgresPrivacyUnitOfWork({ connectionString }); try { return await lane.run(db => createPostgresPrivacyStore().findReceipt(db, { kind: "contact", contactId: "11111111-1111-4111-8111-111111111111" })); } finally { await lane.close(); } },
+    async () => { const store = createPostgresCustomerChallengeStore({ connectionString }); try { return await store.pruneChallenges({ limit: 1 }); } finally { await store.close(); } },
+    async () => { const store = createDirectOperatorInvitationStore({ connectionString }); try { return await store.read("11111111-1111-4111-8111-111111111111"); } finally { await store.close(); } },
+    async () => { const directory = createDirectOperatorIdentityDirectory({ connectionString }); try { return await directory.ensurePrincipal({ email: "operator@example.invalid", redirectTo: "https://example.invalid/admin/auth/callback" }); } finally { await directory.close(); } },
+  ];
 }
 const structuralClient = {
   auth: { getUser: async () => ({ data: { user: { id: "11111111-1111-4111-8111-111111111111", email: "customer@example.invalid", email_confirmed_at: "2026-01-01T00:00:00Z" } }, error: null }) },
@@ -209,6 +209,21 @@ try {
 `);
 }
 
+export function provePostgresOperations(consumer: string, connectionString: string): void {
+  consumerNode(consumer, adapterOperations + `
+const operations = postgresOperations(process.argv[2]);
+assert.equal(await operations[0](), "service");
+assert.equal(await operations[1](), "transaction");
+assert.deepEqual(await operations[2](), { pending: ["baseline.sql"], applied: [] });
+await operations[3]();
+// A selected driver alone cannot enable operator login without its migrated schema.
+await assert.rejects(() => operations[4](), error => error.code === "42P01");
+assert.equal(await operations[5](), "privacy");
+// Default gateway and migration pools have no public shutdown API.
+process.exit(0);
+`, [connectionString]);
+}
+
 // Like the outbox proof: the trusted job service when CI supplies its identity, otherwise an owned
 // labelled container; a unique database either way, and no skip when neither is available.
 function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): void {
@@ -239,18 +254,13 @@ function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): 
     // Roles are cluster-wide; create the three the gateway assumes only when they are absent.
     docker(["exec", container, "psql", "-U", "postgres", "-d", database, "-v", "ON_ERROR_STOP=1", "-c",
       "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon; END IF; END $$;"]);
+    provePostgresOperations(consumer, `postgresql://postgres@127.0.0.1:${port}/${database}`);
     consumerNode(consumer, adapterOperations + `
 const operations = postgresOperations(process.argv[2]);
-assert.equal(await operations.data(), "service");
-assert.equal(await operations.transaction(), "transaction");
-assert.deepEqual(await operations.migrations(), { pending: ["baseline.sql"], applied: [] });
-await operations.advisoryLock();
-assert.equal(await operations.privacy(), "privacy");
-// Every identity adapter reaches the actual driver; this empty database lacks identity tables.
-for (const name of ["operatorLogin", "customerChallenge", "operatorInvitation", "operatorDirectory", "customerProfile", "privacyStore"]) {
-  await assert.rejects(operations[name], error => error.code === "42P01");
+// The appended identity adapters also require their migrated schema.
+for (const index of [6, 7, 8, 9, 10]) {
+  await assert.rejects(operations[index], error => error.code === "42P01");
 }
-// Default gateway and migration pools have no public shutdown API.
 process.exit(0);
 `, [`postgresql://postgres@127.0.0.1:${port}/${database}`]);
     console.log(`Platform PostgreSQL SQL conformance PASS (${service ? "job service" : "owned container"}, database ${database})`);

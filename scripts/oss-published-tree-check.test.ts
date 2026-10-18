@@ -9,12 +9,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-// Keep documentation falsifiers under the test file explicitly invoked by Published Tree CI.
-import "./documentation-impact.test.ts";
-import "./documentation-bundle.test.ts";
-import "./documentation-cli.test.ts";
-import "./ast-grep/check-filewide-ignore.test.ts";
-import "./ast-grep/rule-tests/portable-no-industry-contracts.test.ts";
 
 import { isExpandOnlyPlatformForward } from "./oss-source-release-contract.ts";
 import { REQUIRED_CONTEXTS, contextPassed } from "./packages/release-gate.ts";
@@ -55,7 +49,7 @@ const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run:
 
 // The workflow uses the same inventory-driven route for future packages.
 function assertPublishedPackageRoutes(inventory: string, source = workflow): void {
-  const commands = workflowCommands(workflowJob("test", source));
+  const commands = workflowCommands(workflowJob("install-proof", source));
   expect(commands).toContain('node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
   for (const { directory } of parsePackagesConfig(inventory).packages.filter(({ publish }) => publish)) {
     const manifest = JSON.parse(readFileSync(join(ROOT, directory, "package.json"), "utf8"));
@@ -163,8 +157,8 @@ describe("maintainer-controlled source preview workflow", () => {
 describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
-    expect(workflowCommands(typecheck)).toEqual(["npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full"))).toEqual(["npm ci", "npm test"]);
+    expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
+    expect(workflowCommands(workflowJob("test-full"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm test"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -184,23 +178,30 @@ describe("complete public CI", () => {
     expect(workflow).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
     expect(workflow).toContain("run: node --experimental-strip-types packages/ui/smoke/neutrality.ts");
   });
-  it("preserves every required selector and the subsequent existing steps with fatal neutrality", () => {
+  it("preserves active selectors with subscription, command-contract and fatal neutrality coverage in one discovery", () => {
     const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts: Record<string, string> };
     expect(createHash("sha256").update(requiredTestFloor).digest("hex")).toBe("51484fa2f1ef215691d86a1e08f18446147e7ebf7271a621925bb82cd162fe64");
-    const expandedFloor = requiredTestFloor.replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ")
+    const expandedFloor = requiredTestFloor
+      .replace("scripts/agent-review-controller.test.ts ", "scripts/public-ci-reuse.test.ts ")
+      .replace("scripts/agent-review-hosted.test.ts ", "")
+      .replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ")
       + " server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts";
     expect(PUBLIC_REQUIRED_TEST_COMMAND).toBe(expandedFloor);
     expect(manifest.scripts["test:required"]).toBe(expandedFloor);
     expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(expandedFloor.split(" ").slice(3));
     expect(manifest.scripts.test).toBe(PUBLIC_TEST_COMMAND);
     expect(manifest.scripts).not.toHaveProperty("test:full");
-    expect(workflowCommands(workflowJob("test"))).toEqual([
-      "npm ci",
+    expect(workflowCommands(workflowJob("install-proof"))).toEqual([
+      "node scripts/public-ci-reuse.mjs",
+      "npm ci --prefer-offline --no-audit --fund=false",
+      "npm run build",
+      "npm run build:public-reference",
       'node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"',
-      "npm run test:required",
-      "npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx",
-      "npx vitest run scripts/oss-published-tree-check.test.ts",
-      "npx vitest run scripts/public-ci-neutrality.test.ts",
+    ]);
+    expect(workflowCommands(workflowJob("test"))).toEqual([
+      "node scripts/public-ci-reuse.mjs",
+      "npm ci",
+      "npm run test:required -- server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts",
     ]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...PUBLIC_REQUIRED_TEST_SCOPE], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);
     for (const target of PUBLIC_REQUIRED_TEST_SCOPE) {
@@ -208,8 +209,34 @@ describe("complete public CI", () => {
     }
   });
   it("runs root and database diagnostics independently of each other and the required tests", () => {
-    for (const name of ["test", "test-full", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
-    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["npm ci --prefer-offline --no-audit --fund=false", "node scripts/public-ci-pgtap.mjs"]);
+    for (const name of ["install-proof", "test", "test-full", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
+    for (const name of ["install-proof", "test"]) {
+      const job = workflowJob(name);
+      expect(job).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
+      expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
+      expect(job).toContain("      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version-file: .nvmrc\n          cache: npm\n");
+      const unconditionalPrGroup = job.replace(/^ {8}if: (?:github\.event_name == 'push'|steps\.reused\.outputs\.reuse != 'true')\n/gmu, "");
+      expect(unconditionalPrGroup).not.toMatch(/^ {4}strategy:|^ {6}(?:- | {2})if:|^ {10}ref:|continue-on-error/mu);
+      expect(job.indexOf("      - name: Assert Node and npm contract\n")).toBeGreaterThan(0);
+      expect(job.indexOf("      - run: npm ci")).toBeGreaterThan(job.indexOf("      - name: Assert Node and npm contract\n"));
+    }
+    expect(workflowJob("test")).toContain("          fetch-depth: 0\n");
+    const installProof = workflowJob("install-proof");
+    expect(installProof).toContain(`    services:
+      postgres:
+        image: postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -t 1"
+          --health-interval 1s --health-timeout 5s --health-retries 30
+`);
+    expect(installProof).toContain("          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}\n          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}\n");
+    expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
+    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/public-ci-pgtap.mjs"]);
+
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
       "node --experimental-strip-types packages/ui/smoke/neutrality.ts",
@@ -239,7 +266,7 @@ describe("complete public CI", () => {
     } finally { await standalone.close(); }
     expect(() => assertPublishedPackageRoutes(inventory, workflow.replace("scripts/packages/required-package-gates.ts", "scripts/packages/missing-gates.ts"))).toThrow();
   }, 30_000);
-  it("passes the full and frozen required argv to Vitest unchanged and propagates failure", () => {
+  it("passes the full, frozen required and additional argv to Vitest unchanged and propagates failure", () => {
     const scratch = join(ROOT, ".context/scratch");
     mkdirSync(scratch, { recursive: true });
     const directory = mkdtempSync(join(scratch, "public-test-argv-"));
@@ -259,8 +286,12 @@ describe("complete public CI", () => {
       const required = run(["run", ...PUBLIC_REQUIRED_TEST_SCOPE], 29);
       expect(required.error).toBeUndefined();
       expect(required.status).toBe(29);
-      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual((requiredTestFloor.replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ")
-        + " server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts").split(" ").slice(2));
+      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run", ...PUBLIC_REQUIRED_TEST_SCOPE]);
+      const additional = "server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts".split(" ");
+      const combined = run(["run", ...PUBLIC_REQUIRED_TEST_SCOPE, ...additional], 29);
+      expect(combined.error).toBeUndefined();
+      expect(combined.status).toBe(29);
+      expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run", ...PUBLIC_REQUIRED_TEST_SCOPE, ...additional]);
       const inherited = spawnSync(process.execPath, [join(ROOT, "scripts/run-vitest.mjs"), 'run', '--coverage'], {
         cwd: directory, encoding: 'utf8', timeout: 10000,
         env: { PATH: directory, AI_RESOURCE_GATE_ACTIVE: '1', AI_RESOURCE_GATE_LANE: 'coverage', PUBLIC_TEST_ARGV_LOG: log, PUBLIC_TEST_EXIT: '0' },
@@ -303,6 +334,21 @@ describe("what the workflow may not contain", () => {
 });
 
 describe("the workflow stays in step with what it claims to run", () => {
+  it("allows only expensive main-push work to reuse exact-commit group proof", () => {
+    for (const name of ["typecheck", "install-proof", "test", "test-full", "pgtap"]) {
+      const job = workflowJob(name);
+      expect(job).toContain("id: reused\n        if: github.event_name == 'push'");
+      const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
+      let probeSeen = false;
+      for (const step of steps) {
+        if (step.includes("id: reused")) { probeSeen = true; continue; }
+        if (probeSeen && !step.startsWith("      - name: Assert Node and npm contract")) expect(step).toContain("if: steps.reused.outputs.reuse != 'true'");
+      }
+      expect(probeSeen).toBe(true);
+    }
+    for (const name of ["dco", "self-check", "gitleaks", "native-review"]) expect(workflowJob(name)).not.toContain("steps.reused");
+  });
+
   it("runs every required context for main merge groups and isolates their concurrency by event and SHA", () => {
     expect(workflow).toContain("  merge_group:\n    types: [checks_requested]\n    branches: [main]\n");
     expect(workflow).toContain("group: published-tree-ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'merge_group' && github.sha || '' }}");

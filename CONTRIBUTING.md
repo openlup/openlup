@@ -129,10 +129,6 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-308db6d56f8693d0c8e793bae3440b7ecd942d78b1bffc4dc807bd205e4ea4fc","reason":"The installed-artifact consumer adds named identity adapter operations, structural managed clients, a closed SDK-absent package inventory and missing-peer falsifiers. The required test command adds two focused reference composition files, registered individually in the existing executable entrypoint inventory. Execution ownership, artifact isolation, peer-selection phases and other contributor commands remain unchanged."} -->
-
-<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-d41496e6a016bd1d5db956dfea160528714bd109fa6a59d7475b86f7a1942193","reason":"The required test command additionally selects the two identity reference composition test files. Existing build, lint, coverage, dependency installation and CI entrypoints retain their commands and execution ownership."} -->
-
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
 ordered DROP statements before the fixed grants and rejects missing, duplicate
@@ -140,14 +136,16 @@ or additional policy operations. Both PR and release-history tests check these
 refusals and require approval before the forward's introducing commit. These
 checks admit one reviewed contraction; they do not grant general policy edits.
 
-The reviewed runtime-forward checker admits one exact pinned SQL file and a
-fixed set of current capabilities. Tests exercise both PR history and release
+The reviewed runtime-forward checker admits an exact pinned five-function SQL
+file and an optional identity capabilities file with fixed service-only client
+writes, operator activation inserts and invitation email reads. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,
 writes, functions and changed execution attributes. The control must already
 exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-7754f9a24ad3a5e6f570d6599e69a966ef6655741c48b1bb48f041236192b975","reason":"The shared admission function and predicate refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL), with focused and tracked-rail regression tests. The Additive forward release path in DATA_AND_MIGRATIONS documents this refusal. Contributor commands, required test selection and gate order in this section remain unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
@@ -273,7 +271,7 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
-The test job runs the shared package gate before broad root tests. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
 A module added to an existing distribution extends that package's consumer and
 required batch; it does not need another npm workspace, runner or CI job.
@@ -328,16 +326,20 @@ npm run oss:published-tree -- --typecheck
 npm run build
 OPENLUP_REFERENCE_PROFILE=subscription OPENLUP_BUILD_OUT_DIR=dist-subscription \
   OPENLUP_SSR_OUT_DIR=dist-subscription-ssr npm run build:public-reference
-# test: package gates, then required coverage inherited from main (clean signed candidate)
+# install-proof: package gates after both builds on a clean signed candidate
+# Keep package gates before root tests locally: one checkout shares build outputs.
 GATE_PACKS="$(mktemp -d)"
 # Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
 node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
-npm run test:required
-npx vitest run server/runtime/public-reference \
-  src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
-npx vitest run scripts/oss-published-tree-check.test.ts
-npx vitest run scripts/public-ci-neutrality.test.ts
+# test: hosted CI uses a separate checkout, in parallel with install-proof.
+npm run test:required -- server/runtime/public-reference \
+  src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx \
+  scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts \
+  scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts \
+  scripts/ast-grep/check-filewide-ignore.test.ts \
+  scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts \
+  scripts/public-ci-neutrality.test.ts
 # test-full: raw complete Vitest diagnostics
 npm test
 # self-check (needs no install)
@@ -426,8 +428,9 @@ jobs run against the queue's actual group checkout. DCO checks the complete
 event-base-to-group range, including the synthetic tip; missing sign-off fails
 without an exemption. Documentation impact uses the event's exact group base,
 head, ref and tree, rather than inferring a PR head or using a stale local base.
-A no-impact record binds the change and its owner section, not the base commit,
-so it stays valid in a group whose base moved for unrelated reasons. A
+A no-impact trailer binds the change and its owner, not the owner section's
+prose or the base commit, so it stays valid in a group whose base moved for
+unrelated reasons, including an edit of that section. A
 pull-request checkout is identified by `GITHUB_SHA` and its exact event base and
 head parents; the payload's `merge_commit_sha` is not compared, because a
 `synchronize` payload can carry a lagging value.
@@ -542,6 +545,8 @@ for the one-source pilot, bounded rebuild recovery and activation falsifiers.
 Freshness is checked at admission, not guaranteed at the later merge; same-name
 checks from a malicious writer remain outside this process-evidence boundary.
 
+### Commands and lint rules
+
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
@@ -580,7 +585,13 @@ The [import-boundary test matrix](scripts/packages/eslint-import-map.test.ts)
 reuses one linter per loaded configuration across that configuration's samples.
 Each import-map scenario loads its own configuration. Both boundary helpers
 reject parser failures and unmatched files before checking the expected rule;
-the complete syntax, path-depth and package matrix remains collected.
+syntax tables exercise every supported loader form for each owning rule family.
+Separate path tables exercise package names, path spellings and depth boundaries
+with one canonical load. This preserves the syntax and path obligations without
+repeating their full Cartesian product. Type-only edges keep both accepted type
+loads and refused value loads. The platform package source proof remains: its
+provider allowlist and member-call loaders cover cases outside ESLint's current
+selectors, so that check cannot yet be removed as duplicate coverage.
 
 `npm run lint` first checks file-leading blank-line suppressions with
 `scripts/ast-grep/check-filewide-ignore.mjs`; this check cannot be suppressed
@@ -658,12 +669,14 @@ isolation remains an ESLint responsibility. The existing packed-core audit
 also refuses the configured provider content, including the Vercel SDK
 namespace, in actual package artifacts. These checks add no command or CI job.
 
+### Test scope and diagnostics
+
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating
 the directories and preserves its raw failure result. The required `test` job
-uses `npm run test:required`, which retains every former main selector in order,
-then runs the existing subscription, core and materialized contract checks plus
-the neutrality CLI falsifiers. Run `npm test` for the complete public diagnostics
+uses `npm run test:required -- …`, retaining every former main selector in order
+and appending the existing subscription, materialized contract, documentation
+and neutrality CLI falsifiers to the same discovery. The package gate runs independently in `install-proof` and includes core's separate checks. Run `npm test` for the complete public diagnostics
 and narrower paths while iterating. Required success is not complete-suite success. The root Vitest
 configuration does not collect the standalone `packages/core` test suite with the root configuration. From the repository root, run
 `npm --workspace @openlup/core run ci` for that package's separate checks
@@ -694,8 +707,46 @@ module's source: one set version `0.N.P` across publishable packages,
 the patch-set API check, and the skip, resume and full states of a set.
 The same directory holds the package release-shape checks and the test that
 loads the lint configuration with a conditional `imports` map.
-The public test job separately runs the materialized command-contract
-falsifiers, which also run in the complete root scope.
+The public test job appends the profile and tooling falsifier selectors to
+`test:required`, so one Vitest invocation schedules all required root files.
+Hosted package gates run in `install-proof`, alongside `test`, without sharing
+checkouts, installations, package outputs or databases. The PostgreSQL job service
+belongs to `install-proof`; root SQL falsifiers retain their owned fixtures. In
+one local checkout, package gates still finish first because cold preparation
+replaces package build outputs. Both existing jobs retain their 20-minute ceiling
+and all test limits; there is no new job, dependency install or aggregate. Compare
+the longest required path and summed job durations separately. The complete root
+scope also discovers these falsifiers.
+
+The root test command has no directory or file filters. It collects the shipped
+Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
+including `src/lib/*Boundary*` and `*Guardrails*`. Playwright specifications
+retain their separate browser/profile runners; the root Vitest command does not
+claim browser journey evidence.
+
+Keep executable tests tied to a current offered contract, installed safety
+boundary or selected reference behaviour. Historical migration spellings,
+withheld commands, deployment inventory counts and adopter presentation are not
+platform acceptance requirements. Removing an obsolete assertion requires its
+ended duty or equivalent surviving proof; a similar test name is insufficient.
+Unmounted UI may defer interaction proof until that exact UI is selected, while
+installed authorization, money, persistence and replay controls remain tested.
+Retire dormant scenarios from the source tree rather than adding skips or
+runner exclusions; reintroduce neutral scenarios when their contract is selected.
+Remove their uncalled helper modules with them. Test a supplied tool's actual
+entrypoint or consumer; a helper retained solely for a withheld wrapper does not
+create a public acceptance obligation. SQL asset and documentation checks preserve
+readability, valid destinations and current behavior, rather than exact comment
+wording or a requirement that a useful link appear only once.
+
+The root Vitest configuration's flat per-test ceiling is 10 s outside coverage
+runs and 30 s under coverage (`scripts/ci-vitest-duration-keys.ts`). Hosted
+runners are slower than a developer machine. A test that takes more than a few
+seconds on a hosted runner, typically one that spawns processes, builds Git
+fixtures, runs ESLint or TypeScript, or packs or installs packages, declares an
+explicit timeout sized for that runner rather than relying on the default.
+
+### Package, policy and release checks
 
 `npm run packages:check` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each
@@ -735,22 +786,6 @@ packs only that publishable package and requires its manifest version to be
 `<version>`. The command publishes nothing;
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) describes how
 the protected release approval leads to direct OIDC publication.
-
-The root test command has no directory or file filters. It collects the shipped
-Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
-including `src/lib/*Boundary*` and `*Guardrails*`. Playwright specifications
-retain their separate browser/profile runners; the root Vitest command does not
-claim browser journey evidence.
-
-Keep executable tests tied to a current offered contract, installed safety
-boundary or selected reference behaviour. Historical migration spellings,
-withheld commands, deployment inventory counts and adopter presentation are not
-platform acceptance requirements. Removing an obsolete assertion requires its
-ended duty or equivalent surviving proof; a similar test name is insufficient.
-Unmounted UI may defer interaction proof until that exact UI is selected, while
-installed authorization, money, persistence and replay controls remain tested.
-Retire dormant scenarios from the source tree rather than adding skips or
-runner exclusions; reintroduce neutral scenarios when their contract is selected.
 
 The `pgtap` job uses Supabase CLI **2.98.2** and a fresh local database stack,
 replays the shipped managed baseline and every published forward in filename
@@ -836,10 +871,10 @@ required checks is the maintainer's ruleset decision; this contribution changes
 no repository settings. Release workflows still check those six contexts, so a
 red diagnostic result is not automatically a release refusal.
 
-Documentation falsifiers are imported by the existing materialized
-command-contract test entrypoint. Run
-`npx vitest run scripts/oss-published-tree-check.test.ts` for routing, source-impact,
-bare-runtime CLI and bundle corruption cases. Those tests create disposable Git
+Documentation falsifiers run as independent test files, selected explicitly by
+the combined required command above and discovered individually by the complete
+root run. They cover routing, source impact, bare-runtime CLI and bundle
+corruption without importing one test file from another. Those tests create disposable Git
 fixtures; they do not publish or validate the meaning of arbitrary prose.
 See [Documentation maintenance](docs/platform/DOCUMENTATION.md) for regeneration,
 exact comparison bases and clean versus local-draft exports. The public self-check
@@ -855,9 +890,14 @@ workflow checks the target against the previous preview with
 check admits additive forwards and the separate exact reviewed function class under
 [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#additive-forward-release-path).
 Reviewed function forwards use the same checker in required self-check and release
-prepare. Their whole-file bytes, signatures and old/new definitions are pinned in
-`config/reviewed-platform-forwards.json`; the feature PR cannot change its own
-approval. The three replacements are not expand-only. See
+prepare. Their whole-file bytes, signatures, old/new definitions and runtime
+privileges are pinned in `config/reviewed-platform-forwards.json`. The runtime
+list admits the five-function capability forward and an optional service-only
+identity capabilities forward. Required self-check keeps the whole registry
+unchanged from the feature comparison base; release compares each forward's own
+entry, list position and shared registry fields with its introduction parent, so later
+controls may append approvals. A feature cannot approve itself. These forwards
+are not expand-only. See
 [the exact class](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 and its refusal tests in `scripts/source-preview-release.test.ts`.
 It refuses edits or deletions of migration history, unapproved non-expand-only SQL, a
@@ -929,6 +969,24 @@ The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 what the preview can and cannot demonstrate. They do not turn a preview checkout
 into a stable or supported artifact.
 
+
+The opt-in identity Auth/mail/database runner requires
+`--phase email-trust|joint`; only the exported runner's optional `Setup.phase`
+defaults to `email-trust`. Both phases replay the complete committed managed
+chain, including the identity capabilities forward, and prove association under
+the shipped grants. Every successful handler response is followed immediately by
+a database read requiring its returned contact's normalized email and principal
+link; confirmed and declared-provider scenarios also link a pre-existing unlinked
+contact. The joint phase additionally checks unconfirmed soft provisioning and
+first-login confirmation, refuses provisioning and existing-email linking under
+automatic confirmation, preserves contact ownership after anonymous signup, and
+requires no mail or account creation for unknown-address login. Refusal snapshots,
+subscriber preservation and the public-catalogue fingerprint remain. The
+[identity conformance guide](docs/platform/IDENTITY.md#conformance-and-outstanding-evidence)
+describes prerequisites and proof limits. Default suites, required selectors,
+CI activation and verification order remain unchanged.
+
+<!-- openlup-doc-impact {"unit":"repository","digest":"sha256-3596f948904d4961b2dbc38a72006c3b2124a02cd29c604e736228e3d3787502","reason":"The compose container receives the optional invitation TTL. No service, route, contributor command or verification selector changes; the runtime and identity owners describe the setting and refusal behavior."} -->
 
 <!-- openlup-doc-impact {"unit":"tests","digest":"sha256-9bc9d077d462c3b6b310bc4a61a79297acbcacc587ac490b1e067256431d8ed6","reason":"The component journey, optional captured-mail browser proof and direct disposable PostgreSQL proof reuse the existing runners. The PostgreSQL proof uses Node for server cryptography and explicitly binds the shared storage mocks and an empty URL query to window for the browser adapter; it needs no DOM. Test commands, execution ownership and full required verification duties remain unchanged; installation proofs continue to require their owned local services."} -->
 
@@ -1151,9 +1209,10 @@ intent, scope and reviewer results. Installed verify and pre-push must refuse
 missing, stale, partial or unresolved evidence; live enforcement is claimed only
 after installed refusal tests pass. These receipts do not cryptographically
 attest remote agent execution or establish hard author/signer OS separation.
-The merged authenticated verifier/controller and hosted observer remain optional
-libraries, not requirements for an external model service. Existing mechanical
-checks, DCO and applicable publication/merge authority remain required.
+The earlier signed-receipt controller and hosted observer are retired; native
+sessions retain their shared raw Git graph authentication. No external model
+service is required. Existing mechanical checks, DCO and applicable
+publication/merge authority remain required.
 
 Reuse the compact task record in the PR description instead of writing another
 manual. Explain material deviations, evidence and remaining limitations. Review
@@ -1162,7 +1221,8 @@ maintenance cost; findings need a concrete mechanism and effect, not a quota.
 
 Include the affected documentation owners and what changed in their explanations.
 For a scoped no-impact record, challenge its reasoning as well as its fresh
-fingerprint: a hash identifies the delta and owner text, not semantic correctness.
+fingerprint: a hash identifies the delta and its owner, not semantic correctness.
+`--policy` prints every accepted reason.
 Keep generic corrections upstream; separately owned applications document their
 selected immutable release and own composition. Their private operations and
 adoption state are not public platform documentation inputs.
@@ -1211,8 +1271,35 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   timeouts → parallelize writing and serialize heavy test runs; after a load
   timeout the complete gate is rerun without the concurrent load, and the
   timeout never counts as a pass.
+- 2026-10-18, M03 P-contracts lint boundary: each review cycle found another
+  call shape that loads a module (wrapped `require`, `module.require`, process
+  builtins) → refuse the ambient loader identifiers themselves, and
+  `import.meta`, instead of chasing callee shapes.
+- 2026-10-18, M03 P-contracts and B0: a renamed fixture or new path failed the
+  neutrality ratchet only in the hosted self-check → run
+  `node scripts/public-ci-neutrality.mjs` and
+  `node --experimental-strip-types packages/ui/smoke/neutrality.ts` locally
+  before every push.
+- 2026-10-18, M02 C1, making `@openlup/platform` publishable: code, checks and
+  fixtures that assumed the package was private or outside the release set had
+  to change with the flag → grep every reader of the package's
+  `publish`/`private` state (package inventory, package and release checks,
+  consumer fixtures) before flipping it.
+- 2026-10-18, OSS programme doc-impact records: one marker per unit, bound to
+  the section prose, made every open pull request conflict on, or expire with,
+  a hot section → bind the answer to the change and keep it in the change's own
+  commits.
 
 ### Merge queue
+
+After a merge, the main-push jobs may reuse the successful merge-group run for
+that exact commit. The probe validates the public repository, queue workflow,
+latest run/attempt and eight successful job executions, including both raw
+diagnostics. Missing, incomplete, contradictory or unavailable evidence runs
+the normal commands. Pull requests and merge groups always run their commands;
+DCO, policy/neutrality and secret checks also run for each main push. The six
+main-push contexts still complete, so package release checks keep their existing
+contract. This is commit equality, with no cross-commit cache or new retry.
 
 `main` takes merge commits through GitHub's merge queue, which
 builds and checks the fresh integration tree itself. A merge commit's message
