@@ -146,7 +146,7 @@ exist before the SQL feature's base and introducing commit. Passing these tests
 is admission evidence, not proof that a draft overlay is the shipped chain.
 
 
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-06469722536546220062613a81ffbf4767b57cdc31fd596a9cb16126e66f1b23","reason":"The existing ESLint boundary test gains synthetic graph declarations and plants for the optional platform contracts entry: non-.js relative targets, non-literal loads, every reserved ambient loader identifier in value and type syntax, import.meta, wrapped require calls and process builtin loaders, plus browser-safe positive code. Existing extension and depth coverage remains. These exercise the production rule factory without adding a real module or export. Platform's README owns the boundary explanation; this section's contributor commands, required selectors, thresholds and gate order are unchanged."} -->
+<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-06469722536546220062613a81ffbf4767b57cdc31fd596a9cb16126e66f1b23","reason":"The ESLint boundary tests exercise the optional platform contracts entry with synthetic graphs: canonical relative .js and exact public core imports, forbidden targets and non-literal loads, reserved ambient loader identifiers in value and type syntax, import.meta, wrapped require calls and process builtin loaders, plus browser-safe positive code. No module declares the entry yet. Platform's README explains the boundary; this section's contributor commands, required selectors, thresholds and gate order remain unchanged."} -->
 
 Start with the [development, diagnostics and preview-release sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 for where each check runs, Draft/Ready/queue/main triggers, blocking versus
