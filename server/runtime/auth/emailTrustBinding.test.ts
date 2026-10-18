@@ -65,6 +65,19 @@ it.each(["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"])("b
   expect(authReconcileErrorCodeSchema.parse(code)).toBe(code);
 });
 
+it("browser reconcile schema preserves the exact refusal vocabulary", () => {
+  expect(authReconcileErrorCodeSchema.options).toEqual([
+    "EMAIL_TRUST_ENVELOPE_REFUSED",
+    "EMAIL_TRUST_SETTINGS_UNAVAILABLE",
+    "NO_VERIFIED_EMAIL",
+    "RESERVED_PRINCIPAL_REFUSED",
+    "ACCOUNT_LINK_CONFLICT",
+    "EMAIL_OWNED_BY_OTHER_PRINCIPAL",
+    "PRINCIPAL_EMAIL_MISMATCH",
+  ]);
+  expect(authReconcileErrorCodeSchema.safeParse("UNKNOWN_REFUSAL").success).toBe(false);
+});
+
 it("observes persisted creation and existing-contact linking in the declared-provider scenario", async () => {
   vi.resetModules();
   type Contact = { id: string; email: string; auth_user_id: string | null };
