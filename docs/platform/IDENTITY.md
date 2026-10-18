@@ -310,11 +310,14 @@ notification failure returns 503 `INVITATION_NOTIFICATION_FAILED` with active
 membership retained. Managed pending/expiry remains a compatibility gap requiring
 a separate transactional store and reviewed forward. No managed SQL, RPC or
 grants are introduced.
-The committed managed chain still needs a reviewed forward granting
-`service_role` SELECT(email) and INSERT(id, email, role, membership_state,
-membership_provenance, membership_accepted_at) on `admin_users`. The opt-in local
-conformance applies these exact permissions as a labelled fixture-only grant;
-it establishes neither shipped-grants readiness nor transactional lifecycle parity.
+The managed chain's identity capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`. The opt-in local conformance replays
+the complete committed chain with ambient default ACLs removed and adds no grant.
+It proves immediate activation, repeat/concurrent recovery and revoked-member
+refusal under the shipped grants. It does not establish managed/direct lifecycle
+parity.
 See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
 [package invocation](../../packages/platform/README.md#operator-invitations).
 

@@ -977,10 +977,6 @@ CI activation and verification order remain unchanged.
 
 <!-- openlup-doc-impact {"unit":"repository","digest":"sha256-3596f948904d4961b2dbc38a72006c3b2124a02cd29c604e736228e3d3787502","reason":"The compose container receives the optional invitation TTL. No service, route, contributor command or verification selector changes; the runtime and identity owners describe the setting and refusal behavior."} -->
 
-<!-- openlup-doc-impact {"unit":"tests","digest":"sha256-fd850e70e33c133d1e5164f1868da03c618e0c22e33ea502d824cb7e5b474f30","reason":"The direct Docker-backed invitation lifecycle regression adds database advisory barriers for acceptance/removal ordering and uses Vitest, while the opt-in managed conformance uses the existing tsx runner and committed migration-chain reader, omitting only psql dump guard lines for node-postgres replay. Its disposable-stack prerequisites, default-ACL revocation, exact fixture-only grants and invocation remain as described in the platform package guide. Required selectors, gate order and contributor commands in this section are unchanged."} -->
-
-<!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-85406c7fc1b9307476e2d2e4eedb843c15627cd514e5fb47e0a7c52d40d88403","reason":"The added unit assertion exercises the existing expand-only predicate on the direct invitation forward. No checker implementation, SQL admission rule, contributor command, required selector or gate order changes."} -->
-
 ## Pull requests
 
 ### Local contribution handoff

@@ -286,13 +286,14 @@ a separate transactional store and reviewed forward. No managed SQL, RPC or SDK
 dependency is added. See the
 [identity lifecycle owner](../../docs/platform/IDENTITY.md#operator-invitation-lifecycle).
 
-The committed managed chain lacks `service_role` SELECT(email) and INSERT(id,
-email, role, membership_state, membership_provenance, membership_accepted_at) on
-`admin_users`. Production use needs a separate reviewed managed grant forward.
+The managed chain's identity capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`.
 The opt-in managed conformance replays the complete committed chain with ambient
-default ACLs removed and applies exactly those permissions as a labelled
-fixture-only grant. It proves immediate membership behaviour, without claiming
-shipped-grants readiness or managed/direct lifecycle parity.
+default ACLs removed and adds no grant. It proves immediate activation,
+repeat/concurrent recovery and revoked-member refusal under the shipped grants.
+It does not establish managed/direct lifecycle parity.
 
 With a fresh local managed stack running, export its API URL, service key and
 PostgreSQL owner connection URL as `OPENLUP_MANAGED_CONFORMANCE_URL`,

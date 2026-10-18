@@ -303,18 +303,16 @@ a transactional store. It closes later only through a separate reviewed managed
 forward. This change does not broaden SQL admission, install a managed migration
 or certify parity with the direct transaction protocol.
 
-The committed managed chain does not grant `service_role` SELECT on
-`admin_users.email`, required by the membership reader, or INSERT on
-`(id, email, role, membership_state, membership_provenance,
-membership_accepted_at)`, required by invitation insertion. The insert omits
-`is_machine_actor`, relying on its `NOT NULL DEFAULT false`. Production use needs
-a separate reviewed managed forward granting exactly those columns. No such
-grant ships here. The opt-in
+The managed chain's identity capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`. The insert omits `is_machine_actor`,
+relying on its `NOT NULL DEFAULT false`. The opt-in
 [managed conformance module](../../tests/postgres/operatorInvitationManaged.conformance.ts)
 replays the complete committed managed chain into a fresh disposable local stack
-with ambient default ACLs removed, then applies those exact permissions as a
-labelled fixture-only grant. It proves immediate activation, repeat/concurrent
-recovery and revoked-member refusal without claiming shipped-grants readiness.
+with ambient default ACLs removed and adds no grant. It proves immediate
+activation, repeat/concurrent recovery and revoked-member refusal under the
+shipped grants. It does not establish managed/direct lifecycle parity.
 The [package guide](../../packages/platform/README.md#operator-invitations) gives
 its local endpoints, controlled setup and exact invocation.
 
