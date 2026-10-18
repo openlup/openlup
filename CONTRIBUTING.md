@@ -332,11 +332,13 @@ GATE_PACKS="$(mktemp -d)"
 # Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
 node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
-npm run test:required
-npx vitest run server/runtime/public-reference \
-  src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
-npx vitest run scripts/oss-published-tree-check.test.ts
-npx vitest run scripts/public-ci-neutrality.test.ts
+npm run test:required -- server/runtime/public-reference \
+  src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx \
+  scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts \
+  scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts \
+  scripts/ast-grep/check-filewide-ignore.test.ts \
+  scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts \
+  scripts/public-ci-neutrality.test.ts
 # test-full: raw complete Vitest diagnostics
 npm test
 # self-check (needs no install)
@@ -665,9 +667,10 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating
 the directories and preserves its raw failure result. The required `test` job
-uses `npm run test:required`, which retains every former main selector in order,
-then runs the existing subscription, core and materialized contract checks plus
-the neutrality CLI falsifiers. Run `npm test` for the complete public diagnostics
+uses `npm run test:required -- …`, retaining every former main selector in order
+and appending the existing subscription, materialized contract, documentation
+and neutrality CLI falsifiers to the same discovery. The package gate still
+runs first and includes core's separate checks. Run `npm test` for the complete public diagnostics
 and narrower paths while iterating. Required success is not complete-suite success. The root Vitest
 configuration does not collect the standalone `packages/core` test suite with the root configuration. From the repository root, run
 `npm --workspace @openlup/core run ci` for that package's separate checks
@@ -698,8 +701,10 @@ module's source: one set version `0.N.P` across publishable packages,
 the patch-set API check, and the skip, resume and full states of a set.
 The same directory holds the package release-shape checks and the test that
 loads the lint configuration with a conditional `imports` map.
-The public test job separately runs the materialized command-contract
-falsifiers, which also run in the complete root scope.
+The public test job appends the profile and tooling falsifier selectors to
+`test:required`, so one Vitest invocation schedules all required root files.
+Package gates finish first because their cold preparation replaces package
+build outputs. The complete root scope also discovers these falsifiers.
 
 The root test command has no directory or file filters. It collects the shipped
 Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
@@ -849,10 +854,10 @@ required checks is the maintainer's ruleset decision; this contribution changes
 no repository settings. Release workflows still check those six contexts, so a
 red diagnostic result is not automatically a release refusal.
 
-Documentation falsifiers are imported by the existing materialized
-command-contract test entrypoint. Run
-`npx vitest run scripts/oss-published-tree-check.test.ts` for routing, source-impact,
-bare-runtime CLI and bundle corruption cases. Those tests create disposable Git
+Documentation falsifiers run as independent test files, selected explicitly by
+the combined required command above and discovered individually by the complete
+root run. They cover routing, source impact, bare-runtime CLI and bundle
+corruption without importing one test file from another. Those tests create disposable Git
 fixtures; they do not publish or validate the meaning of arbitrary prose.
 See [Documentation maintenance](docs/platform/DOCUMENTATION.md) for regeneration,
 exact comparison bases and clean versus local-draft exports. The public self-check
