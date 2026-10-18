@@ -456,6 +456,13 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       for (const specifier of ["./own.js", `${up}composition/own.js`, ...(depth > 0 ? ["../own.js"] : [])]) await admitted("composition", specifier);
       // Declared value edges through the target's entry.
       await admitted("composition", `${up}data/index.js`);
+      await admitted("identity", `${up}bff/index.js`);
+      await admitted("identity", `${up}data/index.js`);
+      await admitted("identity", `${up}kernel/index.js`);
+      await admitted("identity", `${up}http/index.js`, true);
+      await refused("identity", `${up}data/postgresGateway.js`);
+      await refused("identity", `${up}composition/index.js`);
+      await refused("identity", `${up}scheduler/index.js`);
       await admitted("bff", `${up}kernel/index.js`);
       // A types edge admits type-only imports; any load that brings in a value is refused.
       await admitted("http", `${up}bff/index.js`, true);

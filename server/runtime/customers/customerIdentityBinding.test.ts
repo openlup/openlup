@@ -26,11 +26,11 @@ const ENV = {
 describe("customer identity binding", () => {
   it("reuses the bundle-cached direct gateway behind a request-scoped actor-only facade", () => {
     const source = readFileSync(
-      "server/runtime/customers/customerIdentityBinding.ts",
+      "packages/platform/src/identity/customerIdentityBinding.ts",
       "utf8",
     );
 
-    expect(source).toContain('bindRequestActorDataPort("", env)');
+    expect(source).toContain('defaults.bindRequestActorDataPort("", env)');
     expect(source).not.toContain("createPostgresDataGateway");
     expect(source).not.toContain("asService");
   });

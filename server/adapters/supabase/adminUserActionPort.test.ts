@@ -615,7 +615,7 @@ function inviteAdminClient(options: {
     events.push("insert");
     return { error: options.insertError ?? null };
   });
-  const listUsers = vi.fn(async () => ({ data: { users: options.authUsers ?? [] } }));
+  const listUsers = vi.fn(async () => ({ data: { users: options.authUsers ?? [] }, error: null }));
   const inviteAuthUser = vi.fn(async () => {
     events.push("invite");
     return {

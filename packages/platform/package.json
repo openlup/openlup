@@ -95,6 +95,16 @@
       "types": "./dist/composition/index.d.ts",
       "import": "./dist/composition/index.js",
       "default": "./dist/composition/index.js"
+    },
+    "./identity": {
+      "types": "./dist/identity/index.d.ts",
+      "import": "./dist/identity/index.js",
+      "default": "./dist/identity/index.js"
+    },
+    "./identity/contracts": {
+      "types": "./dist/identity/contracts/index.d.ts",
+      "import": "./dist/identity/contracts/index.js",
+      "default": "./dist/identity/contracts/index.js"
     }
   },
   "repository": {

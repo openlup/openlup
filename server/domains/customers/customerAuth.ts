@@ -1,3 +1,1 @@
-export type CustomerUserAuthenticationResult =
-  | { ok: true; userId: string }
-  | { ok: false; code: "UNAUTHORIZED"; message: string };
+export type { CustomerUserAuthenticationResult } from "@openlup/platform/identity";
