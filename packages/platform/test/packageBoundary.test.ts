@@ -152,7 +152,7 @@ describe("package source boundary", () => {
     host.readFile = (path) => blocked(path) ? undefined : readFile(path);
     const program = ts.createProgram([join(SOURCE_ROOT, "../dist/blob/index.d.ts")], options, host);
     expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
-  });
+  }, 30_000);
 
   it("typechecks the composition declarations without pg and references no data-module declarations", () => {
     const options: ts.CompilerOptions = {
@@ -169,7 +169,7 @@ describe("package source boundary", () => {
     expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
     const declarations = program.getSourceFiles().map((file) => file.fileName.replaceAll("\\", "/"));
     expect(declarations.filter((name) => name.includes("/dist/data/"))).toEqual([]);
-  });
+  }, 30_000);
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([

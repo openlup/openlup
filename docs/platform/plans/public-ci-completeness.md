@@ -27,6 +27,14 @@ bypass. Repository settings and rulesets are unchanged.
 
 ## Required and diagnostic execution
 
+Execution placement update, 18 October 2026: the approved merge-latency
+optimization moves the unchanged package gate to the existing required
+`install-proof` job, after both builds, and runs the unchanged root command in
+`test` concurrently in another checkout. This supersedes the original serial
+placement below; it preserves all proofs, selectors, six required contexts and
+20-minute job limits. Local commands sharing build outputs remain serial.
+Current execution is documented in [Development and release](../DEVELOPMENT_AND_RELEASE.md).
+
 The existing six contexts remain `dco`, `typecheck`, `install-proof`, `test`,
 `self-check` and `gitleaks`. `npm run test:required` preserves the former main
 root-test command, including every selector and its ordering. The required test

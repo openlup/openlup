@@ -13,7 +13,8 @@ SemVer promise.
   deployment-risk classification and public-default refusal.
 
 - Add the opt-in identity envelope proof with phase `email-trust`, including
-  its fixture-only service-role grant, immediate persisted-association assertions,
+  association under the shipped managed grants (including the identity
+  capabilities forward), immediate persisted-association assertions,
   pre-existing contact linking and post-replay state checks. Phase `joint` also
   proves unconfirmed soft-account provisioning and first-login confirmation,
   preserving customer/auth identities and subscription references and refusing
