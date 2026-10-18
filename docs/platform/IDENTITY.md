@@ -67,8 +67,7 @@ with its two provided entries and foundation dependencies. The host must supply
 an independently identified `requiredSchema`; managed and direct stores have
 different objects. This candidate does not invent one combined schema inventory.
 The contribution is not installed in the reference readiness composition here.
-The module-field shape follows readiness B0; this stacked checkout has not merged
-that prerequisite.
+It uses the readiness module field (`PackageManifest.module`) directly.
 
 ## Conformance and outstanding evidence
 
@@ -76,7 +75,7 @@ The repository's existing `packages/platform` required selector and Vitest node
 project include `test/identity/**` without a new selector or coverage exception.
 The witnesses are:
 
-- W1: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. Two customers each see only their own client, address, orderer profile and payment preference. An anonymous SELECT is pinned to SQLSTATE 42501 for each table.
+- W1: [`identity_customer_own_rows_test.sql`](../../supabase/tests/identity_customer_own_rows_test.sql), run by the existing managed-schema pgTAP harness. It pins the reference schema's grants as they are today. Two customers each see only their own client, address, orderer profile, payment preference and account event; `authenticated` holds SELECT on those tables (on clients, column-level). The customer SELECT policies on pets, orders, order items, subscriptions, subscription lines and cycles have no `authenticated` grant behind them, so those reads are refused with SQLSTATE 42501. Anonymous reads are refused with 42501 on the customer tables and return zero rows on the three subscription tables.
 - W2/W3: [`adminConformance.test.ts`](../../packages/platform/test/identity/adminConformance.test.ts), using the real authorizer at invite/remove HTTP gates and retaining the role fallback and role-only use-case behavior.
 - W4: [`inviteLookupConformance.test.ts`](../../packages/platform/test/identity/inviteLookupConformance.test.ts), covering pagination, normalization, cap, errors, effect ordering and retained request spelling.
 - The imported engine, profile, session and adapter tests sit beside these witnesses; [`sql.test.ts`](../../packages/platform/test/identity/sql.test.ts) verifies canonical projection identity.
@@ -134,46 +133,3 @@ No sender, base URL, locale, receipt key or observed request-ID change is intend
 The new, unmounted reconcile source can answer the five domain refusal codes as
 messages, plus `Customer session required` or `Account reconciliation failed`.
 Those are new endpoint-source outcomes, not an activation of a route.
-
-## Task evidence
-
-The finite outcome is a local, neutral identity import with the existing logic
-and the explicitly characterized newer lookup/fence behavior. Authority covers
-file edits and focused local checks in the assigned worktree only. It excludes
-Git writes, network access, installation, release, activation, submission and
-merge. Full suites, coverage and package gates are reserved for the supervisor.
-
-Simplicity pre-check: retain existing functions, ports and use-case order, move
-only their implementation, and use thin application bindings for SDK, copy and
-origin policy. The smaller alternative of moving route files wholesale would
-retain application dependencies inside the package. Explicit structural client
-and JWT-loader seams preserve the existing package boundary without adding SDK
-peers or a module loader framework.
-
-The final read-only comparison base is `9d24ecac849ed82c64b20c3457a302908ac5d3b8`
-after `origin/main` advanced; the task HEAD and index were not changed.
-
-Local evidence (2026-10-18): core, outbox and platform builds passed; platform
-`tsc --noEmit`, changed-file ESLint, the focused structural scan and both neutrality
-checks passed. The platform tests plus import-map proof passed 1378 tests in 66
-files; after the final binding/type changes, the focused identity/application run
-passed 249 tests in 38 files. A temporary adapter-composition type fixture also
-passed, using the locally installed SDK declarations and JWT implementation.
-
-The normal publication policy and inventory commands stop on unstaged deletions
-because their path census reads the Git index. Updating that index is outside this
-task's file-only authority. The same exported materialized-catalog assertion,
-provided the complete candidate path list, passed as a supplemental check;
-documentation impact reports 12 obligations and zero unanswered. This does not
-replace the normal commands after the supervisor stages the moves. Navigation,
-catalog and source-release contract were regenerated from the candidate.
-
-W1's pgTAP SQL and real-database fresh/upgrade execution have not been run here.
-Full suites, coverage, required gates, cold-consumer/packing and native committed
-review were not run under this task's limits. Runtime browser-schema extraction
-and a concrete profile-specific readiness inventory remain unfinished.
-
-Self-retro: focused route tests caught a lost request-reference field;
-passing the existing request-ID reader into the foundation responder fixed the
-cause without allowing caller-supplied responders. No review or delivery evidence
-is claimed for this uncommitted candidate.

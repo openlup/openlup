@@ -4,15 +4,16 @@ import { resolveBundleId } from "../kernel/index.js";
 import type { MagicLinkAuthClient, MagicLinkRateLimitClient, MagicLinkDecision } from "./magicLinkPorts.js";
 import { resolveCustomerSessionBinding } from "./customerSessionBinding.js";
 import type { z } from "zod";
-export interface CustomerMagicLinkHandlerOptions extends IdentityResponseOptions {
+export type CustomerMagicLinkEnvironment = { url: string; anonKey: string; serviceRoleKey: string };
+export interface CustomerMagicLinkHandlerOptions<E extends CustomerMagicLinkEnvironment = CustomerMagicLinkEnvironment> extends IdentityResponseOptions {
   enabled: () => boolean;
   env: Record<string, string | undefined>;
   disabledDetails?: Record<string, unknown>;
   requestSchema: z.ZodType<{ email: string; locale: "pl" | "en"; returnTo?: string }>;
   responseSchema: z.ZodType<{ accepted: true }>;
-  readEnvironment: () => { url: string; anonKey: string; serviceRoleKey: string } | null;
-  createCustomerClient: (env: { url: string; anonKey: string }, token: null) => MagicLinkAuthClient;
-  createCustomerServiceClient: (env: { url: string; serviceRoleKey: string }) => unknown;
+  readEnvironment: () => E | null;
+  createCustomerClient: (env: E, token: null) => MagicLinkAuthClient;
+  createCustomerServiceClient: (env: E) => unknown;
   checkAttempt: (input: { client: MagicLinkRateLimitClient; ip: string; email: string }) => Promise<MagicLinkDecision>;
   extractClientIp: (headers: HttpRequest["headers"]) => string;
   padResponseTime: (startedAt: number, floor: number) => Promise<void>;
@@ -21,7 +22,7 @@ export interface CustomerMagicLinkHandlerOptions extends IdentityResponseOptions
   resolveSession: typeof resolveCustomerSessionBinding;
 }
 const MAGIC_LINK_RESPONSE_FLOOR_MS = 400;
-export function createCustomerMagicLinkHandler(options: CustomerMagicLinkHandlerOptions) {
+export function createCustomerMagicLinkHandler<E extends CustomerMagicLinkEnvironment>(options: CustomerMagicLinkHandlerOptions<E>) {
 const { sendBffError, sendBffSuccess, sendMethodNotAllowed } = createIdentityResponder(options);
 const { enabled: customerAuthUiEnabled, env: environment, readEnvironment: readCustomerSelfServiceEnv, createCustomerClient, createCustomerServiceClient, checkAttempt: checkAndRecordCustomerMagicLinkAttempt, extractClientIp, padResponseTime, resolveOrigin: readRequestOrigin, requestSchema: customerMagicLinkRequestSchema, responseSchema: customerMagicLinkResponseSchema, resolveSession, callbackPath: customerAuthCallbackPath } = options;
 return async (req: HttpRequest, res: HttpResponse): Promise<void> => {

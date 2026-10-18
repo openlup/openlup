@@ -13,7 +13,7 @@ SemVer promise.
 - Include the characterized create-first directory lookup, bounded normalized
   invite lookup and managed machine-actor write fence.
 
-Migration: This local candidate is not a published identity release. Reference
+Migration: The identity entries are internal candidates, not a published identity release. Reference
 bindings keep application copy, origins, sender and provider setup outside the
 module. Existing module paths delegate to the package; stable codes are internal
 and the reference invite/remove wire shapes retain their prior fields. The

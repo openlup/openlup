@@ -1,15 +1,4 @@
-import type { Contribution, PackageManifest, RequiredSchema } from "@openlup/core/readiness";
-
-/** This structural extension matches the module representation added by readiness B0. */
-export interface IdentityManifest extends PackageManifest {
-  module: {
-    id: "identity";
-    kind: "capability";
-    provides: readonly ["./identity", "./identity/contracts"];
-    dependsOn: readonly { module: string; entries: readonly string[] }[];
-  };
-}
-export interface IdentityContribution extends Contribution { manifest: IdentityManifest }
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
 
 /** Host-selected schema inventory: managed and direct installations have different objects. */
 export function createIdentityContribution(options: {
@@ -17,7 +6,7 @@ export function createIdentityContribution(options: {
   requiredSchema: RequiredSchema;
   routes?: Contribution["routes"];
   requiredPorts?: readonly string[];
-}): IdentityContribution {
+}): Contribution {
   const routes = options.routes ?? [];
   return {
     manifest: {

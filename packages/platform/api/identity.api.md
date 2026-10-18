@@ -972,29 +972,14 @@ export declare function buildAuthVerifyUrl(authServiceUrl: string, actionType: s
 ## dist/identity/contribution.d.ts
 
 ```ts
-import type { Contribution, PackageManifest, RequiredSchema } from "@openlup/core/readiness";
-/** This structural extension matches the module representation added by readiness B0. */
-export interface IdentityManifest extends PackageManifest {
-    module: {
-        id: "identity";
-        kind: "capability";
-        provides: readonly ["./identity", "./identity/contracts"];
-        dependsOn: readonly {
-            module: string;
-            entries: readonly string[];
-        }[];
-    };
-}
-export interface IdentityContribution extends Contribution {
-    manifest: IdentityManifest;
-}
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
 /** Host-selected schema inventory: managed and direct installations have different objects. */
 export declare function createIdentityContribution(options: {
     version: string;
     requiredSchema: RequiredSchema;
     routes?: Contribution["routes"];
     requiredPorts?: readonly string[];
-}): IdentityContribution;
+}): Contribution;
 ```
 ## dist/identity/customerAuth.d.ts
 
@@ -1131,7 +1116,12 @@ import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { MagicLinkAuthClient, MagicLinkRateLimitClient, MagicLinkDecision } from "./magicLinkPorts.js";
 import { resolveCustomerSessionBinding } from "./customerSessionBinding.js";
 import type { z } from "zod";
-export interface CustomerMagicLinkHandlerOptions extends IdentityResponseOptions {
+export type CustomerMagicLinkEnvironment = {
+    url: string;
+    anonKey: string;
+    serviceRoleKey: string;
+};
+export interface CustomerMagicLinkHandlerOptions<E extends CustomerMagicLinkEnvironment = CustomerMagicLinkEnvironment> extends IdentityResponseOptions {
     enabled: () => boolean;
     env: Record<string, string | undefined>;
     disabledDetails?: Record<string, unknown>;
@@ -1143,19 +1133,9 @@ export interface CustomerMagicLinkHandlerOptions extends IdentityResponseOptions
     responseSchema: z.ZodType<{
         accepted: true;
     }>;
-    readEnvironment: () => {
-        url: string;
-        anonKey: string;
-        serviceRoleKey: string;
-    } | null;
-    createCustomerClient: (env: {
-        url: string;
-        anonKey: string;
-    }, token: null) => MagicLinkAuthClient;
-    createCustomerServiceClient: (env: {
-        url: string;
-        serviceRoleKey: string;
-    }) => unknown;
+    readEnvironment: () => E | null;
+    createCustomerClient: (env: E, token: null) => MagicLinkAuthClient;
+    createCustomerServiceClient: (env: E) => unknown;
     checkAttempt: (input: {
         client: MagicLinkRateLimitClient;
         ip: string;
@@ -1167,7 +1147,7 @@ export interface CustomerMagicLinkHandlerOptions extends IdentityResponseOptions
     callbackPath: (locale: "pl" | "en") => string;
     resolveSession: typeof resolveCustomerSessionBinding;
 }
-export declare function createCustomerMagicLinkHandler(options: CustomerMagicLinkHandlerOptions): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createCustomerMagicLinkHandler<E extends CustomerMagicLinkEnvironment>(options: CustomerMagicLinkHandlerOptions<E>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
 ## dist/identity/customerMeHandler.d.ts
 
