@@ -6,11 +6,13 @@ import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
 import { createReferenceBffDispatch } from "../../server/runtime/bffDispatch.js";
 import { preflightAdminBffRoute } from "../../server/runtime/auth/adminAuthBinding.js";
 import { privacyRoutes } from "../../server/runtime/auth/privacyRoutes.js";
+import { operatorRoutes } from "../../server/runtime/auth/operatorRoutes.js";
 import { handlePrivacyRequest } from "../../server/runtime/auth/privacyBinding.js";
 import { enforceDeploymentRoutePolicy } from "../../server/_lib/publicDeploymentPolicies.js";
 import {
   allowedAdminRolesForBffRoute,
   DISTRIBUTOR_ADMIN_BFF_ROUTES,
+  MACHINE_ACTOR_WRITE_ROUTES,
   PUBLIC_ADMIN_BFF_ROUTES,
 } from "../../server/_lib/admin-domain/auth.js";
 
@@ -41,12 +43,17 @@ function walkTsFiles(dir: string): string[] {
   });
 }
 
-function adminRoutesFromBffRouter(): string[] {
-  const source = read("api/bff/[...path].ts");
-  return [...source.matchAll(/route:\s*"([^"]+)"/g)]
-    .map((match) => match[1])
-    .filter((route) => route.startsWith("/api/bff/admin/"))
-    .sort();
+function adminRoutesFromInventory(): string[] {
+  // The bounded reference router can be empty; handlers retain their observed route declarations.
+  const sources = ["api/bff/[...path].ts", ...walkTsFiles("server/bff/admin")];
+  return [...new Set([
+    ...sources.flatMap(file => [...read(file).matchAll(/route:\s*["']([^"']+)["']/g)]
+      .map(match => match[1]).filter(route => route.startsWith("/api/bff/admin/"))),
+    ...DISTRIBUTOR_ADMIN_BFF_ROUTES,
+    ...PUBLIC_ADMIN_BFF_ROUTES,
+    ...MACHINE_ACTOR_WRITE_ROUTES,
+    ...operatorRoutes({ PLATFORM_BUNDLE: "node-postgres" }).map(entry => entry.route),
+  ])].sort();
 }
 
 describe("admin BFF trust boundary guardrails", () => {
@@ -65,22 +72,39 @@ describe("admin BFF trust boundary guardrails", () => {
     return { req, res: res as unknown as HttpResponse };
   }
 
-  it("preflights admin BFF routes before dispatching handlers", async () => {
+  it.each([
+    { bundle: "node-postgres", label: "direct" },
+    { bundle: "", label: "managed default" },
+  ])("preflights admin BFF routes before dispatching handlers ($label)", async ({ bundle }) => {
+    vi.stubEnv("PLATFORM_BUNDLE", bundle);
     const dispatcher = read("packages/platform/src/bff/dispatch.ts");
     expect(dispatcher.indexOf("options.preflight(req, res, entry.route)")).toBeGreaterThan(-1);
     expect(dispatcher.indexOf("options.preflight(req, res, entry.route)"))
       .toBeLessThan(dispatcher.indexOf("return entry.handler(req, res)"));
 
-    const privacyMounts = privacyRoutes({ PLATFORM_BUNDLE: "node-postgres" }).map(entry => entry.route);
+    const privacyMounts = privacyRoutes({ PLATFORM_BUNDLE: bundle }).map(entry => entry.route);
     expect(privacyMounts).toEqual([
       "/api/bff/admin/identity/privacy/export",
       "/api/bff/admin/identity/privacy/erase",
     ]);
+    const adminRoutes = adminRoutesFromInventory();
+    for (const namespace of ["commerce", "fulfillment", "platform"]) {
+      expect(adminRoutes.some(route => route.startsWith(`/api/bff/admin/${namespace}/`)), namespace).toBe(true);
+    }
+    expect(adminRoutes).toEqual(expect.arrayContaining([
+      ...DISTRIBUTOR_ADMIN_BFF_ROUTES,
+      ...PUBLIC_ADMIN_BFF_ROUTES,
+      ...MACHINE_ACTOR_WRITE_ROUTES,
+      "/api/bff/admin/platform/settings/update",
+      "/api/bff/admin/commerce/orders/note",
+    ]));
     const routes = new Set([
-      ...adminRoutesFromBffRouter(),
+      ...adminRoutes,
       ...privacyMounts,
       "/api/bff/admin/identity/other",
       "/api/bff/admin/identity/privacy",
+      "/api/bff/admin/identity/export",
+      "/api/bff/admin/identity/erase",
       ...privacyMounts.flatMap(route => [route + "/other", route + "-other", route + "/"]),
     ]);
     for (const route of routes) {
@@ -139,7 +163,7 @@ describe("admin BFF trust boundary guardrails", () => {
   });
 
   it("keeps every admin BFF route covered by the role-aware route policy", () => {
-    for (const route of adminRoutesFromBffRouter()) {
+    for (const route of adminRoutesFromInventory()) {
       if ((PUBLIC_ADMIN_BFF_ROUTES as readonly string[]).includes(route)) {
         expect(allowedAdminRolesForBffRoute(route)).toBeNull();
         continue;
@@ -161,7 +185,7 @@ describe("admin BFF trust boundary guardrails", () => {
       "/api/bff/admin/tester-program/status",
     ].sort());
 
-    for (const route of adminRoutesFromBffRouter()) {
+    for (const route of adminRoutesFromInventory()) {
       const roles = allowedAdminRolesForBffRoute(route);
       if ((PUBLIC_ADMIN_BFF_ROUTES as readonly string[]).includes(route)) continue;
       if ((DISTRIBUTOR_ADMIN_BFF_ROUTES as readonly string[]).includes(route)) {
