@@ -146,8 +146,8 @@ accepted. Grants may target only `authenticated` or `service_role`; grants to
 `PUBLIC` or `anon`, other schemas, unrelated statements and unterminated dollar
 bodies refuse even if the whole-file hash was separately repinned.
 
-The optional runtime list pins one additional forward and exactly five existing
-functions: the `admin_clients_search_v3` and `subscription_list_due_for_renewal`
+The optional runtime list pins one or two additional forwards. Its first entry
+pins exactly five existing functions: the `admin_clients_search_v3` and `subscription_list_due_for_renewal`
 readers, and the `customer_support_absorb_lead_v1`,
 `marketing_rehome_client_lead_v1` and `customer_support_correct_subject_email_v1`
 invokers. Its ordered privilege statements grant only `service_role` the fixed
@@ -159,7 +159,7 @@ existing pure `commerce_oms_normalize_search_text` /
 `commerce_oms_normalize_search_digits` helpers needed by client expression indexes.
 The checker fixes the allowed tables, operations, columns and signatures
 independently of the registry, including separate authenticated read/helper sets;
-repinning cannot admit additional capabilities,
+repinning the first runtime forward cannot admit additional capabilities,
 table-wide permissions, INSERT, DELETE, TRUNCATE or an unlisted recipient.
 SELECT and UPDATE are separate capabilities; duplicates within either operation
 refuse. These direct service UPDATE permissions require security admission even
@@ -176,14 +176,23 @@ return shape, volatility, execution security and settings. Attributes after the
 outer dollar body refuse; only its terminating semicolon and whitespace may
 follow. This control installs approval data, without shipping the runtime forward.
 
-Required PR/merge-group self-check requires the allowlist bytes to predate the
-feature comparison base. Release prepare uses the same checker and requires
-the identical allowlist in the first parent of the mainline commit, squash or
-merge, that introduces each forward; a feature branch's own earlier commits do
-not count.
-Thus a release can include a prior control PR followed by feature PRs without
-allowing a feature to approve itself. Missing history refuses. Existing history,
-version and manifest rules still apply, and the expand-only predicate is unchanged.
+The optional second runtime entry admits only the identity account-link forward,
+with no functions or policy retirements. Its fixed service_role-only capabilities
+are INSERT on `clients` columns `email`, `auth_user_id`, `acquisition_source` and
+`lifecycle_stage`, and UPDATE on `auth_user_id`. Reconcile create/link and the
+checkout soft-account link consume them; other columns keep their defaults.
+Browser roles gain nothing. Approval installs data only, without shipping or
+executing the forward.
+
+Required PR/merge-group self-check requires the whole allowlist to remain unchanged
+from the feature comparison base. Release prepare compares each forward's own
+entry and list position, and every registry field outside the forward lists
+(schema version, baseline hash and any other key), with the first parent of the
+mainline commit, squash or merge, that introduces it; a feature branch's own
+earlier commits do not count. Only other forwards' entries may differ, so a later
+control may append approvals without stranding an unreleased forward. A feature still cannot approve itself. Missing history refuses. Existing
+history, version and manifest rules still apply, and the expand-only predicate
+is unchanged.
 Admission is process evidence of exact reviewed bytes, not proof of live schema
 compatibility or authorization to release. Independent control review and the
 affected database behavior tests remain required.

@@ -185,9 +185,12 @@ The [reviewed function-forward approval data](../../config/reviewed-platform-for
 binds exact managed SQL files and old/new function definitions. Its replacement
 list contains exactly three existing signatures in two files; a distinct creation
 list requires the two price-setup signatures to be absent before their forward.
-The registry must precede both the feature
-comparison base and the parent of its introduction; a feature cannot approve itself.
-Required self-check and release preparation share the same admission check.
+The optional runtime list pins the five-function capability forward and a second
+service-only identity account-link forward with no functions or policies.
+Required self-check keeps the whole registry unchanged from the feature comparison
+base. Release compares each forward's own entry, list position and shared registry
+fields with its introduction parent, allowing later controls to append approvals.
+A feature cannot approve itself. Both gates share the same admission checker.
 This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see
 [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
