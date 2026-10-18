@@ -211,7 +211,14 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
       ? `packages/platform module "${module}" contracts import only their own contracts files and exact public core exports.`
       : `packages/platform module "${module}" has no declared contracts entry.`;
     const rules = boundaryRules([{ message, regexes: [contracts === true ? `^(?!(?:${allowed.join("|")})$)` : "^"] }, platformModuleEscapes(message)]);
-    // A computed target cannot be checked against the contracts allowlist.
+    // Reserve the loader-handle names in all identifier positions, including
+    // types, rather than trying to enumerate wrapped or indirect callees.
+    rules["no-restricted-syntax"].push(...[
+      "Identifier[name=/^(require|module|exports|process|globalThis|global|__dirname|__filename|Buffer)$/]",
+      "MetaProperty[meta.name='import'][property.name='meta']",
+    ].map((selector) => ({ selector, message: `${message} Contracts must not reference ambient loader identifiers or import.meta.` })));
+    // A computed load target cannot be checked against the contracts allowlist.
+    // Retain the member-call guard too: x["require"] has no require Identifier.
     const literal = (field) => `:matches([${field}.type='Literal'][${field}.value=/^/], [${field}.type='TemplateLiteral'][${field}.expressions.length=0])`;
     rules["no-restricted-syntax"].push(...[
       `ImportExpression:not(${literal("source")})`,

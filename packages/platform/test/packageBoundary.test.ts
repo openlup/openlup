@@ -11,6 +11,9 @@ import ts from "typescript";
 
 const SOURCE_ROOT = fileURLToPath(new URL("../src", import.meta.url));
 const ENVIRONMENT_READ = new RegExp(["process", "env"].join("\\s*\\.\\s*"));
+const CONTRACTS_LOADER_IDENTIFIERS = new Set([
+  "require", "module", "exports", "process", "globalThis", "global", "__dirname", "__filename", "Buffer",
+]);
 const PG_ADAPTERS = new Set([
   "data/postgresGateway.ts",
   "data/queryBuilder.ts",
@@ -41,6 +44,12 @@ function specifiers(source: string, contracts = false): string[] {
     if (literal(node)) found.push(node.text);
   };
   const visit = (node: ts.Node): void => {
+    if (contracts) {
+      // Reserve these names in every identifier position, including types and
+      // property names, so wrappers and aliases cannot expose a loader handle.
+      expect(ts.isIdentifier(node) && CONTRACTS_LOADER_IDENTIFIERS.has(node.text) || ts.isMetaProperty(node),
+        "Contracts must not reference ambient loader identifiers or meta-properties").toBe(false);
+    }
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) add(node.moduleSpecifier);
     if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword
       || (ts.isIdentifier(node.expression) && node.expression.text === "require")
@@ -281,12 +290,59 @@ describe("package source boundary", () => {
   it("refuses non-literal contracts loads (negative plants)", () => {
     for (const target of ["target", '"p" + "g"', "`./${target}.js`", "42", "null", "...targets", ""]) {
       const sources = [`require(${target});`, `module.require(${target});`, `globalThis.require(${target});`,
-        `process.mainModule.require(${target});`, `module["require"](${target});`];
+        `process.mainModule.require(${target});`, `module["require"](${target});`, `registry["require"](${target});`];
       if (target !== "" && target !== "...targets") sources.push(`import(${target});`);
       for (const source of sources) expect(() => specifiers(source, true)).toThrow("Contracts load targets must be string literals");
     }
-    for (const source of ['import("./own.js");', 'require("./own.js");', "module.require(`./own.js`);"]) {
+    for (const source of ['import("./own.js");', "import(`./own.js`);"]) {
       expect(specifiers(source, true)).toEqual(["./own.js"]);
+    }
+    for (const source of ['require("./own.js");', "module.require(`./own.js`);"]) {
+      expect(() => specifiers(source, true)).toThrow("Contracts must not reference ambient loader identifiers");
+    }
+  });
+
+  it("refuses ambient loader identifiers in contracts values and types (negative plants)", () => {
+    for (const identifier of ["require", "module", "exports", "process", "globalThis", "global", "__dirname", "__filename", "Buffer"]) {
+      for (const source of [`const value = ${identifier};`, `type Value = typeof ${identifier};`, `type Value = ${identifier};`]) {
+        expect(() => specifiers(source, true), source).toThrow("Contracts must not reference ambient loader identifiers");
+      }
+    }
+    for (const source of ["import.meta;", "const value = import.meta.url;"]) {
+      expect(() => specifiers(source, true), source).toThrow("Contracts must not reference ambient loader identifiers or meta-properties");
+    }
+  });
+
+  it.each([
+    'require!("pg");',
+    '(require as any)("pg");',
+    '(<any>require)("pg");',
+    'module.require!("pg");',
+    '(module.require as any)("pg");',
+    '(0, require)("pg");',
+    'process.getBuiltinModule("node:fs");',
+    'process.getBuiltinModule("node:module").createRequire(import.meta.url)("pg");',
+  ])("refuses a wrapped or builtin contracts loader: %s (negative plant)", (source) => {
+    expect(() => specifiers(source, true)).toThrow("Contracts must not reference ambient loader identifiers");
+  });
+
+  it("permits browser-safe contracts types, validators, pure functions and allowed imports (positive plant)", () => {
+    const source = `
+      import type { OwnValue } from "./own.js";
+      import { validate } from "./validator.js";
+      export type { PlatformSettings } from "@openlup/core/platform-runtime";
+      export type Contract = { value: OwnValue };
+      const schema = { parse(value: unknown): string {
+        if (typeof value !== "string") throw new Error("Expected a string");
+        return value.trim();
+      } };
+      export function normalize(value: unknown): string { return validate(schema.parse(value)); }
+      export const loadOwn = () => import("./own.js");
+    `;
+    const imported = specifiers(source, true);
+    expect(imported).toEqual(["./own.js", "./validator.js", "@openlup/core/platform-runtime", "./own.js"]);
+    for (const specifier of imported) {
+      expect(sourceImportAllowed("example/contracts/index.ts", specifier, { example: { contracts: true } })).toBe(true);
     }
   });
 
@@ -300,11 +356,10 @@ describe("package source boundary", () => {
     const moduleGraph: ModuleGraph = { example: { contracts: true } };
     for (const source of ['globalThis.require("pg");', 'process.mainModule.require("pg");', 'module["require"]("pg");']) {
       expect(specifiers(source)).toEqual(["pg"]);
-      for (const file of ["example/server.ts", "example/contracts/index.ts"]) {
-        for (const specifier of specifiers(source, file.includes("/contracts/"))) {
-          expect(sourceImportAllowed(file, specifier, moduleGraph)).toBe(false);
-        }
+      for (const specifier of specifiers(source)) {
+        expect(sourceImportAllowed("example/server.ts", specifier, moduleGraph)).toBe(false);
       }
+      expect(() => specifiers(source, true)).toThrow("Contracts must not reference ambient loader identifiers");
     }
     expect(sourceImportAllowed("data/postgresGateway.ts", "pg", moduleGraph)).toBe(true);
   });

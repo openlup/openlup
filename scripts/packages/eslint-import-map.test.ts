@@ -324,7 +324,11 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const filename = `packages/platform/src/composition/contracts/${"nested/".repeat(depth)}usesContracts.${extension}`;
       const up = "../".repeat(depth + 1);
       for (const specifier of ["./own.js", "./nested/own.js", "@openlup/core/platform-runtime", ...(depth === 2 ? ["../own.js", "../../own.js"] : [])]) {
-        for (const source of loadSources(specifier, extension)) expect(await moduleMessages(contractsConfig, source, filename)).toEqual([]);
+        for (const source of loadSources(specifier, extension)) {
+          const messages = await moduleMessages(contractsConfig, source, filename);
+          if (source.startsWith("const value = require(") || source.startsWith("const value = module.require(")) expect(messages).toContainEqual(refusal);
+          else expect(messages).toEqual([]);
+        }
       }
       for (const specifier of [
         `${up}index.js`, `${up}server.js`, `${up}../data/index.js`, `${up}../http/index.js`,
@@ -340,7 +344,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       for (const target of ["target", '"p" + "g"', "`./${target}.js`", "42", "null"]) {
         for (const source of [
           `import(${target});`, `require(${target});`, `module.require(${target});`,
-          `globalThis.require(${target});`, `process.mainModule.require(${target});`, `module["require"](${target});`,
+          `globalThis.require(${target});`, `process.mainModule.require(${target});`, `module["require"](${target});`, `registry["require"](${target});`,
         ]) expect(await moduleMessages(contractsConfig, source, filename)).toContainEqual(refusal);
       }
       for (const source of ["require();", "module.require();", "require(...targets);"]) {
@@ -356,6 +360,64 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
         ...graph, composition: { ...graph.composition, contracts },
       })).toThrow("contracts must be true or omitted");
     }
+  });
+
+  it("refuses ambient loader identifiers in contracts values and types (negative plants)", async () => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph, platformModuleRules } = await import("../../eslint.config.js");
+    const syntheticGraph = { ...graph, composition: { ...graph.composition, contracts: true } };
+    const contractsConfig = [...config, ...platformModuleRules({ name: "@openlup/platform", directory: "platform" }, "composition", syntheticGraph)] as Linter.Config[];
+    for (const depth of [0, 2, 11]) {
+      const filename = `packages/platform/src/composition/contracts/${"nested/".repeat(depth)}usesHandle.ts`;
+      for (const identifier of ["require", "module", "exports", "process", "globalThis", "global", "__dirname", "__filename", "Buffer"]) {
+        for (const source of [`const value = ${identifier};`, `type Value = typeof ${identifier};`, `type Value = ${identifier};`]) {
+          expect(await moduleMessages(contractsConfig, source, filename), source)
+            .toContainEqual(expect.stringContaining("Contracts must not reference ambient loader identifiers"));
+        }
+      }
+      for (const source of ["import.meta;", "const value = import.meta.url;"]) {
+        expect(await moduleMessages(contractsConfig, source, filename), source)
+          .toContainEqual(expect.stringContaining("Contracts must not reference ambient loader identifiers"));
+      }
+    }
+  });
+
+  it.each([
+    'require!("pg");',
+    '(require as any)("pg");',
+    '(<any>require)("pg");',
+    'module.require!("pg");',
+    '(module.require as any)("pg");',
+    '(0, require)("pg");',
+    'process.getBuiltinModule("node:fs");',
+    'process.getBuiltinModule("node:module").createRequire(import.meta.url)("pg");',
+  ])("refuses a wrapped or builtin contracts loader: %s (negative plant)", async (source) => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph, platformModuleRules } = await import("../../eslint.config.js");
+    const syntheticGraph = { ...graph, composition: { ...graph.composition, contracts: true } };
+    const contractsConfig = [...config, ...platformModuleRules({ name: "@openlup/platform", directory: "platform" }, "composition", syntheticGraph)] as Linter.Config[];
+    expect(await moduleMessages(contractsConfig, source, "packages/platform/src/composition/contracts/usesLoader.ts"))
+      .toContainEqual(expect.stringContaining("Contracts must not reference ambient loader identifiers"));
+  });
+
+  it("permits browser-safe contracts types, validators, pure functions and allowed imports (positive plant)", async () => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph, platformModuleRules } = await import("../../eslint.config.js");
+    const syntheticGraph = { ...graph, composition: { ...graph.composition, contracts: true } };
+    const contractsConfig = [...config, ...platformModuleRules({ name: "@openlup/platform", directory: "platform" }, "composition", syntheticGraph)] as Linter.Config[];
+    const source = `
+      import type { OwnValue } from "./own.js";
+      import { validate } from "./validator.js";
+      export type { PlatformSettings } from "@openlup/core/platform-runtime";
+      export type Contract = { value: OwnValue };
+      const schema = { parse(value: unknown): string {
+        if (typeof value !== "string") throw new Error("Expected a string");
+        return value.trim();
+      } };
+      export function normalize(value: unknown): string { return validate(schema.parse(value)); }
+      export const loadOwn = () => import("./own.js");
+    `;
+    expect(await moduleMessages(contractsConfig, source, "packages/platform/src/composition/contracts/index.ts")).toEqual([]);
   });
 
   it("declares exactly the package's module directories, each edge to another declared module", async () => {
