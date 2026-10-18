@@ -76,8 +76,8 @@ standalone readiness suite. Actual installed-tarball SQL and shape-order proof
 runs in the existing Outbox disposable PostgreSQL tier in the source repository.
 
 Contributor package verification keeps the existing code/docs class and file
-ceilings. The grouped catalog addition uses the measured, owner-approved
-aggregate budgets in `release-gates.json`; later growth still needs its own
+ceilings. Its aggregate budgets in `release-gates.json` follow the measured
+decision its `$budgetReason` records; later growth still needs its own
 measured budget decision. Passing a local pack does not authorize publication.
 
 ## Package Surface Maturity

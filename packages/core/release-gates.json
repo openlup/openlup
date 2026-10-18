@@ -262,7 +262,7 @@
     }
   },
   "pack": {
-    "$budgetReason": "2026-10-12 owner-approved bounded decision: additive grouped PostgreSQL catalog probes preserve the native jsonb text contract. Public base380edbd measures154118 packed/652616 unpacked bytes; corrected contribution measures158572/666908. Aggregate155KiB packed/652KiB unpacked is the smallest KiB-aligned headroom that fits the measured contribution; code/docs class ceilings, all file ceilings, required artifacts and other controls remain unchanged. Re-measure the exact approved candidate before DCO/delivery; this proposal grants no release authority. Later growth still requires a measured budget decision.",
+    "$budgetReason": "2026-10-18 bounded decision after the 0.15.0 set: published core measures 158710 packed/667320 unpacked bytes, 10/328 under the former 155KiB/652KiB aggregates, so the next set note would fail. Set bumps grow only the changelog; aggregates 157KiB packed/656KiB unpacked end near the unchanged docs class headroom (1629 packed bytes, about four feature-size set entries). Code/docs class and file ceilings, required files and other controls remain unchanged. Grants no release authority; later growth still requires a measured budget decision.",
     "code": {
       "maxPackedBytes": 131072,
       "maxFiles": 198
@@ -271,8 +271,8 @@
       "maxPackedBytes": 24576,
       "maxFiles": 12
     },
-    "maxPackedBytes": 158720,
-    "maxUnpackedBytes": 667648,
+    "maxPackedBytes": 160768,
+    "maxUnpackedBytes": 671744,
     "maxFiles": 211,
     "requiredFiles": [
       "AGENTS.md",
