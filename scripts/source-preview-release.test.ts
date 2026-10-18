@@ -605,7 +605,8 @@ ${identityPrivileges[3]}
     }, null, true);
     try {
       sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
-      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/reviewed replacement refuses control characters in a forward/u);
+      // Both gates refuse these bytes at the shared admission function before the reviewed route.
+      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/migration SQL refuses control characters/u);
     } finally { sample.cleanup(); }
   }, 30_000);
   it.each([
@@ -620,7 +621,7 @@ ${identityPrivileges[3]}
     }, null, true);
     try {
       sample.apply(sample.change); const head = sample.commit("Parser parity fixture");
-      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/reviewed replacement refuses control characters in a forward/u);
+      for (const gate of gates(sample, head)) expect.soft(gate).toThrow(/migration SQL refuses control characters/u);
     } finally { sample.cleanup(); }
   }, 30_000);
   it("admits a pinned identity forward with a tab in a comment in both gates (parser parity)", () => {
