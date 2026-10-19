@@ -146,7 +146,7 @@ import { buildIdentityReferenceRuntime, createIdentityAcceptanceDatabase, identi
 import { EventEmitter } from "node:events";
 import type { Server } from "node:http";
 import type { Pool } from "pg";
-import { acceptanceBundle, assertContainerOwnership, assertLoopbackPortBindings } from "../../../tests/identity/runAcceptance.mjs";
+import { acceptanceBundle, assertContainerOwnership, assertPortBindings } from "../../../tests/identity/runAcceptance.mjs";
 import { build, type Plugin } from "vite";
 import { enforceDeploymentRoutePolicy, validateIdentityReferenceProfile, withIdentityReferencePolicy, IDENTITY_ROUTES } from "./referenceIdentityPolicy.js";
 import { enforceDeploymentRoutePolicy as publicPolicy } from "../../_lib/publicDeploymentPolicies.js";
@@ -303,20 +303,41 @@ it("acceptance refuses missing selectors and cleanup identity mismatches", () =>
 });
 it("acceptance permits unpublished ports and explicit IPv4/IPv6 loopback bindings", () => {
   const Ports = { "80/tcp": null, "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "58421" }, { HostIp: "::1", HostPort: "58421" }] };
-  expect(() => assertLoopbackPortBindings({ NetworkSettings: { Ports }, HostConfig: { PortBindings: Ports } })).not.toThrow();
-  expect(() => assertLoopbackPortBindings({ NetworkSettings: { Ports: {} }, HostConfig: { PortBindings: null } })).not.toThrow();
+  expect(() => assertPortBindings({ NetworkSettings: { Ports }, HostConfig: { PortBindings: Ports } })).not.toThrow();
+  expect(() => assertPortBindings({ NetworkSettings: { Ports: {} }, HostConfig: { PortBindings: null } })).not.toThrow();
 });
 it.each(["0.0.0.0", "::", "", "192.0.2.1", undefined])("acceptance refuses every wildcard or non-loopback publication (%s) in either inspect view", HostIp => {
   for (const view of ["NetworkSettings", "HostConfig"]) {
     const container = { NetworkSettings: { Ports: {} }, HostConfig: { PortBindings: {} } };
     const ports = view === "NetworkSettings" ? container.NetworkSettings.Ports : container.HostConfig.PortBindings;
     Object.assign(ports, { "5432/tcp": [{ HostIp: "127.0.0.1" }], "8025/tcp": [{ HostIp: "::1" }, { HostIp }] });
-    expect(() => assertLoopbackPortBindings(container)).toThrow("loopback only");
+    expect(() => assertPortBindings(container)).toThrow("loopback only");
   }
 });
 it("acceptance refuses missing port inspection data", () => {
-  expect(() => assertLoopbackPortBindings({ NetworkSettings: { Ports: {} } })).toThrow("bindings unavailable");
-  expect(() => assertLoopbackPortBindings({ HostConfig: { PortBindings: {} } })).toThrow("bindings unavailable");
+  expect(() => assertPortBindings({ NetworkSettings: { Ports: {} } })).toThrow("bindings unavailable");
+  expect(() => assertPortBindings({ HostConfig: { PortBindings: {} } })).toThrow("bindings unavailable");
+});
+it("managed acceptance permits wildcard bindings only inside its allocated port block", () => {
+  const Ports = { "80/tcp": null, "443/tcp": [
+    { HostIp: "0.0.0.0", HostPort: "58420" }, { HostIp: "::", HostPort: "58430" },
+    { HostIp: "", HostPort: "58424" },
+  ] };
+  expect(() => assertPortBindings({ NetworkSettings: { Ports }, HostConfig: { PortBindings: Ports } }, 58420)).not.toThrow();
+});
+it.each(["58419", "58431", "0", "", "not-a-port", "58424suffix", undefined])("managed acceptance refuses an unallocated or invalid published port (%s) in either inspect view", HostPort => {
+  for (const view of ["NetworkSettings", "HostConfig"]) {
+    const container = { NetworkSettings: { Ports: {} }, HostConfig: { PortBindings: {} } };
+    const ports = view === "NetworkSettings" ? container.NetworkSettings.Ports : container.HostConfig.PortBindings;
+    Object.assign(ports, { "5432/tcp": [{ HostIp: "0.0.0.0", HostPort: "58422" }], "8025/tcp": [{ HostIp: "127.0.0.1", HostPort }] });
+    expect(() => assertPortBindings(container, 58420)).toThrow("allocated port block");
+  }
+});
+it("managed acceptance refuses missing or malformed port inspection data", () => {
+  for (const container of [
+    { NetworkSettings: { Ports: {} } }, { HostConfig: { PortBindings: {} } },
+    { NetworkSettings: { Ports: { "80/tcp": {} } }, HostConfig: { PortBindings: {} } },
+  ]) expect(() => assertPortBindings(container, 58420)).toThrow("bindings unavailable");
 });
 it("browser acceptance requests the operator challenge through its login form and observes the form after logout", async () => {
   const { profile } = setup();

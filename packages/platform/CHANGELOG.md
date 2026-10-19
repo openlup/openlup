@@ -8,6 +8,13 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Allow disposable managed identity acceptance with the CLI's all-interface port
+  bindings only within the run's allocated port block, retaining project-label
+  ownership checks. Direct database and reference HTTP bindings remain loopback.
+  Migration: run managed acceptance on a host not reachable from untrusted
+  networks; its synthetic identity services, including the mail-capture API,
+  are exposed on all host interfaces for the duration of the run.
+
 - Preserve the reference dispatcher's three-argument admin preflight call while
   dispatching explicitly admitted identity handlers and their selected preflight.
   Default privacy mounts retain preflight inside their mutation-policy wrapper.
@@ -18,10 +25,9 @@ SemVer promise.
   Migration: no package API or database migration is required; existing callers
   retain their previous guest fallback.
 
-- Refuse disposable identity acceptance when any owned container publishes a
+- Refuse disposable direct identity acceptance when an owned container publishes a
   port outside explicit IPv4 or IPv6 loopback, before issuing challenges.
-  Migration: local managed stacks that publish on wildcard interfaces must use
-  loopback-only bindings. Required profile-isolation checks run without Git
+  Required profile-isolation checks run without Git
   history; a separate opt-in compatibility proof requires an explicit ancestor
   predecessor and compares build inputs; browser acceptance requests
   operator links through the mounted form and checks the rendered logout view.

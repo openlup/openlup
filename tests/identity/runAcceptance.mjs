@@ -27,15 +27,21 @@ export function assertContainerOwnership(container, expected) {
   if (container.Id !== expected.containerId || !/^[a-f0-9]{64}$/.test(container.Id)
     || container.Config?.Labels?.[expected.label] !== expected.value) throw new Error("Identity acceptance container ownership mismatch");
 }
-export function assertLoopbackPortBindings(container) {
+export function assertPortBindings(container, managedPortBase) {
   for (const ports of [container.NetworkSettings?.Ports, container.HostConfig?.PortBindings]) {
     if (ports === null) continue;
     if (!ports || typeof ports !== "object" || Array.isArray(ports)) throw new Error("Identity acceptance port bindings unavailable");
     for (const bindings of Object.values(ports)) {
       // Null is Docker's representation of an exposed but unpublished port.
       if (bindings === null) continue;
-      if (!Array.isArray(bindings) || bindings.some(binding => !["127.0.0.1", "::1"].includes(binding?.HostIp))) {
-        throw new Error("Identity acceptance services must publish on loopback only");
+      if (!Array.isArray(bindings)) throw new Error("Identity acceptance port bindings unavailable");
+      for (const binding of bindings) {
+        if (managedPortBase === undefined) {
+          if (!["127.0.0.1", "::1"].includes(binding?.HostIp)) throw new Error("Identity acceptance services must publish on loopback only");
+        } else if (typeof binding?.HostPort !== "string" || !/^[1-9][0-9]*$/.test(binding.HostPort)
+          || Number(binding.HostPort) < managedPortBase || Number(binding.HostPort) > managedPortBase + 10) {
+          throw new Error("Identity acceptance managed ports must stay inside the allocated port block");
+        }
       }
     }
   }
@@ -76,7 +82,7 @@ export async function main(args = process.argv.slice(2)) {
   const inspect = id => JSON.parse(must("docker", ["inspect", id]))[0];
   let owned, managedStarted = false;
   const ids = [];
-  let database, origin, auth;
+  let database, origin, auth, managedPortBase;
   try {
     if (bundle === "node-postgres") {
       // Require a cached image; this runner does not fetch an image or install a tool.
@@ -86,13 +92,13 @@ export async function main(args = process.argv.slice(2)) {
         "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image]);
       owned = { containerId, label: "com.openlup.identity.run", value: runId };
       const container = inspect(containerId); assertContainerOwnership(container, owned); ids.push(owned);
-      assertLoopbackPortBindings(container);
+      assertPortBindings(container);
       const binding = container.NetworkSettings.Ports["5432/tcp"];
       if (binding.length !== 1 || binding[0].HostIp !== "127.0.0.1") throw new Error("Identity database must bind loopback only");
       database = `postgresql://postgres:${password}@127.0.0.1:${binding[0].HostPort}/postgres`;
       origin = `http://127.0.0.1:${await freePort()}`;
     } else {
-      const base = await managedPorts(); origin = `http://127.0.0.1:${base + 10}`;
+      const base = managedPortBase = await managedPorts(); origin = `http://127.0.0.1:${base + 10}`;
       mkdirSync(join(directory, "supabase"), { mode: 0o700 });
       const replacements = { PROJECT_ID: project, SHADOW_PORT: base, API_PORT: base + 1, DB_PORT: base + 2, STUDIO_PORT: base + 3, MAIL_PORT: base + 4, POOLER_PORT: base + 9, APP_PORT: base + 10 };
       const config = readFileSync("config/public-reference-subscription-supabase.toml", "utf8").replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => {
@@ -111,7 +117,7 @@ export async function main(args = process.argv.slice(2)) {
         const expected = { containerId: container.Id, label: "com.supabase.cli.project", value: project };
         assertContainerOwnership(container, expected); ids.push(expected);
       }
-      for (const container of containers) assertLoopbackPortBindings(container);
+      for (const container of containers) assertPortBindings(container, base);
       const container = inspect(`supabase_db_${project}`); owned = ids.find(entry => entry.containerId === container.Id);
       if (!owned) throw new Error("Managed database has no matching project label");
       const password = container.Config.Env.find(value => value.startsWith("POSTGRES_PASSWORD="))?.slice(18);
@@ -123,7 +129,7 @@ export async function main(args = process.argv.slice(2)) {
     writeFileSync(join(directory, "identity-owner.json"), JSON.stringify(marker), { mode: 0o600 });
     const assertContainer = () => { for (const entry of ids) {
       const container = inspect(entry.containerId);
-      assertContainerOwnership(container, entry); assertLoopbackPortBindings(container);
+      assertContainerOwnership(container, entry); assertPortBindings(container, managedPortBase);
     } };
     const { runAcceptance } = await loadAcceptanceModule();
     await runAcceptance({ bundle, directory, database, origin, runId, auth, assertContainer });

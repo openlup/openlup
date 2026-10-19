@@ -966,12 +966,22 @@ Both commands require the composed identity runtime, installed Node 24 and npm
 cached `postgres:16` image. Managed execution additionally requires installed
 CLI 2.98.2 and the reviewed identity service-role forward in the committed chain.
 Missing prerequisites fail; neither command silently skips. Each run owns a
-random installation id, loopback services, build directory and captured mail.
-Before issuing challenges, the runner checks every published port of each owned
-container in both Docker inspection views. Only explicit `127.0.0.1` and `::1`
-bindings are accepted; empty, wildcard and other host addresses refuse, including
-on secondary ports. Ownership rechecks repeat this publication check. The direct
-mailbox remains a filesystem sink without a listening socket.
+random installation id, allocated ports, build directory and captured mail.
+Before issuing challenges, the runner verifies container identity and ownership
+labels and checks every published port in both Docker inspection views. The direct
+database accepts only explicit `127.0.0.1` and `::1` bindings; empty, wildcard and
+other host addresses refuse, including on secondary ports. The reference HTTP
+server binds to `127.0.0.1` in both bundles. The direct mailbox remains a filesystem
+sink without a listening socket.
+
+The managed stack's ports, including its mail-capture API, are published by the
+Supabase CLI 2.98.2 on all host interfaces for the duration of the run. The stack
+holds only synthetic identities and must run on a host not reachable from
+untrusted networks. The CLI provides no publication-bind setting. Managed
+containers must have the run's project label, and every published host port must
+be inside the runner's allocated block (base through base + 10, inclusive).
+An unexpected port or unavailable binding data refuses acceptance. Ownership
+rechecks repeat the bundle's publication check.
 Cleanup checks container identity and labels; cleanup failure fails the run and
 retains the directory for recovery.
 
