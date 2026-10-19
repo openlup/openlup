@@ -13,3 +13,14 @@ export async function identityEmailTrustReadiness(policy: EmailTrustPolicy): Pro
       : "Restore access to valid public identity settings or bind an explicit email-trust policy.",
   }];
 }
+
+/** Discovery and fresh key availability are independent readiness observations. */
+export async function identityOidcReadiness(verifier: import("./oidcIdentityVerifier.js").OidcIdentityVerifier): Promise<readonly (ReadinessIssue & { module: "identity" })[]> {
+  const report = await verifier.readiness();
+  if (report.state === "ready") return [];
+  return [
+    ...(!report.discovery.valid ? ["oidcDiscovery"] : []),
+    ...(!report.jwks.loaded ? ["oidcJwks"] : []),
+  ].map(subject => ({ code: "OPENLUP_E_PORT_MISSING", package: "@openlup/platform", module: "identity", subject,
+    observation: report.code ?? "OIDC_JWKS_INVALID", fix: "Restore valid issuer discovery and fresh same-origin signing keys." }));
+}

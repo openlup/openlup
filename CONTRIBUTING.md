@@ -129,6 +129,14 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The platform packed consumer includes the opt-in OIDC adapter: imports and
+construction remain inert without the selected JWT library, selecting an absent
+library produces the documented availability refusal, and the direct account-link
+store retains the optional PostgreSQL-driver refusal. Real issuer certification
+is separate from this cold proof. Its disposable local recipe, prerequisite
+refusals and command are owned by [identity conformance](docs/platform/IDENTITY.md#real-issuer-oidc-recipe);
+it runs outside default CI and requires the cached pinned issuer image.
+
 The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
 ordered DROP statements before the fixed grants and rejects missing, duplicate

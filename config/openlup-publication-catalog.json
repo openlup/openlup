@@ -1110,6 +1110,10 @@
       "class": "public-output"
     },
     {
+      "path": "docker-compose.identity-oidc.yml",
+      "class": "public-output"
+    },
+    {
       "path": "docker-compose.yml",
       "class": "public-output"
     },
@@ -2426,6 +2430,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/contracts/oidc.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/contracts/operatorAuth.ts",
       "class": "public-output"
     },
@@ -2574,6 +2582,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/oidcIdentityVerifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/oidcPrincipal.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/operatorAdminAuth.ts",
       "class": "public-output"
     },
@@ -2615,6 +2631,10 @@
     },
     {
       "path": "packages/platform/src/identity/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/identity/postgresAccountLinkStore.ts",
       "class": "public-output"
     },
     {
@@ -2926,6 +2946,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/identity/oidcAdapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/oidcIdentityVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/oidcPrincipal.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/identity/operatorAdminAuth.test.ts",
       "class": "public-output"
     },
@@ -2967,6 +2999,10 @@
     },
     {
       "path": "packages/platform/test/identity/ports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/identity/postgresAccountLinkStore.test.ts",
       "class": "public-output"
     },
     {
@@ -11954,6 +11990,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/auth/oidcComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/oidcComposition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/auth/oidcJwtAdapter.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/auth/operatorActionsBinding.ts",
       "class": "public-output"
     },
@@ -19726,6 +19774,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/oidcIdentity.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/oidcIssuerFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/oidcReferenceRp.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/operatorIdentityUpgrade.test.ts",
       "class": "public-output"
     },
@@ -19751,6 +19811,10 @@
     },
     {
       "path": "tests/postgres/runIdentityEnvelopeConformance.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/runOidcIdentityConformance.mjs",
       "class": "public-output"
     },
     {
@@ -20005,7 +20069,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts server/runtime/auth/oidcComposition.test.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -20017,7 +20081,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-736012581edd1d6e23395694031f80d00eb7f90e052b6377f087ed77713d256f"
+      "digest": "sha256-8c6a0e019d89919ae50ba871aebcf1dba9d3105e14354d268bb398d5af5c3f95"
     },
     {
       "path": "packages/core/package.json",

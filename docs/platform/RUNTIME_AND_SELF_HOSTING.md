@@ -326,6 +326,16 @@ this preview.
 
 ## Provider and host boundaries
 
+`createOidcComposition` is an explicit direct-bundle option, supplied with the
+existing environment reader's `IDENTITY_OIDC_ISSUER`, customer audience and
+distinct operator audience. Retain its verifiers for the host lifetime and
+register their readiness with identity admission. Invalid discovery/keys prevent
+readiness; unavailable transport reports unknown. The host injects its installed
+JWT library lazily. Managed bundles require native federation sessions. The
+[OIDC recipe](IDENTITY.md#real-issuer-oidc-recipe) owns the disposable pinned
+issuer, loopback-only ports, prerequisite refusal and cleanup contract; it is
+outside default CI and changes no default browser or passwordless login flow.
+
 For direct human operators set `OPERATOR_IDENTITY_AUDIENCE` distinct from
 `CUSTOMER_IDENTITY_AUDIENCE`, with the existing customer identity issuer/key/JWKS
 settings. In an application that mounts the supplied admin shell, select

@@ -466,6 +466,48 @@
       "secret": false,
       "source": "tests/identity/runAcceptance.mjs",
       "blastRadius": "Owned loopback managed mail catcher used only by identity browser acceptance."
+    },
+    {
+      "name": "IDENTITY_OIDC_ISSUER",
+      "owner": "identity",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "server/runtime/auth/oidcComposition.ts",
+      "blastRadius": "Opt-in direct OIDC issuer. Invalid or overlapping audiences refuse authentication; managed bundles require native sessions."
+    },
+    {
+      "name": "IDENTITY_OIDC_CUSTOMER_AUDIENCE",
+      "owner": "identity",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "server/runtime/auth/oidcComposition.ts",
+      "blastRadius": "Opt-in direct OIDC customer audience. Invalid or overlapping audiences refuse authentication; managed bundles require native sessions."
+    },
+    {
+      "name": "IDENTITY_OIDC_OPERATOR_AUDIENCE",
+      "owner": "identity",
+      "category": "server-runtime",
+      "default": "",
+      "environments": [
+        "local",
+        "production"
+      ],
+      "requiredIn": [],
+      "secret": false,
+      "source": "server/runtime/auth/oidcComposition.ts",
+      "blastRadius": "Opt-in direct OIDC operator audience. Invalid or overlapping audiences refuse authentication; managed bundles require native sessions."
     }
   ]
 }

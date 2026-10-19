@@ -1061,3 +1061,141 @@ HEAD or skips. It compares default and subscription build settings, generated
 HTML and public auth settings, every reachable first-party build input, package
 resolution inputs and the subscription import inventory with that predecessor.
 This service-free proof is outside Vitest and the required test selectors.
+
+## Opt-in OIDC access tokens
+
+`createOidcIdentityVerifier` is separate from the existing static customer and
+operator session verifiers. Compose `createOidcComposition(env)` explicitly in
+a direct `node-postgres` host, retaining one binding for its lifetime. Supply
+`IDENTITY_OIDC_ISSUER`, `IDENTITY_OIDC_CUSTOMER_AUDIENCE` and a distinct
+`IDENTITY_OIDC_OPERATOR_AUDIENCE` through the host's existing environment reader.
+The host loads its installed JWT library lazily; the package has no JWT-library
+runtime dependency. Construction and import perform no network access.
+
+Discovery pins the exact issuer and a same-origin JWKS URL. HTTPS is required;
+only an explicit test option permits literal loopback HTTP. The verifier accepts
+RS256 or ES256 JWT access tokens with a bounded nonempty `kid`, a valid signature,
+exact issuer and configured API audience. Configure API audiences independently
+of RP client identifiers so ID tokens cannot serve as API credentials. Customer
+lifetimes are at most 3,600 seconds; operator tokens require one scalar audience
+and at most 900 seconds. Integer `iat` and `exp` are required, `nbf` is enforced,
+clock tolerance is zero and equality at expiry refuses. Only signed top-level
+`email` and literal boolean `email_verified: true` supply identity email.
+Roles, groups and editable metadata convey no authority.
+
+Direct principals use SHA-256 over UTF-8 `openlup:oidc-principal:v1` followed by a
+NUL byte and `JSON.stringify([issuer, subject])`. The first 16 digest bytes receive
+UUID version 8 and RFC variant bits. Golden vectors freeze this mapping; email,
+audience, signing key and refresh never change it. Normal reconciliation with
+an explicit verifier-result-only email-trust policy may create a contact or
+fill a null `clients.principal_id`. This policy is the host's assertion that its
+issuer verifies email. Ambiguous normalized email matches refuse. Existing links
+are never replaced, and erased principals cannot be recreated or relinked;
+receipt-before-contact locking serializes writes with privacy erasure. No auth
+user, mapping table, subscription mutation or migration is introduced.
+
+Operator authentication uses the separate audience-bound verifier and the
+existing direct membership store on every request. Only active human `admin`
+or `distributor` members authorize, subject to route roles; pending, absent,
+revoked and machine identities refuse. Trusted setup provisions the derived
+principal ID, then the existing invitation/acceptance lifecycle supplies
+membership. Login never links by email or creates membership. Existing randomly
+identified operators require explicit administrative migration outside this
+composition. Managed bundles refuse raw upstream composition with
+`OIDC_NATIVE_SESSION_REQUIRED`; retain native federation, native auth IDs,
+email-trust policy, actor tokens and native membership there.
+
+JWKS selection accepts RSA/RS256 and P-256/ES256 public signing keys within the
+configured algorithm allowlist. `use` may be `sig` or absent; absent `alg` is
+inferred from the key type and curve. Encryption keys, unsupported algorithms
+and incompatible key types/curves are ignored. Certificate metadata such as
+`x5c`, `x5t` and `x5t#S256` does not change selection. The set must contain at
+least one usable signing key, with bounded key IDs unique among usable keys.
+Malformed sets, private key material and invalid signing key parameters refuse.
+Before discovery or key lookup, bounded compact JWS parsing requires JSON-object
+headers and payloads, refuses algorithms outside the configured allowlist and
+returns `OIDC_ISSUER_MISMATCH` for an unverified issuer that is not the exact
+configured string; these checks only refuse, and signature verification and all
+verified claim checks still determine admission.
+
+Discovery expires within one hour and JWKS within five minutes. `max-age` and
+`Age` can shorten these bounds; `no-store` prevents reuse. `no-cache` instead
+limits reuse to 30 seconds, matching the minimum JWKS refresh interval; shorter
+explicit freshness bounds still apply. Readiness and verification can use that
+freshly fetched set, then must revalidate it at expiry. Each
+fetch rejects redirects and has a three-second deadline including its streamed
+body, capped at 64 KiB. Concurrent loads coalesce. Every JWKS attempt, successful
+or unsuccessful and including initial loading, starts a 30-second refresh
+window. Unknown kids inside it refuse without another fetch. A successful refresh
+replaces the set atomically. A removed key is refused once the cached set expires
+or a successful refresh replaces it; a failed forced refresh before expiry leaves
+the previous unexpired set usable until its existing expiry. Expired cached sets
+are never used after a failed refresh. Known-key signature failure does not
+trigger another fetch. Token `jku`/`x5u` values never choose a transport destination.
+
+`verifyToken` returns a detailed `OIDC_*` refusal from `OIDC_FAILURE_CODES`.
+Hosts import this constant and `OidcFailureCode` from
+`@openlup/platform/identity`; the browser-shared
+`@openlup/platform/identity/contracts` entry excludes OIDC refusals.
+Configuration, discovery and JWKS validity have
+separate codes from transport/library unavailability, unknown/rate-limited kids,
+issuer/audience mismatch, invalid signature, expiry/activation/lifetime and
+subject/email refusals. The `IdentityVerifierPort` facade returns null for
+credential refusals and throws a sanitized availability error for unavailable
+dependencies. Existing handlers retain 401 `UNAUTHORIZED` and 503
+`UPSTREAM_UNAVAILABLE` envelopes. Reconciliation and membership keep their
+existing conflict and `FORBIDDEN` outcomes.
+
+Readiness reports discovery reachability/validity and fresh loaded keys with
+check/expiry timestamps, distinguishing `ready`, transport `unknown` and invalid
+`unsatisfied`. Register `binding.oidcVerifiers` on the existing reference
+identity ports so startup admission includes these observations. The binding's
+customer routes use the observed deployment-policy wrapper with risk `mutation`;
+profile reads use authenticated actor scope containing only the verified UUID.
+Default launch, passwordless routes, browser provider choices and managed login
+remain unchanged. Only the explicitly composed OIDC recipe gains external-token
+reconcile/profile access, readiness, bounded rotation and live membership auth.
+
+## Real-issuer OIDC recipe
+
+From the repository root, build core/platform, then run:
+
+```sh
+node tests/postgres/runOidcIdentityConformance.mjs
+```
+
+This opt-in command requires Node 24, npm 11.19.0, Docker Compose, installed
+Playwright Chromium, cached PostgreSQL 16 and the exact cached issuer image in
+[`docker-compose.identity-oidc.yml`](../../docker-compose.identity-oidc.yml).
+It never pulls images or installs dependencies. The recipe uses Keycloak
+26.0.7 with the immutable OCI index digest committed in that compose file; the
+runner verifies repository digest and running image identity before use. It
+owns a unique disposable project, private temporary credentials, synthetic
+realms/users/clients and loopback-only published ports. Ownership and network
+checks bound cleanup to its resources; a failed prerequisite refuses the run.
+Do not point this command at an existing database or an external issuer.
+
+The private run directory links to the checkout's installed `node_modules`, as
+identity acceptance does, so the built server runtime can resolve external
+dependencies. Normal cleanup removes the link with the temporary directory.
+
+The real issuer provides authorization-code/PKCE tokens, refresh, signing-key
+administration and logout. The RP checks state and nonce and owns an HttpOnly,
+SameSite session cookie. Ending that session clears retained credentials and
+cookie; an in-flight refresh cannot restore it. Issuer logout separately prevents
+refresh. A copied stateless access token remains valid until expiry; the verifier
+refuses it at expiry, while membership revocation denies the next operator call.
+
+The runner applies the complete canonical PostgreSQL catalogue and checks its
+ledger, runs reconcile and own/cross-customer reads, provisions a derived operator
+through the invitation lifecycle, then checks active, restricted and revoked
+membership. It exercises real token expiry/refresh, new signing kids, removed
+keys after cache expiry, foreign realm, wrong audience and unverified email.
+The removed-key probe advances the verifier clock past the JWKS cache bound;
+token expiry and refresh checks use wall time and real issuer tokens. Replay must
+leave the ledger and legacy contact, active subscription, administrator and
+machine rows unchanged.
+These assertions require an actual successful run; unit tests with synthetic
+keys do not certify an issuer. The recipe certifies only the direct composition,
+not managed federation or production hosting. The existing customer-own-row
+pgTAP witness remains required separately.

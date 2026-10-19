@@ -153,6 +153,12 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+The opt-in direct OIDC settings registry declares issuer and separate customer
+and operator API audiences. Selecting them adds no browser provider or default
+login route. Invalid or overlapping audiences refuse composition; managed bundles
+retain native federation sessions. The [identity contract](IDENTITY.md#opt-in-oidc-access-tokens)
+owns the additive verifier API, deterministic principal mapping and refusals.
+
 The disposable identity reference's run directory, run id and local mail origin
 are evaluation settings bound to one owned installation. They establish no
 persistent customer identifier, package API version or migration contract. The

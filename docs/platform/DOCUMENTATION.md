@@ -62,6 +62,12 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+OIDC selectors assign the explicit host composition, pinned disposable compose
+and real-issuer conformance modules to the identity guide. Package/API owners
+retain exported-contract explanations, architecture retains readiness and actor
+scope, and contributor tooling retains packed-consumer execution obligations.
+These routes describe source ownership, not successful issuer certification.
+
 Identity selectors also cover reference admission, the finite bundle schema
 inventories, direct reconcile and operator command composition. Their owner is
 the identity guide; runtime, package and publication owners retain their

@@ -1020,6 +1020,13 @@ export declare function normalizeMagicLinkReturnPath(value: string | undefined, 
 export declare const EMAIL_TRUST_FAILURE_CODES: readonly ["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"];
 export type EmailTrustFailureCode = typeof EMAIL_TRUST_FAILURE_CODES[number];
 ```
+## dist/identity/contracts/oidc.d.ts
+
+```ts
+/** Credential and dependency refusals; no token or transport details are exposed. */
+export declare const OIDC_FAILURE_CODES: readonly ["OIDC_CONFIGURATION_INVALID", "OIDC_DISCOVERY_UNAVAILABLE", "OIDC_DISCOVERY_INVALID", "OIDC_JWKS_UNAVAILABLE", "OIDC_JWKS_INVALID", "OIDC_JWKS_REFRESH_RATE_LIMITED", "OIDC_JWT_LIBRARY_UNAVAILABLE", "OIDC_TOKEN_INVALID", "OIDC_KID_UNKNOWN", "OIDC_ISSUER_MISMATCH", "OIDC_AUDIENCE_MISMATCH", "OIDC_TOKEN_EXPIRED", "OIDC_TOKEN_NOT_ACTIVE", "OIDC_TOKEN_LIFETIME_INVALID", "OIDC_SUBJECT_INVALID", "OIDC_EMAIL_INVALID", "OIDC_EMAIL_UNVERIFIED", "OIDC_NATIVE_SESSION_REQUIRED"];
+export type OidcFailureCode = typeof OIDC_FAILURE_CODES[number];
+```
 ## dist/identity/contracts/operatorAuth.d.ts
 
 ```ts
@@ -1499,6 +1506,10 @@ import { type EmailTrustPolicy } from "./emailTrustPolicy.js";
 export declare function identityEmailTrustReadiness(policy: EmailTrustPolicy): Promise<readonly (ReadinessIssue & {
     module: "identity";
 })[]>;
+/** Discovery and fresh key availability are independent readiness observations. */
+export declare function identityOidcReadiness(verifier: import("./oidcIdentityVerifier.js").OidcIdentityVerifier): Promise<readonly (ReadinessIssue & {
+    module: "identity";
+})[]>;
 ```
 ## dist/identity/index.d.ts
 
@@ -1566,6 +1577,10 @@ export * from "./identityPersonalDataContributor.js";
 export * from "./postgresPrivacy.js";
 export * from "./managedPrivacy.js";
 export * from "./privacyHandlers.js";
+export * from "./oidcIdentityVerifier.js";
+export * from "./oidcPrincipal.js";
+export * from "./postgresAccountLinkStore.js";
+export * from "./contracts/oidc.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -1698,14 +1713,24 @@ export interface IdentityJwtLibrary {
         algorithms: string[];
         audience: string;
         issuer: string;
+        currentDate?: Date;
+        clockTolerance?: number;
     }): Promise<{
-        payload: {
-            sub?: string;
-        };
+        payload: IdentityJwtClaims;
     }>;
     SignJWT: new (payload: Record<string, unknown>) => Signer;
 }
 export type IdentityJwtLibraryLoader = () => Promise<IdentityJwtLibrary>;
+/** Claims returned only after signature verification by the host library. */
+export interface IdentityJwtClaims {
+    [claim: string]: unknown;
+    sub?: string;
+    iss?: string;
+    aud?: string | string[];
+    exp?: number;
+    iat?: number;
+    nbf?: number;
+}
 export {};
 ```
 ## dist/identity/machineActorWriteFence.d.ts
@@ -2072,6 +2097,61 @@ export type IdentityMessages = typeof en;
 export declare const identityMessages: Readonly<Record<"en" | "pl", IdentityMessages>>;
 export {};
 ```
+## dist/identity/oidcIdentityVerifier.d.ts
+
+```ts
+import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
+import type { IdentityVerifierPort, VerifiedPrincipal } from "./ports.js";
+import type { OidcFailureCode } from "./contracts/oidc.js";
+export interface OidcIdentityVerifierConfig {
+    issuer: string;
+    audience: string;
+    algorithms: readonly ("RS256" | "ES256")[];
+    maxTokenLifetimeSeconds: number;
+    requireSingleAudience?: boolean;
+    /** Conformance only: literal loopback addresses, never arbitrary HTTP hosts. */
+    allowLoopbackHttp?: boolean;
+}
+export type OidcVerificationResult = {
+    ok: true;
+    principal: VerifiedPrincipal;
+    expiresAt: string;
+} | {
+    ok: false;
+    code: OidcFailureCode;
+};
+export interface OidcReadinessReport {
+    state: "ready" | "unknown" | "unsatisfied";
+    discovery: {
+        reachable: boolean;
+        valid: boolean;
+        checkedAt: string | null;
+        expiresAt: string | null;
+    };
+    jwks: {
+        loaded: boolean;
+        checkedAt: string | null;
+        expiresAt: string | null;
+    };
+    code?: OidcFailureCode;
+}
+export interface OidcIdentityVerifier extends IdentityVerifierPort {
+    verifyToken(token: string): Promise<OidcVerificationResult>;
+    readiness(): Promise<OidcReadinessReport>;
+}
+/** One binding per host/configuration. Imports and construction perform no I/O or JWT loading. */
+export declare function createOidcIdentityVerifier(config: OidcIdentityVerifierConfig, dependencies: {
+    loadJwt: IdentityJwtLibraryLoader;
+    fetch?: typeof globalThis.fetch;
+    now?: () => number;
+}): OidcIdentityVerifier;
+```
+## dist/identity/oidcPrincipal.d.ts
+
+```ts
+/** Frozen UTF-8, domain-separated SHA-256 UUIDv8 mapping of the exact issuer/subject pair. */
+export declare function deriveOidcPrincipalId(issuer: string, subject: string): string;
+```
 ## dist/identity/operatorAdminAuth.d.ts
 
 ```ts
@@ -2396,6 +2476,17 @@ export declare function findOrCreateAuthUserId(store: Pick<ClientAuthLinkStore, 
     authUserId: string;
     created: boolean;
 }>;
+```
+## dist/identity/postgresAccountLinkStore.d.ts
+
+```ts
+import type { AccountLinkStore } from "./ports.js";
+/** Trusted contact-link capability; conditional writes never replace an existing principal. */
+export declare function createPostgresAccountLinkStore(env: {
+    connectionString: string;
+}): AccountLinkStore & {
+    close(): Promise<void>;
+};
 ```
 ## dist/identity/postgresCustomerMe.d.ts
 

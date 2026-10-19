@@ -8,6 +8,27 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add an opt-in OIDC access-token verifier for direct identity composition:
+  pinned issuer discovery, bounded rotating JWKS that selects usable signing keys
+  (encryption keys and unsupported algorithms are ignored; `no-cache` responses
+  are reusable for at most 30 seconds before revalidation on use, `no-store` is
+  never reused), strict compact-JWS
+  parsing that refuses a foreign issuer or disallowed algorithm before any key
+  lookup, verified `iss`/`aud`/`exp`/`nbf`/`email_verified` claims and a
+  deterministic issuer/subject UUID principal. Direct PostgreSQL composition uses
+  normal account reconciliation, actor-scoped profile reads and live operator
+  membership; managed bundles keep native federation sessions and refuse raw
+  upstream tokens. An opt-in, digest-pinned real-issuer recipe proves expiry,
+  refresh, key rotation, session end, refusals and customer/operator binding.
+  OIDC refusal constants are exported from the server identity entry. No schema
+  or default login flow change. The existing `IdentityJwtLibrary.jwtVerify`
+  contract widens with optional `currentDate?: Date` and `clockTolerance?: number`
+  verify options and now returns `{ payload: IdentityJwtClaims }`, whose claims
+  interface includes a string index signature.
+  Migration: hosts implementing or typing their own `IdentityJwtLibrary` or
+  `IdentityJwtLibraryLoader` must accept the optional verify options and return
+  claims as `IdentityJwtClaims`.
+
 - Add an opt-in disposable identity reference shell with separate customer/operator
   browser mounts, a private captured mailbox for the direct bundle and opt-in
   acceptance commands for both bundles: direct on node-postgres and managed on a

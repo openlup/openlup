@@ -30,6 +30,15 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Opt-in direct OIDC composition authenticates a signed external issuer/subject
+into a deterministic UUID, then reuses the existing reconcile, actor-scoped
+profile and live membership ports. A token supplies no operator role. Keep one
+verifier binding per host to retain bounded discovery/JWKS refresh and register
+its observations on identity startup admission. Reference routes retain observed
+mutation policy. The RP owns local session/refresh credentials; stateless token
+expiry and live membership are separate authorities. Managed composition retains
+native sessions and refuses raw external-token access. See the [OIDC contract](IDENTITY.md#opt-in-oidc-access-tokens).
+
 Reference identity startup composes the existing module-aware core readiness
 contract with email-trust assessment. The host selects one bundle's schema
 inventory and constructs mounted functions from typed adapter bindings under the

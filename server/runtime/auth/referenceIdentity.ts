@@ -1,10 +1,10 @@
 import { checkReadiness, type CandidateIdentity, type Contribution, type LoadedPackage, type ReadinessInput, type SchemaProbePort } from "@openlup/core/readiness";
-import { createIdentityContribution, type EmailTrustPolicy, type IdentityVerifierPort, type CustomerMePort, type AdminAuthPort, type IdentityAdminActionsPort, type CustomerChallengeDeliveryPort, type PrivacyOperations, createAdminBffPreflight } from "@openlup/platform/identity";
+import { createIdentityContribution, type EmailTrustPolicy, type IdentityVerifierPort, type CustomerMePort, type AdminAuthPort, type IdentityAdminActionsPort, type CustomerChallengeDeliveryPort, type PrivacyOperations, createAdminBffPreflight, type OidcIdentityVerifier } from "@openlup/platform/identity";
 import type { RouteEntry } from "@openlup/platform/bff";
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { MACHINE_ACTOR_WRITE_ROUTES, allowedAdminRolesForBffRoute } from "../../_lib/admin-domain/auth.js";
 import { observeReferencePackages } from "../outbox/candidateAdmission.js";
-import { assessIdentityReadiness } from "./identityReadiness.js";
+import { assessIdentityReadiness, assessOidcReadiness } from "./identityReadiness.js";
 import { identityRequiredSchema, type IdentityBundle } from "./identitySchema.js";
 
 const dependencies = ["bff", "data", "kernel", "http"] as const;
@@ -17,6 +17,7 @@ export type ReferenceIdentityPorts = {
   delivery: CustomerChallengeDeliveryPort;
   privacy: PrivacyOperations;
   emailTrustPolicy: EmailTrustPolicy;
+  oidcVerifiers?: readonly OidcIdentityVerifier[];
 };
 const methods = {
   customerSession: ["verifyAccessToken"], customerProfile: ["getCustomerMe"], operatorAuthorization: ["authorize"],
@@ -74,9 +75,10 @@ export async function admitReferenceIdentity(input: ReferenceIdentityAdmission) 
   const report = await checkReadiness({ candidate: identity, loadedPackages, inventoryComplete: observed.inventoryComplete,
     contributions: [...foundation, contribution], bindings, schemaProbe: input.schemaProbe, vocabulary: [], exemptions: [] });
   const emailTrust = await assessIdentityReadiness(() => input.runtime.ports.emailTrustPolicy);
-  const state = report.state === "unknown" || emailTrust.state === "unknown" ? "unknown"
-    : report.state === "unsatisfied" || emailTrust.state === "unsatisfied" ? "unsatisfied" : "ready";
-  const combined = { ...report, state, issues: [...report.issues, ...emailTrust.issues] } as const;
+  const oidc = await assessOidcReadiness(input.runtime.ports.oidcVerifiers ?? []);
+  const state = oidc.state === "unknown" || report.state === "unknown" || emailTrust.state === "unknown" ? "unknown"
+    : oidc.state === "unsatisfied" || report.state === "unsatisfied" || emailTrust.state === "unsatisfied" ? "unsatisfied" : "ready";
+  const combined = { ...report, state, issues: [...report.issues, ...emailTrust.issues, ...oidc.issues] } as const;
   const assertCurrent = () => {
     const current = input.currentIdentity();
     if (Object.keys(identity).some(key => identity[key as keyof CandidateIdentity] !== current[key as keyof CandidateIdentity])) throw new Error("identity_candidate_admission_stale");
