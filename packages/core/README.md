@@ -216,6 +216,6 @@ neutrality evidence, not package activation or consumer compatibility evidence.
 Selected `./readiness` modules retain independent schema requirements.
 Dependencies use the same or an earlier layer:
 `kernel`, `rail`, `capability`, `implementation`.
-See [CHANGELOG migration guidance](CHANGELOG.md#unreleased) for selection,
+See [CHANGELOG migration guidance](CHANGELOG.md#0160) for selection,
 bindings, refusals and diagnostics, and the source checkout's
 `api/readiness.api.md` snapshot for declarations; the host owns inventory.
