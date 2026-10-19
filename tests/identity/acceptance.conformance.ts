@@ -322,6 +322,17 @@ export async function runAcceptance(setup: Setup) {
       const response = await fetch(origin + path, { method: body === undefined ? "GET" : "POST", headers: { origin, "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000) });
       return { status: response.status, envelope: await response.json() };
     };
+    async function assertNonMember(token: string) {
+      const me = await request("/api/bff/admin/platform/me", token);
+      if (bundle === "node-supabase") {
+        assert.equal(me.status, 200);
+        assert.equal(me.envelope.ok, true);
+        assert.deepEqual(me.envelope.data, { isAdmin: false, role: null });
+      } else {
+        assert([401,403].includes(me.status));
+      }
+      assert([401,403].includes((await request("/api/bff/admin/identity/privacy/export", token, { subject: { kind: "contact", contactId: CONTACT } })).status));
+    }
     async function login(kind: "customer" | "operator", email: string) {
       const prefix = kind === "customer" ? "/api/bff/customers" : "/api/bff/admin/platform";
       const before = new Set((await mailbox.read(kind)).map(message => message.id));
@@ -362,7 +373,8 @@ export async function runAcceptance(setup: Setup) {
       assert.equal(reconciled.envelope.data?.accountId, CONTACT);
       if (bundle === "node-postgres") assert.deepEqual(reconciled.envelope.data, { accountId: CONTACT, created: false, linked: false });
     }
-    for (const token of [undefined, "invalid", customer.token]) assert([401,403].includes((await request("/api/bff/admin/platform/me", token)).status));
+    for (const token of [undefined, "invalid"]) assert([401,403].includes((await request("/api/bff/admin/platform/me", token)).status));
+    await assertNonMember(customer.token);
     if (bundle === "node-postgres") assert.equal((await request("/api/bff/customers/me", admin.token)).status, 401);
     if (bundle === "node-supabase") {
       assert(auth);
@@ -374,7 +386,7 @@ export async function runAcceptance(setup: Setup) {
       const verified = await identity.auth.verifyOtp({ type: "magiclink", token_hash: generated.data.properties!.hashed_token });
       assert.equal(Boolean(verified.error), false);
       const token = verified.data.session?.access_token; assert.equal(typeof token, "string");
-      assert([401,403].includes((await request("/api/bff/admin/platform/me", token!)).status));
+      await assertNonMember(token!);
       assert.notEqual((await request("/api/bff/customers/me", admin.token)).status, 200);
     }
     const invited = await request("/api/bff/admin/platform/admin-users/invite", admin.token, { email: INVITEE_EMAIL, role: "distributor" }); assert.equal(invited.status, 200);
@@ -384,7 +396,7 @@ export async function runAcceptance(setup: Setup) {
     const principalTable = bundle === "node-postgres" ? "platform_human_principals" : "admin_users", principalColumn = bundle === "node-postgres" ? "principal_id" : "id";
     const inviteeId = (await pool.query(`SELECT ${principalColumn} AS id FROM public.${principalTable} WHERE lower(email)=lower($1)`, [INVITEE_EMAIL])).rows[0].id;
     assert.equal((await request("/api/bff/admin/platform/admin-users/remove", admin.token, { userId: inviteeId })).status, 200);
-    assert([401,403].includes((await request("/api/bff/admin/platform/me", invitee.token)).status));
+    await assertNonMember(invitee.token);
     assert.equal((await pool.query(`SELECT count(*)::int AS count FROM public.${principalTable} WHERE ${principalColumn}=$1`, [inviteeId])).rows[0].count, 1);
     const subject = { kind: "contact", contactId: CONTACT };
     const exported = await request("/api/bff/admin/identity/privacy/export", admin.token, { subject }); assert.equal(exported.status, 200);
