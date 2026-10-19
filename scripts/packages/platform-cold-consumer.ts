@@ -260,7 +260,17 @@ import assert from "node:assert/strict";
 import { createInMemoryEmailTransport, createPostgresTransactionalDeliveryStore, resolveCapturedDocumentDelivery } from "@openlup/platform/communications";
 import * as contracts from "@openlup/platform/communications/contracts";
 import { timingSafeStringEqual } from "@openlup/platform/http";
-assert.deepEqual(Object.keys(contracts), []);
+assert.deepEqual(Object.keys(contracts).sort(), ["accentBox","button","createAbandonedCartContentFactory","createBackInStockContentFactory","createCheckoutExpiredContentFactory","createCheckoutRecoveryContentFactory","createOrderCanceledContentFactory","createOrderDraftContentFactory","createOrderPaidContentFactory","createOrderRefundedContentFactory","createPaymentFailedContentFactory","createReorderReminderContentFactory","createReturnEmailsContentFactory","createReviewEffectsContentFactory","createReviewRequestContentFactory","createShipmentDeliveredContentFactory","createShipmentDispatchedContentFactory","createShipmentExceptionContentFactory","createSubscriptionActivationActionRequiredContentFactory","createSubscriptionAddressChangedContentFactory","createSubscriptionCancelledContentFactory","createSubscriptionCycleSkippedContentFactory","createSubscriptionDeliveryRescheduledContentFactory","createSubscriptionPackageChangedContentFactory","createSubscriptionPauseReminderContentFactory","createSubscriptionPausedContentFactory","createSubscriptionPaymentExpiredContentFactory","createSubscriptionPaymentFailedContentFactory","createSubscriptionPaymentRecoveredContentFactory","createSubscriptionRenewalAtRiskContentFactory","createSubscriptionRenewalUpcomingContentFactory","createSubscriptionResumedContentFactory","createSubscriptionWelcomeContentFactory","createSubscriptionWinbackContentFactory","dataTable","divider","featureCard","guideCardBlock","heading","linkParagraph","list","paragraph","renderEmail"]);
+// Optional peers are physically absent in this phase. Rendering must be pure.
+const previousFetch = globalThis.fetch;
+globalThis.fetch = () => { throw new Error("contracts rendering must never fetch"); };
+try {
+  const rendered = contracts.renderEmail({ brand: { copyBrandName: "Example", theme: { bodyBg: "#fff", cardBg: "#fff", accentBg: "#eee", hairline: "#ccc", brand: "#123", onBrand: "#fff", textHeading: "#111", textBody: "#222", textMuted: "#555", fontFamily: "Arial", logoText: "Example", cardRadiusPx: 12, buttonRadiusPx: 8, maxWidthPx: 600 }, chrome: { pl: { logoAlt: "Example", footerTagline: "Polish footer" }, en: { logoAlt: "Example", footerTagline: "EN footer" } } }, locale: "en", subject: "Synthetic", blocks: [contracts.paragraph("<probe>"), contracts.button("Open", "https://example.invalid")] });
+  assert.equal(rendered.subject, "Synthetic");
+  assert(rendered.html.includes("&lt;probe&gt;"));
+  assert(rendered.html.includes('href="https://example.invalid"'));
+  assert.equal(rendered.text, "<probe>\\n\\nOpen: https://example.invalid\\n\\nEN footer");
+} finally { globalThis.fetch = previousFetch; }
 assert(timingSafeStringEqual("synthetic", "synthetic"));
 globalThis.fetch = () => { throw new Error("capture must never fetch"); };
 const transport = createInMemoryEmailTransport();

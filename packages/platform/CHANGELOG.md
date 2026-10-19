@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Move the existing pure email renderer, block builders and commerce/subscription
+  content assembly into communications/contracts. Host copy and helper bindings,
+  browser previews, Auth refusal and independent verifier policies are preserved.
+  The complete browser entry has an explicitly inventoried pure value surface;
+  its measured owner-read size limit and W4/parity evidence are in the M04 ledger.
+
 - Extract neutral admitted-observation and bounded polling orchestration through
   existing `./communications`. Existing domain wrappers retain protocol mapping,
   admission, evidence and persistence arguments. Keep lookup/apply/telemetry and
