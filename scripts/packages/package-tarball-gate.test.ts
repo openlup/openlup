@@ -29,10 +29,10 @@ describe("tarball gate", () => {
   it("refuses each seeded defect", () => {
     expect(rules(packed([["dist/a.js.map", "{}"]]))).toEqual(["sourcemap"]);
     expect(rules(packed([], { "dist/a.js": "export const a = 1;\n//# sourceMappingURL=data:application/json;base64,e30=\n" }))).toEqual(["sourcemap"]);
-    expect(rules(packed([["notes.txt", "scratch"]]))).toEqual(["unlisted-file"]);
+    expect(rules(packed([["notes.txt", "scratch"]]))).toEqual(["package-content-allowlist"]);
     expect(rules(packed([], { "README.md": "# Core, edited\n" }))).toEqual(["changed-file"]);
     expect(rules(packed([["dist/missing.js", "export {};\n"]]))).toEqual(["derived-without-source"]);
-    expect(rules(packed([["dist/a.test.js", "test\n"]]))).toEqual(["test-output"]);
+    expect(rules(packed([["dist/a.test.js", "test\n"]]))).toEqual(["package-content-allowlist"]);
     expect(rules(packed([], { "dist/a.js": `// built in ${["", "Users", "someone", "src"].join("/")}\n` }))).toEqual(["machine-path"]);
     expect(rules(packed([], { "dist/a.js": `// built in ${["", "root", "work"].join("/")}\n` }))).toEqual(["machine-path"]);
     expect(rules(packed([], { "dist/a.js": `"${["C:", "", "Users", "", "someone"].join("\\")}"\n` }))).toEqual(["machine-path"]);

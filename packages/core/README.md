@@ -219,3 +219,14 @@ Dependencies use the same or an earlier layer:
 See [CHANGELOG migration guidance](CHANGELOG.md#0160) for selection,
 bindings, refusals and diagnostics, and the source checkout's
 `api/readiness.api.md` snapshot for declarations; the host owns inventory.
+
+## Package artifact limits
+
+The monorepo's package artifact checker enforces this package's
+`release-gates.json` caps and packed content allowlist. Only
+`--release-set <version>` checks compressed growth against the last released
+baseline, with explanations in the new set's changelog section and release body. See the
+[package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
+for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
+Artifact checks require a clean package directory; `--manifest-only` supplies no
+artifact evidence.

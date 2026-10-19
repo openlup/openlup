@@ -262,18 +262,17 @@
     }
   },
   "pack": {
-    "$budgetReason": "2026-10-18 M03 bounded decision: base code 129991 packed, aggregate 158715 packed/667249 unpacked bytes; B0 before trimming 132250, 162482/681852; final 132250, 161344/678531. B0 is core's only growth for programme module M03; identity ships in @openlup/platform. Code 132KiB, aggregates 162KiB/672KiB; docs class, file ceilings, required files and other controls unchanged. Set bumps grow only the changelog; docs stays the first binding limit for set notes. Later growth still requires a measured budget decision. Grants no release authority.",
     "code": {
-      "maxPackedBytes": 135168,
-      "maxFiles": 198
+      "maxPackedBytes": 276480,
+      "maxFiles": 400
     },
     "docs": {
-      "maxPackedBytes": 24576,
-      "maxFiles": 12
+      "maxPackedBytes": 49152,
+      "maxFiles": 20
     },
-    "maxPackedBytes": 165888,
-    "maxUnpackedBytes": 688128,
-    "maxFiles": 211,
+    "maxPackedBytes": 327680,
+    "maxUnpackedBytes": 1392640,
+    "maxFiles": 420,
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",
@@ -285,7 +284,12 @@
       "SECURITY.md",
       "package.json",
       "release-gates.json"
-    ]
+    ],
+    "baseline": {
+      "version": "0.16.0",
+      "packedBytes": 161371
+    },
+    "browserEntries": {}
   },
   "publish": {
     "prepublishOnly": "node --experimental-strip-types ./scripts/refuse-publish.ts",

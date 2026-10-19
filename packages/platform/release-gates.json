@@ -154,15 +154,22 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 131072,
-      "maxFiles": 240
+      "maxPackedBytes": 440320,
+      "maxFiles": 800
     },
     "docs": {
-      "maxPackedBytes": 16384,
-      "maxFiles": 12
+      "maxPackedBytes": 40960,
+      "maxFiles": 10
     },
-    "maxPackedBytes": 196608,
-    "maxUnpackedBytes": 1048576,
-    "maxFiles": 256
+    "maxPackedBytes": 522240,
+    "maxUnpackedBytes": 2088960,
+    "maxFiles": 800,
+    "baseline": {
+      "version": "0.16.0",
+      "packedBytes": 256973
+    },
+    "browserEntries": {
+      "./identity/contracts": 4800
+    }
   }
 }

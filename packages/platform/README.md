@@ -494,6 +494,17 @@ Browser previews retain their reference renderer, content defaults and template
 policy. The Auth hook receives that same renderer through its reference shim.
 The standard Auth webhook and Resend verifiers keep their separate signature
 formats and clocks; the generic helper added to `./http` replaces neither.
-The payment helper donor remains unchanged pending a separate path grant.
+The payment webhook module re-exports these generic helpers; Stripe verification stays there.
 See the [M04 plan](../../docs/platform/plans/oss-m04-communications-triggers.md)
 for scope, later waves and verification limits.
+
+## Package artifact limits
+
+The monorepo's package artifact checker enforces this package's
+`release-gates.json` caps and packed content allowlist. Only
+`--release-set <version>` checks compressed growth against the last released
+baseline, with explanations in the new set's changelog section and release body. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
+[package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
+for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
+Artifact checks require a clean package directory; `--manifest-only` supplies no
+artifact evidence.
