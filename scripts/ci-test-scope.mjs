@@ -1,14 +1,16 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { matchesGlob } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
 
-// Broad shared triggers include every root config, tooling/import closure and
-// setup input. In particular this includes both manifests,
-// Vitest, run-vitest, this table and all workflows. Adding tooling reruns it all.
-export const SHARED_INPUTS = ['*', '.*', 'scripts/**', '.github/**',
-  'tests/setup/**', 'src/test/**', 'src/checkout/machine/commerceRequestCache.ts'];
+// Inputs are plain prefixes: an entry ending in '/' covers that directory and
+// everything below it (dot files included); any other entry is one exact file.
+// Glob matching is deliberately avoided: its '*' and '**' skip dot segments.
+// Broad shared triggers: every root file, every dot-prefixed segment anywhere
+// (.github, .npmignore, .env...), the tooling/import closure and test setup.
+// That includes both manifests, Vitest, run-vitest, this table and all workflows.
+export const SHARED_INPUTS = ['scripts/', 'tests/setup/', 'src/test/',
+  'src/checkout/machine/commerceRequestCache.ts'];
 
 // Only bounded fixtures belong here. Inputs are relative to the checkout;
 // every row also has SHARED_INPUTS. Package rows conservatively include all
@@ -22,30 +24,32 @@ export const TOOLING_INPUTS = {
   'scripts/public-ci-reuse.test.ts': [], // Recorded workflow/job responses.
   'scripts/documentation-impact.test.ts': [], // Synthetic ownership/Git fixtures.
   'scripts/documentation-bundle.test.ts': [], // Synthetic bundle and source fixtures.
-  'scripts/documentation-cli.test.ts': ['packages/**'], // Copies CLI closure and package manifests.
+  'scripts/documentation-cli.test.ts': ['packages/'], // Copies CLI closure and package manifests.
   'scripts/ast-grep/check-filewide-ignore.test.ts': [], // Fixture source; actual rules under scripts/.
   'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': [], // Fixture source and rules.
-  'scripts/packages/eslint-import-map.test.ts': ['packages/**', 'src/**', 'server/**'], // Config reads workspace exports and domain directories.
-  'scripts/packages/outbox-consumer-proof.test.ts': ['packages/**', 'server/runtime/outbox/**', 'config/openlup-packages.json'], // Actual config, packs, smoke scripts and reference wiring.
-  'scripts/packages/package-manifest-policy.test.ts': ['packages/**', 'config/openlup-packages.json'], // Actual config, core exports and root tsconfigs.
-  'scripts/packages/package-release.test.ts': ['packages/**'], // Release module mutations and Git fixtures.
-  'scripts/packages/package-size-policy.test.ts': ['packages/**', 'config/openlup-packages.json'], // Actual config, npm packs/browser entries and budgets.
-  'scripts/packages/package-tarball-gate.test.ts': ['packages/**'], // Tarball and attestation fixtures.
-  'scripts/packages/packages-check.test.ts': ['packages/**'], // Actual manifest-only check plus cold fixture builds.
-  'scripts/packages/pack-manifest-input.test.ts': ['packages/**'], // Pack/hash and isolation fixtures.
-  'scripts/packages/platform-cold-consumer.test.ts': ['packages/**'], // Actual wrapper, synthetic consumers and compiler.
-  'scripts/packages/release-bump.test.ts': ['packages/**'], // Synthetic manifests/locks/changelogs.
-  'scripts/packages/release-gate.test.ts': ['packages/**'], // Gate mutations, Git and recorded API fixtures.
-  'scripts/packages/release-workflow-authenticity.test.ts': ['packages/**'], // Actual workflow controls and scripted fixtures.
-  'scripts/packages/required-package-gates.test.ts': ['packages/**'], // Cold build/API/consumer fixtures.
-  'scripts/packages/set-release.test.ts': ['packages/**'], // Set-module mutations and release fixtures.
+  'scripts/packages/eslint-import-map.test.ts': ['packages/', 'src/', 'server/'], // Config reads workspace exports and domain directories.
+  'scripts/packages/outbox-consumer-proof.test.ts': ['packages/', 'server/runtime/outbox/', 'config/openlup-packages.json'], // Actual config, packs, smoke scripts and reference wiring.
+  'scripts/packages/package-manifest-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, core exports and root tsconfigs.
+  'scripts/packages/package-release.test.ts': ['packages/'], // Release module mutations and Git fixtures.
+  'scripts/packages/package-size-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, npm packs/browser entries and budgets.
+  'scripts/packages/package-tarball-gate.test.ts': ['packages/'], // Tarball and attestation fixtures.
+  'scripts/packages/packages-check.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual manifest-only check plus cold fixture builds.
+  'scripts/packages/pack-manifest-input.test.ts': ['packages/'], // Pack/hash and isolation fixtures.
+  'scripts/packages/platform-cold-consumer.test.ts': ['packages/'], // Actual wrapper, synthetic consumers and compiler.
+  'scripts/packages/release-bump.test.ts': ['packages/'], // Synthetic manifests/locks/changelogs.
+  'scripts/packages/release-gate.test.ts': ['packages/'], // Gate mutations, Git and recorded API fixtures.
+  'scripts/packages/release-workflow-authenticity.test.ts': ['packages/'], // Actual workflow controls and scripted fixtures.
+  'scripts/packages/required-package-gates.test.ts': ['packages/'], // Cold build/API/consumer fixtures.
+  'scripts/packages/set-release.test.ts': ['packages/'], // Set-module mutations and release fixtures.
 };
 
 export function excludedToolingTests(changedPaths) {
   if (!Array.isArray(changedPaths) || changedPaths.some(path => typeof path !== 'string'
     || !path || path.startsWith('/') || path.split('/').includes('..') || path.includes('\\'))) return [];
-  const touched = patterns => changedPaths.some(path => patterns.some(pattern => matchesGlob(path, pattern)));
-  if (touched(SHARED_INPUTS)) return [];
+  const covers = (input, path) => input.endsWith('/') ? path.startsWith(input) : path === input;
+  const touched = inputs => changedPaths.some(path => inputs.some(input => covers(input, path)));
+  if (changedPaths.some(path => !path.includes('/') || path.split('/').some(segment => segment.startsWith('.')))
+    || touched(SHARED_INPUTS)) return [];
   return Object.entries(TOOLING_INPUTS)
     .filter(([, inputs]) => !touched(inputs))
     .map(([test]) => test).sort();

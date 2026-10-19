@@ -21,24 +21,27 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['server/runtime/outbox/candidateAdmission.ts']))
       .toEqual(all.filter(test => !test.endsWith('outbox-consumer-proof.test.ts') && !test.endsWith('eslint-import-map.test.ts')));
     expect(excludedToolingTests(['packages/core/src/index.ts']))
-      .toEqual(Object.entries(TOOLING_INPUTS).filter(([, inputs]) => !inputs.includes('packages/**')).map(([test]) => test).sort());
+      .toEqual(Object.entries(TOOLING_INPUTS).filter(([, inputs]) => !inputs.includes('packages/')).map(([test]) => test).sort());
   });
   it.each(['package.json', 'package-lock.json', 'vitest.config.ts', 'scripts/run-vitest.mjs',
     'scripts/ci-test-scope.mjs', 'scripts/ci-test-scope.test.ts', '.github/workflows/any.yml',
     '.github/actions/example/action.yml',
     'eslint.config.js', '.nvmrc', 'scripts/packages/new-helper.ts', 'tests/setup/scrub-git-env.ts',
-    'src/test/setup.ts', 'src/checkout/machine/commerceRequestCache.ts'])(
+    'src/test/setup.ts', 'src/checkout/machine/commerceRequestCache.ts',
+    // Dot segments anywhere and hidden root folders: glob '*'/'**' would skip them.
+    '.husky/pre-commit', 'scripts/.x', 'tests/setup/.env', 'src/test/.x', 'packages/core/.gitignore',
+    'packages/platform/src/.npmignore', 'packages/core/.github/workflows/ci.yml'])(
     'runs everything for shared input %s', path => { expect(excludedToolingTests([path])).toEqual([]); },
   );
   it('excludes bounded tooling tests for docs and unrelated config changes', () => {
     expect(excludedToolingTests(['docs/platform/README.md'])).toEqual(all);
     expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all);
     expect(excludedToolingTests(['config/openlup-packages.json'])).toEqual(all.filter(test =>
-      !['outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy'].some(name => test.endsWith(`${name}.test.ts`))));
+      !['outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
   });
   it.each(Object.entries(TOOLING_INPUTS).flatMap(([test, inputs]) => inputs.map(input => [test, input] as const)))(
     'runs %s when its declared input %s changes', (test, input) => {
-      expect(excludedToolingTests([input.replace('**', 'scope-witness.ts')])).not.toContain(test);
+      expect(excludedToolingTests([input.endsWith('/') ? `${input}scope-witness.ts` : input])).not.toContain(test);
     },
   );
   it.each(['push', 'workflow_dispatch', 'unknown', undefined])('runs everything for event %s', eventName => {

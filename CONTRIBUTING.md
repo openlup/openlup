@@ -738,7 +738,7 @@ errors write an empty exclusion file and run everything. Locally, the wrapper
 creates and cleans a temporary exclusion file; `node scripts/ci-test-scope.mjs
 --base <ref>` uses the merge-base of HEAD and that ref (default `origin/main`
 without GitHub event metadata), plus staged, unstaged and untracked paths.
-Docs and config used only in synthetic fixtures are not shared inputs; the three
+Docs and config used only in synthetic fixtures are not shared inputs; the four
 rows reading the actual package config declare it explicitly. Local `npm test`
 remains unfiltered without the exclusion variable. Each shard computes the same set
 from the same candidate and event before deterministic native sharding. The
