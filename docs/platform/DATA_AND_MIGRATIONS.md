@@ -57,6 +57,16 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
+Direct OIDC principals fit the existing UUID `clients.principal_id`; the
+versioned issuer/subject hash adds no table, forward, catalogue position or ledger
+change. The direct account-link capability uses normal reconciliation and
+parameterized DML, fills only null links and refuses normalized-email ambiguity.
+Privacy receipt locking prevents recreation or relinking of erased principals.
+It never converts legacy links, managed auth IDs, membership or subscriptions.
+The opt-in real-issuer runner installs the full catalogue, checks exact ledger
+rows and proves replay and preservation of existing application state. Its
+[identity recipe](IDENTITY.md#real-issuer-oidc-recipe) requires real local services.
+
 The direct human-login forward `20261018180000_identity_operator_challenges`
 appends position 68 after invitations. Preserve every preceding file, digest and
 position. The identity projection carries the same bytes and canonical position;

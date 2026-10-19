@@ -154,6 +154,21 @@ in both resolution modes with all three optional peers absent.
 
 ## Identity import candidate
 
+The additive OIDC API exports `createOidcIdentityVerifier`,
+`deriveOidcPrincipalId`, `createPostgresAccountLinkStore` and
+`identityOidcReadiness` from `@openlup/platform/identity`, which also exports
+`OIDC_FAILURE_CODES` and `OidcFailureCode` for hosts. The browser-shared
+`@openlup/platform/identity/contracts` entry excludes OIDC refusals.
+Inject the host's selected JWT library through `IdentityJwtLibraryLoader`.
+Discovery and rotating keys load only on verification or readiness. The opt-in
+direct composition uses normal reconcile with an explicit email-trust policy,
+authenticated actor reads and live operator membership. Managed storage requires
+native federation sessions and refuses raw upstream-token composition. Run
+`node tests/postgres/runOidcIdentityConformance.mjs` from the repository root with
+its cached pinned issuer and local prerequisites; the [OIDC recipe](../../docs/platform/IDENTITY.md#real-issuer-oidc-recipe)
+owns timing, refusal, session and certification boundaries. Existing static
+session verification and default reference/browser flows are unchanged.
+
 The direct operator API adds `createPostgresOperatorIdentityStore`,
 `createOperatorSessionService`, `createOperatorIdentityVerifier`,
 `createOperatorAdminAuth` and `createOperatorAuthHandlers` to `./identity`.

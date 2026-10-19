@@ -258,3 +258,14 @@ it("refuses an environment changed during asynchronous admission before listenin
   await expect(startPublicReferenceServer({ root: "/missing-reference.invalid", identity: input })).rejects.toThrow("environment does not match");
   expect(listen).not.toHaveBeenCalled();
 });
+it("selected_oidc_observations_participate_in_reference_admission", async () => {
+  const { createOidcIdentityVerifier } = await import("@openlup/platform/identity");
+  const input = admission("node-postgres");
+  expect((await admitReferenceIdentity(input)).admitted).toBe(true);
+  input.runtime.ports.oidcVerifiers = [createOidcIdentityVerifier({ issuer: "https://issuer.example.com", audience: "customer-api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600 }, {
+    loadJwt: async () => { throw new Error("synthetic unavailable"); }, fetch: async () => { throw new Error("synthetic unavailable"); },
+  })];
+  const result = await admitReferenceIdentity(input);
+  expect(result.admitted).toBe(false); expect(result.report.state).toBe("unknown");
+  expect(result.report.issues).toContainEqual(expect.objectContaining({ subject: "oidcDiscovery", module: "identity" }));
+});

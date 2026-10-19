@@ -12,7 +12,13 @@ interface Signer {
 /** The host loads its selected JWT implementation only for the selected adapter. */
 export interface IdentityJwtLibrary {
   importJWK(jwk: IdentityJwk, alg: string): Promise<Key>;
-  jwtVerify(token: string, key: (header: { alg?: string; kid?: string }) => Promise<Key>, options: { algorithms: string[]; audience: string; issuer: string }): Promise<{ payload: { sub?: string } }>;
+  jwtVerify(token: string, key: (header: { alg?: string; kid?: string }) => Promise<Key>, options: { algorithms: string[]; audience: string; issuer: string; currentDate?: Date; clockTolerance?: number }): Promise<{ payload: IdentityJwtClaims }>;
   SignJWT: new (payload: Record<string, unknown>) => Signer;
 }
 export type IdentityJwtLibraryLoader = () => Promise<IdentityJwtLibrary>;
+
+/** Claims returned only after signature verification by the host library. */
+export interface IdentityJwtClaims {
+  [claim: string]: unknown;
+  sub?: string; iss?: string; aud?: string | string[]; exp?: number; iat?: number; nbf?: number;
+}

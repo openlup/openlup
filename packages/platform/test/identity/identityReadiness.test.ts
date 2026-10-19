@@ -12,3 +12,11 @@ it("safe policy is ready and policy port is always required", async () => {
   expect(contribution.manifest.requiredPorts).toEqual(["emailTrustPolicy", "fixture"]);
   expect(contribution.manifest.module.id).toBe("identity");
 });
+it("oidc_readiness_requires_discovery_and_fresh_jwks", async () => {
+  const { identityOidcReadiness } = await import("../../src/identity/identityReadiness.js");
+  const { createOidcIdentityVerifier } = await import("../../src/identity/oidcIdentityVerifier.js");
+  const verifier = createOidcIdentityVerifier({ issuer: "https://issuer.example.com", audience: "customer-api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600 }, {
+    loadJwt: async () => { throw new Error("synthetic unavailable"); }, fetch: async () => { throw new Error("synthetic unavailable"); },
+  });
+  expect(await identityOidcReadiness(verifier)).toEqual([expect.objectContaining({ subject: "oidcDiscovery", module: "identity" }), expect.objectContaining({ subject: "oidcJwks", module: "identity" })]);
+});

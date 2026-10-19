@@ -8,6 +8,16 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add an opt-in OIDC access-token verifier with issuer discovery, bounded rotating
+  JWKS, strict signed claims and deterministic issuer/subject UUID principals.
+  Direct PostgreSQL composition uses normal account reconciliation, actor-scoped
+  profile reads and live operator membership. Add an isolated real-issuer recipe
+  for refresh, rotation, session termination and ACL conformance. Managed bundles
+  require native federation sessions. No schema or default login flow changes.
+  OIDC refusal constants/types are exported only from the server identity entry.
+  Migration: import `OIDC_FAILURE_CODES` and `OidcFailureCode` from
+  `@openlup/platform/identity` instead of `@openlup/platform/identity/contracts`.
+
 - Add an opt-in disposable identity reference shell with separate customer/operator
   browser mounts, a private captured mailbox for the direct bundle and opt-in
   acceptance commands for both bundles: direct on node-postgres and managed on a

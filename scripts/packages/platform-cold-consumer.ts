@@ -103,6 +103,29 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   }
 }
 
+// OIDC uses a host-selected implementation, separate from the historical adapter fixture inventory.
+const oidcOperations = `
+import assert from "node:assert/strict";
+import { createOidcIdentityVerifier, createPostgresAccountLinkStore, deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { OIDC_FAILURE_CODES } from "@openlup/platform/identity";
+assert(OIDC_FAILURE_CODES.includes("OIDC_NATIVE_SESSION_REQUIRED"));
+assert.equal(deriveOidcPrincipalId("https://issuer.example.com/realm", "subject"), "262d8593-5c2f-8ce3-a5f2-de2751bbfe90");
+let oidcFetches = 0, oidcLoads = 0;
+const oidc = createOidcIdentityVerifier({ issuer: "https://issuer.example.com", audience: "api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600 }, {
+  fetch: async url => { oidcFetches++; return Response.json(String(url).endsWith("openid-configuration") ? { issuer: "https://issuer.example.com", jwks_uri: "https://issuer.example.com/keys" } : { keys: [{ kty: "RSA", alg: "RS256", kid: "key", use: "sig", n: "synthetic", e: "AQAB" }] }); },
+  loadJwt: async () => { oidcLoads++; return import("jose"); },
+});
+assert.equal(oidcFetches, 0); assert.equal(oidcLoads, 0);
+const oidcToken = Buffer.from(JSON.stringify({ alg: "RS256", kid: "key" })).toString("base64url") + ".e30.c2ln";
+assert.deepEqual(await oidc.verifyToken(oidcToken), { ok: false, code: "OIDC_JWT_LIBRARY_UNAVAILABLE" });
+assert.equal(oidcLoads, 1);
+await assert.rejects(async () => {
+  const accountLinks = createPostgresAccountLinkStore({ connectionString: "postgresql://unused.invalid/consumer" });
+  try { await accountLinks.findAccountByPrincipalId("11111111-1111-4111-8111-111111111111"); }
+  finally { await accountLinks.close(); }
+}, error => error.message.startsWith("OPENLUP_E_PEER_MISSING: pg is required by ") && Boolean(error.cause));
+`;
+
 // A valid synthetic catalogue gets as far as the lazy driver, never a deployment's SQL.
 const adapterOperations = `
 import assert from "node:assert/strict";
@@ -112,6 +135,7 @@ import { createPostgresMigrationRunner } from "@openlup/platform/migrations";
 import { createEnvAdvisoryLock } from "@openlup/platform/scheduler";
 import { createPostgresCustomerMePort, createPostgresPrivacyStore, createPostgresCustomerChallengeStore, createDirectOperatorInvitationStore, createDirectOperatorIdentityDirectory, createSupabaseIdentityVerifier as createManagedVerifier, createSupabaseAccountLinkStore as createManagedLinkStore, createPostgresOperatorIdentityStore, createOperatorSessionService, createOperatorAdminAuth, createOperatorIdentityVerifier, createPostgresPrivacyUnitOfWork, createManagedPrivacyStore, createPersonalDataContributorRegistry } from "@openlup/platform/identity";
 import { operatorChallengeRequestSchema, operatorSessionSchema, privacyExportRequestSchema } from "@openlup/platform/identity/contracts";
+
 assert.equal(typeof createOperatorSessionService, "function");
 assert.equal(createManagedPrivacyStore().erasureSupported, false);
 assert.deepEqual(createPersonalDataContributorRegistry([], { requiredContributorIds: ["identity"] }).missingContributors, ["identity"]);
@@ -316,6 +340,7 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveAdapterRefusals(consumer);
+    consumerNode(consumer, oidcOperations);
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);

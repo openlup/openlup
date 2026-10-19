@@ -1,0 +1,26 @@
+# Opt-in disposable conformance only. The runner supplies private, synthetic credentials.
+services:
+  issuer:
+    image: quay.io/keycloak/keycloak:26.0.7@sha256:4388e2379b7e870a447adbe7b80bd61f5fbf04e925832b19669fda4957f05a81
+    pull_policy: never
+    command: ["start-dev", "--http-port=8080", "--hostname=http://127.0.0.1:${OIDC_PORT:?runner required}"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: conformance-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${OIDC_ADMIN_PASSWORD:?runner required}
+    ports:
+      - "127.0.0.1:${OIDC_PORT:?runner required}:8080"
+    labels:
+      com.openlup.oidc.run: ${OIDC_RUN_ID:?runner required}
+  database:
+    image: postgres:16
+    pull_policy: never
+    environment:
+      POSTGRES_PASSWORD: ${OIDC_DATABASE_PASSWORD:?runner required}
+    ports:
+      - "127.0.0.1::5432"
+    labels:
+      com.openlup.oidc.run: ${OIDC_RUN_ID:?runner required}
+networks:
+  default:
+    labels:
+      com.openlup.oidc.run: ${OIDC_RUN_ID:?runner required}

@@ -62,3 +62,8 @@ export * from "./identityPersonalDataContributor.js";
 export * from "./postgresPrivacy.js";
 export * from "./managedPrivacy.js";
 export * from "./privacyHandlers.js";
+
+export * from "./oidcIdentityVerifier.js";
+export * from "./oidcPrincipal.js";
+export * from "./postgresAccountLinkStore.js";
+export * from "./contracts/oidc.js";

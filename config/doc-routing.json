@@ -580,7 +580,11 @@
         "server/bff/admin/platform/admin-users/remove.ts",
         "server/runtime/auth/capturedIdentityMailbox*.ts",
         "tests/identity/**",
-        "tests/preview/account/identity-composition.spec.ts"
+        "tests/preview/account/identity-composition.spec.ts",
+        "server/runtime/auth/oidc*.ts",
+        "docker-compose.identity-oidc.yml",
+        "tests/postgres/runOidcIdentityConformance.mjs",
+        "tests/postgres/oidc*.ts"
       ],
       "doc": "docs/platform/IDENTITY.md",
       "anchor": ""
