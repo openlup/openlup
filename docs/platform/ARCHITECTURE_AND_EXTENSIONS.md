@@ -296,14 +296,16 @@ artifact role, with no current name reservation or bootstrap obligation. Record
 placement and the topology-trigger check in the module/API packet before
 implementation.
 
-A separate package needs evidence of incompatible supported peers, incompatible
-runtime, measured installation/native-build cost, a distinct supported lifecycle
-or maintainer, or a real independent consumer poorly served by subpaths. First
+A separate package needs evidence: incompatible peer ranges in supported cold
+installs; a genuinely different browser/edge/Node runtime; measured
+installation or native-build cost; a different maintenance or release lifecycle;
+or an actual independent consumer poorly served by subpaths. First
 assess whether an isolated subpath suffices; for adapters also consider an
 existing port, optional peer or application adapter. A provider name alone is
 not a trigger. Record the evidence and compatibility and maintenance ownership
 in the same packet. A trigger requires an explicit maintainer decision under
-the applicable authority; it grants no bootstrap or publication authority. A
+the applicable authority; it grants no authority to create, bootstrap or
+publish a package. A
 new npm name also needs the maintainer's manual bootstrap before its first
 release, not before its contribution PR; follow
 [package release setup](../../.github/VERSIONING_AND_EOL.md#package-releases).
