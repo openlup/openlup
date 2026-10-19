@@ -47,7 +47,7 @@ function walk(directory: string, onSymlink: (path: string) => void): string[] {
   });
 }
 
-function packAndCheck(root: string, entry: PackageEntry, packages: readonly PackageEntry[], cold: boolean, readTracked: (path: string) => Uint8Array | undefined, findings: Finding[], keepDir?: string, releaseNotes?: string): PackResult | undefined {
+function packAndCheck(root: string, entry: PackageEntry, packages: readonly PackageEntry[], cold: boolean, readTracked: (path: string) => Uint8Array | undefined, findings: Finding[], keepDir?: string, releaseSet?: string, releaseNotes?: string): PackResult | undefined {
   const finding = (rule: string, detail: string): void => { findings.push({ subject: entry.name, rule, detail }); };
   const dirty = (): string => capture(root, "git", ["status", "--porcelain", "--untracked-files=no", "--", entry.directory]).trim();
   if (dirty()) { finding("dirty-tree", `commit or discard the changes under ${entry.directory} first; a pack is checked against the commit`); return undefined; }
@@ -68,7 +68,7 @@ function packAndCheck(root: string, entry: PackageEntry, packages: readonly Pack
     if (entry.publish) {
       const budget = readPackBudget(root, entry);
       const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-      findings.push(...checkPackBudget(entry, budget, measurePack(entries, readFileSync(join(scratch, packed.filename)).length), manifest.version, readFileSync(join(directory, "CHANGELOG.md"), "utf8"), releaseNotes));
+      findings.push(...checkPackBudget(entry, budget, measurePack(entries, readFileSync(join(scratch, packed.filename)).length), releaseSet, releaseSet === undefined ? "" : readFileSync(join(directory, "CHANGELOG.md"), "utf8"), releaseNotes));
       for (const [subpath, cap] of Object.entries(budget.browserEntries)) {
         const target = manifest.exports?.[subpath]?.import;
         if (typeof target !== "string") finding("browser-entry-policy", `${subpath} has no runtime import export`);
@@ -267,8 +267,8 @@ export function runPackagesCheck(root: string, args: readonly string[]): number 
     const packed: Array<{ name: string; version: string } & PackResult> = [];
     if (options.pack && findings.length === 0) {
       for (const entry of selected) {
-        const releaseNotes = options.releaseSet !== undefined ? processEnvironment.RELEASE_NOTES ?? "" : options.releaseTag !== undefined ? processEnvironment.RELEASE_NOTES : undefined;
-        const result = packAndCheck(root, entry, config.packages, options.cold, readTracked, findings, keepDir, releaseNotes);
+        const releaseNotes = options.releaseSet !== undefined ? processEnvironment.RELEASE_NOTES ?? "" : undefined;
+        const result = packAndCheck(root, entry, config.packages, options.cold, readTracked, findings, keepDir, options.releaseSet, releaseNotes);
         if (!result) continue;
         const version = String(versions.get(entry.name));
         console.log(`packed ${entry.name}@${version}: ${result.filename}, ${result.entryCount} files, ${result.integrity}`);

@@ -780,8 +780,10 @@ package.
 into a temporary directory, from a package directory with no uncommitted
 changes. Every packed file must be either a tracked file of that package, byte
 for byte (the manifest included), or built output of a tracked non-test source.
-Artifact checks enforce the per-package byte/file caps, release growth notes,
-content allowlist and browser-entry budgets in
+Artifact checks enforce the per-package byte/file caps, content allowlist and
+browser-entry budgets. Only `--release-set <version>` checks growth against the
+last released baseline and requires explanations in the new set's changelog
+section and release body, as described in
 [Package artifact limits](.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 The privileged release job explicitly selects `--manifest-only`; its separate
 unprivileged cold producer still checks every artifact before publication.

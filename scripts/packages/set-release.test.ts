@@ -51,7 +51,7 @@ function fixture({ kitPublishable = true } = {}): Fixture & { a: string } {
   write("packages/kit/package-lock.json", json({ name: "@openlup/kit", version: "0.4.0", lockfileVersion: 3, packages: { "": { name: "@openlup/kit", version: "0.4.0", peerDependencies: { "@openlup/core": "0.4.0" } } } }));
   for (const name of ["core", "kit"]) {
     write(`packages/${name}/CHANGELOG.md`, changelog("0.4.0", name));
-    write(`packages/${name}/release-gates.json`, json({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.4.0", packedBytes: 1000000 }, browserEntries: {} } }));
+    write(`packages/${name}/release-gates.json`, json({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.3.0", packedBytes: 1000000 }, browserEntries: {} } }));
     write(`packages/${name}/api/${name}.api.md`, `# ${name} API\n`);
     write(`packages/${name}/src/a.ts`, "export const a = 1;\n");
   }

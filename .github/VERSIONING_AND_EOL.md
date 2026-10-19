@@ -611,8 +611,11 @@ is not created by the message. No production action is granted.
 
 ### Package artifact limits
 
-`npm run packages:check` builds and packs by default. The same checks run in
-`--release-set`, the preflight's `--cold --out` producer and the tag publisher.
+`npm run packages:check` builds and packs by default. Caps, the content allowlist
+and browser-entry limits also run in `--release-set`, the preflight's
+`--cold --out` producer and the tag publisher. The growth tripwire runs only
+with `--release-set <version>`, including the `publish-package.yml` `all`
+preflight route; default/PR and `--release-tag` checks do not run it.
 `--manifest-only` is reserved for early manifest validation without installation
 or builds, including the privileged release job; it supplies no artifact proof.
 The existing clean-package requirement still applies to artifact checks.
@@ -639,8 +642,9 @@ Caps give approximately twice the measured headroom, rounded to clean values.
 
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
-measurements above. A candidate more than 30% larger must contain a nonempty
-line in its unique `CHANGELOG.md` section `## [<candidate version>]`:
+measurements above. On the release-set path only, a candidate more than 30%
+larger must contain a nonempty line in its unique NEW set
+`CHANGELOG.md` section `## [<set version>]`, prepared in S1:
 
 ```text
 - @openlup/platform size growth: added the reviewed identity contract surface.
@@ -650,14 +654,18 @@ Name the actual package and explain the growth after `size growth:`. A line in
 Unreleased, another version or another package's notes does not count. Exactly
 30% needs no explanation. This is a review tripwire, not permission to exceed
 any cap. Set preparation already moves Unreleased notes into each candidate's
-version section; add the line there before running the artifact check. The
+version section; add the line there before running the release-set artifact check.
+Never edit an already-released section to satisfy this rule. The
 workflow's shared dispatch note body is separate. For growth above 30%,
 `--release-set` also requires `RELEASE_NOTES` (already supplied by preflight)
 with the same package-specific explanation format in that actual body; missing
 notes or a compliant changelog alone cannot excuse a missing dispatch line.
-`--release-tag` validates the actual body when preflight supplies it; the tag
-publisher has no second notes input and checks the committed changelog. Ordinary
-local artifact checks also validate the committed changelog.
+Neither default/PR nor `--release-tag` checks require growth explanations in
+the changelog or release body. `--manifest-only` never runs the tripwire, even
+when combined with `--release-set`. A release-set pack refuses a baseline
+version equal to or newer than its candidate: use the previously released
+version and its tarball bytes as the baseline; a note in a released section
+cannot excuse that mismatch.
 
 In every S1 set-preparation PR, manually refresh each `pack.baseline` from the
 **previously released** artifact, retaining that baseline through the candidate's

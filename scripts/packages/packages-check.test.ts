@@ -25,7 +25,7 @@ function fixture(extra: Record<string, string> = {}): string {
   for (const name of ["demo", "pub"]) write(`packages/${name}/src/a.ts`, "export const a = 1;\n");
   for (const name of ["pub", "kit"]) write(`packages/${name}/CHANGELOG.md`, "# Changelog\n\n## [Unreleased]\n\n## [0.4.0]\n\n- Initial fixture.\n");
   write(".gitignore", "dist/\nout/\n");
-  for (const name of ["demo", "pub", "kit"]) if (!extra[`packages/${name}/release-gates.json`]) write(`packages/${name}/release-gates.json`, JSON.stringify({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.4.0", packedBytes: 1000000 }, browserEntries: {} } }));
+  for (const name of ["demo", "pub", "kit"]) if (!extra[`packages/${name}/release-gates.json`]) write(`packages/${name}/release-gates.json`, JSON.stringify({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.3.0", packedBytes: 1000000 }, browserEntries: {} } }));
   for (const [path, contents] of Object.entries(extra)) write(path, contents);
   git(root, "init", "-q");
   git(root, "add", "-A");
@@ -52,18 +52,17 @@ describe("packages:check", () => {
     expect(runPackagesCheck(process.cwd(), ["--out"])).toBe(2);
     expect(runPackagesCheck(process.cwd(), ["--release-tag", "--pack"])).toBe(2);
   });
-  it("enforces planted size, content and growth refusals through default and cold release-set commands", () => {
+  it("limits growth notes to release-set packs while retaining size and content refusals", () => {
     const errors = quiet();
     const budget = { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.3.0", packedBytes: 1 }, browserEntries: {} };
     const root = fixture({ "packages/pub/release-gates.json": JSON.stringify({ pack: budget }) });
     const run = (args: string[]) => { errors.mockClear(); const code = runPackagesCheck(root, args); return { code, errors: errors.mock.calls.flat().join("\n") }; };
-    expect(run([])).toMatchObject({ code: 1, errors: expect.stringContaining("package-size-growth @openlup/pub:") });
+    vi.stubEnv("RELEASE_NOTES", "Release notes.");
+    for (const args of [[], ["--cold"], ["--cold", "--release-tag", "openlup-pub-v0.4.0"], ["--manifest-only", "--release-set", "0.4.0"]]) expect(run(args)).toEqual({ code: 0, errors: "" });
     expect(run(["--cold", "--release-set", "0.4.0"])).toMatchObject({ code: 1, errors: expect.stringContaining("package-size-growth @openlup/pub:") });
     writeFileSync(join(root, "packages/pub/CHANGELOG.md"), "## [0.4.0]\n\n- @openlup/pub size growth: initial artifact.\n");
     git(root, "add", "--all"); git(root, "commit", "-qm", "explain release growth");
-    expect(run([]).code).toBe(0);
     vi.stubEnv("RELEASE_NOTES", undefined);
-    expect(run(["--cold", "--release-tag", "openlup-pub-v0.4.0"]).code).toBe(0);
     expect(run(["--release-set", "0.4.0"])).toMatchObject({ code: 1, errors: expect.stringContaining("dispatched RELEASE_NOTES") });
     vi.stubEnv("RELEASE_NOTES", "Release notes.");
     expect(run(["--cold", "--release-set", "0.4.0"])).toMatchObject({ code: 1, errors: expect.stringContaining("dispatched RELEASE_NOTES") });
@@ -71,9 +70,9 @@ describe("packages:check", () => {
     expect(run(["--cold", "--release-set", "0.4.0"]).code).toBe(0);
     writeFileSync(join(root, "packages/pub/release-gates.json"), JSON.stringify({ pack: { ...budget, maxFiles: 1 } }));
     git(root, "add", "--all"); git(root, "commit", "-qm", "plant file overflow");
-    expect(run(["--release-set", "0.4.0"])).toMatchObject({ code: 1, errors: expect.stringMatching(/package-size-cap @openlup\/pub: files \d+ exceeds cap 1; raise the cap in a reviewed PR/u) });
+    for (const args of [[], ["--release-set", "0.4.0"]]) expect(run(args)).toMatchObject({ code: 1, errors: expect.stringMatching(/package-size-cap @openlup\/pub: files \d+ exceeds cap 1; raise the cap in a reviewed PR/u) });
     writeFileSync(join(root, "packages/pub/dist/leak.test.js"), "export const leak = true;\n");
-    expect(run(["--release-set", "0.4.0"])).toMatchObject({ code: 1, errors: expect.stringContaining("package-content-allowlist @openlup/pub:dist/leak.test.js:") });
+    for (const args of [[], ["--release-set", "0.4.0"]]) expect(run(args)).toMatchObject({ code: 1, errors: expect.stringContaining("package-content-allowlist @openlup/pub:dist/leak.test.js:") });
     expect(run(["--manifest-only", "--cold"]).code).toBe(2);
   }, 60_000);
   it("packs clean packages and refuses a dirty one", () => {

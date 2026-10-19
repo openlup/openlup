@@ -36,7 +36,7 @@ export function readPackBudget(root: string, entry: PackageEntry): PackBudget {
   return pack;
 }
 
-export function checkPackBudget(entry: PackageEntry, budget: PackBudget, measured: PackMeasurement, version: string, changelog: string, releaseNotes?: string): Finding[] {
+export function checkPackBudget(entry: PackageEntry, budget: PackBudget, measured: PackMeasurement, releaseSet?: string, changelog = "", releaseNotes?: string): Finding[] {
   const findings: Finding[] = [];
   const cap = (label: string, value: number, limit: number): void => {
     if (value > limit) findings.push({ subject: entry.name, rule: "package-size-cap", detail: `${label} ${value} exceeds cap ${limit}; raise the cap in a reviewed PR` });
@@ -48,12 +48,16 @@ export function checkPackBudget(entry: PackageEntry, budget: PackBudget, measure
   cap("tarball packed bytes", measured.packedBytes, budget.maxPackedBytes);
   cap("unpacked bytes", measured.unpackedBytes, budget.maxUnpackedBytes);
   cap("files", measured.files, budget.maxFiles);
-  if (budget.baseline.version !== version && releaseVersionAbove(version, budget.baseline.version) !== true) findings.push({ subject: entry.name, rule: "package-growth-baseline", detail: `baseline ${budget.baseline.version} is newer than candidate ${version}` });
-  const sections = changelog.split(/^(?=## )/mu).filter((section) => section.startsWith(`## [${version}]\n`));
+  if (releaseSet === undefined) return findings;
+  if (releaseVersionAbove(releaseSet, budget.baseline.version) !== true) {
+    findings.push({ subject: entry.name, rule: "package-growth-baseline", detail: `release set ${releaseSet} must be newer than baseline ${budget.baseline.version}; use the previously released version and its tarball bytes as the baseline, never the candidate set` });
+    return findings;
+  }
+  const sections = changelog.split(/^(?=## )/mu).filter((section) => section.startsWith(`## [${releaseSet}]\n`));
   const prefix = `- ${entry.name} size growth: `;
   const explained = sections.length === 1 && sections[0]!.split("\n").some((line) => line.startsWith(prefix) && line.slice(prefix.length).trim() !== "");
   if (measured.packedBytes * 100 > budget.baseline.packedBytes * 130) {
-    if (!explained) findings.push({ subject: entry.name, rule: "package-size-growth", detail: `packed bytes ${measured.packedBytes} grew >30% from ${budget.baseline.version} (${budget.baseline.packedBytes}); add "${prefix}<explanation>" to CHANGELOG.md section [${version}]` });
+    if (!explained) findings.push({ subject: entry.name, rule: "package-size-growth", detail: `packed bytes ${measured.packedBytes} grew >30% from ${budget.baseline.version} (${budget.baseline.packedBytes}); add "${prefix}<explanation>" to CHANGELOG.md section [${releaseSet}]` });
     if (releaseNotes !== undefined && !releaseNotes.split("\n").some((line) => line.startsWith(prefix) && line.slice(prefix.length).trim() !== "")) findings.push({ subject: entry.name, rule: "package-size-growth", detail: `packed bytes ${measured.packedBytes} grew >30% from ${budget.baseline.version} (${budget.baseline.packedBytes}); add "${prefix}<explanation>" to the dispatched RELEASE_NOTES` });
   }
   return findings;
