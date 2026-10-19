@@ -1138,6 +1138,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },
@@ -12250,6 +12254,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/browserIdentity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/capturedCheckout.test.ts",
       "class": "public-output"
     },
@@ -17826,6 +17834,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/account/AuthCallbackPage.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/account/CheckoutRecoveryMethodPicker.tsx",
       "class": "public-output"
     },
@@ -17835,6 +17847,10 @@
     },
     {
       "path": "src/pages/account/DashboardPanelUtils.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/LoginPage.tsx",
       "class": "public-output"
     },
     {
@@ -17871,6 +17887,10 @@
     },
     {
       "path": "src/pages/account/login/loginAtoms.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/login/referenceRoutes.ts",
       "class": "public-output"
     },
     {
@@ -18586,11 +18606,35 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/browserIdentity.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/browserIdentityAdapters.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/browserIdentityBuild.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/browserIdentityManaged.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/entry-server.test.tsx",
       "class": "public-output"
     },
     {
       "path": "src/public-reference/entry-server.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/locales/en/account.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/locales/pl/account.ts",
       "class": "public-output"
     },
     {
@@ -19590,6 +19634,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/customer_browser_identity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
       "class": "public-output"
     },
@@ -19643,6 +19691,10 @@
     },
     {
       "path": "tests/preview/account/a11y.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/preview/account/customer-browser-identity.spec.ts",
       "class": "public-output"
     },
     {

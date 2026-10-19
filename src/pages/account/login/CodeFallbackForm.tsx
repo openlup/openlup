@@ -1,12 +1,8 @@
 import { InlineError } from './loginAtoms';
 
-/**
- * Magic-link-code fallback: a numeric code input shown under the sent panel
- * for cases where the e-mail's link itself doesn't work (e.g. an inbox
- * provider's link-safety prefetch burning the single-use token before the
- * customer clicks it). Mirrors the admin login page's code UI.
- */
+/** Input presentation matches the selected adapter token format. */
 export function CodeFallbackForm({
+  codeFormat = "numeric",
   sectionLabel,
   label,
   placeholder,
@@ -18,6 +14,7 @@ export function CodeFallbackForm({
   onChange,
   onSubmit,
 }: {
+  codeFormat?: "numeric" | "opaque";
   sectionLabel: string;
   label: string;
   placeholder: string;
@@ -40,7 +37,7 @@ export function CodeFallbackForm({
           id="customer-otp-code"
           name="otp-code"
           type="text"
-          inputMode="numeric"
+          inputMode={codeFormat === "numeric" ? "numeric" : "text"}
           autoComplete="one-time-code"
           placeholder={placeholder}
           value={value}

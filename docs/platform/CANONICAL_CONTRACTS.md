@@ -153,6 +153,8 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-83a1b61230f02b1392e37e8105a3d184ede985a1aca7297b1d15f0cf4cca7342","reason":"The subscription browser import profile adds exact page, customer provider, adapter and transitive contract paths. It retains a closed explicit allowlist; canonical versioning and compatibility posture are unchanged."} -->
+
 Identity privacy appends the direct receipt migration at position 69 while
 preserving the preceding manifest entries and SQL projection identities. Erasure
 requires this forward, explicit contributor registration and declared retention

@@ -6,7 +6,7 @@ import { readStorageItem, removeStorageItem, writeStorageItem } from '@/lib/brow
 import { readCustomerReturnTo } from '@/lib/customerRecoverySession';
 import { z } from '@/lib/validation/zod';
 
-const SESSION_KEY = 'openlup.customer.session.v1';
+const SESSION_KEY = 'customer.auth.direct.v1';
 const listeners = new Set<AuthStateListener>();
 
 interface StoredSession {

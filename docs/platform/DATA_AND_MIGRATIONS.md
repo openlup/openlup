@@ -289,6 +289,14 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+Reference customer browser sessions use separate storage namespaces without
+migrating legacy credentials. Managed logout clears the effective SDK store
+even after remote revocation fails. A failed compatibility session read returns
+`null`, allowing guest checkout without a bearer; provider bootstrap still
+reports the failure. These browser operations add no database session rows and
+require no schema migration or rewrite of stored customer links. See the
+[browser session contract](IDENTITY_BROWSER_REFERENCE.md).
+
 The direct privacy forward `20261018190000_identity_privacy_erasures` appends
 position 69 and one receipt table, with default NO ACTION references and no
 functions, grants or policies. Apply it before the updated customer challenge

@@ -13,8 +13,7 @@ export interface AuthContextValue {
   role: AdminRole;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   /**
-   * Verify the one-time code from the magic-link email (the `Nie działa link?`
-   * fallback) and establish an admin session. Mirrors `signIn`: rejects + signs
+   * Verify the one-time code from the magic-link email (the link fallback) and establish an admin session. Mirrors `signIn`: rejects + signs
    * out a non-admin principal.
    */
   signInWithOtpCode: (email: string, code: string) => Promise<{ error: string | null }>;

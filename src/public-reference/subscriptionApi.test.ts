@@ -1,14 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  clearReferenceSession,
-  createReferenceSubscription,
-  loadReferenceItems,
-  readReferenceSession,
-  requestReferenceSignIn,
-  saveReferenceSession,
-  takeCallbackAccessToken,
-} from "./subscriptionApi";
+import { createReferenceSubscription, loadReferenceItems } from "./subscriptionApi";
 
 function response(data: unknown) { return new Response(JSON.stringify({ ok: true, data }), { status: 200, headers: { "content-type": "application/json" } }); }
 
@@ -40,23 +32,4 @@ describe("subscription reference API", () => {
     expect(fetcher.mock.calls[1]?.[1]?.headers.get("content-type")).toBe("application/json");
   });
 
-  it("uses the profile's strict email-only magic-link request", async () => {
-    const fetcher = vi.fn().mockResolvedValue(response({ accepted: true }));
-    vi.stubGlobal("fetch", fetcher);
-    await requestReferenceSignIn("  Buyer@Example.com ");
-    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/bff/customers/magic-link");
-    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({ email: "buyer@example.com" });
-  });
-
-  it("removes the callback token fragment before keeping a tab-scoped session", () => {
-    window.history.replaceState({}, "", "/account/auth/callback#access_token=secret-value&type=magiclink");
-    const token = takeCallbackAccessToken();
-    expect(token).toBe("secret-value");
-    expect(window.location.hash).toBe("");
-    expect(window.history.state).toEqual({});
-    saveReferenceSession({ accessToken: token!, accountId: "buyer-1" });
-    expect(readReferenceSession()).toEqual({ accessToken: "secret-value", accountId: "buyer-1" });
-    clearReferenceSession();
-    expect(readReferenceSession()).toBeNull();
-  });
 });

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getCustomerAuthPort } from "@/lib/auth/customerAuthPortFactory";
+import { checkoutRequestOptionsForTpay } from "@/checkout/adapters/tpayCheckoutRequestOptions";
 
 const { supabaseAuth, requestMagicLink } = vi.hoisted(() => ({
   supabaseAuth: {
@@ -14,6 +16,7 @@ const { supabaseAuth, requestMagicLink } = vi.hoisted(() => ({
 
 vi.mock("./customerClient", () => ({
   getCustomerSupabase: () => ({ auth: supabaseAuth }),
+  customerSocialProviders: () => [],
 }));
 vi.mock("@/domains/customers/customerMagicLinkClient", () => ({
   requestCustomerMagicLink: requestMagicLink,
@@ -22,10 +25,11 @@ vi.mock("@/domains/customers/customerMagicLinkClient", () => ({
 const { createSupabaseCustomerAuthPort } = await import("./customerAuthPort");
 
 beforeEach(() => {
+  vi.stubEnv("VITE_COMMERCE_AUTH_PROVIDER_KIND", "node-supabase");
   for (const fn of Object.values(supabaseAuth)) fn.mockReset();
   requestMagicLink.mockReset();
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("createSupabaseCustomerAuthPort", () => {
   it("maps a Supabase session to the generic AuthSession", async () => {
@@ -131,7 +135,7 @@ describe("createSupabaseCustomerAuthPort", () => {
     expect(supabaseAuth.verifyOtp).toHaveBeenCalledWith({
       email: "a@b.com",
       token: "77323522",
-      type: "magiclink",
+      type: "email",
     });
 
     supabaseAuth.verifyOtp.mockResolvedValue({ error: { message: "Token has expired or is invalid" } });
@@ -139,4 +143,36 @@ describe("createSupabaseCustomerAuthPort", () => {
       error: "Token has expired or is invalid",
     });
   });
+});
+
+// The SDK documents email verification for both sign-up and sign-in codes.
+it.each([false, true])("verifies a six-digit code for confirmed=%s using the email flow", async (confirmed) => {
+  supabaseAuth.verifyOtp.mockImplementation(async (input) => ({
+    error: input.type === "email" ? null : { message: confirmed ? "wrong flow" : "confirmation code requires email flow" },
+  }));
+  const port = createSupabaseCustomerAuthPort();
+  expect(await port.verifyOtpCode({ email: "customer@example.com", token: "123456" })).toEqual({ error: null });
+  expect(supabaseAuth.verifyOtp).toHaveBeenCalledWith({ email: "customer@example.com", token: "123456", type: "email" });
+});
+
+it("propagates a session bootstrap failure instead of treating it as signed out", async () => {
+  supabaseAuth.getSession.mockResolvedValue({ data: { session: null }, error: new TypeError("transport unavailable") });
+  await expect(createSupabaseCustomerAuthPort().getSession()).rejects.toThrow("transport unavailable");
+});
+
+it("legacy session read resolves null on an SDK error", async () => {
+  supabaseAuth.getSession.mockResolvedValue({ data: { session: null }, error: new Error("session refresh failed") });
+
+  await expect(getCustomerAuthPort().getSession()).resolves.toBeNull();
+  expect(supabaseAuth.getSession).toHaveBeenCalledOnce();
+});
+
+it("checkout through the legacy wrapper proceeds without Authorization on an SDK error", async () => {
+  supabaseAuth.getSession.mockResolvedValue({ data: { session: null }, error: new TypeError("transport unavailable") });
+
+  const options = await checkoutRequestOptionsForTpay(null);
+
+  expect(options).toEqual({});
+  expect(new Headers(options.headers).has("Authorization")).toBe(false);
+  expect(supabaseAuth.getSession).toHaveBeenCalledOnce();
 });

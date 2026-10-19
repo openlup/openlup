@@ -26,7 +26,7 @@ failed-renewal recovery and delivery alignment are separate acceptance stages.
 
 ## Test scope
 
-The selected subscription UI supplies the purchase, callback, stored account and
+The selected subscription UI supplies purchase, dedicated English/Polish login, callback, provider-backed account and
 renewal-date interactions described above. Older composer, payment-recovery,
 delivery-timeline and admin dashboard screens are not part of that composition.
 Their interaction suites become acceptance work when an approved profile mounts
@@ -51,10 +51,16 @@ node scripts/public-reference/setup-subscription.mjs \
   --dir /tmp/openlup-reference-evaluation \
   --project-id openlup-reference-evaluation \
   --port-base 56820
-OPENLUP_REFERENCE_PROFILE=subscription npm run build
+node --env-file=/tmp/openlup-reference-evaluation/subscription.env "$(command -v npm)" run build
 node --env-file=/tmp/openlup-reference-evaluation/subscription.env \
   --import tsx server/runtime/public-reference/serve.ts
 ```
+
+Run npm's CLI through Node so the build subprocesses inherit the loaded
+environment. Node's `--run` does not apply `--env-file` to the script it starts;
+that combination builds the default static profile instead. A subscription
+build writes `data-openlup-profile="subscription"` on `dist/index.html`'s HTML
+element; the subscription server refuses a build without that marker.
 
 The generated mode-0600 environment contains only this disposable installation's
 local credentials. Do not copy it into source, browser settings or reports. The
@@ -157,3 +163,43 @@ See [runtime boundaries](RUNTIME_AND_SELF_HOSTING.md),
 [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md). This is a bounded
 development profile, not a stable framework, production deployment or certified
 provider integration.
+
+## Customer browser identity
+
+After checkout, navigate to `/sign-in` (`/zaloguj-sie` in Polish). The accepted
+notice confirms neither account existence nor delivery. Follow the captured
+confirmation or enter its code; callback routes `/account/auth/callback` and
+`/konto/auth/callback` wait for a linked profile before opening `/account` or
+`/konto`. External sign-in remains disabled in this captured profile.
+
+[Browser identity](IDENTITY_BROWSER_REFERENCE.md) describes localized failure
+states, the direct opaque-token alternative and the one-time session reset.
+The provider now persists its own session, replacing the reference's tab-scoped
+store without migration. Logout clears the shared account cache and local state.
+GET `/api/bff/customers/me` uses the customer bearer. The profile CSP gains only
+its validated local auth origin. Build using the owned environment above.
+
+The component conformance journey runs without external services:
+
+```sh
+npx vitest run src/public-reference/browserIdentity.test.tsx
+```
+
+The direct identity installation proof requires Docker and applies the complete
+selected catalogue, preserving customer links, subscriptions and migration history:
+
+```sh
+npx vitest run tests/postgres/customer_browser_identity.test.ts
+```
+
+With the owned installation, captured mailbox, server and Playwright Chromium
+available, the browser proof follows real mail, reloads the account and logs out.
+It disables credential-bearing artifacts and refuses missing local setup:
+
+```sh
+ACCOUNT_PREVIEW_BASE_URL=http://127.0.0.1:56830 \
+node --env-file=/tmp/openlup-reference-evaluation/subscription.env \
+  node_modules/@playwright/test/cli.js test \
+  --config=playwright.account.config.ts --project=desktop-chromium \
+  tests/preview/account/customer-browser-identity.spec.ts
+```

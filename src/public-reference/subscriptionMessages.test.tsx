@@ -30,3 +30,17 @@ describe("selected profile renewal language", () => {
     expect(onAction).not.toHaveBeenCalled();
   });
 });
+
+// Compare every leaf, including failure states, so fallback language cannot hide missing copy.
+it("both languages define every account namespace key", async () => {
+  const { default: en } = await import("./locales/en/account");
+  const { default: pl } = await import("./locales/pl/account");
+  function keys(value: object, prefix = ""): string[] {
+    return Object.entries(value).flatMap(([key, child]) => typeof child === "object" ? keys(child, `${prefix}${key}.`) : [`${prefix}${key}`]).sort();
+  }
+  expect(keys(pl)).toEqual(keys(en));
+  for (const language of ["en", "pl"]) {
+    const i18n = createReferenceI18n(language);
+    for (const key of keys(en)) expect(i18n.exists(`account:${key}`, { fallbackLng: false })).toBe(true);
+  }
+});

@@ -16,12 +16,15 @@ describe("selected subscription entry", () => {
     document.body.innerHTML = '<div id="root"></div>';
   });
 
-  it("creates a client root for the account and purchase routes", async () => {
-    window.history.replaceState({}, "", "/subscribe");
+  it.each(["/subscribe", "/sign-in", "/zaloguj-sie", "/account", "/konto", "/account/auth/callback", "/konto/auth/callback"])("creates a shared customer root at %s", async (path) => {
+    window.history.replaceState({}, "", path);
     await import("./subscription-main");
     expect(roots.createRoot).toHaveBeenCalledOnce();
     expect(roots.hydrateRoot).not.toHaveBeenCalled();
     expect(roots.render).toHaveBeenCalledOnce();
+    const { appQueryClient } = await import("@/lib/queryClient");
+    expect(roots.render.mock.calls[0]?.[0].props.client).toBe(appQueryClient);
+    expect(roots.render.mock.calls[0][0].props.client).toBe((await import("@/lib/queryClient")).appQueryClient);
   });
 
   it("preserves static SSR hydration for the original reference routes", async () => {

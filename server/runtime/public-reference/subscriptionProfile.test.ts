@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OWNED_SUPABASE_CONFIG, validateSubscriptionProfile } from "./subscriptionProfile.js";
+import { OWNED_SUPABASE_CONFIG, validateSubscriptionProfile, subscriptionCsp, SUBSCRIPTION_CSP } from "./subscriptionProfile.js";
 
 const scratch: string[] = [];
 const instanceId = "a9931d52-153f-49d4-a4ef-8d80f6dc56b8";
@@ -102,4 +102,13 @@ describe("disposable subscription admission", () => {
       expect(() => validate(env)).toThrow("marker does not identify");
     }
   });
+});
+
+it("adds exactly the validated configured auth origin to connect-src", () => {
+  const checked = validate(setup());
+  expect(subscriptionCsp(checked.authOrigin)).toBe(`${SUBSCRIPTION_CSP} http://127.0.0.1:56421`);
+  expect(subscriptionCsp(checked.authOrigin).split("connect-src ")[1]).toBe("'self' http://127.0.0.1:56421");
+});
+it.each([undefined, "", "https://external.invalid", "http://127.0.0.1:56421/path", "http://user@127.0.0.1:56421", "http://127.0.0.1:56421/?unsafe=1"])("unvalidated or missing origin %j adds nothing to CSP", (value) => {
+  expect(subscriptionCsp(value)).toBe(SUBSCRIPTION_CSP);
 });

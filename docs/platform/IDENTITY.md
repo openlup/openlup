@@ -826,3 +826,5 @@ managed migration chain through the shared loader and omits only psql's pg_dump
 `\restrict` and `\unrestrict` guard lines for node-postgres replay. Its database
 URL must use the database owner (`supabase_admin`) connection; see the package
 guide for the three local disposable-stack settings and invocation.
+
+<!-- openlup-doc-impact {"unit":"identity","digest":"sha256-b490b952e16414a7d27f3b701edcf8655efbf43145c2384fc52ba564138356ca","reason":"The operator auth context changes only its code-verification comment to neutral wording. Operator sign-in, membership authorization, storage and public identity declarations are unchanged."} -->

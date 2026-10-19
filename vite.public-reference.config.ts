@@ -1,4 +1,4 @@
-import { defaultClientConditions, defaultServerConditions, defineConfig, type Plugin, type UserConfig } from "vite";
+import { loadEnv, defaultClientConditions, defaultServerConditions, defineConfig, type Plugin, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { readFileSync } from "node:fs";
@@ -44,12 +44,23 @@ function publicReferenceGraphGuard(): Plugin {
   };
 }
 
-export function publicReferenceViteConfig(): UserConfig {
+export function publicReferenceViteConfig(mode = "production"): UserConfig {
+  const env = loadEnv(mode, configDir, "");
+  const publicAuth = subscriptionBuild && !publicReferenceSsrBuild ? {
+    VITE_SUPABASE_URL: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
+    VITE_SUPABASE_PUBLISHABLE_KEY: env.SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_PUBLISHABLE_KEY ?? env.VITE_SUPABASE_ANON_KEY ?? "",
+    VITE_COMMERCE_AUTH_PROVIDER_KIND: env.VITE_COMMERCE_AUTH_PROVIDER_KIND ?? "supabase",
+    VITE_COMMERCE_SOCIAL_PROVIDERS: "",
+  } : {};
   return {
     appType: "spa",
     publicDir: false,
     envPrefix: [],
-    plugins: [publicReferenceGraphGuard(), ...(publicReferenceSsrBuild ? [] : [publicReferenceDocumentPlugin()]), react()],
+
+    plugins: [{
+      name: "public-reference-auth-settings",
+      configResolved(config) { Object.assign(config.env, publicAuth); },
+    }, publicReferenceGraphGuard(), ...(publicReferenceSsrBuild ? [] : [publicReferenceDocumentPlugin()]), react()],
     resolve: {
       conditions: [...(publicReferenceSsrBuild ? defaultServerConditions : defaultClientConditions)],
       alias: { "@": path.resolve(configDir, "./src") },
@@ -69,4 +80,4 @@ export function publicReferenceViteConfig(): UserConfig {
   };
 }
 
-export default defineConfig((): UserConfig => publicReferenceViteConfig());
+export default defineConfig(({ mode }): UserConfig => publicReferenceViteConfig(mode));

@@ -575,6 +575,25 @@
       ],
       "doc": "docs/platform/IDENTITY.md",
       "anchor": ""
+    },
+    {
+      "id": "identity-browser",
+      "when": "Reference customer login, callback, selected browser adapters and session ownership",
+      "paths": [
+        "src/pages/account/LoginPage.tsx",
+        "src/pages/account/AuthCallbackPage.tsx",
+        "src/pages/account/login/**",
+        "src/lib/useCustomerAuth.tsx",
+        "src/lib/useCustomerAuth.test.tsx",
+        "src/lib/customerAuthContext.ts",
+        "src/lib/customerLoginHint.ts",
+        "src/lib/auth/**",
+        "src/integrations/supabase/customerAuthPort.ts",
+        "src/integrations/supabase/customerClient.ts",
+        "src/integrations/postgres/customerAuthPort.ts"
+      ],
+      "doc": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
+      "anchor": ""
     }
   ]
 }

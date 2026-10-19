@@ -4,9 +4,7 @@ import { saveCustomerReturnTo } from '@/lib/customerRecoverySession';
 import { useLocalizedPath, type RouteKey } from '@/lib/i18nRoutes';
 import { normalizeCustomerReturnTo } from '@/domains/customers/contracts';
 
-// Faza A W12.1 — gate for hidden customer account pages. Mirrors the admin
-// ProtectedRoute but checks the customer (magic-link) session. Unauthenticated
-// visitors are bounced to the passwordless login.
+// Require a customer session and linked profile before rendering account pages.
 export default function CustomerProtectedRoute({
   children,
   returnTo,

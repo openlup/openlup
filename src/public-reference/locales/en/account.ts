@@ -1,0 +1,93 @@
+const account = {
+  reference: {
+  "writeFailed": "The renewal-date change was refused or could not be confirmed. The account still shows the last known state.",
+  "readFailed": "The change was submitted, but the updated account could not be read. Refresh before relying on its new date.",
+  "saved": "Renewal-date change saved and account refreshed.",
+  "refreshed": "Account state refreshed.",
+  "refreshFailed": "Account refresh could not confirm the latest state. Sign in again if the session expired.",
+  "loading": "Loading your account…",
+  "unavailable": "Account read unavailable. Your sign-in may have expired. Sign out and request sign-in again if retry fails.",
+  "refresh": "Refresh account",
+  "orders": "Orders",
+  "noOrders": "No orders are visible yet.",
+  "subscriptions": "Subscriptions",
+  "choose": "Choose a subscription",
+  "status": "Status: {{status}}",
+  "next": "Next planned renewal and charge: {{date}}. This is not a promised delivery date.",
+  "notScheduled": "not scheduled",
+  "cadence": "Cadence: every {{days}} days.",
+  "change": "Change next renewal date",
+  "blocked": "This subscription cannot be rescheduled at present.",
+  "noSubscriptions": "No subscription is visible yet. Complete checkout or retry account refresh.",
+  "return": "Return to recurring order",
+  "payment": "payment",
+  "unknown": "unknown"
+},
+  "accountTitle": "Your recurring orders",
+  "signOut": "Sign out",
+  "login": {
+    "title": "Sign in to your account",
+    "email": "Email",
+    "emailInvalid": "Enter a valid email address.",
+    "send": "Request sign-in",
+    "sending": "Sending…",
+    "accepted": "If this address can sign in, sign-in instructions were requested. Check your mailbox for a link or code. This does not confirm account existence or delivery.",
+    "acceptedOpaque": "If this address can sign in, a challenge was requested. Paste the full token from your message. This does not confirm account existence or delivery.",
+    "requestAgain": "Request again",
+    "changeAddress": "Use another address",
+    "fallback": "Enter the code from your message",
+    "code": "Sign-in code",
+    "numericPlaceholder": "6–8 digits",
+    "opaquePlaceholder": "Full challenge token",
+    "verify": "Verify code",
+    "verifying": "Verifying…",
+    "codeInvalidFormat": "Enter a code in the required format.",
+    "codeError": "The code could not be verified. Request a new one.",
+    "sendError": "Sign-in is unavailable. Please retry later.",
+    "returning": "You have signed in here before.",
+    "forget": "Forget this hint",
+    "account": "Open account",
+    "social": {
+      "continue": "Continue with {{provider}}",
+      "error": "Social sign-in could not be started."
+    }
+  },
+  "callback": {
+    "title": "Account sign-in",
+    "loading": "Verifying your sign-in…",
+    "succeeded": "Sign-in verified. Opening account…",
+    "callback_invalid": "This sign-in link is invalid. Request a new one.",
+    "callback_expired": "This sign-in link has expired. Request a new one.",
+    "timeout": "Verification timed out. Request sign-in again.",
+    "transport_uncertain": "Completion could not be confirmed. Please try again.",
+    "failed": "Sign-in could not be completed.",
+    "unknown": "Sign-in is incomplete. Request sign-in again.",
+    "accountUnavailable": "Your linked account is unavailable. Sign out and try again.",
+    "retry": "Request sign-in again"
+  },
+  ...{
+          dashboard: {
+            subscriptionV2: {
+              holidayNote: "A public holiday may move this estimate later.",
+              modals: {
+                reschedule: {
+                  title: "Change the next renewal date",
+                  description: "Choose a planned renewal and charge date between {{from}} and {{to}}. Delivery timing is an estimate, not a promise.",
+                  summaryTitle: "Before you confirm",
+                  renewalAndCharge: "Planned renewal and charge: {{date}}",
+                  estimatedDelivery: "Estimated delivery window, not guaranteed: {{window}}",
+                  futureCadence: "Later renewals remain {{days}} days apart after {{date}}.",
+                  protectedAlignment: "An outstanding delivery can move this cycle later, never earlier.",
+                  confirm: "Confirm renewal date",
+                  noDates: "No renewal dates are currently available.",
+                  impact: "This changes the next planned renewal and charge. It does not promise a delivery date.",
+                  gridLabel: "Choose a planned renewal and charge date",
+                  current: "Current date",
+                  inDays: "In {{days}} days",
+                },
+              },
+            },
+          },
+        }
+};
+export default account;

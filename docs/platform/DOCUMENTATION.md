@@ -77,7 +77,7 @@ owners retain their API, installation and host explanations. Generated navigatio
 reflects these routes and never substitutes for those substantive owner updates.
 
 
-<!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-6f1ae5dc4be65b23c6e1ab3e7525c700acf227190cbd683273a372f18ca6bbee","reason":"The new identity route assigns its package source, conformance tests, four SQL projections and own-row witness to docs/platform/IDENTITY.md. Existing ownership rules, routing precedence and impact obligations remain unchanged."} -->
+<!-- openlup-doc-impact {"unit":"ownership","digest":"sha256-b3d56b4feaad78d44001bd18aeebe086853ba4c6f9cc79d1d49563c50591301d","reason":"The identity browser surface assigns customer pages, session hooks and browser adapters to their new canonical guide. Existing owner precedence and same-change documentation obligations remain unchanged; prior browser and data owners retain their impact review."} -->
 
 The [domain registry](../../src/lib/coreDomains.ts) names platform domains. The
 [publication catalogue](../../config/openlup-publication-catalog.json) supplies

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getCustomerAuthPort } from '@/lib/auth/customerAuthPortFactory';
+import { getCustomerAuthBinding, type CustomerAuthBinding } from '@/lib/auth/customerAuthPortFactory';
 import type { AuthSession, AuthUser, OAuthProviderKind } from '@/domains/auth/types';
 import { getCustomerMe } from '@/domains/customers/customerMeClient';
 import { reconcileCustomerAccount } from '@/domains/customers/customerReconcileClient';
@@ -15,19 +15,7 @@ import { clearAuthScopedQueryCache } from '@/lib/queryClient';
 import { setCustomerJourneyAuthContext } from '@/lib/diagnostics/customerJourneyAuthContext';
 import { createCustomerDiagnosticActionKeyWhenEnabled, loadCustomerDiagnosticReporterWhenEnabled } from '@/lib/flags';
 
-// Faza A W12.1 — hidden passwordless customer auth provider.
-//
-// Mirrors `useAuth.tsx` (admin) but PASSWORDLESS: the only sign-in path requests
-// a magic link via the customers BFF. There is NO admin check. The provider uses
-// the separate customer Supabase client for session/callback handling only.
-//
-// The BFF uses `shouldCreateUser: false` on purpose: customer auth users are
-// provisioned server-side at checkout (linkClientAuthUser, email_confirm), so
-// the magic-link flow only authenticates EXISTING identities and never silently
-// creates an unlinked auth.users row from this hidden surface.
-//
-// Route-scoped: mounted ONLY around /konto* and /zaloguj-sie in App.tsx, and only
-// when the build-time VITE_COMMERCE_V2_W12_CUSTOMER_AUTH_UI flag is on.
+// One customer session owner for login, callback and account.
 
 export const CUSTOMER_AUTH_BOOTSTRAP_TIMEOUT_MS = 10_000;
 
@@ -44,8 +32,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = CUSTOMER_AUTH_BOOTSTRAP
   });
 }
 
-async function loadCustomerProfile(accessToken: string): Promise<CustomerProfile | null> {
-  const reconcilePromise = reconcileCustomerAccount(accessToken).catch(() => undefined);
+async function loadCustomerProfile(accessToken: string, reconcile: boolean): Promise<CustomerProfile | null> {
+  const reconcilePromise = reconcile ? reconcileCustomerAccount(accessToken).catch(() => undefined) : Promise.resolve();
   const readProfile = async (): Promise<CustomerProfile | null> => {
     try {
       return await getCustomerMe(accessToken);
@@ -67,7 +55,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   // consume it while it initializes, so retain only the closed classification
   // before creating that adapter and never expose the source value.
   const callbackOutcomeHint = useMemo(() => customerCallbackOutcomeFromLocation(), []);
-  const authPort = useMemo(() => getCustomerAuthPort(), []);
+  const [binding, setBinding] = useState<CustomerAuthBinding | null>(null);
+  const authPort = binding?.port;
+  const revision = useRef(0);
+  const sessionEventsBlocked = useRef(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -78,7 +69,6 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const principalRef = useRef<string | null>(null);
   const sessionRef = useRef<AuthSession | null>(null);
   const profileRef = useRef<CustomerProfile | null>(null);
-  const profileLoadingRef = useRef(false);
 
   const setProfileState = useCallback((nextProfile: CustomerProfile | null) => {
     profileRef.current = nextProfile;
@@ -86,7 +76,6 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setProfileLoadingState = useCallback((nextLoading: boolean) => {
-    profileLoadingRef.current = nextLoading;
     setProfileLoading(nextLoading);
   }, []);
 
@@ -95,109 +84,68 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     if (forceClear || principalRef.current !== nextPrincipal) {
       clearAuthScopedQueryCache();
       principalRef.current = nextPrincipal;
+      setProfileState(null);
     }
     sessionRef.current = nextSession;
     setCustomerJourneyAuthContext(nextSession?.accessToken ?? null);
     setSession(nextSession);
     setUser(nextSession?.user ?? null);
-  }, []);
+  }, [setProfileState]);
 
-  // Session lifecycle. When a user is present we immediately mark the profile as
-  // loading so the combined `loading` stays true until the profile resolves —
-  // closing the race where a logged-in-but-unlinked user is briefly treated as
-  // "ready" and bounced by CustomerProtectedRoute.
   useEffect(() => {
     let cancelled = false;
-
-    (async () => {
-      try {
-        const s = await withTimeout(authPort.getSession());
-        if (cancelled) return;
-        const previousSession = sessionRef.current;
-        const previousToken = previousSession?.accessToken ?? null;
-        const previousPrincipal = previousSession?.user?.id ?? null;
-        const nextToken = s?.accessToken ?? null;
-        const nextPrincipal = s?.user?.id ?? null;
-        applySession(s);
-        if (s?.user) {
-          const shouldLoadProfile =
-            nextToken !== previousToken ||
-            nextPrincipal !== previousPrincipal ||
-            (!profileRef.current && !profileLoadingRef.current);
-
-          if (shouldLoadProfile) {
-            setProfileLoadingState(true);
-            if (nextToken === previousToken) {
-              setProfileLoadRevision((revision) => revision + 1);
-            }
-          }
-        } else {
-          setProfileState(null);
-          setProfileLoadingState(false);
-        }
-        settleCustomerCallbackOutcome(setCallbackOutcome, callbackOutcomeHint, s, undefined, true);
-        reportAuthDiagnostic("auth_bootstrap", "settled", s?.user ? "session_present" : "session_absent", s?.accessToken ?? null);
-      } catch (error) {
-        if (cancelled) return;
-        reportAuthDiagnostic(
-          "auth_bootstrap",
-          "settled",
-          error instanceof Error && error.message === "customer_auth_bootstrap_timeout" ? "timeout" : "failed",
-          null,
-        );
-        applySession(null, true);
+    let unsubscribe: (() => void) | undefined;
+    const initialRevision = revision.current;
+    const receive = (next: AuthSession | null) => {
+      if (cancelled || (next && sessionEventsBlocked.current)) return;
+      const previous = sessionRef.current;
+      if (next || previous) revision.current += 1;
+      applySession(next);
+      if (next && (previous?.accessToken !== next.accessToken || !profileRef.current)) {
+        setProfileLoadingState(true);
+        setProfileLoadRevision((value) => value + 1);
+      } else if (!next) {
         setProfileState(null);
         setProfileLoadingState(false);
+      }
+      setSessionLoading(false);
+      settleCustomerCallbackOutcome(setCallbackOutcome, callbackOutcomeHint, next);
+    };
+    void (async () => {
+      try {
+        const selected = await withTimeout(getCustomerAuthBinding());
+        if (cancelled) return;
+        // A logout during adapter loading must also discard its persisted session.
+        if (revision.current !== initialRevision) {
+          await selected.port.signOut();
+          if (cancelled) return;
+        }
+        setBinding(selected);
+        unsubscribe = selected.port.onAuthStateChange(receive);
+        const bootstrapRevision = revision.current;
+        const next = await withTimeout(selected.port.getSession());
+        if (cancelled || revision.current !== bootstrapRevision || bootstrapRevision !== initialRevision) return;
+        receive(next);
+        settleCustomerCallbackOutcome(setCallbackOutcome, callbackOutcomeHint, next, undefined, true);
+        reportAuthDiagnostic("auth_bootstrap", "settled", next ? "session_present" : "session_absent", next?.accessToken ?? null);
+      } catch (error) {
+        if (cancelled || revision.current !== initialRevision) return;
+        reportAuthDiagnostic("auth_bootstrap", "settled", error instanceof Error && error.message === "customer_auth_bootstrap_timeout" ? "timeout" : "failed", null);
+        receive(null);
         settleCustomerCallbackOutcome(setCallbackOutcome, callbackOutcomeHint, null, error, true);
       } finally {
-        if (!cancelled) setSessionLoading(false);
+        // The SDK consumes callback input before this cleanup. Never retain credentials or descriptions.
+        try {
+          if (!cancelled && ["/account/auth/callback", "/konto/auth/callback"].includes(window.location.pathname)) {
+            window.history.replaceState(window.history.state, "", window.location.pathname);
+          }
+        } catch { /* A denied location accessor cannot invalidate a session. */ }
       }
     })();
+    return () => { cancelled = true; unsubscribe?.(); };
+  }, [applySession, callbackOutcomeHint, setProfileLoadingState, setProfileState]);
 
-    const unsubscribe = authPort.onAuthStateChange((s) => {
-      const previousSession = sessionRef.current;
-      const previousToken = previousSession?.accessToken ?? null;
-      const previousPrincipal = previousSession?.user?.id ?? null;
-      const nextToken = s?.accessToken ?? null;
-      const nextPrincipal = s?.user?.id ?? null;
-      applySession(s);
-      if (s?.user) {
-        const shouldLoadProfile =
-          nextToken !== previousToken ||
-          nextPrincipal !== previousPrincipal ||
-          (!profileRef.current && !profileLoadingRef.current);
-
-        if (shouldLoadProfile) {
-          setProfileLoadingState(true);
-          if (nextToken === previousToken) {
-            setProfileLoadRevision((revision) => revision + 1);
-          }
-        }
-      } else {
-        setProfileState(null);
-        setProfileLoadingState(false);
-      }
-      settleCustomerCallbackOutcome(setCallbackOutcome, callbackOutcomeHint, s);
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [applySession, authPort, callbackOutcomeHint, setProfileLoadingState, setProfileState]);
-
-  // Profile lifecycle — runs whenever the access token changes (incl. right
-  // after a magic-link or OAuth callback establishes a session).
-  //
-  // Reconcile (provisioning a brand-new social user / relinking an existing
-  // customer) runs in parallel with the profile read instead of strictly before
-  // it. Returning customers are already provisioned, so `getCustomerMe` resolves
-  // a linked profile on the first read and gates `CustomerProtectedRoute`
-  // immediately while reconcile finishes in the background, saving one serial
-  // round-trip on the hot login→/konto path. Only a not-yet-linked principal
-  // reads back null; for that case we await reconcile and read once more,
-  // preserving the prior "never observe an unprovisioned user as ready" behavior.
-  // The whole bootstrap still runs under `withTimeout` so the route cannot hang.
+  // Profile reads cannot survive logout or a newer session.
   const accessToken = session?.accessToken ?? null;
   useEffect(() => {
     let cancelled = false;
@@ -209,25 +157,29 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setProfileLoadingState(true);
     (async () => {
       try {
-        const p = await withTimeout(loadCustomerProfile(accessToken));
+        const expectedRevision = revision.current;
+        const p = await withTimeout(loadCustomerProfile(accessToken, binding?.reconcileAccount ?? false));
+        if (expectedRevision !== revision.current || sessionRef.current?.accessToken !== accessToken) return;
         if (!p) reportAuthDiagnostic("auth_bootstrap", "settled", "profile_unavailable", accessToken);
         if (!cancelled) setProfileState(p);
       } catch {
         reportAuthDiagnostic("auth_bootstrap", "settled", "profile_unavailable", accessToken);
-        if (!cancelled) setProfileState(null);
+        if (!cancelled && sessionRef.current?.accessToken === accessToken) setProfileState(null);
       } finally {
-        if (!cancelled) setProfileLoadingState(false);
+        if (!cancelled && sessionRef.current?.accessToken === accessToken) setProfileLoadingState(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [accessToken, profileLoadRevision, setProfileLoadingState, setProfileState]);
+  }, [accessToken, binding, profileLoadRevision, setProfileLoadingState, setProfileState]);
 
   const signInWithOtp = useCallback(
     async (email: string): Promise<{ error: string | null }> => {
       const clientActionKey = createAuthDiagnosticActionKey();
       reportAuthDiagnostic("auth_magic_link", "attempted", "observed", sessionRef.current?.accessToken ?? null, clientActionKey);
+      if (!authPort) return { error: t("account:login.sendError") };
+      sessionEventsBlocked.current = false;
       const { error } = await authPort.signInWithOtp({ email, locale: i18n.language });
       reportAuthDiagnostic("auth_magic_link", "settled", error ? "rejected" : "succeeded", sessionRef.current?.accessToken ?? null, clientActionKey);
       return { error: error ? t("account:login.sendError") : null };
@@ -239,6 +191,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     async (email: string, code: string): Promise<{ error: string | null }> => {
       const clientActionKey = createAuthDiagnosticActionKey();
       reportAuthDiagnostic("auth_otp", "attempted", "observed", sessionRef.current?.accessToken ?? null, clientActionKey);
+      if (!authPort) return { error: t("account:login.codeError") };
+      sessionEventsBlocked.current = false;
       const { error } = await authPort.verifyOtpCode({ email, token: code });
       reportAuthDiagnostic("auth_otp", "settled", error ? "rejected" : "succeeded", sessionRef.current?.accessToken ?? null, clientActionKey);
       return { error: error ? t("account:login.codeError") : null };
@@ -253,6 +207,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     ): Promise<{ error: string | null }> => {
       const clientActionKey = createAuthDiagnosticActionKey();
       reportAuthDiagnostic("auth_oauth", "attempted", "observed", sessionRef.current?.accessToken ?? null, clientActionKey);
+      if (!authPort) return { error: t("account:login.social.error") };
+      sessionEventsBlocked.current = false;
       const { error } = await authPort.signInWithOAuth({ provider, redirectTo });
       reportAuthDiagnostic("auth_oauth", "settled", error ? "rejected" : "succeeded", sessionRef.current?.accessToken ?? null, clientActionKey);
       return { error: error ? t("account:login.social.error") : null };
@@ -261,15 +217,19 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    await authPort.signOut();
+    sessionEventsBlocked.current = true;
+    revision.current += 1;
     applySession(null, true);
     setProfileState(null);
     setProfileLoadingState(false);
+    setSessionLoading(false);
+    await authPort?.signOut();
   }, [applySession, authPort, setProfileLoadingState, setProfileState]);
 
   return (
     <CustomerAuthContext.Provider
       value={{
+        signInOptions: binding?.signInOptions,
         user,
         session,
         loading: sessionLoading || profileLoading,

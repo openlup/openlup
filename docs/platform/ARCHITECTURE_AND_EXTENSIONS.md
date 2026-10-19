@@ -30,6 +30,15 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The subscription reference uses one `CustomerAuthProvider` across login,
+callback and account routes, and mounts the same query client that the provider
+clears on logout or a principal change. Browser binding loads only the selected
+adapter. Managed callbacks remain SDK-owned, and direct challenges retain their
+opaque token format; pages consume closed outcomes and a linked profile.
+[Reference browser identity](IDENTITY_BROWSER_REFERENCE.md) owns these routes,
+persistence keys and conformance boundaries.
+
+
 Identity privacy uses an explicitly composed contributor registry. The identity
 package owns profile pseudonymization, cleanup and receipts; the reference owns
 the subscriptions veto on the shared transaction executor. Every assessment

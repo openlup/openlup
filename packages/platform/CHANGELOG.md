@@ -8,6 +8,32 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Restore guest checkout when the reference browser's session lookup fails:
+  the compatibility wrapper returns no session or authorization header while
+  provider bootstrap retains strict error handling.
+  Migration: no package API or database migration is required; existing callers
+  retain their previous guest fallback.
+
+- Reference customer logout fences late session events until explicit sign-in
+  and clears managed credentials even when remote revocation fails. Sign-in
+  requests use the same account-root return target as the page and callback.
+  Migration: no database or package API migration; invalid return queries are
+  replaced with the matching account root before requesting sign-in.
+
+- Correct the subscription reference build command so Node loads the owned
+  environment before starting npm. The documented flow now builds the
+  subscription HTML marker and entrypoint required by the reference server.
+  The default static profile and package APIs are unchanged.
+
+- Reference application: dedicated English/Polish customer login and callback
+  pages share the customer auth provider with the account. Add code fallback,
+  configured external sign-in, linked-profile readiness and cache-clearing logout;
+  direct browser auth loads independently of the managed SDK.
+  Migration: previous reference customer browser sessions and login hints are
+  discarded without migration; sign in again once. Managed email-code verification
+  uses the email flow for both unconfirmed and confirmed identities. No package
+  declaration or database migration changes.
+
 - Mount default identity privacy routes in the shipped reference dispatcher for
   managed bundles. Public policy refuses with `adopter_policy_required`; admitted
   managed exports report incomplete coverage and erasure refuses without mutation.
