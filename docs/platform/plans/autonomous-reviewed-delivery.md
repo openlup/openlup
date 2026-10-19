@@ -445,16 +445,16 @@ check-response timeout covering mechanical CI plus the bounded receipt wait.
 Do not enable settings while delivering the foundation. The inactive admission
 job is skipped and is not enforcement proof.
 
-Before activation, prove on the actual GitHub queue that a head changed after
-arming stays blocked without new source evidence; a changed or sensitive group
-stays blocked without two current integration reviews; and an old same-SHA
-success cannot admit a new run/attempt with no new receipt. Prove exact live
+The historical activation proof required a head changed after arming to stay
+blocked without new source evidence, a changed or sensitive group to require
+two integration reviews, and each new run/attempt to require a new receipt.
+Since 2026-10-19, a group that cannot carry over is rejected: merge `main` and
+re-review. A current source comment receipt covers reruns of the same reviewed
+head; there is no integration-review receipt route. Prove exact live
 membership and base/head/tree/ref attribution, stale receipt failure, bounded
 wait expiry and rebuild recovery. Confirm the synthetic tip's DCO behavior and
 that the actual squash author email is `dev@openlup.com`; either unproven behavior
-blocks activation. Since 2026-10-19, a changed or sensitive group that cannot
-carry over is rejected: merge `main` and re-review instead of obtaining integration
-reviews. No DCO exemption or unsupported email assumption is allowed.
+blocks activation. No DCO exemption or unsupported email assumption is allowed.
 Keep queue settings inactive until the exact proposal and these live results
 support the owner's activation decision. A merge of foundation code is not that
 decision and does not authorize production or a release.
