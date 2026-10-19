@@ -8,72 +8,34 @@ SemVer promise.
 
 ## [Unreleased]
 
-- Serve the disposable identity callback document when a managed sign-in link
-  includes an encoded return target. Reference HTTP path validation now checks
-  percent encoding only in the pathname, preserving encoded-path and traversal
-  refusals. Shared browser pages and package APIs are unchanged.
+- Add an opt-in disposable identity reference shell with separate customer/operator
+  browser mounts, a private captured mailbox for the direct bundle and opt-in
+  acceptance commands for both bundles: direct on node-postgres and managed on a
+  local Supabase stack with pinned CLI 2.98.2. Reference HTTP path validation
+  refuses percent-encoding only in the pathname; encoded query values on declared
+  pages are accepted, with encoded-path and traversal refusals unchanged. Default
+  and subscription browser artifacts and package declarations are unchanged.
+  Migration: reference pages now accept percent-encoded query values. Managed
+  acceptance exposes the disposable stack's synthetic services, including its
+  mail-capture API, on all host interfaces for the run; use a host not reachable
+  from untrusted networks.
 
-- Allow disposable managed identity acceptance with the CLI's all-interface port
-  bindings only within the run's allocated port block, retaining project-label
-  ownership checks. Direct database and reference HTTP bindings remain loopback.
-  Migration: run managed acceptance on a host not reachable from untrusted
-  networks; its synthetic identity services, including the mail-capture API,
-  are exposed on all host interfaces for the duration of the run.
-
-- Preserve the reference dispatcher's three-argument admin preflight call while
-  dispatching explicitly admitted identity handlers and their selected preflight.
-  Default privacy mounts retain preflight inside their mutation-policy wrapper.
+- Add reference identity startup admission for selected direct and managed modules,
+  with bundle-specific schema inventories, actual route/adapter bindings and email
+  trust. Direct customer reconciliation reads the authenticated principal's existing
+  contact link; direct operator invite/remove routes select the direct pending
+  lifecycle stores. Extend the cold consumer to direct identity adapters and
+  structural managed clients.
+  Migration: direct reconciliation no longer uses managed email association;
+  sessions need an existing linked contact or receive `ACCOUNT_LINK_CONFLICT`.
+  Install the complete direct catalogue and supply invitation notification delivery.
+  Public deployment policy still denies these routes by default.
 
 - Restore guest checkout when the reference browser's session lookup fails:
   the compatibility wrapper returns no session or authorization header while
   provider bootstrap retains strict error handling.
   Migration: no package API or database migration is required; existing callers
   retain their previous guest fallback.
-
-- Refuse disposable direct identity acceptance when an owned container publishes a
-  port outside explicit IPv4 or IPv6 loopback, before issuing challenges.
-  Required profile-isolation checks run without Git
-  history; a separate opt-in compatibility proof requires an explicit ancestor
-  predecessor and compares build inputs; browser acceptance requests
-  operator links through the mounted form and checks the rendered logout view.
-
-- Fix disposable identity acceptance teardown: direct customer reads borrow the
-  owned query pool, and shutdown drains HTTP and route cleanup before ending the
-  pool and stopping the database. Assertion-time pool errors and cleanup failures
-  fail acceptance; late teardown disconnects no longer crash the process.
-
-- Fix the disposable identity reference's signing-key metadata so strict customer
-  and operator verifiers accept its public key before authentication proceeds.
-
-- Add an opt-in disposable identity reference shell, separate customer/operator
-  mounts, a private captured mailbox and acceptance commands for both bundles.
-  Its typed composition dispatches the admitted route table and observes packages
-  from the bundled module graph, preserving package-set and schema refusals.
-  Default and subscription browser artifacts and package declarations are unchanged.
-
-- Fix the opt-in identity acceptance runner's Node 24 module loading so build
-  tooling can resolve builtin modules. Add a service-free module-loading check;
-  installed acceptance still requires every declared prerequisite.
-
-- Repair reference identity admission: direct contacts require their principal
-  link, managed lookup requires creation time, and callable typed bindings build
-  the admitted handlers. Preserve observed package-set mismatches and dispatch
-  the exact policy-wrapped route table, including supplied privacy handlers.
-  Startup refuses candidate/host/ambient environment mismatches before listening.
-  Migration: custom reference candidates now supply typed ports and
-  `createRoutes(ports, env)` with the host's environment instead of a separate
-  route table and placeholder bindings. Additional installed packages need joint
-  contribution composition. Package identity declarations are unchanged.
-
-- Add reference identity startup admission for selected direct and managed modules,
-  bundle-specific schema inventories, actual route/adapter bindings and email trust.
-  Extend the cold consumer to direct identity adapters and structural managed clients.
-- Direct customer reconciliation now reads the authenticated existing contact link;
-  direct operator invite/remove routes select the existing pending lifecycle stores.
-  Migration: direct reconcile no longer uses managed email association. Install the
-  complete direct catalogue and inject invitation notification delivery before use.
-  Public deployment policy still denies these routes by default.
-
 
 - Reference customer logout fences late session events until explicit sign-in
   and clears managed credentials even when remote revocation fails. Sign-in
@@ -172,13 +134,9 @@ SemVer promise.
   unknown addresses without creating accounts.
 - Abort managed settings transport when an assessment finishes, including
   unread error response bodies, to preserve the three-second deadline.
-- Select customer reconciliation by bundle. `node-postgres` reads only the
-  authenticated principal's existing contact link, with no managed settings read
-  or email-based association. The managed email-trust policy applies only to
-  `node-supabase` and `vercel-supabase` on this route.
-  Migration: this replaces the earlier contract that always bound managed policy
-  even with `PLATFORM_BUNDLE=node-postgres`. Direct sessions need an existing
-  linked contact; a missing link returns `ACCOUNT_LINK_CONFLICT`.
+- Always bind managed settings assessment for the managed reconcile route.
+  Migration: `PLATFORM_BUNDLE=node-postgres` no longer bypasses that route's
+  managed email-trust policy; verifier-only trust belongs to direct composition.
 
 - Add the direct operator pending-invitation lifecycle with trusted acceptance,
   expiry, cancellation, atomic membership/audit writes and ordered locks. Append

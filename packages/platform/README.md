@@ -447,4 +447,4 @@ captured-delivery port, with a private local mailbox and administrator privacy
 panel. Its explicit runtime must supply actual routes and readiness admission;
 the shell refuses a missing composition. See the
 [identity reference guide](../../docs/platform/IDENTITY.md#disposable-identity-reference)
-for both-bundle commands, managed grant prerequisites and installation limits.
+for both-bundle commands, the committed managed grants and installation limits.

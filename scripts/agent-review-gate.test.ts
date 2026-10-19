@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { readReviewObjects, reviewTreeEntries, verifyReviewObjectGraph } from "./agent-review-hook.mjs";
 
 describe("native review source graph authentication", () => {
-  const scratch = resolve(".context/scratch/agent-review-tests");
+  const scratch = tmpdir();
   const owned: string[] = [];
   afterEach(() => { for (const directory of owned.splice(0)) rmSync(directory, { recursive: true, force: true }); });
   function harness() {
@@ -21,6 +23,61 @@ describe("native review source graph authentication", () => {
     const expected = { base, head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}") };
     return { cwd, git, expected };
   }
+  async function archivedHistory() {
+    const f = harness();
+    for (let index = 0; index < 4; index += 1) {
+      writeFileSync(join(f.cwd, "file.txt"), `${index}:${"x".repeat(1800)}`);
+      f.git("add", "file.txt"); f.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "archive");
+    }
+    function advance(contents: string) {
+      writeFileSync(join(f.cwd, "file.txt"), contents);
+      f.git("add", "file.txt"); f.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "candidate");
+    }
+    advance("review base\n"); const base = f.git("rev-parse", "HEAD");
+    advance("candidate\n");
+    const expected = () => ({ base, head: f.git("rev-parse", "HEAD"), tree: f.git("rev-parse", "HEAD^{tree}") });
+    // Lower only the existing constant in a disposable module, so the same
+    // tests exercise old and new readers without large generated fixtures.
+    const original = readFileSync(new URL("./agent-review-hook.mjs", import.meta.url), "utf8");
+    const bounded = original.replace("const OBJECT_BYTES = 128 * 1024 * 1024;", "const OBJECT_BYTES = 4096;");
+    expect(bounded).not.toBe(original);
+    const module = join(f.cwd, "bounded-hook.mjs"); writeFileSync(module, bounded);
+    const { verifyReviewObjectGraph: verify } = await import(pathToFileURL(module).href);
+    return { ...f, advance, expected, verify };
+  }
+  it("refuses an oversized delta after accepting a small delta on large unrelated history", async () => {
+    const f = await archivedHistory();
+    await expect(f.verify(f.cwd, f.expected())).resolves.toBeDefined();
+    // Each object and both bound snapshots fit; the accumulated delta does not.
+    for (let index = 0; index < 3; index += 1) f.advance(`${index}:${"y".repeat(1400)}`);
+    f.advance("small final snapshot\n");
+    await expect(f.verify(f.cwd, f.expected())).rejects.toThrow("object authentication exceeds byte bound");
+  });
+  it("refuses a planted bad delta blob after accepting large unrelated history", async () => {
+    const f = await archivedHistory();
+    await expect(f.verify(f.cwd, f.expected())).resolves.toBeDefined();
+    const blob = f.git("rev-parse", "HEAD:file.txt");
+    const bytes = Buffer.from("corrupted\n");
+    const target = join(f.cwd, ".git", "objects", blob.slice(0, 2), blob.slice(2));
+    chmodSync(target, 0o644);
+    writeFileSync(target, deflateSync(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes])));
+    await expect(f.verify(f.cwd, f.expected())).rejects.toThrow("object digest differs from its claimed identity");
+  });
+  it("authenticates history beyond the byte bound while charging only the delta and bound snapshots", async () => {
+    const f = await archivedHistory();
+    const graph = await f.verify(f.cwd, f.expected());
+    expect(graph.authenticatedBytes).toBeGreaterThan(4096);
+    expect(graph.boundedBytes).toBeLessThan(4096);
+    expect(reviewTreeEntries(graph, graph.baseTree)).toMatchObject([{ path: "file.txt", size: 12 }]);
+    expect(reviewTreeEntries(graph, graph.headTree)).toMatchObject([{ path: "file.txt", size: 10 }]);
+    // Old blobs are still authenticated: corrupt one outside the review delta.
+    const historical = f.git("rev-parse", `${f.expected().base}~1:file.txt`);
+    const bytes = Buffer.from("bad historical bytes\n");
+    const target = join(f.cwd, ".git", "objects", historical.slice(0, 2), historical.slice(2));
+    chmodSync(target, 0o644);
+    writeFileSync(target, deflateSync(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes])));
+    await expect(f.verify(f.cwd, f.expected())).rejects.toThrow("object digest differs from its claimed identity");
+  });
   it("authenticates the actual reachable object graph of an unchanged fixture", async () => {
     const f = harness();
     const graph = await verifyReviewObjectGraph(f.cwd, f.expected);

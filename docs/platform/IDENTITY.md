@@ -161,7 +161,7 @@ The reference source `server/bff/customers/reconcile-account.ts` selects
 actor-scoped linked-profile readback for `node-postgres`. Its managed branch
 composes the managed email-trust policy; the direct branch never constructs the
 managed verifier, clients or email association.
-A host mounting reconciliation
+A host mounting managed reconciliation
 must inject a policy as described above; confirmation alone does not establish
 the installation's email-trust envelope. The token verifier reports every
 principal as unverified. The engine retries the email
@@ -302,8 +302,8 @@ returns core readiness issues with `module: "identity"`, subject
 refusal in `observation`. The host helper `assessIdentityReadiness` maps safe
 settings to `ready`, unsafe settings to `unsatisfied`, unavailable settings to
 `unknown`, and configuration errors to `OPENLUP_E_ENV_MISSING`. These helpers
-are available for host composition; the reference server does not invoke them
-at startup.
+are available for host composition; `startPublicReferenceServer({ identity })`
+invokes `assessIdentityReadiness` during candidate admission before listening.
 
 
 ## Operator invitation lifecycle
@@ -408,8 +408,9 @@ See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
 ## Schema continuity and readiness
 
 [`IDENTITY_MIGRATIONS`](../../packages/platform/src/identity/sql.ts) records the
-canonical path, SHA-256 digest and runner position of five complete units, at
-positions 11, 12, 29, 60 and 67. The package SQL files retain every canonical byte.
+canonical path, SHA-256 digest and runner position of seven complete units, at
+positions 11, 12, 29, 60, 67, 68 and 69, including operator challenges at 68 and
+privacy erasure receipts at 69. The package SQL files retain every canonical byte.
 They are a projection for inspection and host migration composition, not a
 standalone chain: earlier foundation migrations and intervening units still
 matter. Never apply a package projection on top of an already applied canonical
@@ -420,7 +421,9 @@ retains artifact kind `rail` and identifies module `identity` as a `capability`,
 with its two provided entries and foundation dependencies. The host must supply
 an independently identified `requiredSchema`; managed and direct stores have
 different objects. This candidate does not invent one combined schema inventory.
-The contribution is not installed in the reference readiness composition here.
+For an explicitly supplied identity candidate, reference startup installs the
+contribution through `createIdentityContribution` with the bundle-specific
+`requiredSchema` selected by `createReferenceIdentity`.
 It uses the readiness module field (`PackageManifest.module`) directly.
 
 ## Conformance and outstanding evidence
@@ -503,8 +506,8 @@ The browser runtime-schema move remains pending: the existing schemas use Zod,
 but the contracts boundary admits only own-contract files and public core entries.
 This candidate retains those runtime schemas in the reference application rather
 than weakening that boundary. Completing that move needs an explicit boundary
-choice. A concrete default schema inventory for each deployment profile also
-remains to be supplied and checked when the readiness composition is installed.
+choice. Reference identity candidates select a concrete managed or direct schema
+inventory through `identityRequiredSchema` and check it during startup admission.
 
 ## Source move map
 
@@ -545,8 +548,9 @@ application composition stays at the original route/runtime paths.
 Managed verification requires confirmation, adds managed settings reads
 with bounded latency and process caching, and introduces the two 403/503
 association refusals and browser error codes. The managed Node subscription
-candidate retains its existing startup admission; identity readiness helpers
-are available separately. The new server-only
+candidate retains its existing startup admission without an explicitly supplied
+identity candidate; supplying one adds identity and email-trust readiness checks
+before listening. The new server-only
 provider allowlist defaults to empty. The captured reconcile route retains its
 generic 403 response for policy refusals and its empty provider allowlist.
 The captured profile retains its stricter
@@ -578,7 +582,7 @@ lookalike and an exact normalized contact are returned together, soft linking
 selects the oldest exact contact. A lone lookalike now produces
 `CLIENT_NOT_FOUND` for soft linking; reconciliation follows its existing
 no-contact creation path. Multiple exact reconciliation candidates still raise
-a lookup error, surfaced by the unmounted reconcile handler as
+a lookup error, surfaced by the managed reconcile handler as
 `Account reconciliation failed`. Both managed lookups stop at ten candidates.
 
 Managed invitation responses now expose active membership and explicit 409
@@ -590,7 +594,7 @@ identity. Sender, base URL and request-ID selection stay in application composit
 Managed authorization, removal and the public admin profile source keep their
 actor bindings; no service binding for lifecycle metadata is introduced. Operators enter the active settings
 list immediately; first entry does not activate or compensate membership.
-The unmounted reconcile source can answer the two email-trust policy refusal codes and
+The managed reconcile branch can answer the two email-trust policy refusal codes and
 the original five domain refusal codes as messages,
 plus `Customer session required` and `Account reconciliation failed`.
 These endpoint-source outcomes do not activate a route.
@@ -971,7 +975,8 @@ node tests/identity/runAcceptance.mjs --bundle node-supabase
 Both commands require the composed identity runtime, installed Node 24 and npm
 11.19.0, Docker and installed browser tooling. The direct command requires a
 cached `postgres:16` image. Managed execution additionally requires installed
-CLI 2.98.2 and the reviewed identity service-role forward in the committed chain.
+Supabase CLI 2.98.2; its owned migration replay includes the committed identity
+service-role capabilities forward.
 Missing prerequisites fail; neither command silently skips. Each run owns a
 random installation id, allocated ports, build directory and captured mail.
 Only the disposable rendered configuration sets `[auth.rate_limit]`
