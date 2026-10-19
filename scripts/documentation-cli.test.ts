@@ -41,7 +41,7 @@ function seed(root: string): string {
   write(root, "docs/platform/DOCUMENTATION.md", "# Documentation\n");
   write(root, "docs/platform/SUBSCRIPTION_WORKFLOWS.md", "# Workflows\n");
   write(root, "docs/platform/adopter-kit/dependabot.template.yml", 'groups:\n  openlup:\n    patterns:\n      - "@openlup/*"\n');
-  write(root, "src/lib/coreDomains.ts", 'export const CORE_DOMAINS = Object.freeze(["demo"] as const);\n');
+  write(root, "src/lib/coreDomains.ts", 'export const CORE_DOMAINS = Object.freeze(["communications", "demo"] as const);\n');
   write(root, "src/domains/demo/main.ts", "export const value = 1;\n");
   write(root, "src/domains/demo/README.md", "# Demo\n");
   write(root, "config/openlup-packages.json", JSON.stringify({ schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish: true }], unreleased: [] }));
@@ -55,6 +55,7 @@ function seed(root: string): string {
   const surfaces = [
     { id: "repository", when: "Public fixture contract", paths: ["*", "scripts/**", "config/**", "packages/**", "src/**", "server/**", "docs/**", "db/**", "supabase/**", "tests/**"], doc: "README.md", anchor: "#contract" },
     { id: "domain-demo", when: "Demo replay contract", paths: ["src/domains/demo/**"], doc: "README.md", anchor: "#contract" },
+    { id: "domain-communications", when: "Communications fixture contract", paths: ["src/domains/communications/**"], doc: "README.md", anchor: "#contract" },
   ];
   write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));
   write(root, "config/openlup-policy-registry.json", JSON.stringify({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "entrypoint", owners: ["README.md"] }] }));
