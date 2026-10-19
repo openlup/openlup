@@ -917,6 +917,13 @@ Direct operator composition passes `providerKind="direct"`; managed composition
 omits that selector. The public static and subscription profiles retain their
 existing entrypoints and import inventories.
 
+Managed customer links return through
+`/account/auth/callback?returnTo=%2Faccount` with SDK credentials in the browser
+fragment. The reference server accepts the encoded query on that declared path
+and serves the identity document before the browser consumes the callback.
+Encoded pathnames and traversal remain refused. Direct code-form login does
+not navigate through this callback request.
+
 The server shell accepts an explicit identity runtime containing the mounted
 route functions, ownership profile and the existing candidate, port bindings and
 schema observer accepted by `admitReferenceIdentity`. Callable typed ports build

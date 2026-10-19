@@ -146,6 +146,12 @@ The disposable bundle supplies package observations from its build module graph,
 while startup still checks the selected bundle, schema and complete environment.
 The default public route policy is unchanged.
 
+The reference HTTP shell checks percent encoding in the pathname, leaving
+encoded query values available on declared routes. In particular,
+`/account/auth/callback?returnTo=%2Faccount` serves the identity document;
+encoded path separators and traversal paths still return 404. Callback fragments
+remain in the browser and are consumed by the selected authentication adapter.
+
 The [identity guide](IDENTITY.md#disposable-identity-reference) gives both opt-in
 acceptance commands and their prerequisites. They own loopback services and
 private captured mail; they do not attach to an adopter database. The identity

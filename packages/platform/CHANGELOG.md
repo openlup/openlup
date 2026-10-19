@@ -8,6 +8,11 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Serve the disposable identity callback document when a managed sign-in link
+  includes an encoded return target. Reference HTTP path validation now checks
+  percent encoding only in the pathname, preserving encoded-path and traversal
+  refusals. Shared browser pages and package APIs are unchanged.
+
 - Allow disposable managed identity acceptance with the CLI's all-interface port
   bindings only within the run's allocated port block, retaining project-label
   ownership checks. Direct database and reference HTTP bindings remain loopback.

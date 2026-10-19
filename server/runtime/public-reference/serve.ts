@@ -85,7 +85,7 @@ function response(
 function requestPath(request: IncomingMessage): string | null {
   const raw = request.url ?? "/";
   const rawPath = raw.split("?", 1)[0];
-  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("%")
+  if (!raw.startsWith("/") || raw.startsWith("//") || rawPath.includes("%")
     || raw.includes("\\") || raw.includes("#")
     || rawPath.split("/").some((segment) => segment === "." || segment === "..")) return null;
   try {

@@ -588,6 +588,9 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
   const root = join(profile.directory, "host");
   const { mkdirSync } = await import("node:fs");
   mkdirSync(join(root, "config"), { recursive: true });
+  mkdirSync(join(root, "dist"));
+  const document = '<html data-openlup-profile="identity"><div id="root"></div></html>';
+  writeFileSync(join(root, "dist/index.html"), document);
   writeFileSync(join(root, "config/site-routes.json"), readFileSync("config/public-reference-site-routes.json"));
   symlinkSync(resolve("node_modules"), join(profile.directory, "node_modules"), "dir");
   const entry = join(profile.directory, "runtime-entry.ts");
@@ -632,6 +635,19 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
   const server = await loaded.startPublicReferenceServer(options);
   try {
     expect(listen).toHaveBeenCalledOnce();
+    // The managed link's fragment stays in the browser; its encoded query reaches HTTP.
+    for (const method of ["GET", "HEAD"]) {
+      const writeHead = vi.fn(), end = vi.fn();
+      server.emit("request", { url: "/account/auth/callback?returnTo=%2Faccount", method, headers: req.headers }, { writeHead, end });
+      expect(writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ "content-type": "text/html; charset=utf-8", "content-length": String(Buffer.byteLength(document)) }));
+      expect(end).toHaveBeenCalledWith(method === "HEAD" ? undefined : document);
+    }
+    for (const path of ["/account%2Fauth/callback?returnTo=%2Faccount", "/account/../account/auth/callback?returnTo=%2Faccount", "//reference.invalid/account/auth/callback?returnTo=%2Faccount"]) {
+      const writeHead = vi.fn(), end = vi.fn();
+      server.emit("request", { url: path, method: "GET", headers: req.headers }, { writeHead, end });
+      expect(writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+      expect(end).toHaveBeenCalledWith("Not found\n");
+    }
     const { Readable } = await import("node:stream");
     const request = Object.assign(Readable.from(["{}"]), { url: "/api/bff/admin/identity/privacy/export", method: "POST", headers: req.headers });
     await new Promise<void>((done, reject) => {
