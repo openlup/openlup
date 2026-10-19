@@ -225,9 +225,12 @@ it.each([["PLATFORM_BUNDLE", "node-supabase"], ["DATABASE_URL", "postgresql://ot
   await expect(startPublicReferenceServer({ root: "/missing-reference.invalid", env: input.runtime.env, identity: input })).rejects.toThrow("environment does not match");
   expect(listen).not.toHaveBeenCalled();
 });
-it.each(["export", "erase"] as const)("dispatches the admitted policy-wrapped privacy %s implementation", async operation => {
+it.each([
+  ["node-postgres", "export"], ["node-postgres", "erase"],
+  ["node-supabase", "export"], ["node-supabase", "erase"],
+] as const)("dispatches the admitted %s policy-wrapped privacy %s implementation", async (bundle, operation) => {
   policy.allow = true;
-  const input = admission("node-postgres");
+  const input = admission(bundle);
   const root = mkdtempSync(join(tmpdir(), "identity-dispatch-"));
   try {
     mkdirSync(join(root, "config")); writeFileSync(join(root, "config/site-routes.json"), readFileSync("config/public-reference-site-routes.json"));

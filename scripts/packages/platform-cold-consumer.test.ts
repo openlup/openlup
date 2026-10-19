@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, provePostgresOperations, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -106,6 +106,29 @@ it("accepts explicit missing-peer refusals from every selected adapter", () => {
 });
 it.each(["raw", "wrong-peer", "no-cause", "success"] as const)("refuses unsound adapter refusal evidence: %s", mode => {
   expect(() => proveAdapterRefusals(refusalFixture(mode))).toThrow();
+});
+function postgresFixture(mode: "unmigrated" | "operator-success" | "wrong-sqlstate" | "privacy-wrong-result") {
+  const consumer = refusalFixture("correct"), path = join(consumer, "node_modules/@openlup/platform/index.js");
+  // Retain the import/contract fixtures; replace only the selected database operations.
+  const source = readFileSync(path, "utf8").replace(/export const (createPostgres(?:DataGateway|RoleFreeTransactionLane|MigrationRunner|OperatorIdentityStore|PrivacyUnitOfWork)|createEnvAdvisoryLock) = [^\n]+\n/gu, "");
+  writeFileSync(path, source + `
+export const createPostgresDataGateway = () => ({ asService: async work => work() });
+export const createPostgresRoleFreeTransactionLane = () => ({ run: async work => work(), close: async () => {} });
+export const createPostgresMigrationRunner = () => ({ status: async () => ({ pending: ["baseline.sql"], applied: [] }) });
+export const createEnvAdvisoryLock = () => ({ tryAcquire: async () => true, release: async () => {}, close: async () => {} });
+export const createPostgresOperatorIdentityStore = () => ({ findMembership: async () => {
+  if (${JSON.stringify(mode)} === "operator-success") return null;
+  throw Object.assign(new Error("synthetic missing relation"), { code: ${JSON.stringify(mode === "wrong-sqlstate" ? "42501" : "42P01")} });
+}, close: async () => {} });
+export const createPostgresPrivacyUnitOfWork = () => ({ run: async work => ${mode === "privacy-wrong-result" ? '"wrong"' : "work()"}, close: async () => {} });
+`);
+  return consumer;
+}
+it("proves operator schema refusal and a successful privacy transaction independently", () => {
+  provePostgresOperations(postgresFixture("unmigrated"), "postgresql://unused.invalid/consumer");
+});
+it.each(["operator-success", "wrong-sqlstate", "privacy-wrong-result"] as const)("refuses unsound database operation evidence: %s", mode => {
+  expect(() => provePostgresOperations(postgresFixture(mode), "postgresql://unused.invalid/consumer")).toThrow();
 });
 it("compiles actual declarations in both modes and refuses leaked peer types", () => {
   const consumer = fixture(), compiler = join(root, "node_modules/typescript/bin/tsc");

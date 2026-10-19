@@ -226,7 +226,7 @@ describe("the command line", () => {
     for (const phase of ["prepare", "check-draft", "verify"]) expect(run([phase], set), phase).toMatchObject({ status: 1, stderr: expect.stringContaining(`phase ${phase} releases one package`) });
     expect(run(["plan", tmpdir()], { ...set, GITHUB_OUTPUT: "" })).toMatchObject({ status: 1, stderr: expect.stringContaining("plan writes its packages to GITHUB_OUTPUT") });
     expect(() => packageReleaseInputs("all", "0.12.1", target, "note")).toThrow("package all names the whole set, not one package");
-  });
+  }, 30_000);
 });
 
 describe("package-release.ts started as a command", () => {

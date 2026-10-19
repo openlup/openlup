@@ -8,6 +8,16 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Preserve the reference dispatcher's three-argument admin preflight call while
+  dispatching explicitly admitted identity handlers and their selected preflight.
+  Default privacy mounts retain preflight inside their mutation-policy wrapper.
+
+- Restore guest checkout when the reference browser's session lookup fails:
+  the compatibility wrapper returns no session or authorization header while
+  provider bootstrap retains strict error handling.
+  Migration: no package API or database migration is required; existing callers
+  retain their previous guest fallback.
+
 - Refuse disposable identity acceptance when any owned container publishes a
   port outside explicit IPv4 or IPv6 loopback, before issuing challenges.
   Migration: local managed stacks that publish on wildcard interfaces must use
@@ -143,7 +153,8 @@ SemVer promise.
   calls without that callback retain their existing delivery-waiting behavior.
 
 - Add the opt-in identity envelope proof with phase `email-trust`, including
-  its fixture-only service-role grant, immediate persisted-association assertions,
+  association under the shipped managed grants (including the identity
+  capabilities forward), immediate persisted-association assertions,
   pre-existing contact linking and post-replay state checks. Phase `joint` also
   proves unconfirmed soft-account provisioning and first-login confirmation,
   preserving customer/auth identities and subscription references and refusing
@@ -176,9 +187,15 @@ SemVer promise.
   `MEMBERSHIP_CREATED`/`ALREADY_ACTIVE` instead of message-only success; duplicates
   return existing membership instead of `ALREADY_ADDED`. Notification failure
   returns 503 `INVITATION_NOTIFICATION_FAILED` with membership retained.
-  Managed pending/expiry is still unavailable. Production managed use still
-  requires a separate reviewed SELECT(email) and column-scoped INSERT grant
-  forward; no managed migration ships here.
+  Managed pending/expiry remains a compatibility gap requiring a separate
+  transactional store and reviewed forward. The managed chain's identity
+  capabilities forward `20261018160000_identity_service_role_capabilities.sql`
+  grants `service_role` SELECT(email) and INSERT(id, email, role, membership_state,
+  membership_provenance, membership_accepted_at) on `admin_users`. The opt-in
+  conformance replays the complete committed chain with ambient default ACLs
+  removed and adds no grant. It proves immediate activation, repeat/concurrent
+  recovery and revoked-member refusal under the shipped grants. It does not
+  establish managed/direct lifecycle parity.
 
 - Import the identity capability and its conformance witnesses into internal
   candidate entries `./identity` and `./identity/contracts`.

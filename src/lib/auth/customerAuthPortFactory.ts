@@ -37,7 +37,13 @@ export async function getCustomerAuthBinding(): Promise<CustomerAuthBinding> {
 export function getCustomerAuthPort(): CustomerAuthPort {
   const binding = getCustomerAuthBinding();
   return {
-    getSession: async () => (await binding).port.getSession(),
+    async getSession() {
+      try {
+        return await (await binding).port.getSession();
+      } catch {
+        return null;
+      }
+    },
     onAuthStateChange(listener) {
       let cancelled = false;
       let unsubscribe: (() => void) | undefined;

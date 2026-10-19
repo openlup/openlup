@@ -26,7 +26,7 @@ export function createReferenceBffDispatcher(
     env: environment,
     beforeDispatch: () => bootstrapAmbientSettlementProfile(environment()),
     preflight: preflight ?? ((req, res, route) => privacyRoutes(environment()).some(entry => entry.route === route)
-      || preflightAdminBffRoute(req, res, route, environment())),
+      || preflightAdminBffRoute(req, res, route)),
     notFound: (res, pathname) => {
       sendBffError(res, "NOT_FOUND", "BFF route not found", { details: { path: pathname } });
     },

@@ -3174,31 +3174,11 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/agent-review-controller.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-review-controller.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-review-gate.mjs",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/agent-review-gate.test.ts",
       "class": "public-output"
     },
     {
       "path": "scripts/agent-review-hook.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-review-hosted.mjs",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/agent-review-hosted.test.ts",
       "class": "public-output"
     },
     {
@@ -3350,30 +3330,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/core-extraction-candidate.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-command.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-package-content.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-package-content.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-package-manifest.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/core-extraction-snapshot.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/core-package-identity.ts",
       "class": "public-output"
     },
@@ -3382,35 +3338,11 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/customer-account-fixture-settlement.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-account-fixture-settlement.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/customer-account-stale-fixture-classification.ts",
       "class": "public-output"
     },
     {
       "path": "scripts/customer-diagnostic-history-schema.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-diagnostic-neutrality-legs.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-diagnostic-neutrality-legs.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-diagnostic-neutrality-proof.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/customer-diagnostic-neutrality-proof.ts",
       "class": "public-output"
     },
     {
@@ -3555,14 +3487,6 @@
     },
     {
       "path": "scripts/omnipack-e2e/lifecycleEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/omnipack-e2e/seedMatrix.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/omnipack-e2e/seedMatrix.ts",
       "class": "public-output"
     },
     {
@@ -3794,14 +3718,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/pr-passthrough.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/pr-passthrough.ts",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/prelaunch-acquisition-schema.test.ts",
       "class": "public-output"
     },
@@ -3815,6 +3731,14 @@
     },
     {
       "path": "scripts/public-ci-pgtap.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-reuse.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-reuse.test.ts",
       "class": "public-output"
     },
     {
@@ -3851,14 +3775,6 @@
     },
     {
       "path": "scripts/reference-adapters/paymentEventPortConformance.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/reference-adapters/reference-renewal-lease-fixture.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "scripts/reference-adapters/reference-renewal-lease-fixture.ts",
       "class": "public-output"
     },
     {
@@ -18870,6 +18786,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261018160000_identity_service_role_capabilities.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -19155,6 +19075,10 @@
     },
     {
       "path": "supabase/tests/fulfillment_replacement_sequence_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/identity_capability_test.sql",
       "class": "public-output"
     },
     {
@@ -20081,7 +20005,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/agent-review-controller.test.ts scripts/agent-review-gate.test.ts scripts/agent-review-hosted.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts server/runtime/auth/referenceIdentity.test.ts",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -20093,7 +20017,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-b0a22c177857f0a5d8d35a745b4a030d486fdf4a0d108b372e8116861c0f648e"
+      "digest": "sha256-736012581edd1d6e23395694031f80d00eb7f90e052b6377f087ed77713d256f"
     },
     {
       "path": "packages/core/package.json",

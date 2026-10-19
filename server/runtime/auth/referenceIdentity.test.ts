@@ -9,6 +9,7 @@ import { createDirectOperatorActionsBinding } from "./operatorActionsBinding.js"
 import { createInviteHandler } from "../../bff/admin/platform/admin-users/invite.js";
 import { createRemoveHandler } from "../../bff/admin/platform/admin-users/remove.js";
 import type { DirectOperatorActionOptions } from "./operatorActionsBinding.js";
+import { createReferenceBffDispatcher } from "../bffDispatch.js";
 const policy = vi.hoisted(() => ({ allow: false }));
 vi.mock("#deployment-route-policy", async importOriginal => {
   const original = await importOriginal<typeof import("../../_lib/publicDeploymentPolicies.js")>();
@@ -25,6 +26,24 @@ function bindingResponse() {
 }
 function request(body?: unknown): HttpRequest { return { method: "POST", headers: { authorization: "Bearer synthetic" }, body } as HttpRequest; }
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); vi.restoreAllMocks(); policy.allow = false; });
+it.each(["node-postgres", "node-supabase"])("dispatches the selected %s preflight once before the supplied admin handler", async bundle => {
+  for (const route of ["/api/bff/admin/platform/admin-users/invite", "/api/bff/admin/identity/privacy/export"]) {
+    for (const admitted of [false, true]) {
+      let settle!: (allowed: boolean) => void;
+      const preflight = vi.fn(() => new Promise<boolean>(resolve => { settle = resolve; }));
+      const handler = vi.fn(), req = request(), res = response();
+      req.url = route;
+      const dispatch = createReferenceBffDispatcher(() => ({ PLATFORM_BUNDLE: bundle }), preflight);
+      const pending = dispatch([{ route, pattern: new RegExp(`^${route}$`), params: [], handler }], req, res as unknown as HttpResponse);
+      expect(preflight).toHaveBeenCalledExactlyOnceWith(req, res, route);
+      expect(handler).not.toHaveBeenCalled();
+      settle(admitted);
+      await pending;
+      if (admitted) expect(handler).toHaveBeenCalledExactlyOnceWith(req, res);
+      else expect(handler).not.toHaveBeenCalled();
+    }
+  }
+});
 it("direct reconcile reads only the verified actor's existing link and never request email", async () => {
   const asActor = vi.fn(async (_claims, work) => work({}));
   const read = vi.fn(async () => ({ clientId: contactId, email: "customer@example.invalid", firstName: null, lastName: null, lifecycleStage: "lead" as const }));

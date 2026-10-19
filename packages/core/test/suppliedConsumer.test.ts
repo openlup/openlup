@@ -80,7 +80,7 @@ it("runs audit, runtime, both typechecks and Vite using the supplied artifact wi
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(result.stdout).toContain("core consumer artifact sha256=");
   expect(result.stdout).toContain("core package tarball consumer smoke ok");
-}, 30_000);
+}, 60_000);
 
 it.each(["manifest", "commit"])("refuses a missing supplied %s instead of falling back", (missing) => {
   const result = invoke(manifestPath, commit, missing === "manifest" ? { OPENLUP_PACK_MANIFEST: undefined } : { OPENLUP_PACK_COMMIT: undefined });

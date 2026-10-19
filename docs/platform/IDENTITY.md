@@ -19,6 +19,12 @@ placeholder objects. Admin preflight uses that same operator authorizer.
 The candidate wraps its selected routes with the observed deployment policy
 before admission, and dispatches that exact table without generated replacements.
 No additional identity routes are mounted implicitly.
+The candidate dispatcher awaits its selected preflight once before each matched
+admin handler, including supplied privacy handlers, and stops on refusal. The
+ambient reference dispatcher retains the three-argument
+`preflightAdminBffRoute(req, res, route)` call for ordinary routes. Only its two
+exact default privacy mounts defer that call to their observed mutation-policy
+wrapper, so policy admission precedes privacy authentication.
 Startup checks the actual mounted route functions, selected adapters and
 email-trust policy before listening. It preserves the complete observed package
 inventory: additional packages without composed contributions refuse admission,
@@ -388,11 +394,14 @@ notification failure returns 503 `INVITATION_NOTIFICATION_FAILED` with active
 membership retained. Managed pending/expiry remains a compatibility gap requiring
 a separate transactional store and reviewed forward. No managed SQL, RPC or
 grants are introduced.
-The committed managed chain still needs a reviewed forward granting
-`service_role` SELECT(email) and INSERT(id, email, role, membership_state,
-membership_provenance, membership_accepted_at) on `admin_users`. The opt-in local
-conformance applies these exact permissions as a labelled fixture-only grant;
-it establishes neither shipped-grants readiness nor transactional lifecycle parity.
+The managed chain's identity capabilities forward
+`20261018160000_identity_service_role_capabilities.sql` grants `service_role`
+SELECT(email) and INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) on `admin_users`. The opt-in local conformance replays
+the complete committed chain with ambient default ACLs removed and adds no grant.
+It proves immediate activation, repeat/concurrent recovery and revoked-member
+refusal under the shipped grants. It does not establish managed/direct lifecycle
+parity.
 See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
 [package invocation](../../packages/platform/README.md#operator-invitations).
 
@@ -438,11 +447,11 @@ prerequisites, startup, assertions and cleanup fail nonzero; nothing skips.
 The runner reuses the pgTAP committed-chain reader and subscription configuration
 and prerequisites. It starts separate owned confirmed, auto-confirm and external
 provider installations with Auth, API, database and captured mail enabled, removes
-inherited default grants before replay, and applies a labelled fixture-only grant:
-`GRANT INSERT (email, auth_user_id, acquisition_source, lifecycle_stage), UPDATE (auth_user_id) ON public.clients TO service_role`.
-The committed managed reference grants lack those capabilities. Successful
-association in this disposable stack therefore does not prove association under
-the shipped grants; that permission gap requires a separate managed forward.
+inherited default grants before replay, and applies the complete committed managed
+chain, including `20261018160000_identity_service_role_capabilities.sql`. That
+forward supplies the service-role client creation and linking capabilities, plus
+operator activation inserts and invitation email reads. The runner proves
+association under the shipped grants without adding fixture-only grants.
 It tests real editable metadata against cleared confirmation, auto-confirm and
 undeclared-provider 403s, actual captured mailbox proof, cache expiry followed by
 a settings-only loopback fault and 503, unchanged contacts on refusals, and an
