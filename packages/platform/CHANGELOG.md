@@ -8,6 +8,10 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Preserve the reference dispatcher's three-argument admin preflight call while
+  dispatching explicitly admitted identity handlers and their selected preflight.
+  Default privacy mounts retain preflight inside their mutation-policy wrapper.
+
 - Restore guest checkout when the reference browser's session lookup fails:
   the compatibility wrapper returns no session or authorization header while
   provider bootstrap retains strict error handling.

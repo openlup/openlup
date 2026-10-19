@@ -19,6 +19,12 @@ placeholder objects. Admin preflight uses that same operator authorizer.
 The candidate wraps its selected routes with the observed deployment policy
 before admission, and dispatches that exact table without generated replacements.
 No additional identity routes are mounted implicitly.
+The candidate dispatcher awaits its selected preflight once before each matched
+admin handler, including supplied privacy handlers, and stops on refusal. The
+ambient reference dispatcher retains the three-argument
+`preflightAdminBffRoute(req, res, route)` call for ordinary routes. Only its two
+exact default privacy mounts defer that call to their observed mutation-policy
+wrapper, so policy admission precedes privacy authentication.
 Startup checks the actual mounted route functions, selected adapters and
 email-trust policy before listening. It preserves the complete observed package
 inventory: additional packages without composed contributions refuse admission,

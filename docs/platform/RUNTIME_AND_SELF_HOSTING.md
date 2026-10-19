@@ -14,8 +14,13 @@ Both direct and managed routes retain risk `mutation` and the public default ref
 with 503 / `adopter_policy_required` before reading request bodies or queries.
 Both mounts also refuse before authentication or privacy bindings are created.
 Direct and managed adopters reach them only through `#deployment-route-policy`, like every
-admin mutation route, including invite, remove and admin `me`. After admission,
-managed export explicitly reports incomplete coverage and erasure refuses with
+admin mutation route, including invite, remove and admin `me`. Ordinary admin
+routes reach dispatcher preflight exactly once with the original request, response
+and route arguments. The two exact default privacy mounts run their preflight
+internally after mutation-policy admission. An explicitly admitted identity
+candidate dispatches its own policy-wrapped table and bound preflight without
+substituting default privacy handlers. After policy admission, managed export
+explicitly reports incomplete coverage and erasure refuses with
 `MANAGED_PRIVACY_ERASURE_UNAVAILABLE` before any mutation.
 Admin Settings adds an identity-only export/erase panel with explicit confirmation,
 retained obligations and subject/session-bound in-memory readback. Direct erasure
