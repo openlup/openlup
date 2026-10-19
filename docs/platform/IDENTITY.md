@@ -967,6 +967,10 @@ cached `postgres:16` image. Managed execution additionally requires installed
 CLI 2.98.2 and the reviewed identity service-role forward in the committed chain.
 Missing prerequisites fail; neither command silently skips. Each run owns a
 random installation id, allocated ports, build directory and captured mail.
+Only the disposable rendered configuration sets `[auth.rate_limit]`
+`email_sent = 20`, giving the customer, operator and invitee sign-ins an hourly
+email budget with margin. The shared reference configuration keeps its defaults.
+Rendering preserves other settings and refuses ambiguous rate-limit declarations.
 Before issuing challenges, the runner verifies container identity and ownership
 labels and checks every published port in both Docker inspection views. The direct
 database accepts only explicit `127.0.0.1` and `::1` bindings; empty, wildcard and

@@ -146,7 +146,7 @@ import { buildIdentityReferenceRuntime, createIdentityAcceptanceDatabase, identi
 import { EventEmitter } from "node:events";
 import type { Server } from "node:http";
 import type { Pool } from "pg";
-import { acceptanceBundle, assertContainerOwnership, assertPortBindings } from "../../../tests/identity/runAcceptance.mjs";
+import { acceptanceBundle, assertContainerOwnership, assertPortBindings, renderManagedAcceptanceConfig } from "../../../tests/identity/runAcceptance.mjs";
 import { build, type Plugin } from "vite";
 import { enforceDeploymentRoutePolicy, validateIdentityReferenceProfile, withIdentityReferencePolicy, IDENTITY_ROUTES } from "./referenceIdentityPolicy.js";
 import { enforceDeploymentRoutePolicy as publicPolicy } from "../../_lib/publicDeploymentPolicies.js";
@@ -317,6 +317,30 @@ it.each(["0.0.0.0", "::", "", "192.0.2.1", undefined])("acceptance refuses every
 it("acceptance refuses missing port inspection data", () => {
   expect(() => assertPortBindings({ NetworkSettings: { Ports: {} } })).toThrow("bindings unavailable");
   expect(() => assertPortBindings({ HostConfig: { PortBindings: {} } })).toThrow("bindings unavailable");
+});
+it("managed acceptance renders an email budget without changing other configured settings", () => {
+  const template = readFileSync("config/public-reference-subscription-supabase.toml", "utf8");
+  const replacements = { PROJECT_ID: "synthetic-identity", SHADOW_PORT: 58420, API_PORT: 58421, DB_PORT: 58422, STUDIO_PORT: 58423, MAIL_PORT: 58424, POOLER_PORT: 58429, APP_PORT: 58430 };
+  const expected = template.replace(/\{\{([A-Z_]+)\}\}/g, (_, key: keyof typeof replacements) => String(replacements[key]))
+    .replace('/account/auth/callback"]', '/account/auth/callback", "http://127.0.0.1:58430/admin/auth/callback"]');
+  const rendered = renderManagedAcceptanceConfig(template, replacements);
+  expect(rendered).toBe(`${expected}\n[auth.rate_limit]\nemail_sent = 20\n`);
+  expect(renderManagedAcceptanceConfig(rendered, replacements)).toBe(rendered);
+});
+it.each(["", "email_sent = 2 # hourly budget\n", "email_sent = 20\n"])("managed acceptance overrides or inserts one email limit (%s)", setting => {
+  const template = `[auth.rate_limit]\n${setting}sms_sent = 30\n[studio]\nenabled = false\n`;
+  const rendered = renderManagedAcceptanceConfig(template, { APP_PORT: 58430 });
+  expect(rendered).toBe(`[auth.rate_limit]\n${setting ? setting.replace(/= [0-9]+/, "= 20") : "email_sent = 20\n"}sms_sent = 30\n[studio]\nenabled = false\n`);
+});
+it.each([
+  "[auth.rate_limit]\nemail_sent = 2\n[auth.rate_limit]\nemail_sent = 3\n",
+  "[auth.rate_limit]\nemail_sent = 2\nemail_sent = 3\n",
+  "[auth.rate_limit]\nemail_sent = \"2\"\n",
+  "[auth.rate_limit]\n\"email_sent\" = 2\n",
+  '[auth."rate_limit"]\nemail_sent = 2\n',
+  "[auth]\nrate_limit.email_sent = 2\n",
+])("managed acceptance refuses ambiguous email rate settings (%s)", template => {
+  expect(() => renderManagedAcceptanceConfig(template, { APP_PORT: 58430 })).toThrow("Ambiguous managed acceptance email rate limit");
 });
 it("managed acceptance permits wildcard bindings only inside its allocated port block", () => {
   const Ports = { "80/tcp": null, "443/tcp": [

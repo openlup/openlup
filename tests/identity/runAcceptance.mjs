@@ -12,6 +12,32 @@ export function acceptanceBundle(args) {
   if (args.length !== 2 || args[0] !== "--bundle" || !["node-postgres", "node-supabase"].includes(args[1])) throw new Error("Usage: node tests/identity/runAcceptance.mjs --bundle node-postgres|node-supabase OR --check-module-graph");
   return args[1];
 }
+export function renderManagedAcceptanceConfig(template, replacements) {
+  const origin = `http://127.0.0.1:${replacements.APP_PORT}`;
+  const config = template.replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => {
+    if (!(key in replacements)) throw new Error("Unknown managed configuration placeholder"); return String(replacements[key]);
+  }).replace(`additional_redirect_urls = ["${origin}/account/auth/callback"]`, `additional_redirect_urls = ["${origin}/account/auth/callback", "${origin}/admin/auth/callback"]`);
+  // Only the owned template's canonical table/key spelling can be overridden.
+  for (const line of config.split(/\r?\n/)) {
+    const setting = line.split("#", 1)[0].trim();
+    if (/rate_limit|email_sent/.test(setting) && !/^(?:\[auth\.rate_limit\]|email_sent\s*=\s*[0-9]+)$/.test(setting)) {
+      throw new Error("Ambiguous managed acceptance email rate limit");
+    }
+  }
+  const sections = [...config.matchAll(/^[ \t]*\[([^\r\n]+)\][^\r\n]*(?:\r?\n|$)/gm)];
+  const limits = sections.filter(section => section[1] === "auth.rate_limit");
+  if (limits.length > 1) throw new Error("Ambiguous managed acceptance email rate limit");
+  if (!limits.length) return `${config}${config.endsWith("\n") ? "" : "\n"}\n[auth.rate_limit]\nemail_sent = 20\n`;
+  const section = limits[0], start = section.index + section[0].length;
+  const end = sections[sections.indexOf(section) + 1]?.index ?? config.length;
+  const body = config.slice(start, end);
+  const settings = [...body.matchAll(/^[ \t]*email_sent[ \t]*=[^\r\n]*/gm)];
+  if (settings.length > 1) throw new Error("Ambiguous managed acceptance email rate limit");
+  const rendered = settings.length
+    ? body.replace(/^([ \t]*email_sent[ \t]*=[ \t]*)[0-9]+/m, (_, prefix) => `${prefix}20`)
+    : `email_sent = 20\n${body}`;
+  return config.slice(0, start) + (section[0].endsWith("\n") ? "" : "\n") + rendered + config.slice(end);
+}
 async function loadAcceptanceModule() {
   // Scoped tsImport namespaces break builtin requires in the build tooling on Node 24.
   const { register } = await import("tsx/esm/api");
@@ -101,9 +127,7 @@ export async function main(args = process.argv.slice(2)) {
       const base = managedPortBase = await managedPorts(); origin = `http://127.0.0.1:${base + 10}`;
       mkdirSync(join(directory, "supabase"), { mode: 0o700 });
       const replacements = { PROJECT_ID: project, SHADOW_PORT: base, API_PORT: base + 1, DB_PORT: base + 2, STUDIO_PORT: base + 3, MAIL_PORT: base + 4, POOLER_PORT: base + 9, APP_PORT: base + 10 };
-      const config = readFileSync("config/public-reference-subscription-supabase.toml", "utf8").replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => {
-        if (!(key in replacements)) throw new Error("Unknown managed configuration placeholder"); return String(replacements[key]);
-      }).replace('additional_redirect_urls = ["http://127.0.0.1:' + (base + 10) + '/account/auth/callback"]', 'additional_redirect_urls = ["' + origin + '/account/auth/callback", "' + origin + '/admin/auth/callback"]');
+      const config = renderManagedAcceptanceConfig(readFileSync("config/public-reference-subscription-supabase.toml", "utf8"), replacements);
       writeFileSync(join(directory, "supabase/config.toml"), config, { mode: 0o600 });
       const names = must("docker", ["ps", "-a", "--format", "{{.Names}}"]);
       if (names.split("\n").some(name => name.endsWith(`_${project}`))) throw new Error("Identity project already exists");
