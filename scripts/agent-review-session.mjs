@@ -6,6 +6,7 @@ import { basename, delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
+import { env as processEnvironment } from 'node:process';
 import { continueOwner, demand, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 
 const execute = promisify(execFile);
@@ -26,7 +27,7 @@ export async function captureCommittedReviewCandidate(cwd, base, head, runGit = 
   }
   return { base, head, tree, changedPaths, modeChanged, clean: true };
 }
-export async function captureSessionCandidate(cwd, base, { runGit = git, env = process.env } = {}) {
+export async function captureSessionCandidate(cwd, base, { runGit = git, env = processEnvironment } = {}) {
   const head = (await runGit(cwd, 'rev-parse', '--verify', 'HEAD^{commit}')).trim();
   const forks = (await runGit(cwd, 'merge-base', '--all', head, 'origin/main')).trim().split('\n');
   demand(forks.length === 1 && SHA.test(forks[0]), 'HEAD must have a single fork point with origin/main');
@@ -66,7 +67,7 @@ export function runReviewCommand(command, args, cwd, env) {
     child.once('close', code => { cleanup(); resolve(code ?? 1); });
   });
 }
-export async function verifyCandidateCommand({ cwd, session, command, args = [], resource, env = process.env, snapshot = captureSessionCandidate, run = runReviewCommand }) {
+export async function verifyCandidateCommand({ cwd, session, command, args = [], resource, env = processEnvironment, snapshot = captureSessionCandidate, run = runReviewCommand }) {
   demand(env.AI_RESOURCE_GATE_ACTIVE !== '1' && !env.OPENLUP_HEAVY_ACTIVE, 'nested verification inside the resource broker is refused');
   const before = await snapshot(cwd, session.candidate.base); const decision = verdict(session, before, Date.now()); demand(decision.ok, decision.reason, decision.code);
   if (resource) {
@@ -78,7 +79,7 @@ export async function verifyCandidateCommand({ cwd, session, command, args = [],
   const after = await snapshot(cwd, before.base); const final = verdict(session, after, Date.now()); demand(final.ok, final.reason, final.code);
   return code;
 }
-export async function sessionMain(argv = process.argv.slice(2), { cwd = process.cwd(), env = process.env } = {}) {
+export async function sessionMain(argv = process.argv.slice(2), { cwd = process.cwd(), env = processEnvironment } = {}) {
   const [verb, ...args] = argv; demand(['prepare', 'record', 'continue', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, continue "<note>", verify, status, receipt <PR>, or verify-command');
   const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   await mkdir(directory, { recursive: true });
