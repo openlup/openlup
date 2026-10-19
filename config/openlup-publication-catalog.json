@@ -70,10 +70,6 @@
       "class": "public-output"
     },
     {
-      "path": ".github/workflows/native-review-admission.yml",
-      "class": "public-output"
-    },
-    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -1211,6 +1207,10 @@
     },
     {
       "path": "docs/platform/plans/early-package-gates.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/native-review-simplification-proposal.md",
       "class": "platform-documentation"
     },
     {
@@ -3674,11 +3674,11 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/agent-review-gate.test.ts",
+      "path": "scripts/agent-review-decide.mjs",
       "class": "public-output"
     },
     {
-      "path": "scripts/agent-review-hook.mjs",
+      "path": "scripts/agent-review-gate.test.ts",
       "class": "public-output"
     },
     {
@@ -3811,6 +3811,14 @@
     },
     {
       "path": "scripts/checkout-refusal-recovery-evidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-test-scope.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-test-scope.test.ts",
       "class": "public-output"
     },
     {
@@ -20572,16 +20580,6 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
-      "name": "pretest:required",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
-      "publicDocs": [
-        "CONTRIBUTING.md",
-        "README.md"
-      ],
-      "publicCiEntrypoint": ".github/workflows/published-tree-ci.yml",
-      "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
-    },
-    {
       "name": "test",
       "command": "node scripts/run-vitest.mjs run",
       "publicDocs": [
@@ -20592,8 +20590,8 @@
       "seededFalsifier": "scripts/oss-published-tree-check.test.ts"
     },
     {
-      "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts server/runtime/auth/oidcComposition.test.ts server/adapters/captured/transactionalDelivery.test.ts server/adapters/supabase/communications/communicationSync.test.ts server/adapters/supabase/communications/newsletterWebhookPort.test.ts server/adapters/supabase/communications/publicPreferenceToken.test.ts server/adapters/supabase/transactionalDeliveryStore.test.ts server/infra/communications/integrationEventSignature.test.ts server/infra/email/emailNotificationControl.test.ts src/domains/communications/consentPolicy.test.ts src/domains/communications/newsletterIntegrationContracts.test.ts src/domains/communications/shipmentNotifications.test.ts src/domains/communications/status.test.ts src/domains/communications/transactionalDeliveryPort.test.ts src/domains/communications/unsubscribeToken.test.ts tests/postgres/communicationsNative.test.ts server/runtime/communications/communicationsLifecycleBinding.test.ts",
+      "name": "test:scoped",
+      "command": "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -20605,7 +20603,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-90c205493c6bf12c8e5b146186f3a71de6cbf1bfeee9790dc2bbc3254375d675"
+      "digest": "sha256-2da068abaa57f528453853e6551da796a6a5d6e96f9bbb407c01493fdafac3c7"
     },
     {
       "path": "packages/core/package.json",

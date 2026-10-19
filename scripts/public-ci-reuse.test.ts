@@ -7,7 +7,7 @@ function fixture() {
   const run = { id: 100, workflow_id: 30, run_attempt: 2, event: "merge_group", head_sha: sha,
     path: ".github/workflows/published-tree-ci.yml", repository, head_repository: repository,
     head_branch: "gh-readonly-queue/main/pr-1", status: "completed", conclusion: "success" };
-  const jobs = ["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "test-full", "pgtap",
+  const jobs = ["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "pgtap",
     "test-full-shard (1/4)", "test-full-shard (2/4)", "test-full-shard (3/4)", "test-full-shard (4/4)"].map((name, id) => ({
     id: id + 1, name, head_sha: sha, status: "completed", conclusion: "success",
   }));
@@ -76,17 +76,17 @@ describe("exact-commit post-merge reuse", () => {
   it.each(["failure", "cancelled", "skipped", "timed_out", ""])(
     "refuses a %s full-root aggregate even when the run is green", async conclusion => {
       const f = fixture();
-      f.jobs.find(job => job.name === "test-full")!.conclusion = conclusion;
+      f.jobs.find(job => job.name === "test")!.conclusion = conclusion;
       expect(await completedMergeGroup(f.input)).toBe(false);
     },
   );
   it("refuses missing or duplicate full-root aggregates", async () => {
     const missing = fixture();
-    missing.jobs.splice(missing.jobs.findIndex(job => job.name === "test-full"), 1);
+    missing.jobs.splice(missing.jobs.findIndex(job => job.name === "test"), 1);
     missing.result.total_count--;
     expect(await completedMergeGroup(missing.input)).toBe(false);
     const duplicate = fixture();
-    duplicate.jobs.push({ ...duplicate.jobs.find(job => job.name === "test-full")!, id: 99 });
+    duplicate.jobs.push({ ...duplicate.jobs.find(job => job.name === "test")!, id: 99 });
     duplicate.result.total_count++;
     expect(await completedMergeGroup(duplicate.input)).toBe(false);
   });

@@ -168,91 +168,49 @@ precondition, violated requirement and effect on correctness or acceptance;
 optional advice cannot block. The maintainer does not read each diff or move
 prompts/reports between sessions.
 
-Commit repairs before review. A narrow repair within unchanged approved intent,
-scope and base may use one fresh cold closure reviewer only after complete prior
-coverage is retained and exact candidate lineage is validated. Supply neutral
-prior finding cards, the actual repair and interaction context; never supply old
-verdicts or author history. The reviewer independently confirms semantic risk:
-control, security, schema, executable instruction and unknown repairs require
-two reviews, regardless of filenames. Closure must account for every prior
-material finding and cannot renew inherited evidence expiry. Complete prior
-coverage permits focused repair reviews; unavailable or expired coverage requires
-two fresh reviews of the full approved scope.
+Commit repairs before review. Give fresh reviewers the open finding cards and
+obtain passing review of the new tree by the required number of reviewers.
+Every material finding must be closed; optional advice never blocks. Evidence
+expires 24 hours after the earliest counted PASS report for the current candidate.
 
 Handle `needs_agent_review` within the active task. Unchanged prepare preserves
-evidence. Repair/review continuation cycles 1–3, including full-review
-escalation, are automatic; cycle 3 is a full review by two fresh full reviewers.
-After a cycle 3 that did not pass, the next repair `prepare` reports
-`needs_rescope` until the supervisor records a rethink with one fresh cold simplicity reviewer. The rethink
-is a pause, not an owner gate. It admits two more automatic cycles, 4 and 5, and
-cycle 4 gets a full review. Cycle 6 needs a fresh explicit owner decision bound to
-the preserved fifth request and the next candidate, with explicit full refresh
-and two fresh full reviewers; a seventh refuses. No reset, bypass or automatic
-merge follows. Changed intent requires explicit regrouping. The review base is the
-candidate's fork point (`git merge-base HEAD origin/main`), so verify and pre-push keep
-accepting a reviewed candidate while `main` moves ahead. A stacked task may export
-`OPENLUP_STACK_BASE` with the exact predecessor between that fork point and HEAD.
-Documentation and local native review use this same pin, bound in the candidate;
-source and group admission require it on actual main before admitting the upper
-change. A predecessor-only landing preserves that exact candidate and its
-existing expiry/history. Ordinary independent PRs need no pin. Do not rebase or merge
-`main` only to catch up: the merge queue integrates. Resolve a textual conflict by
-merging `main`: that moves the fork point and requires fresh full-scope review,
-preserving history and budget. A rebase discards that lineage, so `prepare` reports
-`needs_rescope`; regroup within existing authority without restarting the counter or
-dropping findings. When criteria,
-required review and checks pass, stop optional edits and continue only authorized
-delivery steps. Missing, stale, expired, dirty, partial or unclosed evidence, including
-evidence whose unpinned fork point or pinned candidate has changed, refuses verify and pre-push once installed enforcement passes its live refusal tests. Where the
-maintainer-local layer is installed, pre-push also refuses a task-worktree push
-whose exact clean tree has no stamp from a passing `openlup-dev verify`. Native
-session receipts are process evidence, not cryptographic remote attestation or
-hard signer isolation. No model API, backend, new host or copied authentication
-is required. Review grants no publication, merge, secret or settings authority.
+evidence. Three repair cycles are automatic; after that `needs_owner` requires
+the owner to decide whether to continue, narrow or stop. Record an authorized
+continuation with `continue "<note>"`, which adds three cycles. A rethink of the
+approach remains recommended practice: question the criteria and tool, group
+findings by root cause, consider removing the cause or narrowing the change,
+and record the lesson `pattern → simpler path`.
 
+The review base is the candidate's fork point (`git merge-base HEAD origin/main`).
+A stacked task may export `OPENLUP_STACK_BASE` with the exact predecessor between
+that fork point and HEAD. Documentation and local native review use this same
+pin; admission requires it on actual main. A predecessor-only landing preserves
+the candidate and its expiry. Do not rebase or merge `main` only to catch up.
+For a conflict or failed carry-over, merge `main` and re-review. `prepare --new`
+records a changed intent or a rebase in the same append-only session history; findings, reviewers and the repair count carry on. Only
+`continue` adds cycles.
 
-The rethink reviews the approach, not the last finding. It first questions the
-goal, the criteria and the checking tool: do the criteria demand more than this
-guide does, for example lint that must stop deliberate evasion although review
-handles that; is the enforcing mechanism the wrong tool; and can part of the
-change be removed instead of hardened? It groups every finding card so far by class, names the pattern and its root cause, and tests the
-approach against the simplicity rule above. One recurring class means
-whack-a-mole: look for the cause rather than the next instance. It records the
-simpler alternatives considered, such as removing the cause, reusing an existing
-tool, an allowlist instead of a growing denylist, or rebuilding or narrowing the
-change. It then records one decision:
-- keep the approach, only with evidence that the findings converge;
-- change the approach within the same intent and scope;
-- narrow the change within the approved scope and defer the rest;
-- change intent, which goes to the owner or a recorded delegate as an owner
-  regroup.
+When criteria, required review and checks pass, stop optional edits and continue
+only authorized delivery. Missing, stale, expired, dirty, partial or unclosed
+evidence refuses verify and pre-push once installed enforcement passes its live
+refusal tests. Where installed, pre-push also requires the exact clean tree's
+passing `openlup-dev verify` stamp. Native session receipts are process evidence,
+not cryptographic remote attestation or hard signer isolation. Source objects
+are trusted through Git's own hashing. No model API, backend, new host or copied
+authentication is required. Review grants no publication, merge, secret or settings authority.
 
-It ends with a one-line lesson, `pattern → simpler path`. History, findings, fork
-point and cycle numbering continue unchanged. These decisions grant no
-publication, merge or settings authority.
-
-Before cycle 1, the author reads [Review lessons](CONTRIBUTING.md#review-lessons) and puts a short
-simplicity pre-check, the smallest adequate alternative considered, into the
-first review request. The supervisor adds each rethink lesson to that section,
-and promotes a recurring lesson into the guidance it concerns in the same
-delivery; that section owns the route.
+Before the first review, read [Review lessons](CONTRIBUTING.md#review-lessons)
+and put the simplicity pre-check, the smallest adequate alternative considered,
+in the first review request as prose. Add rethink lessons there and promote a
+recurring lesson into its owning guidance in the same delivery.
 
 The optional [native queue admission](docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
-keeps reviewers in this same task and subscription. It was active at the dated
+keeps reviewers in this task and subscription. It was active at the dated
 inspection in [Development and release](docs/platform/DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
-The supervisor supplies current source evidence for the reviewed PR head and,
-only for a merge group the source review does not carry over to, integration
-evidence for the exact merge-group run/attempt. Admission observes the queue's
-actual base, head, tree and source identity.
-
-When integration review is expected, have fresh reviewers inspect the complete
-immutable expected integration content before arming the queue.
-That inspection is preparation, with no verdict for a future commit. After the
-actual group exists, prepare its native request; each reviewer independently
-confirms the actual base, head, tree, parents, criteria, full scope and content equality,
-and evaluates any delta before concluding the required full review. Reports
-complete after that prepare and bind its exact request and candidate. Existing
-carry-over, freshness, coverage, counters and receipt rules remain binding.
+The supervisor posts `node scripts/agent-review-session.mjs receipt <PR>` output
+as a PR comment with `gh pr comment <PR> --body-file -`, within delivery authority,
+as soon as the pull request is open and ready, and waits for actual admission.
+Admission checks the live PR head, tree, reviewer floor and expiry.
 
 A source review carries over to a merge group when either:
 - the group tree equals the reviewed tree; or
@@ -263,33 +221,12 @@ A source review carries over to a merge group when either:
   identity fence, package manifests and lockfiles, migrations). Other check
   configuration is not on this list; the group's mechanical checks run with it.
 
-Then the pull request's source receipt admits the group, with no new receipt
-and no live session. The six mechanical checks on the group tree are relied on
-for behavioural interaction. Otherwise the run-keyed receipt with two fresh
-independent full integration reviews applies, under the same approved
-criteria.
-
-An author statement cannot establish that the change does not interact with the
-base. Keep the source branch unchanged and record group evidence
-separately. The existing nonqueue base-integration and repair-budget rules remain.
-The supervisor creates the bounded transport input with
-`node scripts/agent-review-queue.mjs input-source PR source-session.json` for the
-pull request, or
-`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json group-session.json`
-for a merge-group run whose source review does not carry over, where
-`group-session.json` is a new native session, not a continuation of the source
-session, with two fresh full integration reviews of the exact group base, head
-and tree, prepared as [Required and raw checks](CONTRIBUTING.md#required-and-raw-checks) describes. The supervisor submits the input
-through the main-only workflow within authorized delivery and waits for actual
-admission in this conversation. The script does not dispatch or
-authorize delivery. Missing evidence remains blocked; no maintainer handoff is
-needed for routine review. Queue rebuild recovery is bounded at two retries and
-does not reset repair cycles. Changing queue settings remains a maintainer action.
-Submit the source receipt as soon as the pull request is open and ready, and,
-when the source review does not carry over, the run-keyed receipt as soon as the
-merge-group run exists. The complete order, with
-both commands, is in [Deliver a change](CONTRIBUTING.md#deliver-a-change). The arming, receipt-timeout and flake rules are in
-[Merge queue](CONTRIBUTING.md#merge-queue).
+The source receipt then admits the group without a new receipt or live session;
+the six mechanical checks on the group tree cover behavioural interaction.
+Otherwise the group is rejected: merge `main` and re-review. Queue rebuild
+recovery remains bounded at two retries and does not reset repair cycles.
+Settings remain a maintainer action; see [Deliver a change](CONTRIBUTING.md#deliver-a-change)
+and [Merge queue](CONTRIBUTING.md#merge-queue).
 
 Run `npm run oss:published-tree -- --policy` during implementation. Its report
 names the owner section for each changed source responsibility. Update that
