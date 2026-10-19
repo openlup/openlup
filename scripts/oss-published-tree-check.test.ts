@@ -158,7 +158,7 @@ describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
     expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm test"]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm test -- --shard=${{ matrix.shard }}/4"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -208,8 +208,32 @@ describe("complete public CI", () => {
       expect(tracked.some((path) => (path === target || path.startsWith(`${target}/`)) && /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path)), target).toBe(true);
     }
   });
+  it("partitions complete root discovery across exactly four independent runners and fails closed", () => {
+    const shard = workflowJob("test-full-shard");
+    expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/4)");
+    const eventFence = workflowJob("test").split("\n").find(line => line.startsWith("    if:"))!;
+    expect(shard).toContain(eventFence);
+    expect(workflowJob("test-full")).toContain(eventFence.replace("${{ ", "${{ always() && "));
+    expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 4\n      matrix:\n        shard: [1, 2, 3, 4]\n");
+    expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
+    expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
+    expect(shard).toContain("          fetch-depth: 0\n");
+    expect(shard).toContain("          cache: npm\n");
+    const aggregate = workflowJob("test-full");
+    expect(aggregate).toContain("    name: test-full\n");
+    expect(aggregate).toContain("    needs: [test-full-shard]\n");
+    expect(aggregate).toContain("if: ${{ always() && github.event.repository.private == false &&");
+    expect(aggregate).toContain("SHARD_RESULT: ${{ needs.test-full-shard.result }}");
+    expect(workflowCommands(aggregate)).toEqual(['test "$SHARD_RESULT" = "success"']);
+    for (const result of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
+      const check = spawnSync("bash", ["-e", "-c", workflowCommands(aggregate)[0]!], {
+        env: { SHARD_RESULT: result },
+      });
+      expect(check.status, result).toBe(result === "success" ? 0 : 1);
+    }
+  });
   it("runs root and database diagnostics independently of each other and the required tests", () => {
-    for (const name of ["install-proof", "test", "test-full", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
+    for (const name of ["install-proof", "test", "test-full-shard", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
     for (const name of ["install-proof", "test"]) {
       const job = workflowJob(name);
       expect(job).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
@@ -283,6 +307,13 @@ describe("complete public CI", () => {
       expect(full.error).toBeUndefined();
       expect(full.status).toBe(0);
       expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run"]);
+      for (const shard of [1, 2, 3, 4]) {
+        const args = ["run", `--shard=${shard}/4`];
+        const result = run(args, 29);
+        expect(result.error).toBeUndefined();
+        expect(result.status).toBe(29);
+        expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(args);
+      }
       const required = run(["run", ...PUBLIC_REQUIRED_TEST_SCOPE], 29);
       expect(required.error).toBeUndefined();
       expect(required.status).toBe(29);
@@ -335,7 +366,7 @@ describe("what the workflow may not contain", () => {
 
 describe("the workflow stays in step with what it claims to run", () => {
   it("allows only expensive main-push work to reuse exact-commit group proof", () => {
-    for (const name of ["typecheck", "install-proof", "test", "test-full", "pgtap"]) {
+    for (const name of ["typecheck", "install-proof", "test", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain("id: reused\n        if: github.event_name == 'push'");
       const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
@@ -360,11 +391,11 @@ describe("the workflow stays in step with what it claims to run", () => {
   });
   it("exposes six required contexts, two raw diagnostics and optional native admission with trusted event fences", () => {
     const jobs = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map((match) => match[1]);
-    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test", "test-full", "self-check", "gitleaks", "pgtap", "native-review"]);
+    expect(jobs).toEqual(["dco", "typecheck", "install-proof", "test", "test-full-shard", "test-full", "self-check", "gitleaks", "pgtap", "native-review"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
     expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(8);
-    for (const job of jobs.filter((name) => name !== "native-review")) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
+    for (const job of jobs.filter((name) => !["native-review", "test-full", "test-full-shard"].includes(name))) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
     expect(workflow.replace("    name: dco", "    name: dco-renamed")).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
     expect(workflow.replace(predicate, `${predicate.slice(0, -3)} && false }}`)).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
   });
@@ -477,7 +508,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(uses.length).toBeGreaterThan(0);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
     expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24");
-    for (const name of ["typecheck", "install-proof", "test", "test-full", "pgtap"]) {
+    for (const name of ["typecheck", "install-proof", "test", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain('test "$(node -p \'process.versions.node.split(".")[0]\')" = "24"');
       expect(job).toContain('test "$(npm --version)" = "11.19.0"');
@@ -500,7 +531,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   it("scopes the test run to directories that still exist", () => {
     const scope = [...PUBLIC_TEST_SCOPE];
     expect(workflow).toContain("run: npm test");
-    expect(workflow).not.toContain("npm test --");
+    expect(workflow.match(/run: npm test[^\n]*/gu)).toEqual(["run: npm test -- --shard=${{ matrix.shard }}/4"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(scope).toEqual(["api", "mcp", "scripts", "server", "src", "tests"]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...scope], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);
