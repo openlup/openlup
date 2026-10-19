@@ -30,6 +30,15 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The reference payment webhook module delegates its generic capped body reader,
+hex-HMAC verifier and constant-time comparison to `@openlup/platform/http`.
+Its `readRawBody` binding retains the declared `VercelRequest` parameter and the
+same package function object; the other four generic names are re-exports.
+Stripe verification and its 300-second replay tolerance remain local. This
+shared primitive does not replace the Auth Standard Webhooks or Resend signature
+protocols. The [communications owner](../../src/domains/communications/README.md#packaged-server-algorithms)
+describes the distinct verification boundaries.
+
 Opt-in direct OIDC composition authenticates a signed external issuer/subject
 into a deterministic UUID, then reuses the existing reconcile, actor-scoped
 profile and live membership ports. A token supplies no operator role. Keep one

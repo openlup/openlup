@@ -8,6 +8,15 @@
   purposes, receipt replay and send/ledger order. Add generic webhook primitives
   to the existing `./http` entry and three byte-identical canonical SQL projections.
   Browser rendering/content, activation and deployment ownership stay with hosts.
+- Apply E2 payment-helper delegation with identical export names and declared
+  signatures, including `readRawBody`'s `VercelRequest` signature and function
+  identity. Keep Stripe-specific verification local.
+- Mirror X1 required selectors, including the restored Auth email hook witness.
+  X2 counts 104 existing witnesses + 8 synthetic cases = 112 (12 over the authored
+  allowance); 156 generated boundary iterations are separate. The summed local
+  file medians are 0.657498 s against the binding +30 s hosted-time
+  allowance. This is local timing evidence; M04 post-loop clean-up must revisit
+  the accepted case overrun. Existing package artifact caps remain binding.
 
 Migration: this opt-in import adds no schema forward or activation. Supply the
 existing reference renderer, egress/environment/control policy or equivalent host
