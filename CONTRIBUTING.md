@@ -715,6 +715,10 @@ module's source: one set version `0.N.P` across publishable packages,
 the patch-set API check, and the skip, resume and full states of a set.
 The same directory holds the package release-shape checks and the test that
 loads the lint configuration with a conditional `imports` map.
+`packages-check.test.ts` retains direct tag/set selection, cold-cleanup safety
+and API migration-note refusals. The required cold package gate owns the actual
+build, pack and isolated install proof; the root tests do not repeat it through
+synthetic publisher and set-preflight workflow executions.
 The public test job appends the profile and tooling falsifier selectors to
 `test:required`, so one Vitest invocation schedules all required root files.
 Hosted package gates run in `install-proof`, alongside `test`, without sharing
