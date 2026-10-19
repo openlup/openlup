@@ -24,7 +24,7 @@ export async function createOidcIssuerFixture(origin: string, adminPassword: str
     await adminRequest("/realms", "POST", { realm, enabled: true, sslRequired: "none", accessTokenLifespan: 8,
       ssoSessionIdleTimeout: 1800, ssoSessionMaxLifespan: 3600, revokeRefreshToken: false,
       clients: ["customer-rp", "operator-rp", "foreign-rp"].map(clientId => ({ clientId, enabled: true, publicClient: true,
-        standardFlowEnabled: true, directAccessGrantsEnabled: false, defaultClientScopes: ["profile", "email"], redirectUris: [redirectUri], webOrigins: [new URL(redirectUri).origin],
+        standardFlowEnabled: true, directAccessGrantsEnabled: false, defaultClientScopes: ["basic", "profile", "email"], redirectUris: [redirectUri], webOrigins: [new URL(redirectUri).origin],
         attributes: { "pkce.code.challenge.method": "S256" },
         protocolMappers: [{ name: "api-audience", protocol: "openid-connect", protocolMapper: "oidc-audience-mapper", config: {
           "included.custom.audience": clientId === "customer-rp" ? "customer-api" : clientId === "operator-rp" ? "operator-api" : "foreign-api",
