@@ -20,6 +20,8 @@ separately authorized submission. No release, deployment or activation grant.
 | X2 | Count selected existing and synthetic cases; separate generated boundary iterations; +30 s summed median file time binds, with recorded case overruns revisited after the loop. |
 | X3 | Add the approved 1,024 B type-only contracts browser limit; no existing cap increase. |
 | X4 | Documentation CLI fixture registration only: communications domain and matching route. |
+| P3-1 owner read | Raise only the contracts browser-entry limit to about twice its complete built-entry minified+gzip measurement, clean rounding. |
+| P3-2 | Replace only the installed contracts empty-value assertion with an explicit value inventory and render/isolation proof; all other consumer checks retained; two reviewers. |
 | Narrowing | Package only agnostic algorithms; maintained mail modules/factory and vendor-directory donors remain unchanged reference adapters; no new paths. |
 | Owner directive | Public module code is provider-agnostic; private vendor bindings stay at C5; reference preservation has only the explicit B1 exceptions below and neutrality stays green. |
 | B1 option (a), X5/X6 | Four raw-injection guard sites; invoice fixture admission and one refusal case with every prior assertion unchanged; minimal Auth bridge; maintained factory admission. All other frozen bytes and default behavior stay exact; two full reviews. |
@@ -33,8 +35,8 @@ authorized release/adoption/staging. D2's maintained default remains reference-o
 | PR | Bounded scope |
 | --- | --- |
 | P1 | Agnostic public-copy extraction, exports/graph, reference shims, SQL projections and conformance/consumer proof. |
-| P2 | Retain the admitted-observation and lost-callback polling extraction through existing domain wrappers; reuse P1 transport/results/capture. Protocol mapping and atomic persistence remain reference-owned. Working-tree implementation; clean-candidate gates and native review pending. |
-| P3 | Content/presentation and Auth hook factories; proven-identical verification primitives; browser value closure. |
+| P2 | Retain the admitted-observation and lost-callback polling extraction through existing domain wrappers; reuse P1 transport/results/capture. Protocol mapping and atomic persistence remain reference-owned. Merged in #207 at `45bdce5`; no observation/polling behavior changes in P3. |
+| P3 | Pure renderer/builders and copy-injected content factories in contracts; existing Auth host injection retained; independent verification policies unchanged; browser value closure. |
 | P4 | Agnostic effects/receipt/readback and reconciliation engines behind neutral ports; vendor mapping stays in the reference adapter; marketing automation is agnostic ports/contracts/conformance only. |
 | B1 | Mandatory package admission and policy guard at every supported network-mail injection. Four reference guard insertions, X5 invoice fixture/refusal case, X6 Auth bridge and maintained default admission. Local verification below; supervisor owns the signed candidate and two full reviews. |
 | B2 | Separately approved neutral `pl`/`en` defaults; enumerate changed public expectations and retain private legacy bindings. |
@@ -79,6 +81,46 @@ migration, graph edge, required selector or new executor is introduced. Existing
 transport identifier compatibility fields remain; P2 does not claim to remove
 all legacy vocabulary. Effects/consent/native-store work stays in P4 and egress
 behavior stays in B1.
+
+## P3 boundary
+
+The existing renderer and nine block constructors move to
+`./communications/contracts`, reusing its canonical email types. Thirty-two
+per-template factories assemble the existing commerce/subscription content from
+host-selected copy and injected order-reference, payment-cause or marketing-footer
+helpers. Reference facades preserve signatures, translating legacy `petName` to
+neutral `contextName`. Copy packs, presentation, brand, localized review routes,
+origin selection and sender activation remain reference-owned. No manifest,
+export, dependency, graph, schema or selector changes are introduced.
+
+The existing Auth hook factory still receives the renderer through its host
+facade, and the public inactive content binding still refuses with 503. Auth,
+mail-provider, integration-event and generic HTTP verification policies remain
+separate; no crypto implementation changes. P3 itself preserves both frozen vendor directories; B1 has only its explicit
+exceptions below. P3 does not add an executor or a subscription write.
+
+P3-2 permits replacing only the installed consumer's empty contracts namespace
+assertion with an exact value inventory and a rendering/isolation proof, retaining
+all other checks. The owner read of 2026-10-19 permits a contracts browser limit
+of about twice the measured complete built entry, rounded to a clean number;
+that is the only authorized change to the release-gates file. Measurement uses
+`browserEntryBytes` with every runtime export included, minification and gzip.
+The exact measurement and limit are recorded with the final verification below.
+Two full native reviews remain required, including the control paths.
+
+W4 captures the current public output before refactoring: invoice/correction,
+both roles × both locales × active/pending, inquiry confirmation/notification,
+legacy unsubscribe success/replay and signed English unsubscribe's existing
+Polish document-language attribute. Five isolated plants (invoice locale, role
+status, inquiry reply target, unsubscribe language and replay copy) fail; restored
+W4 passes 14 cases. The template baseline passes 35 cases before extraction,
+covering 34 assemblers × both locales × 24 optional-field scenarios and all nine
+block kinds with complete rendered chrome. One initial fixture supplied a null
+required reorder CTA; correcting that fixture completed the unchanged-source
+baseline. Existing preview, registry, fulfillment, dunning and W1 tests remain.
+
+The B1/P3 merge explicitly admits W4's existing synthetic invoice/correction
+sender. All output snapshots, assertions and case counts remain unchanged.
 
 ## B1 egress boundary
 
@@ -161,15 +203,47 @@ Required-selection additions: **13** (four mirrors; no pre-P1 removal).
 | P1 synthetic witnesses | 36 | 0.499998535 |
 | P2 synthetic witnesses (32 package + 45 reference) | 77 | 0.015499756 |
 | P1 + P2 counted subtotal | **182** | **0.567458740** |
+| P3 synthetic witnesses (14 W4 + 35 template/render + 2 package) | 51 | 0.536972900 |
+| P1 + P2 + P3 counted subtotal | **233** | **1.104431640** |
+| B1 synthetic witnesses (23 package + 21 reference/caller) | 44 | 0.147985352 |
+| Cumulative counted additions | **277** | **1.252416992** |
 | P1 boundary iterations, separate | 120 | 0.053746826 |
 | P2 boundary iterations, separate | 6 | 0.006455322 |
 | P1 + P2 boundary subtotal | **126** | **0.060202148** |
-| P1 + P2 runner subtotal | **308** | **0.627660889** |
-| B1 synthetic witnesses (23 package + 21 reference/caller) | 44 | 0.147985352 |
+| P3 boundary iterations, separate | 114 | 0.098468994 |
+| P1 + P2 + P3 boundary subtotal | **240** | **0.158671142** |
 | B1 generated source-boundary iterations | 3 | 0.005675293 |
-| Cumulative counted additions | **226** | **0.715444092** |
-| Cumulative boundary iterations | **129** | **0.065877441** |
-| Cumulative runner additions | **355** | **0.781321534** |
+| Cumulative boundary iterations | **243** | **0.164346435** |
+| P1 + P2 runner subtotal | **308** | **0.627660889** |
+| P1 + P2 + P3 runner subtotal | **473** | **1.263102784** |
+| Cumulative runner additions | **520** | **1.416763429** |
+
+At P3 close, against the cumulative **+100 authored/selected-case / +30 s** allowance,
+P3 adds **51 runner cases** and **114 generated boundary iterations**,
+with **0.635441895 s** summed file medians. Inherited P2 totals were
+182 counted cases, 126 boundary iterations and 0.627660889 s. X2 permits the
+recorded cumulative **133-case overrun** because
+**1.263102784 s < +30 s**. No allowance resets; post-loop cleanup
+must revisit the overrun. At P3 close the remaining time allowance was **28.736897216 s**;
+baseline plus delta was **596.863102784 s**.
+These are local timing proxies; hosted median time remains the binding limit.
+The existing contracts case is retained: only its two added cases count as new,
+while its entire file time is conservatively included. The 34 durable template
+cases cover 1,632 input scenarios inside those tests; these are disclosed input
+scenarios, not exempt boundary iterations. No root selector or mirror changes
+are made; W4 remains outside required selection and runs explicitly and in the
+complete suite.
+
+P3's independent pre-extraction donor/current loaders have exact deep equality
+for **1632 complete content and rendered results**, with no normalization.
+All nine block kinds additionally retain their pre-extraction whole-output
+fingerprint. The complete built `./communications/contracts` entry measures
+**5,992 B minified+gzip**, using `browserEntryBytes` on built dist.
+The owner-read cap is **11,776 B** (twice the measurement, nearest 512 B),
+replacing only the former 1,024 B limit. No other release-gates field changes.
+An isolated working-tree copy also passes the modified installed-consumer proof,
+optional-peer isolation and both declaration-resolution modes. This supplements,
+and does not replace, clean signed-candidate packed-artifact admission.
 
 At P2 close, against the cumulative **+100 authored/selected-case / +30 s** allowance,
 P2 added 77 counted cases and six generated boundary iterations, with
@@ -184,8 +258,9 @@ B1 adds **44 counted synthetic cases** and **3 generated boundary
 iterations**, with **0.153660645 s** summed file medians. Existing changed
 witness files are charged in full for time; their unchanged 21 cases are not
 newly added to required selectors. Only the one new case in each is counted as
-an addition. The inherited case overrun becomes **126**, with
-**0.781321534 s < +30 s** and **29.218678466 s** remaining.
+an addition. With P3 included, the inherited case overrun becomes **177**, with
+**1.416763429 s < +30 s** and **28.583236571 s** remaining; baseline plus
+delta is **597.016763429 s**.
 The hosted median bound and post-loop revisit remain binding; no allowance resets.
 Seven unrelated CI cases already present in the assigned base are excluded from
 B1's delta. Three identical passing selections supply these conservative local

@@ -1,0 +1,71 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`P3 public donor whole-output parity > abandonedCartEmailContent: complete content and rendered bytes 1`] = `"eb1d0d576575f2e29e3d865cdfd6fb6169d1d4638fdfcffe7740241731c33984"`;
+
+exports[`P3 public donor whole-output parity > backInStockEmailContent: complete content and rendered bytes 1`] = `"438ac24aa19ac28656095e6ab550e9d88e9a566f08614b3dcd7a41e17c7d2f64"`;
+
+exports[`P3 public donor whole-output parity > checkoutExpiredEmailContent: complete content and rendered bytes 1`] = `"2a62a8564de3d558237420d786aca25c4ca659633ac8741ea584818fc1257e22"`;
+
+exports[`P3 public donor whole-output parity > checkoutRecoveryEmailContent: complete content and rendered bytes 1`] = `"0d0c708b46ee81b028bdd6adc66800b5e85c64cd593389ce0633e656f7b5f69f"`;
+
+exports[`P3 public donor whole-output parity > orderCanceledEmailContent: complete content and rendered bytes 1`] = `"c393dbcb5e387c49f382e35ec60bf50886fbbb76f99f55d4726c740a8b956476"`;
+
+exports[`P3 public donor whole-output parity > orderDraftEmailContent: complete content and rendered bytes 1`] = `"aa9a60779758bc9a529d6dc3ecdc406de765d3442c51f9ed6ea8a23895e26c9d"`;
+
+exports[`P3 public donor whole-output parity > orderPaidEmailContent: complete content and rendered bytes 1`] = `"30bd4f94cdb225e92426e59e914620461004c3570c49d28f898063c586a72bff"`;
+
+exports[`P3 public donor whole-output parity > orderRefundedEmailContent: complete content and rendered bytes 1`] = `"a0180c9e6230c90e67cc1ee7ec2dffe8bf138e6d8ca864ca0ce1a798b467658a"`;
+
+exports[`P3 public donor whole-output parity > paymentFailedEmailContent: complete content and rendered bytes 1`] = `"1158d2ba924702909b197fedc103435a994b60ea06d950cca21161c4039a4f4d"`;
+
+exports[`P3 public donor whole-output parity > reorderReminderEmailContent: complete content and rendered bytes 1`] = `"16baaffc56baefbe70c4472488d1fd25ee500f3e2af843d189502a0045532f47"`;
+
+exports[`P3 public donor whole-output parity > returnApprovedEmailContent: complete content and rendered bytes 1`] = `"f8b078da3bc38608cd8c7832deaf55dabb0d1bd0d51b6a7b4ec895f1000ba3b2"`;
+
+exports[`P3 public donor whole-output parity > returnRefundedEmailContent: complete content and rendered bytes 1`] = `"d0766efe2f99c35fdc8dee5bcc79dc4624e0572b008b9d10ef96090322727da4"`;
+
+exports[`P3 public donor whole-output parity > returnRejectedEmailContent: complete content and rendered bytes 1`] = `"8af4ce274e8fb14950b353e906cade670aa7f82f031481ff1acfc26ded214f93"`;
+
+exports[`P3 public donor whole-output parity > reviewEffectsEmailContent: complete content and rendered bytes 1`] = `"0bc8e6d6c8f63d32bd8b69347800fbc547f5596954519c136297bbbf5b14ca44"`;
+
+exports[`P3 public donor whole-output parity > reviewRequestEmailContent: complete content and rendered bytes 1`] = `"97c35b505314556d5060e1eae0ff12321742dae53a0b701f7c4ce9c687463715"`;
+
+exports[`P3 public donor whole-output parity > shipmentDeliveredEmailContent: complete content and rendered bytes 1`] = `"716a4045831dd816532fbdc8dfc444b81c3eb7171e522db9a106299fbb506e60"`;
+
+exports[`P3 public donor whole-output parity > shipmentDispatchedEmailContent: complete content and rendered bytes 1`] = `"2861922d58d613fb10aee0b92ce89cf7cba7c0aa0645efbeedd0094489a3df59"`;
+
+exports[`P3 public donor whole-output parity > shipmentExceptionEmailContent: complete content and rendered bytes 1`] = `"c8cdff08f990a15778475224e5d58cb5e7e4d8c9141cd2cdfc68cdaa24fd047a"`;
+
+exports[`P3 public donor whole-output parity > subscriptionActivationActionRequiredEmailContent: complete content and rendered bytes 1`] = `"0ff27c7f01afde519018405be6259bd1d196b0cfcfc57a8801d63ec3ccf88bf6"`;
+
+exports[`P3 public donor whole-output parity > subscriptionAddressChangedEmailContent: complete content and rendered bytes 1`] = `"2ab401e7c60027d10280d9e1b8c80505cea98d3ca6190414bf2532de4e966751"`;
+
+exports[`P3 public donor whole-output parity > subscriptionCancelledEmailContent: complete content and rendered bytes 1`] = `"ece51a5bc70655553323d91eeb8977e74d4d27d768417f9917cf9060ed579d28"`;
+
+exports[`P3 public donor whole-output parity > subscriptionCycleSkippedEmailContent: complete content and rendered bytes 1`] = `"4f81b90d223664b07f68c14b349e6bb5954714125b67cf3892b8923dce91f0be"`;
+
+exports[`P3 public donor whole-output parity > subscriptionDeliveryRescheduledEmailContent: complete content and rendered bytes 1`] = `"46921fab1c9206ae90289b718b08711aeca1d5ff5ca3b0f013548d5a6dc02c00"`;
+
+exports[`P3 public donor whole-output parity > subscriptionPackageChangedEmailContent: complete content and rendered bytes 1`] = `"5ce65dc95c77415cbe8d04235e8dae18bdbb7ec4592cd1e95ecec7322170e7fd"`;
+
+exports[`P3 public donor whole-output parity > subscriptionPauseReminderEmailContent: complete content and rendered bytes 1`] = `"96e4655f96dc73be48576e73afd1ea0218dae479d5e99cca7f5ad1afaf4a3254"`;
+
+exports[`P3 public donor whole-output parity > subscriptionPausedEmailContent: complete content and rendered bytes 1`] = `"fe6c6bb84b320b1af6fc301f22d2229ddf43d0d7181c282d06da1288539af6d1"`;
+
+exports[`P3 public donor whole-output parity > subscriptionPaymentExpiredEmailContent: complete content and rendered bytes 1`] = `"50bf6af11f18ff59d42fc31e00eafba59e2cb85d74f3d7da5a7f5ef92961b9bb"`;
+
+exports[`P3 public donor whole-output parity > subscriptionPaymentFailedEmailContent: complete content and rendered bytes 1`] = `"f5e8dd75d4efec0657c5f966faec62de02cc4b8e3eb6d1ea9365f6a5521f4381"`;
+
+exports[`P3 public donor whole-output parity > subscriptionPaymentRecoveredEmailContent: complete content and rendered bytes 1`] = `"510dcf45a22e98989ab9b7b291f90a8c9722ef803463bee02732e83b19d2a84f"`;
+
+exports[`P3 public donor whole-output parity > subscriptionRenewalAtRiskEmailContent: complete content and rendered bytes 1`] = `"0d5317b2912b984569708c9a3cad69c0a19aae2d4813b0732839c2b6e6cb959a"`;
+
+exports[`P3 public donor whole-output parity > subscriptionRenewalUpcomingEmailContent: complete content and rendered bytes 1`] = `"cab3950dc1892fad4bf5caed7d62820184cfa63f2ba3cbd8180d70a7b36f2a8e"`;
+
+exports[`P3 public donor whole-output parity > subscriptionResumedEmailContent: complete content and rendered bytes 1`] = `"971d5043c047f5ceeadaa0673d0ebd5022fe9f3d9d619020cb92ae69bb3af4e7"`;
+
+exports[`P3 public donor whole-output parity > subscriptionWelcomeEmailContent: complete content and rendered bytes 1`] = `"2660c4d2e8b40382b65e24c033d1899a8dafa0628cc564f66e5666a22a1f19ad"`;
+
+exports[`P3 public donor whole-output parity > subscriptionWinbackEmailContent: complete content and rendered bytes 1`] = `"7d3a968dae38ebd74e7a89c0dbd88d86d3bdfb96ab8914ab54663a82a03bb987"`;
+
+exports[`preserves every block kind and complete rendered chrome 1`] = `"b7e87e129f2707e31b3d8fef5ab50f850c5f018e06947419c628a76a69292118"`;

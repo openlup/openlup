@@ -129,6 +129,15 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+
+The installed communications consumer checks the exact contracts value inventory
+and renders a synthetic message with network access refused and optional peers
+absent. That entry contains pure rendering/building and copy-injected factories;
+its browser gate measures the complete built runtime export closure. P3 changes
+only this prior empty-value expectation and its rendering proof, retaining the
+other installed-consumer, missing-peer and type checks.
+
+
 The M04 communications import extends the existing platform consumer and required
 selection with its retained reference witnesses. The isolated contracts entry
 compiles without optional provider peers; the mixed server entry compiles after
@@ -357,6 +366,9 @@ The maintained Auth entrypoint tests remain unchanged; the reference wire witnes
 compares the Auth bridge with the previous envelope/result mapping. Run these
 focused tests before the complete required and diagnostic suites. No selector is
 removed or added by B1; the complete suite retains the reference witnesses.
+
+P3's W4 invoice/correction fixture explicitly admits its existing synthetic sender
+when combined with B1. Its output snapshots, assertions and case count stay unchanged.
 
 ```bash
 npm ci

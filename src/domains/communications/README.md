@@ -20,13 +20,14 @@ The provider-agnostic server algorithms live in
 [`@openlup/platform/communications`](../../../packages/platform/src/communications/index.ts).
 This domain's neutral status helpers, consent, shipment plan, newsletter schema/capability and
 unsubscribe helpers delegate through the supported package entry. Server adapters
-and Auth email shims retain their host bindings. Type-only email, Auth email,
-newsletter, intake and delivery-receipt ports have the isolated
+and Auth email shims retain their host bindings. Email, Auth email, newsletter, intake and delivery-receipt types share the isolated
 [`communications/contracts`](../../../packages/platform/src/communications/contracts/index.ts)
 entry. Browser Zod contracts remain here.
 Mail-provider clients, concrete transport factories, callback mapping/verifiers,
 poll protocol reads/mapping, delivery timeline and send-ledger helpers remain reference-owned.
-The existing reference vendor directories are unchanged. The two existing domain
+The reference vendor directories retain comparison-base bytes except for B1's
+four adapter guard insertions and approved invoice test fixture/refusal case.
+The two existing domain
 callback/polling entry points delegate to the package's `processEmailObservation`
 and `runDeliveryReconciliation` through neutral ports. Verification, event tables,
 environment admission, timestamp provenance and exact HTTP responses stay local.
@@ -40,9 +41,16 @@ cases cover ordering, replay, failures and recorded table/RPC effect allowlists.
 P4 consumes these seams for its separately scoped effects/readback work. Marketing automation contributes agnostic
 ports/contracts/conformance only.
 
-The browser-used renderer/block/link builders, support report, template HTML/DB
-policy and commerce/subscription preview content remain in reference source.
-Their closure must not import the server communications entry. M04 P1 preserves
+The renderer and block constructors now delegate to pure values in
+`communications/contracts`. Commerce/subscription assemblers bind package content
+factories with reference-owned copy, order/cause/marketing helpers and routes.
+Brand presentation, the marketing footer, support report and template HTML/DB
+policy remain reference-owned. Browser previews keep their existing call sites
+and reach only contracts values; their closure must not import the server entry.
+W4 pins current public invoice/correction, role, inquiry and unsubscribe output;
+whole-output template witnesses pin subjects, blocks and complete HTML/text.
+The existing Auth host injection and inactive-content 503 are unchanged. Auth,
+mail, integration and HTTP verifiers retain their independent policies. M04 P1 preserves
 the current public copy, including dunning words, invitation dedupe/expiry,
 headers/tags, sink/drop outcomes and ledger ordering; later behavior proposals
 are separate changes. The trigger catalogue and production activation are
