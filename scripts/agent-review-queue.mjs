@@ -60,7 +60,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
         await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
         candidate = await captureCommittedReviewCandidate(cwd, receipt.base, receipt.head, runGit);
         const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, 'origin/main')).trim().split('\n');
-        baseValid = forks.length === 1 && SHA.test(forks[0]) && (receipt.base === forks[0] || await ancestor(runGit, cwd, receipt.base, main) && await ancestor(runGit, cwd, receipt.base, receipt.head));
+        baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
