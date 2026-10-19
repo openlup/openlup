@@ -34,8 +34,8 @@ The reference payment webhook module delegates its generic capped body reader,
 hex-HMAC verifier and constant-time comparison to `@openlup/platform/http`.
 Its `readRawBody` binding retains the declared `VercelRequest` parameter and the
 same package function object; the other four generic names are re-exports.
-Stripe verification and its 300-second replay tolerance remain local. This
-shared primitive does not replace the Auth Standard Webhooks or Resend signature
+The payment provider verification and its 300-second replay tolerance remain local. This
+shared primitive does not replace the Auth Standard Webhooks or the maintained HTTP mail provider signature
 protocols. The [communications owner](../../src/domains/communications/README.md#packaged-server-algorithms)
 describes the distinct verification boundaries.
 

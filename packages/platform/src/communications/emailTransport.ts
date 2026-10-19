@@ -1,12 +1,10 @@
 /**
  * Provider-neutral email transport seam (the OSS swap point).
  *
- * openlup aims to ship as a provider-agnostic commerce core, but every Node
- * email port reached Resend through `postResendEmail`. This interface names that
- * boundary so a fork can drop in SES / SMTP / a console logger by implementing
- * `EmailTransport` — the ports depend on the interface, never on Resend's
- * endpoint, auth header, or response shape (all of which stay isolated in
- * server/infra/resend/resendEmailClient.ts).
+ * Node email ports reach the maintained HTTP mail provider through
+ * `postResendEmail`. A host can substitute an SMTP or capture transport by
+ * implementing `EmailTransport`. Ports depend on that interface; endpoint,
+ * authentication and response translation remain behind the HTTP client.
  *
  * `send()` returns the SAME `{ outcome, providerResponse }` the ports already
  * consume for their ledger/timeline writes, so swapping a port from
@@ -41,11 +39,9 @@ export interface EmailMessage {
   signal?: AbortSignal;
 }
 
-/** Neutral aliases so ports type against the seam, not the Resend client. */
+/** Neutral aliases so ports type against the seam, not the maintained HTTP mail provider client. */
 export type EmailSendOutcome = ResendEmailSendOutcome;
 export type EmailSendResult = ResendEmailPostResult;
-
-export const DEFAULT_EMAIL_PROVIDER_KIND = "resend";
 
 export type EmailSendSkipReason = "admin_disabled" | "egress_suppressed";
 
@@ -145,22 +141,23 @@ function normalizeEmailFailureCode(value: string | null): string {
 }
 
 export interface EmailTransport {
-  /** Stable provider tag for ledgers/observability (e.g. "resend", "in-memory"). */
+  /** Stable provider tag for ledgers/observability (e.g. "mailProvider", "in-memory"). */
   readonly providerKind: string;
   send(message: EmailMessage): Promise<EmailSendResult>;
 }
 
 /**
- * Resend-backed transport — the production adapter. Delegates verbatim to the
- * single isolated Resend client (endpoint, auth, error parsing, and the
+ * HTTP mail transport. Delegates verbatim to the isolated client
+ * (endpoint, auth, error parsing, and the
  * fail-closed egress gateway all live there).
  */
 export function createResendTransport(opts: {
   apiKey: string;
+  providerKind: string;
   env?: Record<string, string | undefined>;
 }, postEmail: (input: ResendEmailSendInput) => Promise<ResendEmailPostResult>): EmailTransport {
   return {
-    providerKind: DEFAULT_EMAIL_PROVIDER_KIND,
+    providerKind: opts.providerKind,
     send(message) {
       return postEmail({
         apiKey: opts.apiKey,
@@ -180,7 +177,7 @@ export function createResendTransport(opts: {
 }
 
 /**
- * Resolve the Resend API key for a Node composition root.
+ * Resolve the maintained HTTP mail provider API key for a Node composition root.
  *
  * Both environments have a key and both are valid; only the variable NAME
  * differs, because the two Vercel projects are provisioned separately:
@@ -215,9 +212,9 @@ export interface InMemoryEmailTransport extends EmailTransport {
 }
 
 /**
- * Non-Resend reference transport: captures sends in memory and never makes a
+ * Reference capture transport: captures sends in memory and never makes a
  * network call. Proves the seam is real — a port wired to this sends email with
- * zero Resend references — and doubles as the substitute an OSS fork starts from
+ * no HTTP client — and doubles as the substitute an OSS fork starts from
  * before writing its own SES/SMTP adapter.
  */
 export function createInMemoryEmailTransport(opts?: { idPrefix?: string }): InMemoryEmailTransport {

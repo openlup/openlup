@@ -18,7 +18,7 @@ async function check(secret: string, signature: string, timestamp = String(insta
     auth: await verifyStandardWebhookSignature({
       headers: { id: eventId, timestamp, signature }, secret, rawBody: body, now: () => instant * 1000,
     }),
-    resend: verifyResendWebhookSignature({
+    provider: verifyResendWebhookSignature({
       webhookId: eventId, timestamp, signature, secret, rawBody: body, now: () => instant,
     }),
   };
@@ -26,43 +26,44 @@ async function check(secret: string, signature: string, timestamp = String(insta
 
 describe("independent webhook protocol policies", () => {
   it.each([
-    { form: "literal", secret: material.toString(), auth: true, resend: true },
-    { form: "base64 padded", secret: `whsec_${encoded}`, auth: true, resend: true },
-    { form: "base64 unpadded", secret: `whsec_${encoded.replace(/=+$/, "")}`, auth: true, resend: true },
-    { form: "outer whitespace", secret: `\n${material.toString()}\t`, auth: true, resend: false },
-    { form: "versioned encoded secret", secret: `v1,whsec_${encoded}`, auth: true, resend: false },
-    { form: "versioned literal secret", secret: `v1,${material.toString()}`, auth: true, resend: false },
-  ])("key policy: $form", async ({ secret, auth, resend }) => {
-    expect(await check(secret, `v1,discarded-member v1,${sign(String(instant))}`)).toEqual({ auth, resend });
+    { form: "literal", secret: material.toString(), auth: true, provider: true },
+    { form: "base64 padded", secret: `whsec_${encoded}`, auth: true, provider: true },
+    { form: "base64 unpadded", secret: `whsec_${encoded.replace(/=+$/, "")}`, auth: true, provider: true },
+    { form: "outer whitespace", secret: `\n${material.toString()}\t`, auth: true, provider: false },
+    { form: "versioned encoded secret", secret: `v1,whsec_${encoded}`, auth: true, provider: false },
+    { form: "versioned literal secret", secret: `v1,${material.toString()}`, auth: true, provider: false },
+  ])("key policy: $form", async ({ secret, auth, provider }) => {
+    expect(await check(secret, `v1,discarded-member v1,${sign(String(instant))}`)).toEqual({ auth, provider });
   });
 
   it.each([
-    { grammar: "version one", prefix: "v1,", auth: true, resend: true },
-    { grammar: "bare member", prefix: "", auth: true, resend: true },
-    { grammar: "other version", prefix: "v7,", auth: true, resend: false },
-  ])("rotation signature grammar: $grammar", async ({ prefix, auth, resend }) => {
+    { grammar: "version one", prefix: "v1,", auth: true, provider: true },
+    { grammar: "bare member", prefix: "", auth: true, provider: true },
+    { grammar: "other version", prefix: "v7,", auth: true, provider: false },
+  ])("rotation signature grammar: $grammar", async ({ prefix, auth, provider }) => {
     const digest = sign(String(instant));
-    expect(await check(material.toString(), `v1,wrong ${prefix}${digest} v1,also-wrong`)).toEqual({ auth, resend });
-    expect(await check(material.toString(), "v1,wrong v1,also-wrong")).toEqual({ auth: false, resend: false });
+    expect(await check(material.toString(), `v1,wrong ${prefix}${digest} v1,also-wrong`)).toEqual({ auth, provider });
+    expect(await check(material.toString(), "v1,wrong v1,also-wrong")).toEqual({ auth: false, provider: false });
   });
 
-  it.each([-300, 300, -301, 301])("replay offset %i with Auth milliseconds and Resend seconds", async (offset) => {
+  it.each([-300, 300, -301, 301])("replay offset %i with Auth milliseconds and provider seconds", async (offset) => {
     const timestamp = String(instant + offset);
     const accepted = offset >= -300 && offset <= 300;
-    expect(await check(material.toString(), sign(timestamp), timestamp)).toEqual({ auth: accepted, resend: accepted });
+    expect(await check(material.toString(), sign(timestamp), timestamp)).toEqual({ auth: accepted, provider: accepted });
   });
 
   it("requires the original whitespace and UTF-8 bytes", async () => {
     const signature = `v1,${sign(String(instant))}`;
-    expect(await check(material.toString(), signature)).toEqual({ auth: true, resend: true });
+    expect(verifyResendWebhookSignature({ rawBody: document, webhookId: undefined, timestamp: String(instant), signature, secret: material.toString(), now: () => instant })).toBe(false);
+    expect(await check(material.toString(), signature)).toEqual({ auth: true, provider: true });
     expect(await check(material.toString(), signature, String(instant), document.replace(" }", "}")))
-      .toEqual({ auth: false, resend: false });
+      .toEqual({ auth: false, provider: false });
   });
 
   it.each(["", "whsec_", "whsec_%", "whsec_Q", "whsec_Zh=="])(
     "refuses unusable secret %j even when permissive decoding signs it", async (secret) => {
       const key = secret.startsWith("whsec_") ? Buffer.from(secret.substring(6), "base64") : secret;
-      expect(await check(secret, `v1,${sign(String(instant), key)}`)).toEqual({ auth: false, resend: false });
+      expect(await check(secret, `v1,${sign(String(instant), key)}`)).toEqual({ auth: false, provider: false });
     },
   );
 });

@@ -267,7 +267,7 @@ assert.equal((await transport.send({ from: "sender@example.invalid", to: "recipi
 assert.equal(transport.sent.length, 1);
 assert.equal(resolveCapturedDocumentDelivery({}).refused, "document_delivery_channel_undeclared");
 globalThis.fetch = () => { throw new Error("drop must never fetch"); };
-const dropped = await postResendEmail({ apiKey: "synthetic", fromEmail: "sender@example.invalid", to: "recipient@example.invalid", subject: "Synthetic", html: "<p>Synthetic</p>" }, (_, intendedRecipient) => ({ mode: "drop", recipient: null, intendedRecipient, reason: "synthetic_drop" }));
+const dropped = await postResendEmail({ apiKey: "synthetic", fromEmail: "sender@example.invalid", to: "recipient@example.invalid", subject: "Synthetic", html: "<p>Synthetic</p>" }, (_, intendedRecipient) => ({ mode: "drop", recipient: null, intendedRecipient, reason: "synthetic_drop" }), { endpoint: "https://mail.example.invalid/emails", httpErrorPrefix: "Synthetic HTTP" });
 assert.deepEqual(dropped.providerResponse, { suppressed: "drop", egress_reason: "synthetic_drop" });
 const store = createPostgresTransactionalDeliveryStore({ connectionString: "postgresql://unused.invalid/synthetic" });
 let missingPeer;

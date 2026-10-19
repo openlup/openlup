@@ -9,7 +9,7 @@ export interface ResendWebhookSupabaseClient {
   rpc?: (name: string, params: Record<string, unknown>) => Promise<{ data: unknown; error?: unknown }>;
 }
 
-/** Supabase implementation of the narrow Resend webhook persistence contract. */
+/** Supabase implementation of the narrow the maintained HTTP mail provider webhook persistence contract. */
 export function createSupabaseResendWebhookPort(client: ResendWebhookSupabaseClient): ResendWebhookPort {
   return {
     async findEmailSendByResendId(resendId) {

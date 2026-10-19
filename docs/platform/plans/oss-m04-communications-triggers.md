@@ -31,7 +31,7 @@ identity implementation, control-plane adapter and deployment config are exclude
 The approved E2 extension is applied: the payment webhook donor delegates the
 five generic HTTP helpers, retaining the original declared `VercelRequest` body
 reader signature and the same function object. The other four names are plain
-re-exports; its Stripe verifier and tolerance remain local and unchanged. SQL is
+re-exports; its the payment provider verifier and tolerance remain local and unchanged. SQL is
 limited to three exact existing projections, with no migration or manifest edit.
 
 ## Verification ledger
@@ -50,7 +50,7 @@ coordinator's X2 interpretation, not a reset of the baseline or a gate change.
 | Existing public outputs | Unchanged reference tests for Auth email, transport/rendering, signatures, consent/status, sync, webhook/poll, token, receipt and ledger behavior; required selection only grows |
 | Contracts/module boundary | Existing package-boundary/import-map plants plus synthetic type-only contract check; actual export inventory in the cold consumer |
 | SQL identity | Three canonical/projection byte, digest and manifest-position comparisons; no new install chain |
-| HTTP helper | Synthetic stream/fallback/cap, exact refusal bytes and hex-HMAC dialect tests; unchanged Stripe witnesses cover the delegating payment donor |
+| HTTP helper | Synthetic stream/fallback/cap, exact refusal bytes and hex-HMAC dialect tests; unchanged the payment provider witnesses cover the delegating payment donor |
 | Contribution | Host-selected schema and dependency identity, no default route/handler/schedule activation |
 | Installed artifact | Existing required package gate, SDK-absent imports/refusals, declarations in NodeNext/Bundler, selected SDK and real PostgreSQL receipt replay/conflict/ACL proof |
 | Browser continuity | Public-reference subscription profile build, browser-used value closure retained |
@@ -66,7 +66,7 @@ limit remains a blocker; case overruns follow the X2 interpretation above.
 
 Candidate `e9eca83` moved the communications implementation. Run 1's fixture
 construction failure was repaired in run 2; the corrected helper, DOM-only
-contracts and unchanged Stripe witnesses passed together (35 cases). Run 2's
+contracts and unchanged the payment provider witnesses passed together (35 cases). Run 2's
 approved-access required/full suites failed only on the then-missing X1 mirror.
 Its `readRawBody` declaration used `HttpRequest`; the supervisor subsequently
 restored the original declared `VercelRequest` signature through E2. Neither
@@ -93,7 +93,7 @@ authorized; early-pass success cannot waive the clean-commit artifact gate.
 Start: `1e8c7ce`, merge of `71a5200` into P1, after supervisor commit `8c51415`.
 E2 is applied with seven original exported names and original declared signatures;
 run 3 must compare against `cf36b01`, including same-object delegation and unchanged
-Stripe runtime nodes. The supervisor owns commits and native review; this author
+the payment provider runtime nodes. The supervisor owns commits and native review; this author
 run edits files only and stops for a commit before artifact admission.
 
 X1 mirrors `package.json`'s required command in `PUBLIC_REQUIRED_TEST_SCOPE`:
@@ -182,9 +182,9 @@ by the required package tier. W1 contributes **22** cases; W2 contributes **6**
 (the private witness's five top-ups plus a separate public capture case), **28**
 in total. No existing expectation or selector changed. The independent signer
 uses fresh synthetic material and UTF-8 content; expected policies are stated
-separately for Auth and Resend, without asserting protocol equivalence. The hook
+separately for Auth and the maintained HTTP mail provider, without asserting protocol equivalence. The hook
 is reached through its real signature/payload boundary, with downstream effects
-forbidden. The concrete transport delegates to the real Resend client with a
+forbidden. The concrete transport delegates to the real the maintained HTTP mail provider client with a
 synthetic fetch and explicit host egress resolver. No requested property differs
 from the public behavior. Public environment tags and injected egress reasons
 are pinned as public values, rather than importing adopter binding values.
@@ -192,8 +192,8 @@ are pinned as public values, rather than importing adopter binding values.
 | Witness / property | Fresh test | Plant → observed failing test |
 | --- | --- | --- |
 | W1 key forms, trimming and Auth-only versioned-secret parsing | `webhookDialects.test.ts`: six `key policy` rows | `auth-versioned-secret` → `key policy: 'versioned encoded secret'` and `'versioned literal secret'` (2 failures) |
-| W1 rotation members, bare/v1/other-version grammar; original signed UTF-8 whitespace | `webhookDialects.test.ts`: three `rotation signature grammar` rows and `requires the original whitespace and UTF-8 bytes` | `auth-signature-bypass` → all three grammar rows + original bytes (4); `resend-signature-bypass` → those four plus whitespace/versioned-secret policy rows (7) |
-| W1 Auth millisecond / Resend second clocks, inclusive ±300 and refusal at ±301 | `webhookDialects.test.ts`: four `replay offset` rows | `auth-replay-bypass` and `resend-replay-bypass` separately → offsets -301 and 301 (2 each) |
+| W1 rotation members, bare/v1/other-version grammar; original signed UTF-8 whitespace | `webhookDialects.test.ts`: three `rotation signature grammar` rows and `requires the original whitespace and UTF-8 bytes` | `auth-signature-bypass` → all three grammar rows + original bytes (4); the provider signature-bypass plant → those four plus whitespace/versioned-secret policy rows (7) |
+| W1 Auth millisecond / the maintained HTTP mail provider second clocks, inclusive ±300 and refusal at ±301 | `webhookDialects.test.ts`: four `replay offset` rows | `auth-replay-bypass` and the provider replay-bypass plant separately → offsets -301 and 301 (2 each) |
 | W1 malformed empty/prefix/punctuation/length/noncanonical-pad-bit keys | `webhookDialects.test.ts`: five `refuses unusable secret` rows, signed using permissively decoded material | Matching invalid-key HMACs refused by both public verifiers; signature bypass plants additionally exercise the independent comparison boundary |
 | W1 stream precedence, drained stream with no fallback, uncapped Auth stream vs capped generic reader | `hookRawReader.test.ts`: three `Auth raw reader` rows; exact 400 envelopes/no downstream effects; generic reader contrast in each row | `hook-generic-cap` → `Auth raw reader: large stream` (1) |
 | W2 whole missing-ID, sanitized coded rejection, thrown/aborted results and projections | `transportConformance.test.ts`: four `concrete send` rows | `omit-provider-error-code` → `concrete send: 'sanitized coded rejection'` (1) |
@@ -241,3 +241,65 @@ external actions. Terminal self-retro: no test repairs or resource queue delays
 were needed. Keeping the generic-reader contrast inside the three hook cases
 and forwarding through the actual client avoided extra cases and a test-only
 transport abstraction; the separate capture case explains the 28-versus-27 tally.
+
+
+## Run 7 neutral authorship and selection narrowing
+
+Supervisor A/B/C refine P1 without changing the neutrality ratchet or controls.
+New package prose is neutral; reference shims keep the deployed provider kind,
+HTTP endpoint/error label, timeline default and callback/poller source values,
+then pass them to the extracted functions. Reference provider types keep their
+literal; package contracts accept a host-supplied provider type. These are host
+composition parameters, with no output or algorithm change.
+
+All four required-command mirrors remove only six P1 additions: the redundant
+Auth API selector, three provider-path timeline/ledger/skip witnesses and two
+provider-path key/verifier witnesses. No pre-P1 selector is removed. Neutral package
+conformance cases characterize the same timeline, logging and key-order boundaries;
+W1 covers the provider verifier and hook reader. Existing reference tests remain
+in the complete suite. The run-3/run-4 tables above are historical observations;
+the final run-7 ledger below supersedes their selection counts.
+
+Fresh run-7 measurements: three identical selections, all passing, with each
+file's local Vitest elapsed median summed. Queue/wrapper time is excluded;
+these are local proxies, not new hosted measurements.
+
+| Category | Cases / iterations | Summed file medians (s) |
+| --- | ---: | ---: |
+| Retained existing witnesses (15 files) | 79 | 0.052050781 |
+| Synthetic package witnesses (7 communications files plus HTTP helper) | 56 | 0.509342041 |
+| Counted additions | 135 | 0.561392822 |
+| Boundary iterations, separate | 156 | 0.063640381 |
+| All added runner work | 291 | 0.625033203 |
+
+Counted cases are **79 + 56 = 135**, a **35-case overrun** of +100 under X2;
+post-loop cleanup must revisit it. The binding +30 s allowance has
+**29.374966797 s** remaining; provisional 595.6 s baseline plus delta is
+**596.225033203 s**. The six removed additions account for 25 cases; neutral
+replacement cases add 20. All pre-P1 selectors remain selected.
+
+Run 7 required suite: **7,678 passed, no failures or skips**. Complete suite:
+**13,960 passed, 2 failed, 2 existing opt-in skips**. Both failures are the
+excluded documentation CLI fixture: its seed registers only the demo domain but
+materializes the retained communications test entrypoints, so source-map creation
+refuses an unregistered communications domain before either assertion. Removing
+the Auth selector resolved the earlier unknown-path failure; it did not settle
+this separate fixture obligation. No fixture, router or assertion was changed.
+
+Generators, documentation policy, ast-grep, lint (0 errors, 33 warnings), all
+five typechecks, subscription reference build, source real-PostgreSQL proof,
+both neutrality scripts and E2 comparison against `cf36b01` pass. The public
+neutrality check reports **zero increases**, with baseline/scanner unchanged.
+Exact comparisons against committed run-6 source confirm all five host
+parameterizations retain reference requests, responses, RPC arguments and event
+metadata. Reference provider type bytes remain identical to the P1 base.
+
+The full-suite fixture failure remains a delivery blocker outside this run's
+scope. The clean-commit package artifact gates remain the supervisor's next step;
+no fresh artifact admission, native review or external delivery is claimed.
+
+Self-retro: the materialized inventory refused untracked test files while Git
+writes were forbidden. Reusing the existing neutral conformance file removed
+that inventory change and preserved every replacement assertion. The Auth
+selector removal exposed a second fixture seed assumption; report the concrete
+scope blocker rather than silently remove more retained witnesses.

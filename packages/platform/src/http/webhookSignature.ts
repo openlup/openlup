@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { HttpRequest } from "./types.js";
 
-/** Hard cap on raw webhook body bytes — Stripe events are well under 256 KiB. */
+/** Hard cap on raw webhook body bytes — the payment provider events are well under 256 KiB. */
 export const MAX_WEBHOOK_BODY_BYTES = 1_048_576;
 
 /** Thrown by readRawBody when the streamed body exceeds MAX_WEBHOOK_BODY_BYTES. */
@@ -23,7 +23,7 @@ export class WebhookBodyTooLargeError extends Error {
  * (verified empirically against the hidden-preview deploy: a JSON payload posted
  * with `Content-Type: application/json` arrives parsed, the same bytes posted as
  * `text/plain` arrive raw). Re-serializing the parsed object with
- * `JSON.stringify` does NOT reproduce the provider's exact bytes — Stripe signs
+ * `JSON.stringify` does NOT reproduce the provider's exact bytes — the payment provider signs
  * pretty-printed JSON, so a compacted re-serialization breaks HMAC verification.
  *
  * Reading the underlying request stream FIRST — before touching `req.body`,

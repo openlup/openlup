@@ -327,7 +327,7 @@ this preview.
 ## Provider and host boundaries
 
 Communications server algorithms now delegate through the platform package. The
-reference bindings still own Resend egress/environment selection, origin defaults,
+reference bindings still own the maintained HTTP mail provider egress/environment selection, origin defaults,
 shared notification-control policy and the Auth renderer/observers. The existing
 receipt transaction lane is passed through unchanged. This relocation adds no
 provider SDK, deployment setting, route, scheduler or second outbox executor;
@@ -418,7 +418,7 @@ proof before those claims are available.
 
 The communications import changes implementation ownership, not installed runtime
 selection. Reference Auth email binds the same renderer and environment observers;
-Resend transport binds the same egress policy, origin defaults and shared delivery
+The maintained HTTP mail provider transport binds the same egress policy, origin defaults and shared delivery
 controls. Existing schedules, BFF routes, cron admission, provider activation and
 SQL installation remain host-owned and unchanged. Package contribution metadata
 requires the host-selected schema and advertises only supplied handlers, schedules,

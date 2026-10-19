@@ -14,7 +14,7 @@ export interface ResendWebhookVerificationInput {
 }
 
 /**
- * Verifies Resend's Svix signature over the untouched request bytes.
+ * Verifies the maintained HTTP mail provider's Svix signature over the untouched request bytes.
  *
  * The provider accepts both the documented `v1,<base64>` member and the
  * historical bare base64 member. Do not parse or normalize `rawBody` before

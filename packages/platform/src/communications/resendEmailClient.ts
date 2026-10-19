@@ -27,7 +27,7 @@ export interface ResendEmailSendOutcome {
   resendId: string | null;
   httpStatus: number;
   providerError: string | null;
-  /** Sanitized provider machine code when Resend returned one (for retry policy). */
+  /** Sanitized provider machine code when the maintained HTTP mail provider returned one (for retry policy). */
   providerErrorCode?: string | null;
   aborted: boolean;
   /** Set when the egress gateway intentionally did not deliver to the real recipient. */
@@ -42,7 +42,11 @@ export interface ResendEmailPostResult {
   providerResponse: Record<string, unknown>;
 }
 
-const RESEND_ENDPOINT = "https://api.resend.com/emails";
+/** Host-owned wire endpoint and legacy diagnostic label. */
+export interface EmailHttpProvider {
+  endpoint: string;
+  httpErrorPrefix: string;
+}
 // Environment provenance tag. It had a byte-identical twin under the retired
 // Edge tree; this is the only copy since 2026-09-04. The production webhook
 // route uses it to distinguish a staging-originated lifecycle event from a
@@ -65,7 +69,7 @@ function sanitizeProviderCode(value: string): string {
   return truncate(value.replace(/[^A-Za-z0-9._:-]/g, "_"), PROVIDER_ERROR_CODE_MAX);
 }
 
-function providerErrorFromBody(body: Record<string, unknown>, httpStatus: number): string {
+function providerErrorFromBody(body: Record<string, unknown>, httpStatus: number, httpErrorPrefix: string): string {
   const errField = body.error;
   if (typeof errField === "string") return sanitizeProviderText(errField);
   if (errField && typeof errField === "object") {
@@ -73,7 +77,7 @@ function providerErrorFromBody(body: Record<string, unknown>, httpStatus: number
     if (typeof message === "string") return sanitizeProviderText(message);
   }
   if (typeof body.message === "string") return sanitizeProviderText(body.message);
-  return `Resend HTTP ${httpStatus}`;
+  return `${httpErrorPrefix} ${httpStatus}`;
 }
 
 function providerErrorCodeFromBody(body: Record<string, unknown>): string | null {
@@ -93,8 +97,8 @@ function providerErrorCodeFromBody(body: Record<string, unknown>): string | null
   return typeof value === "string" ? sanitizeProviderCode(value) : null;
 }
 
-function providerErrorResponse(body: Record<string, unknown>, httpStatus: number): Record<string, unknown> {
-  const providerErrorMessage = providerErrorFromBody(body, httpStatus);
+function providerErrorResponse(body: Record<string, unknown>, httpStatus: number, httpErrorPrefix: string): Record<string, unknown> {
+  const providerErrorMessage = providerErrorFromBody(body, httpStatus, httpErrorPrefix);
   const providerErrorCode = providerErrorCodeFromBody(body);
   return {
     http_status: httpStatus,
@@ -103,7 +107,7 @@ function providerErrorResponse(body: Record<string, unknown>, httpStatus: number
   };
 }
 
-export async function postResendEmail(input: ResendEmailSendInput, resolveEgressMode: EmailEgressResolver, defaultEnv: Record<string, string | undefined> = {}): Promise<ResendEmailPostResult> {
+export async function postResendEmail(input: ResendEmailSendInput, resolveEgressMode: EmailEgressResolver, provider: EmailHttpProvider, defaultEnv: Record<string, string | undefined> = {}): Promise<ResendEmailPostResult> {
   // Fail-closed egress gateway: decide who (if anyone) we may actually mail.
   const egress = resolveEgressMode(input.env ?? defaultEnv, input.to);
   if (egress.blockedReason) {
@@ -160,7 +164,7 @@ export async function postResendEmail(input: ResendEmailSendInput, resolveEgress
     headers["X-Original-Recipient"] = egress.intendedRecipient;
   }
   try {
-    const res = await fetch(RESEND_ENDPOINT, {
+    const res = await fetch(provider.endpoint, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -183,7 +187,7 @@ export async function postResendEmail(input: ResendEmailSendInput, resolveEgress
       ? (parsed as Record<string, unknown>)
       : {};
     if (!res.ok) {
-      const providerErrorMessage = providerErrorFromBody(body, res.status);
+      const providerErrorMessage = providerErrorFromBody(body, res.status, provider.httpErrorPrefix);
       const providerErrorCode = providerErrorCodeFromBody(body);
       return {
         outcome: {
@@ -196,7 +200,7 @@ export async function postResendEmail(input: ResendEmailSendInput, resolveEgress
           egressMode: egress.mode,
           egressReason: egress.reason,
         },
-        providerResponse: providerErrorResponse(body, res.status),
+        providerResponse: providerErrorResponse(body, res.status, provider.httpErrorPrefix),
       };
     }
     const id = typeof body.id === "string" ? body.id : null;
@@ -235,7 +239,7 @@ export async function postResendEmail(input: ResendEmailSendInput, resolveEgress
 export interface ResendEmailReadResult {
   ok: boolean;
   httpStatus: number;
-  // Resend GET /emails/{id} `last_event` (e.g. "sent", "delivered",
+  // the maintained HTTP mail provider GET /emails/{id} `last_event` (e.g. "sent", "delivered",
   // "bounced", "complained", "delivery_delayed", "failed"); null when the
   // read failed or the field is absent.
   lastEvent: string | null;
@@ -260,9 +264,9 @@ export async function getResendEmail(input: {
   apiKey: string;
   resendId: string;
   signal?: AbortSignal;
-}): Promise<ResendEmailReadResult> {
+}, provider: EmailHttpProvider): Promise<ResendEmailReadResult> {
   try {
-    const res = await fetch(`${RESEND_ENDPOINT}/${encodeURIComponent(input.resendId)}`, {
+    const res = await fetch(`${provider.endpoint}/${encodeURIComponent(input.resendId)}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${input.apiKey}` },
       signal: input.signal,
@@ -274,7 +278,7 @@ export async function getResendEmail(input: {
         httpStatus: res.status,
         lastEvent: null,
         recipientEmail: null,
-        providerError: providerErrorFromBody(parsed, res.status),
+        providerError: providerErrorFromBody(parsed, res.status, provider.httpErrorPrefix),
       };
     }
     const lastEvent = typeof parsed.last_event === "string" ? parsed.last_event : null;

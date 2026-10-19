@@ -311,7 +311,7 @@ The outbox rail is a local experimental package candidate in the package catalog
 
 M04 P1 preserves the existing public communications contract while moving its
 server algorithms to the platform package. Auth standard-webhook verification
-keeps its stream-only body reader and millisecond clock; Resend keeps its own
+keeps its stream-only body reader and millisecond clock; the maintained HTTP mail provider keeps its own
 signature dialect and mapping. The generic HTTP hex-HMAC reader keeps its inclusive
 1 MiB byte cap and parsed-body fallback; it does not replace either verifier.
 Transport responses keep omitted fields, raw outcome/projection distinctions,

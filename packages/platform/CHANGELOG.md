@@ -10,7 +10,7 @@
   Browser rendering/content, activation and deployment ownership stay with hosts.
 - Apply E2 payment-helper delegation with identical export names and declared
   signatures, including `readRawBody`'s `VercelRequest` signature and function
-  identity. Keep Stripe-specific verification local.
+  identity. Keep the payment provider-specific verification local.
 - Mirror X1 required selectors, including the restored Auth email hook witness.
   X2 counts 104 existing witnesses + 8 synthetic cases = 112 (12 over the authored
   allowance); 156 generated boundary iterations are separate. The summed local

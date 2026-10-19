@@ -188,6 +188,7 @@ export async function recordEmailDeliveryTimeline(
   client: EmailDeliveryTimelineClient,
   input: EmailDeliveryTimelineInput,
   options: EmailDeliveryTimelineOptions = {},
+  defaultProviderKind: string,
 ): Promise<string | null> {
   const context = options.context ? `:${options.context}` : "";
   if (!client.rpc) {
@@ -217,7 +218,7 @@ export async function recordEmailDeliveryTimeline(
       p_expected_send_at: input.expectedSendAt ?? null,
       p_decision_id: input.decisionId ?? null,
       p_email_send_id: input.emailSendId ?? null,
-      p_provider_kind: input.providerKind ?? "resend",
+      p_provider_kind: input.providerKind ?? defaultProviderKind,
       p_provider_message_id: input.providerMessageId ?? null,
       p_last_error_code: input.lastErrorCode ?? null,
       p_metadata: runId.metadata,

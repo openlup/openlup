@@ -1,7 +1,7 @@
 /**
- * Resend delivery reconciliation (docs/platform/RUNTIME_AND_SELF_HOSTING.md Wave 4).
+ * the maintained HTTP mail provider delivery reconciliation (docs/platform/RUNTIME_AND_SELF_HOSTING.md Wave 4).
  *
- * Delivery status was WEBHOOK-ONLY: if a Resend webhook is dropped, the
+ * Delivery status was WEBHOOK-ONLY: if a the maintained HTTP mail provider webhook is dropped, the
  * email_sends row freezes at `sent` and the delivery timeline never closes —
  * the `email_webhook_gap` detector counts exactly these. This worker polls the
  * provider for frozen sends and asks the atomic
@@ -98,7 +98,7 @@ function classifyReadFailure(breakdown: ResendReadFailureBreakdown, httpStatus: 
 export async function runResendDeliveryReconciliation(input: {
   port: ResendDeliveryReconciliationPort;
   // Injected provider reader (server/infra stays out of domain imports); the
-  // cron route wires getResendEmail from the resend client here.
+  // cron route wires getResendEmail from the mailProvider client here.
   readEmail: (resendId: string) => Promise<ResendEmailStatusRead>;
   now: string;
   graceMinutes: number;

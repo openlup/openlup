@@ -69,6 +69,7 @@ export interface ResendWebhookHandlerDeps {
   createPort: () => ResendWebhookPort;
   verifySignature: (input: ResendWebhookSignatureInput) => boolean;
   environmentTagName: string;
+  eventSource: string;
   resolveReceiverEnvironmentTag?: () => EmailEnvironmentTag;
   now?: () => number;
   receivedAt?: () => Date;
@@ -169,7 +170,7 @@ export function createResendWebhookHandler(deps: ResendWebhookHandlerDeps) {
           providerEventId: webhookId,
           eventMetadata: data ?? {},
           link: isRecord(data) && isRecord(data.click) && typeof data.click.link === "string" ? data.click.link : null,
-          source: "resend-webhook",
+          source: deps.eventSource,
           eventTimeSource: eventTime.source,
         },
       });

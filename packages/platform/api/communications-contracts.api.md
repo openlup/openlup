@@ -469,12 +469,12 @@ export interface CapturedTransactionalDeliveryPort {
 
 ```ts
 type COMMUNICATION_CHANNEL = "email";
-type COMMUNICATION_PROVIDER = "resend";
 type EMAIL_SEND_STATUSES = "queued" | "sent" | "delivered" | "bounced" | "complained" | "failed" | "skipped";
 type EMAIL_SEND_SKIP_REASONS = "sequence_paused" | "already_sent" | "template_unavailable" | "race_lost" | "policy_blocked" | "admin_disabled";
 type RESEND_EMAIL_EVENT_TYPES = "email.sent" | "email.delivered" | "email.delivery_delayed" | "email.opened" | "email.clicked" | "email.bounced" | "email.complained" | "email.failed" | "email.suppressed" | "email.scheduled";
 export type CommunicationChannel = COMMUNICATION_CHANNEL;
-export type CommunicationProvider = COMMUNICATION_PROVIDER;
+/** The host supplies its persisted provider vocabulary. */
+export type CommunicationProvider<Provider extends string = string> = Provider;
 export type EmailSendStatus = EMAIL_SEND_STATUSES;
 export type EmailSendSkipReason = EMAIL_SEND_SKIP_REASONS;
 export type ResendEmailEventType = RESEND_EMAIL_EVENT_TYPES;
@@ -505,13 +505,13 @@ export type EmailSendDecision = {
     reason: EmailSendSkipReason;
     existingMessageId: string | null;
 };
-export interface EmailMessageReadModel {
+export interface EmailMessageReadModel<Provider extends string = string> {
     id: string;
     channel: CommunicationChannel;
     recipientId: string;
     templateSlug: string;
     status: EmailSendStatus;
-    provider: CommunicationProvider | null;
+    provider: CommunicationProvider<Provider> | null;
     providerMessageId: string | null;
     skippedReason: EmailSendSkipReason | null;
 }

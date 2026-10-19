@@ -492,22 +492,26 @@ not apply SQL or advertise missing managed/direct capabilities.
 
 Browser previews retain their reference renderer, content defaults and template
 policy. The Auth hook receives that same renderer through its reference shim.
-The standard Auth webhook and Resend verifiers keep their separate signature
+The standard Auth webhook and the maintained HTTP mail provider verifiers keep their separate signature
 formats and clocks; the generic helper added to `./http` replaces neither.
 E2 is applied: the payment webhook module delegates these five generic helpers.
 `readRawBody` is the same package function object with its original declared
 `(req: VercelRequest) => Promise<string>` signature; the other four exports are
-plain re-exports. Stripe verification and its replay tolerance stay local.
-X1's required selection includes the existing Auth email entrypoint witness for
-the moved hook/Standard Webhooks composition. Under the coordinator's X2 budget
-interpretation, P1 adds 104 existing witness cases and eight synthetic cases
-(112 counted, a 12-case overrun), plus 156 separately counted generated boundary
-iterations. Three local samples sum to 0.657498 s per-file medians,
-below the binding +30 s hosted-file-time allowance; this local proxy is not a
-fresh hosted result. The M04 post-loop clean-up must revisit the case overrun.
-The clean-commit artifact gate still enforces the merged caps. Run 3 found the
-required browser-cap registration for `./communications/contracts` missing;
-adding that cap needs owner authority, and the early pass is not acceptance.
+plain re-exports. The payment provider verification and its replay tolerance stay local.
+The host also supplies the persisted provider kind, HTTP endpoint and legacy error
+label, timeline default, callback source and poller source. Reference bindings
+retain their deployed bytes; package tests use synthetic values. The type-only
+`CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>` accept the
+host's provider vocabulary; the reference types retain their original literal.
+
+The required selection retains the moved-code witnesses and neutral package
+characterization tests. The package W1 hook reader witnesses the Auth composition;
+provider-specific reference test paths remain in the complete suite. The
+[M04 ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#run-7-neutral-authorship-and-selection-narrowing)
+records counted cases, separate boundary iterations and local timing provenance.
+The clean-commit artifact gate enforces all merged caps, including the 1,024 B
+limit on the new type-only contracts entry. Artifact admission still needs a
+clean supervisor commit.
 See the [M04 plan](../../docs/platform/plans/oss-m04-communications-triggers.md)
 for scope, later waves and verification limits.
 

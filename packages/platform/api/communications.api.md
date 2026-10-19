@@ -827,12 +827,12 @@ export interface CapturedTransactionalDeliveryPort {
 
 ```ts
 type COMMUNICATION_CHANNEL = "email";
-type COMMUNICATION_PROVIDER = "resend";
 type EMAIL_SEND_STATUSES = "queued" | "sent" | "delivered" | "bounced" | "complained" | "failed" | "skipped";
 type EMAIL_SEND_SKIP_REASONS = "sequence_paused" | "already_sent" | "template_unavailable" | "race_lost" | "policy_blocked" | "admin_disabled";
 type RESEND_EMAIL_EVENT_TYPES = "email.sent" | "email.delivered" | "email.delivery_delayed" | "email.opened" | "email.clicked" | "email.bounced" | "email.complained" | "email.failed" | "email.suppressed" | "email.scheduled";
 export type CommunicationChannel = COMMUNICATION_CHANNEL;
-export type CommunicationProvider = COMMUNICATION_PROVIDER;
+/** The host supplies its persisted provider vocabulary. */
+export type CommunicationProvider<Provider extends string = string> = Provider;
 export type EmailSendStatus = EMAIL_SEND_STATUSES;
 export type EmailSendSkipReason = EMAIL_SEND_SKIP_REASONS;
 export type ResendEmailEventType = RESEND_EMAIL_EVENT_TYPES;
@@ -863,13 +863,13 @@ export type EmailSendDecision = {
     reason: EmailSendSkipReason;
     existingMessageId: string | null;
 };
-export interface EmailMessageReadModel {
+export interface EmailMessageReadModel<Provider extends string = string> {
     id: string;
     channel: CommunicationChannel;
     recipientId: string;
     templateSlug: string;
     status: EmailSendStatus;
-    provider: CommunicationProvider | null;
+    provider: CommunicationProvider<Provider> | null;
     providerMessageId: string | null;
     skippedReason: EmailSendSkipReason | null;
 }
@@ -938,7 +938,7 @@ export declare function statusFromSendOutcome(outcome: EmailSendOutcomeLike): {
     status: EmailDeliveryTimelineStatus;
     lastErrorCode: string | null;
 };
-export declare function recordEmailDeliveryTimeline(client: EmailDeliveryTimelineClient, input: EmailDeliveryTimelineInput, options?: EmailDeliveryTimelineOptions): Promise<string | null>;
+export declare function recordEmailDeliveryTimeline(client: EmailDeliveryTimelineClient, input: EmailDeliveryTimelineInput, options: EmailDeliveryTimelineOptions | undefined, defaultProviderKind: string): Promise<string | null>;
 ```
 ## dist/communications/emailHealthAssessment.d.ts
 
@@ -1105,12 +1105,10 @@ export declare function originFromUrl(raw: string | null | undefined): string | 
 /**
  * Provider-neutral email transport seam (the OSS swap point).
  *
- * openlup aims to ship as a provider-agnostic commerce core, but every Node
- * email port reached Resend through `postResendEmail`. This interface names that
- * boundary so a fork can drop in SES / SMTP / a console logger by implementing
- * `EmailTransport` — the ports depend on the interface, never on Resend's
- * endpoint, auth header, or response shape (all of which stay isolated in
- * server/infra/resend/resendEmailClient.ts).
+ * Node email ports reach the maintained HTTP mail provider through
+ * `postResendEmail`. A host can substitute an SMTP or capture transport by
+ * implementing `EmailTransport`. Ports depend on that interface; endpoint,
+ * authentication and response translation remain behind the HTTP client.
  *
  * `send()` returns the SAME `{ outcome, providerResponse }` the ports already
  * consume for their ledger/timeline writes, so swapping a port from
@@ -1141,10 +1139,9 @@ export interface EmailMessage {
     /** Cancels the in-flight send when the worker's per-row timeout fires. */
     signal?: AbortSignal;
 }
-/** Neutral aliases so ports type against the seam, not the Resend client. */
+/** Neutral aliases so ports type against the seam, not the maintained HTTP mail provider client. */
 export type EmailSendOutcome = ResendEmailSendOutcome;
 export type EmailSendResult = ResendEmailPostResult;
-export declare const DEFAULT_EMAIL_PROVIDER_KIND = "resend";
 export type EmailSendSkipReason = "admin_disabled" | "egress_suppressed";
 export interface EmailSendOutcomeLike {
     ok: boolean;
@@ -1173,21 +1170,22 @@ export declare function classifyEmailSendOutcome(outcome: EmailSendOutcomeLike):
 /** Adds a provider-neutral skip reason without changing ordinary wire shapes. */
 export declare function withEmailSendSkipReason<T extends EmailSendOutcomeLike>(outcome: T): T;
 export interface EmailTransport {
-    /** Stable provider tag for ledgers/observability (e.g. "resend", "in-memory"). */
+    /** Stable provider tag for ledgers/observability (e.g. "mailProvider", "in-memory"). */
     readonly providerKind: string;
     send(message: EmailMessage): Promise<EmailSendResult>;
 }
 /**
- * Resend-backed transport — the production adapter. Delegates verbatim to the
- * single isolated Resend client (endpoint, auth, error parsing, and the
+ * HTTP mail transport. Delegates verbatim to the isolated client
+ * (endpoint, auth, error parsing, and the
  * fail-closed egress gateway all live there).
  */
 export declare function createResendTransport(opts: {
     apiKey: string;
+    providerKind: string;
     env?: Record<string, string | undefined>;
 }, postEmail: (input: ResendEmailSendInput) => Promise<ResendEmailPostResult>): EmailTransport;
 /**
- * Resolve the Resend API key for a Node composition root.
+ * Resolve the maintained HTTP mail provider API key for a Node composition root.
  *
  * Both environments have a key and both are valid; only the variable NAME
  * differs, because the two Vercel projects are provisioned separately:
@@ -1216,9 +1214,9 @@ export interface InMemoryEmailTransport extends EmailTransport {
     readonly sent: ReadonlyArray<EmailMessage>;
 }
 /**
- * Non-Resend reference transport: captures sends in memory and never makes a
+ * Reference capture transport: captures sends in memory and never makes a
  * network call. Proves the seam is real — a port wired to this sends email with
- * zero Resend references — and doubles as the substitute an OSS fork starts from
+ * no HTTP client — and doubles as the substitute an OSS fork starts from
  * before writing its own SES/SMTP adapter.
  */
 export declare function createInMemoryEmailTransport(opts?: {
@@ -1559,16 +1557,16 @@ type SupabaseLikeClient = {
     };
     rpc(name: string, args: Record<string, unknown>): QueryResult<unknown>;
 };
-export declare function createSupabaseResendDeliveryReconciliationPort(client: SupabaseLikeClient): ResendDeliveryReconciliationPort;
+export declare function createSupabaseResendDeliveryReconciliationPort(client: SupabaseLikeClient, eventSource: string): ResendDeliveryReconciliationPort;
 export {};
 ```
 ## dist/communications/resendDeliveryReconciliationWorker.d.ts
 
 ```ts
 /**
- * Resend delivery reconciliation (docs/platform/RUNTIME_AND_SELF_HOSTING.md Wave 4).
+ * the maintained HTTP mail provider delivery reconciliation (docs/platform/RUNTIME_AND_SELF_HOSTING.md Wave 4).
  *
- * Delivery status was WEBHOOK-ONLY: if a Resend webhook is dropped, the
+ * Delivery status was WEBHOOK-ONLY: if a the maintained HTTP mail provider webhook is dropped, the
  * email_sends row freezes at `sent` and the delivery timeline never closes —
  * the `email_webhook_gap` detector counts exactly these. This worker polls the
  * provider for frozen sends and asks the atomic
@@ -1677,7 +1675,7 @@ export interface ResendEmailSendOutcome {
     resendId: string | null;
     httpStatus: number;
     providerError: string | null;
-    /** Sanitized provider machine code when Resend returned one (for retry policy). */
+    /** Sanitized provider machine code when the maintained HTTP mail provider returned one (for retry policy). */
     providerErrorCode?: string | null;
     aborted: boolean;
     /** Set when the egress gateway intentionally did not deliver to the real recipient. */
@@ -1690,7 +1688,12 @@ export interface ResendEmailPostResult {
     outcome: ResendEmailSendOutcome;
     providerResponse: Record<string, unknown>;
 }
-export declare function postResendEmail(input: ResendEmailSendInput, resolveEgressMode: EmailEgressResolver, defaultEnv?: Record<string, string | undefined>): Promise<ResendEmailPostResult>;
+/** Host-owned wire endpoint and legacy diagnostic label. */
+export interface EmailHttpProvider {
+    endpoint: string;
+    httpErrorPrefix: string;
+}
+export declare function postResendEmail(input: ResendEmailSendInput, resolveEgressMode: EmailEgressResolver, provider: EmailHttpProvider, defaultEnv?: Record<string, string | undefined>): Promise<ResendEmailPostResult>;
 export interface ResendEmailReadResult {
     ok: boolean;
     httpStatus: number;
@@ -1702,7 +1705,7 @@ export declare function getResendEmail(input: {
     apiKey: string;
     resendId: string;
     signal?: AbortSignal;
-}): Promise<ResendEmailReadResult>;
+}, provider: EmailHttpProvider): Promise<ResendEmailReadResult>;
 ```
 ## dist/communications/resendWebhookHandler.d.ts
 
@@ -1760,6 +1763,7 @@ export interface ResendWebhookHandlerDeps {
     createPort: () => ResendWebhookPort;
     verifySignature: (input: ResendWebhookSignatureInput) => boolean;
     environmentTagName: string;
+    eventSource: string;
     resolveReceiverEnvironmentTag?: () => EmailEnvironmentTag;
     now?: () => number;
     receivedAt?: () => Date;
@@ -1784,7 +1788,7 @@ export interface ResendWebhookSupabaseClient {
         error?: unknown;
     }>;
 }
-/** Supabase implementation of the narrow Resend webhook persistence contract. */
+/** Supabase implementation of the narrow the maintained HTTP mail provider webhook persistence contract. */
 export declare function createSupabaseResendWebhookPort(client: ResendWebhookSupabaseClient): ResendWebhookPort;
 ```
 ## dist/communications/resendWebhookVerifier.d.ts
@@ -1802,7 +1806,7 @@ export interface ResendWebhookVerificationInput {
     now?: () => number;
 }
 /**
- * Verifies Resend's Svix signature over the untouched request bytes.
+ * Verifies the maintained HTTP mail provider's Svix signature over the untouched request bytes.
  *
  * The provider accepts both the documented `v1,<base64>` member and the
  * historical bare base64 member. Do not parse or normalize `rawBody` before
@@ -2612,7 +2616,7 @@ export type EntrypointLoader = () => Promise<{
 
 ```ts
 import type { HttpRequest } from "./types.js";
-/** Hard cap on raw webhook body bytes — Stripe events are well under 256 KiB. */
+/** Hard cap on raw webhook body bytes — the payment provider events are well under 256 KiB. */
 export declare const MAX_WEBHOOK_BODY_BYTES = 1048576;
 /** Thrown by readRawBody when the streamed body exceeds MAX_WEBHOOK_BODY_BYTES. */
 export declare class WebhookBodyTooLargeError extends Error {
@@ -2629,7 +2633,7 @@ export declare class WebhookBodyTooLargeError extends Error {
  * (verified empirically against the hidden-preview deploy: a JSON payload posted
  * with `Content-Type: application/json` arrives parsed, the same bytes posted as
  * `text/plain` arrive raw). Re-serializing the parsed object with
- * `JSON.stringify` does NOT reproduce the provider's exact bytes — Stripe signs
+ * `JSON.stringify` does NOT reproduce the provider's exact bytes — the payment provider signs
  * pretty-printed JSON, so a compacted re-serialization breaks HMAC verification.
  *
  * Reading the underlying request stream FIRST — before touching `req.body`,

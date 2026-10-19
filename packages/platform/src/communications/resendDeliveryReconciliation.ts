@@ -41,6 +41,7 @@ type SupabaseLikeClient = {
 // safe without a read-before-write event exclusion here.
 export function createSupabaseResendDeliveryReconciliationPort(
   client: SupabaseLikeClient,
+  eventSource: string,
 ): ResendDeliveryReconciliationPort {
   return {
     async findFrozenSends({ now, graceMinutes, limit }) {
@@ -72,11 +73,11 @@ export function createSupabaseResendDeliveryReconciliationPort(
         p_metadata: {
           providerEventId: `poll:${resendId}:${webhookType}`,
           eventMetadata: {
-            source: "resend-delivery-reconciliation",
+            source: eventSource,
             resend_id: resendId,
             email: recipientEmail,
           },
-          source: "resend-delivery-reconciliation",
+          source: eventSource,
         },
       });
       if (rpcError) throw new Error(`polled_delivery_rpc: ${rpcError.message ?? "unknown"}`);
