@@ -1112,6 +1112,11 @@ and incompatible key types/curves are ignored. Certificate metadata such as
 `x5c`, `x5t` and `x5t#S256` does not change selection. The set must contain at
 least one usable signing key, with bounded key IDs unique among usable keys.
 Malformed sets, private key material and invalid signing key parameters refuse.
+Before discovery or key lookup, bounded compact JWS parsing requires JSON-object
+headers and payloads, refuses algorithms outside the configured allowlist and
+returns `OIDC_ISSUER_MISMATCH` for an unverified issuer that is not the exact
+configured string; these checks only refuse, and signature verification and all
+verified claim checks still determine admission.
 
 Discovery expires within one hour and JWKS within five minutes. `max-age` and
 `Age` can shorten these bounds; `no-store` prevents reuse. `no-cache` instead

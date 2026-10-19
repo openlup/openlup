@@ -156,9 +156,21 @@ export function createOidcIdentityVerifier(config: OidcIdentityVerifierConfig, d
     try {
       if (!configurationValid) return refuse("OIDC_CONFIGURATION_INVALID");
       if (typeof token !== "string" || Buffer.byteLength(token) > 16384 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) return refuse("OIDC_TOKEN_INVALID");
-      let header: unknown;
-      try { header = JSON.parse(Buffer.from(token.split(".")[0]!, "base64url").toString("utf8")); } catch { return refuse("OIDC_TOKEN_INVALID"); }
-      if (!record(header) || !bounded(header.kid, 128) || !settings.algorithms.includes(header.alg as "RS256" | "ES256")) return refuse("OIDC_TOKEN_INVALID");
+      let header: unknown, unverifiedPayload: unknown;
+      try {
+        const parts = token.split(".").map(part => {
+          const bytes = Buffer.from(part, "base64url");
+          if (bytes.toString("base64url") !== part) return refuse("OIDC_TOKEN_INVALID");
+          return bytes;
+        });
+        const decoder = new TextDecoder("utf-8", { fatal: true });
+        header = JSON.parse(decoder.decode(parts[0]!));
+        unverifiedPayload = JSON.parse(decoder.decode(parts[1]!));
+      } catch { return refuse("OIDC_TOKEN_INVALID"); }
+      if (!record(header) || !record(unverifiedPayload) || !bounded(header.kid, 128)
+        || !settings.algorithms.includes(header.alg as "RS256" | "ES256")) return refuse("OIDC_TOKEN_INVALID");
+      // Unverified claims may refuse before I/O; only verified claims can admit.
+      if (unverifiedPayload.iss !== settings.issuer) return refuse("OIDC_ISSUER_MISMATCH");
       let set = await keySet();
       const select = () => set.values.find(key => key.kid === header.kid && key.alg === header.alg);
       if (!select()) { set = await keySet(true); if (!select()) return refuse("OIDC_KID_UNKNOWN"); }

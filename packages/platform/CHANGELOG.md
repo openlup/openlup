@@ -8,6 +8,14 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Refuse foreign OIDC issuers before discovery or JWKS lookup, including unknown
+  key IDs during a refresh rate limit, preserving the 401 credential refusal.
+  Strict bounded compact JWS parsing and the algorithm allowlist precede network
+  access; signature and verified claim checks remain required.
+  Migration: malformed encodings now refuse before key lookup, and foreign-issuer
+  unknown-key tokens return an issuer refusal instead of a refresh-related 503.
+  No configuration, schema or API changes are required.
+
 - Select usable OIDC signing keys from mixed JWKS documents, ignoring encryption
   keys, unsupported algorithms and incompatible key types/curves. Signing keys
   may omit `alg` and `use`; certificate metadata is accepted. Keep malformed-set,

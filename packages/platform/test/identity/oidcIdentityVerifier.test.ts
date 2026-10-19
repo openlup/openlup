@@ -28,6 +28,74 @@ async function fixture(config: Partial<OidcIdentityVerifierConfig> = {}, cacheCo
     rotate: async () => { keys = [await jwk(second, "second"), encryption]; }, fail: () => { unavailable = true; } };
 }
 const denied = (code: string) => ({ ok: false, code });
+const segment = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+const compact = (header: unknown, payload: unknown) => `${segment(header)}.${segment(payload)}.AA`;
+it.each(["cold", "rate-limited", "refresh-permitted", "expired-discovery"])("foreign_issuer_unknown_kid_refuses_before_io %s", async state => {
+  const f = await fixture();
+  if (state !== "cold") {
+    expect((await f.verifier.readiness()).state).toBe("ready");
+    if (state === "rate-limited") {
+      expect(await f.verifier.verifyToken(await f.token({}, "foreign", f.second))).toEqual(denied("OIDC_JWKS_REFRESH_RATE_LIMITED"));
+    }
+    if (state === "refresh-permitted") f.advance(30000);
+    if (state === "expired-discovery") f.advance(3600001);
+    f.fetch.mockClear(); f.loadJwt.mockClear();
+  }
+  const token = await f.token({ iss: `${issuer}-foreign` }, "foreign", f.second);
+  expect(await f.verifier.verifyToken(token)).toEqual(denied("OIDC_ISSUER_MISMATCH"));
+  expect(await f.verifier.verifyAccessToken(token)).toBeNull();
+  expect(f.fetch).not.toHaveBeenCalled(); expect(f.loadJwt).not.toHaveBeenCalled();
+});
+it.each([undefined, null, 1, {}, [issuer], `${issuer}/`, issuer.toUpperCase()])("issuer_precheck_requires_exact_string %j", async iss => {
+  const f = await fixture();
+  expect(await f.verifier.verifyToken(await f.token({ iss }, "foreign", f.second))).toEqual(denied("OIDC_ISSUER_MISMATCH"));
+  expect(f.fetch).not.toHaveBeenCalled(); expect(f.loadJwt).not.toHaveBeenCalled();
+});
+it.each(["HS256", "RS512", "none"])("disallowed_algorithm_refuses_before_io %s", async alg => {
+  const f = await fixture();
+  expect(await f.verifier.verifyToken(compact({ alg, kid: "foreign" }, { iss: issuer }))).toEqual(denied("OIDC_TOKEN_INVALID"));
+  expect(f.fetch).not.toHaveBeenCalled(); expect(f.loadJwt).not.toHaveBeenCalled();
+});
+const validHeader = segment({ alg: "RS256", kid: "first" });
+const validPayload = segment({ iss: issuer });
+it.each([
+  ["too-large", compact({ alg: "RS256", kid: "first" }, { iss: issuer, padding: "x".repeat(16384) })],
+  ["extra-part", `${validHeader}.${validPayload}.AA.AA`],
+  ["empty-signature", `${validHeader}.${validPayload}.`],
+  ["padding", `${validHeader}=.${validPayload}.AA`],
+  ["invalid-alphabet", `${validHeader}.${validPayload}.++`],
+  ["noncanonical-header", `${validHeader.slice(0, -1)}1.${validPayload}.AA`],
+  ["noncanonical-payload", `${validHeader}.${Buffer.from(`${JSON.stringify({ iss: issuer })} `).toString("base64url").slice(0, -1)}B.AA`],
+  ["noncanonical-signature", `${validHeader}.${validPayload}.AB`],
+  ["invalid-length", `${validHeader}.${validPayload}.A`],
+  ["header-array", compact([], { iss: issuer })],
+  ["header-null", compact(null, { iss: issuer })],
+  ["payload-array", compact({ alg: "RS256", kid: "first" }, [])],
+  ["payload-null", compact({ alg: "RS256", kid: "first" }, null)],
+  ["payload-string", compact({ alg: "RS256", kid: "first" }, "claims")],
+  ["payload-json", `${validHeader}.${Buffer.from("{").toString("base64url")}.AA`],
+  ["header-utf8", `${Buffer.concat([Buffer.from('{"alg":"RS256","kid":"first","x":"'), Buffer.from([0xff]), Buffer.from('"}')]).toString("base64url")}.${validPayload}.AA`],
+  ["payload-utf8", `${validHeader}.${Buffer.concat([Buffer.from(`{"iss":"${issuer}","x":"`), Buffer.from([0xff]), Buffer.from('"}')]).toString("base64url")}.AA`],
+])("malformed_compact_token_refuses_before_io %s", async (_name, token) => {
+  const f = await fixture();
+  expect(await f.verifier.verifyToken(token)).toEqual(denied("OIDC_TOKEN_INVALID"));
+  expect(f.fetch).not.toHaveBeenCalled(); expect(f.loadJwt).not.toHaveBeenCalled();
+});
+it("issuer_precheck_does_not_admit_tampered_claims", async () => {
+  const f = await fixture();
+  const token = await f.token({ iss: `${issuer}-foreign` });
+  const parts = token.split(".");
+  const payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8"));
+  parts[1] = segment({ ...payload, iss: issuer });
+  expect(await f.verifier.verifyToken(parts.join("."))).toEqual(denied("OIDC_TOKEN_INVALID"));
+  expect(f.fetch).toHaveBeenCalledTimes(2);
+});
+it("verified_issuer_is_checked_independently_of_unverified_claims", async () => {
+  const f = await fixture();
+  f.loadJwt.mockResolvedValue({ ...jose, jwtVerify: vi.fn().mockResolvedValue({ payload: { iss: `${issuer}-foreign` } }) });
+  expect(await f.verifier.verifyToken(await f.token())).toEqual(denied("OIDC_ISSUER_MISMATCH"));
+  expect(f.fetch).toHaveBeenCalledTimes(2);
+});
 it("construction_and_import_are_cold", async () => {
   const f = await fixture(); expect(f.fetch).not.toHaveBeenCalled(); expect(f.loadJwt).not.toHaveBeenCalled();
   expect((await f.verifier.verifyToken(await f.token())).ok).toBe(true);
