@@ -242,3 +242,26 @@ Domain-boundary rules live in the maintainer canon `DOMAIN_ARCHITECTURE.md`,
 which belongs to the private overlay and is not part of the published tree.
 
 <!-- openlup-doc-impact {"unit":"domain-communications","digest":"sha256-11d5b86572e22aad0b806323acfc0741be220b6f76d4eb066fe416154754b83d","reason":"The obsolete deployment-specific database-template seed-content test is withdrawn. The selected public email registry projection remains empty; portable template, renderer, consent and delivery tests remain. No registry, send policy or email runtime changes."} -->
+
+
+## Native lifecycle stores
+
+The [platform communications server entry](../../../packages/platform/src/communications/index.ts)
+provides native polling, newsletter sync, operator recipients and durable consent.
+Hosts explicitly register genuine network acceptances and inject neutral
+observations; capture/accepted and sync-settled records remain distinct from
+delivered evidence. Poll/callback convergence, observation replay, suppression and
+404 abandonment are transactional. No subscription or renewal state changes.
+
+Sync reuses the existing outbox rail and sole `runCommunicationSyncDispatch`
+executor, with token/target fencing and a nonclaimable sidecar. Hosts keep its
+exact namespace out of generic dispatch and supply membership I/O themselves.
+The directory keeps the current three notification types, normalized uniqueness
+and active-only patches, under live verified human operator authorization.
+Native consent records a durable authoritative P4 decision and active admin
+recipient gate. It excludes managed 16-hour / 2-day / 4-week frequency caps and
+legacy contact-touching; evaluation is not a send-time fence. Optional tester
+pause state remains host-owned. See the [native package recipe](../../../packages/platform/README.md#native-communications-operations-development-preview),
+[B3 changed expectations](../../../docs/platform/plans/oss-m04-communications-triggers.md#b3-native-stores)
+and [real-PG conformance](../../../tests/postgres/communicationsNative.test.ts).
+The callable binding adds no HTTP cron/UI activation or default network provider.

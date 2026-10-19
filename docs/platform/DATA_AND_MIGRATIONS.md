@@ -299,6 +299,20 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+Native communications appends
+[`20261019200000_communications_native_operations.sql`](../../db/platform/migrations/20261019200000_communications_native_operations.sql)
+at position 70. Its five CREATE-only tables store network targets, immutable
+observations, a nonqueue outbox sync sidecar, notification recipients and policy
+decisions. Existing consent truth and all earlier forwards remain unchanged.
+Deploy the complete schema before selecting the factories; rollback of application
+code leaves additive objects and prior data intact. Sparse package projections
+are not an install chain. The live selected-catalogue digest is refreshed from
+real PostgreSQL. [B3 conformance](../../tests/postgres/communicationsNative.test.ts)
+checks exact position-69 upgrade with durable state, fresh install, runner replay,
+ledger tamper refusal and clean/poisoned default and inherited ACLs. Runtime
+refusal on unsafe effective privileges is required: this forward changes no grants,
+functions, triggers, old objects or classifier rules.
+
 Reference identity composition adds no SQL or ledger entries. Direct startup
 requires the complete canonical catalogue through identity erasure receipts,
 never the sparse seven-file package projection. Its schema inventory is a

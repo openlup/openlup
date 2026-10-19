@@ -283,6 +283,16 @@ await assert.rejects(() => store.readReceipt("synthetic:1"), error => {
   missingPeer = error;
   return error.message.startsWith("OPENLUP_E_PEER_MISSING: pg is required by ") && Boolean(error.cause);
 });
+for (const [factory,options,operation] of [
+  ["createPostgresDeliveryReconciliationPort",{binding:"synthetic"},store=>store.findFrozenSends({now:"2026-10-19T12:00:00Z",graceMinutes:10,limit:1})],
+  ["createPostgresCommunicationSyncStore",{binding:"synthetic",providerKind:"synthetic",rail:()=>{throw new Error("peer must fail first");}},store=>store.claimBatch({providerKind:"synthetic",batchSize:1,visibilitySeconds:60,maxAttempts:2})],
+  ["createPostgresNotificationRecipientsPort",{operatorId:"synthetic"},store=>store.listNotificationRecipients({notification_type:"new_signup"})],
+  ["createPostgresConsentEvaluator",{},store=>store.evaluate({email:"cold@example.invalid",purpose:"transactional"})],
+]) {
+  const module=await import("@openlup/platform/communications"), native=module[factory]({connectionString:"postgresql://unused.invalid/synthetic"},options);
+  await assert.rejects(()=>operation(native),error=>{const refusal=error.name==="ConsentEvaluationUnavailableError"?error.cause:error;return refusal.message.startsWith("OPENLUP_E_PEER_MISSING: pg is required by ")&&Boolean(refusal.cause);});
+  await assert.rejects(()=>native.close());
+}
 // No pool was created; closing repeats the cached initialization refusal.
 await assert.rejects(() => store.close(), error => error === missingPeer);
 `);
@@ -317,6 +327,80 @@ try {
   } finally { await store.close(); }
 } finally { await client.end(); }
 `, [connectionString]);
+}
+
+/** Useful installed native operations against a complete canonical catalogue installed by the reference runner. */
+export function proveNativeCommunicationsOperations(consumer: string, connectionString: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createPostgresDeliveryReconciliationPort,createPostgresCommunicationSyncStore,createPostgresNotificationRecipientsPort,createPostgresConsentEvaluator } from "@openlup/platform/communications";
+const env={connectionString:process.argv[2]},binding="cold-native";
+const rail=db=>({
+  claimBatch: async input=>(await db.query("SELECT * FROM public.outbox_claim_batch($1,$2,$3,$4,$5)",[input.eventTypes,input.knownEventTypes,input.batchSize,input.visibilitySeconds,input.maxAttempts])).rows,
+  markProcessed: async input=>({applied:(await db.query("SELECT public.outbox_mark_processed($1,$2,'{}') AS value",[input.eventId,input.claimToken])).rows[0].value}),
+  markFailed: async input=>({status:(await db.query("SELECT public.outbox_mark_failed($1,$2,$3,$4,$5,$6,$7,$8) AS value",[input.eventId,input.claimToken,input.error,input.outcome,input.baseDelaySeconds,input.maxDelaySeconds,input.maxAttempts,input.snoozeSeconds])).rows[0].value}),
+});
+const delivery=createPostgresDeliveryReconciliationPort(env,{binding}),sync=createPostgresCommunicationSyncStore(env,{binding,providerKind:"synthetic",rail});
+const consent=createPostgresConsentEvaluator(env),directory=createPostgresNotificationRecipientsPort(env,{operatorId:"b3000000-0000-4000-8000-000000000001"});
+try {
+  const target={sourceKey:"cold:send",messageId:"network:cold",recipientEmail:"cold@example.invalid",templateReference:"synthetic",acceptedAt:"2026-10-19T10:00:00Z",evidence:"network_accepted"};
+  const registered=await delivery.registerNetworkTarget(target);
+  assert.equal(typeof registered.id,"string");
+  assert.equal((await delivery.findFrozenSends({now:"2026-10-19T12:00:00Z",graceMinutes:10,limit:10}))[0]?.id,registered.id,"no-op store must refuse proof");
+  assert.equal((await delivery.readEvidence(registered.id)).observedState,null,"acceptance is not delivery");
+  await assert.rejects(()=>delivery.registerNetworkTarget({...target,sourceKey:"capture",messageId:"captured:1",evidence:"capture"}));
+  await delivery.applyPolledEvent({sendId:registered.id,messageId:target.messageId,eventType:"delivered",eventAt:"2026-10-19T12:00:00Z",recipientEmail:target.recipientEmail});
+  assert.equal((await delivery.readEvidence(registered.id)).observedState,"delivered");
+  const work=await sync.registerWork({sourceKey:"cold:sync",contactId:"synthetic",normalizedEmail:target.recipientEmail,eventType:"subscribe",purpose:"marketing_newsletter"});
+  const [claimed]=await sync.claimBatch({providerKind:"synthetic",batchSize:10,visibilitySeconds:60,maxAttempts:2});
+  assert.equal(claimed?.id,work.id);
+  assert.equal(await sync.markSent({eventId:work.id,claimToken:"wrong",providerKind:"synthetic"}),false,"wrong token must not settle");
+  assert.equal(await sync.markSent({eventId:work.id,claimToken:claimed.claimToken,providerKind:"synthetic"}),true);
+  assert.equal(await sync.markSent({eventId:work.id,claimToken:claimed.claimToken,providerKind:"synthetic"}),false);
+  assert.deepEqual(await sync.claimBatch({providerKind:"synthetic",batchSize:10,visibilitySeconds:60,maxAttempts:2}),[],"second executor must see no settled work");
+  await directory.createNotificationRecipient({email:"operator-recipient@example.invalid",name:"Synthetic",notification_type:"new_signup",active:true});
+  const [recipient]=(await directory.listNotificationRecipients({notification_type:"new_signup"})).recipients;
+  assert.equal(recipient.email,"operator-recipient@example.invalid");
+  await directory.updateNotificationRecipient({recipientId:recipient.id,active:false});
+  assert.equal((await directory.listNotificationRecipients({notification_type:"new_signup"})).recipients[0].active,false);
+  await directory.deleteNotificationRecipient({recipientId:recipient.id});
+  assert.deepEqual((await directory.listNotificationRecipients({notification_type:"new_signup"})).recipients,[]);
+  const decision=await consent.evaluate({email:target.recipientEmail,purpose:"marketing_newsletter"});
+  assert.equal(decision.allowed,false);assert.equal(typeof decision.decisionId,"string");
+  assert.deepEqual(consent.guarantees,{managedFrequencyCaps:false,legacyContactTouching:false,sendTimeFence:false});
+} finally {await Promise.all([delivery.close(),sync.close(),consent.close(),directory.close()]);}
+`, [connectionString]);
+}
+
+/** Setup uses the existing canonical runner; subjects resolve only from installed artifacts. */
+function proveNativeCommunicationsPostgres(consumer: string): void {
+  const started = performance.now();
+  const name = `openlup-native-proof-${randomUUID()}`;
+  const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
+  try {
+    // Complete catalogue fingerprints use the repository harness's PostgreSQL 16 profile.
+    docker(["run","--detach","--rm","--name",name,"--cpus=1","--memory=512m","--pids-limit=128","--tmpfs","/var/lib/postgresql/data","--publish","127.0.0.1::5432","--env","POSTGRES_HOST_AUTH_METHOD=trust","postgres:16"]);
+    const port = docker(["port",name,"5432/tcp"]).split(":").at(-1)!;
+    const connectionString = `postgresql://postgres@127.0.0.1:${port}/postgres`;
+    // Host TCP readiness, through the same repository harness as the real-PG witness.
+    command(process.execPath,["--import",import.meta.resolve("tsx"),"--input-type=module","-e",`
+      import { waitForPostgresTcpReady } from ${JSON.stringify(pathToFileURL(join(root,"tests/helpers/postgresContainer.ts")).href)};
+      import { createPostgresMigrationRunner } from ${JSON.stringify(pathToFileURL(join(root,"server/adapters/postgres/migrationRunner.ts")).href)};
+      import pg from "pg";
+      const connectionString=process.argv[1];
+      if(!await waitForPostgresTcpReady(connectionString))throw new Error("Native cold PG unavailable");
+      const runner=createPostgresMigrationRunner({connectionString});await runner.apply();
+      const client=new pg.Client({connectionString});await client.connect();
+      try {
+        await client.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ('b3000000-0000-4000-8000-000000000001','admin@example.invalid')");
+        await client.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ('b3000000-0000-4000-8000-000000000001','admin','active','legacy',now())");
+        await client.query("INSERT INTO public.platform_communication_operators(principal_id) VALUES ('b3000000-0000-4000-8000-000000000001')");
+      } finally {await client.end();}
+      process.exit(0);
+    `,connectionString],root,isolatedConsumerEnv());
+    proveNativeCommunicationsOperations(consumer,connectionString);
+  } finally {docker(["rm","--force",name]);}
+  console.log(`Native communications installed proof PASS (PostgreSQL 16, complete canonical catalogue; ${Math.round(performance.now()-started)} ms including setup/cleanup)`);
 }
 
 // Like the outbox proof: the trusted job service when CI supplies its identity, otherwise an owned
@@ -359,6 +443,7 @@ for (const index of [6, 7, 8, 9, 10]) {
 }
 process.exit(0);
 `, [`postgresql://postgres@127.0.0.1:${port}/${database}`]);
+    proveNativeCommunicationsPostgres(consumer);
     console.log(`Platform PostgreSQL SQL conformance PASS (${service ? "job service" : "owned container"}, database ${database})`);
   } finally {
     if (service && createdDatabase) docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `DROP DATABASE IF EXISTS ${database} WITH (FORCE)`]);

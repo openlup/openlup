@@ -645,3 +645,60 @@ P3's complete built contracts entry measures **5,992 B minified+gzip**;
 the owner-read cap is **11,776 B**, rounded to the nearest 512 B at about
 twice that measurement. Only this browser limit changes. Existing pack classes,
 other browser limits and clean-candidate artifact checks remain binding.
+
+
+### Native communications operations (development preview)
+
+The server entry `@openlup/platform/communications` additionally exports
+`createPostgresDeliveryReconciliationPort`, `createPostgresCommunicationSyncStore`,
+`createPostgresNotificationRecipientsPort` and `createPostgresConsentEvaluator`.
+Install the complete canonical manifest through position 70 before selecting
+these factories. `COMMUNICATIONS_MIGRATIONS` now projects positions 2, 9, 20 and
+70; it remains a sparse inventory, not an installer. Missing schema/configuration
+is an error, never an empty queue or an allow decision.
+
+Each factory owns a capability-local, role-free transaction lane and lazy `pg`
+pool, with `close()` for host cleanup. Only a trusted host may hold these owner
+credentials. Effective PUBLIC/browser table, column and inherited privileges
+cause refusal; the CREATE-only forward intentionally changes no old ACL or role.
+Do not expose a factory or its database lane to browser callers. The directory
+requires a verified active human operator, live communications authorization and
+absence of machine authority in the same transaction as each operation.
+
+A host registers `evidence: "network_accepted"` only after actual network
+acceptance, with a unique source key and binding. Capture is never registered as
+a network target. Polls and admitted callbacks call the same `applyObservation`
+writer; observation-key replay must preserve the immutable fact. Readback keeps
+acceptance, observed state, attempt/404 counts and abandonment separate. Only
+three consecutive 404s abandon a candidate; abandonment is not failed/delivered.
+Bounce/complaint writes the authoritative fingerprint's suppression atomically.
+No subscription or renewal state is changed.
+
+For newsletter sync, inject `rail: db => createPostgresOutboxStore(db)` from
+`@openlup/outbox/postgres` in host composition. `db` is the current transaction,
+so claim commits before I/O and rail ack and sidecar settlement commit together.
+`registerWork` creates one existing-outbox identity for a source and target
+binding. Successive preferences for one contact/target share the rail aggregate,
+so newer work cannot overtake older unprocessed work. Configure a distinct
+binding per target/provider, and exclude
+`nativeSyncEventType(binding)` from generic dispatch registries. Invoke only
+`runCommunicationSyncDispatch` with an explicit neutral membership provider.
+The sidecar cannot claim work and has no lease or drainer. A membership settlement
+records sync progress, never email delivery; remote exactly-once effects are not
+promised across a process crash. There is no automatic backfill or activation.
+
+Native consent evaluates registered P4 policy against the authoritative native
+permission and persists the decision before returning its id. Admin notices need
+an active source-bound notification recipient. Optional `testerPaused` reads
+host-owned authoritative pause state inside that transaction; omitted means no
+pause policy. The capability explicitly declares `managedFrequencyCaps: false`,
+`legacyContactTouching: false`, `sendTimeFence: false`: managed 16-hour / 2-day /
+4-week caps and legacy contact-touching are excluded. Evaluation does not fence a
+later send against changed consent. Custom-purpose persistence remains host-owned.
+
+The [callable reference binding](../../server/runtime/communications/communicationsLifecycleBinding.ts)
+selects only `PLATFORM_BUNDLE=node-postgres` with `DATABASE_URL`; it closes pools
+on success/failure and supplies no network/provider default. Existing managed
+HTTP cron/UI routes retain their existing composition. See the
+[B3 expectation inventory](../../docs/platform/plans/oss-m04-communications-triggers.md#b3-native-stores)
+and [real-PG witnesses](../../tests/postgres/communicationsNative.test.ts).

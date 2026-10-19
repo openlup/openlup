@@ -280,7 +280,11 @@
     {
       "file": "db/platform/migrations/20261018190000_identity_privacy_erasures.sql",
       "sha256": "f39b691cb14c0e9ec1a7460d77dc46e16bca4d2448838e4882f78885a6d92351"
+    },
+    {
+      "file": "db/platform/migrations/20261019200000_communications_native_operations.sql",
+      "sha256": "1d28380f12324c3bcccaa5a6d38c22e72332c7992bbb1f90651774dfc5e24982"
     }
   ],
-  "objectInventorySha256": "f04ba91040e109ca7c79ddd73d6f31008dc735c93cedd1d536a2c006971bac65"
+  "objectInventorySha256": "3c7cf9a9193257d64497ea9790f6a90b5b3a15713e0df5ef4638f451a7cff107"
 }

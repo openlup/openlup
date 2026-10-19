@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Add four native communications stores, explicit trusted network registration
+  and evidence readback, and durable native consent decisions. Sync reuses the
+  existing outbox rail; the reference binding is callable without activation.
+  Append CREATE-only schema position 70 and its exact sparse SQL projection.
+  Native consent excludes managed frequency caps and legacy contact-touching;
+  evaluate is not a send-time fence. Existing exports and managed paths remain.
+
 - Add an opt-in immutable consent-purpose registry with mandatory classification,
   registry-bound policy/token/newsletter contracts and explicit host preference
   persistence. Legacy defaults and managed purpose CHECKs remain unchanged;

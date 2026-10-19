@@ -40,7 +40,7 @@ authorized release/adoption/staging. D2's maintained default remains reference-o
 | P4 | Agnostic effects/receipt/readback and reconciliation engines behind neutral ports; vendor mapping stays in the reference adapter; marketing automation is agnostic ports/contracts/conformance only. |
 | B1 | Mandatory package admission and policy guard at every supported network-mail injection. Four reference guard insertions, X5 invoice fixture/refusal case, X6 Auth bridge and maintained default admission. Local verification below; supervisor owns the signed candidate and two full reviews. |
 | B2 | Separately approved neutral `pl`/`en` defaults; enumerate changed public expectations and retain private legacy bindings. |
-| B3 | Four frozen direct-operation groups with schema/ACL/replay/refusal proof. |
+| B3 | [Native stores](#b3-native-stores) for four frozen direct-operation groups; file-only candidate, with schema/ACL/replay/refusal proof and delivery gates recorded below. |
 | C-compose / S1 | Explicit host composition/readiness, then separate set-version preparation; no duplicate executor. |
 
 ## P1 boundary
@@ -404,3 +404,166 @@ time proxy, including boundary iterations. Totals retain the inherited ledger
 subtotal and P4's unrounded measurements. X2 permits the recorded case overrun
 within the time limit; post-loop cleanup must revisit it. These measurements
 do not reset the allowance or replace the binding hosted median.
+
+
+## B3 native stores
+
+Status: development-preview implementation candidate, 2026-10-19. The authorized
+outcome is the four D8 native groups. Work is confined to the assigned B3 worktree
+at `0c62f937848fbe1e436ee1f82149a750edf44abf`, with file edits and local proof only.
+The supervisor retains commits, two fresh full native reviews, submission and any
+later delivery authority. B2 is an independent change; its content is excluded.
+
+The native factories live in the existing server communications entry. Hosts
+register actual network acceptances, supply neutral observations and explicitly
+inject newsletter membership I/O. Polls and admitted callbacks share the same
+atomic fact writer; accepted/captured and sync-settled facts do not establish
+parcel or email delivery. The callable reference binding has no cron/API/UI
+activation, timer or worker. Existing managed callers and frozen vendor paths
+remain unchanged. It accepts only an explicitly configured native bundle; hosts
+retain existing managed composition separately.
+
+Schema is one CREATE-only forward at position 70, with five tables and an exact
+package SQL projection. It passes the existing expand-only classifier without
+changing it. The new tables ship no grants. Runtime adapters refuse unsafe
+PUBLIC, browser, inherited and column privileges. The consent truth remains
+`communication_recipient_consents`; the new policy table records decisions only.
+The sync sidecar has no claim state, visibility clock, lease or drainer. Existing
+`outbox_events` owns identity, claims, retries and acknowledgements; only
+`runCommunicationSyncDispatch` executes membership effects. Each binding owns an
+exact event-type namespace, which hosts must exclude from generic dispatchers.
+
+Native consent guarantees are P4 policy, an authoritative snapshot and a durable
+decision, plus an active source-bound directory recipient for admin notices.
+Managed 16-hour / 2-day / 4-week frequency caps and legacy contact-touching are
+not ported. Evaluation is not a send-time consent fence. Hosts may supply an
+authoritative tester pause reader inside the transaction; absence means no native
+pause policy. No new purpose, marketing scope, provider or subscription mutation
+is introduced. Registration never grants consent. Native fact timestamps use RFC 3339
+instants canonicalized to UTC with PostgreSQL microsecond precision. Finer input
+refuses instead of collapsing distinct immutable observation identities.
+
+Every changed public expectation is enumerated here. “Absent” refers to public
+native implementations; refusal names in the original inventory describe the
+adopter contract and are not assertions that those files existed publicly.
+
+| ID | Old → new direct/public expectation | Required proof |
+| --- | --- | --- |
+| B3-P1 | findFrozenSends unsupported/absent → bounded real ordered native network candidates; successful empty result means genuinely no candidates. | PG cutoff/order/scope/empty/missing-schema assertions. |
+| B3-P2 | applyPolledEvent unsupported/absent → one atomic deduped observation/read-state/suppression transaction. | Exact replay, conflicting microseconds, chronology, concurrent callback/poll and rollback. |
+| B3-P3 | recordPollAttempt unsupported/absent → durable fairness rotation and reset of consecutive 404s, independent of delivery truth. | PG counters and worker best-effort failure path. |
+| B3-P4 | recordSendNotFound unsupported/absent → threshold-three first-only abandonment; status remains unknown/sent. | Consecutive 404, non-404 reset, simultaneous calls, no false delivery/failure. |
+| B3-P5 | No native poll target registration/readback → explicit trusted real-network accepted-reference registration and durable evidence readback. Capture is not pollable/delivered. | Registration idempotency/conflict, full engine→PG readback and capture refusal. |
+| B3-N1 | claimBatch unsupported/absent → bounded ordered claims over the existing rail's explicitly selected native sync work, sharing an aggregate per contact/target. | Locked-row concurrency, visibility/reclaim, purpose/scope and queue isolation. |
+| B3-N2 | markSent unsupported/absent → atomic membership settlement and rail ack fenced by the current claim and target. | Current, stale and foreign claims, repeat, rollback and no email-delivered fact. |
+| B3-N3 | markFailed unsupported/absent → durable bounded retry/backoff or terminal discard with fenced state. | Failure/timeout/max-attempt/backoff, lost claim and atomic rollback. |
+| B3-N4 | No usable direct sync composition → existing worker can use native store plus explicitly injected neutral membership port; no automatic remote binding/activation. | Actual reference binding transcript to PG + synthetic membership port; same work not consumed twice. |
+| B3-R1 | list directory unsupported/absent → authorized database list for exactly the current public type. | Real empty/nonempty list, stable ordering, all authorization refusals. |
+| B3-R2 | create unsupported/absent → persisted current-shape row, unique type-email conflict mapped honestly. | Create/readback, duplicate/race, invalid type/email and rollback. |
+| B3-R3 | update unsupported/absent → only active changes, current acknowledgement schema retained. | Update/readback, unknown id acknowledgement, prohibited field change negative test. |
+| B3-R4 | delete unsupported/absent → row removed; repeat acknowledgement has no extra effect. | Delete/readback/replay, wrong/inactive actor no mutation. |
+| B3-C1 | consent evaluate unsupported/absent → durable authoritative native evaluation with P4 registry, snapshot/reason/decision id. | PG granted/missing/denied/suppressed/tester/admin/unknown-purpose matrix. |
+| B3-C2 | No direct decision service → unavailable/corrupt/unsafe store throws before send; explicit deny remains an ordinary blocked result. | Actual handler-style consent→effect transcript under injected failures. |
+| B3-C3 | No direct defined relation to managed database-only policy → explicitly documented approved bounded native guarantee; never inferred parity or new scope. | Authoritative snapshot/decision and active-recipient tests; all three excluded guarantees declared false. |
+| B3-S1 | No D8 native objects → one ordered additive native forward, exact projection and manifest position/digest. | Fresh/full upgrade/replay/prefix/refusal and live object inventory. |
+| B3-A1 | Server entry lacks four factories/types → existing server entry exports native factories/contracts; browser runtime inventory and import safety remain the same. | API diff/Migration block, built and packed import/optional-peer proofs. |
+| B3-B1 | Public reference has only managed callers and separate native receipt/control binding → explicit named native lifecycle binding with configuration/schema/role refusals, cleanup and truthful evidence. | Selected-bundle actual-binding tests, readback; existing managed branch unchanged. |
+| B3-X1 | Required selectors lacked native PG/binding tests → two paths appended to the root command and all three mirrors; no prior selector or check is removed. | Selector/policy falsifiers and actual required run. |
+| B3-X2 | Cold proof covered receipts only → all four installed native factories, missing-peer refusals, complete-catalogue setup and planted no-op/token/delivery/executor failures. | Actual tarballs and real PG plus falsifier tests. |
+
+The reference directory additionally checks active human admin/distributor
+membership, the existing active communications-operator row and absence from the
+machine-operator table. The host supplies the verified principal; request-body
+identity never becomes authority. Missing updates/deletes acknowledge a command,
+not prior row existence. Durable permission database failures throw the consent
+unavailable category before an effect.
+
+### B3 execution and X2 ledger
+
+Inherited cumulative ledger before B2/B3: **348 counted cases**, **255 boundary
+iterations**, **603 runner additions**, **1.450163331 s** summed local file-median
+proxy. B2 additions are deliberately not guessed or incorporated. B3 adds **30 runner
+cases** and **18 generated boundary iterations** (three existing source checks
+for each of six new production files). Its **57 authored subscenario executions**
+are additionally charged, rather than called exempt boundaries: HTTP failures 3,
+bundle configurations 2, permission states 3, missing-peer adapters 4,
+capability/ACL variants 9, browser-role/table probes 24, operator states 3,
+additional policy outcomes 4, worker failure 1, capture separation 1, invalid
+directory inputs 2 and distinct microseconds 1. Thus B3's conservative counted
+charge is **87**, its actual runner increase is **48**, and the cumulative ledger
+before B2 is **435 counted / 273 boundary / 651 runner additions**. Counted and
+runner totals differ because the 57 inner scenarios share runner cases. The
+recorded counted overrun is **335** against +100; this is not a new allowance.
+
+Three identical passing selections ran on the stabilized implementation: 61
+native/contract/consumer-falsifier cases and the complete 682-case existing
+package boundary file. All eight file medians below use Vitest's module diagnostic
+`duration`, including all hooks and real PostgreSQL setup/teardown. Entire existing
+cold-consumer and boundary files are charged conservatively, with no subtraction
+of their prior cost. Broker waits and failed attempts are excluded from the proxy,
+not concealed as passing measurements.
+
+| Selected file | Three-run median (s) |
+| --- | ---: |
+| `packages/platform/test/communications/nativeDelivery.test.ts` | 0.002797709000 |
+| `packages/platform/test/communications/nativeDirectoryConsent.test.ts` | 0.002677625000 |
+| `packages/platform/test/communications/nativeSync.test.ts` | 0.001986666000 |
+| `packages/platform/test/packageBoundary.test.ts` | 2.896113041000 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 2.690691000000 |
+| `server/adapters/postgres/communicationsLifecycle.test.ts` | 0.001469625000 |
+| `server/runtime/communications/communicationsLifecycleBinding.test.ts` | 0.002727166000 |
+| `tests/postgres/communicationsNative.test.ts` | 11.417660750000 |
+
+B3 sums to **17.016123582 s**, and the inherited cumulative local proxy is
+**18.466286913 s**, leaving **11.533713087 s** of +30. There is **no measured local
+proxy time overrun**. The installed native PostgreSQL proof separately took
+**2.239 s** including setup/cleanup in one passing execution; that is a disclosed
+subprocess wall time, not a three-run median. Even charging it again gives
+20.705286913 s. Hosted median admission remains binding and is not claimed here.
+The wide required suite's accumulated test times were 595.82 s and 707.28 s in
+unpaired local executions under different machine load; they are not a paired
+8,275-case baseline comparison or a waiver of hosted timing.
+
+Local evidence: CREATE-only classifier unchanged; exact projection/manifest and
+API migration-block overlay pass; real PostgreSQL 16 fresh install, exact 69→70
+upgrade with customer/subscription/receipt/queue/consent state, runner replay,
+ledger tamper, observation/ack rollback, stale claims and poisoned default,
+inherited and column ACLs pass. The retained PostgreSQL 17 sparse/outbox proof
+remains unchanged; the new complete-catalogue native proof uses the repository
+harness's PostgreSQL 16 profile and the existing reference runner. Actual installed
+native factories, optional-peer refusals, NodeNext/Bundler declarations and all
+three package-owned required batches pass in the disclosed materialized-artifact
+proof. The artifact producer's committed-candidate checks are not bypassed.
+
+Lint and typecheck pass (zero errors); both neutrality checks report zero increases.
+Changed-file secret scanning passes without a scanner exception. Platform measured
+404,342 packed / 1,730,654 unpacked bytes, 672 files, code class 340,944 bytes and
+docs class 28,551 bytes; all unchanged artifact/browser caps pass. Both public and
+subscription reference builds pass; subscription output directories were removed.
+
+Ordinary `packages:check` and `required-package-gates` refuse the uncommitted
+platform tree. `test:required` finishes with 7,973 passes and one untracked-source
+artifact refusal (7,974 cases); complete `npm test` finishes with 14,338 passes,
+two corresponding tracking/discovery refusals and two existing skipped cases
+(14,342 cases). Neither raw suite is claimed green. Ordinary publication policy
+also refuses the still-untracked new paths. The existing materialized catalogue
+API validates the explicit candidate path inventory; it is supplementary evidence,
+not signed/clean-candidate admission.
+
+The old contribution-guide paragraph still says three SQL projections and
+reference-owned reconciliation. That owner paragraph is outside the approved
+exact path inventory; a bounded permission request and concrete replacement are
+pending, so it was not silently edited. Its repository/tests/tooling doc-impact
+obligations remain open. Architecture's runtime-boundaries section remains correct;
+the supervisor's draft carries its delta-bound no-impact trailer. No tracking,
+commit, DCO operation, native review/receipt, submission, merge or release occurred.
+Before delivery the supervisor must settle the contribution paragraph, track the
+candidate, complete the applicable maintainer read, commit, run both fresh full
+native reviews and the actual clean-candidate verification/package gates.
+
+Self-retro: a millisecond conversion would have collapsed immutable microsecond
+facts; the shared codec now preserves PostgreSQL precision and a real-PG replay
+assertion discriminates it. Reusing the existing conflict class removed duplicate
+error plumbing. Running the cheap SQL classifier and binding typecheck before
+PG/broad gates would have avoided early repair runs; shared-lane waits were also
+substantial. No process/control relaxation or successor work is proposed.
