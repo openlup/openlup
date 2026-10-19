@@ -525,12 +525,17 @@ only prints the comment body. It contains the marker
 `pr`, `base`, `head`, `tree`, `risk`, `reviewers`, `verdict`, `expires` and
 `sessionDigest`; it carries no full session history.
 
-The trusted-main `agent-review-queue.mjs wait` reads comments by `OWNER`,
-`MEMBER` or `COLLABORATOR` authors and selects the newest valid receipt for the
-live PR head. It fetches source objects with `transfer.fsckObjects=true`,
+The trusted-main `agent-review-queue.mjs wait` accepts receipt comments from
+a user with write, maintain or admin permission and selects the newest valid
+receipt for the live PR head. It checks repository permission rather than public
+organization membership, caches each login's result for the wait, and refuses
+bots and failed permission lookups. It fetches source objects with `transfer.fsckObjects=true`,
 recomputes the tree and reviewer floor from the changed paths and modes, and
-checks the base and expiry. A pinned base must be an ancestor of actual main
-and the reviewed head. A new head needs new review and a new receipt.
+checks the base and expiry. Git runs through `/usr/bin/git` with
+`PATH=/usr/bin:/bin`. The receipt base must equal the single fork point of the
+reviewed head and actual main. Receipts have no separate stack-pin field: an
+exact pinned predecessor landing becomes that fork point and preserves review;
+an older landed ancestor is refused. A new head needs new review and a new receipt.
 
 A source review carries over to a merge group when either:
 - the group tree equals the reviewed tree; or
@@ -538,7 +543,8 @@ A source review carries over to a merge group when either:
   checks with `git merge-tree`, and the base's net change since the reviewed
   base touches neither the change's paths nor the admission, identity-binding,
   dependency and migration machinery (`.github/`, the review scripts, the
-  identity fence, package manifests and lockfiles, migrations). Other check
+  identity fence, package manifests and lockfiles, `db/platform/migrations/`,
+  `supabase/migrations/` and the platform migration manifest). Other check
   configuration is not on this list; the group's mechanical checks run with it.
 
 Then the source receipt admits the group without another receipt or live session.
@@ -1310,6 +1316,20 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   commits.
 
 ### Merge queue
+
+**Workflow trust boundary.** Checking out `main` for the admission script does
+not pin the `native-review` job definition: on PR and merge-group events,
+`.github/workflows/published-tree-ci.yml` comes from the candidate tree. A PR
+could replace admission with a successful no-op and self-admit under the same
+required context. Native source review requires two independent reviewers for
+`.github/` changes, and carry-over refuses a changed-tree group when the base
+move touches `.github/`. These controls depend on review and on admission
+actually running; they cannot enforce themselves against edited workflow YAML.
+Another guard in that same YAML has the same limitation. The remaining in-repo
+control is review of workflow edits. Closing the bypass requires a separately
+authorized owner settings action: a ruleset-required workflow whose definition
+is pinned to a trusted source outside the candidate's control, rather than only
+requiring a same-name status. This hardening changes no ruleset or settings.
 
 After a merge, the main-push jobs may reuse the successful merge-group run for
 that exact commit. The probe validates the public repository, queue workflow,

@@ -8,7 +8,7 @@ import { captureSessionCandidate, git as reviewGit, sessionMain, verifyCandidate
 import { carryOverSourceReview, waitNativeAdmission } from './agent-review-queue.mjs';
 
 const directories: string[] = [];
-afterEach(async () => { vi.restoreAllMocks(); for (const cwd of directories.splice(0)) await rm(cwd, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const cwd of directories.splice(0)) await rm(cwd, { recursive: true, force: true }); });
 const intent = { risk: 'routine', criteria: 'Preserve the reviewed source' };
 async function fixture() {
   const cwd = await mkdtemp(join(tmpdir(), 'native-review-v2-')); directories.push(cwd);
@@ -33,6 +33,32 @@ async function fixture() {
 }
 
 describe('six real Git witnesses', () => {
+  it('uses system Git and a fixed search path despite an injected git executable', async () => {
+    const f = await fixture();
+    const fakeGit = join(f.scratch, 'git'); await writeFile(fakeGit, '#!/bin/sh\necho substituted-git\n'); await chmod(fakeGit, 0o700);
+    vi.stubEnv('PATH', f.scratch);
+    expect(await reviewGit(f.cwd, '--version')).toMatch(/^git version /);
+    const searchPath = await reviewGit(f.cwd, '-c', 'alias.review-path=!printf "%s" "$PATH"', 'review-path');
+    expect(searchPath.endsWith('/usr/bin:/bin')).toBe(true);
+    expect(searchPath).not.toContain(f.scratch);
+  });
+  it.each(['older landed ancestor', 'unlanded predecessor', 'landed predecessor'])('hosted base validation: %s', async scenario => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'source.txt'), 'upper change\n'); f.commit();
+    const candidate = await captureSessionCandidate(f.cwd, undefined, { env: { OPENLUP_STACK_BASE: f.head } });
+    const base = scenario === 'older landed ancestor' ? f.base : candidate.base;
+    const main = scenario === 'unlanded predecessor' ? f.base : f.head;
+    let clock = 1000;
+    let session = prepareCandidate(null, { ...candidate, base, intent, authorSessionId: 'author' }, clock);
+    session = recordReport(session, { reviewer: 'reviewer', cold: true, tree: candidate.tree, verdict: 'PASS', findings: [], closes: [] }, clock);
+    const receipt = receiptSummary(session, 12, clock);
+    const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: candidate.head } };
+    const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, user: { login: 'review-owner', type: 'User' }, author_association: 'CONTRIBUTOR', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes('/collaborators/') ? { permission: 'admin' } : { object: { sha: main } }) };
+    const runGit = vi.fn(async (cwd, ...args) => args.includes('fetch') ? '' : reviewGit(cwd, ...args));
+    const wait = waitNativeAdmission({ cwd: f.cwd, event: { number: 12, repository: { private: false }, pull_request: { head: { sha: candidate.head } } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1 });
+    if (scenario === 'landed predecessor') await expect(wait).resolves.toBeUndefined();
+    else await expect(wait).rejects.toThrow('review base must be the exact fork point on main');
+  });
   it('prepare / record / verify and receipt PASS, with scratch ignored', async () => {
     const f = await fixture(); const session = await f.review();
     await expect(f.cli('verify')).resolves.toBe(0);
@@ -86,7 +112,7 @@ describe('six real Git witnesses', () => {
     session = recordReport(session, { reviewer: 'reviewer', cold: true, tree: candidate.tree, verdict: 'PASS', findings: [], closes: [] }, now);
     const receipt = receiptSummary(session, 12, now);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: f.head } };
-    const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, author_association: 'MEMBER', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : { object: { sha: f.base } }) };
+    const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/collaborators/') ? { permission: 'admin' } : path.includes('/issues/') ? [{ id: 1, user: { login: 'review-owner', type: 'User' }, author_association: 'CONTRIBUTOR', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : { object: { sha: f.base } }) };
     const runGit = vi.fn(async (cwd, ...args) => {
       if (args.includes('fetch')) { expect(args).toEqual(['-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', f.base, f.head]); return ''; }
       return reviewGit(cwd, ...args);
