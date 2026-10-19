@@ -1157,6 +1157,10 @@ realms/users/clients and loopback-only published ports. Ownership and network
 checks bound cleanup to its resources; a failed prerequisite refuses the run.
 Do not point this command at an existing database or an external issuer.
 
+The private run directory links to the checkout's installed `node_modules`, as
+identity acceptance does, so the built server runtime can resolve external
+dependencies. Normal cleanup removes the link with the temporary directory.
+
 The real issuer provides authorization-code/PKCE tokens, refresh, signing-key
 administration and logout. The RP checks state and nonce and owns an HttpOnly,
 SameSite session cookie. Ending that session clears retained credentials and

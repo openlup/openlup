@@ -1,6 +1,6 @@
 /** Opt-in real issuer + full canonical PostgreSQL catalogue. No locally minted identity tokens. */
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
@@ -68,6 +68,7 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
       } catch { await context.close(); throw new Error("Real issuer browser login failed; credential-bearing output suppressed"); }
     };
     // Use the existing profile policy alias and observed route wrapper, without changing that profile.
+    symlinkSync(resolve("node_modules"), join(setup.directory, "node_modules"), "dir");
     const entry = join(setup.directory, "oidc-runtime.ts");
     writeFileSync(entry, `export { createOidcComposition } from ${JSON.stringify(resolve("server/runtime/auth/oidcComposition.ts"))};\nexport { withIdentityReferencePolicy } from ${JSON.stringify(resolve("server/runtime/auth/referenceIdentityPolicy.ts"))};\n`);
     await buildIdentityReferenceRuntime(entry, join(setup.directory, "runtime"));
