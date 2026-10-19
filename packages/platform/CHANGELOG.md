@@ -8,6 +8,12 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Restore guest checkout when the reference browser's session lookup fails:
+  the compatibility wrapper returns no session or authorization header while
+  provider bootstrap retains strict error handling.
+  Migration: no package API or database migration is required; existing callers
+  retain their previous guest fallback.
+
 - Reference customer logout fences late session events until explicit sign-in
   and clears managed credentials even when remote revocation fails. Sign-in
   requests use the same account-root return target as the page and callback.
