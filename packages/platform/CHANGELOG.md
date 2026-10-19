@@ -100,6 +100,15 @@ No SQL forward, stock-store capability expansion or package-set version change i
 part of this migration. Existing legacy schemas and purpose-less webhook fallback
 remain finite and unchanged.
 
+- B1: require package egress admission before every supported injected mail send.
+  `createGuardedEmailTransport` validates a fresh explicit host policy, refuses
+  missing/unknown/malformed decisions, redirects sink sends and suppresses drops
+  before invoking the network sender. Provider names grant no admission.
+  Package capture remains local; the maintained policy-enforcing transport uses
+  an explicit composition bridge with unchanged wire behavior. Raw Auth closures
+  compose through `createAuthEmailTransport`. See the M04 plan for every changed
+  alternate-transport expectation; there is no schema or package graph change.
+
 - Move the existing pure email renderer, block builders and commerce/subscription
   content assembly into communications/contracts. Host copy and helper bindings,
   browser previews, Auth refusal and independent verifier policies are preserved.

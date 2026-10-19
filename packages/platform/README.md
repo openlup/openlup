@@ -500,10 +500,45 @@ E2 is applied: the payment webhook module delegates these five generic helpers.
 plain re-exports. The payment provider verification and its replay tolerance stay local.
 The maintained mail transport, credentials, callback verification/mapping,
 poll read/mapping, timeline and send-ledger adapters remain in reference source.
-Their vendor directories retain the comparison-base bytes. The package exposes
+B1 changes only the four raw-injection guard sites in the reference delivery
+adapters and the approved invoice test fixture; the concrete client and all
+other vendor-directory files retain the comparison-base bytes. The package exposes
 transport/result contracts and capture without a concrete mail factory.
 The type-only `CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>`
 accept host vocabulary; reference types retain their original literal.
+
+`createGuardedEmailTransport({ providerKind, policy, send })` is the network
+adapter constructor. At each send it awaits a fresh host policy, validates the
+whole decision and enters the sender only for a coherent `production`,
+`sandbox_direct` or `sandbox_sink` decision. The sender receives the effective
+recipient and a frozen context with intended recipient, host-selected credential,
+mode, reason and environment tag. It must consume that context when selecting
+credentials and emitting provider metadata. The package reads no environment and
+contains no provider client. Missing/throwing policy, unknown modes, mismatched
+recipients/tags, blank credentials or unsupported fields fail with status zero,
+no identifier and bounded error codes. Reasons are lower-case token codes up to
+80 characters. One unadorned `local@domain.example` recipient mailbox is required;
+whitespace, lists, display names and local-only domains are refused on this new
+alternate-transport policy boundary.
+
+`blocked` returns failure; explicit `drop` returns terminal suppression with no
+send, no identifier and an ineligible sent timestamp. Arbitrary injected objects
+are refused by `guardEmailTransport`; a provider name or copied capture shape
+cannot establish admission. Package-created capture retains its ordered envelopes
+and synthetic identifiers with no network effect. Capture acceptance remains
+local acceptance, never evidence of external delivery.
+
+`admitPolicyEnforcedEmailTransport` is the trusted host bridge for a transport
+that already enforces egress internally, as the maintained reference client does.
+The package registry owns its identity; this bridge performs no second routing
+or credential decision. It is a composition trust boundary, not a sandbox for
+host code: callers must not admit an unguarded network sender. New adapters should
+use the validating constructor above. The reference default retains its original
+sink/drop policy, key selection, optional payload fields, headers, signal and
+result/error semantics. `createAuthEmailTransport` preserves the Auth envelope
+mapping and admission; raw Auth closures are refused before their send method.
+Admin/control and required-audit ordering stay at their existing callers.
+No egress result authorizes a subscription-state or delivery-cycle mutation.
 
 `processEmailObservation` accepts already authenticated, decoded and environment-admitted
 input. It looks up a local send, constructs evidence only when found, applies one

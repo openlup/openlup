@@ -1040,6 +1040,48 @@ export declare function runDeliveryReconciliation<Read extends DeliveryStatusRea
     limit: number;
 }): Promise<DeliveryReconciliationResult>;
 ```
+## dist/communications/emailEgress.d.ts
+
+```ts
+import type { AuthEmailTransportPort } from "./contracts/authEmail.js";
+import type { EmailMessage, EmailSendResult, EmailTransport } from "./emailTransport.js";
+export interface EmailEgressContext {
+    mode: "production" | "sandbox_direct" | "sandbox_sink";
+    reason: string;
+    intendedRecipient: string;
+    recipient: string;
+    /** Selected by the host; consumed only by its concrete sender, never logged. */
+    credential: string;
+    environmentTag: "production" | "non_production";
+}
+export type EmailEgressDecision = EmailEgressContext | {
+    mode: "drop";
+    reason: string;
+} | {
+    mode: "blocked";
+    reason: string;
+};
+export type EmailEgressPolicy = (intendedRecipient: string) => EmailEgressDecision | Promise<EmailEgressDecision>;
+/**
+ * Host composition bridge for an implementation that already enforces egress
+ * internally. This is a trust boundary: its sender must itself refuse unknown
+ * policy before effects. New network adapters should use createGuardedEmailTransport.
+ * Neither a provider name nor an object property establishes admission.
+ */
+export declare function admitPolicyEnforcedEmailTransport<T extends EmailTransport>(transport: T): T;
+/** Mandatory boundary for supported injected transports; raw objects fail closed. */
+export declare function guardEmailTransport(transport: EmailTransport): EmailTransport;
+/** Construct a network adapter whose sender sees only a validated host decision. */
+export declare function createGuardedEmailTransport(input: {
+    providerKind: string;
+    policy: EmailEgressPolicy;
+    send: (message: EmailMessage, context: Readonly<EmailEgressContext>) => Promise<EmailSendResult>;
+}): EmailTransport;
+/** Preserve the Auth envelope/result mapping while retaining package admission. */
+export declare function createAuthEmailTransport(transport: EmailTransport): AuthEmailTransportPort;
+/** Raw Auth closures must compose through the admitted email transport bridge. */
+export declare function guardAuthEmailTransport(transport: AuthEmailTransportPort): AuthEmailTransportPort;
+```
 ## dist/communications/emailHealthAssessment.d.ts
 
 ```ts
@@ -1289,6 +1331,7 @@ export * from "./emailHealthMetricsPort.js";
 export * from "./emailNotificationControl.js";
 export * from "./emailObservation.js";
 export * from "./emailTransport.js";
+export * from "./emailEgress.js";
 export * from "./errors.js";
 export * from "./integrationEventSignature.js";
 export * from "./managedTransactionalDeliveryStore.js";
