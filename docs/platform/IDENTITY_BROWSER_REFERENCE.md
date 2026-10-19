@@ -39,6 +39,9 @@ a text input, exposes no external sign-in, and skips managed reconciliation.
 The adapter factory loads only the selected implementation. A lazy port wrapper
 preserves existing synchronous session-presence callers while the provider
 awaits its binding under a bounded bootstrap timeout.
+The compatibility wrapper resolves a failed session read to `null`, so ordinary
+checkout continues as a guest without an `Authorization` header. The provider
+reads the binding directly and retains strict bootstrap failure handling.
 
 The callback page consumes only the provider's closed outcome: success, invalid,
 expired, timeout, uncertain transport, failed or unknown. Success navigates only

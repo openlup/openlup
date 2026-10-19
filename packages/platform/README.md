@@ -432,8 +432,7 @@ structural clients. Server declarations compile after peer selection. Full
 installed-artifact and database proof require the existing supervisor-run package
 consumer command and an owned disposable database.
 
-The separately reviewed managed identity service-role capabilities forward supplies
-client link writes and operator membership insert/email-read permissions once
-present in the committed chain. Existing local conformance retains labelled
-fixture-only grants until that integration; those fixtures do not establish
-shipped-install readiness. No migration is added by reference composition.
+The managed identity service-role capabilities forward in the committed chain
+supplies client link writes and operator membership insert/email-read
+permissions; the local conformance runners add no fixture grant. No migration is
+added by reference composition.

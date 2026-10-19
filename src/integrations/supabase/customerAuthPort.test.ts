@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getCustomerAuthPort } from "@/lib/auth/customerAuthPortFactory";
+import { checkoutRequestOptionsForTpay } from "@/checkout/adapters/tpayCheckoutRequestOptions";
 
 const { supabaseAuth, requestMagicLink } = vi.hoisted(() => ({
   supabaseAuth: {
@@ -14,6 +16,7 @@ const { supabaseAuth, requestMagicLink } = vi.hoisted(() => ({
 
 vi.mock("./customerClient", () => ({
   getCustomerSupabase: () => ({ auth: supabaseAuth }),
+  customerSocialProviders: () => [],
 }));
 vi.mock("@/domains/customers/customerMagicLinkClient", () => ({
   requestCustomerMagicLink: requestMagicLink,
@@ -22,10 +25,11 @@ vi.mock("@/domains/customers/customerMagicLinkClient", () => ({
 const { createSupabaseCustomerAuthPort } = await import("./customerAuthPort");
 
 beforeEach(() => {
+  vi.stubEnv("VITE_COMMERCE_AUTH_PROVIDER_KIND", "node-supabase");
   for (const fn of Object.values(supabaseAuth)) fn.mockReset();
   requestMagicLink.mockReset();
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("createSupabaseCustomerAuthPort", () => {
   it("maps a Supabase session to the generic AuthSession", async () => {
@@ -154,4 +158,21 @@ it.each([false, true])("verifies a six-digit code for confirmed=%s using the ema
 it("propagates a session bootstrap failure instead of treating it as signed out", async () => {
   supabaseAuth.getSession.mockResolvedValue({ data: { session: null }, error: new TypeError("transport unavailable") });
   await expect(createSupabaseCustomerAuthPort().getSession()).rejects.toThrow("transport unavailable");
+});
+
+it("legacy session read resolves null on an SDK error", async () => {
+  supabaseAuth.getSession.mockResolvedValue({ data: { session: null }, error: new Error("session refresh failed") });
+
+  await expect(getCustomerAuthPort().getSession()).resolves.toBeNull();
+  expect(supabaseAuth.getSession).toHaveBeenCalledOnce();
+});
+
+it("checkout through the legacy wrapper proceeds without Authorization on an SDK error", async () => {
+  supabaseAuth.getSession.mockResolvedValue({ data: { session: null }, error: new TypeError("transport unavailable") });
+
+  const options = await checkoutRequestOptionsForTpay(null);
+
+  expect(options).toEqual({});
+  expect(new Headers(options.headers).has("Authorization")).toBe(false);
+  expect(supabaseAuth.getSession).toHaveBeenCalledOnce();
 });

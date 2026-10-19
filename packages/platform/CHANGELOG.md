@@ -8,6 +8,12 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Restore guest checkout when the reference browser's session lookup fails:
+  the compatibility wrapper returns no session or authorization header while
+  provider bootstrap retains strict error handling.
+  Migration: no package API or database migration is required; existing callers
+  retain their previous guest fallback.
+
 - Repair reference identity admission: direct contacts require their principal
   link, managed lookup requires creation time, and callable typed bindings build
   the admitted handlers. Preserve observed package-set mismatches and dispatch

@@ -298,12 +298,16 @@ separate effective-grant verification. The reviewed managed identity service-rol
 capabilities forward supplies client INSERT(email, auth_user_id,
 acquisition_source, lifecycle_stage), UPDATE(auth_user_id), and operator
 INSERT(id, email, role, membership_state, membership_provenance,
-membership_accepted_at) plus SELECT(email) once integrated. Until present,
-labelled conformance fixture grants remain fixture-only and cannot establish
-shipped-install readiness. No application startup grants compensate for them.
+membership_accepted_at) plus SELECT(email). The opt-in conformance runners add no
+fixture grant, and application startup adds no grants.
 
-
-<!-- openlup-doc-impact {"unit":"data","digest":"sha256-474c9722bba98cb05cc9b075d987ec35207dbb68fcdd7528ef88d9f953c9e38e","reason":"Customer browser adapters use new session namespaces without migrating legacy credentials. The managed adapter now also removes its effective SDK session store and completes local SDK cleanup after remote logout failure. These are browser-session changes only: database schemas, migration chains, stored customer links and the compatibility lifecycle are unchanged."} -->
+Reference customer browser sessions use separate storage namespaces without
+migrating legacy credentials. Managed logout clears the effective SDK store
+even after remote revocation fails. A failed compatibility session read returns
+`null`, allowing guest checkout without a bearer; provider bootstrap still
+reports the failure. These browser operations add no database session rows and
+require no schema migration or rewrite of stored customer links. See the
+[browser session contract](IDENTITY_BROWSER_REFERENCE.md).
 
 The direct privacy forward `20261018190000_identity_privacy_erasures` appends
 position 69 and one receipt table, with default NO ACTION references and no
