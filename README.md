@@ -68,7 +68,7 @@ workspace, use Node and npm versions recorded in [.nvmrc](.nvmrc) and
 
 ```sh
 npm ci
-npm --workspace @openlup/core run build
+npm run pretest
 npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
 npm run oss:published-tree -- --typecheck
@@ -79,8 +79,9 @@ npm run build
 By default, the [capability manifest](config/public-reference-capability-manifest.json)
 declares only catalogue/item pages (`/`, `/items/field-notes`) and `/healthz`,
 with GET/HEAD methods. The reference refuses checkout, subscription, admin,
-API/BFF, cron and mutations. The build and checks do not start a database,
-payment provider or full subscription application. For the actual support
+API/BFF, cron and mutations. Tests may start owned disposable databases. The build does not activate a
+payment provider or full subscription application; these checks do not certify
+a complete installation. For the actual support
 boundary, see the [install support policy](.github/INSTALL_SUPPORT_POLICY.md).
 For the local-to-release sequence, use the [development and diagnostics guide](docs/platform/DEVELOPMENT_AND_RELEASE.md).
 Contributions use [CONTRIBUTING.md](CONTRIBUTING.md); a released source preview
@@ -114,15 +115,12 @@ preview receipt or a support promise.
 
 The projected root manifest exposes a closed command inventory. The
 [contribution checks](CONTRIBUTING.md#development-preview-checks) list it and
-explain which commands Published Tree CI runs. Its npm pre-scripts build core
-before lint and root tests. Source-only deploy, secret-management, smoke, and
-environment-specific operator commands are not exported.
-The root `npm test` command runs the complete root Vitest suite. Published Tree
-CI shards it across four runners behind the required `test` aggregate and
-selects bounded tooling fixtures only when their inputs change. The
-standalone `packages/core` package tests are not collected by
-that root Vitest configuration; see [CONTRIBUTING.md](CONTRIBUTING.md#development-preview-checks)
-for the separate package command and its explicit public CI execution.
+explain which commands Published Tree CI runs. Its npm pre-scripts build Core,
+Outbox and Platform before lint and root tests. Source-only deploy,
+secret-management, smoke and environment-specific operator commands are not exported.
+Root Vitest and Core's separate package suite have distinct proof. Follow
+[Test scope and diagnostics](CONTRIBUTING.md#test-scope-and-diagnostics) to run,
+place and add tests and inspect their CI execution.
 
 ## Project references
 

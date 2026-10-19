@@ -298,11 +298,10 @@ unchanged. These counts reuse the existing scanner semantics and do not expand
 a runtime contract or establish a stable preview channel.
 
 Published Tree CI enforces that ratchet in required `self-check` and exercises
-its CLI refusal tests in required `test`. The complete root and managed pgTAP
-jobs expose actual diagnostic results with named ownership of unresolved
-failures; their addition does
-not change platform behavior, grant application privileges or declare complete
-compatibility evidence. Existing release context checks remain unchanged.
+its CLI refusal tests in required root `test`. Managed pgTAP remains a raw
+diagnostic; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics)
+for execution and proof limits. These checks do not grant application privileges
+or declare complete compatibility evidence. Existing release context checks remain unchanged.
 
 The outbox rail is a local experimental package candidate in the package catalogue. Its exact core peer, export snapshots and shipped baseline hash are separate from publication eligibility. Admission compares the complete observed set and selected adapter facts; unknown inventory or probe state cannot activate a candidate.
 

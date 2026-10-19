@@ -8,6 +8,7 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 - [Development, diagnostics and preview releases](DEVELOPMENT_AND_RELEASE.md) — local checks, PR/queue/main execution, result interpretation and the source/npm release sequence.
 
+- [Testing — run, place, add and keep tests fast](../../CONTRIBUTING.md#test-scope-and-diagnostics).
 - [Source map](SOURCE_MAP.md) — every platform domain and source responsibility, with canonical owners and source links.
 - [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) — meaningful internal steps, refusal boundaries and the tests to inspect.
 - [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact, generated navigation and checked bundle export.

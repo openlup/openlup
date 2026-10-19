@@ -24,9 +24,10 @@ its public inventory and any readers can be reviewed for removal. -->
 
 ## Checks
 
-- [ ] `npm ci`, `npm test`, and `npm run build` pass in a clean clone.
-- [ ] `npm run oss:published-tree -- --policy`, `--inventory`, and `--typecheck`
-      pass, or every failure is explained above.
+- [ ] Completed the applicable [required and raw checks](../CONTRIBUTING.md#required-and-raw-checks),
+      with commands/results and missing prerequisites recorded; each passes, or
+      its failure is explained above and compared with the base. Follow the
+      [testing guide](../CONTRIBUTING.md#test-scope-and-diagnostics) for scope and proof.
 - [ ] Contributor-facing behaviour or commands changed here are documented in
       `README.md` and/or `CONTRIBUTING.md`.
 - [ ] Every commit carries a `Signed-off-by:` line (`git commit -s`). The

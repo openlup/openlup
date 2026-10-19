@@ -85,7 +85,7 @@ failed HEAD; use an upload or list operation to observe an S3 loading refusal.
 
 ## Verification
 
-This package's tests are part of the repository's required test selection; from this directory, `npm test` runs them alone. The tests rewrite the originating application's characterization with neutral names and synthetic data, and a boundary test refuses any environment read or provider import in the package source.
+This package's tests are part of the repository's required test selection; from this directory, `npm test` runs them alone. The tests rewrite the originating application's characterization with neutral names and synthetic data, and a boundary test refuses environment reads and provider imports outside its explicit `pg` adapter and `@aws-sdk/client-s3` blob-client allowlist. Follow [repository testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) for placement, setup and speed rules.
 
 The module-boundary proof permits one optional `./<module>/contracts` export
 only when that module declares `contracts: true` in `PLATFORM_MODULE_GRAPH` in
@@ -112,7 +112,7 @@ The job-run ledger SQL asset test verifies a readable, nonempty file within the
 package SQL directory. Its SQL parity tests bind the actual adapter calls to the
 shipped routine signatures; the asset's explanatory header may be edited freely.
 
-`npm run api:check` compares each of the eleven declaration entry graphs with the
+`npm run api:check` compares every declared entry graph with the
 committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.
@@ -427,7 +427,8 @@ operator/customer batches. See [identity privacy](../../docs/platform/IDENTITY.m
 for refusals, token limits and retained obligations.
 
 The complete direct conformance is included in
-`ai-resource-gate run --wait openlup:coverage -- npx vitest run tests/postgres/operatorIdentityUpgrade.test.ts`.
+`npm test -- tests/postgres/operatorIdentityUpgrade.test.ts` from the repository
+root after normal setup. A maintainer host resource broker is optional.
 For managed conformance, supply the same three `OPENLUP_MANAGED_CONFORMANCE_*`
 local disposable-stack settings described for operator invitations, with
 `OPENLUP_MANAGED_CONFORMANCE_DATABASE_URL` set to the database owner

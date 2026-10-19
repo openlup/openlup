@@ -19,7 +19,7 @@ The `self-check` job runs both the existing UI neutrality gate and this tree-wid
 The root suite always discovers the neutrality CLI falsifiers. For focused local diagnosis:
 
 ```bash
-npx vitest run scripts/public-ci-neutrality.test.ts
+npm test -- scripts/public-ci-neutrality.test.ts
 ```
 
 Run this command from the repository root with pinned development dependencies installed. The 19 October CI simplification makes the four full-root shards feed required `test`; the scope table never excludes this repository-wide scanner test. Complete core package checks run independently in `install-proof`. Raw `pgtap` remains separate. The six required context names and release workflows' context selection are unchanged.

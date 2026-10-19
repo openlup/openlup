@@ -1,12 +1,10 @@
 import { createHash } from "node:crypto";
 
 /**
- * One key form, five readers. The per-file duration manifest is written by its
- * updater, read by the CI group planner for both lanes, by `src/test/setup.ts`
- * for the per-file timeout budget and by the duration reporter for budget
- * pressure. A key minted in one place and parsed in another is exactly the seam
- * a digest key can silently break, so every one of them goes through this
- * module.
+ * Optional external duration-manifest helpers. Public vitest.config.ts and
+ * src/test/setup.ts consume pins to derive per-test/hook deadlines. No public
+ * updater, group planner, pressure reporter or telemetry merger is installed.
+ * See CONTRIBUTING.md#test-scope-and-diagnostics for current execution.
  */
 
 /** `vitest.config.ts` flat ceilings; a derived budget can only raise them. */
@@ -14,24 +12,18 @@ export const FLAT_TEST_TIMEOUT_MS = 10_000;
 export const FLAT_COVERAGE_TEST_TIMEOUT_MS = 30_000;
 /** RR-L4: a file's ceiling is 1.5x what the manifest says the whole file costs. */
 export const BUDGET_FACTOR = 1.5;
-/** Intent stop condition: a budget above 3x its pre-programme pin is reported. */
+/** Retained historical reporting factor; not an installed public CI gate. */
 export const BUDGET_BOUND_FACTOR = 3;
-/** Reported by the duration reporter so budgets can shrink, not only grow. */
+/** Retained historical budget-pressure ratio; no public reporter consumes it. */
 export const BUDGET_PRESSURE_RATIO = 0.8;
-/**
- * Intent decision 3 of the coverage-lane programme. One file this expensive is what
- * makes a single shard the pole, and the manifest is the only place that can explain
- * one: a cost above this ceiling has to be covered by a pin large enough for it. Two
- * readers apply that one rule -- the declaration-site scan in `ci-vitest-groups.test.ts`
- * and the merged hosted observation in `merge-ci-vitest-telemetry.ts` -- and in wave 1
- * both of them only report.
- */
+/** Historical file-cost analysis threshold, not an installed public CI gate. */
 export const FILE_COST_CEILING_MS = 120_000;
 export const DIGEST_KEY_PREFIX = "sha256:";
 const DIGEST_KEY_HEX_LENGTH = 16;
+// Historical diagnostic spelling below; ./openlup and its duration updater are absent.
 const REPIN_COMMAND = "./openlup ci durations --fetch 10 --write";
 
-/** The manifest as its readers need it; `ci-vitest-groups.ts` owns the full type. */
+/** Shape consumed by the optional public timeout reader. */
 export type DurationSections = {
   defaultDurationMs: number;
   durationsMs: Record<string, number>;

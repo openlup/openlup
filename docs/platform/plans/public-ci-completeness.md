@@ -6,7 +6,8 @@ Purpose: expose all shipped test obligations while preserving required-main cove
 
 ## Outcome and scope
 
-Published Tree CI selects every root Vitest project and every shipped managed
+Historical programme outcome: Published Tree CI selects each configured root
+Vitest project and every shipped managed
 pgTAP file from public inputs. Failing and aborted files stay visible with a
 reason, accountable triage owner and incomplete obligation. Complete observation
 is useful before every platform defect is repaired; required-check success is
@@ -50,7 +51,7 @@ are separated from dated historical failures in the diagnostic record.
 Actions use full commit pins and jobs retain trusted event-metadata fences,
 including inherited merge-group validation and the optional `native-review`
 admission job. That job depends on the six required contexts, independently of
-the two raw diagnostic jobs; its activation remains the maintainer's decision.
+the one raw `pgtap` diagnostic; its activation remains the maintainer's decision.
 
 The [known-red record](public-ci-known-red.md) is diagnostic documentation, not
 an executable exception list or failure budget. New infrastructure failures,
@@ -58,9 +59,11 @@ missing dependencies, zero discovery, incomplete execution evidence and
 unexplained changed failures block delivery. Historical collection or SQL aborts
 must name the assertions they did not reach; selection does not prove completion.
 
-Promoting the new diagnostic jobs to required checks is the maintainer's ruleset
-decision. Release workflows retain their six required-context checks, so diagnostic
-red does not itself refuse a release. Merge neither cuts a preview nor authorizes
+Promoting raw `pgtap` to a required check is the maintainer's ruleset decision.
+Release workflows retain their six required-context checks: a red root shard
+refuses required `test` and release validation; raw pgTAP retains diagnostic status.
+Follow [testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics) for current
+execution and proof limits. Merge neither cuts a preview nor authorizes
 an installation or adoption.
 
 ## Runner and ratchet contracts
