@@ -41,6 +41,8 @@ function fixture(options: FixtureOptions = {}) {
     write(`packages/${name}/package.json`, JSON.stringify({ name: `@openlup/${name}`, version: "0.4.0", type: "module", license: "Apache-2.0", files: ["dist/**"],
       publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: `packages/${name}` },
       exports: { ".": "./dist/index.js" }, scripts }));
+    write(`packages/${name}/release-gates.json`, JSON.stringify({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.4.0", packedBytes: 1000000 }, browserEntries: {} } }));
+    write(`packages/${name}/CHANGELOG.md`, "## [0.4.0]\n\n- Initial fixture.\n");
     write(`packages/${name}/src/index.ts`, `export const value = ${JSON.stringify(name)};\n`);
   }
   write("tools/phase.mjs", `

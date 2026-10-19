@@ -609,6 +609,99 @@ continues without another continuation prompt or dependency-bot timing. Unknown
 or partial publication holds the dependent transition; missing adopter authority
 is not created by the message. No production action is granted.
 
+### Package artifact limits
+
+`npm run packages:check` builds and packs by default. Caps, the content allowlist
+and browser-entry limits also run in `--release-set`, the preflight's
+`--cold --out` producer and the tag publisher. The growth tripwire runs only
+with `--release-set <version>`, including the `publish-package.yml` `all`
+preflight route; default/PR and `--release-tag` checks do not run it.
+`--manifest-only` is reserved for early manifest validation without installation
+or builds, including the privileged release job; it supplies no artifact proof.
+The existing clean-package requirement still applies to artifact checks.
+
+Each package's `release-gates.json` `pack` object is the single committed source
+of its caps. Exceeding a class or aggregate byte/file cap refuses with the
+package, measured value, cap and “raise the cap in a reviewed PR”. Raising a
+limit means editing that one value in a reviewed change. Core's standalone
+`release:pack` also retains its existing class and aggregate checks.
+
+Measurements below are from base `cf36b01`, set `0.16.0`, on 2026-10-19.
+One KiB is 1,024 bytes. The existing **compressed code** measure concatenates
+`dist` JavaScript/declarations and shipped `src` TypeScript in path order, then
+gzips them; it is packed content, not unpacked source bytes or the whole tarball.
+Root documentation/metadata forms the separately compressed docs class. Tarball
+bytes are npm's compressed `.tgz` size; aggregate files include SQL and metadata.
+Caps give approximately twice the measured headroom, rounded to clean values.
+
+| Package | Compressed code bytes / files | Code cap KiB / files | Tarball bytes / total files | Tarball cap KiB / files | Docs cap KiB / files | Unpacked cap KiB |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@openlup/core` | 132,250 / 198 | 270 / 400 | 161,371 / 209 | 320 / 420 | 48 / 20 | 1,360 |
+| `@openlup/outbox` | 20,930 / 33 | 42 / 70 | 38,718 / 41 | 80 / 90 | 26 / 12 | 260 |
+| `@openlup/platform` | 215,464 / 381 | 430 / 800 | 256,973 / 395 | 510 / 800 | 40 / 10 | 2,040 |
+
+**Release growth tripwire.** Each `pack.baseline` records the last released
+version and its total compressed tarball bytes, initially `0.16.0` and the
+measurements above. On the release-set path only, a candidate more than 30%
+larger must contain a nonempty line in its unique NEW set
+`CHANGELOG.md` section `## [<set version>]`, prepared in S1:
+
+```text
+- @openlup/platform size growth: added the reviewed identity contract surface.
+```
+
+Name the actual package and explain the growth after `size growth:`. A line in
+Unreleased, another version or another package's notes does not count. Exactly
+30% needs no explanation. This is a review tripwire, not permission to exceed
+any cap. Set preparation already moves Unreleased notes into each candidate's
+version section; add the line there before running the release-set artifact check.
+Never edit an already-released section to satisfy this rule. The
+workflow's shared dispatch note body is separate. For growth above 30%,
+`--release-set` also requires `RELEASE_NOTES` (already supplied by preflight)
+with the same package-specific explanation format in that actual body; missing
+notes or a compliant changelog alone cannot excuse a missing dispatch line.
+Neither default/PR nor `--release-tag` checks require growth explanations in
+the changelog or release body. `--manifest-only` never runs the tripwire, even
+when combined with `--release-set`. A release-set pack refuses a baseline
+version equal to or newer than its candidate: use the previously released
+version and its tarball bytes as the baseline; a note in a released section
+cannot excuse that mismatch.
+
+In every S1 set-preparation PR, manually refresh each `pack.baseline` from the
+**previously released** artifact, retaining that baseline through the candidate's
+publication. For the next set after `0.16.0`, these initial records already name
+that previous release. At the following S1, replace them with the intervening
+released version and bytes. Use the retained release tarball's byte count (for
+example `wc -c < package.tgz`) or an offline build and
+`npm pack --dry-run --json --ignore-scripts --workspaces=false` of that exact
+released source. Record the artifact/source identity in the preparation evidence.
+Never baseline the unreleased candidate itself: that would erase the comparison.
+`release:bump` continues to change only versions, internal pins and changelog
+sections; it does not infer publication or fetch registry measurements.
+
+**Packed content allowlist.** Legitimate current artifacts include root Markdown,
+`LICENSE`, `package.json`, `release-gates.json`, Markdown under `docs/` and `api/`,
+JavaScript/declarations under `dist/`, shipped TypeScript under `src/` (including
+core-source exports), and `sql/*.sql` plus `sql/manifest.json`. The gate permits
+JS/MJS/CJS and declaration TS/MTS/CTS forms in the code directories. Other kinds
+refuse even when tracked. Tests (`*.test.*`, `*.spec.*`, `__tests__`), fixtures,
+source maps, `.env*`, editor directories/files, swap files, `.DS_Store`,
+`*.tsbuildinfo`, `*.tgz` and coverage refuse with package, file and rule.
+Existing source provenance, export completeness and source-map-reference checks
+remain in force.
+
+**Browser entries.** `eslint.config.js` `PLATFORM_MODULE_GRAPH` declares
+browser-safe sub-entries using `contracts: true`; currently only
+`@openlup/platform/identity/contracts`. Its `pack.browserEntries` cap is **4,800
+bytes**, versus **2,390 bytes** measured at `cf36b01`. Artifact checks bundle the
+runtime import export with the existing Vite/Rolldown toolchain, browser platform,
+ES modules, minification, dependencies included and gzip. All exported runtime
+values are retained; the measure is not a selected consumer's tree-shaken subset.
+The policy test requires caps for every declared browser-safe entry. Growth above
+a cap refuses with the package, entry, measured bytes, cap and reviewed-PR remedy.
+
+### Release steps
+
 A release takes three steps:
 
 1. **Release preparation.** An ordinary reviewed pull request, either a separate

@@ -2,10 +2,12 @@
  * `npm run packages:check [-- --pack | --cold] [-- --out <dir>] [-- --release-tag <tag> | --release-set <version>]`,
  * from the repository root.
  *
- * Without options it checks every package manifest against
+ * By default it checks every package manifest and builds and packs every package.
+ * Manifest checks use
  * `config/openlup-packages.json`, including that every publishable package
- * carries the same set version `0.N.P`, and needs no build. With `--pack` it also
- * builds declared internal prerequisites and packs each listed package into a temporary directory, and checks
+ * carries the same set version `0.N.P`. `--manifest-only` needs no install or build
+ * and is used by the privileged release job. Artifact checks build declared internal
+ * prerequisites, pack into a temporary directory, enforce release-gates.json budgets and check
  * every packed file (see `package-tarball-gate.ts`). A package directory must
  * be clean before the build and still clean after it, so the packed bytes are
  * the commit's. It prints one summary line per tarball, with its integrity.
@@ -20,6 +22,7 @@
  * publishes. `--cold` also removes untracked dist outputs before each attempt;
  * preflight and publisher use it so no package depends on another pack's residue.
  */
+import { env as processEnvironment } from "node:process";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -28,6 +31,7 @@ import { join, posix, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PACKAGES_CONFIG_PATH, SET_VERSION, checkPackageDirectories, checkPackageManifest, checkSetVersions, checkUnreleasedManifest, releaseVersionAbove, parsePackageReleaseTag, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.ts";
+import { browserEntryBytes, checkBrowserEntry, checkPackBudget, measurePack, readPackBudget } from "./package-size-policy.ts";
 import { preparePackage } from "./package-build.ts";
 
 type PackResult = { filename: string; integrity: string; sha256: string; entryCount: number };
@@ -43,7 +47,7 @@ function walk(directory: string, onSymlink: (path: string) => void): string[] {
   });
 }
 
-function packAndCheck(root: string, entry: PackageEntry, packages: readonly PackageEntry[], cold: boolean, readTracked: (path: string) => Uint8Array | undefined, findings: Finding[], keepDir?: string): PackResult | undefined {
+function packAndCheck(root: string, entry: PackageEntry, packages: readonly PackageEntry[], cold: boolean, readTracked: (path: string) => Uint8Array | undefined, findings: Finding[], keepDir?: string, releaseSet?: string, releaseNotes?: string): PackResult | undefined {
   const finding = (rule: string, detail: string): void => { findings.push({ subject: entry.name, rule, detail }); };
   const dirty = (): string => capture(root, "git", ["status", "--porcelain", "--untracked-files=no", "--", entry.directory]).trim();
   if (dirty()) { finding("dirty-tree", `commit or discard the changes under ${entry.directory} first; a pack is checked against the commit`); return undefined; }
@@ -61,6 +65,16 @@ function packAndCheck(root: string, entry: PackageEntry, packages: readonly Pack
     const files = walk(packageRoot, (path) => finding("symlink", `${relative(packageRoot, path)} is a symbolic link`));
     const entries: TarballEntry[] = files.map((path) => ({ path: relative(packageRoot, path).split(sep).join("/"), bytes: readFileSync(path) }));
     findings.push(...checkTarballEntries(entry, entries, readTracked));
+    if (entry.publish) {
+      const budget = readPackBudget(root, entry);
+      const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+      findings.push(...checkPackBudget(entry, budget, measurePack(entries, readFileSync(join(scratch, packed.filename)).length), releaseSet, releaseSet === undefined ? "" : readFileSync(join(directory, "CHANGELOG.md"), "utf8"), releaseNotes));
+      for (const [subpath, cap] of Object.entries(budget.browserEntries)) {
+        const target = manifest.exports?.[subpath]?.import;
+        if (typeof target !== "string") finding("browser-entry-policy", `${subpath} has no runtime import export`);
+        else findings.push(...checkBrowserEntry(entry, subpath, browserEntryBytes(directory, target), cap));
+      }
+    }
     const tarball = join(scratch, packed.filename);
     if (keepDir && entry.publish) copyFileSync(tarball, join(keepDir, packed.filename));
     return { filename: packed.filename, integrity: packed.integrity, sha256: createHash("sha256").update(readFileSync(tarball)).digest("hex"), entryCount: entries.length };
@@ -69,12 +83,13 @@ function packAndCheck(root: string, entry: PackageEntry, packages: readonly Pack
   }
 }
 
-type Options = { pack: boolean; cold: boolean; outDir?: string; releaseTag?: string; releaseSet?: string };
+type Options = { manifestOnly: boolean; pack: boolean; cold: boolean; outDir?: string; releaseTag?: string; releaseSet?: string };
 function parseOptions(args: readonly string[]): Options | string {
-  const options: Options = { pack: false, cold: false };
+  const options: Options = { manifestOnly: false, pack: true, cold: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === "--pack") options.pack = true;
+    if (arg === "--manifest-only") options.manifestOnly = true;
+    else if (arg === "--pack") options.pack = true;
     else if (arg === "--cold") { options.pack = true; options.cold = true; }
     else if (arg === "--out" || arg === "--release-tag" || arg === "--release-set") {
       const value = args[index + 1];
@@ -84,6 +99,10 @@ function parseOptions(args: readonly string[]): Options | string {
     } else return `unknown argument ${arg}`;
   }
   if (options.releaseTag !== undefined && options.releaseSet !== undefined) return "name one package with --release-tag or the set with --release-set, not both";
+  if (options.manifestOnly) {
+    if (options.outDir || options.cold || args.includes("--pack")) return "--manifest-only cannot pack or keep artifacts";
+    options.pack = false;
+  }
   return options;
 }
 
@@ -248,7 +267,8 @@ export function runPackagesCheck(root: string, args: readonly string[]): number 
     const packed: Array<{ name: string; version: string } & PackResult> = [];
     if (options.pack && findings.length === 0) {
       for (const entry of selected) {
-        const result = packAndCheck(root, entry, config.packages, options.cold, readTracked, findings, keepDir);
+        const releaseNotes = options.releaseSet !== undefined ? processEnvironment.RELEASE_NOTES ?? "" : undefined;
+        const result = packAndCheck(root, entry, config.packages, options.cold, readTracked, findings, keepDir, options.releaseSet, releaseNotes);
         if (!result) continue;
         const version = String(versions.get(entry.name));
         console.log(`packed ${entry.name}@${version}: ${result.filename}, ${result.entryCount} files, ${result.integrity}`);

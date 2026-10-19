@@ -39,15 +39,20 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 32768,
-      "maxFiles": 48
+      "maxPackedBytes": 43008,
+      "maxFiles": 70
     },
     "docs": {
-      "maxPackedBytes": 16384,
+      "maxPackedBytes": 26624,
       "maxFiles": 12
     },
-    "maxPackedBytes": 65536,
-    "maxUnpackedBytes": 262144,
-    "maxFiles": 64
+    "maxPackedBytes": 81920,
+    "maxUnpackedBytes": 266240,
+    "maxFiles": 90,
+    "baseline": {
+      "version": "0.16.0",
+      "packedBytes": 38718
+    },
+    "browserEntries": {}
   }
 }

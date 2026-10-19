@@ -471,3 +471,14 @@ panel. Its explicit runtime must supply actual routes and readiness admission;
 the shell refuses a missing composition. See the
 [identity reference guide](../../docs/platform/IDENTITY.md#disposable-identity-reference)
 for both-bundle commands, the committed managed grants and installation limits.
+
+## Package artifact limits
+
+The monorepo's package artifact checker enforces this package's
+`release-gates.json` caps and packed content allowlist. Only
+`--release-set <version>` checks compressed growth against the last released
+baseline, with explanations in the new set's changelog section and release body. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
+[package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
+for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
+Artifact checks require a clean package directory; `--manifest-only` supplies no
+artifact evidence.
