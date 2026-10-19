@@ -1,539 +1,105 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
-import { createHash, randomBytes } from 'node:crypto';
-import { gzipSync } from 'node:zlib';
-import { agentReviewReportBinding, captureCommittedReviewCandidate, captureSessionCandidate, prepareAgentReview, prepareAgentReviewState } from './agent-review-session.mjs';
-import { carryOverSourceReview, encodeNativeReceipt, observeNativeAdmission, parseNativeAdmission, readNativeAdmissionArtifact, readSourceAdmissionArtifact, verifyNativeAdmission, verifySourceAdmission, waitNativeAdmission } from './agent-review-queue.mjs';
+import { describe, expect, it, vi } from 'vitest';
+import { admit, carryOver, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 
-const roots: string[] = [];
-afterEach(async () => { for (const cwd of roots.splice(0)) await rm(cwd, { recursive: true, force: true }); });
-const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-async function fixture({ rethink = false, predecessor = false } = {}) {
-  const scratch = join(process.cwd(), '.context/scratch'); await mkdir(scratch, { recursive: true });
-  const cwd = await mkdtemp(join(scratch, 'queue-proof-')); roots.push(cwd);
-  const git = (...args: string[]) => execFileSync('/usr/bin/git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-C', cwd, ...args], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } }).trim();
-  git('init', '-q'); await writeFile(join(cwd, 'code.ts'), 'export const n = 1;\n'); git('add', '.'); git('commit', '-qm', 'base');
-  const base = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', base);
-  let predecessorHead: string | undefined;
-  if (predecessor) { await writeFile(join(cwd, 'pred.ts'), 'predecessor\n'); git('add', '.'); git('commit', '-qm', 'predecessor'); predecessorHead = git('rev-parse', 'HEAD'); }
-  // With rethink, four earlier review rounds precede the final source commit, which becomes cycle 4.
-  const rounds: string[] = [];
-  if (rethink) for (const n of [3, 4, 5, 6]) { await writeFile(join(cwd, 'code.ts'), `export const n = ${n};\n`); git('add', '.'); git('commit', '-qm', `round ${n}`); rounds.push(git('rev-parse', 'HEAD')); }
-  await writeFile(join(cwd, 'code.ts'), 'export const n = 2;\n'); git('add', '.'); git('commit', '-qm', 'source');
-  const head = git('rev-parse', 'HEAD');
-  const candidate = await captureCommittedReviewCandidate(cwd, base, head);
-  async function state(candidate) {
-    const request = await prepareAgentReview({ cwd, base: candidate.base, intent: { risk: 'behavior', scope: candidate.changedPaths, criteria: 'Preserve the approved contract and actual interactions', requiredRoles: [] }, authorSessionId: 'supervisor', now: () => 1000, snapshot: async () => candidate });
-    return { request, reports: request.roles.map((role, index) => ({ ...agentReviewReportBinding(request), reviewerId: `${candidate.head}-review-${index}`, sessionId: `${candidate.head}-session-${index}`, role, cold: true, completedAt: 1000, complete: true, coveredScope: candidate.changedPaths, coveredCriteria: true, simplicityChecked: index === 0, verdict: 'pass', materialFindings: [] })) };
-  }
-  async function rethinkState() {
-    const intent = { risk: 'behavior', scope: candidate.changedPaths, criteria: 'Preserve the approved contract and actual interactions', requiredRoles: [] };
-    const finding = { mechanism: 'escape', precondition: 'input', requirement: 'refuse it', effect: 'accepted', risk: 'control' };
-    let current;
-    for (const [cycle, head] of [...rounds, candidate.head].entries()) {
-      const next = await captureCommittedReviewCandidate(cwd, base, head);
-      const extra = cycle === 4 ? { rethink: { priorRequestDigest: sha256(current.request), reviewerId: 'rethink-reviewer', sessionId: 'rethink-session', completedAt: 1000, findingClasses: [{ class: 'escape', findingIds: [...current.history, current].flatMap(round => round.reports.flatMap(observed => observed.materialFindings.map((material, index) => sha256({ requestDigest: sha256(round.request), reviewerId: observed.reviewerId, index, finding: material })))) }], pattern: 'One class recurs', rootCause: 'A denylist', simplicityCheck: 'An allowlist removes the class', alternatives: ['Allowlist'], decision: 'change', rationale: 'Same intent', lesson: 'denylist → allowlist' } } : {};
-      current = await prepareAgentReviewState({ cwd, base, intent, authorSessionId: 'supervisor', now: () => 1000, snapshot: async () => next, previous: current, fullRefresh: true, ...extra });
-      const request = current.request;
-      current.reports = request.roles.map((role, index) => ({ ...agentReviewReportBinding(request), reviewerId: `round-${cycle}-review-${index}`, sessionId: `round-${cycle}-session-${index}`, role, cold: true, completedAt: 1000, complete: true, coveredScope: candidate.changedPaths, coveredCriteria: true, simplicityChecked: index === 0, verdict: cycle < 4 && index === 0 ? 'fail' : 'pass', materialFindings: cycle < 4 && index === 0 ? [finding] : [], ...(request.version === 2 ? { closure: { coveredDelta: request.continuation.deltaPaths, interactionsChecked: true, ordinarySemantics: false, resolvedFindings: cycle === 4 ? request.continuation.findings.map(card => card.id) : [] } } : {}) }));
-    }
-    return current;
-  }
-  const source = rethink ? await rethinkState() : await state(candidate);
-  const input = { version: 1, targetRunId: 10, targetAttempt: 1, prNumber: 5, source, integration: null };
-  const run = { id: 10, run_attempt: 1, repository: { id: 1376035358 }, path: '.github/workflows/published-tree-ci.yml', workflow_id: 100, event: 'pull_request', head_sha: head, head_branch: 'codex/task', head_repository: { id: 1376035358 }, status: 'in_progress' };
-  const pr = { number: 5, state: 'open', draft: false, merged: false, base: { ref: 'main', repo: { id: 1376035358 } }, head: { sha: head, ref: 'codex/task', repo: { id: 1376035358 } } };
-  let entry: { id: string; position: number; enqueuedAt: string; baseCommit: { oid: string }; headCommit: { oid: string }; pullRequest: { number: number; headRefOid: string; baseRefName: string } }; let queueBase = base; let queueHead = head;
-  const api = {
-    get: async (path: string) => {
-      if (path.endsWith('/actions/runs/10')) return structuredClone(run);
-      if (path.endsWith('/pulls/5')) return structuredClone(pr);
-      if (path.includes('/git/commits/')) { const sha = path.split('/').at(-1)!; return { sha, tree: { sha: git('rev-parse', `${sha}^{tree}`) } }; }
-      if (path.endsWith('/git/ref/heads/main')) return { ref: 'refs/heads/main', object: { sha: queueBase, type: 'commit' } };
-      if (path.includes('/compare/')) {
-        const [base, head] = path.split('/compare/')[1]!.split('...');
-        const ancestor = git('merge-base', base!, head!);
-        return { base_commit: { sha: base }, merge_base_commit: { sha: ancestor }, status: base === head ? 'identical' : ancestor === base ? 'ahead' : 'behind' };
-      }
-      if (path.includes('/git/ref/heads/gh-readonly-queue')) return { ref: `refs/heads/${run.head_branch}`, object: { sha: queueHead, type: 'commit' } };
-      throw new Error(`Unexpected fixture API path ${path}`);
-    },
-    graphql: async () => ({ repository: { mergeQueue: { entries: { totalCount: 1, pageInfo: { hasNextPage: false }, nodes: [structuredClone(entry)] } } } }),
-  };
-  function group(base: string, head: string) {
-    queueBase = base; queueHead = head; run.event = 'merge_group'; run.head_sha = head; run.head_branch = 'gh-readonly-queue/main/pr-5-fixture';
-    entry = { id: 'entry-1', position: 1, enqueuedAt: '2026-09-27T10:00:00Z', baseCommit: { oid: base }, headCommit: { oid: head }, pullRequest: { number: 5, headRefOid: candidate.head, baseRefName: 'main' } };
-  }
-  return { cwd, git, base, head, predecessor: predecessorHead, input, run, pr, candidate, state, api, group, get entry() { return entry; } };
-}
+const time = 1000;
+const receipt = { pr: 12, base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), risk: 'routine', reviewers: ['reviewer'], verdict: 'PASS', expires: time + 86400000, sessionDigest: 'd'.repeat(64) };
+const observed = { ...receipt, baseValid: true, changedPaths: ['source.txt'] };
+const body = (value = receipt) => `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
+const comment = (patch = {}) => ({ id: 1, body: body(), author_association: 'OWNER', created_at: '2026-10-19T00:00:00Z', ...patch });
 
-describe('native review queue admission', () => {
-  it('losslessly transports large source and run receipts with retained history', async () => {
-    const f = await fixture(); const prior = structuredClone(f.input.source);
-    const retained = { ...f.input.source, history: [prior, structuredClone(prior)] };
-    retained.request.intent.criteria = 'Complete retained review lineage '.repeat(4000);
-    const run = { ...f.input, source: retained };
-    const source = { version: 2, target: { event: 'pull_request', prNumber: 5, sourceHead: f.head }, source: retained, integration: null };
-    for (const input of [run, source]) {
-      expect(Buffer.byteLength(JSON.stringify(input))).toBeGreaterThan(56000);
-      const wire = encodeNativeReceipt(input); expect(Buffer.byteLength(wire)).toBeLessThanOrEqual(56000);
-      expect(parseNativeAdmission(wire)).toEqual(input);
-      expect(() => parseNativeAdmission(JSON.stringify(input))).toThrow('transport bound');
-    }
+describe('hosted review decisions', () => {
+  it.each([
+    ['pass', {}, {}, time, 'reviewed'],
+    ['expired', {}, {}, receipt.expires, 'expired'],
+    ['future expiry', { expires: receipt.expires + 1 }, {}, time, 'invalid'],
+    ['wrong PR', { pr: 13 }, {}, time, 'stale'],
+    ['wrong head', { head: 'e'.repeat(40) }, {}, time, 'stale'],
+    ['wrong tree', { tree: 'e'.repeat(40) }, {}, time, 'stale'],
+    ['wrong base', { base: 'e'.repeat(40) }, {}, time, 'stale'],
+    ['unlanded pin', {}, { baseValid: false }, time, 'stale'],
+    ['failed verdict', { verdict: 'FAIL' }, {}, time, 'invalid'],
+    ['duplicate reviewers', { reviewers: ['r', 'r'] }, {}, time, 'invalid'],
+    ['empty reviewer', { reviewers: [''] }, {}, time, 'invalid'],
+    ['bad digest', { sessionDigest: 'bad' }, {}, time, 'invalid'],
+    ['recomputed floor', {}, { changedPaths: ['AGENTS.md'] }, time, 'needs_agent_review'],
+    ['mode floor', {}, { modeChanged: true }, time, 'needs_agent_review'],
+    ['intent raises floor', { risk: 'unknown' }, {}, time, 'needs_agent_review'],
+  ])('%s', (_name, patch, actual, now, code) => {
+    expect(admit({ receipt: { ...receipt, ...patch }, observed: { ...observed, ...actual }, now }).code).toBe(code);
   });
-  it('both CLI forms encode complete large native observations without dropping fields', async () => {
-    const f = await fixture();
-    f.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
-    const sourcePath = join(f.cwd, 'source-session.json'); await writeFile(sourcePath, JSON.stringify(f.input.source));
-    const script = join(process.cwd(), 'scripts/agent-review-queue.mjs');
-    for (const args of [['input', '10', '1', '5', sourcePath], ['input-source', '5', sourcePath]]) {
-      const output = JSON.parse(execFileSync(process.execPath, [script, ...args], { encoding: 'utf8' }));
-      expect(JSON.parse(output.receipt).version).toBe(3);
-      const restored = parseNativeAdmission(output.receipt);
-      expect(restored.source).toEqual(f.input.source);
-      expect(restored.version).toBe(args[0] === 'input' ? 1 : 2);
-    }
+  const facts = { reviewedTree: receipt.tree, groupTree: 'e'.repeat(40), baseAncestor: true, predictedTree: 'e'.repeat(40), changedPaths: ['source.txt'], movedPaths: ['other.ts'] };
+  it.each([
+    ['equal tree', { groupTree: receipt.tree, predictedTree: null }, true],
+    ['disjoint paths', {}, true],
+    ['unlanded base, even with equal tree', { baseAncestor: false, groupTree: receipt.tree }, false],
+    ['wrong prediction', { predictedTree: 'f'.repeat(40) }, false],
+    ['conflict', { predictedTree: null }, false],
+    ['overlap', { movedPaths: ['source.txt'] }, false],
+    ['ordinary check config', { movedPaths: ['vitest.config.ts'] }, true],
+  ])('carry-over: %s', (_name, patch, ok) => {
+    const decision = carryOver({ ...facts, ...patch }); expect(decision.ok).toBe(ok);
+    if (!ok) expect(decision.reason).toContain('merge main and re-review');
   });
-  it('keeps small receipts compatible and refuses expanded or incompressible evidence', async () => {
-    const f = await fixture(); expect(encodeNativeReceipt(f.input)).toBe(JSON.stringify(f.input));
-    expect(() => encodeNativeReceipt({ bytes: 'x'.repeat(512001) })).toThrow('expanded bound');
-    expect(() => encodeNativeReceipt({ bytes: randomBytes(60000).toString('base64') })).toThrow('transport bound');
+  it.each([
+    '.github/workflows/extra.yml', 'scripts/agent-review-decide.mjs', 'scripts/documentation-git.ts',
+    'package.json', 'package-lock.json', 'packages/core/package.json', 'packages/core/package-lock.json',
+    'supabase/migrations/0001_extra.sql', 'config/platform-migration-manifest.json',
+  ])('refuses protected base move %s', path => {
+    expect(carryOver({ ...facts, movedPaths: [path] }).ok).toBe(false);
   });
-  it.each(['digest', 'encoding', 'schema', 'base64', 'gzip', 'expanded', 'nested', 'utf8'])('refuses malformed compressed evidence: %s', async (probe) => {
-    const f = await fixture(); f.input.source.request.intent.criteria = 'Complete retained review lineage '.repeat(4000);
-    const wire = JSON.parse(encodeNativeReceipt(f.input));
-    if (probe === 'digest') wire.sha256 = '0'.repeat(64);
-    if (probe === 'encoding') wire.encoding = 'zip';
-    if (probe === 'schema') wire.extra = true;
-    if (probe === 'base64') wire.data += '\n';
-    if (probe === 'gzip') wire.data = Buffer.from('not gzip').toString('base64');
-    if (probe === 'expanded' || probe === 'nested' || probe === 'utf8') {
-      const bytes = probe === 'utf8' ? Buffer.from([0xc3, 0x28]) : Buffer.from(probe === 'expanded' ? 'x'.repeat(512001) : JSON.stringify(wire));
-      wire.sha256 = createHash('sha256').update(bytes).digest('hex'); wire.data = gzipSync(bytes).toString('base64');
-    }
-    expect(() => parseNativeAdmission(JSON.stringify(wire))).toThrow();
+  it.each(['not JSON', `${RECEIPT_MARKER}\n{}`, `prefix\n${body()}`, `${RECEIPT_MARKER}\n\`\`\`json\n{\n\`\`\``])('ignores malformed receipt %s', value => {
+    expect(parseReceipt(value)).toBeNull();
   });
-
-  it('reconstructs exact clean local evidence while refusing dirty local bytes', async () => {
-    const f = await fixture(); expect(await captureSessionCandidate(f.cwd, f.base)).toEqual(f.candidate);
-    await writeFile(join(f.cwd, 'code.ts'), 'dirty\n'); expect(await captureSessionCandidate(f.cwd, f.base)).not.toEqual(f.candidate);
-    expect(await captureCommittedReviewCandidate(f.cwd, f.base, f.head)).toEqual(f.candidate);
+  it.each(['OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR', 'NONE'])('checks author association %s', async association => {
+    const api = { get: vi.fn(async () => [comment({ author_association: association })]) };
+    const found = await readReceipts(api, '/repos/openlup/openlup', 12, receipt.head, time);
+    expect(found).toHaveLength(['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association) ? 1 : 0);
   });
-  it('reconstructs a small task in a tree larger than the scope limit', async () => {
-    const f = await fixture();
-    for (let i = 0; i < 4100; i++) await writeFile(join(f.cwd, `inventory-${i}.txt`), 'same bounded blob\n');
-    f.git('add', '.'); f.git('commit', '-qm', 'large baseline'); const base = f.git('rev-parse', 'HEAD'); f.git('update-ref', 'refs/remotes/origin/main', base);
-    await writeFile(join(f.cwd, 'code.ts'), 'small change\n'); f.git('add', '.'); f.git('commit', '-qm', 'small task');
-    const candidate = await captureCommittedReviewCandidate(f.cwd, base, f.git('rev-parse', 'HEAD'));
-    expect(candidate.changedPaths).toEqual(['code.ts']); expect(candidate).toEqual(await captureSessionCandidate(f.cwd, base));
-  }, 30_000); // 4,100 fixture writes and a commit exceed 10 s under a full parallel local run.
-  it('samples freshness after the final live observation', async () => {
-    const f = await fixture(); let clock = 1000; let reads = 0; const get = f.api.get;
-    f.api.get = async path => { const value = await get(path); if (path.endsWith('/actions/runs/10') && ++reads === 2) clock = 86401001; return value; };
-    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => clock })).rejects.toThrow('expired');
+  it('paginates and chooses the newest valid matching comment, ignoring malformed and stale receipts', async () => {
+    const old = comment({ id: 2 }); const newer = comment({ id: 3, body: body({ ...receipt, reviewers: ['new'] }) });
+    const first = Array.from({ length: 100 }, (_, index) => comment({ id: index + 4, body: 'unrelated' }));
+    first[0] = comment({ id: 105, body: body({ ...receipt, head: 'e'.repeat(40) }) });
+    first[1] = comment({ id: 106, body: body({ ...receipt, expires: time }) });
+    first[2] = comment({ id: 107, body: body({ ...receipt, pr: 13 }) });
+    const api = { get: vi.fn(async path => path.endsWith('page=1') ? first : [old, newer]) };
+    expect((await readReceipts(api, '/repos/o/r', 12, receipt.head, time)).map(item => item.reviewers)).toEqual([['new'], ['reviewer']]);
+    expect(api.get).toHaveBeenCalledTimes(2);
   });
-  it('admits complete source reviews for this PR run and preserves advisory evidence', async () => {
-    const f = await fixture(); f.input.source.reports[0].advisoryFindings = ['Optional future polish'];
-    expect((await verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).sourceHead).toBe(f.head);
-  });
-  for (const mutation of ['head', 'attempt', 'source-role', 'expired', 'dirty', 'head-repository-missing'] as const) it(`refuses ${mutation} before automatic merge`, async () => {
-    const f = await fixture();
-    if (mutation === 'head') f.pr.head.sha = f.base;
-    if (mutation === 'head-repository-missing') { delete (f.pr.head as { repo?: unknown }).repo; delete (f.run as { head_repository?: unknown }).head_repository; }
-    if (mutation === 'attempt') f.run.run_attempt = 2;
-    if (mutation === 'source-role') f.input.source.reports.pop();
-    if (mutation === 'dirty') f.input.source.request.candidate.clean = false;
-    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => mutation === 'expired' ? 86401001 : 1000 })).rejects.toThrow('Native admission refused');
-  });
-  it('unchanged integration tree adds zero reviews without copying source PASS onto group SHA', async () => {
-    const f = await fixture(); const tree = f.git('rev-parse', 'HEAD^{tree}');
-    const head = f.git('commit-tree', tree, '-p', f.base, '-p', f.head, '-m', 'synthetic group'); f.group(f.base, head);
-    const result = await verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 });
-    expect(result.head).toBe(head); expect(result.sourceHead).toBe(f.head); expect(result.tree).toBe(tree);
-  });
-  it('new main interaction blocks until two fresh exact group reviews, source branch stays unchanged', async () => {
-    const f = await fixture(); f.git('checkout', '-qb', 'new-main', f.base); await writeFile(join(f.cwd, 'other.ts'), 'new interaction\n'); f.git('add', '.'); f.git('commit', '-qm', 'new main'); const main = f.git('rev-parse', 'HEAD');
-    f.git('merge', '--no-ff', f.head, '-m', 'group'); const group = f.git('rev-parse', 'HEAD'); f.group(main, group);
-    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow('two current independent');
-    const candidate = await captureCommittedReviewCandidate(f.cwd, main, group); f.input.integration = await f.state(candidate);
-    expect((await verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).base).toBe(main);
-    expect(f.pr.head.sha).toBe(f.head); f.input.integration.reports.pop();
-    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow();
-  });
-  for (const mode of ['focused', 'inherited-source-context']) it(`refuses integration ${mode}`, async () => {
-    const f = await fixture(); f.git('checkout', '-qb', 'new-main', f.base); await writeFile(join(f.cwd, 'other.ts'), 'new interaction\n'); f.git('add', '.'); f.git('commit', '-qm', 'new main'); const main = f.git('rev-parse', 'HEAD');
-    f.git('merge', '--no-ff', f.head, '-m', 'initial group'); const priorHead = f.git('rev-parse', 'HEAD');
-    const previous = await f.state(await captureCommittedReviewCandidate(f.cwd, main, priorHead));
-    if (mode === 'inherited-source-context') { previous.reports[0].reviewerId = f.input.source.reports[0].reviewerId; previous.reports[0].sessionId = f.input.source.reports[0].sessionId; }
-    await writeFile(join(f.cwd, 'code.ts'), 'repair interaction\n'); f.git('add', '.'); f.git('commit', '-qm', 'new group'); const head = f.git('rev-parse', 'HEAD'); f.group(main, head);
-    const candidate = await captureCommittedReviewCandidate(f.cwd, main, head);
-    const continuation = await prepareAgentReviewState({ cwd: f.cwd, base: main, previous, intent: previous.request.intent, authorSessionId: 'supervisor', snapshot: async () => candidate, repairRisk: 'control', fullRefresh: mode !== 'focused', now: () => 1000 });
-    const template = await f.state(candidate);
-    continuation.reports = template.reports.map(report => ({ ...report, ...agentReviewReportBinding(continuation.request), coveredScope: continuation.request.continuation.mode === 'full' ? continuation.request.intent.scope : continuation.request.continuation.deltaPaths, closure: { coveredDelta: continuation.request.continuation.deltaPaths, interactionsChecked: true, ordinarySemantics: false, resolvedFindings: [] } }));
-    f.input.integration = continuation;
-    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow(mode === 'focused' ? 'fresh full coverage' : 'reused source context');
-  });
-  it('treats rethink reviewers as source context on both sides of integration admission', async () => {
-    const f = await fixture({ rethink: true }); expect(f.input.source.request.continuation).toMatchObject({ cycle: 4, mode: 'full', rethink: { reviewerId: 'rethink-reviewer' } });
-    f.git('checkout', '-qb', 'new-main', f.base); await writeFile(join(f.cwd, 'other.ts'), 'new interaction\n'); f.git('add', '.'); f.git('commit', '-qm', 'new main'); const main = f.git('rev-parse', 'HEAD');
-    f.git('merge', '--no-ff', f.head, '-m', 'group'); const group = f.git('rev-parse', 'HEAD'); f.group(main, group);
-    const fresh = await f.state(await captureCommittedReviewCandidate(f.cwd, main, group)); f.input.integration = fresh;
-    expect((await verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).head).toBe(group);
-    for (const id of ['rethink-reviewer', 'rethink-session']) {
-      const reused = structuredClone(fresh); reused.reports[0][id.endsWith('reviewer') ? 'reviewerId' : 'sessionId'] = id; f.input.integration = reused;
-      await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow('reused source context');
-    }
-    // The identity check precedes verification of the integration state, so a colliding rethink refuses on identity alone.
-    const colliding = structuredClone(fresh); Object.assign(colliding.request, { continuation: { rethink: { reviewerId: f.input.source.reports[0].reviewerId, sessionId: 'integration-rethink-session' } } });
-    f.input.integration = colliding;
-    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow('reused source context');
-  });
-  it('same SHA requeue and changed live identities cannot reuse admission binding', async () => {
-    const f = await fixture(); f.group(f.base, f.head); const binding = await observeNativeAdmission(f.api, f.input);
-    f.entry.id = 'entry-2'; await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, expected: binding, now: () => 1000 })).rejects.toThrow('binding changed');
-  });
-  it('receipts are bounded and retain full evidence rather than truncating it', async () => {
-    const f = await fixture(); expect(parseNativeAdmission(JSON.stringify(f.input)).targetRunId).toBe(10);
-    expect(() => parseNativeAdmission('x'.repeat(60001))).toThrow('transport bound'); expect(() => parseNativeAdmission(JSON.stringify({ ...f.input, hidden: true }))).toThrow('schema');
-  });
-});
-
-
-describe('immutable native artifact transport', () => {
-  async function artifactFixture(large = false) {
-    const f = await fixture(); const binding = await observeNativeAdmission(f.api, f.input);
-    if (large) f.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
-    await writeFile(join(f.cwd, 'receipt.json'), encodeNativeReceipt({ input: f.input, binding }));
-    execFileSync('zip', ['-q', 'receipt.zip', 'receipt.json'], { cwd: f.cwd });
-    const bytes = await readFile(join(f.cwd, 'receipt.zip'));
-    const artifact = { id: 123, expired: false, workflow_run: { id: 20, head_sha: f.base }, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, size_in_bytes: bytes.length };
-    const run = { id: 20, workflow_id: 200, repository: { id: 1376035358 }, path: '.github/workflows/native-review-admission.yml', event: 'workflow_dispatch', head_branch: 'main', head_sha: f.base, status: 'completed', conclusion: 'success', run_attempt: 1 };
-    const api = {
-      get: async (path: string) => path.includes('/actions/artifacts?') ? { total_count: 1, artifacts: [artifact] } : path.endsWith('/actions/runs/20') ? run : { id: 200, path: run.path, state: 'active' },
-      download: async () => bytes,
-    };
-    return { f, api, run, artifact, binding };
-  }
-  it('reads compressed immutable artifacts without changing target or native evidence', async () => {
-    const { f, api, binding } = await artifactFixture(true);
-    expect(await readNativeAdmissionArtifact(api, f.input)).toEqual({ input: f.input, binding });
-  });
-  it('refuses a compressed immutable artifact whose ZIP digest differs', async () => {
-    const { f, api, artifact } = await artifactFixture(true); artifact.digest = `sha256:${'0'.repeat(64)}`;
-    await expect(readNativeAdmissionArtifact(api, f.input)).rejects.toThrow('downloaded artifact digest differs');
-  });
-
-  it('reads immutable exact target artifact with archive digest verification', async () => {
-    const { f, api, binding } = await artifactFixture(); expect((await readNativeAdmissionArtifact(api, f.input)).binding).toEqual(binding);
-  });
-  it('routes group PR hints from receipt rather than absent event PR number', async () => {
-    const { f, api } = await artifactFixture(); expect((await readNativeAdmissionArtifact(api, { ...f.input, prNumber: 0 })).input.prNumber).toBe(5);
-  });
-  for (const mutation of ['branch', 'workflow', 'producer-attempt', 'digest', 'target-attempt', 'duplicate', 'extra-file']) it(`refuses ${mutation}`, async () => {
-    const { f, api, run, artifact } = await artifactFixture();
-    if (mutation === 'branch') run.head_branch = 'codex/untrusted';
-    if (mutation === 'workflow') run.workflow_id = 300;
-    if (mutation === 'producer-attempt') run.run_attempt = 2;
-    if (mutation === 'digest') artifact.digest = `sha256:${'0'.repeat(64)}`;
-    if (mutation === 'target-attempt') f.input.targetAttempt = 2;
-    if (mutation === 'duplicate') { const get = api.get; api.get = async path => path.includes('/actions/artifacts?') ? { total_count: 2, artifacts: [artifact, { ...artifact, id: 124 }] } : get(path); }
-    if (mutation === 'extra-file') {
-      await writeFile(join(f.cwd, 'extra.json'), '{}'); execFileSync('zip', ['-q', 'receipt.zip', 'extra.json'], { cwd: f.cwd });
-      const bytes = await readFile(join(f.cwd, 'receipt.zip')); artifact.digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`; artifact.size_in_bytes = bytes.length; api.download = async () => bytes;
-    }
-    await expect(readNativeAdmissionArtifact(api, f.input)).rejects.toThrow('Native admission refused');
-  });
-});
-
-describe('source-keyed pull-request receipts', () => {
-  async function sourceFixture({ predecessor = false } = {}) {
-    const f = await fixture({ predecessor });
-    const input = { version: 2, target: { event: 'pull_request', prNumber: 5, sourceHead: f.head }, source: f.input.source, integration: null };
-    const dispatch = { id: 20, workflow_id: 200, repository: { id: 1376035358 }, path: '.github/workflows/native-review-admission.yml', event: 'workflow_dispatch', head_branch: 'main', head_sha: f.base, status: 'completed', conclusion: 'success', run_attempt: 1 };
-    const listings = new Map<string, Array<Record<string, unknown>>>(); const downloads = new Map<number, Buffer>();
-    let calls: string[] = [];
-    async function upload(name: string, receipt: unknown, id: number, mutate: (artifact: Record<string, unknown>) => void = () => {}) {
-      const dir = await mkdtemp(join(f.cwd, `artifact-${id}-`)); await writeFile(join(dir, 'receipt.json'), encodeNativeReceipt(receipt));
-      execFileSync('zip', ['-q', 'receipt.zip', 'receipt.json'], { cwd: dir }); const bytes = await readFile(join(dir, 'receipt.zip'));
-      const artifact: Record<string, unknown> = { id, expired: false, workflow_run: { id: 20, head_sha: f.base }, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, size_in_bytes: bytes.length };
-      mutate(artifact); downloads.set(id, bytes); listings.set(name, [...(listings.get(name) ?? []), artifact]);
-    }
-    const api = {
-      get: async (path: string) => {
-        calls.push(path);
-        const name = /[?&]name=([^&]+)/u.exec(path)?.[1];
-        if (name) { const artifacts = listings.get(name) ?? []; return { total_count: artifacts.length, artifacts: structuredClone(artifacts) }; }
-        if (path.endsWith('/actions/runs/20')) return structuredClone(dispatch);
-        if (path.endsWith('/actions/workflows/native-review-admission.yml')) return { id: 200, path: dispatch.path, state: 'active' };
-        if (path.endsWith(`/actions/runs/${f.run.id}`)) return structuredClone(f.run);
-        return f.api.get(path.replace(`/actions/runs/${f.run.id}`, '/actions/runs/10'));
-      },
-      graphql: f.api.graphql,
-      download: async (path: string) => downloads.get(Number(path.split('/').at(-2)))!,
-    };
-    let clock = 1000;
-    const event: { number?: number; repository: { private: boolean }; pull_request: { head: { sha: string } }; action?: string; merge_group?: Record<string, string> } = { number: 5, repository: { private: false }, pull_request: { head: { sha: f.head } } };
-    const env: Record<string, string> = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_RUN_ID: '10', GITHUB_RUN_ATTEMPT: '1', GITHUB_EVENT_NAME: 'pull_request' };
-    const submit = async () => ({ input, binding: await verifySourceAdmission({ cwd: f.cwd, api, input, now: () => clock }) });
-    const wait = (onSleep?: () => Promise<void>, deadlineMs?: number) => waitNativeAdmission({ event, env, api, cwd: f.cwd, now: () => clock, sleep: async (ms: number) => { clock += ms; await onSleep?.(); }, deadlineMs, fetchObjects: async () => {} });
-    const sourceName = (pr = 5, head = f.head) => `native-review-pr-${pr}-${head}`;
-    return { f, input, dispatch, upload, api, event, env, submit, wait, sourceName, setClock: (value: number) => { clock = value; }, calls: () => calls, resetCalls: () => { calls = []; } };
-  }
-  it('waits for a pinned predecessor on main, then admits the own-delta source with unrelated main changes', async () => {
-    const s = await sourceFixture({ predecessor: true }); const f = s.f;
-    const candidate = await captureCommittedReviewCandidate(f.cwd, f.predecessor!, f.head, f.predecessor);
-    s.input.source = await f.state(candidate); f.input.source = s.input.source;
-    await expect(s.submit()).rejects.toThrow('has not landed');
-    const main = f.git('commit-tree', f.git('rev-parse', `${f.predecessor}^{tree}`), '-p', f.base, '-p', f.predecessor!, '-m', 'merge predecessor');
-    f.git('checkout', '-q', '--detach', main); await writeFile(join(f.cwd, 'unrelated.ts'), 'unrelated\n'); f.git('add', '.'); f.git('commit', '-qm', 'unrelated main'); const moved = f.git('rev-parse', 'HEAD');
-    const tree = f.git('merge-tree', '--write-tree', moved, f.head); const head = f.git('commit-tree', tree, '-p', moved, '-p', f.head, '-m', 'group'); f.group(moved, head);
-    await expect(s.submit()).resolves.toBeDefined();
-    await expect(carryOverSourceReview(f.cwd, candidate, { base: moved, tree })).resolves.toBe('disjoint base move');
-    f.group(f.base, head);
-    await expect(s.submit()).rejects.toThrow('has not landed');
-  });
-  it('refuses an unmerged predecessor even for an equal tree or a full integration receipt', async () => {
-    const f = await fixture({ predecessor: true }); const candidate = await captureCommittedReviewCandidate(f.cwd, f.predecessor!, f.head, f.predecessor);
-    f.input.source = await f.state(candidate);
-    const tree = f.git('rev-parse', `${f.head}^{tree}`); const group = f.git('commit-tree', tree, '-p', f.base, '-p', f.head, '-m', 'group before predecessor'); f.group(f.base, group);
-    await expect(carryOverSourceReview(f.cwd, candidate, { base: f.base, tree })).rejects.toThrow('not an ancestor');
-    f.input.integration = await f.state(await captureCommittedReviewCandidate(f.cwd, f.base, group));
-    await expect(verifyNativeAdmission({ cwd: f.cwd, api: f.api, input: f.input, now: () => 1000 })).rejects.toThrow('has not landed');
-  });
-  it.each(['source', 'run'])('admits a large compressed %s receipt through immutable artifact and full native verification', async (kind) => {
-    const s = await sourceFixture();
-    s.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
-    if (kind === 'run') {
-      const tree = s.f.git('rev-parse', 'HEAD^{tree}');
-      const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'synthetic group'); s.f.group(s.f.base, head);
-      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
-      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
-    }
-    const input = kind === 'source' ? s.input : s.f.input;
-    const binding = kind === 'source' ? await verifySourceAdmission({ cwd: s.f.cwd, api: s.api, input, now: () => 1000 }) : await verifyNativeAdmission({ cwd: s.f.cwd, api: s.api, input, now: () => 1000 });
-    const receipt = { input, binding };
-    expect(Buffer.byteLength(JSON.stringify(receipt))).toBeGreaterThan(56000);
-    expect(JSON.parse(encodeNativeReceipt(receipt)).version).toBe(3);
-    await s.upload(kind === 'source' ? s.sourceName() : 'native-review-10-1', receipt, 123);
-    const restored = kind === 'source' ? await readSourceAdmissionArtifact(s.api, 5, s.f.head) : await readNativeAdmissionArtifact(s.api, s.f.input);
-    expect(restored).toEqual(receipt);
-    await expect(s.wait()).resolves.toBeUndefined();
-    s.setClock(86401001); await expect(s.wait()).rejects.toThrow('Native admission refused');
-  });
-  it('R1 admits a later run of the reviewed head with a receipt submitted before any run existed', async () => {
-    const s = await sourceFixture(); s.resetCalls(); const receipt = await s.submit();
-    expect(s.calls().some(path => path.includes('/actions/runs/'))).toBe(false);
-    await s.upload(s.sourceName(), receipt, 123); await expect(s.wait()).resolves.toBeUndefined();
-  });
-  it('R2 admits a new attempt and a later run of the same head without resubmission', async () => {
-    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-    s.f.run.run_attempt = 2; s.env.GITHUB_RUN_ATTEMPT = '2'; await expect(s.wait()).resolves.toBeUndefined();
-    s.f.run.id = 11; s.f.run.run_attempt = 1; s.env.GITHUB_RUN_ID = '11'; s.env.GITHUB_RUN_ATTEMPT = '1'; await expect(s.wait()).resolves.toBeUndefined();
-  });
-  it('R3 refuses a receipt for a different head of the same PR', async () => {
-    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-    s.event.pull_request.head.sha = s.f.base; s.f.pr.head.sha = s.f.base; s.f.run.head_sha = s.f.base;
-    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
-  });
-  it('R4 refuses the same head under another PR number', async () => {
-    const s = await sourceFixture(); const receipt = await s.submit();
-    await s.upload(s.sourceName(6), receipt, 123); s.event.number = 6;
-    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
-  });
-  it('R5 refuses a review that has expired by admission', async () => {
-    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123); s.setClock(86401001);
-    await expect(s.wait()).rejects.toThrow('Native admission refused');
-  });
-  it('R6 refuses submission for a draft PR, and admission once the PR is closed', async () => {
-    const s = await sourceFixture(); s.f.pr.draft = true; await expect(s.submit()).rejects.toThrow('not the current open main candidate');
-    s.f.pr.draft = false; await s.upload(s.sourceName(), await s.submit(), 123); s.f.pr.state = 'closed';
-    await expect(s.wait()).rejects.toThrow('not the current open main candidate');
-  });
-  it('R7 still admits a run-keyed receipt for its exact run and attempt', async () => {
-    const s = await sourceFixture(); const binding = await observeNativeAdmission(s.api, s.f.input);
-    await s.upload('native-review-10-1', { input: s.f.input, binding }, 123); await expect(s.wait()).resolves.toBeUndefined();
-  });
-  describe('merge groups admitted by their source receipt', () => {
-    // Builds main2 = base + <path>=<contents>, then the queue's squash of the reviewed change on main2.
-    async function behindGroup(s: Awaited<ReturnType<typeof sourceFixture>>, path: string, contents: string, extra?: [string, string]) {
-      const f = s.f; f.git('checkout', '-q', '--detach', f.base);
-      await mkdir(join(f.cwd, path, '..'), { recursive: true }); await writeFile(join(f.cwd, path), contents); f.git('add', '.'); f.git('commit', '-qm', 'new main');
-      const main2 = f.git('rev-parse', 'HEAD');
-      let tree = f.git('merge-tree', '--write-tree', `--merge-base=${f.base}`, main2, f.head);
-      if (extra) { f.git('checkout', '-q', '--detach', main2); f.git('read-tree', tree); f.git('checkout-index', '-a', '-f'); await writeFile(join(f.cwd, extra[0]), extra[1]); f.git('add', extra[0]); tree = f.git('write-tree'); }
-      const head = f.git('commit-tree', tree, '-p', main2, '-m', 'queue group'); f.group(main2, head);
-      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
-      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
-      return { main2, head };
-    }
-    it('carries a complete large compressed source receipt over an unrelated merge-group base move', async () => {
-      const s = await sourceFixture();
-      s.input.source.reports[0].advisoryFindings = Array(20).fill('Optional retained evidence '.repeat(100));
-      const receipt = await s.submit();
-      expect(Buffer.byteLength(JSON.stringify(receipt))).toBeGreaterThan(56000);
-      expect(JSON.parse(encodeNativeReceipt(receipt)).version).toBe(3);
-      await s.upload(s.sourceName(), receipt, 123);
-      await behindGroup(s, 'other.ts', 'unrelated\n');
-      await expect(s.wait()).resolves.toBeUndefined();
+  it.each(['newer bad base', 'equal-tree group', 'live head changed', 'expiry during admission', 'main moved'])('wait checks %s with fake API and Git', async scenario => {
+    let clock = time; let mainReads = 0;
+    const group = scenario === 'equal-tree group'; const groupHead = 'f'.repeat(40);
+    const event = { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } }, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${groupHead}`, base_sha: receipt.base, head_sha: groupHead } };
+    const api = { get: vi.fn(async path => {
+      if (path.includes('/issues/')) return scenario === 'newer bad base' ? [comment(), comment({ id: 2, body: body({ ...receipt, base: 'e'.repeat(40) }) })] : [comment()];
+      if (path.includes('/pulls/')) return { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: scenario === 'live head changed' ? groupHead : receipt.head } };
+      mainReads += 1;
+      if (mainReads === 2 && scenario === 'expiry during admission') clock = receipt.expires;
+      return { object: { sha: mainReads === 2 && scenario === 'main moved' ? groupHead : receipt.base } };
+    }) };
+    const runGit = vi.fn(async (_cwd, ...args) => {
+      if (args.includes('fetch') && args.includes('e'.repeat(40))) throw new Error('unknown base');
+      if (args[0] === 'rev-parse') return receipt.tree;
+      if (args[0] === 'merge-base' && args[1] === '--all') return receipt.base;
+      return '';
     });
-    it('G1 admits a behind group whose base moved only on unrelated paths', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      await behindGroup(s, 'other.ts', 'unrelated\n'); await expect(s.wait()).resolves.toBeUndefined();
-    });
-    it('G1m admits a two-parent merge group whose base moved only on unrelated paths', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      const f = s.f; f.git('checkout', '-q', '--detach', f.base); await writeFile(join(f.cwd, 'other.ts'), 'unrelated\n'); f.git('add', '.'); f.git('commit', '-qm', 'side');
-      const side = f.git('rev-parse', 'HEAD'); const main2 = f.git('commit-tree', f.git('rev-parse', `${side}^{tree}`), '-p', f.base, '-p', side, '-m', 'merge earlier PR');
-      const tree = f.git('merge-tree', '--write-tree', main2, f.head); const head = f.git('commit-tree', tree, '-p', main2, '-p', f.head, '-m', 'queue group'); f.group(main2, head);
-      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
-      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
-      await expect(s.wait()).resolves.toBeUndefined();
-    });
-    // A refused carry-over is logged and the wait continues for the run-keyed route.
-    // Two polls (a 30 s deadline) prove the continuation without 80 full polls.
-    async function refusedThenExpired(s: Awaited<ReturnType<typeof sourceFixture>>, reason: string) {
-      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-      try {
-        await expect(s.wait(undefined, 30_000)).rejects.toThrow('bounded receipt wait expired');
-        expect(log.mock.calls.filter(([line]) => String(line).includes('source receipt does not admit this merge group') && String(line).includes(reason))).toHaveLength(2);
-      } finally { log.mockRestore(); }
-    }
-    it('G2 does not carry over when the base moved under a reviewed path', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      await behindGroup(s, 'code.ts', 'export const n = 2;\n'); await refusedThenExpired(s, 'the base moved under a reviewed path');
-    });
-    for (const path of ['.github/workflows/extra.yml', 'package.json', 'packages/core/package-lock.json', 'supabase/migrations/0001_extra.sql', 'scripts/agent-review-extra.mjs', 'scripts/documentation-git.ts', 'config/platform-migration-manifest.json']) it(`G3 does not carry over when the base changed ${path}`, async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      await behindGroup(s, path, 'changed\n'); await refusedThenExpired(s, 'machinery');
-    });
-    it('G4 does not carry over a group that is not exactly the reviewed change on its base', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      await behindGroup(s, 'other.ts', 'unrelated\n', ['smuggled.ts', 'not reviewed\n']); await refusedThenExpired(s, 'not exactly the reviewed change');
-    });
-    it('G8 does not carry over when the reviewed change conflicts with the base', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      // main2 conflicts on code.ts and adds other.ts; the group keeps the reviewed code.ts, so its tree is neither the reviewed tree nor a clean merge.
-      const f = s.f; f.git('checkout', '-q', '--detach', f.base); await writeFile(join(f.cwd, 'code.ts'), 'export const n = 3;\n'); await writeFile(join(f.cwd, 'other.ts'), 'unrelated\n'); f.git('add', '.'); f.git('commit', '-qm', 'conflicting main');
-      const main2 = f.git('rev-parse', 'HEAD'); await writeFile(join(f.cwd, 'code.ts'), 'export const n = 2;\n'); f.git('add', '.'); const tree = f.git('write-tree');
-      const head = f.git('commit-tree', tree, '-p', main2, '-m', 'queue group'); f.group(main2, head);
-      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
-      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
-      await refusedThenExpired(s, 'not exactly the reviewed change');
-    });
-    it('a run-keyed receipt with integration reviews still admits a group that does not carry over', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      const { main2, head } = await behindGroup(s, '.github/workflows/extra.yml', 'name: extra\n');
-      const integration = await s.f.state(await captureCommittedReviewCandidate(s.f.cwd, main2, head));
-      const input = { ...s.f.input, targetRunId: s.f.run.id, targetAttempt: s.f.run.run_attempt, integration };
-      const binding = await observeNativeAdmission(s.api, input);
-      let uploaded = false; const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-      try {
-        await expect(s.wait(async () => { if (!uploaded) { uploaded = true; await s.upload('native-review-10-1', { input, binding }, 124); } })).resolves.toBeUndefined();
-        expect(log.mock.calls.some(([line]) => String(line).includes('machinery'))).toBe(true);
-      } finally { log.mockRestore(); }
-    });
-    it('G5 admits a group with the unchanged reviewed tree', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      const tree = s.f.git('rev-parse', `${s.f.head}^{tree}`); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-m', 'queue group'); s.f.group(s.f.base, head);
-      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
-      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
-      await expect(s.wait()).resolves.toBeUndefined();
-    });
-    it('G5m admits a two-parent merge group with the unchanged reviewed tree', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      const tree = s.f.git('rev-parse', `${s.f.head}^{tree}`); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'queue group'); s.f.group(s.f.base, head);
-      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
-      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
-      await expect(s.wait()).resolves.toBeUndefined();
-    });
-    it('G9 admits a stacked pull request after its predecessor landed as a merge commit', async () => {
-      const s = await sourceFixture({ predecessor: true }); await s.upload(s.sourceName(), await s.submit(), 123);
-      const f = s.f; const main2 = f.git('commit-tree', f.git('rev-parse', `${f.predecessor}^{tree}`), '-p', f.base, '-p', f.predecessor!, '-m', 'merge predecessor');
-      const tree = f.git('merge-tree', '--write-tree', main2, f.head); const head = f.git('commit-tree', tree, '-p', main2, '-p', f.head, '-m', 'queue group'); f.group(main2, head);
-      expect(f.git('rev-parse', `${head}^{tree}`)).toBe(f.git('rev-parse', `${f.head}^{tree}`));
-      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
-      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
-      await expect(s.wait()).resolves.toBeUndefined();
-    });
-    it('G10 still admits a stacked merge group through the run-keyed route when its base changed a reviewed path', async () => {
-      const s = await sourceFixture({ predecessor: true }); await s.upload(s.sourceName(), await s.submit(), 123);
-      // A reviewed path's mode changes on main2, keeping the content merge clean but its tree distinct.
-      const f = s.f; f.git('checkout', '-q', '--detach', f.predecessor!); f.git('update-index', '--chmod=+x', 'code.ts');
-      const main2 = f.git('commit-tree', f.git('write-tree'), '-p', f.base, '-p', f.predecessor!, '-m', 'merge predecessor with reviewed path change');
-      const tree = f.git('merge-tree', '--write-tree', main2, f.head); const head = f.git('commit-tree', tree, '-p', main2, '-p', f.head, '-m', 'queue group'); f.group(main2, head);
-      expect(tree).not.toBe(f.git('rev-parse', `${f.head}^{tree}`));
-      s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${f.run.head_branch}`;
-      Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: main2, head_sha: head, head_ref: s.env.GITHUB_REF } });
-      const integration = await f.state(await captureCommittedReviewCandidate(f.cwd, main2, head));
-      const input = { ...f.input, targetRunId: f.run.id, targetAttempt: f.run.run_attempt, integration };
-      const binding = await observeNativeAdmission(s.api, input);
-      let uploaded = false; const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-      try {
-        await expect(s.wait(async () => { if (!uploaded) { uploaded = true; await s.upload('native-review-10-1', { input, binding }, 124); } })).resolves.toBeUndefined();
-        expect(log.mock.calls.some(([line]) => String(line).includes('the base moved under a reviewed path'))).toBe(true);
-      } finally { log.mockRestore(); }
-    });
-    it('G6 waits when the queue entry names another reviewed head', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      await behindGroup(s, 'other.ts', 'unrelated\n'); s.f.entry.pullRequest.headRefOid = s.f.base;
-      await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
-    });
-    it('G7 does not carry over an expired source review', async () => {
-      const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-      await behindGroup(s, 'other.ts', 'unrelated\n'); s.setClock(86401001); await refusedThenExpired(s, 'expired');
-    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const wait = waitNativeAdmission({ event, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: group ? 'merge_group' : 'pull_request' }, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 15000 });
+      if (scenario === 'live head changed') await expect(wait).rejects.toThrow('PR head changed');
+      else if (scenario === 'expiry during admission') await expect(wait).rejects.toThrow('expired');
+      else if (scenario === 'main moved') await expect(wait).rejects.toThrow('main moved');
+      else { await expect(wait).resolves.toBeUndefined(); expect(log).toHaveBeenLastCalledWith(expect.stringContaining(group ? 'unchanged tree' : 'reviewed PR head')); }
+    } finally { log.mockRestore(); }
   });
-  for (const mutation of ['head-repository', 'workflow-file'] as const) it(`R9 refuses a run with a different ${mutation}`, async () => {
-    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-    if (mutation === 'head-repository') s.f.run.head_repository.id = 999;
-    if (mutation === 'workflow-file') s.f.run.path = '.github/workflows/other.yml';
-    await expect(s.wait()).rejects.toThrow('Native admission refused');
-  });
-  it('skips a receipt under this PR head name whose target names another PR', async () => {
-    const s = await sourceFixture(); const receipt = await s.submit();
-    await s.upload(s.sourceName(), { ...receipt, input: { ...receipt.input, target: { ...receipt.input.target, prNumber: 7 } } }, 124);
-    await expect(s.wait()).rejects.toThrow('bounded receipt wait expired');
-  });
-  it('R10 skips a newer artifact that fails provenance and admits an older valid one', async () => {
-    const s = await sourceFixture(); const receipt = await s.submit();
-    await s.upload(s.sourceName(), receipt, 123); await s.upload(s.sourceName(), receipt, 124, artifact => { artifact.digest = `sha256:${'0'.repeat(64)}`; });
-    expect((await readSourceAdmissionArtifact(s.api, 5, s.f.head))?.input.target.sourceHead).toBe(s.f.head);
-    await expect(s.wait()).resolves.toBeUndefined();
-  });
-  it('admits the source receipt when a run-keyed artifact for this pull-request run fails its checks', async () => {
-    const s = await sourceFixture(); const binding = await observeNativeAdmission(s.api, s.f.input);
-    await s.upload('native-review-10-1', { input: s.f.input, binding }, 122, artifact => { artifact.digest = `sha256:${'0'.repeat(64)}`; });
-    await s.upload(s.sourceName(), await s.submit(), 123); await expect(s.wait()).resolves.toBeUndefined();
-  });
-  it('still refuses a merge group whose run-keyed artifact fails its checks', async () => {
-    const s = await sourceFixture();
-    const tree = s.f.git('rev-parse', 'HEAD^{tree}'); const head = s.f.git('commit-tree', tree, '-p', s.f.base, '-p', s.f.head, '-m', 'synthetic group'); s.f.group(s.f.base, head);
-    const binding = await observeNativeAdmission(s.api, s.f.input);
-    await s.upload('native-review-10-1', { input: s.f.input, binding }, 122, artifact => { artifact.digest = `sha256:${'0'.repeat(64)}`; });
-    s.env.GITHUB_EVENT_NAME = 'merge_group'; s.env.GITHUB_SHA = head; s.env.GITHUB_REF = `refs/heads/${s.f.run.head_branch}`;
-    Object.assign(s.event, { number: undefined, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', base_sha: s.f.base, head_sha: head, head_ref: s.env.GITHUB_REF } });
-    await expect(s.wait()).rejects.toThrow('downloaded artifact digest differs');
-  });
-  it('refuses a source receipt when the pull request and its run carry no head repository id', async () => {
-    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123);
-    delete (s.f.pr.head as { repo?: unknown }).repo; delete (s.f.run as { head_repository?: unknown }).head_repository;
-    await expect(s.wait()).rejects.toThrow('Native admission refused');
-  });
-  it('refuses when the live PR head moved although the event still names the reviewed head', async () => {
-    const s = await sourceFixture(); await s.upload(s.sourceName(), await s.submit(), 123); s.f.pr.head.sha = s.f.base;
-    await expect(s.wait()).rejects.toThrow('PR head changed after source review');
-  });
-  it('refuses an incomplete listing of more than 100 source receipts', async () => {
-    const s = await sourceFixture(); const receipt = await s.submit();
-    for (let id = 200; id < 301; id++) await s.upload(s.sourceName(), receipt, id);
-    await expect(readSourceAdmissionArtifact(s.api, 5, s.f.head)).rejects.toThrow('pagination is incomplete');
-  }, 30_000);
-  it('parses only the exact source receipt schema', async () => {
-    const s = await sourceFixture(); expect(parseNativeAdmission(JSON.stringify(s.input)).target.prNumber).toBe(5);
-    expect(() => parseNativeAdmission(JSON.stringify({ ...s.input, integration: s.input.source }))).toThrow('source target is invalid');
-    expect(() => parseNativeAdmission(JSON.stringify({ ...s.input, targetRunId: 10 }))).toThrow('schema');
+  it('polls on the injected clock and reports a bounded timeout without Git', async () => {
+    let clock = time;
+    const api = { get: vi.fn(async path => path.includes('/pulls/') ? { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: receipt.head } } : []) };
+    const sleep = vi.fn(async ms => { clock += ms; }); const runGit = vi.fn();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(waitNativeAdmission({ event: { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api, runGit, now: () => clock, sleep, deadlineMs: 30000 })).rejects.toThrow('bounded 20-minute receipt wait expired');
+      expect(sleep.mock.calls).toEqual([[15000], [15000]]); expect(runGit).not.toHaveBeenCalled();
+    } finally { log.mockRestore(); }
   });
 });

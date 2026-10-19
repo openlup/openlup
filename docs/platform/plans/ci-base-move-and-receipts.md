@@ -3,6 +3,18 @@
 Status: executed on 2026-10-03 (W0 #112, W2 #113, W1 #114, W3 #115, W4 #121, W5 #122; local steps 0b and 4 applied; the maintainer-local copy reinstalled with W5).
 Audience: the agents executing it, their reviewers and the maintainer.
 
+This is the historical 2026-10-03 execution record. Its dispatch/artifact
+transport, run-keyed integration receipts, closure lineage, inherited expiry,
+repair-cycle limits and `needs_rescope` recovery are superseded by the
+[2026-10-19 simplification](native-review-simplification-proposal.md). The
+fork-point base and carry-over conditions remain. Current commands are in
+[Deliver a change](../../../CONTRIBUTING.md#deliver-a-change): post
+`node scripts/agent-review-session.mjs receipt <PR>` output using
+`gh pr comment <PR> --body-file -`; a group that cannot carry over is rejected,
+so merge `main` and re-review. A rebase or changed intent uses `prepare --new`.
+The procedures and falsifiers below record the earlier implementation, not
+additional current instructions or newly granted authority.
+
 ## 1. Why: recorded failures only
 
 **Window.** The window is the 110 non-skipped pull-request and merge-group runs of
@@ -48,8 +60,8 @@ would reopen each item.
   - **Pull-request runs:** one source-keyed (v2) receipt per reviewed head
     (S3), submitted as soon as the pull request is open and ready. Before W2
     merged, this was a run-keyed receipt per run.
-  - To submit: `agent-review-queue.mjs input` (or `input-source`), then a
-    dispatch of `native-review-admission.yml`.
+  - Historical submission used transport-input generation and the now-retired
+    native-review admission workflow; current submission is the PR comment above.
 - **Owner read** (W2 only).
   - The maintainer reads the final reviewed candidate before auto-merge is armed,
     and confirms the read, with the candidate SHA, to the executing session.
@@ -82,7 +94,7 @@ would reopen each item.
 The maintainer approves, once:
 - W0, W2 and W1 as bounded delivery through merge. That covers:
   - creating task worktrees and opening the three pull requests;
-  - dispatching `native-review-admission.yml` for them;
+  - dispatching the native-review admission workflow for them (now retired);
   - rerunning their Published Tree CI runs;
   - arming squash auto-merge with the maintainer's configured author email.
 - That W2 reverses one approved property, for pull-request events only.
@@ -370,9 +382,8 @@ F2–F5 are guards.
 
 ### S3. Source-keyed pull-request receipts
 
-**Input v2.**
-`node scripts/agent-review-queue.mjs input-source PR source-session.json`
-produces:
+**Historical input v2 (superseded 2026-10-19).** The retired source-input
+command produced:
 
 ```json
 { "version": 2, "target": { "event": "pull_request", "prNumber": "<positive integer>", "sourceHead": "<40 hex>" }, "source": "<session state>", "integration": null }
@@ -381,8 +392,8 @@ produces:
 `parseNativeAdmission` accepts v1 unchanged, and v2 with exactly these keys,
 under the same 56,000-byte bound.
 
-**`submit` for v2,** run on trusted `main` with `native-review-admission.yml`
-unchanged:
+**Historical v2 submission (superseded 2026-10-19),** run on trusted `main`
+through the now-retired admission workflow:
 - A new exported `observeSourceAdmission(api, input)` requires:
   - the PR is open, not a draft and not merged;
   - its base is `main` in this repository;
