@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { env as processEnvironment } from 'node:process';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { excludedToolingTests, scopeFromEvent, scopeFromLocal, TOOLING_INPUTS, writeTestScope } from './ci-test-scope.mjs';
@@ -142,7 +143,7 @@ describe('local scope', () => {
   });
   it('accepts --base through the CLI and uses local defaults without GitHub event env', () => {
     const { cwd } = fixture(), output = join(scratch(), 'exclude.txt');
-    const env = { ...process.env, OPENLUP_VITEST_EXCLUDE_FILE: output };
+    const env = { ...processEnvironment, OPENLUP_VITEST_EXCLUDE_FILE: output };
     delete env.GITHUB_EVENT_NAME; delete env.GITHUB_EVENT_PATH;
     const script = join(process.cwd(), 'scripts/ci-test-scope.mjs');
     for (const args of [[], ['--base', 'HEAD']]) {

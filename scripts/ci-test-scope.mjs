@@ -55,11 +55,16 @@ export function excludedToolingTests(changedPaths) {
     .map(([test]) => test).sort();
 }
 
+// A fixed Git binary and search path: a writable PATH entry cannot substitute
+// a fake git that reports no changed inputs.
+const runGit = (cwd, args) => execFileSync('/usr/bin/git', args, { cwd, encoding: 'utf8',
+  timeout: 30_000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: '/usr/bin:/bin' } });
+
 // HEAD is the checked-out candidate, including GitHub's PR merge commit. Diff
 // against its merge-base with the event's exact base, never a moving branch.
 // --no-renames reports both old and new names, so moving an input triggers it.
 export function scopeFromEvent({ eventName, event, cwd = process.cwd(), git = args =>
-  execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }) }) {
+  runGit(cwd, args) }) {
   try {
     const base = eventName === 'pull_request' ? event?.pull_request?.base?.sha
       : eventName === 'merge_group' ? event?.merge_group?.base_sha : undefined;
@@ -77,7 +82,7 @@ export function scopeFromEvent({ eventName, event, cwd = process.cwd(), git = ar
 // Include staged and unstaged paths separately: an index change can be undone
 // in the working file while still being part of the contributor's pending work.
 export function scopeFromLocal({ base = 'origin/main', cwd = process.cwd(), git = args =>
-  execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }) } = {}) {
+  runGit(cwd, args) } = {}) {
   try {
     const fork = git(['merge-base', 'HEAD', base]).trim();
     if (!/^[a-f0-9]{40}$/u.test(fork)) return [];
