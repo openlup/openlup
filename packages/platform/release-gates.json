@@ -135,7 +135,7 @@
         "test/packageBoundary.test.ts",
         "test/communications/sql.test.ts",
         "test/communications/contribution.test.ts",
-        "test/communications/transport.test.ts"
+        "test/communications/transportConformance.test.ts"
       ],
       "entrypoint": "dist/communications/index.d.ts",
       "snapshot": "api/communications.api.md"
