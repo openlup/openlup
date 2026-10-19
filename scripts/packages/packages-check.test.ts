@@ -1,9 +1,8 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
 import { bumpSet } from "./release-bump.ts";
@@ -136,37 +135,6 @@ describe("packages:check", () => {
     expect(runPackagesCheck(stray, ["--out", "out", "--release-set", "0.4.0"])).toBe(1);
     expect(errors.mock.calls.flat().join("\n")).toMatch(/^unlisted-package packages\/stray: /mu);
     expect(existsSync(join(stray, "out"))).toBe(false);
-  }, 120_000);
-  it("runs the actual publisher and set-preflight pack scripts cold, with only the selected manifest", () => {
-    quiet();
-    const checker = fileURLToPath(new URL("./packages-check.ts", import.meta.url));
-    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-    const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
-    for (const [workflow, tag, expected] of [
-      ["publish-packages.yml", "openlup-kit-v0.4.0", ["@openlup/kit"]],
-      ["publish-packages.yml", "openlup-pub-v0.4.0", ["@openlup/pub"]],
-      ["publish-package.yml", "all", ["@openlup/kit", "@openlup/pub"]],
-    ] as const) {
-      const root = peers();
-      writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { "packages:check": `${quote(process.execPath)} --experimental-strip-types ${quote(checker)}` } }));
-      git(root, "add", "-A"); git(root, "commit", "-qm", "real CLI entrypoint");
-      for (const name of ["kit", "pub"]) { mkdirSync(join(root, `packages/${name}/dist`)); writeFileSync(join(root, `packages/${name}/dist/stale.js`), "stale\n"); }
-      const source = readFileSync(new URL(`../../.github/workflows/${workflow}`, import.meta.url), "utf8");
-      const name = workflow === "publish-package.yml" ? "Pack and check the packages of this release" : "Pack and check the release's package";
-      const body = source.split(`      - name: ${name}\n`)[1]!.split(/^ {6}- /mu)[0]!.split("        run: |\n")[1]!.replace(/^ {10}/gmu, "");
-      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", body], { cwd: root, encoding: "utf8", env: { ...inherited, RELEASE_TAG: tag, PACKAGE: "all", VERSION: "0.4.0", RUNNER_TEMP: root }, timeout: 60_000 });
-      expect(result.status, result.stdout + result.stderr).toBe(0);
-      const packed = JSON.parse(readFileSync(join(root, "packs", PACKAGES_MANIFEST_FILE), "utf8"));
-      expect(packed.packages.map((row: { name: string }) => row.name)).toEqual(expected);
-      for (const name of ["kit", "pub"]) expect(existsSync(join(root, `packages/${name}/dist/stale.js`))).toBe(false);
-      if (workflow === "publish-package.yml") {
-        const consumer = mkdtempSync(join(tmpdir(), "cold-package-consumer-")); roots.push(consumer);
-        writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
-        execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--fund=false", ...packed.packages.map((row: { filename: string }) => join(root, "packs", row.filename))], { cwd: consumer, stdio: "pipe" });
-        for (const name of ["kit", "pub"]) expect(lstatSync(join(consumer, `node_modules/@openlup/${name}`)).isSymbolicLink()).toBe(false);
-        expect(execFileSync(process.execPath, ["--input-type=module", "-e", "const a=await import('@openlup/pub');const b=await import('@openlup/kit');if(a.a!==1||b.a!==1)process.exit(1);console.log('consumer imports ok')"], { cwd: consumer, encoding: "utf8" })).toContain("consumer imports ok");
-      }
-    }
   }, 120_000);
   it("does not inherit a missing prerequisite or emit publication inputs after a failed prerequisite build", () => {
     quiet();

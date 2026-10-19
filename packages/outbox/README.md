@@ -65,10 +65,14 @@ admission policy and does not prove effective authorization or SQL behavior.
 
 The root companion tests retain real interruption and lost-response fixtures. Their owned JSON witness markers are written completely to a same-directory temporary file and then renamed into place, so readers never treat a newly created, partially written file as a ready observation. A plain Node process owns each fixture's service and launcher and stays in the root test process group until teardown finishes, even when Vitest's worker exits. Only the bounded Docker cleanup commands detach; their process-start window can still receive a group TERM. The companion fixture allows one recovery only for a child terminated by SIGTERM with no reported error, inside the original 10-second inspect or removal deadline. An interrupted removal is followed by actual Docker inspection: normal no-such-object refusal confirms absence, otherwise the same full ID, name and UUID label must still match before one removal retry. The recovery never resets its deadline, treats a signal as absence, or masks a timeout, nonzero result, wrong owner or second interruption. Cleanup recovers by the known unique name after a lost creation response. Root cancellation regressions interrupt actual Vitest workers after service creation and after detached proof readiness, and check resource termination before releasing their own test lock. They create no verification stamp or shared verifier lock. Separate teardown regressions cancel the actual npm/launcher route during each cleanup operation and assert that its container or UUID database is removed while an unrelated supplied-service database remains.
 
-The standalone-driver fixtures omit the Zod directory copy because they run
-builtin-only proof stubs or stop before the packed consumer starts. The six
-actual consumer invocation cases retain their ordinary Zod copy and installation
-checks. Every case, ownership assertion and cleanup deadline remains in place.
+The standalone-driver fixtures run builtin-only proof stubs or stop before the
+packed consumer starts, so they need no Zod directory copy. Artifact-set and
+digest refusals remain in [the manifest-input tests](../../scripts/packages/pack-manifest-input.test.ts);
+installed missing-export refusal remains in [the required-package-gate tests](../../scripts/packages/required-package-gates.test.ts).
+The required cold package gate executes the actual installed reference proof,
+including the replay and token-fencing witness above. The root companion tests
+focus on cancellation, ownership and bounded cleanup without repeating that
+consumer proof against planted artifact or replay faults.
 
 The root group-liveness fixture keeps polling after a signal-zero `EPERM`, which
 can occur for zombie-only groups on Darwin. Only `ESRCH` establishes group

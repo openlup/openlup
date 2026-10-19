@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync, renameSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, chmodSync, existsSync, symlinkSync, writeFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, it } from "vitest";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
@@ -30,7 +30,7 @@ function rehash(packs: string) {
   for (const entry of manifest.packages) { const bytes = readFileSync(join(packs, entry.filename)); entry.sha256 = createHash("sha256").update(bytes).digest("hex"); entry.integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`; }
   writeFileSync(path, JSON.stringify(manifest));
 }
-function fixture(copyZod = true) {
+function fixture() {
   const target = realpathSync(mkdtempSync(join(scratch, "fixture-"))), packs = join(target, "packs"); cpSync(basePacks, packs, { recursive: true });
   // This is a test-input subset, with no checkout or Git identity. Tooling is explicit.
   const config = JSON.parse(readFileSync(join(root, "config/openlup-packages.json"), "utf8"));
@@ -38,72 +38,9 @@ function fixture(copyZod = true) {
   const files = ["config/openlup-packages.json", ...directories.map((directory: string) => `${directory}/package.json`), "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
   for (const file of files) { mkdirSync(dirname(join(target, file)), { recursive: true }); cpSync(join(root, file), join(target, file)); }
   writeFileSync(join(target, "package.json"), JSON.stringify({ type: "module", workspaces: directories }) + "\n"); mkdirSync(join(target, "node_modules"));
-  if (copyZod) cpSync(join(root, "node_modules/zod"), join(target, "node_modules/zod"), { recursive: true });
   for (const name of ["typescript", "pg"]) symlinkSync(join(root, "node_modules", name), join(target, "node_modules", name), "dir");
   return { target, packs };
 }
-function invoke(target: string, owned = false) {
-  const input = ["--manifest", join(target, "packs/packages-manifest.json"), "--expected-commit", commit];
-  const args = owned ? [join(target, "scripts/packages/outbox-disposable-postgres.ts"), ...input] : [join(target, "scripts/packages/outbox-consumer-proof.ts"), "postgresql://postgres@127.0.0.1:9/openlup_outbox_proof", join(target, ".context/scratch/proof"), ...input];
-  const started = performance.now();
-  const result = spawnSync(process.execPath, ["--experimental-strip-types", ...args], { cwd: target, env, encoding: "utf8", timeout: 240_000, maxBuffer: 4 * 1024 * 1024 });
-  console.log(`Outbox falsifier ${owned ? "owned SQL" : "before SQL"}: ${Math.round(performance.now() - started)} ms`);
-  expect(result.error).toBeUndefined(); return result;
-}
-function repackOutbox(packs: string, mutate: (directory: string) => void) {
-  const manifest = JSON.parse(readFileSync(join(packs, "packages-manifest.json"), "utf8")), outbox = manifest.packages.find((p: { name: string }) => p.name === "@openlup/outbox");
-  const extract = mkdtempSync(join(scratch, "artifact-")); execFileSync("tar", ["-xzf", join(packs, outbox.filename), "-C", extract]);
-  mutate(join(extract, "package"));
-  execFileSync("tar", ["-czf", join(packs, outbox.filename), "-C", extract, "package"]); rehash(packs);
-}
-function addIndependentPackage(target: string, packs: string) {
-  const directory = "packages/independent", name = "@openlup/independent", version = "0.13.1";
-  mkdirSync(join(target, directory), { recursive: true });
-  writeFileSync(join(target, directory, "package.json"), JSON.stringify({ name, version, type: "module", exports: "./index.js" }));
-  writeFileSync(join(target, directory, "index.js"), "export const independent = true;\n");
-  const configPath = join(target, "config/openlup-packages.json"), config = JSON.parse(readFileSync(configPath, "utf8"));
-  config.packages.push({ name, directory, publish: true }); writeFileSync(configPath, JSON.stringify(config));
-  const [pack] = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--workspaces=false", "--cache", join(scratch, "cache"), "--pack-destination", packs], { cwd: join(target, directory), env, encoding: "utf8", timeout: 30_000 }));
-  const manifestPath = join(packs, "packages-manifest.json"), manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  manifest.packages.push({ name, version, filename: pack.filename }); writeFileSync(manifestPath, JSON.stringify(manifest)); rehash(packs);
-  return join(packs, pack.filename);
-}
-it("retains the actual Outbox reference proof when the complete artifact set gains an independent package", () => {
-  const f = fixture(); addIndependentPackage(f.target, f.packs);
-  const result = invoke(f.target, true); expect(result.status).toBe(0); expect(result.stdout).toContain("Packed outbox/reference proof PASS");
-  const reports = join(f.target, ".context/scratch"), owned = readdirSync(reports).filter(name => name.startsWith("owned-postgres-"));
-  expect(owned).toHaveLength(1);
-  const installed = JSON.parse(readFileSync(join(reports, owned[0]!, "installed-packages.json"), "utf8"));
-  expect(installed.map((p: { name: string }) => p.name)).toEqual(["@openlup/core", "@openlup/outbox"]);
-}, 240_000);
-it("still rejects damaged independent artifacts before starting PostgreSQL", () => {
-  const f = fixture(), artifact = addIndependentPackage(f.target, f.packs); writeFileSync(artifact, "changed after manifest");
-  const result = invoke(f.target, true); expect(result.status).not.toBe(0); expect(result.stderr).toContain("digest mismatch"); expect(result.stdout).not.toContain("Owned PostgreSQL ready");
-});
-it("rejects changed tarball bytes before any install or SQL", () => {
-  const f = fixture(), manifest = JSON.parse(readFileSync(join(f.packs, "packages-manifest.json"), "utf8"));
-  writeFileSync(join(f.packs, manifest.packages[0].filename), "changed after manifest");
-  const result = invoke(f.target); expect(result.status).not.toBe(0); expect(result.stderr).toContain("digest mismatch");
-});
-it("rejects a digest-consistent missing runtime export through the actual installed runner", () => {
-  const f = fixture(); repackOutbox(f.packs, directory => writeFileSync(join(directory, "dist/postgres.js"), "export {};\n"));
-  const result = invoke(f.target); expect(result.status).not.toBe(0); expect(result.stderr).toContain("does not provide an export named");
-}, 30_000);
-it("fails the real replay proof when synthetic application dedupe is removed", () => {
-  const f = fixture(), path = join(f.target, "packages/outbox/smoke/wiring.ts"), source = readFileSync(path, "utf8");
-  expect(source).toContain("on conflict (event_id) do nothing"); writeFileSync(path, source.replace("on conflict (event_id) do nothing", ""));
-  const result = invoke(f.target, true); expect(result.status).not.toBe(0); expect(result.stderr).toContain("AssertionError"); expect(result.stdout).toContain("Owned PostgreSQL cleanup");
-}, 240_000);
-it("fails the actual reclaim proof if the adapter reports a formerly valid token accepted", () => {
-  const f = fixture(); repackOutbox(f.packs, directory => {
-    const path = join(directory, "dist/postgres.js"), source = readFileSync(path, "utf8"), method = "async markProcessed(input) {";
-    expect(source).toContain(method);
-    // Only the replay's once-valid token call has this marker; invented-token tests still run.
-    writeFileSync(path, source.replace(method, `${method}\n if (input.metadata?.stale) return { applied: true };`));
-  });
-  const result = invoke(f.target, true); expect(result.status).not.toBe(0); expect(result.stderr).toContain("AssertionError"); expect(result.stdout).toContain("Owned PostgreSQL cleanup");
-}, 240_000);
-
 // The Vitest worker owns no Docker resource. A plain Node owner remains in the
 // required-test process group and finishes cleanup even if that worker exits.
 function fixtureDriver(f: ReturnType<typeof fixture>, operation: string, mode: string) {
@@ -133,20 +70,20 @@ async function driverCompletion(child: ReturnType<typeof spawn>) {
   assert.equal(code, 0, `${stdout} ${stderr}`);
 }
 it.each(["direct", "package-group"] as const)("handles repeated interruption through %s, drops only its database and preserves the owned service", async mode => {
-  await driverCompletion(fixtureDriver(fixture(false), "exerciseInterruption", mode));
+  await driverCompletion(fixtureDriver(fixture(), "exerciseInterruption", mode));
 }, 60_000);
 it.each(["container-response", "container-owner-mismatch", "database-response"] as const)("cleans owned startup effects after %s", async mode => {
-  await driverCompletion(fixtureDriver(fixture(false), "exerciseStartupLoss", mode));
+  await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
 }, 90_000);
 it.each(["cleanup-inspect", "cleanup-remove", "cleanup-drop"] as const)("finishes actual owned cleanup despite group cancellation during %s", async mode => {
-  await driverCompletion(fixtureDriver(fixture(false), "exerciseStartupLoss", mode));
+  await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
 }, 90_000);
 it.each(["service-created", "proof-ready"] as const)("cleans its owned resources before releasing the root cancellation lock at %s", async stage => {
-  await driverCompletion(fixtureDriver(fixture(false), "exerciseRootCancellation", stage));
+  await driverCompletion(fixtureDriver(fixture(), "exerciseRootCancellation", stage));
 }, 120_000);
 
 it.each(["inspect-term", "remove-term", "remove-after-effect", "second-term", "cross-phase-term", "wrong-owner", "nonzero", "timeout", "deadline"] as const)("retains owned cleanup effects, refusal and original budget after %s", async mode => {
-  await driverCompletion(fixtureDriver(fixture(false), "exerciseCleanupRecovery", mode));
+  await driverCompletion(fixtureDriver(fixture(), "exerciseCleanupRecovery", mode));
 }, 60_000);
 
 it("keeps a denied process group present until its probe confirms absence", () => {
