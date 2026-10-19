@@ -53,7 +53,7 @@ describe('six real Git witnesses', () => {
     session = recordReport(session, { reviewer: 'reviewer', cold: true, tree: candidate.tree, verdict: 'PASS', findings: [], closes: [] }, clock);
     const receipt = receiptSummary(session, 12, clock);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: candidate.head } };
-    const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, author_association: 'MEMBER', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : { object: { sha: main } }) };
+    const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, user: { login: 'review-owner', type: 'User' }, author_association: 'CONTRIBUTOR', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes('/collaborators/') ? { permission: 'admin' } : { object: { sha: main } }) };
     const runGit = vi.fn(async (cwd, ...args) => args.includes('fetch') ? '' : reviewGit(cwd, ...args));
     const wait = waitNativeAdmission({ cwd: f.cwd, event: { number: 12, repository: { private: false }, pull_request: { head: { sha: candidate.head } } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1 });
     if (scenario === 'landed predecessor') await expect(wait).resolves.toBeUndefined();
