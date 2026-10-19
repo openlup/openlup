@@ -42,7 +42,7 @@ export function createOidcComposition(environment: Environment, dependencies: {
   return { env, customerVerifier, operatorVerifier, operatorAuthorization, customerProfile, emailTrustPolicy, store, routes,
     /** Register with the existing reference identity admission seam. */
     oidcVerifiers: [customerVerifier, operatorVerifier] as readonly OidcIdentityVerifier[],
-    async readiness() { return (await Promise.all([customerVerifier, operatorVerifier].map(identityOidcReadiness))).flat(); },
+    async readiness() { return (await Promise.all([customerVerifier, operatorVerifier].map(verifier => identityOidcReadiness(verifier)))).flat(); },
     async close() { await Promise.all([store.close(), authority.close()]); },
   };
 }

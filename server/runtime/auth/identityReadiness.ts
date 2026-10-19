@@ -14,7 +14,7 @@ export async function assessIdentityReadiness(bind: () => EmailTrustPolicy) {
 
 /** Include only explicitly selected OIDC bindings in host admission. */
 export async function assessOidcReadiness(verifiers: readonly OidcIdentityVerifier[]) {
-  const issues = (await Promise.all(verifiers.map(identityOidcReadiness))).flat();
+  const issues = (await Promise.all(verifiers.map(verifier => identityOidcReadiness(verifier)))).flat();
   const state = !issues.length ? "ready" : issues.some(issue => issue.observation?.endsWith("_UNAVAILABLE") || issue.observation === "OIDC_JWKS_REFRESH_RATE_LIMITED") ? "unknown" : "unsatisfied";
   return { state, issues } as const;
 }
