@@ -1129,9 +1129,16 @@ describe("expand-only platform SQL admission", () => {
   }
   it("refuse control characters in migration SQL (parser parity with PostgreSQL): tracked migration rails", () => {
     const root = fileURLToPath(new URL("..", import.meta.url));
-    const paths = execFileSync("git", ["ls-files", "-z", "--", "db/platform/migrations/", "supabase/migrations/", "db/bootstrap/"], { cwd: root, encoding: "utf8" }).split("\0").filter((path) => /\.sql$/iu.test(path));
-    expect(paths.length).toBeGreaterThan(0);
-    for (const path of paths) expect(execFileSync("git", ["show", `:${path}`], { cwd: root, maxBuffer: 8 * 1024 * 1024 }).some((byte) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f), path).toBe(false);
+    const files = execFileSync("git", ["ls-files", "--stage", "-z", "--", "db/platform/migrations/", "supabase/migrations/", "db/bootstrap/"], { cwd: root, encoding: "utf8" }).split("\0").filter((entry) => /\.sql$/iu.test(entry)).map((entry) => {
+      const match = /^\d{6} ([a-f0-9]{40}) 0\t(.+)$/su.exec(entry);
+      expect(match, entry).not.toBeNull();
+      return { oid: match![1]!, path: match![2]! };
+    });
+    expect(files.length).toBeGreaterThan(0);
+    // Read the same stage-zero index blobs together instead of starting Git per file.
+    const oids = files.map(({ oid }) => oid);
+    const blobs = splitRemovalScanBatch(execFileSync("git", ["cat-file", "--batch"], { cwd: root, input: oids.join("\n") + "\n", maxBuffer: 256 * 1024 * 1024 }), oids);
+    for (const [index, { path }] of files.entries()) expect(blobs[index]!.some((byte) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f), path).toBe(false);
   });
   it.each([
     "CREATE TABLE public.example (id bigint PRIMARY KEY);",
