@@ -1210,6 +1210,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/oss-m04-communications-triggers.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2166,6 +2170,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/communications.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/composition.api.md",
       "class": "public-output"
     },
@@ -2218,6 +2230,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260807190000_comms_outbox_rail.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260809150000_job_run_ledger.sql",
       "class": "public-output"
     },
@@ -2226,11 +2242,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260810120001_transactional_delivery_receipts.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260810180001_self_host_actor_auth.sql",
       "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260810204057_customer_identity_read.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813120000_communications_control_plane.sql",
       "class": "public-output"
     },
     {
@@ -2310,6 +2334,210 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/accountingDocumentDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/authEmailError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/authEmailPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/authSendEmailHook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/capturedTransactionalDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/communicationSync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/communicationSyncWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/consentPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/authEmail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/email.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/newsletter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/newsletterWebhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/publicIntake.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/transactionalDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contribution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailDeliveryTimeline.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailHealthAssessment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailHealthMetricsPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailLedgerLog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailNotificationControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailNotificationSkipLog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailOriginMetadata.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailTransport.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/errors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/integrationEventSignature.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/managedTransactionalDeliveryStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/newsletterIntegrationContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/newsletterWebhookPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/originPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/postgresTransactionalDeliveryStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/preferencesToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/publicPreferenceToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resendApiKey.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resendDeliveryReconciliation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resendDeliveryReconciliationWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resendEmailClient.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resendWebhookHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resendWebhookPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resendWebhookVerifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/shipmentNotifications.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/standardWebhooks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/status.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/transactionalDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/transactionalDeliveryIdentifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/transactionalEmailLedgerAttempt.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/unsubscribeToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/validation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/composeBundle.ts",
       "class": "public-output"
     },
@@ -2379,6 +2607,10 @@
     },
     {
       "path": "packages/platform/src/http/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/webhookSignature.ts",
       "class": "public-output"
     },
     {
@@ -2818,6 +3050,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/contribution.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/sql.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/transport.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/composition/composeBundle.test.ts",
       "class": "public-output"
     },
@@ -2871,6 +3119,10 @@
     },
     {
       "path": "packages/platform/test/http/staticAssets.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/http/webhookSignature.test.ts",
       "class": "public-output"
     },
     {

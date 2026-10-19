@@ -513,6 +513,11 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       for (const specifier of ["./own.js", `${up}composition/own.js`, ...(depth > 0 ? ["../own.js"] : [])]) await admitted("composition", specifier);
       // Declared value edges through the target's entry.
       await admitted("composition", `${up}data/index.js`);
+      await admitted("communications", `${up}data/index.js`);
+      await admitted("communications", `${up}identity/index.js`);
+      await admitted("communications", `${up}http/index.js`, true);
+      await refused("communications", `${up}data/postgresGateway.js`);
+      await refused("communications", `${up}bff/index.js`);
       await admitted("identity", `${up}bff/index.js`);
       await admitted("identity", `${up}data/index.js`);
       await admitted("identity", `${up}kernel/index.js`);

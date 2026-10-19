@@ -326,6 +326,14 @@ this preview.
 
 ## Provider and host boundaries
 
+Communications server algorithms now delegate through the platform package. The
+reference bindings still own Resend egress/environment selection, origin defaults,
+shared notification-control policy and the Auth renderer/observers. The existing
+receipt transaction lane is passed through unchanged. This relocation adds no
+provider SDK, deployment setting, route, scheduler or second outbox executor;
+managed receipt service-scope and fixture construction remain in the reference
+adapter.
+
 `createOidcComposition` is an explicit direct-bundle option, supplied with the
 existing environment reader's `IDENTITY_OIDC_ISSUER`, customer audience and
 distinct operator audience. Retain its verifiers for the host lifetime and
@@ -405,3 +413,14 @@ an upgrade channel, or a supported self-host commitment. The stable-framework re
 a versioned release/BOM, a thin adopter application, conformance coverage,
 upgrade tooling, public installation/build/test evidence, and compatibility
 proof before those claims are available.
+
+## Communications host bindings
+
+The communications import changes implementation ownership, not installed runtime
+selection. Reference Auth email binds the same renderer and environment observers;
+Resend transport binds the same egress policy, origin defaults and shared delivery
+controls. Existing schedules, BFF routes, cron admission, provider activation and
+SQL installation remain host-owned and unchanged. Package contribution metadata
+requires the host-selected schema and advertises only supplied handlers, schedules,
+routes and required ports. No deployment configuration or second outbox executor
+is introduced.

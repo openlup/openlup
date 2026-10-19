@@ -80,3 +80,14 @@ writer requirement. Tests retain the window's old-versus-recent reminder signal.
 <!-- openlup-doc-impact {"unit":"adapters","digest":"sha256-a4a68c2cbfabb4d516254adf6c146187a8173fd64f3b4a158ca7a595856918f8","reason":"The reference admin-platform adapter now treats only stored admin and distributor roles as operator roles: null or unknown roles read as non-admin and are not eligible for the admin magic link. Its provider translation, capability boundaries and the rules in this file are unchanged; the role policy is documented in docs/platform/IDENTITY.md."} -->
 
 Identity verification, account linking, admin directory gateways, profile reads and direct session/challenge adapters now delegate to the [identity module](../../docs/platform/IDENTITY.md). The reference bindings retain SDK loading, mail delivery, sender and origin policy. The package accepts structural clients and an explicit JWT loader; the application remains responsible for selecting them.
+
+## Communications package delegation
+
+The communications receipt, capture, webhook, preference-token, sync and ledger
+adapters delegate to `@openlup/platform/communications`. Structural clients and
+RPC names are unchanged. The managed receipt binding keeps environment parsing,
+service-scope construction and fixture cleanup here; only its RPC/store algorithm
+moves. The direct receipt binding supplies its existing role-free transaction
+lane. Host senders, ACL composition, invitation copy/dedupe/expiry and the shared
+communications control-plane adapter stay at their current owners. No provider
+SDK or platform-to-outbox package dependency is added.

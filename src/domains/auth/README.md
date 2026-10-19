@@ -81,3 +81,16 @@ personal data and retry key, including late responses. It writes no export into
 browser storage. Only a live human administrator may use either endpoint;
 managed erasure explicitly refuses. See the
 [identity contract](../../../docs/platform/IDENTITY.md#identity-personal-data).
+
+## Auth email package delegation
+
+The reference `server/domains/auth/authSendEmailHook.ts` delegates the existing
+hook to `@openlup/platform/communications`, supplying the same renderer and
+hidden-preview/environment observers. Content, transport and persistence remain
+host inputs. Auth email DTOs/ports live in the isolated communications contracts
+entry; the content-unavailable error retains its constructor identity through
+the server export. Identity principal/session ports remain identity-owned.
+The standard-webhook signature grammar, millisecond clock, stream-only body
+reader, CORS/error bytes and template-control/send/ledger order are unchanged.
+This import does not activate a hook or change an invitation's copy, dedupe or
+expiry. The generic HTTP helper remains a separate protocol.

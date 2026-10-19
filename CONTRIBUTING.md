@@ -129,6 +129,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The M04 communications import extends the existing platform consumer and required
+selection with its retained reference witnesses. The isolated contracts entry
+compiles without optional provider peers; the mixed server entry compiles after
+selecting the existing PostgreSQL peers. Its packed proof checks no-egress capture,
+drop/refusal, three exact canonical SQL projections and durable receipt replay,
+conflict and access refusal in the existing owned disposable PostgreSQL lane.
+These additions do not create another runner or relax required coverage. The
+producer still requires a clean committed candidate, so local uncommitted checks
+must be followed by the supervisor's exact signed-candidate package gate. The
+[M04 ledger](docs/platform/plans/oss-m04-communications-triggers.md#verification-ledger)
+retains the cumulative case/time allowance and preview limits.
+
 The platform packed consumer includes the opt-in OIDC adapter: imports and
 construction remain inert without the selected JWT library, selecting an absent
 library produces the documented availability refusal, and the direct account-link

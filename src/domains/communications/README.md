@@ -14,6 +14,25 @@ single boundary for transactional/marketing email side effects.
   or lifecycle facts (`clients`), DHL state (`fulfillment`), feedback content
   (`feedback`), or legal copy approval.
 
+## Packaged server algorithms
+
+The server implementation now lives in
+[`@openlup/platform/communications`](../../../packages/platform/src/communications/index.ts).
+This domain's status, consent, shipment plan, newsletter schema/capability and
+unsubscribe helpers delegate through the supported package entry. Server adapters
+and Auth email shims retain their host bindings. Type-only email, Auth email,
+newsletter, intake and delivery-receipt ports have the isolated
+[`communications/contracts`](../../../packages/platform/src/communications/contracts/index.ts)
+entry. Browser Zod contracts remain here.
+
+The browser-used renderer/block/link builders, support report, template HTML/DB
+policy and commerce/subscription preview content remain in reference source.
+Their closure must not import the server communications entry. M04 P1 preserves
+the current public copy, including dunning words, invitation dedupe/expiry,
+headers/tags, sink/drop outcomes and ledger ordering; later behavior proposals
+are separate changes. The trigger catalogue and production activation are
+outside this import.
+
 ## Public surface (import cross-domain ONLY these)
 - Admin clients: `admin*Client.ts` files for templates, active/content edits,
   email sends/events, notification recipients, permission reads/overrides and

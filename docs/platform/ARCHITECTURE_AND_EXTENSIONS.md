@@ -443,3 +443,14 @@ Development-preview seams may change. The stable-framework requirements are the 
 extension contracts, a versioned release/BOM, a thin adopter app, conformance
 coverage, and upgrade tooling. Until that gate is complete, this document is a
 boundary contract for preview work rather than a support promise.
+
+## Communications capability import
+
+M04 P1 adds `communications` within the platform rail, with isolated type-only
+`communications/contracts`. Its actual value edges are `data` (receipt lane)
+and `identity` (Auth verification URL); the Node handler shapes use a type edge
+to `http`. The host supplies egress, renderer, observation and shared control
+policy. No reference alias or provider SDK is imported by this capability.
+The contribution describes explicit host selections and never mounts a second
+executor. Browser preview values remain reference-owned. See the
+[M04 scope](plans/oss-m04-communications-triggers.md).

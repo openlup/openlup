@@ -306,3 +306,16 @@ compatibility evidence. Existing release context checks remain unchanged.
 
 The outbox rail is a local experimental package candidate in the package catalogue. Its exact core peer, export snapshots and shipped baseline hash are separate from publication eligibility. Admission compares the complete observed set and selected adapter facts; unknown inventory or probe state cannot activate a candidate.
 
+
+## Communications import compatibility
+
+M04 P1 preserves the existing public communications contract while moving its
+server algorithms to the platform package. Auth standard-webhook verification
+keeps its stream-only body reader and millisecond clock; Resend keeps its own
+signature dialect and mapping. The generic HTTP hex-HMAC reader keeps its inclusive
+1 MiB byte cap and parsed-body fallback; it does not replace either verifier.
+Transport responses keep omitted fields, raw outcome/projection distinctions,
+headers/tags and sink/drop handling. Token purpose sets, receipt conflicts,
+three-404 reconciliation abandonment and send/ledger ordering remain unchanged.
+Browser-used renderer and preview values remain local. See the
+[communications owner](../../src/domains/communications/README.md#packaged-server-algorithms).
