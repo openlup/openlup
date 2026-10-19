@@ -168,7 +168,7 @@ describe("complete public CI", () => {
     const job = workflowJob("pgtap");
     expect(job).toContain("npm ci --prefer-offline --no-audit --fund=false");
     expect(job.indexOf("npm ci ")).toBeLessThan(job.indexOf("node scripts/public-ci-pgtap.mjs"));
-    expect(job).toContain("node-version-file: .nvmrc");
+    expect(job).toContain("node-version: 24.21.0");
   });
   it("uses the pinned local CLI and checks neutrality against the event base", () => {
     expect(workflow).toContain("supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359");
@@ -238,7 +238,7 @@ describe("complete public CI", () => {
       const job = workflowJob(name);
       expect(job).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
-      expect(job).toContain("      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version-file: .nvmrc\n          cache: npm\n");
+      expect(job).toContain("      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version: 24.21.0\n          cache: npm\n");
       const unconditionalPrGroup = job.replace(/^ {8}if: (?:github\.event_name == 'push'|steps\.reused\.outputs\.reuse != 'true')\n/gmu, "");
       expect(unconditionalPrGroup).not.toMatch(/^ {4}strategy:|^ {6}(?:- | {2})if:|^ {10}ref:|continue-on-error/mu);
       expect(job.indexOf("      - name: Assert Node and npm contract\n")).toBeGreaterThan(0);
@@ -503,6 +503,24 @@ describe("the workflow stays in step with what it claims to run", () => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
+  it("pins CI and release runtimes while relaying the exact pack runtime to publication", () => {
+    for (const name of ["published-tree-ci", "native-review-admission", "publish-package", "publish-packages", "publish-source-preview"]) {
+      const source = readFileSync(join(ROOT, `.github/workflows/${name}.yml`), "utf8");
+      const setups = source.split(/^ {6}- uses: actions\/setup-node@/mu).slice(1);
+      expect(setups.length, name).toBeGreaterThan(0);
+      for (const setup of setups) {
+        const step = setup.split(/^ {6}- /mu)[0]!;
+        const relayed = name === "publish-packages" && step.includes("node-version: ${{ needs.pack.outputs.node-version }}");
+        expect(step).toContain(relayed ? "node-version: ${{ needs.pack.outputs.node-version }}" : "node-version: 24.21.0");
+        expect(step).not.toContain("node-version-file:");
+      }
+    }
+    const packages = readFileSync(join(ROOT, ".github/workflows/publish-packages.yml"), "utf8");
+    expect(packages).toContain("node-version: ${{ steps.node.outputs.version }}");
+    expect(workflowJob("pack", packages)).toContain('echo "version=$(node -p \'process.versions.node\')" >> "$GITHUB_OUTPUT"');
+    expect(workflowJob("publish", packages)).toContain("node-version: ${{ needs.pack.outputs.node-version }}");
+  });
+
   it("pins every action and verifies the runtime and scanner before use", () => {
     const uses = [...workflow.matchAll(/uses: [^@\n]+@([^\s#]+)(?:\s+#\s+v\d+)?/g)].map((match) => match[1]);
     expect(uses.length).toBeGreaterThan(0);
@@ -514,7 +532,7 @@ describe("the workflow stays in step with what it claims to run", () => {
       expect(job).toContain('test "$(npm --version)" = "11.19.0"');
       expect(job).toContain('test "$(node -p \'require("./package.json").engines.node\')" = "24.x"');
       expect(job).toContain('test "$(node -p \'require("./package.json").packageManager\')" = "npm@11.19.0"');
-      expect(job).toContain("node-version-file: .nvmrc");
+      expect(job).toContain("node-version: 24.21.0");
     }
     expect(workflow).toContain("gitleaks_8.30.1_linux_x64.tar.gz");
     expect(workflow).toContain("551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb");

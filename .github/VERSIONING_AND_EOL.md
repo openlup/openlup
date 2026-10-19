@@ -728,8 +728,9 @@ A release takes three steps:
    version, the reviewed full target commit SHA on `main` and the exact release
    note body, which every package's release carries. The unprivileged
    `preflight` job of [`publish-package.yml`](workflows/publish-package.yml)
-   checks out the dispatched `main` commit, sets up Node from its `.nvmrc` with no
-   package-manager cache, asserts its Node contract and runs its release gate;
+   checks out the dispatched `main` commit, sets up the workflow-pinned Node
+   24.21.0 (bundling npm 11.19.0) with no package-manager cache, asserts its Node
+   and npm contract and runs its release gate;
    only after the gate passes does it check out the target, into `target/`, and
    run anything of it there. It refuses while a run of
    `publish-package.yml` or `publish-packages.yml` for any package has not
