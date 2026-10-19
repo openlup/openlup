@@ -38,20 +38,21 @@ function openFindings(session) {
   }
   return open;
 }
-export function prepareCandidate(session, observed, now) {
+export function prepareCandidate(session, observed, now, fresh = false) {
   candidateValid(observed); demand(Number.isFinite(now), 'prepare time is invalid'); demand(observed.clean, 'commit source changes before prepare', 'dirty');
   demand(identity(observed.authorSessionId) && identity(observed.intent?.criteria), 'author and intent.criteria are required');
   const intent = observed.intent; classifyRisk(observed, intent.risk);
   demand(intent.scope === undefined || (Array.isArray(intent.scope) && observed.changedPaths.every(path => intent.scope.includes(path))), 'changed paths exceed intent.scope');
-  if (session) {
+  if (session && !fresh) {
     stateValid(session);
     demand(session.history.every(event => event.at <= now), 'prepare time is invalid');
     demand(session.authorSessionId === observed.authorSessionId && digest(session.intent) === digest(intent), 'intent changed; start a new session with prepare --new');
     if (session.candidate.tree === observed.tree && session.candidate.head === observed.head && session.candidate.base === observed.base) return structuredClone(session);
   }
   const { authorSessionId, intent: ignored, ...candidate } = observed;
-  const next = session ? structuredClone(session) : { version: 2, authorSessionId, intent, cycle: -1, allowedCycles: 3, history: [] };
-  next.cycle += session?.candidate.tree === candidate.tree ? 0 : 1; next.candidate = candidate; next.preparedAt = now;
+  const next = session && !fresh ? structuredClone(session) : { version: 2, authorSessionId, intent, cycle: session?.cycle ?? -1, allowedCycles: session?.allowedCycles ?? 3, history: [] };
+  if (fresh && session) next.previousSessionDigest = digest(session);
+  next.cycle += session?.candidate?.tree === candidate.tree ? 0 : 1; next.candidate = candidate; next.preparedAt = now;
   next.history.push({ type: 'prepare', candidate, at: now, cycle: next.cycle });
   return next;
 }

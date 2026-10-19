@@ -195,14 +195,14 @@ Ordinary independent pull requests use the existing fork-point base. Stacking
 is optional. For an upper branch, export `OPENLUP_STACK_BASE=<full-predecessor-SHA>`
 before documentation checks, native `prepare`/`record`/`verify`, and final local
 verification. The pin must be an ancestor of HEAD and a descendant of its fork
-point. It becomes part of the reviewed candidate (`stackBase`); changing or
+point. It is the reviewed candidate's base; changing or
 removing it does not reuse an old review. Documentation uses that same base,
 including its no-impact fingerprints. Hosted event attribution still wins.
 
 Review the upper change relative to this exact predecessor, with the predecessor's
 contracts as context. Source and group admission independently require the
-reviewed base to have reached actual `main`; neither an unchanged group tree nor
-full integration reviews may waive that prerequisite. A predecessor-only landing
+reviewed base to have reached actual `main`; an unchanged group tree cannot
+waive that prerequisite. A predecessor-only landing
 then preserves the upper candidate, coverage, reports, expiry and repair history.
 Default unstacked reviews retain their existing fork-point refusal rules.
 
@@ -443,7 +443,8 @@ earliest counted PASS report for the current candidate. Unchanged prepare
 preserves evidence. Three repair cycles are automatic; `needs_owner` then
 requires an owner decision recorded with `continue "<note>"`, adding three.
 A rethink remains recommended practice. A rebase or changed intent starts a
-new session with `prepare --new`, referencing the archived session. Put the
+new session with `prepare --new`, referencing the archived session and retaining
+its repair count and allowed cycles; only `continue` adds cycles. Put the
 simplicity pre-check in the first review request as prose. See the
 [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface).
 A branch remains verifiable while main advances without changing its fork point.
@@ -1015,7 +1016,7 @@ npm run check:dco-signoff -- "$OPENLUP_BASE" "$(git rev-parse HEAD)"
 Stop there within local authority. Do not invent a review receipt or claim hosted
 admission from local checks. The authorized supervisor takes ownership of native
 review of the exact committed candidate, required verification, the PR head
-source receipt and dispatch, actual admission, and queue follow-through. Any
+source receipt comment, actual admission, and queue follow-through. Any
 publication or merge also needs its applicable authority. The supervisor can be
 the author only when that person has the required capabilities and rights.
 
@@ -1086,7 +1087,8 @@ reading, exact merge scope and protected release approval still apply.
 
    The session state is `.context/scratch/agent-review/session.json`;
    `prepare --new <intent.json>` archives the previous session and references its digest
-   after a rebase or changed intent.
+   after a rebase or changed intent, retaining its repair count and allowed cycles;
+   only `continue` adds cycles.
 4. **Local verification.** Finish source, generated inventories and tracked
    task/plan edits before the final proof interval. Build, pack, consumer and root
    commands sharing mutable dist/output run sequentially; parallelize only truly
@@ -1165,7 +1167,8 @@ and adds three cycles. A rethink remains recommended practice: question the
 criteria and checking tool, group findings by root cause, consider simpler
 alternatives and record `pattern → simpler path`. This grants no delivery or
 settings authority. A rebase or changed intent starts a new session with
-`prepare --new`, archiving and referencing the previous session. A conflict or
+`prepare --new`, archiving and referencing the previous session while retaining
+its repair count and allowed cycles; only `continue` adds cycles. A conflict or
 failed queue carry-over is resolved by merging `main` and re-reviewing.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
@@ -1293,6 +1296,7 @@ records why these rules exist.
   authority posts one source receipt per reviewed PR head as soon as the pull
   request is open and ready, using step 7. A group that cannot carry over is
   rejected: merge `main` and re-review, then post the new source receipt.
+  Posting a receipt comment does not retrigger CI: after the 20-minute wait expires, rerun the `native-review` job.
 - **Flakes.** A removal counts as a flake only when the same job passed on the
   same tree, or a `gh run rerun` passed without a code change. One requeue for a
   flake uses the existing two-retry budget. A second removal of the same head

@@ -6,7 +6,7 @@ import { basename, delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { continueOwner, demand, digest, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { continueOwner, demand, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
@@ -97,8 +97,8 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
         try { await git(cwd, 'merge-base', '--is-ancestor', session.candidate.head, observed.head); }
         catch { throw new Error('invalid: rebased history; start a new session with prepare --new'); }
       }
-      const next = prepareCandidate(fresh ? undefined : session, observed, Date.now());
-      if (fresh && session) { next.previousSessionDigest = digest(session); await rename(path, join(directory, `session-${Date.now()}.json`)); }
+      const next = prepareCandidate(session, observed, Date.now(), fresh);
+      if (fresh && session) await rename(path, join(directory, `session-${Date.now()}.json`));
       await saveState(path, next);
       demand(next.cycle <= next.allowedCycles, 'record an owner continuation with continue "<note>"', 'needs_owner');
       console.log(JSON.stringify(next, null, 2)); return 0;

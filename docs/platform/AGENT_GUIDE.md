@@ -186,7 +186,8 @@ that fork point and HEAD. Documentation and local native review use this same
 pin; admission requires it on actual main. A predecessor-only landing preserves
 the candidate and its expiry. Do not rebase or merge `main` only to catch up.
 For a conflict or failed carry-over, merge `main` and re-review. A rebase or
-changed intent starts a new session with `prepare --new`, referencing the old one.
+changed intent starts a new session with `prepare --new`, referencing the old one
+and retaining its repair count and allowed cycles; only `continue` adds cycles.
 
 When criteria, required review and checks pass, stop optional edits and continue
 only authorized delivery. Missing, stale, expired, dirty, partial or unclosed

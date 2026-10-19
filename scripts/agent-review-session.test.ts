@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyRisk, continueOwner, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
+import { classifyRisk, continueOwner, digest, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
 
 const time = 1000;
 const observed = { base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), changedPaths: ['source.txt'], clean: true };
@@ -99,6 +99,29 @@ describe('native review decisions', () => {
       }
       expect(verdict(session, next, time + cycle).code).toBe(cycle > 6 ? 'needs_owner' : 'needs_agent_review');
     }
+  });
+  it.each([
+    [2, 3, false, 2, 'needs_agent_review'],
+    [2, 3, true, 3, 'needs_agent_review'],
+    [3, 3, true, 4, 'needs_owner'],
+    [4, 3, false, 4, 'needs_owner'],
+    [4, 3, true, 5, 'needs_owner'],
+    [5, 6, true, 6, 'needs_agent_review'],
+    [7, 6, false, 7, 'needs_owner'],
+  ])('--new preserves budget %i/%i (changed tree: %s)', (cycle, allowedCycles, changed, expectedCycle, code) => {
+    const session = { ...passed(), cycle, allowedCycles };
+    const bytes = JSON.stringify(session);
+    const nextObserved = { ...observed, head: 'd'.repeat(40), tree: changed ? 'e'.repeat(40) : observed.tree,
+      intent: { ...intent, criteria: 'Approved changed intent' }, authorSessionId: 'author' };
+    const next = prepareCandidate(session, nextObserved, time + 1, true);
+    expect(next).toMatchObject({ cycle: expectedCycle, allowedCycles, previousSessionDigest: digest(session), intent: nextObserved.intent });
+    expect(next.history).toHaveLength(1);
+    expect(verdict(next, nextObserved, time + 1).code).toBe(code);
+    if (code === 'needs_owner') {
+      expect(() => recordReport(next, report({ tree: nextObserved.tree }), time + 1)).toThrow('needs_owner');
+      expect(continueOwner(next, 'Owner authorizes continuation', time + 1).allowedCycles).toBe(allowedCycles + 3);
+    }
+    expect(JSON.stringify(session)).toBe(bytes);
   });
   it.each([
     ['dirty source', { clean: false }], ['missing author', { authorSessionId: '' }],

@@ -50,7 +50,7 @@ An author without native-subagent capability or upstream write authority can
 prepare signed local commits and public check evidence, then use the
 [local contribution handoff](../CONTRIBUTING.md#local-contribution-handoff).
 The authorized maintainer or supervisor owns independent native review, source
-receipt submission, dispatch and queue admission. A dependency guide or local
+receipt comment submission and queue admission. A dependency guide or local
 check result grants none of those rights.
 
 The [autonomous delivery intent](../docs/platform/plans/autonomous-reviewed-delivery-intent.md)
@@ -104,41 +104,34 @@ ordinary semantics and the simplicity perspective. Uncertainty or a discovered
 higher-risk interaction blocks the single-review route. Two fresh full reviews
 of the same committed candidate can resolve that uncertainty without a
 gratuitous code edit; prior evidence and the review-cycle budget remain visible.
-A merge group that the source review does not carry over to (below) still
-requires two full integration reviews.
 
-A committed narrow repair within unchanged approved intent, scope and base may
-use one fresh cold closure reviewer after the complete initial floor and prior
-rounds are retained and exact lineage is validated. The closure prompt includes
-neutral prior finding cards, actual repair and interaction context, never prior
-verdicts or author history. Every prior material finding needs an explicit
-disposition. The reviewer independently confirms semantic risk; control,
-security, schema, executable instruction and unknown repairs retain two focused
-reviews, even in otherwise ordinary source files. Reduced repair reviews cannot
-renew inherited evidence expiry. Unavailable, incomplete or expired coverage
-requires two fresh full-scope reviews, preserving prior findings and lineage.
+Commit repairs before review. Give fresh reviewers the open finding cards and
+obtain passing review of the new tree by the required number of reviewers.
+Every material finding must be closed; optional advice never blocks. Evidence
+expires 24 hours after the earliest counted PASS report for the current candidate.
 
-Unchanged prepare preserves complete evidence. Repair/review continuation cycles
-1–3 across prepare and full-review escalation are automatic. A cycle 3 that did
-not pass pauses for a rethink with a fresh cold simplicity reviewer, which admits
-automatic cycles 4 and 5; cycle 6 needs an explicit owner decision and a seventh
-refuses. The [agent guide](../AGENTS.md#change-and-verification-rules) owns the
-rethink. A pause or exhaustion stays blocked while the supervisor regroups the
-execution approach within actual authority; it cannot restart the counter,
-bypass review or merge automatically.
-Changed intent requires explicit regrouping. The review base is the candidate's
+Unchanged prepare preserves evidence. Three repair cycles are automatic; after
+that `needs_owner` requires the owner to decide whether to continue, narrow or
+stop. Record an authorized continuation with `continue "<note>"`, which adds
+three cycles. A rethink remains recommended practice: question the criteria
+and tool, group findings by root cause, consider simpler alternatives and record
+`pattern → simpler path`. The [agent guide](../AGENTS.md#change-and-verification-rules)
+owns this process; exhaustion cannot bypass review or authorize a merge.
+The review base is the candidate's
 fork point, the single `git merge-base HEAD origin/main`, so `main` moving ahead does not
 by itself make a review stale. An optional `OPENLUP_STACK_BASE` can instead pin
 an exact predecessor between that fork point and HEAD. The candidate binds this
 pin, its own delta and the complete tree. Local checks use it consistently;
 hosted source and group admission require the reviewed base on current main,
-including for equal trees and integration receipts. Landing that predecessor
+including for equal trees. Landing that predecessor
 alone preserves the exact review without refreshing its expiry or resetting
 history. No pin is needed for an independent PR, whose existing rules remain.
 An ancestor-preserving base integration, such as
 merging `main` to resolve a textual conflict, requires fresh full-scope review
-within the same budget; a rebase discards that lineage and never restarts the
-counter or drops findings. This nonqueue route admits no cross-base reuse; the
+within the same budget. A rebase or changed intent starts a new session with
+`prepare --new`, referencing the previous session and retaining its repair
+count and allowed cycles. Only an authorized `continue` adds cycles.
+This nonqueue route admits no cross-base reuse; the
 merge-queue carry-over below is the only one. Once criteria, required review and
 checks pass, stop optional edits and continue only authorized delivery steps.
 
@@ -152,9 +145,11 @@ perspective never waives existing controls or acceptance evidence.
 
 The approved [native queue follow-up](../docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
 adds an optional GitHub admission transport, not another reviewer host. The
-active supervisor retains actual native source-review observations and submits
-them for the reviewed pull-request head and, only for a merge group the source
-review does not carry over to, for the exact hosted merge-group run and attempt.
+active supervisor retains actual native source-review observations and posts
+`node scripts/agent-review-session.mjs receipt <PR>` output as a PR comment with
+`gh pr comment <PR> --body-file -`, within delivery authority, as soon as the
+pull request is open and ready, then waits for actual admission. Admission
+checks the live PR head, tree, reviewer floor and expiry.
 
 The source review carries over to a merge group when either:
 - the group tree is the reviewed tree; or
@@ -166,11 +161,9 @@ The source review carries over to a merge group when either:
 
 Admission checks these conditions itself; the author declares nothing. The
 mechanical checks on the group tree are then relied on for behavioural
-interaction. Every other group requires two fresh independent integration
-reviewers, with unchanged approved
-criteria and separate group identity. An author-written approval cannot excuse
-an interaction. Nonqueue base
-integration still requires fresh full-scope review under the existing protocol.
+interaction. Otherwise the group is rejected: merge `main` and re-review, then
+post the new source receipt. Nonqueue base integration still requires fresh
+full-scope review under the existing protocol.
 
 Activation requires separate explicit maintainer approval of the exact settings
 and live refusal proof. A disabled or skipped admission job is not that proof.
@@ -236,6 +229,8 @@ its real refusal tests; process receipts are not cryptographic remote attestatio
 **Source-keyed pull-request receipts, decided 2026-10-03.** The rule read that
 the supervisor submits review observations "for the exact hosted run and
 attempt".
+Superseded by the [2026-10-19 simplification](../docs/platform/plans/native-review-simplification-proposal.md):
+receipts are now PR comments, with no run-keyed receipt route.
 - Pull-request runs now also accept one receipt bound to the pull request number
   and the exact reviewed head and tree, which admits every run and attempt of
   that head. Merge-group runs were unchanged by this decision; see "Review
@@ -250,6 +245,9 @@ attempt".
 
 **Review carry-over in the merge queue, decided 2026-10-03 (#121).** The rule read: "Unknown or sensitive interactions cannot be excused by filenames, path separation or an author-written approval". It also required two integration reviewers for every merge group whose tree differed from the reviewed source.
 
+Superseded by the [2026-10-19 simplification](../docs/platform/plans/native-review-simplification-proposal.md):
+a group that cannot carry over is rejected; merge `main` and re-review.
+
 - **What changed.** A source review now carries over, and the pull request's source receipt admits the group, in two cases:
   - the group tree is the reviewed tree;
   - admission proves the group is exactly the reviewed change on its queue base, and the base's net change since the reviewed base touches neither the change's paths nor the admission, identity-binding, dependency and migration machinery.
@@ -258,6 +256,9 @@ attempt".
 - **Wrong if:** a carried-over merge admits an interaction that the mechanical checks on the group tree could not have caught, and that a reviewer would have.
 
 **Review cycles with a rethink pause, decided 2026-10-15.** The rule read: "at most two automatic repair/review continuation cycles are allowed". Cycles 3 to 6 each needed a fresh owner decision, and three historic exceptions added exact paths or SQL at cycles 4 to 6.
+
+Superseded by the [2026-10-19 simplification](../docs/platform/plans/native-review-simplification-proposal.md):
+three automatic repair cycles, then an owner continuation adds three more.
 
 - **What changed.** Cycles 1–3 are automatic, and cycle 3 is a full review. A cycle 3 that did not pass pauses for a rethink: a record, written with one fresh cold simplicity reviewer, that groups every finding card by class, names the root cause, weighs simpler alternatives and decides to keep, change or narrow the approach, or to take an intent change to the owner. Cycles 4 and 5 are then automatic; cycle 6 still needs the owner. Each rethink ends with a lesson that feeds [Review lessons](../CONTRIBUTING.md#review-lessons), which the author reads before cycle 1. The spent exceptions are removed.
 - **The reason.** A second failed cycle rarely needed a human; it needed a different approach. One module-boundary lint rule spent three cycles chasing new escapes in a growing denylist of import specifiers before the owner could authorize cycle 3. The pause targets that loop where the owner gate did not.
