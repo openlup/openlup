@@ -197,7 +197,7 @@ The repository checker also calls the UI neutrality counting process with
 arguments still scans the UI source directory and refuses any forbidden hit.
 Published Tree CI runs the repository ratchet in required `self-check` and its
 CLI refusal tests in required root `test`. This package's independent proof
-belongs to `install-proof`; see [repository testing](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#test-scope-and-diagnostics).
+belongs to `install-proof`; see [repository testing](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#test-scope-and-diagnostics).
 
 Together these interfaces let the repository measure existing findings without
 making one package import another package's internals. They provide source

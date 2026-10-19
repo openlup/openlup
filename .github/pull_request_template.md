@@ -27,7 +27,8 @@ one-time public-root projection is not an ongoing authoring route. -->
 ## Checks
 
 - [ ] Completed the applicable [required and raw checks](../CONTRIBUTING.md#required-and-raw-checks),
-      with commands/results and missing prerequisites recorded. Follow the
+      with commands/results and missing prerequisites recorded; each passes, or
+      its failure is explained above and compared with the base. Follow the
       [testing guide](../CONTRIBUTING.md#test-scope-and-diagnostics) for scope and proof.
 - [ ] Contributor-facing behaviour or commands changed here are documented in
       `README.md` and/or `CONTRIBUTING.md`.
