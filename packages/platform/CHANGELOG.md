@@ -8,6 +8,11 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.16.0]
+
+- Publishable on the npm `latest` dist-tag as `0.16.0`, from tag
+  `openlup-platform-v0.16.0`.
+
 - Add an opt-in OIDC access-token verifier for direct identity composition:
   pinned issuer discovery, bounded rotating JWKS that selects usable signing keys
   (encryption keys and unsupported algorithms are ignored; `no-cache` responses
@@ -190,19 +195,19 @@ SemVer promise.
   recovery and revoked-member refusal under the shipped grants. It does not
   establish managed/direct lifecycle parity.
 
-- Import the identity capability and its conformance witnesses into internal
-  candidate entries `./identity` and `./identity/contracts`.
+- Add the experimental identity capability and its conformance witnesses at
+  `./identity` and `./identity/contracts`.
 - Include the characterized create-first directory lookup, bounded normalized
   invite lookup and managed machine-actor write fence.
 
-Migration: The identity entries are internal candidates, not a published identity release. Reference
-bindings keep application copy, origins, sender and provider setup outside the
-module. Existing module paths delegate to the package; invite results adopt the
-structured fields and identity reasons described above, while notification
-receipts retain their reference field names. The
-contracts runtime-schema move and profile-specific readiness schema inventory
-remain pending. The six package SQL projections preserve canonical bytes and
-positions; do not apply them again to an existing canonical migration history.
+Migration: Adopt the experimental identity entries at the exact package-set
+version. Reference bindings keep application copy, origins, sender and provider
+setup outside the module. Existing module paths delegate to the package; invite
+results adopt the structured fields and identity reasons described above, while
+notification receipts retain their reference field names. Runtime schemas remain
+in the server entry; composition supplies the selected bundle's schema inventory.
+Package SQL projections preserve canonical bytes and positions; do not apply
+them again to an existing canonical migration history.
 
 - Only stored `admin` and `distributor` roles authorize. Null and unknown
   roles refuse with 403, do not qualify for an admin magic link and are reported
