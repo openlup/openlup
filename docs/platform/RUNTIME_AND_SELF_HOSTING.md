@@ -142,9 +142,10 @@ composition is unchanged. See [browser identity](IDENTITY_BROWSER_REFERENCE.md)
 for routes, code fallback, persistence reset and logout behaviour.
 
 The subscription profile supplies a managed email-trust policy to its existing
-reconcile call with an empty external-provider allowlist. The reference server
-retains its existing startup admission; identity readiness helpers are available
-for separate host composition. Existing links continue, and new email association
+reconcile call with an empty external-provider allowlist. Without an explicitly
+supplied identity candidate, the reference server retains its existing startup
+admission; supplying one adds identity and email-trust readiness checks before
+listening. Existing links continue, and new email association
 fails closed after cache expiry. The profile retains its existing generic
 `FORBIDDEN` (403) response for reconciliation refusals. Its stricter disposable
 installation guard still runs first on routes and can return a generic 503
@@ -319,12 +320,14 @@ mount the admin shell or provide a direct operator browser journey.
 
 `readOperatorInvitationTtl` is an available direct-host composition helper for
 `OPERATOR_INVITATION_TTL_SECONDS` (default 604800, inclusive integer bounds
-60..2592000). A direct host must call it before directory, persistence or
+60..2592000). A direct host must call it or the pure `parseOperatorInvitationTtl`
+before directory, persistence or
 notification effects, then pass the parsed number to identity. Invalid values
-throw `operator_invitation_ttl_invalid`. The reference invite runner composes
-managed immediate activation and does not call this helper or enforce this TTL;
-passing the optional setting into the Compose container does not activate the
-direct lifecycle. The static profile mounts no operator route. Managed activation
+throw `operator_invitation_ttl_invalid`. The reference invite runner selects the
+direct lifecycle for `node-postgres` and calls `parseOperatorInvitationTtl` before
+constructing authentication, directory or store bindings. Managed bundles retain
+immediate activation without enforcing this direct-only TTL.
+The static profile mounts no operator route. Managed activation
 requires the existing service-role configuration in addition to session
 authentication. Failed persistence retains the provider identity and customer
 link for reuse. Managed invitations store native active membership; no Auth
