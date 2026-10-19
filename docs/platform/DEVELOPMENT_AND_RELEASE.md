@@ -10,9 +10,10 @@ API, production deployment or supported adopter upgrade.
 ## Start with the right route
 
 Run contributor commands from the repository root of a dedicated task worktree,
-using Node 24 and npm 11.19.0. Package commands below explicitly select their
-workspace. A maintainer's installed local helper may create that worktree and
-mirror the required CI commands; it is not a public npm dependency. Other
+using Node 24.21.0 from `.nvmrc` and npm 11.19.0. The exact Node patch
+keeps CI installations on the required bundled npm version as runner images change.
+Package commands below explicitly select their workspace. A maintainer's installed
+local helper may create that worktree and mirror the required CI commands; it is not a public npm dependency. Other
 contributors use the public commands in [CONTRIBUTING](../../CONTRIBUTING.md#required-and-raw-checks).
 Never edit, install or test in a maintainer's coordination checkout.
 

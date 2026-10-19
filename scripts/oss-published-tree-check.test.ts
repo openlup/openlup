@@ -511,7 +511,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     const uses = [...workflow.matchAll(/uses: [^@\n]+@([^\s#]+)(?:\s+#\s+v\d+)?/g)].map((match) => match[1]);
     expect(uses.length).toBeGreaterThan(0);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
-    expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24");
+    expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24.21.0");
     for (const name of ["typecheck", "install-proof", "test-shard", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain('test "$(node -p \'process.versions.node.split(".")[0]\')" = "24"');

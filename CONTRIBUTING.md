@@ -282,7 +282,7 @@ and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-
 
 ### Required and raw checks
 
-Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
+Use the exact Node patch recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 `packageManager` field of `package.json`), and the committed npm lockfile. From
 the root of a materialized development-preview tree, these are the commands the
 mechanical/diagnostic jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
