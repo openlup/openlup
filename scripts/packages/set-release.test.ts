@@ -51,6 +51,7 @@ function fixture({ kitPublishable = true } = {}): Fixture & { a: string } {
   write("packages/kit/package-lock.json", json({ name: "@openlup/kit", version: "0.4.0", lockfileVersion: 3, packages: { "": { name: "@openlup/kit", version: "0.4.0", peerDependencies: { "@openlup/core": "0.4.0" } } } }));
   for (const name of ["core", "kit"]) {
     write(`packages/${name}/CHANGELOG.md`, changelog("0.4.0", name));
+    write(`packages/${name}/release-gates.json`, json({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.4.0", packedBytes: 1000000 }, browserEntries: {} } }));
     write(`packages/${name}/api/${name}.api.md`, `# ${name} API\n`);
     write(`packages/${name}/src/a.ts`, "export const a = 1;\n");
   }
@@ -131,14 +132,14 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   "packages:check refuses a tree outside the set rule": async (m) => {
     const errors = quiet();
     const { root, write, read } = fixture();
-    expect(m.check.runPackagesCheck(root, [])).toBe(0);
+    expect(m.check.runPackagesCheck(root, ["--manifest-only"])).toBe(0);
     const kit = read("packages/kit/package.json");
     for (const [why, core, other] of [["two versions", "0.4.0", "0.5.0"], ["1.0.0", "1.0.0", "1.0.0"]] as const) {
       write("packages/core/package.json", json(publishable("core", core)));
       write("packages/kit/package.json", kit.replace('"version": "0.4.0"', `"version": "${other}"`).replace('"@openlup/core": "0.4.0"', `"@openlup/core": "${core}"`));
       write("packages/demo/package.json", read("packages/demo/package.json").replace(/"@openlup\/core": "[^"]+"/u, `"@openlup/core": "${core}"`));
       errors.mockClear();
-      expect(m.check.runPackagesCheck(root, []), why).toBe(1);
+      expect(m.check.runPackagesCheck(root, ["--manifest-only"]), why).toBe(1);
       expect(errors.mock.calls.flat().join("\n"), why).toMatch(/^set-version /mu);
     }
   },
@@ -161,7 +162,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     expect(JSON.parse(read("packages/core/package-lock.json"))).toMatchObject({ version: "0.5.0", packages: { "": { version: "0.5.0" } } });
     expect(JSON.parse(read("packages/kit/package-lock.json"))).toMatchObject({ version: "0.5.0", packages: { "": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } } } });
     quiet();
-    expect(committed.check.runPackagesCheck(root, []), "the bumped tree passes packages:check").toBe(0);
+    expect(committed.check.runPackagesCheck(root, ["--manifest-only"]), "the bumped tree passes packages:check").toBe(0);
     for (const version of ["0.5.0", "0.4.9", "1.0.0", "0.0.9"]) expect(() => m.bump.bumpSet(root, version), version).toThrow(/is not a set version|the next set version must be above it/u);
     const skewed = fixture();
     skewed.write("packages/kit/package.json", skewed.read("packages/kit/package.json").replace('"version": "0.4.0"', '"version": "0.3.0"'));

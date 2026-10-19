@@ -3666,6 +3666,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/package-size-policy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/package-size-policy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/package-tarball-gate.test.ts",
       "class": "public-output"
     },

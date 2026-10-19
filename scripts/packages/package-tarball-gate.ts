@@ -20,6 +20,9 @@ const SOURCE_MAP_REFERENCE = /[#@]\s*sourceMappingURL=/;
 const DERIVED = /^dist\/(.+)\.(?:js|d\.ts)$/;
 const TEST_SOURCE = /\.(?:test|spec)$/;
 const SOURCE_EXTENSIONS = [".ts", ".tsx"];
+// Shipped TypeScript is intentional: core-source exports are part of the current artifact contract.
+const ALLOWED_CONTENT = /^(?:package\.json|release-gates\.json|LICENSE|[^/]+\.md|(?:docs|api)\/.+\.md|(?:src|dist)\/.+\.(?:[cm]?js|tsx?|d\.[cm]?ts)|sql\/(?:.+\.sql|manifest\.json))$/u;
+const FORBIDDEN_CONTENT = /(?:^|\/)(?:__tests__|tests?|fixtures?|__fixtures__|coverage|\.vscode|\.idea)(?:\/|$)|(?:^|\/)\.env[^/]*$|(?:^|\/)\.DS_Store$|\.(?:test|spec)\.|(?:testFixtures|fixtures?)\.|\.(?:map|swp|tsbuildinfo|tgz)$|~$/iu;
 const equalBytes = (left: Uint8Array, right: Uint8Array): boolean => left.length === right.length && left.every((byte, index) => byte === right[index]);
 
 export function checkTarballEntries(entry: PackageEntry, entries: readonly TarballEntry[], readTracked: TrackedReader): Finding[] {
@@ -45,6 +48,7 @@ export function checkTarballEntries(entry: PackageEntry, entries: readonly Tarba
     if (MACHINE_PATH.test(text)) finding(path, "machine-path", "a build-machine home path is packed");
     if (carriesPrivateOperationalCoordinate(text, path)) finding(path, "operational-coordinate", "a private operational coordinate is packed");
     if (path.endsWith(".map")) { finding(path, "sourcemap", "source maps do not ship"); continue; }
+    if (FORBIDDEN_CONTENT.test(path) || !ALLOWED_CONTENT.test(path)) { finding(path, "package-content-allowlist", "this file kind does not ship; remove it from the package"); continue; }
     const derived = DERIVED.exec(path);
     if (derived) {
       const stem = `${entry.directory}/src/${derived[1]}`;

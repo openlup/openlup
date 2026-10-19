@@ -142,7 +142,7 @@ export function assertReleaseCandidate(root: string, input: PackageRelease): voi
 
 /** The manifest policy and release version of every package at the tag: `packages:check --release-tag`, with no install, build or pack. */
 export function checkReleaseManifests(root: string, tag: string): void {
-  if (runPackagesCheck(root, ["--release-tag", tag]) !== 0) throw new Error(`packages:check --release-tag ${tag} refused the target`);
+  if (runPackagesCheck(root, ["--manifest-only", "--release-tag", tag]) !== 0) throw new Error(`packages:check --release-tag ${tag} refused the target`);
 }
 
 /** The tagger of every package release tag: the release App's bot user, as GitHub writes it. */
@@ -201,7 +201,7 @@ export async function preflightPackageRelease(root: string, input: PackageReleas
 
 /** The set's manifests at the target: `packages:check --release-set`, with no install, build or pack. */
 export function checkSetManifests(root: string, version: string): void {
-  if (runPackagesCheck(root, ["--release-set", version]) !== 0) throw new Error(`packages:check --release-set ${version} refused the target`);
+  if (runPackagesCheck(root, ["--manifest-only", "--release-set", version]) !== 0) throw new Error(`packages:check --release-set ${version} refused the target`);
 }
 
 /** The publishable packages of the set at the target. */
