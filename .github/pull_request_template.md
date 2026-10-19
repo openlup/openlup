@@ -26,9 +26,9 @@ one-time public-root projection is not an ongoing authoring route. -->
 
 ## Checks
 
-- [ ] `npm ci`, `npm run lint`, `npm run test:required` and `npm run build` pass
+- [ ] `npm ci`, `npm run lint`, `npm test` and `npm run build` pass
       in a clean clone (or `openlup-dev verify` reports `REQUIRED PASS` where
-      installed). Raw `npm test` and pgTAP failures are compared with the base.
+      installed). Required root and raw pgTAP failures are compared with the base.
 - [ ] `npm run oss:published-tree -- --policy`, `--inventory`, and `--typecheck`
       pass, or every failure is explained above.
 - [ ] Contributor-facing behaviour or commands changed here are documented in

@@ -60,7 +60,7 @@ transitive commands; merely residing under a selected CLI path is insufficient.
 | Failure class | Existing test/command and actual placement | Remaining gap and smallest change |
 | --- | --- | --- |
 | Core declarations, exports, docs, coverage and consumer portability | `packages/core/package.json` `ci`; explicitly invoked by required `test` and local verify. It runs coverage/runtime imports, smoke typecheck, `api:check`, `docs:check`, release checks and packed consumer. Root Vitest does not discover core standalone suites; core CI does. | Preserve complete core CI; add no duplicate invocation. Give its existing consumer a supplied-artifact mode for G2. |
-| Outbox declaration/snapshot mismatch | `pretest:required` builds both packages; root Vitest discovers `packages/outbox/test`. `packageContract.test.ts` checks files, budgets, SQL hash and guide compilation. Package `ci` contains `api:check`, but neither required workflow nor local verify invokes it. `preparePackage` only runs prepack/build. | G1: run existing Outbox `api:check` against its built declarations in required `test`; do not repeat Outbox's full test suite. |
+| Outbox declaration/snapshot mismatch | `pretest` builds the root test prerequisites; root Vitest discovers `packages/outbox/test`. `packageContract.test.ts` checks files, budgets, SQL hash and guide compilation. Package `ci` contains `api:check`, but neither required workflow nor local verify invokes it. `preparePackage` only runs prepack/build. | G1: run existing Outbox `api:check` against its built declarations in required `test`; do not repeat Outbox's full test suite. |
 | Lost package/test selection | `scripts/oss-published-tree-check.test.ts` preserves exact required argv, existing steps and nonempty tracked test selectors. `scripts/packages/packages-check.test.ts` validates the current package inventory/manifests; `package-manifest-policy.ts` refuses unclassified directories. | Use the existing package inventory and actual workspace manifests, with a shared serial runner. Every publishable package needs api:check, ci:required and test:consumer; a fully wired third package passes without central name edits. Missing routes fail before packing. No second registry. |
 | Broken current cold package bytes | Existing cold-pack/workflow tests use synthetic repositories. Actual set packing is `packages:check -- --cold --out <empty-output>` in release paths. Core required consumer packs its own artifact; Outbox's root contract packs warm output. | G2: one actual current-set cold manifest in required `test`, then consumers of exactly those files; retain release revalidation. |
 | Workspace masks installed-artifact failure | Core required consumer already executes exports, NodeNext/Bundler typechecks and Vite. `outbox-consumer-proof.ts` installs local packs and runs real PostgreSQL `smoke/wiring.ts`, but is manual and repacks. | Extend both existing consumers to accept the same verified manifest; no OpenLup directory/symlink fallback or repack. Make the existing real-DB proof mandatory in `test`. |
@@ -344,7 +344,8 @@ is established. Do not edit the helper, bypass drift or use an alternate stamp.
 Release preflight/publisher continue cold packing and validating their own exact
 release candidate; premerge manifest identity is not npm registry provenance and
 does not establish equality to a separately repacked registry archive.
-Raw `test-full` and pgTAP remain diagnostics with their existing attribution.
+The 19 October CI simplification supersedes raw `test-full`: four root shards
+feed required `test` with conservative tooling-input selection. pgTAP remains a raw diagnostic.
 
 ## Local implementation checkpoint
 

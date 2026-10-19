@@ -109,10 +109,9 @@ its users or operators can observe.
    never enter a commit.
    The witness lands in the same pull request as package tests, and the
    package's tests join the required test selection, so required CI runs them
-   while the package is still unreleased. As with `packages/outbox`, that pull
-   request extends `test:required`, the required scope in
-   `scripts/oss-publication-policy.ts` and its pinned expectation in
-   `scripts/oss-published-tree-check.test.ts`, and the root Vitest configuration.
+   while the package is still unreleased. As with `packages/outbox`, extend the
+   root Vitest configuration so `npm test` discovers the new package tests;
+   the four hosted shards feed the required `test` aggregate.
 3. **Refactor in later pull requests.** Each refactoring pull request keeps the
    witness unchanged. A refactor changes nothing a consumer can observe:
    results, side effects, ordering, errors and fault modes, operational logs,
@@ -198,21 +197,21 @@ Ordinary independent pull requests use the existing fork-point base. Stacking
 is optional. For an upper branch, export `OPENLUP_STACK_BASE=<full-predecessor-SHA>`
 before documentation checks, native `prepare`/`record`/`verify`, and final local
 verification. The pin must be an ancestor of HEAD and a descendant of its fork
-point. It becomes part of the reviewed candidate (`stackBase`); changing or
+point. It is the reviewed candidate's base; changing or
 removing it does not reuse an old review. Documentation uses that same base,
 including its no-impact fingerprints. Hosted event attribution still wins.
 
 Review the upper change relative to this exact predecessor, with the predecessor's
 contracts as context. Source and group admission independently require the
-reviewed base to have reached actual `main`; neither an unchanged group tree nor
-full integration reviews may waive that prerequisite. A predecessor-only landing
+reviewed base to have reached actual `main`; an unchanged group tree cannot
+waive that prerequisite. A predecessor-only landing
 then preserves the upper candidate, coverage, reports, expiry and repair history.
 Default unstacked reviews retain their existing fork-point refusal rules.
 
 For each heavy final local command, use:
 
 ```sh
-node scripts/agent-review-session.mjs verify-command --resource openlup:coverage -- npm run test:required
+node scripts/agent-review-session.mjs verify-command --resource openlup:coverage -- npm run test:scoped
 ```
 
 Keep every required command below, including package gates and coverage; this
@@ -297,8 +296,8 @@ and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 `packageManager` field of `package.json`), and the committed npm lockfile. CI and
 release workflows pin Node 24.21.0, which bundles npm 11.19.0, so newer Node 24
-releases cannot change npm beneath the existing assertions. `.nvmrc` remains the
-local Node major (`24`); the local npm contract is unchanged. From
+releases cannot change npm beneath the existing assertions. `.nvmrc` pins the same
+24.21.0 runtime locally; the npm contract is unchanged. From
 the root of a materialized development-preview tree, these are the commands the
 mechanical/diagnostic jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
 run; each comment names its job. The inherited `native-review` job additionally
@@ -307,18 +306,19 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
-The raw full-root diagnostic runs on four standard runners as
+The required root suite runs on four standard runners as
 `test-full-shard (1/4)` through `(4/4)`, using Vitest's native file sharding.
-Each runner independently restores the existing npm download cache, installs
-with `npm ci` and invokes `npm test -- --shard=N/4`, including the existing
-package-build pretest. The matrix permits all four jobs in parallel and disables
-fail-fast so a failed shard does not cancel the others. Test discovery, isolation,
-worker limits, timeouts, retries and separate coverage/package gates are unchanged.
-The stable raw `test-full` job waits for the matrix and succeeds only when every
-shard succeeds; failed, cancelled or skipped shards cannot produce a green
-aggregate. Its raw diagnostic status and the six required contexts are unchanged.
-Main-push reuse still requires a complete successful merge-group run for the same
-commit, including the full-root aggregate.
+Each runner restores the npm download cache, installs with `npm ci`, selects
+bounded tooling fixtures from the event diff, then invokes `npm test -- --shard=N/4`
+with the existing package-build pretest. All four runners derive the same included
+set before sharding. The matrix permits four parallel jobs and disables fail-fast.
+The required check named exactly `test` waits for the matrix with `if: always()`
+under the same trusted event fence and asserts its result is `success`. Failed,
+cancelled or skipped shards refuse the aggregate. There is no duplicate selector
+run or separate `test-full` aggregate. Worker limits, timeouts, retries,
+coverage/package gates and the six required context names remain unchanged.
+Main-push reuse requires a complete successful merge-group run for the same
+commit, including `test` and the raw pgTAP result.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
@@ -386,7 +386,7 @@ npm ci
 
 # Root typecheck consumes the built core package; build it after install and source edits.
 npm --workspace @openlup/core run build
-# npm run lint, npm run test:required and npm test also build core through npm pre-scripts
+# npm run lint and npm test also build core through npm pre-scripts
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
 # typecheck
@@ -402,17 +402,10 @@ GATE_PACKS="$(mktemp -d)"
 # Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
 node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
-# test: hosted CI uses a separate checkout, in parallel with install-proof.
-npm run test:required -- server/runtime/public-reference \
-  src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx \
-  scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts \
-  scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts \
-  scripts/ast-grep/check-filewide-ignore.test.ts \
-  scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts \
-  scripts/public-ci-neutrality.test.ts
-# test-full: raw complete Vitest diagnostics locally
-npm test
+# test: omit bounded tooling fixtures whose inputs are untouched, including dirty files.
+npm run test:scoped
 # Hosted test-full-shard runs four parallel independent installations, each with:
+# node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE points to runner temp)
 # npm test -- --shard=N/4 (N = 1, 2, 3, 4)
 # self-check (needs no install)
 npm run oss:published-tree -- --policy
@@ -425,7 +418,7 @@ node scripts/public-ci-pgtap.mjs
 gitleaks git . --config config/gitleaks.toml --redact --no-banner
 ```
 
-The `prelint`, `pretest:required` and `pretest` npm scripts build `@openlup/core`
+The `prelint` and `pretest` npm scripts build `@openlup/core`
 before their respective root commands. When running
 `npm run oss:published-tree -- --typecheck` directly after editing core source,
 first run `npm --workspace @openlup/core run build`.
@@ -460,28 +453,22 @@ neutrality CLI falsifiers can read the exact pinned prior fixture blobs. This
 preserves their selectors and refusal assertions while supplying the history
 those assertions require.
 
-The native review session in `scripts/agent-review-session.mjs` checks committed
-candidate lineage, complete prior coverage, closure dispositions, inherited
-evidence expiry and the review-cycle budget. Cycles 1–3 are automatic, and
-cycle 3 is a full review. After a cycle 3 that did not pass, cycle 4 needs a
-rethink record bound to the third request; it accounts for every finding card so
-far and names a fresh cold simplicity reviewer. Cycles 4 and 5 are then
-automatic, and cycle 4 is a full review. Cycle 6 needs a fresh owner decision bound
-to the preserved fifth request and the actual next candidate, with explicit full
-refresh and two fresh full reviewers; a seventh refuses. A first request records
-the author's simplicity pre-check. Every cycle retains every prior round and
-finding. An unchanged prepare preserves evidence and expiry. See the
-[native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface)
-for the exact request/candidate bindings. Its review base is the
-candidate's fork point, `git merge-base HEAD origin/main`, unless an explicit
-`OPENLUP_STACK_BASE` pins the predecessor as described above. A default review
-stays current while `main` moves ahead and its fork point is unchanged. A
-bounded routine code change gets one cold correctness review only when its
-actual paths avoid known control and trust boundaries and that reviewer
-confirms ordinary semantics.
-Sensitive, material or unknown changes still get two; a false routine assessment
-requires two full reviews of the same committed candidate within the existing
-budget. Run the focused
+The native review session binds the committed candidate to its fork point (or
+`OPENLUP_STACK_BASE` pin), tree, intent and fresh reviewer reports. Stable
+material finding IDs require closure; evidence expires 24 hours after the
+earliest counted PASS report for the current candidate. Unchanged prepare
+preserves evidence. Three repair cycles are automatic; `needs_owner` then
+requires an owner decision recorded with `continue "<note>"`, adding three.
+A rethink remains recommended practice. `prepare --new` records a changed
+intent or a rebase in the same append-only session history; findings, reviewers
+and the repair count carry on. Only `continue` adds cycles. Put the
+simplicity pre-check in the first review request as prose. See the
+[native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface).
+A branch remains verifiable while main advances without changing its fork point.
+Routine code needs one cold reviewer who confirms ordinary semantics; sensitive,
+material or unknown changes require two. Paths and modes can raise that floor,
+and semantic uncertainty requires two fresh reviews of the same candidate.
+Run the focused
 `scripts/agent-review-session.test.ts` regressions while changing that contract;
 fixtures do not prove installed enforcement. Installed verification must refuse
 workflow drift before expensive checks or replacement of prior logs, and acquire
@@ -520,39 +507,31 @@ remains a separate settings action. A skipped job is not evidence of admission.
 The job runs after all six actual mechanical successes and waits at most twenty
 minutes for a receipt.
 
-**What each run accepts:**
-- A pull-request run accepts a receipt for its current run and attempt, or a
-  source receipt for its PR number and exact reviewed head and tree.
-- A merge-group run accepts the pull request's source receipt when the source
-  review carries over, as defined below; then no further receipt and no live
-  session are needed. Otherwise it accepts a run-keyed receipt for its current
-  run and attempt that carries two integration reviews (`group-session.json`).
-- Both pull-request paths require an integer head repository ID, so a pull
-  request whose head repository was deleted cannot be admitted.
+**Receipt admission.** A pull-request run accepts a summary receipt for its PR
+number and exact reviewed head and tree. One receipt covers every run and
+attempt of that head while the review is current. A merge-group run accepts it
+only when the source review carries over, as defined below. Missing, stale,
+incomplete or mismatched evidence fails.
 
-Missing, stale, incomplete or mismatched evidence fails.
-
-The supervisor obtains source reviews through fresh native agents in the same
-task. For the pull request itself, one source receipt covers every Published
-Tree CI run and attempt of the reviewed head, so it can be submitted as soon as
-the pull request is open and ready, before any run exists. With `PR` set to the
-pull request number, and `source-session.json` the complete native state
-(`.context/scratch/agent-review/session.json` once `verify` reports `reviewed`):
+After fresh native source reviews and a passing local `verify`, the supervisor
+posts the receipt as a PR comment as soon as the pull request is open and ready:
 
 ```bash
-node scripts/agent-review-queue.mjs input-source "$PR" \
-  source-session.json > .context/scratch/agent-review/input.json
-gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
+node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -
 ```
 
-The second command is a GitHub write and requires the task's delivery authority.
-The input command only creates JSON; it does not dispatch.
+Posting is a GitHub write within the task's delivery authority. Receipt generation
+only prints the comment body. It contains the marker
+`<!-- openlup-native-review-receipt v2 -->` and a fenced JSON summary with
+`pr`, `base`, `head`, `tree`, `risk`, `reviewers`, `verdict`, `expires` and
+`sessionDigest`; it carries no full session history.
 
-Admission re-verifies that receipt against the live pull request, the exact run
-and the review's freshness each time. A new head needs a new review and a new
-receipt. On a pull-request run, an unreadable or untrusted run-keyed artifact
-does not block the source receipt; a merge-group run still refuses it, even when
-the source review would carry over.
+The trusted-main `agent-review-queue.mjs wait` reads comments by `OWNER`,
+`MEMBER` or `COLLABORATOR` authors and selects the newest valid receipt for the
+live PR head. It fetches source objects with `transfer.fsckObjects=true`,
+recomputes the tree and reviewer floor from the changed paths and modes, and
+checks the base and expiry. A pinned base must be an ancestor of actual main
+and the reviewed head. A new head needs new review and a new receipt.
 
 A source review carries over to a merge group when either:
 - the group tree equals the reviewed tree; or
@@ -563,59 +542,17 @@ A source review carries over to a merge group when either:
   identity fence, package manifests and lockfiles, migrations). Other check
   configuration is not on this list; the group's mechanical checks run with it.
 
-Then the pull request's source receipt admits the group, with no new receipt
-and no live session. The six mechanical checks on the group tree are relied on
-for behavioural interaction. Otherwise the run-keyed receipt with two fresh
-independent full integration reviews applies, under the same approved
-criteria.
+Then the source receipt admits the group without another receipt or live session.
+The six mechanical checks on the group tree cover behavioural interaction.
+Otherwise admission rejects the group with "merge main and re-review": merge
+`main` into the source branch, commit, obtain fresh review and post a new receipt.
+There is no separate integration-review receipt route.
 
-The group's `native-review` log says which route applies. It reports admission
-"by its source receipt (unchanged tree)" or "(disjoint base move)", or it logs
-"source receipt does not admit this merge group; waiting for a run-keyed
-receipt" with the reason.
-
-When the review does not carry over, use the run-keyed form with the observed
-run, attempt and PR number. To find the run, use
-`gh run list --workflow published-tree-ci.yml --event merge_group --json databaseId,attempt,headBranch`;
-its branch is `gh-readonly-queue/main/pr-<PR>-…`. `group-session.json` is a new
-native session for the group, not a continuation of the source session:
-- prepare it where no source `session.json` is present: move the source state
-  aside (step 3 of [Deliver a change](#deliver-a-change) keeps a copy) or use a
-  separate checkout;
-- check out the exact group head detached, with `origin/main` fetched to the
-  group base;
-- write an intent with the source's scope, criteria and supervisor session ID,
-  and `risk` `behavior` or `unknown`, so that it requires two roles;
-- obtain two fresh full reviews from reviewers who did not review the source,
-  run `verify` until it reports `reviewed`, and save `session.json` as
-  `group-session.json`;
-- restore the source state afterwards.
-
-Integration reviews help only when the logged reason is the group itself: the
-base moved under the change's paths or the listed machinery, or the group is not
-exactly the reviewed change. An expired source review needs a refresh and a new
-source receipt instead. A log that shows only `needs_agent_review`, with neither
-line above, means no usable source receipt was found.
-
-```bash
-node scripts/agent-review-queue.mjs input "$RUN" "$ATTEMPT" "$PR" \
-  .context/scratch/agent-review/source-session.json group-session.json > .context/scratch/agent-review/input.json
-gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
-```
-
-Do not copy a source PASS or change the source branch to manufacture group
-evidence. The supervisor submits the receipt and
-waits for actual CI admission within the same conversation; the maintainer does
-not move prompts or reports. Compact input is limited to 56,000 bytes; oversize
-evidence is refused, never truncated.
-
-The main-only dispatch reads candidates as Git objects and uploads a validated
-artifact; it runs no model and executes no candidate code. Required admission
-rechecks artifact provenance, native evidence expiry, the PR head and live
-queue identity before success. See the [queue follow-up plan](docs/platform/plans/autonomous-reviewed-delivery.md#approved-native-queue-follow-up-wave)
-for the one-source pilot, bounded rebuild recovery and activation falsifiers.
-Freshness is checked at admission, not guaranteed at the later merge; same-name
-checks from a malicious writer remain outside this process-evidence boundary.
+The supervisor follows actual admission in the same conversation; the maintainer
+does not move prompts or reports. A receipt timeout needs submission or expiry
+recovery, as [Merge queue](#merge-queue) describes. Freshness is checked at
+admission, not guaranteed at the later merge; same-name checks from a malicious
+writer remain outside this process-evidence boundary.
 
 ### Commands and lint rules
 
@@ -624,11 +561,12 @@ The complete projected root command inventory is `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `lint`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `pretest`,
-`pretest:required`, `test`, and `test:required`.
+`oss:published-tree`, `packages:check`, `release:bump`, `pretest`, `test`, and `test:scoped`.
+This reclassifies the complete current root script inventory; all commands are
+public, with `test:scoped` as the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
-build, required root coverage, complete diagnostics, DCO check, and publication checks from this inventory.
+build, sharded required root tests, DCO check, and publication checks from this inventory.
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
 
@@ -743,14 +681,40 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 
 ### Test scope and diagnostics
 
-The projected `npm test` command owns the complete root Vitest test
-scope. The independent `test-full-shard` matrix invokes that command with only
-`--shard=N/4` and preserves each raw failure result. The stable `test-full`
-aggregate requires all four successes, as described above. The required `test` job
-uses `npm run test:required -- …`, retaining every former main selector in order
-and appending the existing subscription, materialized contract, documentation
-and neutrality CLI falsifiers to the same discovery. The package gate runs independently in `install-proof` and includes core's separate checks. Run `npm test` for the complete public diagnostics
-and narrower paths while iterating. Required success is not complete-suite success. The root Vitest
+The projected `npm test` command owns the complete root Vitest scope and is
+required through the four `test-full-shard` runners and their `test` aggregate.
+Run `npm run test:scoped` locally, or narrower paths while iterating.
+The full `npm test` still runs in hosted CI shards on shared triggers.
+There is no `test:required` selector list. The independent `install-proof` job
+still owns the separate package gates.
+
+On `pull_request` and `merge_group`, [ci-test-scope.mjs](scripts/ci-test-scope.mjs)
+diffs checked-out HEAD against its merge-base with the event's exact base SHA.
+Its single declarative table lists only tooling test files with bounded inputs.
+Untouched rows are written as exact paths to `OPENLUP_VITEST_EXCLUDE_FILE`, the
+existing root Vitest exclusion seam. All unlisted tests run, including the
+repository-wide session policy/inventory, source removal-marker, publication
+policy and neutrality tests. Every root file, `scripts/**`, `.github/**`,
+both root setup directories and their commerce-cache import trigger every
+mapped test; individual rows add the actual package config, package,
+source-directory and outbox wiring inputs. This deliberately favors extra tests
+over fragile dependency precision. Add every newly read input to the row, or
+remove the row when a test begins scanning the whole repository.
+
+Pushes, manual/unknown events, unreadable metadata, missing history and Git
+errors write an empty exclusion file and run everything. Locally, the wrapper
+creates and cleans a temporary exclusion file; `node scripts/ci-test-scope.mjs
+--base <ref>` uses the merge-base of HEAD and that ref (default `origin/main`
+without GitHub event metadata), plus staged, unstaged and untracked paths.
+Docs and config used only in synthetic fixtures are not shared inputs; the four
+rows reading the actual package config declare it explicitly. Local `npm test`
+remains unfiltered without the exclusion variable. Each shard computes the same set
+from the same candidate and event before deterministic native sharding. The
+scope unit tests cover triggers, failure fallback, deletion/rename paths,
+merge-base semantics and identical shard selection. This optimization changes
+which bounded fixtures need rerunning; it never converts a failed test to success.
+
+The root Vitest
 configuration does not collect the standalone `packages/core` test suite with the root configuration. From the repository root, run
 `npm --workspace @openlup/core run ci` for that package's separate checks
 (equivalently, use its local command from the package directory). Published Tree CI
@@ -759,7 +723,7 @@ packed-consumer checks. A green root suite alone still does not prove those chec
 CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
-The required test command also includes the source preview release falsifiers
+The root suite always includes the source preview release falsifiers
 (`scripts/source-preview-release.test.ts`). The source preview
 falsifiers also check bounded 404 reads of the exact draft ID returned by
 creation and refusal of a changed draft before publication. Under `scripts/packages`, it runs the
@@ -784,16 +748,15 @@ loads the lint configuration with a conditional `imports` map.
 and API migration-note refusals. The required cold package gate owns the actual
 build, pack and isolated install proof; the root tests do not repeat it through
 synthetic publisher and set-preflight workflow executions.
-The public test job appends the profile and tooling falsifier selectors to
-`test:required`, so one Vitest invocation schedules all required root files.
+The root discovery includes the profile and tooling falsifiers; only bounded
+tooling rows whose inputs are untouched may be excluded as described above.
 Hosted package gates run in `install-proof`, alongside `test`, without sharing
 checkouts, installations, package outputs or databases. The PostgreSQL job service
 belongs to `install-proof`; root SQL falsifiers retain their owned fixtures. In
 one local checkout, package gates still finish first because cold preparation
 replaces package build outputs. Both existing jobs retain their 20-minute ceiling
 and all test limits; their required test and package commands remain separate. Compare
-the longest required path and summed job durations separately. The complete root
-scope also discovers these falsifiers.
+the longest required path and summed job durations separately. Unscoped local runs discover all of these falsifiers.
 
 The root test command has no directory or file filters. It collects the shipped
 Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
@@ -945,19 +908,18 @@ full-root and managed SQL diagnostics are expected green. Matching named debt is
 permission to ignore a red run. When triaging a change, compare fresh
 Vitest failure identities and per-file assertion counts, and pgTAP file summaries,
 with the exact PR base, normalizing log timestamps and ANSI formatting first.
-`test-full` and `pgtap` expose raw failures in separate diagnostic
-jobs. They do not suppress tests or normalize exits. Installation, database
+The required `test` aggregate exposes root failures; `pgtap` remains a raw
+diagnostic job. They do not suppress tests or normalize exits. Installation, database
 start/replay/cleanup and unexplained new failures block delivery; naming those
 failures does not waive broken CI. Use the hosted pull-request run's raw logs
-for this comparison, or a local run with `--diagnostics`. The six existing required contexts retain
+for this comparison, or the corresponding local commands. The six existing required contexts retain
 their coverage, with blocking lint and neutrality. Promoting diagnostic jobs to
 required checks is the maintainer's ruleset decision; this contribution changes
 no repository settings. Release workflows still check those six contexts, so a
-red diagnostic result is not automatically a release refusal.
+red root suite now refuses release through `test`; raw pgTAP retains its diagnostic status.
 
-Documentation falsifiers run as independent test files, selected explicitly by
-the combined required command above and discovered individually by the complete
-root run. They cover routing, source impact, bare-runtime CLI and bundle
+Documentation falsifiers run as independent test files, discovered individually by the complete root run and subject to the bounded
+tooling-input selection described above. They cover routing, source impact, bare-runtime CLI and bundle
 corruption without importing one test file from another. Those tests create disposable Git
 fixtures; they do not publish or validate the meaning of arbitrary prose.
 See [Documentation maintenance](docs/platform/DOCUMENTATION.md) for regeneration,
@@ -1096,7 +1058,7 @@ npm run check:dco-signoff -- "$OPENLUP_BASE" "$(git rev-parse HEAD)"
 Stop there within local authority. Do not invent a review receipt or claim hosted
 admission from local checks. The authorized supervisor takes ownership of native
 review of the exact committed candidate, required verification, the PR head
-source receipt and dispatch, actual admission, and queue follow-through. Any
+source receipt comment, actual admission, and queue follow-through. Any
 publication or merge also needs its applicable authority. The supervisor can be
 the author only when that person has the required capabilities and rights.
 
@@ -1142,22 +1104,22 @@ reading, exact merge scope and protected release approval still apply.
 
      ```json
      { "authorSessionId": "<your session id>",
-       "simplicityPreCheck": "<smallest adequate alternative considered>",
-       "intent": { "risk": "<prose|routine|behavior|unknown>", "scope": ["<changed paths>"], "criteria": "<approved criteria>", "requiredRoles": [] } }
+       "intent": { "risk": "<prose|routine|behavior|unknown>", "scope": ["<changed paths>"], "criteria": "<approved criteria>" } }
      ```
 
-     - read [Review lessons](#review-lessons) before writing
-       `simplicityPreCheck`; the first request needs it.
+     - read [Review lessons](#review-lessons) and put the simplicity pre-check,
+       the smallest adequate alternative considered, in the first request as prose.
 
      - `risk` sets the reviewer floor: one reviewer for `prose` or `routine`,
        two for `behavior` or `unknown`.
      - Codex may omit `authorSessionId`, which is then taken from
        `CODEX_THREAD_ID`. Every other supervisor sets it to its own session ID.
-   - run `node scripts/agent-review-session.mjs prepare`;
+   - run `node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json`;
    - launch fresh reviewers and `record` each report;
-   - repeat until `verify` reports `reviewed`. If `prepare` pauses after a
-     cycle 3 that did not pass, add the `rethink` record that the native session
-     interface defines, then prepare again.
+   - repeat until `verify` reports `reviewed`. Three repair cycles are automatic;
+     after `needs_owner`, only an owner decision recorded with
+     `node scripts/agent-review-session.mjs continue "<note>"` adds three more.
+     A rethink remains recommended practice.
 
    Preliminary local semantic snapshots help prepare the owner packet but are
    not this committed native admission. Preserve their findings and any real
@@ -1165,10 +1127,10 @@ reading, exact merge scope and protected release approval still apply.
    an informal round count nor an absent session resets or consumes native quota.
    This distinction never bypasses an actually applicable exhausted limit.
 
-   The session state is `.context/scratch/agent-review/session.json`. Keep a
-   copy of it as the source state, for example
-   `.context/scratch/agent-review/source-session.json`; step 11 may need it
-   after the worktree has moved on.
+   The session state is `.context/scratch/agent-review/session.json`;
+   `prepare --new <intent.json>` records a changed intent or a rebase in the same
+   append-only session history; findings, reviewers and the repair count carry on.
+   Only `continue` adds cycles.
 4. **Local verification.** Finish source, generated inventories and tracked
    task/plan edits before the final proof interval. Build, pack, consumer and root
    commands sharing mutable dist/output run sequentially; parallelize only truly
@@ -1189,23 +1151,18 @@ reading, exact merge scope and protected release approval still apply.
    template. End its description with your `Signed-off-by:` line: the merge
    commit takes its message from the description, and the DCO check certifies
    merge commits too.
-7. **Submit the source receipt** right away. `PR` is the pull request number,
-   and the dispatch is a GitHub write within your delivery authority:
+7. **Post the source receipt** right away. `PR` is the pull request number;
+   posting the comment is a GitHub write within your delivery authority:
 
    ```bash
-   node scripts/agent-review-queue.mjs input-source "$PR" .context/scratch/agent-review/session.json > .context/scratch/agent-review/input.json
-   gh workflow run native-review-admission.yml --ref main --json < .context/scratch/agent-review/input.json
+   node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -
    ```
 
-   **Expiry.** Review evidence expires 24 hours after the earliest round since
-   the last full review was prepared. A receipt artifact expires one day after
-   upload, so by then the review has expired too. To recover:
-   - re-review the same candidate: run `prepare` once with
-     `"fullRefresh": true` in `intent.json`, then remove the key. The refresh
-     uses one repair cycle;
-   - then update the source-state copy and resubmit the receipt.
+   **Expiry.** Evidence expires 24 hours after the earliest counted PASS report
+   for the current candidate. If expired, use `prepare --new <intent.json>`,
+   obtain fresh reports, verify and post the refreshed receipt.
 8. **Hosted checks.** The six required contexts and `native-review` must pass.
-   Compare raw `test-full` and `pgtap` failures with the exact base.
+   Compare required root and raw `pgtap` failures with the exact base.
 9. **Revalidate authority and evidence.** The pull request states its sign-off
    class and actual delivery grant. Recheck the live head and applicable
    review/receipt identity and expiry before each write. Any later material
@@ -1213,24 +1170,11 @@ reading, exact merge scope and protected release approval still apply.
    required reads, closed material findings and current checks precede merge.
 10. **Arm auto-merge** under merge authority, following the
     [Merge queue](#merge-queue) rules.
-    When integration review is expected, complete fresh reviewers' immutable
-    content inspection before arming. Step 11 still prepares the actual
-    group request and completes exact-bound full reports as the
-    [agent guide](AGENTS.md#change-and-verification-rules) describes.
 11. **Merge group.** Read the group's `native-review` log (see
-    [Required and raw checks](#required-and-raw-checks)).
-    - If it reports admission by the source receipt ("unchanged tree" or
-      "disjoint base move"), nothing more is needed.
-    - If it logs that the source receipt does not admit the group because of
-      the group itself, it waits at most twenty minutes for a run-keyed
-      receipt. Prepare `group-session.json` as that section describes, then
-      submit `input "$RUN" "$ATTEMPT" "$PR"
-      .context/scratch/agent-review/source-session.json group-session.json`.
-      The same section shows how to find the run.
-    - Carry-over also needs the source review within its 24-hour validity. If
-      it has expired, refresh it and resubmit the source receipt (step 7).
-    - If the log shows neither line, no usable source receipt was found:
-      submit it (step 7).
+    [Required and raw checks](#required-and-raw-checks)). Carry-over needs no
+    further receipt. If carry-over fails, merge `main` and re-review, then post
+    the new source receipt. If the source evidence expired, refresh it and
+    repost (step 7). If no usable receipt was found, submit it (step 7).
 12. **Confirm the merge**: the merge commit on `main` and its push run.
 
 A repair commit restarts from step 3 for the new candidate.
@@ -1252,37 +1196,24 @@ Record actual platform observations and complete findings;
 blockers demonstrate an effect on correctness or acceptance, while optional
 advice cannot block or require another edit after acceptance is satisfied.
 
-Commit repairs before review. Complete prior coverage and validated exact lineage
-allow one fresh cold closure review of a narrow repair within unchanged intent,
-scope and base. Supply neutral prior finding cards and actual repair/interactions,
-never old verdicts or author history. The reviewer independently confirms semantic
-risk; control, security, schema, executable instruction and unknown repairs need
-two focused reviews regardless of filenames. Account for every prior material
-finding and preserve inherited expiry; unavailable or expired coverage requires
-two fresh full-scope reviews. Carry the review-cycle budget through prepare and
-full-review escalation. A pause or exhaustion stays blocked while the supervisor
-regroups within existing authority. Changed intent requires explicit regrouping. Resolve a
-textual conflict by merging `main`: that moves the fork point and gets fresh
-full-scope review within the same budget. A rebase discards that lineage and
-reports `needs_rescope`; it never restarts the budget or drops findings.
+Commit repairs before review. Give fresh reviewers the open finding cards and
+obtain passing review of the new tree by the required reviewer count. Stable
+finding IDs remain open until a report lists them in `closes`; every material
+finding must be closed. Expiry is 24 hours from the earliest counted PASS report
+for the current candidate. Reviewers must be cold, distinct from every author
+recorded in the session history and each other, and not reused from earlier candidates.
 
-Cycles 1–3 are automatic; cycle 3 is a full review by two fresh full reviewers.
-A cycle 3 that did not pass pauses the task for a rethink before cycle 4. The
-supervisor writes the rethink with one fresh cold simplicity reviewer; it is not
-an owner gate. The record groups every finding card so far by class, names the
-pattern and root cause, first questions whether the criteria or the checking
-tool demand more than the repository's rules and what could be removed instead
-of hardened, checks the approach against the simplicity rule in the
-[agent guide](AGENTS.md#change-and-verification-rules), lists the simpler
-alternatives considered and records one decision: keep the approach with
-evidence that findings converge, change it within the same intent and scope,
-narrow the change within that scope and defer the rest, or change intent through
-the owner or a recorded delegate. It ends with a one-line lesson,
-`pattern → simpler path`. Cycles 4 and 5 then run automatically; cycle 4 is a full
-review. Cycle 6 needs a fresh owner decision bound to the preserved fifth request
-and the next candidate, with explicit full refresh and two fresh full reviewers.
-A seventh refuses. History, findings, fork point and numbering never reset.
-These decisions grant no publication, merge or settings authority.
+Three repair cycles are automatic. `needs_owner` then requires the owner to
+continue, narrow or stop; `continue "<note>"` records an authorized continuation
+and adds three cycles. A rethink remains recommended practice: question the
+criteria and checking tool, group findings by root cause, consider simpler
+alternatives and record `pattern → simpler path`. This grants no delivery or
+settings authority. `prepare --new` records a changed intent or a rebase in the
+same append-only session history; findings, reviewers and the repair count carry
+on. Only `continue` adds cycles. A version-1 session file from before
+2026-10-19 cannot be converted: delete `.context/scratch/agent-review/session.json`
+and prepare again. A conflict or
+failed queue carry-over is resolved by merging `main` and re-reviewing.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
@@ -1293,9 +1224,10 @@ intent, scope and reviewer results. Installed verify and pre-push must refuse
 missing, stale, partial or unresolved evidence; live enforcement is claimed only
 after installed refusal tests pass. These receipts do not cryptographically
 attest remote agent execution or establish hard author/signer OS separation.
-The earlier signed-receipt controller and hosted observer are retired; native
-sessions retain their shared raw Git graph authentication. No external model
-service is required. Existing mechanical checks, DCO and applicable
+Source objects are trusted through Git's own hashing, with
+`transfer.fsckObjects=true` on hosted fetches. The earlier signed-receipt
+controller and hosted observer are retired. No external model service is
+required. Existing mechanical checks, DCO and applicable
 publication/merge authority remain required.
 
 Reuse the compact task record in the PR description instead of writing another
@@ -1318,8 +1250,8 @@ native review, and actual task publication authority remain required.
 
 Each rethink ends with a one-line lesson. Before cycle 1 of a review, the author
 reads this list and records a short simplicity pre-check in the first review
-request: the smallest adequate alternative considered. `prepare` refuses a first
-request without it.
+request as prose: the smallest adequate alternative considered. It is not a JSON
+field or an encoded gate.
 
 The supervisor appends each new lesson here, with its date and task, in the same
 delivery when its approved scope includes this file; otherwise it adds them in
@@ -1332,6 +1264,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-19, native review simplification rethink: Resetting state and
+  hand-copying fields across a session boundary drops whichever control was
+  forgotten → never discard state: append a new intent and candidate to the
+  same append-only history so every existing check still applies.
 - 2026-10-15, module-boundary lint rule: cycles 0–2 each found another
   import-specifier escape → replace a growing denylist with an allowlist of the
   canonical forms, or reuse the resolver.
@@ -1404,13 +1340,11 @@ records why these rules exist.
   method. Use the maintainer's configured author address. Confirm arming only
   by a non-null GraphQL `mergeQueueEntry` on the pull request, never by
   `autoMergeRequest`.
-- **Receipts.** While native admission is active, a supervisor with task
-  delivery authority does two things:
-  - submits one source receipt per reviewed pull-request head, as soon as the
-    pull request is open and ready;
-  - when the source review does not carry over to the merge group, submits the
-    run-keyed receipt with two integration reviews as soon as the group run
-    exists.
+- **Receipts.** While native admission is active, a supervisor with delivery
+  authority posts one source receipt per reviewed PR head as soon as the pull
+  request is open and ready, using step 7. A group that cannot carry over is
+  rejected: merge `main` and re-review, then post the new source receipt.
+  Posting a receipt comment does not retrigger CI: after the 20-minute wait expires, rerun the `native-review` job.
 - **Flakes.** A removal counts as a flake only when the same job passed on the
   same tree, or a `gh run rerun` passed without a code change. One requeue for a
   flake uses the existing two-retry budget. A second removal of the same head
@@ -1421,8 +1355,8 @@ records why these rules exist.
     failed `native-review` job. The rerun is a GitHub write; it requires
     authority that covers reruns.
   - In a merge group, requeue under merge authority. The new group is admitted
-    by the source receipt again when the review carries over; otherwise submit
-    the run-keyed receipt for the new group run. The requeue uses the same
+    by the source receipt again when the review carries over. A carry-over
+    refusal requires merging `main` and re-reviewing. The requeue uses the same
     two-retry budget, and a second timeout on the same head stops for diagnosis.
   - A timeout although a current source receipt was submitted in time is a
     defect on a pull-request run, or on a merge group whose log names no
@@ -1456,7 +1390,7 @@ other or touch the same shared files:
 - Before relying on carry-over, check `git merge-tree --write-tree` of the queue
   base and the head. The canonical carry-over rule applies: unchanged tree or
   exact disjoint application relative to the reviewed predecessor. Other base
-  changes require the run-keyed receipt with two integration reviews.
+  changes are rejected: merge `main` and re-review.
 - If another change on `main` conflicts with it, merge `main` into it once (do
   not rebase), regenerate its shared records and get a fresh full review, as
   for a textual conflict.

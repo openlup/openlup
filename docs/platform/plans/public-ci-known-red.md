@@ -7,6 +7,14 @@ Accountable triage owner for **every row**: **OpenLup maintainer**. Each follow-
 
 Retired test rows below link to their archived source at the repair base. These dated results remain historical evidence; current test scope follows [contribution checks](../../../CONTRIBUTING.md#development-preview-checks).
 
+Native admission results below describe their recorded runs. The dispatch,
+artifact and integration-receipt procedure used then was superseded by the
+[2026-10-19 simplification](native-review-simplification-proposal.md). Current
+submission posts `agent-review-session.mjs receipt <PR>` output as a PR comment;
+see [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change). A group that
+cannot carry over is rejected: merge `main` and re-review. This does not change
+the diagnostic results or waive their obligations.
+
 ## Current checkpoint
 
 The managed forward `20261004123000_runtime_capability_rls_closure.sql` closes the twelve
