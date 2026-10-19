@@ -32,6 +32,9 @@ The remaining commands in this guide require an OpenLup source checkout.
 
 ## Contribution shape
 
+Before planning a module or npm name, follow the canonical
+[package placement decision](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
+
 Before implementing, obtain the accountable human's task scope and the applicable
 maintainer authorization under the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md).
 Record whether it covers only local work or also publication, pull-request
@@ -355,6 +358,20 @@ and upgrade/replay boundaries under the
 [migration contract](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 Core's required batch retains coverage, standalone types, documentation, release checks and its supplied-artifact consumer. Outbox's batch owns schema/SQL/replay against its installed tarball; its unit/factory/admission tests run once through the protected root selectors. The outbox workspace builds after core for root lint and test entrypoints. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Missing artifacts or a required runtime refuse; there is no workspace fallback or DB skip. Only modules with SQL obligations need a database. Outbox's pinned job-owned PostgreSQL service is separate from raw pgTAP; see [the rail guide](packages/outbox/README.md) for ownership and proof limits.
+
+B1 mail-boundary regressions live in the package communications tests,
+`server/infra/email/emailEgressReference.test.ts` and
+`tests/platform/mailEgressCallers.test.ts`. They use intercepted HTTP and synthetic
+senders only. The caller witness inventories the four reference responsibilities
+independently of provider-directory names and checks complete subscription-mail
+effect transcripts, including refusal, drop, abort, throw and failed telemetry.
+The maintained Auth entrypoint tests remain unchanged; the reference wire witness
+compares the Auth bridge with the previous envelope/result mapping. Run these
+focused tests before the complete required and diagnostic suites. No selector is
+removed or added by B1; the complete suite retains the reference witnesses.
+
+P3's W4 invoice/correction fixture explicitly admits its existing synthetic sender
+when combined with B1. Its output snapshots, assertions and case count stay unchanged.
 
 ```bash
 npm ci

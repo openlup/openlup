@@ -1,3 +1,4 @@
+import type { CommunicationPurposeRegistry, CommunicationPurposeDefinition } from "./contracts/consent.js";
 import type { CommunicationPreferenceTokenPayload } from "./preferencesToken.js";
 
 export interface PublicPreferenceTokenSupabaseClient {
@@ -41,9 +42,27 @@ export function createSupabasePublicPreferenceTokenPort(
       return {
         updated: true,
         email: payload.email,
-        purpose: payload.purpose,
+        // Keep the legacy adapter declaration expanded when the token default names a type alias.
+        purpose: payload.purpose as "marketing_launch_offer" | "marketing_newsletter" | "tester_program",
         state,
       };
+    },
+  };
+}
+
+/** The host owns persistence and any synchronization policy for registered purposes. */
+export function createRegisteredPublicPreferenceTokenPort<Purpose extends string>(input: {
+  registry: CommunicationPurposeRegistry<Purpose>;
+  persist: (payload: CommunicationPreferenceTokenPayload<Purpose>, state: PublicPreferenceState,
+    definition: CommunicationPurposeDefinition<Purpose>) => Promise<unknown>;
+}) {
+  const { registry, persist } = input;
+  return {
+    async updatePreference(payload: CommunicationPreferenceTokenPayload<Purpose>, state: PublicPreferenceState) {
+      if (!registry.has(payload.purpose)) throw new Error("unregistered_communication_purpose");
+      if (state !== "denied" && state !== "suppressed") throw new Error("communication_preference_state_invalid");
+      const definition = registry.purposes.find(item => item.id === payload.purpose)!;
+      return persist(payload, state, definition);
     },
   };
 }

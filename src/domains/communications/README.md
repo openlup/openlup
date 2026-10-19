@@ -25,7 +25,9 @@ and Auth email shims retain their host bindings. Email, Auth email, newsletter, 
 entry. Browser Zod contracts remain here.
 Mail-provider clients, concrete transport factories, callback mapping/verifiers,
 poll protocol reads/mapping, delivery timeline and send-ledger helpers remain reference-owned.
-The existing reference vendor directories are unchanged. The two existing domain
+The reference vendor directories retain comparison-base bytes except for B1's
+four adapter guard insertions and approved invoice test fixture/refusal case.
+The two existing domain
 callback/polling entry points delegate to the package's `processEmailObservation`
 and `runDeliveryReconciliation` through neutral ports. Verification, event tables,
 environment admission, timestamp provenance and exact HTTP responses stay local.
@@ -36,8 +38,25 @@ and raw evidence reach the existing atomic convergence RPC unchanged. That RPC
 remains the only durable event/status/timeline/suppression writer; these engines
 never change subscription state or timing. Neutral and reference conformance
 cases cover ordering, replay, failures and recorded table/RPC effect allowlists.
-P4 consumes these seams for its separately scoped effects/readback work. Marketing automation contributes agnostic
-ports/contracts/conformance only.
+The newsletter HTTP wrapper now delegates admitted event processing to the same
+package. Event persistence precedes permission writes and settlement; verified
+opt-in, replay and the two-purpose fallback are preserved. Explicit registry-bound
+package consumers can carry registered identifiers through injected ports.
+`createCommunicationPurposeRegistry` freezes identifiers/classifications; default
+policy, token links, customer UI and admin lists stay unchanged. Registration is
+not permission or provider activation. Custom preference persistence requires an
+explicit host binding and creates no implicit newsletter synchronization. Managed
+permission and sync CHECKs remain finite; adopters own additional persistence.
+
+W3 records complete receipt, newsletter and feedback effects on failure/replay,
+including uncertain accepted writes and stale claims. W5 invokes actual dispatch
+and reconcile jobs with the selected registry/store and finish-run identity, and
+exercises unchanged operator evidence enrichment for sent, delayed, failed and
+delivered states. No communication outcome changes subscription state or timing.
+Accepted/captured/sync-settled never means delivered. Existing native stores,
+control-plane readback, cron admission and sender-specific audit ordering remain
+in place. Marketing automation contributes only agnostic ports/contracts and
+synthetic conformance, with no runner or remote consent authority.
 
 The renderer and block constructors now delegate to pure values in
 `communications/contracts`. Commerce/subscription assemblers bind package content
@@ -53,6 +72,19 @@ the current public copy, including dunning words, invitation dedupe/expiry,
 headers/tags, sink/drop outcomes and ledger ordering; later behavior proposals
 are separate changes. The trigger catalogue and production activation are
 outside this import.
+
+B1 enforces package admission at the injected network boundary. Compose new
+senders with `createGuardedEmailTransport`, supplying explicit routing and
+credential/tag context; missing or malformed policy refuses before sender entry.
+The maintained client retains its own policy and gets an explicit identity
+bridge. Raw Auth closures use `createAuthEmailTransport`. Names and caller-owned
+capture flags grant no exemption. Explicit drop is skipped, block is failed,
+and package capture is local acceptance only. Existing control, required-audit,
+ledger order and subscription ownership remain unchanged. The
+[package contract](../../../packages/platform/README.md#communications-import)
+describes decision validation and host trust; the
+[M04 expectation ledger](../../../docs/platform/plans/oss-m04-communications-triggers.md#b1-egress-boundary)
+lists the intentional alternate-transport changes.
 
 ## Public surface (import cross-domain ONLY these)
 - Admin clients: `admin*Client.ts` files for templates, active/content edits,

@@ -1,3 +1,4 @@
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
 import type {
   CommunicationPermissionState,
   CommunicationPurpose,
@@ -16,8 +17,8 @@ export interface CommunicationPermissionSnapshot {
   legacySequencePaused?: boolean | null;
 }
 
-export interface CommunicationPolicyInput {
-  purpose: CommunicationPurpose;
+export interface CommunicationPolicyInput<Purpose extends string = CommunicationPurpose> {
+  purpose: Purpose;
   recipientKind: CommunicationRecipientKind;
   permission: CommunicationPermissionSnapshot | null;
 }
@@ -32,9 +33,11 @@ const MARKETING_PURPOSES = new Set<CommunicationPurpose>([
   "marketing_newsletter",
 ]);
 
-export function evaluateCommunicationPolicy(
-  input: CommunicationPolicyInput,
+export function evaluateCommunicationPolicy<Purpose extends string = CommunicationPurpose>(
+  input: CommunicationPolicyInput<Purpose>,
+  registry?: CommunicationPurposeRegistry<Purpose>,
 ): CommunicationPolicyResult {
+  if (registry && !registry.has(input.purpose)) return { decision: "blocked", reason: "unsupported_purpose" };
   const state = input.permission?.state ?? "unknown";
 
   if (input.purpose === "admin_notification") {
@@ -58,7 +61,7 @@ export function evaluateCommunicationPolicy(
     return { decision: "allowed", reason: "tester_program_granted" };
   }
 
-  if (MARKETING_PURPOSES.has(input.purpose)) {
+  if (registry ? registry.classification(input.purpose) === "marketing" : MARKETING_PURPOSES.has(input.purpose as CommunicationPurpose)) {
     if (state === "suppressed") {
       return { decision: "blocked", reason: "permission_suppressed" };
     }
@@ -68,6 +71,9 @@ export function evaluateCommunicationPolicy(
     return { decision: "allowed", reason: "marketing_permission_granted" };
   }
 
+  if (registry?.classification(input.purpose) === "non-marketing") {
+    return { decision: "allowed", reason: "purpose_allowed_without_marketing_consent" };
+  }
   return { decision: "blocked", reason: "unsupported_purpose" };
 }
 

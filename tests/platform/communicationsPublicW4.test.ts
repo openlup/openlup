@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { admitPolicyEnforcedEmailTransport } from "@openlup/platform/communications";
 import type { AccountingInvoiceEmailDeliveryPort } from "../../src/domains/accounting/invoiceDeliveryPorts.js";
 import type { EmailTransport } from "../../server/infra/email/emailTransport.js";
 
@@ -29,7 +30,7 @@ describe("W4 current public communications", () => {
     const effects: string[] = [];
     const send = vi.fn(async (_message: Parameters<import("../../server/infra/email/emailTransport.js").EmailTransport["send"]>[0]) => { effects.push("send"); return { outcome: accepted, providerResponse: {} }; });
     const rpc = vi.fn(async () => { effects.push("evidence"); return { data: "timeline-1", error: null }; });
-    const port = createAccountingInvoiceDeliveryPort({ client: { rpc }, transport: { providerKind: "capture", send }, fromEmail: "sender@example.test", baseUrl: origin });
+    const port = createAccountingInvoiceDeliveryPort({ client: { rpc }, transport: admitPolicyEnforcedEmailTransport({ providerKind: "capture", send }), fromEmail: "sender@example.test", baseUrl: origin });
     const delivery = {
       outboxId: "outbox-1", invoiceId: "invoice-1", orderId: "order-1", clientId: "client-1",
       orderRef: "ORDER-1", invoiceRef: "ORDER-1:base", providerInvoiceId: "document-1", providerInvoiceNumber: "DOC/1",

@@ -1,17 +1,33 @@
+import { admitPolicyEnforcedEmailTransport } from "@openlup/platform/communications";
 import { describe, expect, it, vi } from "vitest";
 import { publicIntakeEmailResult, publicIntakeEmailTransport, type PublicIntakeEmailOutcomeFixture } from "../../../tests/helpers/publicIntakeEmailDeliveryFixture.js";
 import { createPublicIntakeEmailDeliveryPort, type PublicIntakeEmailDeliveryClient } from "./publicIntakeEmailDeliveryPort.js";
 
 describe("public intake email delivery port", () => {
+  it("refuses a raw capture-name claim without entering its sender", async () => {
+    const transport = publicIntakeEmailTransport();
+    const rows: Record<string, unknown>[] = [];
+    const rpc = vi.fn(async () => ({ data: "timeline-1", error: null }));
+    const delivery = createPublicIntakeEmailDeliveryPort({ client: client(rpc, rows), transport });
+    await expect(delivery.deliver({ source: "synthetic", templateSlug: "synthetic-notice", policyDecisionId: null,
+      dedupeKey: "notice:1", purpose: "admin_notification", triggerEvent: "notice", recipientEmail: "ops@example.invalid",
+      aggregateType: "notice", aggregateId: "notice-1", metadata: {},
+      message: { sender: "sender@example.invalid", to: "ops@example.invalid", subject: "Notice", html: "<p>Notice</p>" },
+    })).resolves.toEqual({ accepted: false, messageId: null, skip: null, error: "email_egress_unadmitted" });
+    expect(transport.send).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "failed", sent_at: null, resend_id: null });
+  });
+
   it("fails closed for an unreadable external policy decision and fails open for admin delivery", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
-    const delivery = createPublicIntakeEmailDeliveryPort({ client: client(rpc), transport: publicIntakeEmailTransport() });
+    const delivery = createPublicIntakeEmailDeliveryPort({ client: client(rpc), transport: admitPolicyEnforcedEmailTransport(publicIntakeEmailTransport()) });
     await expect(delivery.evaluatePolicy({ email: "buyer@example.com", purpose: "transactional", source: "b2b", recipientKind: "external_contact", metadata: {} })).resolves.toMatchObject({ allowed: false, reason: "policy_response_unreadable_fail_closed" });
     await expect(delivery.evaluatePolicy({ email: "ops@example.com", purpose: "admin_notification", source: "survey", recipientKind: "admin_internal", metadata: {} })).resolves.toMatchObject({ allowed: true, reason: "policy_response_unreadable_fail_open_with_audit" });
   });
 
   it("fails closed for an unwired external policy engine and keeps the admin audit path open", async () => {
-    const delivery = createPublicIntakeEmailDeliveryPort({ client: {} as PublicIntakeEmailDeliveryClient, transport: publicIntakeEmailTransport() });
+    const delivery = createPublicIntakeEmailDeliveryPort({ client: {} as PublicIntakeEmailDeliveryClient, transport: admitPolicyEnforcedEmailTransport(publicIntakeEmailTransport()) });
     await expect(delivery.evaluatePolicy({ email: "buyer@example.com", purpose: "transactional", source: "b2b", recipientKind: "external_contact", metadata: {} })).resolves.toMatchObject({ allowed: false, reason: "policy_rpc_unavailable_fail_closed" });
     await expect(delivery.evaluatePolicy({ email: "ops@example.com", purpose: "admin_notification", source: "survey", recipientKind: "admin_internal", metadata: {} })).resolves.toMatchObject({ allowed: true, reason: "policy_rpc_unavailable_fail_open_with_audit" });
   });
@@ -26,7 +42,7 @@ describe("public intake email delivery port", () => {
       if (name === "communication_record_email_delivery") return { data: `timeline:${params.p_dedupe_key}`, error: null };
       return { data: null, error: null };
     });
-    const delivery = createPublicIntakeEmailDeliveryPort({ client: client(rpc, rows), transport: publicIntakeEmailTransport() });
+    const delivery = createPublicIntakeEmailDeliveryPort({ client: client(rpc, rows), transport: admitPolicyEnforcedEmailTransport(publicIntakeEmailTransport()) });
     const recipients = ["ops-one@example.com", "ops-two@example.com"];
     const decisions = await Promise.all(recipients.map((email) => delivery.evaluatePolicy({
       email, purpose: "admin_notification", source: "survey", recipientKind: "admin_internal", metadata: { recipient_index: recipients.indexOf(email) },
@@ -63,7 +79,7 @@ describe("public intake email delivery port", () => {
     const rawResult = publicIntakeEmailResult(outcome);
     const rawOutcomeBefore = structuredClone(rawResult.outcome);
     const emailTransport = publicIntakeEmailTransport(rawResult);
-    const delivery = createPublicIntakeEmailDeliveryPort({ client: client(rpc, rows), transport: emailTransport });
+    const delivery = createPublicIntakeEmailDeliveryPort({ client: client(rpc, rows), transport: admitPolicyEnforcedEmailTransport(emailTransport) });
     await expect(delivery.deliver({ source: "submit-survey-response", templateSlug: "survey_producer_notification", policyDecisionId: null, dedupeKey: "survey:1:0", purpose: "admin_notification", triggerEvent: "survey_response_submitted", recipientEmail: "ops@example.com", aggregateType: "survey_response", aggregateId: "survey-1", metadata: {}, message: { sender: "openlup <hello@example.com>", to: "ops@example.com", subject: "Survey", html: "<p>Survey</p>" } })).resolves.toEqual(expectedResult);
     expect(emailTransport.send).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: "survey:1:0" }));
     expect(rows).toHaveLength(1);

@@ -28,6 +28,7 @@ Do not copy a deployment-specific assumption into a platform contract.
 
 ## Architecture rules
 
+- Before planning a module or npm name, follow the canonical [package placement decision](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
 - Keep browser-shareable contracts and clients separate from server use cases.
 - Keep provider SDKs, HTTP clients, environment readers, and payload translation behind infrastructure and adapter boundaries.
 - Put durable platform-data changes in ordered migrations; follow the compatibility lifecycle in [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md).

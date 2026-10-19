@@ -93,3 +93,13 @@ communications control-plane adapter stay at their current owners. No provider
 SDK or platform-to-outbox package dependency is added. The mail-provider
 reference adapters, timeline and send-ledger helpers retain their original
 implementation and imports; no vendor adapter is published in the package.
+
+B1 routes every supported injected mail sender through package admission before
+its effect. The four reference mail-port changes are guard insertions only;
+default selection and the concrete client stay unchanged. The invoice witness
+admits its synthetic fixture explicitly and adds raw-injection refusal, preserving
+all prior timeline, key, PDF and uncertainty assertions. Neutral intake and admin
+ports enforce the same boundary. The Auth API uses the package envelope bridge
+to retain maintained transport admission; signature/render/control/send/evidence
+order is unchanged. See the [transport contract](../infra/email/README.md#contract)
+for alternate-sender composition and the trust boundary.

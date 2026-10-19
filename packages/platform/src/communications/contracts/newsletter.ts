@@ -7,14 +7,14 @@ export type NewsletterProviderCapabilityKey =
 
 export type NewsletterProviderCapabilities = Record<NewsletterProviderCapabilityKey, boolean>;
 
-export interface NewsletterWebhookEvent {
+export interface NewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> {
   providerKind: NewsletterProviderKind;
   providerEventId: string;
   eventType: NewsletterWebhookEventType;
   email: string | null;
   remoteProfileId: string | null;
   remoteListId: string | null;
-  purpose: NewsletterMarketingPurpose | null;
+  purpose: Purpose | null;
   explicitOptInEvidence: boolean;
   doubleOptInStatus: "confirmed" | "pending" | "unknown";
   occurredAt: string | null;
@@ -22,13 +22,13 @@ export interface NewsletterWebhookEvent {
 }
 
 
-export interface NewsletterSyncEvent {
+export interface NewsletterSyncEvent<Purpose extends string = NewsletterMarketingPurpose> {
   id: string;
   claimToken: string;
   contactId: string;
   normalizedEmail: string;
   eventType: NewsletterSyncEventType;
-  purpose: NewsletterMarketingPurpose;
+  purpose: Purpose;
   payload: Record<string, unknown>;
   attemptCount: number;
   originProviderKind?: NewsletterProviderKind | null;
@@ -55,10 +55,10 @@ export type NewsletterSyncOutcome =
       retryAfterSeconds?: number;
     };
 
-export interface NewsletterSyncProviderPort {
+export interface NewsletterSyncProviderPort<Purpose extends string = NewsletterMarketingPurpose> {
   readonly providerKind: string;
   readonly capabilities: NewsletterProviderCapabilities;
-  sync(event: NewsletterSyncEvent): Promise<NewsletterSyncOutcome>;
+  sync(event: NewsletterSyncEvent<Purpose>): Promise<NewsletterSyncOutcome>;
   reconcile?(): Promise<NewsletterSyncReconcileOutcome>;
 }
 

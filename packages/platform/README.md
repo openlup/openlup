@@ -500,10 +500,45 @@ E2 is applied: the payment webhook module delegates these five generic helpers.
 plain re-exports. The payment provider verification and its replay tolerance stay local.
 The maintained mail transport, credentials, callback verification/mapping,
 poll read/mapping, timeline and send-ledger adapters remain in reference source.
-Their vendor directories retain the comparison-base bytes. The package exposes
+B1 changes only the four raw-injection guard sites in the reference delivery
+adapters and the approved invoice test fixture; the concrete client and all
+other vendor-directory files retain the comparison-base bytes. The package exposes
 transport/result contracts and capture without a concrete mail factory.
 The type-only `CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>`
 accept host vocabulary; reference types retain their original literal.
+
+`createGuardedEmailTransport({ providerKind, policy, send })` is the network
+adapter constructor. At each send it awaits a fresh host policy, validates the
+whole decision and enters the sender only for a coherent `production`,
+`sandbox_direct` or `sandbox_sink` decision. The sender receives the effective
+recipient and a frozen context with intended recipient, host-selected credential,
+mode, reason and environment tag. It must consume that context when selecting
+credentials and emitting provider metadata. The package reads no environment and
+contains no provider client. Missing/throwing policy, unknown modes, mismatched
+recipients/tags, blank credentials or unsupported fields fail with status zero,
+no identifier and bounded error codes. Reasons are lower-case token codes up to
+80 characters. One unadorned `local@domain.example` recipient mailbox is required;
+whitespace, lists, display names and local-only domains are refused on this new
+alternate-transport policy boundary.
+
+`blocked` returns failure; explicit `drop` returns terminal suppression with no
+send, no identifier and an ineligible sent timestamp. Arbitrary injected objects
+are refused by `guardEmailTransport`; a provider name or copied capture shape
+cannot establish admission. Package-created capture retains its ordered envelopes
+and synthetic identifiers with no network effect. Capture acceptance remains
+local acceptance, never evidence of external delivery.
+
+`admitPolicyEnforcedEmailTransport` is the trusted host bridge for a transport
+that already enforces egress internally, as the maintained reference client does.
+The package registry owns its identity; this bridge performs no second routing
+or credential decision. It is a composition trust boundary, not a sandbox for
+host code: callers must not admit an unguarded network sender. New adapters should
+use the validating constructor above. The reference default retains its original
+sink/drop policy, key selection, optional payload fields, headers, signal and
+result/error semantics. `createAuthEmailTransport` preserves the Auth envelope
+mapping and admission; raw Auth closures are refused before their send method.
+Admin/control and required-audit ordering stay at their existing callers.
+No egress result authorizes a subscription-state or delivery-cycle mutation.
 
 `processEmailObservation` accepts already authenticated, decoded and environment-admitted
 input. It looks up a local send, constructs evidence only when found, applies one
@@ -521,6 +556,41 @@ composition retain `communication_update_email_delivery_from_provider` as the
 single durable convergence/suppression writer. These ports add no in-memory
 replay authority, database store or second executor. Legacy transport identifier
 fields remain compatibility residue; new ports use `messageId`.
+
+`createCommunicationPurposeRegistry` composes immutable exact identifiers with a
+mandatory `marketing` or `non-marketing` classification. Its built-ins cannot be
+redeclared. Existing policy, token and newsletter schema calls keep their finite
+defaults. Passing a registry to policy evaluation, token verification or
+`createNewsletterIntegrationSchemas` recognizes its identifiers without granting
+permission. Custom marketing purposes still require a grant and respect
+suppression; built-in tester pause and permission rules stay in force.
+
+`createRegisteredPublicPreferenceTokenPort` requires an explicit host persistence
+function and passes the exact purpose and frozen classification to it. It creates
+no sync event. Stock managed permission and newsletter-sync tables retain their
+finite CHECKs; registering a purpose does not expand those stores. Additional
+persistence and schema requirements belong to the adopter. No new purpose, table,
+migration, preference UI, URL or default fan-out is installed.
+
+`processNewsletterWebhookEvent` supplies the existing event → permission →
+settlement sequence behind neutral ports. Reference HTTP admission and signature
+mapping stay local. Explicit registered purposes survive permission writes;
+purpose-less feedback still targets exactly the two existing marketing purposes.
+Verified opt-in, suppression and replay rules are unchanged. Registered dispatch
+checks the batch's purposes before provider effects and retains claim tokens,
+echo and capability skips, retry behavior and counters. Sync-settled and accepted
+receipts are distinct from delivered evidence. Existing job admission, binding,
+leases, finish-run linkage and operator readback retain their host composition.
+No shared sender pipeline is added: required audit and best-effort send paths
+keep their distinct ordering and failure semantics.
+
+`MarketingAutomationProviderPort` and `MarketingAutomationStorePort` describe
+explicit scope, claim/generation fences, admission/deadlines, idempotency,
+observations/history and ambiguity/backoff. The synthetic substitute-provider
+conformance suite is an executable contract, not an installed worker or a remote
+provider certification. Evidence carries opaque references; remote feedback does
+not grant local consent. No trigger catalogue, schedule or provider activation
+is supplied.
 
 The required selection retains the moved-code witnesses and neutral package
 characterization tests. The package W1 hook reader witnesses the Auth composition;

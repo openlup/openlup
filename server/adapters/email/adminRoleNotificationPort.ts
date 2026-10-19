@@ -3,6 +3,7 @@ import { emailPresentation } from "#email-presentation";
 import { renderEmail } from "../../../src/domains/communications/email/render.js";
 import type { AdminRoleNotificationPort, AdminRoleNotificationSkipReason } from "../../domains/platform/inviteAdminUserUseCase.js";
 import {
+  guardEmailTransport,
   classifyEmailSendOutcome,
   type EmailSendOutcome,
   type EmailSendResult,
@@ -70,7 +71,7 @@ export function createAdminRoleNotificationPort(input: {
         new AbortController().signal,
       );
       const result: RoleNotificationResult = enabled
-        ? await transport.send({
+        ? await guardEmailTransport(transport).send({
           from: fromEmail,
           to: notification.email,
           subject: rendered.subject,
