@@ -152,3 +152,92 @@ remain required after a separately authorized supervisor commit; no release or
 adoption is claimed. Self-retro: check the closed execution inventory and exact
 command witness together when adding required selectors; preserve the boundary
 between file-level repairs and owner-controlled cap registration.
+
+## Run 4 W1/W2 neutral conformance (2026-10-19)
+
+Assigned clean candidate `afb3634222e3e74c94e94c7b433e01c01330c20f`; same task
+worktree/branch. Extraction identity: adopter C1 merged #4397,
+`a7a97fea6c00e42681fc2b680f3b5eb8a279b559`, extraction record §1.10.
+Finite outcome: fresh neutral synthetic W1/W2 tests of the current public
+communications implementation and generic HTTP reader contrast. Private tests
+were read only for properties; no private code, fixtures, keys, addresses, brand
+or IDs are contributed. Source behavior, controls, dependencies and selectors
+are excluded. File edits and serial brokered verification only; no Git writes,
+commit, native admission, submission, release or adopter activation. The
+supervisor retains those later delivery responsibilities.
+
+Acceptance/proof: exact public verifier dialects and clock/byte/key refusals,
+hook stream policy, complete real transport/client outcomes and projections,
+signal forwarding and in-memory capture. Isolate each named W1/W2 negative plant,
+observe assertion failures, restore source bytes, then run ast-grep, lint,
+communications tests, platform build and policy/navigation regeneration. Heavy
+commands use `ai-resource-gate run --wait openlup:coverage --` with approved
+Docker/npm-cache context. X1b registration failures remain a separately pending
+control boundary. Reuse small parameterized suites and actual composition rather
+than another runner or mocked public exports. Results and budget follow below;
+local raw evidence is in `p1-r4/report.md` in the task scratchpad.
+
+Fresh tests live under `packages/platform/test/communications/`, already selected
+by the required package tier. W1 contributes **22** cases; W2 contributes **6**
+(the private witness's five top-ups plus a separate public capture case), **28**
+in total. No existing expectation or selector changed. The independent signer
+uses fresh synthetic material and UTF-8 content; expected policies are stated
+separately for Auth and Resend, without asserting protocol equivalence. The hook
+is reached through its real signature/payload boundary, with downstream effects
+forbidden. The concrete transport delegates to the real Resend client with a
+synthetic fetch and explicit host egress resolver. No requested property differs
+from the public behavior. Public environment tags and injected egress reasons
+are pinned as public values, rather than importing adopter binding values.
+
+| Witness / property | Fresh test | Plant → observed failing test |
+| --- | --- | --- |
+| W1 key forms, trimming and Auth-only versioned-secret parsing | `webhookDialects.test.ts`: six `key policy` rows | `auth-versioned-secret` → `key policy: 'versioned encoded secret'` and `'versioned literal secret'` (2 failures) |
+| W1 rotation members, bare/v1/other-version grammar; original signed UTF-8 whitespace | `webhookDialects.test.ts`: three `rotation signature grammar` rows and `requires the original whitespace and UTF-8 bytes` | `auth-signature-bypass` → all three grammar rows + original bytes (4); `resend-signature-bypass` → those four plus whitespace/versioned-secret policy rows (7) |
+| W1 Auth millisecond / Resend second clocks, inclusive ±300 and refusal at ±301 | `webhookDialects.test.ts`: four `replay offset` rows | `auth-replay-bypass` and `resend-replay-bypass` separately → offsets -301 and 301 (2 each) |
+| W1 malformed empty/prefix/punctuation/length/noncanonical-pad-bit keys | `webhookDialects.test.ts`: five `refuses unusable secret` rows, signed using permissively decoded material | Matching invalid-key HMACs refused by both public verifiers; signature bypass plants additionally exercise the independent comparison boundary |
+| W1 stream precedence, drained stream with no fallback, uncapped Auth stream vs capped generic reader | `hookRawReader.test.ts`: three `Auth raw reader` rows; exact 400 envelopes/no downstream effects; generic reader contrast in each row | `hook-generic-cap` → `Auth raw reader: large stream` (1) |
+| W2 whole missing-ID, sanitized coded rejection, thrown/aborted results and projections | `transportConformance.test.ts`: four `concrete send` rows | `omit-provider-error-code` → `concrete send: 'sanitized coded rejection'` (1) |
+| W2 suppression means skipped, no network | `transportConformance.test.ts`: `suppression records a skip and performs no fetch` | `suppression-as-sent` → same test (1) |
+| W2 original AbortSignal reaches actual fetch | `transportConformance.test.ts`: all four concrete send rows | `lose-abort-signal` → all four concrete send rows (4) |
+| W2 complete ordered capture and whole outcomes, no fetch | `transportConformance.test.ts`: `in-memory capture retains complete ordered envelopes and outcomes` | `lose-capture` → same test (1) |
+
+All **10** isolated plants exited 1 with assertion failures. Each plant restored
+its source in `finally`; all communications/HTTP source bytes matched the initial
+snapshot after each plant and before final checks. `plants.json` retains the
+complete failing-test map and SHA-256 inventory. Final Git diff confirms zero
+runtime/control changes. No native review cycle, expiry or retry budget changed.
+
+Final restored-source checks: ast-grep **PASS**; lint **PASS** (0 errors, 33
+existing warnings); communications package **7 files / 32 cases PASS**, including
+all 28 new cases; platform build **PASS**. Three subsequent identical new-file
+selections each pass **3 files / 28 cases**. Publication policy with
+`--policy --docs-update` exits 1 solely on the pending **X1b executable-registration**
+family: `server/adapters/captured/transactionalDelivery.test.ts` is not registered.
+The check stops at that refusal; no completed navigation regeneration or later
+policy-stage success is claimed. Controls were left unchanged.
+
+| New file | Cases | Three local file-time samples (s) | Median (s) |
+| --- | ---: | --- | ---: |
+| `webhookDialects.test.ts` | 19 | 0.003110107 / 0.003113037 / 0.003124023 | 0.003113037 |
+| `hookRawReader.test.ts` | 3 | 0.008456299 / 0.008108398 / 0.007738770 | 0.008108398 |
+| `transportConformance.test.ts` | 6 | 0.011354248 / 0.012185303 / 0.011187744 | 0.011354248 |
+
+New-file summed median = **0.022575684 s**. Cumulative counted additions:
+104 existing witnesses + 36 synthetic = **140 cases**, **40** over the +100
+allowance under the recorded X2 interpretation. Existing generated boundary
+iterations remain **156**, separately counted; total runner additions **296**.
+Counted-case file medians now total **0.616680909 s**; including the
+unchanged boundary-file median gives **0.680073487 s**, leaving
+**29.319926513 s** against +30 s and a provisional baseline-plus-delta of
+**596.280073487 s**. The prior run's medians remain attributed to run 3;
+only these three new files were freshly measured. Local Vitest JSON per-file
+`endTime - startTime` medians are summed after taking each file's median; queue,
+wrapper and plant runs are excluded. This is local proxy evidence, not new
+hosted timing. Post-loop cleanup must revisit the case overrun.
+
+Delivery: requested test authoring and bounded verification are complete; X1b
+policy acceptance remains pending with its existing owner. No Git writes or
+external actions. Terminal self-retro: no test repairs or resource queue delays
+were needed. Keeping the generic-reader contrast inside the three hook cases
+and forwarding through the actual client avoided extra cases and a test-only
+transport abstraction; the separate capture case explains the 28-versus-27 tally.
