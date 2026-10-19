@@ -354,6 +354,28 @@ require an explicit host persistence binding, with no implicit sync. Stock manag
 permission/sync CHECKs remain finite. No new purpose, UI or schema is installed;
 additional persistence and adopter purpose composition remain adopter-owned.
 
+**Consent-registry expectations (C1-C12)**
+
+The immutable composition-time registry pairs each exact identifier with mandatory
+`marketing` / `non-marketing` classification. Built-in definitions and special
+policy branches remain; generic contracts carry registered identifiers while
+retaining finite defaults.
+
+| # | Changed expectation / preserved boundary | Witness |
+| --- | --- | --- |
+| C1 | Explicit composition accepts adopter-defined identifiers; empty identifiers, duplicates, missing classification and conflicting built-in declarations refuse before effects. No global registration or database discovery. | [consentRegistry.test.ts](../../../packages/platform/test/communications/consentRegistry.test.ts): `C1 invalid purpose declarations refuse: %j`; `C1 immutable copied definitions cannot be changed after composition`. |
+| C2 | Calls without a registry retain current accepted purposes, decisions, reasons and defaults. Existing token verification still accepts its three-purpose set. | [consentDefaults.test.ts](../../../packages/platform/test/communications/consentDefaults.test.ts): `C2/C5 legacy policy, token and schema defaults before registration`. |
+| C3 | Registry-bound preference verification accepts any registered purpose, including non-marketing; unregistered purposes refuse. Signing bytes, normalization, signature, secret and expiry behavior remain identical. | [consentRegistry.test.ts](../../../packages/platform/test/communications/consentRegistry.test.ts): `C3 registered token round trip: %s`; `C3/C4 unregistered signed identifiers fail closed; registration never grants marketing permission`. |
+| C4 | Registry-bound consent evaluation recognizes registered purposes. New marketing purposes require granted permission and retain suppression refusal; new non-marketing purposes use the non-marketing branch. Registration supplies no permission. | [consentRegistry.test.ts](../../../packages/platform/test/communications/consentRegistry.test.ts): `C3/C4 unregistered signed identifiers fail closed; registration never grants marketing permission`. |
+| C5 | Tester pause/permission rules, admin allowance, transactional/dunning allowance and marketing reason strings remain unchanged. Built-ins cannot be reclassified to bypass them. | [consentDefaults.test.ts](../../../packages/platform/test/communications/consentDefaults.test.ts): `C2/C5 legacy policy, token and schema defaults before registration`; [consentRegistry.test.ts](../../../packages/platform/test/communications/consentRegistry.test.ts): `C5 default registry preserves every built-in special policy branch`; `C1 invalid purpose declarations refuse: %j`. |
+| C6 | Newsletter event, webhook, sync and permission-port types and registry-bound runtime schemas carry registered purposes consistently. Legacy exported schemas/constants retain current defaults. | [consentRegistry.test.ts](../../../packages/platform/test/communications/consentRegistry.test.ts): `C6/C7 schema → feedback permission → sync retains %s`; `C6 registered dispatch refuses an unregistered batch before any provider effect or settlement`; [consentDefaults.test.ts](../../../packages/platform/test/communications/consentDefaults.test.ts): `C2/C5 legacy policy, token and schema defaults before registration`. |
+| C7 | Explicit-purpose newsletter processing preserves the registered identifier through permission writes and settlement. Registration does not enqueue work, enable a provider or authorize sending. | [consentRegistry.test.ts](../../../packages/platform/test/communications/consentRegistry.test.ts): `C6/C7 schema → feedback permission → sync retains %s`; `C7/C8 explicit unregistered feedback refuses before writes; default fan-out remains exactly two`. |
+| C8 | Purpose-less webhook fallback retains the existing two-purpose behavior; a registry entry does not broaden feedback fan-out. Verified-opt-in, suppression and replay rules remain. | [consentRegistry.test.ts](../../../packages/platform/test/communications/consentRegistry.test.ts): `C7/C8 explicit unregistered feedback refuses before writes; default fan-out remains exactly two`. |
+| C9 | Registry-bound preference persistence routes the exact identifier through an explicit host binding. Custom non-marketing registration creates no automatic newsletter sync; legacy calls retain current RPC arguments. The new port refuses states other than `denied`/`suppressed` before host persistence. | [consentRegistry.test.ts](../../../packages/platform/test/communications/consentRegistry.test.ts): `C9 explicit persistence receives exact non-marketing definition and no implicit sync effect`. |
+| C10 | Customer newsletter UI, admin default purpose lists, legacy unsubscribe links and token URLs remain unchanged. No generic purpose-management UI is added. | Structural proof: unchanged existing UI/default/token tests; no new C10 test claimed. |
+| C11 | No new table, migration or purpose CHECK change. Existing recipient-consent free-text storage is reusable where appropriate; managed delivery/acquisition evidence, permission and sync CHECKs remain intact. Custom identifiers use host-owned ports; adopters own additional persistence requirements, with no stock managed-store expansion claimed. | Structural proof: no SQL/migration diff. |
+| C12 | OpenLup adds no purpose or marketing scope. C5 leaves the adopter to register its gifts purpose as marketing, prove old-link compatibility through the registry and replace its private gifts verifier. D8's exclusion remains intact; this is an adopter handoff, not a claimed private adopter change. | Exclusion: no OpenLup purpose added; no private adopter implementation claimed. |
+
 Marketing automation is limited to neutral ports/contracts and synthetic
 substitute-provider conformance: scoped bindings, admission/deadlines, token and
 generation fences, replay, observation/history, ambiguity/backoff, restrictions,
@@ -372,11 +394,13 @@ are identified separately in the implementation evidence, restored before normal
 verification. Existing required selectors already cover every new witness.
 
 P4 adds **71 counted cases**, measured at **0.023664 s** summed per-file
-medians over three identical passing selections. Retaining P1/P2, the running
-count is **253** (**153 over +100**) and the local time proxy including
-prior boundary iterations is **0.661061 s < +30 s**. X2 permits the
-recorded case overrun within the time limit; post-loop cleanup must revisit it.
-These measurements do not reset the allowance or replace the hosted median.
-Concurrent P3 changes are not part of this fork; the supervisor must reconcile
-the cumulative ledger when integrating that predecessor. P4 adds 12 generated boundary iterations, separately measured at 0.009736 s;
-the cumulative boundary count is 138.
+medians over three identical passing selections, and **12 generated boundary
+iterations**, separately measured at **0.009736 s**. Retaining the integrated
+P1/P2/P3/B1 ledger subtotal of **277 counted cases**, **243 boundary iterations**
+and **1.416763429 s**, the cumulative result is **348 counted cases**
+(**248 over +100**), **255 boundary iterations** and **603 runner additions**.
+Adding P4's **0.033399902 s** gives **1.450163331 s < +30 s** local summed
+time proxy, including boundary iterations. Totals retain the inherited ledger
+subtotal and P4's unrounded measurements. X2 permits the recorded case overrun
+within the time limit; post-loop cleanup must revisit it. These measurements
+do not reset the allowance or replace the binding hosted median.
