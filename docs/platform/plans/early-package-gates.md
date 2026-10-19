@@ -54,7 +54,10 @@ publication, PR, merge and release require their applicable authority.
 
 ## Existing controls and remaining failure signals
 
-Paths below are repository-relative at the inspected SHA. “Required” includes
+Historical original design at the inspected SHA: the table's placement in
+`test` and its then-manual consumers are superseded by the shared `install-proof`
+package gate and root shards. Follow [testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics)
+for current execution. Paths below are repository-relative at that inspected SHA. “Required” includes
 transitive commands; merely residing under a selected CLI path is insufficient.
 
 | Failure class | Existing test/command and actual placement | Remaining gap and smallest change |
@@ -254,6 +257,11 @@ optimization moves the unchanged package gate to the existing required
 placement below; it preserves all proofs, selectors, six required contexts and
 20-minute job limits. Local commands sharing build outputs remain serial.
 Current execution is documented in [Development and release](../DEVELOPMENT_AND_RELEASE.md).
+
+Historical original placement (superseded): the following design kept package
+proof and separate subscription/falsifier steps in `test`. Current execution is
+the shared `install-proof` package gate plus root shards; use the testing owner
+linked above. Original design follows.
 
 Keep existing owning `test` context, no new status. Preserve the required root
 suite, subscription step, complete core CI and both standalone falsifier suites.

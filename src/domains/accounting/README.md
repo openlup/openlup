@@ -105,10 +105,9 @@ local finalization. A unit result does not prove actual mailbox delivery.
 
 ## Verification and next links
 
-The [root public test command](../../../package.json) selects the whole
-`server/domains/accounting` directory. The shared accounting tests are not
-selected by that directory selector; inspect their imports and choose an explicit
-compatible command when changing their contracts. These links identify tests,
+Root Vitest discovers both shared and server accounting tests; follow
+[Test scope and diagnostics](../../../CONTRIBUTING.md#test-scope-and-diagnostics)
+for execution. These links identify tests,
 not current passing results:
 
 - [invoiceContracts.test.ts](invoiceContracts.test.ts)

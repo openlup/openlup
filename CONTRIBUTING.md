@@ -312,19 +312,11 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
-The required root suite runs on four standard runners as
-`test-full-shard (1/4)` through `(4/4)`, using Vitest's native file sharding.
-Each runner restores the npm download cache, installs with `npm ci`, selects
-bounded tooling fixtures from the event diff, then invokes `npm test -- --shard=N/4`
-with the existing package-build pretest. All four runners derive the same included
-set before sharding. The matrix permits four parallel jobs and disables fail-fast.
-The required check named exactly `test` waits for the matrix with `if: always()`
-under the same trusted event fence and asserts its result is `success`. Failed,
-cancelled or skipped shards refuse the aggregate. There is no duplicate selector
-run or separate `test-full` aggregate. Worker limits, timeouts, retries,
-coverage/package gates and the six required context names remain unchanged.
-Main-push reuse requires a complete successful merge-group run for the same
-commit, including `test` and the raw pgTAP result.
+Required root `test` accepts only success from all four `test-full-shard` jobs;
+failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
+complete successful exact-commit merge-group run, including raw pgTAP.
+See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
+sharding, discovery and test-author guidance.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
@@ -365,27 +357,17 @@ and upgrade/replay boundaries under the
 
 Core's required batch retains coverage, standalone types, documentation, release checks and its supplied-artifact consumer. Outbox's batch owns schema/SQL/replay against its installed tarball; its unit/factory/admission tests run once through the protected root selectors. The outbox workspace builds after core for root lint and test entrypoints. Package-local import checks still reject private subpaths, cross-directory escapes, aliases and other workspace dependencies; portable outbox production source also rejects provider SDKs. Missing artifacts or a required runtime refuse; there is no workspace fallback or DB skip. Only modules with SQL obligations need a database. Outbox's pinned job-owned PostgreSQL service is separate from raw pgTAP; see [the rail guide](packages/outbox/README.md) for ownership and proof limits.
 
-B1 mail-boundary regressions live in the package communications tests,
-`server/infra/email/emailEgressReference.test.ts` and
-`tests/platform/mailEgressCallers.test.ts`. They use intercepted HTTP and synthetic
-senders only. The caller witness inventories the four reference responsibilities
-independently of provider-directory names and checks complete subscription-mail
-effect transcripts, including refusal, drop, abort, throw and failed telemetry.
-The maintained Auth entrypoint tests remain unchanged; the reference wire witness
-compares the Auth bridge with the previous envelope/result mapping. Run these
-focused tests before the complete required and diagnostic suites. No selector is
-removed or added by B1; the complete suite retains the reference witnesses.
-
-P3's W4 invoice/correction fixture explicitly admits its existing synthetic sender
-when combined with B1. Its output snapshots, assertions and case count stay unchanged.
+For communications characterization and mail-boundary witness evidence, see the
+[communications contract](docs/platform/CANONICAL_CONTRACTS.md#communications-import-compatibility)
+and [witness ledger](docs/platform/plans/oss-m04-communications-triggers.md).
 
 ```bash
 npm ci
 
 
-# Root typecheck consumes the built core package; build it after install and source edits.
-npm --workspace @openlup/core run build
-# npm run lint and npm test also build core through npm pre-scripts
+# Direct typecheck consumes built Core, Outbox and Platform declarations.
+npm run pretest
+# npm run lint and npm test also build all three through npm pre-scripts
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
 # typecheck
@@ -417,22 +399,12 @@ node scripts/public-ci-pgtap.mjs
 gitleaks git . --config config/gitleaks.toml --redact --no-banner
 ```
 
-The `prelint` and `pretest` npm scripts build `@openlup/core`
-before their respective root commands. When running
-`npm run oss:published-tree -- --typecheck` directly after editing core source,
-first run `npm --workspace @openlup/core run build`.
-The root TypeScript projects and tests resolve core through its `dist/` exports,
-as a package consumer does. Rebuild core after editing `packages/core/src`, or
-those checks read the previous build. Published Tree CI runs `lint` after install
-and before `--typecheck`; its `prelint` script builds core in that same job.
+The `prelint` and `pretest` scripts build Core, Outbox and Platform in dependency
+order. Before direct typecheck or Vitest commands after install or package-source
+edits, run `npm run pretest`; otherwise consumers may read stale `dist/` exports.
 
-The managed pgTAP diagnostic replays the committed baseline and every ordered
-forward in an owned disposable project. Only after replay does it materialize
-those same committed SQL bytes as `.inc` files in the CLI-mounted tests directory
-for relative test includes. These files are not additional pgTAP tests. Policy-data tests
-read installed rows before setup, replay the actual forward and verify operator
-choices survive. Runtime operations use their declared role; owner readback is
-an observer. No test grant or scheduler activation is part of this transport.
+For the managed pgTAP runner, prerequisites and proof limits, follow
+[Test scope and diagnostics](#separate-db-package-and-coverage-proof).
 
 The three `oss:published-tree` modes are distinct checks. `--policy` verifies
 the public policy, catalogue, documentation ownership, generated navigation and
@@ -447,7 +419,7 @@ tracks `openlup/openlup` in place of `origin`. The subscription profile build
 writes `dist-subscription/` and `dist-subscription-ssr/`, which `.gitignore`
 does not cover, so do not commit them.
 
-The required and full-root hosted test jobs fetch complete Git history so their
+The required root shard jobs fetch complete Git history so their
 neutrality CLI falsifiers can read the exact pinned prior fixture blobs. This
 preserves their selectors and refusal assertions while supplying the history
 those assertions require.
@@ -468,7 +440,8 @@ Routine code needs one cold reviewer who confirms ordinary semantics; sensitive,
 material or unknown changes require two. Paths and modes can raise that floor,
 and semantic uncertainty requires two fresh reviews of the same candidate.
 Run the focused
-`scripts/agent-review-session.test.ts` regressions while changing that contract;
+`scripts/agent-review-session.test.ts`, `scripts/agent-review-queue.test.ts` and
+`scripts/agent-review-gate.test.ts` batch while changing that contract;
 fixtures do not prove installed enforcement. Installed verification must refuse
 workflow drift before expensive checks or replacement of prior logs, and acquire
 an output lock scoped to the actual task worktree before running those checks.
@@ -686,88 +659,64 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 
 ### Test scope and diagnostics
 
-The projected `npm test` command owns the complete root Vitest scope and is
-required through the four `test-full-shard` runners and their `test` aggregate.
-Run `npm run test:scoped` locally, or narrower paths while iterating.
-The full `npm test` still runs in hosted CI shards on shared triggers.
-There is no `test:required` selector list. The independent `install-proof` job
-still owns the separate package gates.
+Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed lockfile in your task worktree. Start with the affected behavior, then complete [required and raw checks](#required-and-raw-checks). Focused tests do not replace required package, lint, policy or verification gates.
 
-On `pull_request` and `merge_group`, [ci-test-scope.mjs](scripts/ci-test-scope.mjs)
-diffs checked-out HEAD against its merge-base with the event's exact base SHA.
-Its single declarative table lists only tooling test files with bounded inputs.
-Untouched rows are written as exact paths to `OPENLUP_VITEST_EXCLUDE_FILE`, the
-existing root Vitest exclusion seam. All unlisted tests run, including the
-repository-wide session policy/inventory, source removal-marker, publication
-policy and neutrality tests. Every root file, `scripts/**`, `.github/**`,
-both root setup directories and their commerce-cache import trigger every
-mapped test; individual rows add the actual package config, package,
-source-directory and outbox wiring inputs. This deliberately favors extra tests
-over fragile dependency precision. Add every newly read input to the row, or
-remove the row when a test begins scanning the whole repository.
+#### Run and inspect
 
-Pushes, manual/unknown events, unreadable metadata, missing history and Git
-errors write an empty exclusion file and run everything. Locally, the wrapper
-creates and cleans a temporary exclusion file; `node scripts/ci-test-scope.mjs
---base <ref>` uses the merge-base of HEAD and that ref (default `origin/main`
-without GitHub event metadata), plus staged, unstaged and untracked paths.
-Docs and config used only in synthetic fixtures are not shared inputs; the four
-rows reading the actual package config declare it explicitly. Local `npm test`
-remains unfiltered without the exclusion variable. Each shard computes the same set
-from the same candidate and event before deterministic native sharding. The
-scope unit tests cover triggers, failure fallback, deletion/rename paths,
-merge-base semantics and identical shard selection. This optimization changes
-which bounded fixtures need rerunning; it never converts a failed test to success.
+After `npm ci`, use:
 
-The root Vitest
-configuration does not collect the standalone `packages/core` test suite with the root configuration. From the repository root, run
-`npm --workspace @openlup/core run ci` for that package's separate checks
-(equivalently, use its local command from the package directory). Published Tree CI
-invokes this package command separately, including its coverage, release gates and
-packed-consumer checks. A green root suite alone still does not prove those checks.
-CI also builds the opt-in subscription profile and runs its runtime composition
-tests plus the existing renewal modal tests. The disposable database and browser
-journey has its own evidence; a build or mocked test does not stand in for it.
-The root suite always includes the source preview release falsifiers
-(`scripts/source-preview-release.test.ts`). The source preview
-falsifiers also check bounded 404 reads of the exact draft ID returned by
-creation and refusal of a changed draft before publication. Under `scripts/packages`, it runs the
-package release falsifiers: `release-workflow-authenticity.test.ts` plants a
-defect against every control of the two package release workflows and runs
-their release-event, tag-pattern, tarball and pre-publish npm checks as scripts,
-and `package-release.test.ts` exercises the manifest, version, tag, npm and draft
-refusals. `release-gate.test.ts` runs the release gate both workflows share
-against a real Git fixture and a recorded GitHub API: main ancestry against a
-fresh fetch, the six required contexts, the tag on the approved commit and the
-refusal while another release or publication is in flight. It plants a defect in
-the gate's source for each of those decisions and requires the edited gate to fail.
-The source preview's own required-context loop is compared with the gate's
-decision, verdict for verdict, in `scripts/oss-published-tree-check.test.ts`.
-`set-release.test.ts` plants a defect against each set release control in its
-module's source: one set version `0.N.P` across publishable packages,
-`packages:check --release-set`, `release:bump --set` and its changelog section,
-the patch-set API check, and the skip, resume and full states of a set.
-The same directory holds the package release-shape checks and the test that
-loads the lint configuration with a conditional `imports` map.
-`packages-check.test.ts` retains direct tag/set selection, cold-cleanup safety
-and API migration-note refusals. The required cold package gate owns the actual
-build, pack and isolated install proof; the root tests do not repeat it through
-synthetic publisher and set-preflight workflow executions.
-The root discovery includes the profile and tooling falsifiers; only bounded
-tooling rows whose inputs are untouched may be excluded as described above.
-Hosted package gates run in `install-proof`, alongside `test`, without sharing
-checkouts, installations, package outputs or databases. The PostgreSQL job service
-belongs to `install-proof`; root SQL falsifiers retain their owned fixtures. In
-one local checkout, package gates still finish first because cold preparation
-replaces package build outputs. Both existing jobs retain their 20-minute ceiling
-and all test limits; their required test and package commands remain separate. Compare
-the longest required path and summed job durations separately. Unscoped local runs discover all of these falsifiers.
+```sh
+# Builds Core, Outbox and Platform, then runs the affected root tests.
+npm test -- server/domains/subscription
 
-The root test command has no directory or file filters. It collects the shipped
-Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
-including `src/lib/*Boundary*` and `*Guardrails*`. Playwright specifications
-retain their separate browser/profile runners; the root Vitest command does not
-claim browser journey evidence.
+# Ordinary local root gate: excludes only eligible untouched tooling fixtures.
+npm run test:scoped
+
+# Unfiltered root suite. Ensure no exclusion file is inherited.
+npm test
+
+# Discovery only; direct Vitest does not build package prerequisites.
+npm run pretest
+npx --no -- vitest list --filesOnly
+npx --no -- vitest list --filesOnly --project=node server/domains/subscription
+
+# Native review changes: pure session/hosted tables plus real Git witnesses.
+npm test -- scripts/agent-review-session.test.ts scripts/agent-review-queue.test.ts scripts/agent-review-gate.test.ts
+
+# Separate Core suite; includes coverage, API/docs/release and packed consumer.
+npm --workspace @openlup/core run ci
+```
+
+Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox and Platform tests also run locally with `npm --workspace @openlup/outbox test` or `npm --workspace @openlup/platform test` after building prerequisites; their package configs use Node and do not inherit root setup. Their installed consumers belong to the shared package gate, not that local command.
+
+Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+
+#### Choose a location and proof
+
+| Test | Placement and execution |
+|---|---|
+| Domain, server, API, MCP or tooling logic/contract | Adjacent descriptive `.test.ts`; root Node project discovers `api`, `mcp`, `scripts`, `server` and `src`. |
+| Browser interaction | `src` `.test.tsx`; `.test.ts` under `src/components`, `src/hooks` or `src/test` also uses jsdom. A Node-project .ts test requiring DOM must declare `@vitest-environment jsdom`. |
+| Package unit/characterization | `packages/outbox/test` and `packages/platform/test` are root-discovered. Core `smoke/` and `test/` use its separate Node config and required Core batch. |
+| Cross-boundary/DB | Existing `tests/platform`, `tests/postgres` or `tests/golden-master` Node roots. The [additional cross-boundary DOM root](vitest.config.ts) uses jsdom for `.test.tsx`. Do not assume every `tests/` directory is collected. |
+| Durable SQL behavior | `supabase/tests` for managed pgTAP; selected portable/installed DB conformance stays with its owning runner. |
+| Browser journey | Explicit Playwright/profile runner; not root Vitest. Follow the [subscription](docs/platform/SUBSCRIPTION_REFERENCE.md) or [identity](docs/platform/IDENTITY.md) owner. |
+
+The [root config](vitest.config.ts) is the exact discovery inventory: it accepts `.test.ts`/`.spec.ts` in its Node roots, and `.test.tsx`/`.spec.tsx` in its DOM roots. Checkout helper discovery is narrowly `tests/preview/checkout/helpers/**/*.test.ts`. Prefer `.test` names consistent with adjacent files and boundary rules; in `packages/outbox/test` and `packages/platform/test` use `.test.ts` only, because their package-local configs collect only that suffix. Verify a new file appears with `list --filesOnly`; placement alone is not execution evidence.
+
+Use the smallest proof that can detect the failure:
+
+| Proof | What it must detect |
+| --- | --- |
+| Unit table | Incorrect decision or edge case. |
+| Contract/conformance | Broken success, refusal or boundary translation. |
+| Characterization/golden/effect transcript | Changed observable behavior. |
+| Real Git/process witness | Incorrect CLI, object, environment, exit or workflow refusal behavior. |
+| SQL | Broken role, constraint, transaction, concurrency or replay behavior. |
+| Packed consumer | Broken installed artifact or workspace leakage. |
+| Browser journey | Broken interaction in the selected mounted application. |
+
+Extend an existing meaningful case first; add a test for changed behavior, a discovered defect, or a required contract/refusal/replay boundary. Migrations, status mappings and idempotency rules require failure/replay regressions. Demonstrate adapter capabilities and refusals without live providers. Preserve the unchanged [adopter characterization witness](#contribute-existing-adopter-code-then-refactor) during refactoring. Do not test private implementation shape or add a harness solely to test the harness.
 
 Keep executable tests tied to a current offered contract, installed safety
 boundary or selected reference behaviour. Historical migration spellings,
@@ -784,12 +733,57 @@ create a public acceptance obligation. SQL asset and documentation checks preser
 readability, valid destinations and current behavior, rather than exact comment
 wording or a requirement that a useful link appear only once.
 
-The root Vitest configuration's flat per-test ceiling is 10 s outside coverage
-runs and 30 s under coverage (`scripts/ci-vitest-duration-keys.ts`). Hosted
-runners are slower than a developer machine. A test that takes more than a few
-seconds on a hosted runner, typically one that spawns processes, builds Git
-fixtures, runs ESLint or TypeScript, or packs or installs packages, declares an
-explicit timeout sized for that runner rather than relying on the default.
+#### Keep fixtures deterministic and work fast
+
+Reuse [root setup](src/test/setup.ts), [Git environment scrub](tests/setup/scrub-git-env.ts), [render providers](src/test/render.tsx) and existing owner-local fixtures when applicable. Use synthetic, profile-valid inputs. Inject time, randomness and external ports; restore timers, environment stubs, module state, mocks and resources you change. Tests must not depend on file order, another test or a shard's membership.
+
+Prefer table-driven pure cases and the minimum real boundary witnesses that prove the requirement. Retain real Git/process/DB witnesses where the requirement depends on actual process behavior, SQL permissions, transactions or concurrency. Do not replace those witnesses with mocks. Use temporary repositories with explicit identity, bounded child processes and owned cleanup; never mutate the contributor's repository or use ambient/live services. Follow [database fixture rules](docs/platform/DATA_AND_MIGRATIONS.md#database-test-fixtures-and-witnesses).
+
+Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
+
+To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
+
+Local worker defaults are 75%, coverage 50%; the wrapper lowers them under contention. Use `VITEST_MAX_WORKERS` for ordinary local reproduction; CI coverage and explicit serial mode have their own config. Do not change global limits, skip assertions or invent a new speed gate to make one test green.
+
+#### Extend tooling selection conservatively
+
+[ci-test-scope.mjs](scripts/ci-test-scope.mjs) contains eligible bounded tooling rows. **New and unlisted tests always run. A new tooling test does not need a row.** Add one only when skipping untouched inputs saves useful work and its complete dependency closure is understood.
+
+Declare every actual nonshared repository input the test or imported code reads: source, configuration, manifests, documentation, inventory, package outputs and reference wiring. Use an exact path or a directory prefix ending in `/`; no globs. Fixture strings are not reads of the corresponding real repository files. Prefer a broader prefix to incomplete precision.
+
+All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file and every dot-prefixed segment anywhere also runs everything. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
+
+Review input completeness against the actual test/import closure. Extend [scope falsifiers](scripts/ci-test-scope.test.ts) for the new dependency behavior; row-derived tests alone cannot discover an omitted input. Preserve shared triggers, rename/deletion coverage, identical shard selection and errors selecting everything.
+
+PR/group scope uses the merge-base with the event's exact base. Local scope uses `origin/main` plus committed, staged, unstaged and untracked paths. For a deliberate alternative local base:
+
+```sh
+(
+  scope_file=$(mktemp) || exit 1
+  trap 'rm -f "$scope_file"' EXIT
+  export OPENLUP_VITEST_EXCLUDE_FILE="$scope_file"
+  node scripts/ci-test-scope.mjs --base <ref> &&
+    npm test
+)
+```
+
+Unknown events, malformed metadata or unavailable Git history exclude nothing. Selection is an optimization, never a failure waiver. Keep the project-level exact-path seam; root `--exclude` cannot replace it.
+
+#### Separate DB, package and coverage proof
+
+[Required checks](#required-and-raw-checks) owns the full command sequence. `install-proof` builds both profiles and runs [shared package gates](scripts/packages/required-package-gates.ts): cold-pack the publishable inventory once, all API checks first, then each `ci:required` with verified manifest/commit. Keep local package preparation before root tests because generated outputs are shared. New modules extend the owning package's consumer and required batch; do not add a workspace or job without a separate need.
+
+Core required coverage is V8: statements/lines 80%, branches 65%, functions 75%, plus no nonempty production file with zero covered lines. Root config has percentage thresholds when explicitly running coverage; public CI does not run root coverage or its separate no-zero helper. Outbox/Platform have no separate percentage gate. Keep installed-artifact and meaningful failure assertions; percentages do not replace them.
+
+Root tests include required disposable Docker/PostgreSQL proofs. Some older tests explicitly skip when Docker is absent; a skip does not prove that boundary. Installed Outbox/Platform consumers require their owned database and refuse missing infrastructure. For managed SQL use `node scripts/public-ci-pgtap.mjs` with Docker, locked dependencies and Supabase CLI 2.98.2. It validates committed migration bytes, replays baseline/forwards with public prerequisites, runs all supplied SQL tests and cleans only its own project. Commit migration candidates before this runner; it refuses dirty migration bytes. It never links a hosted database or installs application seed data; it copies the shipped SQL tests unchanged. Replay uses a disposable diagnostic owner with closed default grants, so this profile is not production installer authority, and the pinned image workaround hides only denial-hint formatting.
+
+pgTAP remains a raw diagnostic, while root `test` and package `install-proof` are required. Triage actual exits, failed/aborted files, skipped prerequisites and new failures against the exact base; [historical diagnostic evidence](docs/platform/plans/public-ci-known-red.md) grants no waiver. Neither mocks, static SQL assertions, listing, a build nor a green aggregate proves an unexecuted DB/browser/provider obligation.
+
+Known discovery gap: `tests/runtime/subscriptionSelfServiceGuardrails.test.ts` has five cases outside root discovery and no separate invocation; do not count them as covered.
+
+Known coverage gap: unbrokered local root coverage through `scripts/run-vitest.mjs` launches the absent ai-resource-gate.sh helper under scripts/; the configured thresholds do not establish execution.
+
+Keep documentation falsifiers independently discoverable for routing, impact, bare-runtime CLI and bundle corruption; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation impact](docs/platform/DOCUMENTATION.md#impact). Fixtures still obey neutrality and secret-handling policy.
 
 ### Package, policy and release checks
 
@@ -839,17 +833,8 @@ packs only that publishable package and requires its manifest version to be
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) describes how
 the protected release approval leads to direct OIDC publication.
 
-The `pgtap` job uses Supabase CLI **2.98.2** and a fresh local database stack,
-replays the shipped managed baseline and every published forward in filename
-order, with its public prerequisite SQL, then runs
-all `supabase/tests`. It stops only its own project in a `finally` block. It
-never links a hosted database or installs application seed data. It copies the
-shipped tests unchanged, without settlement parameters or generated fixtures.
-Replay uses a disposable diagnostic PostgreSQL owner with closed default grants;
-assertion helper grants cover only pgTAP extension members. This profile is not
-production installer authority. The pinned image workaround disables denial-hint
-formatting only; role identities and permission refusals remain. Run
-`node scripts/public-ci-pgtap.mjs` with Docker and the pinned CLI locally.
+For managed pgTAP execution and its prerequisites, follow
+[Test scope and diagnostics](#separate-db-package-and-coverage-proof).
 
 The self-check job runs the existing UI neutrality gate and a tree-wide ratchet
 that reuses both that gate's patterns and the core source scanner. The initial
@@ -907,7 +892,7 @@ fresh empty Unreleased section. Do not duplicate notes into that empty section
 to satisfy the gate. Separate implementation and release-preparation PRs remain
 available within their actual authority.
 
-The [diagnostic debt record](docs/platform/plans/public-ci-known-red.md#current-checkpoint) separates the measured current checkpoint from archived failures.
+The [diagnostic debt record](docs/platform/plans/public-ci-known-red.md#current-checkpoint) separates the last recorded checkpoint from earlier failures.
 It records closure of the twelve SQL files and keeps earlier failures archived;
 full-root and managed SQL diagnostics are expected green. Matching named debt is not
 permission to ignore a red run. When triaging a change, compare fresh
@@ -923,13 +908,9 @@ required checks is the maintainer's ruleset decision; this contribution changes
 no repository settings. Release workflows still check those six contexts, so a
 red root suite now refuses release through `test`; raw pgTAP retains its diagnostic status.
 
-Documentation falsifiers run as independent test files, discovered individually by the complete root run and subject to the bounded
-tooling-input selection described above. They cover routing, source impact, bare-runtime CLI and bundle
-corruption without importing one test file from another. Those tests create disposable Git
-fixtures; they do not publish or validate the meaning of arbitrary prose.
-See [Documentation maintenance](docs/platform/DOCUMENTATION.md) for regeneration,
-exact comparison bases and clean versus local-draft exports. The public self-check
-uses Node built-ins and repository code without installing dependencies.
+For independently discovered documentation falsifiers and their proof limits,
+follow [Test scope and diagnostics](#test-scope-and-diagnostics). Documentation
+regeneration and export remain owned by [Documentation maintenance](docs/platform/DOCUMENTATION.md).
 
 A change can be released as the next source preview when the required checks of
 Published Tree CI pass and its tree describes itself: the publication catalogue
@@ -1333,8 +1314,8 @@ requiring a same-name status. This hardening changes no ruleset or settings.
 
 After a merge, the main-push jobs may reuse the successful merge-group run for
 that exact commit. The probe validates the public repository, queue workflow,
-latest run/attempt and eight successful job executions, including both raw
-diagnostics. Missing, incomplete, contradictory or unavailable evidence runs
+latest run/attempt and seven successful checks: the six required contexts
+and raw pgTAP. Missing, incomplete, contradictory or unavailable evidence runs
 the normal commands. Pull requests and merge groups always run their commands;
 DCO, policy/neutrality and secret checks also run for each main push. The six
 main-push contexts still complete, so package release checks keep their existing

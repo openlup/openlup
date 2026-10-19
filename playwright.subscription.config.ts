@@ -1,13 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Subscription self-service E2E suite config.
- *
- * Separate from the admin-oms (`playwright.config.ts`) and checkout
- * (`playwright.checkout.config.ts`) suites so it runs and reports independently.
- * The spec is fully env-gated and skips when the hidden-preview base URL +
- * customer token + Supabase service creds are absent, so this config is safe to
- * register everywhere. Base URL falls back to the shared preview env chain.
+ * Retained subscription preview config. Its subscription-self-service.spec.ts
+ * target is absent from the public tree. Use the shipped profile journeys in
+ * docs/platform/SUBSCRIPTION_REFERENCE.md; this config establishes no proof.
  */
 
 const baseURL =
