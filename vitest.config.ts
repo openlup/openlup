@@ -114,11 +114,13 @@ export default defineConfig({
     // `environmentMatchGlobs` was removed in Vitest 4 and had become silently
     // ignored config, so every test (including server/scripts) ran in jsdom.
     // jsdom accounted for ~48% of coverage CPU while only ~90 of 441 src
-    // .test.ts files touch the DOM. The two projects are disjoint: a .test.ts
+    // .test.ts files touch the DOM. Node and DOM scopes are disjoint: a .test.ts
     // that needs a DOM opts back in with a @vitest-environment jsdom pragma.
+    pool: "threads",
+    isolate: true,
     globals: true,
-    // Only this config runs in the Vitest main process. Workers are forked with their
-    // own argv (`[node, workers/forks.js]`), so a setup file cannot see `--coverage`
+    // Only this config runs in the Vitest main process. Isolated workers have their
+    // own argv, so a setup file cannot see `--coverage`
     // for itself — `src/test/setup.ts` reads this to widen the testing-library async
     // budget for the contended coverage lane.
     provide: { coverageRun: isCoverageRun, durationManifest, repositoryRoot },
@@ -142,12 +144,23 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          // Contributor tooling keeps its original process boundary. The shared
+          // pool still applies one worker cap across all projects and pool types.
           name: "node",
+          environment: "node",
+          pool: "forks",
+          include: ["scripts/**/*.{test,spec}.ts"],
+          exclude: [...exactExclusions, "**/node_modules/**"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "node-logic",
           environment: "node",
           include: [
             "api/**/*.{test,spec}.ts",
             "mcp/**/*.{test,spec}.ts",
-            "scripts/**/*.{test,spec}.ts",
             "server/**/*.{test,spec}.ts",
             "packages/outbox/test/**/*.{test,spec}.ts",
             "packages/platform/test/**/*.{test,spec}.ts",
