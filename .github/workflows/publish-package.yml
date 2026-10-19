@@ -8,7 +8,7 @@
 # OPENLUP_PACKAGE_RELEASE. Main ancestry, the required contexts and the tag's commit are decided
 # by scripts/packages/release-gate.ts as it is at the dispatched main commit: the target's own code
 # never decides whether the target is released. Both jobs check out that main commit first, set up
-# Node from its .nvmrc, assert its Node contract and run its gate; only after the gate passes do
+# Node pinned below, assert its Node/npm contract and run its gate; only after the gate passes do
 # they check out the target, into target/, and run anything of it there. The unprivileged
 # preflight checks, before the protected release environment asks for approval, that:
 # - no release or publication of any package is in flight, so this dispatch never waits in a
@@ -95,7 +95,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
           package-manager-cache: false
       - name: Assert the Node and npm contract of the dispatched main commit
         run: |
@@ -216,7 +216,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
           package-manager-cache: false
       - name: Assert the Node and npm contract of the dispatched main commit
         run: |

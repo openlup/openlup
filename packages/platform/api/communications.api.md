@@ -289,7 +289,8 @@ export declare function createSupabaseCommunicationSyncStore(client: Communicati
 
 ```ts
 import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
-import type { NewsletterSyncEvent, NewsletterMarketingPurpose, NewsletterSyncProviderPort } from "./contracts/newsletter.js";
+import type { NewsletterMarketingPurpose } from "./contracts/newsletter.js";
+import type { NewsletterSyncEvent, NewsletterSyncProviderPort } from "./contracts/newsletter.js";
 export interface CommunicationSyncStore<Purpose extends string = NewsletterMarketingPurpose> {
     claimBatch(input: {
         providerKind: string;
@@ -1359,7 +1360,8 @@ export declare const NEWSLETTER_MARKETING_PURPOSES: readonly ["marketing_launch_
 export declare const NEWSLETTER_SYNC_EVENT_TYPES: readonly ["subscribe", "update", "unsubscribe", "suppress"];
 export declare const NEWSLETTER_WEBHOOK_EVENT_TYPES: readonly ["subscribe", "update", "unsubscribe", "suppress", "complaint", "bounce", "email_change", "profile_update", "ignored"];
 export declare const NEWSLETTER_PROVIDER_CAPABILITY_KEYS: readonly ["subscribe", "unsubscribe", "suppress", "unsuppress", "doubleOptIn", "emailChange", "listMembership", "webhookIdempotency", "retryAfter"];
-import type { NewsletterMarketingPurpose, NewsletterSyncEventType, NewsletterProviderCapabilityKey, NewsletterProviderCapabilities, NewsletterWebhookEvent } from "./contracts/newsletter.js";
+import type { NewsletterMarketingPurpose } from "./contracts/newsletter.js";
+import type { NewsletterSyncEventType, NewsletterProviderCapabilityKey, NewsletterProviderCapabilities, NewsletterWebhookEvent } from "./contracts/newsletter.js";
 export type { NewsletterProviderKind, NewsletterMarketingPurpose, NewsletterSyncEventType, NewsletterWebhookEventType, NewsletterProviderCapabilityKey, NewsletterProviderCapabilities, NewsletterWebhookEvent, NewsletterSyncEvent } from "./contracts/newsletter.js";
 export declare const defaultNewsletterProviderCapabilities: NewsletterProviderCapabilities;
 export declare const fullNewsletterProviderCapabilities: NewsletterProviderCapabilities;
@@ -1604,7 +1606,7 @@ export declare function createSupabasePublicPreferenceTokenPort(client: PublicPr
     updatePreference(payload: CommunicationPreferenceTokenPayload, state: PublicPreferenceState): Promise<{
         updated: boolean;
         email: string;
-        purpose: import("./preferencesToken.js").LegacyCommunicationPreferencePurpose;
+        purpose: "marketing_launch_offer" | "marketing_newsletter" | "tester_program";
         state: PublicPreferenceState;
     }>;
 };

@@ -34,7 +34,8 @@ export const NEWSLETTER_PROVIDER_CAPABILITY_KEYS = [
   "retryAfter",
 ] as const;
 
-import type { NewsletterProviderKind, NewsletterMarketingPurpose, NewsletterSyncEventType, NewsletterWebhookEventType, NewsletterProviderCapabilityKey, NewsletterProviderCapabilities, NewsletterWebhookEvent, NewsletterSyncEvent } from "./contracts/newsletter.js";
+import type { NewsletterMarketingPurpose } from "./contracts/newsletter.js";
+import type { NewsletterProviderKind, NewsletterSyncEventType, NewsletterWebhookEventType, NewsletterProviderCapabilityKey, NewsletterProviderCapabilities, NewsletterWebhookEvent, NewsletterSyncEvent } from "./contracts/newsletter.js";
 export type { NewsletterProviderKind, NewsletterMarketingPurpose, NewsletterSyncEventType, NewsletterWebhookEventType, NewsletterProviderCapabilityKey, NewsletterProviderCapabilities, NewsletterWebhookEvent, NewsletterSyncEvent } from "./contracts/newsletter.js";
 export const defaultNewsletterProviderCapabilities: NewsletterProviderCapabilities = {
   subscribe: false,

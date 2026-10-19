@@ -2370,7 +2370,35 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/contracts/abandonedCart.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/contracts/authEmail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/backInStock.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/blocks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/checkoutExpired.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/checkoutRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/commerceEmailContent.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/commerceEngagementEmailContent.ts",
       "class": "public-output"
     },
     {
@@ -2379,6 +2407,10 @@
     },
     {
       "path": "packages/platform/src/communications/contracts/email.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/guideCard.ts",
       "class": "public-output"
     },
     {
@@ -2398,7 +2430,127 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/contracts/orderCanceled.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/orderDraft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/orderPaid.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/orderRefunded.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/paymentFailed.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/contracts/publicIntake.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/render.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/reorderReminder.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/returnEmails.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/reviewEffects.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/reviewRequest.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/shipmentDelivered.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/shipmentDispatched.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/shipmentException.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionActivationActionRequired.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionAddressChanged.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionCancelled.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionCycleSkipped.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionDeliveryRescheduled.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionEmailContent.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionPackageChanged.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionPauseReminder.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionPaused.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionPaymentExpired.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionPaymentFailed.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionPaymentRecovered.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionRenewalAtRisk.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionRenewalUpcoming.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionResumed.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionWelcome.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/subscriptionWinback.ts",
       "class": "public-output"
     },
     {
@@ -15602,6 +15754,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/communications/email/__snapshots__/templateParity.test.ts.snap",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/communications/email/blocks.ts",
       "class": "public-output"
     },
@@ -15635,6 +15791,10 @@
     },
     {
       "path": "src/domains/communications/email/strings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/communications/email/templateParity.test.ts",
       "class": "public-output"
     },
     {
@@ -19986,6 +20146,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/__snapshots__/communicationsPublicW4.test.ts.snap",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/catalog-draft-extension.test.ts",
       "class": "public-output"
     },
@@ -19999,6 +20163,10 @@
     },
     {
       "path": "tests/platform/checkoutRecoveryProviderConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/communicationsPublicW4.test.ts",
       "class": "public-output"
     },
     {

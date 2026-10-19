@@ -169,7 +169,7 @@
       "packedBytes": 256973
     },
     "browserEntries": {
-      "./communications/contracts": 1024,
+      "./communications/contracts": 11776,
       "./identity/contracts": 4800
     }
   }

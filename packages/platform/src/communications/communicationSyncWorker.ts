@@ -1,7 +1,7 @@
 import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
+import type { NewsletterMarketingPurpose } from "./contracts/newsletter.js";
 import type {
   NewsletterSyncEvent,
-  NewsletterMarketingPurpose,
   NewsletterSyncProviderPort,
 } from "./contracts/newsletter.js";
 import {

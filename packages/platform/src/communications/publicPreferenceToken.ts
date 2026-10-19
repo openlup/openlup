@@ -42,7 +42,8 @@ export function createSupabasePublicPreferenceTokenPort(
       return {
         updated: true,
         email: payload.email,
-        purpose: payload.purpose,
+        // Keep the legacy adapter declaration expanded when the token default names a type alias.
+        purpose: payload.purpose as "marketing_launch_offer" | "marketing_newsletter" | "tester_program",
         state,
       };
     },

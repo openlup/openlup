@@ -129,6 +129,15 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+
+The installed communications consumer checks the exact contracts value inventory
+and renders a synthetic message with network access refused and optional peers
+absent. That entry contains pure rendering/building and copy-injected factories;
+its browser gate measures the complete built runtime export closure. P3 changes
+only this prior empty-value expectation and its rendering proof, retaining the
+other installed-consumer, missing-peer and type checks.
+
+
 The M04 communications import extends the existing platform consumer and required
 selection with its retained reference witnesses. The isolated contracts entry
 compiles without optional provider peers; the mixed server entry compiles after
@@ -283,7 +292,10 @@ and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-
 ### Required and raw checks
 
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
-`packageManager` field of `package.json`), and the committed npm lockfile. From
+`packageManager` field of `package.json`), and the committed npm lockfile. CI and
+release workflows pin Node 24.21.0, which bundles npm 11.19.0, so newer Node 24
+releases cannot change npm beneath the existing assertions. `.nvmrc` remains the
+local Node major (`24`); the local npm contract is unchanged. From
 the root of a materialized development-preview tree, these are the commands the
 mechanical/diagnostic jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
 run; each comment names its job. The inherited `native-review` job additionally
