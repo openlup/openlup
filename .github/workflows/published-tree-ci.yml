@@ -2,9 +2,9 @@
 #
 # Main pushes reuse expensive checks only after exact-commit merge-group proof;
 # unavailable evidence runs the ordinary commands. Event-bound cheap checks always run.
-# Six required mechanical checks preserve the protected-main contract. Full root tests
-# and pgTAP run as independent raw diagnostics; the database job creates a disposable
-# local CLI stack. The optional ninth context admits current native review only after
+# Six required mechanical checks preserve the protected-main contract. Root test shards
+# feed the required test aggregate; pgTAP creates a disposable local CLI stack
+# as a raw diagnostic. The optional native context admits current review only after
 # the six required checks actually succeeded. Nothing here deploys or publishes.
 # The gitleaks release download is checksum-verified before use.
 #
@@ -189,40 +189,6 @@ jobs:
           OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}
         run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"
 
-  test:
-    name: test
-    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24.21.0
-          cache: npm
-      - name: Check completed merge-group evidence for this main push
-        id: reused
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/public-ci-reuse.mjs
-      - name: Assert Node and npm contract
-        run: |
-          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
-          test "$(npm --version)" = "11.19.0"
-          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
-          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
-      - run: npm ci
-        if: steps.reused.outputs.reuse != 'true'
-      # Preserve every former protected-main selector. Full discovery has its own
-      # raw diagnostic job below; its failures cannot prevent these required checks.
-      - name: Required root, subscription, command-contract and neutrality coverage
-        if: steps.reused.outputs.reuse != 'true'
-        run: npm run test:required -- server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts scripts/ast-grep/check-filewide-ignore.test.ts scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts scripts/public-ci-neutrality.test.ts
-
   test-full-shard:
     name: test-full-shard (${{ matrix.shard }}/4)
     if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
@@ -256,14 +222,20 @@ jobs:
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci
         if: steps.reused.outputs.reuse != 'true'
-      # Raw full-scope result, including named existing debt. Requiredness is
-      # the maintainer's ruleset decision; this job never normalizes failures.
+      - name: Select tooling fixtures from the event diff
+        if: steps.reused.outputs.reuse != 'true'
+        env:
+          OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
+        run: node scripts/ci-test-scope.mjs
+      # Every shard derives the same included set before native file sharding.
       - name: Complete published root test shard
         if: steps.reused.outputs.reuse != 'true'
+        env:
+          OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
         run: npm test -- --shard=${{ matrix.shard }}/4
 
-  test-full:
-    name: test-full
+  test:
+    name: test
     if: ${{ always() && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [test-full-shard]
     runs-on: ubuntu-latest

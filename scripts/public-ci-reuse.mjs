@@ -9,7 +9,7 @@ import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 const REPOSITORY = 'openlup/openlup';
 const REPOSITORY_ID = 1376035358;
 const WORKFLOW = '.github/workflows/published-tree-ci.yml';
-const CHECKS = [...REQUIRED_CONTEXTS, 'test-full', 'pgtap'];
+const CHECKS = [...REQUIRED_CONTEXTS, 'pgtap'];
 const positive = value => Number.isSafeInteger(value) && value > 0;
 const repository = value => value?.id === REPOSITORY_ID && value.full_name === REPOSITORY && value.private === false;
 

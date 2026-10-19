@@ -123,7 +123,7 @@ jobs:
       - name: Assert the target's Node and npm contract
         working-directory: target
         run: |
-          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node.split(".")[0]')"
+          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node')"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
       - run: npm ci --ignore-scripts --no-audit --fund=false
@@ -239,7 +239,7 @@ jobs:
       - name: Assert the target's Node and npm contract
         working-directory: target
         run: |
-          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node.split(".")[0]')"
+          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node')"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"
           test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"
       # No install, build or pack here: the pack and the scan ran in the unprivileged preflight.
