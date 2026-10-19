@@ -111,12 +111,13 @@ import { OIDC_FAILURE_CODES } from "@openlup/platform/identity";
 assert(OIDC_FAILURE_CODES.includes("OIDC_NATIVE_SESSION_REQUIRED"));
 assert.equal(deriveOidcPrincipalId("https://issuer.example.com/realm", "subject"), "262d8593-5c2f-8ce3-a5f2-de2751bbfe90");
 let oidcFetches = 0, oidcLoads = 0;
-const oidc = createOidcIdentityVerifier({ issuer: "https://issuer.example.com", audience: "api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600 }, {
-  fetch: async url => { oidcFetches++; return Response.json(String(url).endsWith("openid-configuration") ? { issuer: "https://issuer.example.com", jwks_uri: "https://issuer.example.com/keys" } : { keys: [{ kty: "RSA", alg: "RS256", kid: "key", use: "sig", n: "synthetic", e: "AQAB" }] }); },
+const oidcIssuer = "https://issuer.example.invalid";
+const oidc = createOidcIdentityVerifier({ issuer: oidcIssuer, audience: "api", algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600 }, {
+  fetch: async url => { oidcFetches++; return Response.json(String(url).endsWith("openid-configuration") ? { issuer: oidcIssuer, jwks_uri: oidcIssuer + "/keys" } : { keys: [{ kty: "RSA", alg: "RS256", kid: "key", use: "sig", n: "synthetic", e: "AQAB" }] }); },
   loadJwt: async () => { oidcLoads++; return import("jose"); },
 });
 assert.equal(oidcFetches, 0); assert.equal(oidcLoads, 0);
-const oidcToken = Buffer.from(JSON.stringify({ alg: "RS256", kid: "key" })).toString("base64url") + ".e30.c2ln";
+const oidcToken = [{ alg: "RS256", kid: "key" }, { iss: oidcIssuer }].map(value => Buffer.from(JSON.stringify(value)).toString("base64url")).join(".") + ".c2ln";
 assert.deepEqual(await oidc.verifyToken(oidcToken), { ok: false, code: "OIDC_JWT_LIBRARY_UNAVAILABLE" });
 assert.equal(oidcLoads, 1);
 await assert.rejects(async () => {
@@ -125,6 +126,10 @@ await assert.rejects(async () => {
   finally { await accountLinks.close(); }
 }, error => error.message.startsWith("OPENLUP_E_PEER_MISSING: pg is required by ") && Boolean(error.cause));
 `;
+
+export function proveOidcRefusals(consumer: string): void {
+  consumerNode(consumer, oidcOperations);
+}
 
 // A valid synthetic catalogue gets as far as the lazy driver, never a deployment's SQL.
 const adapterOperations = `
@@ -340,7 +345,7 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveAdapterRefusals(consumer);
-    consumerNode(consumer, oidcOperations);
+    proveOidcRefusals(consumer);
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);

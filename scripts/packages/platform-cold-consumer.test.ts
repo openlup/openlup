@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, provePostgresOperations, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -66,6 +66,34 @@ it("refuses a missing manifest before any consumer installation", () => {
 });
 it("imports in a fresh Node process with an empty environment", () => {
   const consumer = fixture(); expect(consumerNode(consumer, 'import { env } from "node:process"; console.log(JSON.stringify(Object.keys(env).filter(name => name !== "__CF_USER_TEXT_ENCODING"))); await import("@openlup/platform/kernel");').trim()).toBe("[]");
+});
+it("uses a compact JWS with the configured issuer and an allowed algorithm before proving the missing JWT library refusal", () => {
+  const consumer = fixture();
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), `
+import assert from "node:assert/strict";
+export const OIDC_FAILURE_CODES = ["OIDC_NATIVE_SESSION_REQUIRED"];
+export const deriveOidcPrincipalId = () => "262d8593-5c2f-8ce3-a5f2-de2751bbfe90";
+export const createOidcIdentityVerifier = (config, dependencies) => ({ verifyToken: async token => {
+  const parts = token.split(".");
+  assert.equal(parts.length, 3);
+  for (const part of parts) {
+    assert(part.length > 0);
+    assert.equal(Buffer.from(part, "base64url").toString("base64url"), part);
+  }
+  const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+  const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  assert(config.algorithms.includes(header.alg));
+  assert.equal(header.kid, "key");
+  assert.equal(payload.iss, config.issuer);
+  await assert.rejects(dependencies.loadJwt, error => error.code === "ERR_MODULE_NOT_FOUND");
+  return { ok: false, code: "OIDC_JWT_LIBRARY_UNAVAILABLE" };
+} });
+export const createPostgresAccountLinkStore = () => ({
+  findAccountByPrincipalId: async () => { throw new Error("OPENLUP_E_PEER_MISSING: pg is required by synthetic capability", { cause: new Error("synthetic missing peer") }); },
+  close: async () => {},
+});
+`);
+  proveOidcRefusals(consumer);
 });
 function refusalFixture(mode: "correct" | "raw" | "wrong-peer" | "no-cause" | "success") {
   const consumer = fixture();
