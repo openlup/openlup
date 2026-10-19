@@ -492,9 +492,11 @@ only prints the comment body. It contains the marker
 `pr`, `base`, `head`, `tree`, `risk`, `reviewers`, `verdict`, `expires` and
 `sessionDigest`; it carries no full session history.
 
-The trusted-main `agent-review-queue.mjs wait` reads comments by `OWNER`,
-`MEMBER` or `COLLABORATOR` authors and selects the newest valid receipt for the
-live PR head. It fetches source objects with `transfer.fsckObjects=true`,
+The trusted-main `agent-review-queue.mjs wait` accepts receipt comments from
+a user with write, maintain or admin permission and selects the newest valid
+receipt for the live PR head. It checks repository permission rather than public
+organization membership, caches each login's result for the wait, and refuses
+bots and failed permission lookups. It fetches source objects with `transfer.fsckObjects=true`,
 recomputes the tree and reviewer floor from the changed paths and modes, and
 checks the base and expiry. Git runs through `/usr/bin/git` with
 `PATH=/usr/bin:/bin`. The receipt base must equal the single fork point of the
