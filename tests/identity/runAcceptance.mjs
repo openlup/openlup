@@ -1,4 +1,5 @@
 // Opt-in only: this process owns one isolated installation and never skips a failed prerequisite.
+import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -11,6 +12,33 @@ import { parseEnv } from "node:util";
 export function acceptanceBundle(args) {
   if (args.length !== 2 || args[0] !== "--bundle" || !["node-postgres", "node-supabase"].includes(args[1])) throw new Error("Usage: node tests/identity/runAcceptance.mjs --bundle node-postgres|node-supabase OR --check-module-graph");
   return args[1];
+}
+export function managedAcceptanceEmailFrequencyMs(config) {
+  const email = config.split(/^[ \t]*\[auth\.email\][ \t]*(?:#.*)?\r?$/m)[1]?.split(/^[ \t]*\[/m)[0];
+  const setting = email?.match(/^[ \t]*max_frequency[ \t]*=[ \t]*["']([^"']+)["'][ \t]*(?:#.*)?$/m);
+  // The pinned local CLI defaults auth.email.max_frequency to 1s when omitted.
+  if (!email || !/^[ \t]*max_frequency[ \t]*=/m.test(email)) return 1000;
+  if (!setting || !/^(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h))+$/.test(setting[1])) throw new Error("Invalid managed acceptance email frequency");
+  const units = { ms: 1, s: 1000, m: 60000, h: 3600000 };
+  return [...setting[1].matchAll(/([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)/g)].reduce((ms, part) => ms + Number(part[1]) * units[part[2]], 0);
+}
+/**
+ * Wait only the remaining per-address window, with 100ms for scheduling margin.
+ * @param {{ Created: string, To?: (string | { Address: string })[] }[]} messages
+ * @param {string} email
+ * @param {number} frequencyMs
+ * @param {number} nowMs
+ */
+export function managedEmailWaitMs(messages, email, frequencyMs, nowMs) {
+  /** @type {number | undefined} */
+  let latest;
+  for (const message of messages) {
+    if (!message.To?.some(value => (typeof value === "string" ? value : value.Address).trim().toLowerCase() === email.trim().toLowerCase())) continue;
+    const sent = Date.parse(message.Created);
+    assert(Number.isFinite(sent), "Managed captured mail requires a send timestamp");
+    latest = Math.max(latest ?? sent, sent);
+  }
+  return latest === undefined ? 0 : Math.max(0, latest + frequencyMs + 100 - nowMs);
 }
 export function renderManagedAcceptanceConfig(template, replacements) {
   const origin = `http://127.0.0.1:${replacements.APP_PORT}`;
@@ -128,6 +156,7 @@ export async function main(args = process.argv.slice(2)) {
       mkdirSync(join(directory, "supabase"), { mode: 0o700 });
       const replacements = { PROJECT_ID: project, SHADOW_PORT: base, API_PORT: base + 1, DB_PORT: base + 2, STUDIO_PORT: base + 3, MAIL_PORT: base + 4, POOLER_PORT: base + 9, APP_PORT: base + 10 };
       const config = renderManagedAcceptanceConfig(readFileSync("config/public-reference-subscription-supabase.toml", "utf8"), replacements);
+      const emailFrequencyMs = managedAcceptanceEmailFrequencyMs(config);
       writeFileSync(join(directory, "supabase/config.toml"), config, { mode: 0o600 });
       const names = must("docker", ["ps", "-a", "--format", "{{.Names}}"]);
       if (names.split("\n").some(name => name.endsWith(`_${project}`))) throw new Error("Identity project already exists");
@@ -147,7 +176,7 @@ export async function main(args = process.argv.slice(2)) {
       const password = container.Config.Env.find(value => value.startsWith("POSTGRES_PASSWORD="))?.slice(18);
       if (!password) throw new Error("Owned managed database credential unavailable");
       database = `postgresql://supabase_admin:${encodeURIComponent(password)}@127.0.0.1:${base + 2}/postgres`;
-      auth = { url: credentials.API_URL, anonKey: credentials.ANON_KEY, serviceKey: credentials.SERVICE_ROLE_KEY, mail: `http://127.0.0.1:${base + 4}` };
+      auth = { url: credentials.API_URL, anonKey: credentials.ANON_KEY, serviceKey: credentials.SERVICE_ROLE_KEY, mail: `http://127.0.0.1:${base + 4}`, emailFrequencyMs };
     }
     const marker = { version: 1, runId, bundle, origin, containerId: owned.containerId };
     writeFileSync(join(directory, "identity-owner.json"), JSON.stringify(marker), { mode: 0o600 });

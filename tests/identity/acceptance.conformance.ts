@@ -1,3 +1,4 @@
+import { managedEmailWaitMs } from "./runAcceptance.mjs";
 import { env as processEnvironment } from "node:process";
 /** Complete installed reference proof. Assertion output never includes sessions or messages. */
 import assert from "node:assert/strict";
@@ -28,7 +29,8 @@ import type { ReferenceIdentityRuntime } from "../../server/runtime/public-refer
 import type { createCapturedIdentityMailbox } from "../../server/runtime/auth/capturedIdentityMailbox.js";
 
 type Setup = { bundle: "node-postgres" | "node-supabase"; directory: string; database: string; origin: string; runId: string; assertContainer(): void;
-  auth?: { url: string; anonKey: string; serviceKey: string; mail: string } };
+  auth?: { url: string; anonKey: string; serviceKey: string; mail: string; emailFrequencyMs: number } };
+type ManagedMailMessage = { ID?: string; id?: string; Created: string; To?: (string | { Address: string })[] };
 const CUSTOMER = "11111111-1111-4111-8111-111111111111", CONTACT = "22222222-2222-4222-8222-222222222222", ADMIN = "33333333-3333-4333-8333-333333333333";
 const BROWSER_CUSTOMER = "44444444-4444-4444-8444-444444444444", BROWSER_CONTACT = "55555555-5555-4555-8555-555555555555", BROWSER_ADMIN = "66666666-6666-4666-8666-666666666666";
 const CUSTOMER_EMAIL = "customer@example.com", ADMIN_EMAIL = "administrator@example.com", INVITEE_EMAIL = "invited@example.com";
@@ -336,7 +338,14 @@ export async function runAcceptance(setup: Setup) {
     async function login(kind: "customer" | "operator", email: string) {
       const prefix = kind === "customer" ? "/api/bff/customers" : "/api/bff/admin/platform";
       const before = new Set((await mailbox.read(kind)).map(message => message.id));
-      const managedBefore = auth ? new Set((await (await fetch(`${auth.mail}/api/v1/messages`)).json()).messages.map((message: { ID?: string; id?: string }) => message.ID ?? message.id)) : new Set();
+      const managedBefore = new Set<string | undefined>();
+      if (auth) {
+        const response = await fetch(`${auth.mail}/api/v1/messages`); assert(response.ok);
+        const messages: ManagedMailMessage[] = (await response.json()).messages;
+        for (const message of messages) managedBefore.add(message.ID ?? message.id);
+        const waitMs = managedEmailWaitMs(messages, email, auth.emailFrequencyMs, Date.now());
+        if (waitMs > 0) await new Promise(done => setTimeout(done, waitMs));
+      }
       const issued = await request(`${prefix}/magic-link`, undefined, kind === "customer" ? { email, locale: "en", returnTo: "/account" } : { email }); assert.equal(issued.status, 200);
       if (bundle === "node-postgres") {
         const captured = await waitFor(async () => (await mailbox.read(kind)).find(message => !before.has(message.id) && "challenge" in message && message.challenge.email === email), "captured challenge");

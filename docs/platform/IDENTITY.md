@@ -971,6 +971,13 @@ Only the disposable rendered configuration sets `[auth.rate_limit]`
 `email_sent = 20`, giving the customer, operator and invitee sign-ins an hourly
 email budget with margin. The shared reference configuration keeps its defaults.
 Rendering preserves other settings and refuses ambiguous rate-limit declarations.
+Before each managed login email request, the acceptance helper checks captured
+mail for that address, including invitation mail. It waits only until the latest
+message's `Created` timestamp plus the rendered `[auth.email] max_frequency`
+window and a 100 ms margin. An omitted setting uses the pinned CLI's one-second
+default. First requests and already elapsed windows add no delay; a refusal after
+the wait still fails the journey without retrying. This timing applies only to
+the disposable acceptance journey.
 Before issuing challenges, the runner verifies container identity and ownership
 labels and checks every published port in both Docker inspection views. The direct
 database accepts only explicit `127.0.0.1` and `::1` bindings; empty, wildcard and

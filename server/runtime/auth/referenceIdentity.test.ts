@@ -146,7 +146,7 @@ import { buildIdentityReferenceRuntime, createIdentityAcceptanceDatabase, identi
 import { EventEmitter } from "node:events";
 import type { Server } from "node:http";
 import type { Pool } from "pg";
-import { acceptanceBundle, assertContainerOwnership, assertPortBindings, renderManagedAcceptanceConfig } from "../../../tests/identity/runAcceptance.mjs";
+import { acceptanceBundle, assertContainerOwnership, assertPortBindings, managedAcceptanceEmailFrequencyMs, managedEmailWaitMs, renderManagedAcceptanceConfig } from "../../../tests/identity/runAcceptance.mjs";
 import { build, type Plugin } from "vite";
 import { enforceDeploymentRoutePolicy, validateIdentityReferenceProfile, withIdentityReferencePolicy, IDENTITY_ROUTES } from "./referenceIdentityPolicy.js";
 import { enforceDeploymentRoutePolicy as publicPolicy } from "../../_lib/publicDeploymentPolicies.js";
@@ -317,6 +317,29 @@ it.each(["0.0.0.0", "::", "", "192.0.2.1", undefined])("acceptance refuses every
 it("acceptance refuses missing port inspection data", () => {
   expect(() => assertPortBindings({ NetworkSettings: { Ports: {} } })).toThrow("bindings unavailable");
   expect(() => assertPortBindings({ HostConfig: { PortBindings: {} } })).toThrow("bindings unavailable");
+});
+const sent = Date.parse("2026-01-01T00:00:00.000Z");
+const mail = (Created: string, address = "customer@example.com") => ({ Created, To: [{ Address: address }] });
+it.each([
+  { label: "first message", messages: [], frequency: 1000, elapsed: 0, wait: 0 },
+  { label: "unrelated address", messages: [mail(new Date(sent).toISOString(), "other@example.com")], frequency: 1000, elapsed: 0, wait: 0 },
+  { label: "remaining default window", messages: [mail(new Date(sent).toISOString())], frequency: 1000, elapsed: 400, wait: 700 },
+  { label: "configured window", messages: [mail(new Date(sent).toISOString())], frequency: 3000, elapsed: 400, wait: 2700 },
+  { label: "margin at window boundary", messages: [mail(new Date(sent).toISOString())], frequency: 1000, elapsed: 1000, wait: 100 },
+  { label: "elapsed window", messages: [mail(new Date(sent).toISOString())], frequency: 1000, elapsed: 1200, wait: 0 },
+  { label: "latest matching message regardless of order", messages: [mail(new Date(sent + 500).toISOString(), " CUSTOMER@example.com "), mail(new Date(sent).toISOString())], frequency: 1000, elapsed: 600, wait: 1000 },
+  { label: "string recipient", messages: [{ Created: new Date(sent).toISOString(), To: ["customer@example.com"] }], frequency: 1000, elapsed: 0, wait: 1100 },
+])("computes managed email wait: $label", ({ messages, frequency, elapsed, wait }) => {
+  expect(managedEmailWaitMs(messages, "customer@example.com", frequency, sent + elapsed)).toBe(wait);
+});
+it("refuses matching captured mail without a valid send timestamp", () => {
+  expect(() => managedEmailWaitMs([mail("invalid")], "customer@example.com", 1000, sent)).toThrow("send timestamp");
+});
+it("reads the rendered email frequency or the explicit local default", () => {
+  expect(managedAcceptanceEmailFrequencyMs("[auth.email]\nenable_signup = true\n")).toBe(1000);
+  expect(managedAcceptanceEmailFrequencyMs("[auth.email]\nmax_frequency = \"2.5s\"\n[auth.email.smtp]\n")).toBe(2500);
+  expect(managedAcceptanceEmailFrequencyMs("[auth.email]\nmax_frequency = '1m2s' # local window\n")).toBe(62000);
+  expect(() => managedAcceptanceEmailFrequencyMs("[auth.email]\nmax_frequency = \"invalid\"\n")).toThrow("email frequency");
 });
 it("managed acceptance renders an email budget without changing other configured settings", () => {
   const template = readFileSync("config/public-reference-subscription-supabase.toml", "utf8");
