@@ -1126,10 +1126,12 @@ freshly fetched set, then must revalidate it at expiry. Each
 fetch rejects redirects and has a three-second deadline including its streamed
 body, capped at 64 KiB. Concurrent loads coalesce. Every JWKS attempt, successful
 or unsuccessful and including initial loading, starts a 30-second refresh
-window. Unknown kids inside it refuse without another fetch. Refresh replaces
-the set atomically; removed keys and expired caches never survive failed
-refresh. Known-key signature failure does not trigger another fetch. Token
-`jku`/`x5u` values never choose a transport destination.
+window. Unknown kids inside it refuse without another fetch. A successful refresh
+replaces the set atomically. A removed key is refused once the cached set expires
+or a successful refresh replaces it; a failed forced refresh before expiry leaves
+the previous unexpired set usable until its existing expiry. Expired cached sets
+are never used after a failed refresh. Known-key signature failure does not
+trigger another fetch. Token `jku`/`x5u` values never choose a transport destination.
 
 `verifyToken` returns a detailed `OIDC_*` refusal from `OIDC_FAILURE_CODES`.
 Hosts import this constant and `OidcFailureCode` from
@@ -1189,9 +1191,10 @@ ledger, runs reconcile and own/cross-customer reads, provisions a derived operat
 through the invitation lifecycle, then checks active, restricted and revoked
 membership. It exercises real token expiry/refresh, new signing kids, removed
 keys after cache expiry, foreign realm, wrong audience and unverified email.
-Verifier clock injection advances cache expiry only; real issuer tokens remain
-the source of expiry, refresh and key evidence. Replay must leave the ledger and
-legacy contact, active subscription, administrator and machine rows unchanged.
+The removed-key probe advances the verifier clock past the JWKS cache bound;
+token expiry and refresh checks use wall time and real issuer tokens. Replay must
+leave the ledger and legacy contact, active subscription, administrator and
+machine rows unchanged.
 These assertions require an actual successful run; unit tests with synthetic
 keys do not certify an issuer. The recipe certifies only the direct composition,
 not managed federation or production hosting. The existing customer-own-row
