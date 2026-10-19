@@ -289,6 +289,18 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+Reference identity composition adds no SQL or ledger entries. Direct startup
+requires the complete canonical catalogue through identity erasure receipts,
+never the sparse seven-file package projection. Its schema inventory is a
+presence check; hosts must independently observe the complete installed ledger.
+Managed startup likewise needs trustworthy committed-chain observation and
+separate effective-grant verification. The reviewed managed identity service-role
+capabilities forward supplies client INSERT(email, auth_user_id,
+acquisition_source, lifecycle_stage), UPDATE(auth_user_id), and operator
+INSERT(id, email, role, membership_state, membership_provenance,
+membership_accepted_at) plus SELECT(email). The opt-in conformance runners add no
+fixture grant, and application startup adds no grants.
+
 Reference customer browser sessions use separate storage namespaces without
 migrating legacy credentials. Managed logout clears the effective SDK store
 even after remote revocation fails. A failed compatibility session read returns

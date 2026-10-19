@@ -1,11 +1,14 @@
 import { authReconcileErrorCodeSchema } from "../../../src/domains/auth/contracts.js";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { linkClientAuthUser } from "@openlup/platform/identity";
 import { createSupabaseClientAuthLinkStore } from "../../adapters/supabase/clients/clientAuthLink.js";
 import { bindIdentityEmailTrust } from "./emailTrustBinding.js";
 import { assessIdentityReadiness } from "./identityReadiness.js";
 
 const route = vi.hoisted(() => ({
+  env: { PLATFORM_BUNDLE: "node-postgres" },
+  readManagedEnv: vi.fn(), createClients: vi.fn(),
+  authenticateUser: vi.fn(), getCustomerMe: vi.fn(),
   store: { isReservedPrincipal: vi.fn(), findAccountByPrincipalId: vi.fn(), findAccountByEmail: vi.fn(),
     createAccount: vi.fn(), linkPrincipalToAccount: vi.fn() },
 }));
@@ -16,13 +19,25 @@ vi.mock("@openlup/platform/identity", async importOriginal => ({
 vi.mock("../../_lib/config/featureFlags.js", () => ({ customerAuthUiEnabled: () => true }));
 vi.mock("../../_lib/observability/route.js", () => ({ withObservedRoute: (_options: unknown, handler: unknown) => handler }));
 vi.mock("../../bff/customers/shared.js", () => ({
-  readCustomerRouteEnv: () => ({ PLATFORM_BUNDLE: "node-postgres" }),
-  readCustomerSelfServiceEnv: () => ({ url: "https://managed-route.invalid", anonKey: "public-test-key" }),
+  readCustomerRouteEnv: () => route.env,
+  readCustomerSelfServiceEnv: route.readManagedEnv,
   readBearerToken: () => "synthetic-token",
-  createCustomerClients: () => ({ serviceClient: {}, customerClient: { auth: { getUser: async () => ({
-    data: { user: { id: "81000000-0000-4000-8000-000000000001", email: "route@example.com", email_confirmed_at: "2026-01-01" } }, error: null,
-  }) } } }),
+  createCustomerClients: route.createClients,
 }));
+vi.mock("../customers/customerIdentityBinding.js", () => ({
+  createCustomerIdentityBinding: () => ({
+    authenticateUser: route.authenticateUser, mePort: { getCustomerMe: route.getCustomerMe },
+  }),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  route.env.PLATFORM_BUNDLE = "node-postgres";
+  route.readManagedEnv.mockReturnValue({ url: "https://managed-route.invalid", anonKey: "public-test-key" });
+  route.createClients.mockReturnValue({ serviceClient: {}, customerClient: { auth: { getUser: async () => ({
+    data: { user: { id: "81000000-0000-4000-8000-000000000001", email: "route@example.com", email_confirmed_at: "2026-01-01" } }, error: null,
+  }) } } });
+});
 
 afterEach(() => vi.unstubAllGlobals());
 it("direct_bundle_does_not_load_managed_adapter or fetch settings", async () => {
@@ -40,13 +55,34 @@ it("managed bindings normalize declarations, reuse cache and replace changed con
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(() => bindIdentityEmailTrust({ IDENTITY_EMAIL_VERIFYING_PROVIDERS: "*" }, managed)).toThrow();
 });
-it("managed reconcile route reads settings even when the bundle environment selects node-postgres", async () => {
-  const fetch = vi.fn().mockResolvedValue(Response.json({ mailer_autoconfirm: true, external: { email: true } }));
+it.each([true, false])("node-postgres reconcile reads only the existing principal link (linked=%s)", async linked => {
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  const principalId = "81000000-0000-4000-8000-000000000001";
+  const accountId = "81000000-0000-4000-8000-000000000002";
+  route.authenticateUser.mockResolvedValue({ ok: true, userId: principalId });
+  route.getCustomerMe.mockResolvedValue(linked ? { clientId: accountId } : null);
+  const { default: handler } = await import("../../bff/customers/reconcile-account.js");
+  const res = { statusCode: 200, setHeader: vi.fn(), status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() };
+  const req = { method: "POST", headers: { authorization: "Bearer synthetic-token" }, body: { email: "other@example.com" } };
+  await handler(req as never, res as never);
+  expect(route.authenticateUser).toHaveBeenCalledWith(req);
+  expect(route.getCustomerMe).toHaveBeenCalledWith(principalId);
+  expect(res.status).toHaveBeenCalledWith(linked ? 200 : 409);
+  expect(res.json).toHaveBeenCalledWith(linked
+    ? expect.objectContaining({ data: { accountId, created: false, linked: false } })
+    : expect.objectContaining({ error: expect.objectContaining({ details: { code: "ACCOUNT_LINK_CONFLICT" } }) }));
+  expect(fetch).not.toHaveBeenCalled();
+  expect(route.readManagedEnv).not.toHaveBeenCalled();
+  expect(route.createClients).not.toHaveBeenCalled();
+  for (const operation of Object.values(route.store)) expect(operation).not.toHaveBeenCalled();
+});
+it.each(["node-supabase", "vercel-supabase"])("%s reconcile reads managed settings and refuses an unsafe email-trust envelope", async bundle => {
+  route.env.PLATFORM_BUNDLE = bundle;
+  const fetch = vi.fn().mockImplementation(async () => Response.json({ mailer_autoconfirm: true, external: { email: true } }));
   vi.stubGlobal("fetch", fetch);
+  vi.resetModules();
   route.store.isReservedPrincipal.mockResolvedValue(false);
   route.store.findAccountByPrincipalId.mockResolvedValue(null);
-  route.store.findAccountByEmail.mockResolvedValue(null);
-  route.store.createAccount.mockResolvedValue({ id: "81000000-0000-4000-8000-000000000002" });
   const { default: handler } = await import("../../bff/customers/reconcile-account.js");
   const res = { statusCode: 200, setHeader: vi.fn(), status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() };
   await handler({ method: "POST", headers: { authorization: "Bearer synthetic-token" } } as never, res as never);
@@ -56,7 +92,10 @@ it("managed reconcile route reads settings even when the bundle environment sele
   expect(route.store.findAccountByEmail).not.toHaveBeenCalled();
   expect(route.store.createAccount).not.toHaveBeenCalled();
   expect(route.store.linkPrincipalToAccount).not.toHaveBeenCalled();
+  expect(route.authenticateUser).not.toHaveBeenCalled();
+  expect(route.getCustomerMe).not.toHaveBeenCalled();
 });
+
 it.each([
   ["automatic", { mailer_autoconfirm: true, external: { email: true } }, "EMAIL_TRUST_ENVELOPE_REFUSED"],
   ["undeclared", { mailer_autoconfirm: false, external: { email: true, opaque: true } }, "EMAIL_TRUST_ENVELOPE_REFUSED"],

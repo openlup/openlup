@@ -1,3 +1,8 @@
+import { readCustomerRouteEnv } from "../../bff/customers/shared.js";
+import { enforceDeploymentRoutePolicy } from "#deployment-route-policy";
+import { adaptRequest, decorateResponse } from "../../adapters/node/httpRequestAdapter.js";
+import { createReferenceBffDispatcher } from "../bffDispatch.js";
+import { admitReferenceIdentity, type ReferenceIdentity, type ReferenceIdentityAdmission } from "../auth/referenceIdentity.js";
 import type { admitReferenceOutbox } from "../outbox/candidateAdmission.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -100,14 +105,25 @@ function health(env: NodeJS.ProcessEnv): string {
   });
 }
 
-export function createPublicReferenceServer(options: PublicReferenceServerOptions = {}) {
+function createServerForCandidate(options: PublicReferenceServerOptions, identityRuntime?: ReferenceIdentity) {
   const current = runtime(options);
+  if (identityRuntime && identityRuntime.bundle !== (current.env.PLATFORM_BUNDLE ?? "node-supabase")) throw new Error("Identity candidate bundle does not match the reference host");
   const profileName = current.env.OPENLUP_REFERENCE_PROFILE;
   if (profileName && profileName !== "subscription") throw new Error("Unknown public reference profile");
   const subscription = profileName === "subscription" ? createSubscriptionProfile(current.env) : null;
+  const identityRoutes = identityRuntime?.routes;
+  const dispatch = createReferenceBffDispatcher(() => identityRuntime?.env ?? current.env, identityRuntime?.preflight);
   return createServer((request, res) => {
     const pathname = requestPath(request);
     if (!pathname) return response(res, 404, "Not found\n", { "content-type": "text/plain; charset=utf-8" });
+    if (identityRoutes?.some(route => route.pattern.test(pathname))) {
+      const decorated = decorateResponse(res);
+      if (!enforceDeploymentRoutePolicy({ route: pathname, domain: "identity", surface: pathname.startsWith("/api/bff/admin/") ? "admin" : "customer", risk: "mutation" }, request, decorated)) return;
+      void adaptRequest(request, pathname, false, 32768).then(req => dispatch(identityRoutes, req, decorateResponse(res))).catch(() => {
+        if (!res.headersSent) response(res, 503, "Identity request unavailable\n");
+      });
+      return;
+    }
     if (subscription?.hasRoute(pathname)) {
       for (const [key, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(key, value);
       void subscription.handle(request, res, pathname);
@@ -143,15 +159,37 @@ export function createPublicReferenceServer(options: PublicReferenceServerOption
   });
 }
 
+export function createPublicReferenceServer(options: PublicReferenceServerOptions = {}) {
+  return createServerForCandidate(options);
+}
+
 /** Start the selected candidate only after its composed rail has been admitted. */
 export async function startPublicReferenceServer(options: PublicReferenceServerOptions & {
+  identity?: ReferenceIdentityAdmission;
   outbox?: Awaited<ReturnType<typeof admitReferenceOutbox>>;
   bindSchedule?: (id: string, cadenceSeconds: number, run: () => Promise<unknown>) => void;
   port?: number;
   host?: string;
 } = {}) {
   if (options.outbox && (!options.outbox.admitted || !options.bindSchedule)) throw new Error("Public reference outbox candidate refused before listener");
-  const server = createPublicReferenceServer(options);
+  if (options.identity && options.outbox) throw new Error("Compose selected module contributions together before combining identity and outbox");
+  const assertIdentityEnvironment = () => {
+    if (!options.identity) return;
+    const ambient = readCustomerRouteEnv();
+    const selected = options.env ?? ambient;
+    const composed = options.identity.runtime.env;
+    if (options.identity.runtime.bundle !== (selected.PLATFORM_BUNDLE ?? "node-supabase")) throw new Error("Identity candidate bundle does not match the reference host");
+    // Mounted application handlers also read the ambient environment. Refuse a split composition.
+    for (const key of new Set([...Object.keys(selected), ...Object.keys(composed), ...Object.keys(ambient)])) {
+      if (selected[key] !== composed[key] || selected[key] !== ambient[key]) throw new Error("Identity candidate environment does not match the reference host");
+    }
+  };
+  assertIdentityEnvironment();
+  const identity = options.identity ? await admitReferenceIdentity(options.identity) : undefined;
+  if (identity && !identity.admitted) throw new Error(`Public reference identity candidate refused before listener: ${identity.report.state}`);
+  identity?.assertCurrent();
+  assertIdentityEnvironment();
+  const server = createServerForCandidate(options, options.identity?.runtime);
   const listen = () => new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? 8080, options.host ?? "127.0.0.1", () => { server.off("error", reject); resolve(); });

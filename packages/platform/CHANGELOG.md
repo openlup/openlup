@@ -8,6 +8,17 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add reference identity startup admission for selected direct and managed modules,
+  with bundle-specific schema inventories, actual route/adapter bindings and email
+  trust. Direct customer reconciliation reads the authenticated principal's existing
+  contact link; direct operator invite/remove routes select the direct pending
+  lifecycle stores. Extend the cold consumer to direct identity adapters and
+  structural managed clients.
+  Migration: direct reconciliation no longer uses managed email association;
+  sessions need an existing linked contact or receive `ACCOUNT_LINK_CONFLICT`.
+  Install the complete direct catalogue and supply invitation notification delivery.
+  Public deployment policy still denies these routes by default.
+
 - Restore guest checkout when the reference browser's session lookup fails:
   the compatibility wrapper returns no session or authorization header while
   provider bootstrap retains strict error handling.

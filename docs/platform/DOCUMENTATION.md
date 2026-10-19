@@ -62,6 +62,12 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Identity selectors also cover reference admission, the finite bundle schema
+inventories, direct reconcile and operator command composition. Their owner is
+the identity guide; runtime, package and publication owners retain their
+installation, consumer and execution-contract obligations.
+
+
 Privacy routing additionally names the identity-owned export/erasure contracts,
 canonical receipt SQL and projection, reference privacy routes and subscription
 veto, operator Settings panel and conformance modules. These selectors retain

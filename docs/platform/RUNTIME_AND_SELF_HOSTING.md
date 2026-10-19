@@ -14,8 +14,13 @@ Both direct and managed routes retain risk `mutation` and the public default ref
 with 503 / `adopter_policy_required` before reading request bodies or queries.
 Both mounts also refuse before authentication or privacy bindings are created.
 Direct and managed adopters reach them only through `#deployment-route-policy`, like every
-admin mutation route, including invite, remove and admin `me`. After admission,
-managed export explicitly reports incomplete coverage and erasure refuses with
+admin mutation route, including invite, remove and admin `me`. Ordinary admin
+routes reach dispatcher preflight exactly once with the original request, response
+and route arguments. The two exact default privacy mounts run their preflight
+internally after mutation-policy admission. An explicitly admitted identity
+candidate dispatches its own policy-wrapped table and bound preflight without
+substituting default privacy handlers. After policy admission, managed export
+explicitly reports incomplete coverage and erasure refuses with
 `MANAGED_PRIVACY_ERASURE_UNAVAILABLE` before any mutation.
 Admin Settings adds an identity-only export/erase panel with explicit confirmation,
 retained obligations and subject/session-bound in-memory readback. Direct erasure
@@ -23,16 +28,15 @@ uses one local transaction and leaves subscriptions unchanged. The existing `pru
 command now returns separate operator/customer counts and deletes at most 500 per
 store whose expiry is strictly older than 24 hours. No scheduler is introduced.
 
-The managed reconcile binding passes a required email-trust policy to the
-package handler even when `PLATFORM_BUNDLE` selects the direct bundle, because
-this route composes managed verification and storage. It shares a settings cache
-across requests and exposes unsafe
-settings as `EMAIL_TRUST_ENVELOPE_REFUSED` (403) and unavailable settings as
-`EMAIL_TRUST_SETTINGS_UNAVAILABLE` (503). Metadata-only mailbox verification
-no longer qualifies. `IDENTITY_EMAIL_VERIFYING_PROVIDERS` is optional and
-server-only; the default trusts no enabled external providers. See the
-[identity owner](IDENTITY.md#responsibility-and-composition) for migration and
-explicit verifier-only adoption.
+Customer reconcile selects the bundle's identity path. Direct requests read only
+the authenticated actor's existing linked contact and return `created:false` and
+`linked:false`; an absent link is `ACCOUNT_LINK_CONFLICT`. Managed requests retain
+the required email-trust policy, shared settings cache and 403/503 trust refusals.
+Direct operator invite/remove route factories use the direct invitation directory
+and store behind live human-admin authorization. The invite factory accepts a
+notification port; delivery failure retains the invitation. Public policy still
+denies before body reads or binding construction. See the
+[identity composition contract](IDENTITY.md#responsibility-and-composition).
 
 
 Managed operator invitation inserts active membership immediately. Authorization
@@ -110,6 +114,25 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+An explicitly supplied identity candidate builds its handlers from typed ports
+and snapshots its environment. Startup checks that environment against the host
+and ambient process, then admits and dispatches the same policy-wrapped route
+table, including supplied privacy handlers. Admin preflight uses the candidate's
+operator authorization binding. This candidate seam adds no default or
+subscription-profile routes. See [identity composition](IDENTITY.md#responsibility-and-composition).
+
+The shared server also accepts an explicitly supplied identity candidate through
+`startPublicReferenceServer({ identity })`. It awaits selected module, schema,
+route, adapter and email-trust readiness before creating a listener. Supply a
+trusted schema/migration observer and refresh candidate identity when artifacts,
+configuration or schema change. Unknown observations refuse admission. This seam
+does not select an identity browser profile or alter the default static or
+subscription page sets. The legacy outbox placeholder cannot be combined with
+identity module selection. Identity HTTP dispatch checks the selected deployment
+policy before buffering input; the disposable policy remains an application
+alias binding.
+
+
 The subscription reference mounts English and Polish customer login, callback
 and account routes through one customer auth provider and query client. Account
 entry requires a linked own-profile read. Only GET `/api/bff/customers/me` is
@@ -119,9 +142,10 @@ composition is unchanged. See [browser identity](IDENTITY_BROWSER_REFERENCE.md)
 for routes, code fallback, persistence reset and logout behaviour.
 
 The subscription profile supplies a managed email-trust policy to its existing
-reconcile call with an empty external-provider allowlist. The reference server
-retains its existing startup admission; identity readiness helpers are available
-for separate host composition. Existing links continue, and new email association
+reconcile call with an empty external-provider allowlist. Without an explicitly
+supplied identity candidate, the reference server retains its existing startup
+admission; supplying one adds identity and email-trust readiness checks before
+listening. Existing links continue, and new email association
 fails closed after cache expiry. The profile retains its existing generic
 `FORBIDDEN` (403) response for reconciliation refusals. Its stricter disposable
 installation guard still runs first on routes and can return a generic 503
@@ -296,12 +320,14 @@ mount the admin shell or provide a direct operator browser journey.
 
 `readOperatorInvitationTtl` is an available direct-host composition helper for
 `OPERATOR_INVITATION_TTL_SECONDS` (default 604800, inclusive integer bounds
-60..2592000). A direct host must call it before directory, persistence or
+60..2592000). A direct host must call it or the pure `parseOperatorInvitationTtl`
+before directory, persistence or
 notification effects, then pass the parsed number to identity. Invalid values
-throw `operator_invitation_ttl_invalid`. The reference invite runner composes
-managed immediate activation and does not call this helper or enforce this TTL;
-passing the optional setting into the Compose container does not activate the
-direct lifecycle. The static profile mounts no operator route. Managed activation
+throw `operator_invitation_ttl_invalid`. The reference invite runner selects the
+direct lifecycle for `node-postgres` and calls `parseOperatorInvitationTtl` before
+constructing authentication, directory or store bindings. Managed bundles retain
+immediate activation without enforcing this direct-only TTL.
+The static profile mounts no operator route. Managed activation
 requires the existing service-role configuration in addition to session
 authentication. Failed persistence retains the provider identity and customer
 link for reuse. Managed invitations store native active membership; no Auth

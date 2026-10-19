@@ -243,8 +243,8 @@ policy, rate limiting, messages, sender and deployment URLs. Factories use the
 foundation BFF envelope and accept the application's observed request-ID reader.
 The module depends only on the declared foundation entries, without changing the
 artifact's rail kind. Its schema contribution requires a host-selected inventory;
-its five SQL files are verbatim projections at canonical positions 11, 12, 29,
-60 and 67, not an independent migration chain. The owner page maps the characterization
+its seven SQL files are verbatim projections at canonical positions 11, 12, 29,
+60, 67, 68 and 69, not an independent migration chain. The owner page maps the characterization
 witnesses and records the remaining evidence.
 
 Identity authorizes stored operator roles only when they are `admin` or
@@ -412,3 +412,27 @@ Use a fresh public schema and reset the disposable stack between proofs; the
 managed privacy proof replays the committed chain without fixture erasure grants.
 Replay through node-postgres omits only the psql-only pg_dump `\restrict` and
 `\unrestrict` guard lines; all migration SQL remains unchanged.
+
+
+Reference startup can compose identity through `createReferenceIdentity` and
+`startPublicReferenceServer({ identity })`, with explicit route functions,
+selected adapters, trusted schema/migration observation and the bundle-specific
+inventory. It consumes email-trust readiness before listening, and rejects
+unknown or unsatisfied candidates. Direct reconcile reads the existing actor
+link; direct invite/remove select the pending-invitation stores. The default
+static reference and browser page sets remain unchanged. See the
+[composition contract](../../docs/platform/IDENTITY.md#responsibility-and-composition).
+
+Both identity entries already belong to the public export map and build output;
+artifact availability does not imply registry publication or release activation.
+The cold installed-artifact consumer imports both entries without optional peers,
+compiles contracts without driver types, and invokes every driver-owning direct
+identity adapter for its missing-peer refusal. Managed factories consume
+structural clients. Server declarations compile after peer selection. Full
+installed-artifact and database proof require the existing supervisor-run package
+consumer command and an owned disposable database.
+
+The managed identity service-role capabilities forward in the committed chain
+supplies client link writes and operator membership insert/email-read
+permissions; the local conformance runners add no fixture grant. No migration is
+added by reference composition.
