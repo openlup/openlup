@@ -220,6 +220,7 @@ describe("complete public CI", () => {
     expect(shard).toContain("          fetch-depth: 0\n");
     expect(shard).toContain("          cache: npm\n");
     const aggregate = workflowJob("test-full");
+    expect(aggregate).toContain("    name: test-full\n");
     expect(aggregate).toContain("    needs: [test-full-shard]\n");
     expect(aggregate).toContain("if: ${{ always() && github.event.repository.private == false &&");
     expect(aggregate).toContain("SHARD_RESULT: ${{ needs.test-full-shard.result }}");
