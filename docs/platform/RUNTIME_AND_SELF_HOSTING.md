@@ -133,6 +133,36 @@ policy before buffering input; the disposable policy remains an application
 alias binding.
 
 
+
+The separate identity selection uses `OPENLUP_REFERENCE_PROFILE=identity`, its
+own closed browser imports and the existing customer/operator pages. The
+server accepts an explicit composed identity runtime and awaits admission
+before listening; absence or refusal prevents a listener. Its finite API
+surface excludes checkout, provider and subscription mutation routes. Local
+policy runs only under verified run/container/installation ownership, before
+request-body adaptation. Inside that scope, the host dispatches the admitted
+route table with its operator preflight; it does not rebuild or replace handlers.
+The disposable bundle supplies package observations from its build module graph,
+while startup still checks the selected bundle, schema and complete environment.
+The default public route policy is unchanged.
+
+The reference HTTP shell refuses percent encoding in the pathname and malformed
+query encoding, validating query escapes once without rewriting or double-decoding them. In particular,
+`/account/auth/callback?returnTo=%2Faccount` serves the identity document;
+encoded path separators and traversal paths still return 404. Callback fragments
+remain in the browser and are consumed by the selected authentication adapter.
+
+The [identity guide](IDENTITY.md#disposable-identity-reference) gives both opt-in
+acceptance commands and their prerequisites. They own disposable services and
+captured mail; they do not attach to an adopter database. The direct database
+and reference HTTP server bind to loopback; the managed Supabase stack publishes
+its synthetic services, including the mail-capture API, on all host interfaces
+for the run and requires a host not reachable from untrusted networks. The identity
+runtime must provide schema, route, binding and email-trust admission; this
+shell alone supplies no readiness claim. No runnable identity container image
+or stable installation channel is established by this selection.
+
+
 The subscription reference mounts English and Polish customer login, callback
 and account routes through one customer auth provider and query client. Account
 entry requires a linked own-profile read. Only GET `/api/bff/customers/me` is

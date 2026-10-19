@@ -436,3 +436,15 @@ The managed identity service-role capabilities forward in the committed chain
 supplies client link writes and operator membership insert/email-read
 permissions; the local conformance runners add no fixture grant. No migration is
 added by reference composition.
+
+
+## Disposable identity composition
+
+The reference application's opt-in identity shell consumes the existing
+`./identity` and `./identity/contracts` exports without changing their maturity
+or publishing a registry version. It reuses the customer/operator pages and
+captured-delivery port, with a private local mailbox and administrator privacy
+panel. Its explicit runtime must supply actual routes and readiness admission;
+the shell refuses a missing composition. See the
+[identity reference guide](../../docs/platform/IDENTITY.md#disposable-identity-reference)
+for both-bundle commands, the committed managed grants and installation limits.

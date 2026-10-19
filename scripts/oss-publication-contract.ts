@@ -28,6 +28,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "server/runtime/auth/operatorAuthBinding.test.ts", "server/runtime/auth/operatorIdentityCommand.test.ts", "server/runtime/auth/operatorRoutes.test.ts", "server/runtime/auth/operatorSessionBinding.test.ts", "src/integrations/postgres/operatorAuthPort.test.ts", "src/lib/useAuth.test.tsx", "src/pages/admin/AuthCallbackPage.test.tsx", "src/pages/admin/LoginPage.test.tsx", "tests/postgres/operatorIdentityUpgrade.test.ts", "tests/postgres/operatorInvitationLifecycle.test.ts", "tests/postgres/operatorInvitationCatalogue.test.ts",
   "server/runtime/public-reference/serve.ts",
   "tests/postgres/runIdentityEnvelopeConformance.mjs",
+  "tests/identity/runAcceptance.mjs", "tests/identity/acceptance.conformance.ts", "server/runtime/auth/capturedIdentityMailbox.test.ts",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
   "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",
   "vitest.config.ts",

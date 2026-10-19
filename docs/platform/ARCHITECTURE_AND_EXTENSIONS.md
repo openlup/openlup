@@ -44,6 +44,16 @@ owner-authority lifecycle stores. The public deployment-policy alias remains
 in front of route effects. See [identity composition](IDENTITY.md#responsibility-and-composition).
 
 
+
+The disposable identity reference has a separate browser entry and finite route
+surface. Its server shell awaits the supplied composition's admission before
+listening. A profile-local `#deployment-route-policy` alias grants only declared
+identity routes within an ownership-checked async request scope; the ordinary
+public policy remains the fallback outside that scope. Host, same-origin JSON
+and method checks precede body adaptation. The local mailbox uses the existing
+captured-delivery port and private files, with no network delivery service.
+
+
 The subscription reference uses one `CustomerAuthProvider` across login,
 callback and account routes, and mounts the same query client that the provider
 clears on logout or a principal change. Browser binding loads only the selected

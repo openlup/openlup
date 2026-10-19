@@ -153,7 +153,13 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
-<!-- openlup-doc-impact {"unit":"configuration","digest":"sha256-83a1b61230f02b1392e37e8105a3d184ede985a1aca7297b1d15f0cf4cca7342","reason":"The subscription browser import profile adds exact page, customer provider, adapter and transitive contract paths. It retains a closed explicit allowlist; canonical versioning and compatibility posture are unchanged."} -->
+The disposable identity reference's run directory, run id and local mail origin
+are evaluation settings bound to one owned installation. They establish no
+persistent customer identifier, package API version or migration contract. The
+selected browser import inventory is independent of the public default build;
+server credentials do not become browser configuration.
+
+
 
 Identity privacy appends the direct receipt migration at position 69 while
 preserving the preceding manifest entries and SQL projection identities. Erasure

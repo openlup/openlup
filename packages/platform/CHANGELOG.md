@@ -8,6 +8,21 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add an opt-in disposable identity reference shell with separate customer/operator
+  browser mounts, a private captured mailbox for the direct bundle and opt-in
+  acceptance commands for both bundles: direct on node-postgres and managed on a
+  local Supabase stack with pinned CLI 2.98.2. Reference HTTP path validation
+  refuses percent-encoding only in the pathname; well-formed encoded query values
+  on declared pages are accepted without double decoding, malformed query escapes
+  are refused, and encoded-path and traversal refusals are unchanged. Managed
+  acceptance connects only to loopback API and database targets at its allocated
+  ports. Default and subscription browser artifacts and package declarations are
+  unchanged.
+  Migration: reference pages now accept well-formed percent-encoded query values
+  and answer 404 for malformed ones. Managed acceptance exposes the disposable
+  stack's synthetic services, including its mail-capture API, on all host
+  interfaces for the run; use a host not reachable from untrusted networks.
+
 - Add reference identity startup admission for selected direct and managed modules,
   with bundle-specific schema inventories, actual route/adapter bindings and email
   trust. Direct customer reconciliation reads the authenticated principal's existing

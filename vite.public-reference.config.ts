@@ -5,9 +5,11 @@ import { readFileSync } from "node:fs";
 
 const configDir = typeof __dirname === "string" ? __dirname : import.meta.dirname;
 const publicReferenceSsrBuild = process.env.OPENLUP_BUILD_TARGET === "public-reference-ssr";
-const subscriptionBuild = process.env.OPENLUP_REFERENCE_PROFILE === "subscription";
+const referenceProfile = process.env.OPENLUP_REFERENCE_PROFILE;
+const identityBuild = referenceProfile === "identity";
+const subscriptionBuild = referenceProfile === "subscription";
 const publicReferenceDocument = `<!doctype html>
-<html lang="en"${subscriptionBuild ? ' data-openlup-profile="subscription"' : ""}>
+<html lang="en"${identityBuild ? ' data-openlup-profile="identity"' : subscriptionBuild ? ' data-openlup-profile="subscription"' : ""}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,12 +18,12 @@ const publicReferenceDocument = `<!doctype html>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/public-reference/${subscriptionBuild ? "subscription-main" : "main"}.tsx"></script>
+    <script type="module" src="/src/public-reference/${identityBuild ? "identity-main" : subscriptionBuild ? "subscription-main" : "main"}.tsx"></script>
   </body>
 </html>`;
 
-function publicReferenceDocumentPlugin(): Plugin {
-  return { name: "public-reference-document", transformIndexHtml: { order: "pre", handler: () => publicReferenceDocument } };
+function publicReferenceDocumentPlugin(identityAuth = "managed"): Plugin {
+  return { name: "public-reference-document", transformIndexHtml: { order: "pre", handler: () => identityBuild ? publicReferenceDocument.replace('data-openlup-profile="identity"', `data-openlup-profile="identity" data-identity-auth="${identityAuth}"`) : publicReferenceDocument } };
 }
 
 /** Refuse every first-party module Vite parses outside the deliberately small public root. */
@@ -34,19 +36,29 @@ export function assertPublicReferenceModuleId(id: string, root = configDir, shar
 }
 
 function publicReferenceGraphGuard(): Plugin {
-  const sharedFiles: string[] = subscriptionBuild && !publicReferenceSsrBuild
+  const sharedFiles: string[] = identityBuild
+    ? JSON.parse(readFileSync(path.resolve(configDir, "config/public-reference-identity-imports.json"), "utf8")).files
+    : subscriptionBuild && !publicReferenceSsrBuild
     ? JSON.parse(readFileSync(path.resolve(configDir, "config/public-reference-subscription-imports.json"), "utf8")).files
     : [];
+  const check = (id: string) => {
+    if (identityBuild) {
+      const source = id.replace(/\?.*$/, "");
+      if (path.isAbsolute(source) && !source.split(path.sep).includes("node_modules")
+        && source !== path.resolve(configDir, "index.html")
+        && !sharedFiles.some(file => path.resolve(configDir, file) === source)) throw new Error(`Identity reference import outside closed inventory: ${source}`);
+    } else assertPublicReferenceModuleId(id, configDir, sharedFiles);
+  };
   return {
     name: "public-reference-import-closure",
-    load(id) { assertPublicReferenceModuleId(id, configDir, sharedFiles); return null; },
-    moduleParsed(moduleInfo) { assertPublicReferenceModuleId(moduleInfo.id, configDir, sharedFiles); },
+    load(id) { check(id); return null; },
+    moduleParsed(moduleInfo) { check(moduleInfo.id); },
   };
 }
 
 export function publicReferenceViteConfig(mode = "production"): UserConfig {
   const env = loadEnv(mode, configDir, "");
-  const publicAuth = subscriptionBuild && !publicReferenceSsrBuild ? {
+  const publicAuth = (identityBuild || subscriptionBuild) && !publicReferenceSsrBuild ? {
     VITE_SUPABASE_URL: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
     VITE_SUPABASE_PUBLISHABLE_KEY: env.SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_PUBLISHABLE_KEY ?? env.VITE_SUPABASE_ANON_KEY ?? "",
     VITE_COMMERCE_AUTH_PROVIDER_KIND: env.VITE_COMMERCE_AUTH_PROVIDER_KIND ?? "supabase",
@@ -60,7 +72,7 @@ export function publicReferenceViteConfig(mode = "production"): UserConfig {
     plugins: [{
       name: "public-reference-auth-settings",
       configResolved(config) { Object.assign(config.env, publicAuth); },
-    }, publicReferenceGraphGuard(), ...(publicReferenceSsrBuild ? [] : [publicReferenceDocumentPlugin()]), react()],
+    }, publicReferenceGraphGuard(), ...(publicReferenceSsrBuild ? [] : [publicReferenceDocumentPlugin(["postgres", "node-postgres"].includes(publicAuth.VITE_COMMERCE_AUTH_PROVIDER_KIND ?? "") ? "direct" : "managed")]), react()],
     resolve: {
       conditions: [...(publicReferenceSsrBuild ? defaultServerConditions : defaultClientConditions)],
       alias: { "@": path.resolve(configDir, "./src") },

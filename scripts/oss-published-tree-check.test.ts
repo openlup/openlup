@@ -185,7 +185,7 @@ describe("complete public CI", () => {
       .replace("scripts/agent-review-controller.test.ts ", "scripts/public-ci-reuse.test.ts ")
       .replace("scripts/agent-review-hosted.test.ts ", "")
       .replace("packages/core ", "packages/core packages/outbox packages/platform server/runtime/outbox ")
-      + " server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts";
+      + " server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts";
     expect(PUBLIC_REQUIRED_TEST_COMMAND).toBe(expandedFloor);
     expect(manifest.scripts["test:required"]).toBe(expandedFloor);
     expect(PUBLIC_REQUIRED_TEST_SCOPE).toEqual(expandedFloor.split(" ").slice(3));

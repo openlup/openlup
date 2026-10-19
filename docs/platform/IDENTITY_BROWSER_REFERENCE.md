@@ -126,3 +126,29 @@ catalogue, requests/redeems real challenges, signs/verifies real sessions and
 reads profiles through the authenticated actor lane. Replay, expiry, cross-owner
 refusal, durable client/subscription identity and unchanged migration ledger are
 asserted. It adds no migration or schema-parity claim. Component checks do not replace the installation proofs.
+
+## Selected identity profile
+
+`OPENLUP_REFERENCE_PROFILE=identity` selects
+[`identity-main.tsx`](../../src/public-reference/identity-main.tsx) and its
+[closed import inventory](../../config/public-reference-identity-imports.json).
+This is a disposable evaluation profile; the default static entry and the
+subscription profile remain separate selections. Only the explicit public
+browser auth settings are exposed to its bundle; server keys are excluded.
+
+The selected profile mounts `/sign-in`, `/account/auth/callback` and `/account`
+under the existing customer provider. The account view waits for session
+bootstrap, requires the linked profile and offers logout. It neither signs up
+unknown addresses nor creates a separate session store.
+
+`/admin/login`, `/admin/auth/callback` and `/admin` mount the existing operator
+pages beneath their own provider. Direct selection passes `providerKind="direct"`;
+managed selection omits it. The landing page requires the provider's live
+recognized role. Administrators see the existing identity privacy panel;
+distributors do not. Customer and operator session state stay independent.
+The callback keeps the existing authorization-before-navigation behavior.
+
+The [identity acceptance commands](IDENTITY.md#disposable-identity-reference)
+exercise these mounts against owned local services. Credential-bearing browser
+artifacts and reporter output are disabled. They do not claim browser or
+installation coverage merely because the bundle compiles.
