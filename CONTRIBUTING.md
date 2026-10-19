@@ -679,6 +679,15 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 
 ### Test scope and diagnostics
 
+Contributor tooling tests under `scripts/**` keep isolated fork workers in the
+`node` project. Other Node tests use `node-logic`, and browser tests use `dom`,
+both with isolated thread workers. Every file gets a fresh JavaScript environment;
+threads share an operating-system process. Vitest's existing project ordering
+runs `node` before `node-logic`. All projects inherit one combined worker limit,
+with the existing test and hook deadlines, retry policy and coverage thresholds.
+Nested runs use this same configuration. Tooling tests continue to execute their
+real command, cancellation and resource-ownership proofs.
+
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full` job invokes that command without restating
 the directories and preserves its raw failure result. The required `test` job

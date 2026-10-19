@@ -81,7 +81,7 @@ let cleanupDom: (() => void) | undefined;
 if (HAS_DOM) {
   await import("@testing-library/jest-dom/vitest");
   const { cleanup, configure } = await import("@testing-library/react");
-  // Provided by vitest.config.ts from the main process. This file runs inside a forked
+  // Provided by vitest.config.ts from the main process. This file runs inside an isolated
   // worker whose argv never carries `--coverage`, so the previous argv check here was
   // never true and silently left the 1s default in place, making every findBy*/waitFor a
   // load-sensitive flake in the coverage lane.
