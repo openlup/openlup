@@ -1,4 +1,5 @@
 /** Provider-agnostic transport contract, outcome projection and capture transport. */
+import { admitPolicyEnforcedEmailTransport } from "./emailEgress.js";
 export interface EmailMessage {
   from: string;
   to: string;
@@ -151,7 +152,7 @@ export interface InMemoryEmailTransport extends EmailTransport {
 export function createInMemoryEmailTransport(opts?: { idPrefix?: string }): InMemoryEmailTransport {
   const sent: EmailMessage[] = [];
   const prefix = opts?.idPrefix ?? "in-memory";
-  return {
+  return admitPolicyEnforcedEmailTransport({
     providerKind: "in-memory",
     sent,
     async send(message) {
@@ -162,5 +163,5 @@ export function createInMemoryEmailTransport(opts?: { idPrefix?: string }): InMe
         providerResponse: { id },
       };
     },
-  };
+  });
 }

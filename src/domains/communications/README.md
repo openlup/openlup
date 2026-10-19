@@ -48,6 +48,19 @@ headers/tags, sink/drop outcomes and ledger ordering; later behavior proposals
 are separate changes. The trigger catalogue and production activation are
 outside this import.
 
+B1 enforces package admission at the injected network boundary. Compose new
+senders with `createGuardedEmailTransport`, supplying explicit routing and
+credential/tag context; missing or malformed policy refuses before sender entry.
+The maintained client retains its own policy and gets an explicit identity
+bridge. Raw Auth closures use `createAuthEmailTransport`. Names and caller-owned
+capture flags grant no exemption. Explicit drop is skipped, block is failed,
+and package capture is local acceptance only. Existing control, required-audit,
+ledger order and subscription ownership remain unchanged. The
+[package contract](../../../packages/platform/README.md#communications-import)
+describes decision validation and host trust; the
+[M04 expectation ledger](../../../docs/platform/plans/oss-m04-communications-triggers.md#b1-egress-boundary)
+lists the intentional alternate-transport changes.
+
 ## Public surface (import cross-domain ONLY these)
 - Admin clients: `admin*Client.ts` files for templates, active/content edits,
   email sends/events, notification recipients, permission reads/overrides and

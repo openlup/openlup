@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- B1: require package egress admission before every supported injected mail send.
+  `createGuardedEmailTransport` validates a fresh explicit host policy, refuses
+  missing/unknown/malformed decisions, redirects sink sends and suppresses drops
+  before invoking the network sender. Provider names grant no admission.
+  Package capture remains local; the maintained policy-enforcing transport uses
+  an explicit composition bridge with unchanged wire behavior. Raw Auth closures
+  compose through `createAuthEmailTransport`. See the M04 plan for every changed
+  alternate-transport expectation; there is no schema or package graph change.
+
 - Extract neutral admitted-observation and bounded polling orchestration through
   existing `./communications`. Existing domain wrappers retain protocol mapping,
   admission, evidence and persistence arguments. Keep lookup/apply/telemetry and

@@ -2406,6 +2406,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/emailEgress.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/emailHealthAssessment.ts",
       "class": "public-output"
     },
@@ -3010,6 +3014,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/authEgress.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/contracts.test.ts",
       "class": "public-output"
     },
@@ -3019,6 +3027,10 @@
     },
     {
       "path": "packages/platform/test/communications/deliveryObservation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/emailEgress.test.ts",
       "class": "public-output"
     },
     {
@@ -11898,6 +11910,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/infra/email/emailEgressReference.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/infra/email/emailNotificationControl.test.ts",
       "class": "public-output"
     },
@@ -19967,6 +19983,10 @@
     },
     {
       "path": "tests/platform/customerJourneyReadWork.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/mailEgressCallers.test.ts",
       "class": "public-output"
     },
     {

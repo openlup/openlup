@@ -36,7 +36,7 @@ import {
   type EmailDeliveryTimelineClient,
 } from "./emailDeliveryTimeline.js";
 import { buildEmailOriginMetadata, withEmailOriginMetadata } from "../../infra/resend/emailOriginMetadata.js";
-import { classifyEmailSendOutcome, createResendTransport, type EmailSendOutcome, type EmailSendResult, type EmailTransport } from "../../infra/email/emailTransport.js";
+import { guardEmailTransport, classifyEmailSendOutcome, createResendTransport, type EmailSendOutcome, type EmailSendResult, type EmailTransport } from "../../infra/email/emailTransport.js";
 import { logEmailLedgerInsertFailure } from "./emailLedgerLog.js";
 import {
   EMAIL_NOTIFICATION_ADMIN_DISABLED,
@@ -150,7 +150,7 @@ export function createResendSubscriptionDunningEmailPort(input: {
     signal: AbortSignal,
   ): Promise<EmailSendResult> {
     const { subject, html, text } = rendered;
-    return transport.send({
+    return guardEmailTransport(transport).send({
       from: fromEmail,
       to,
       subject,

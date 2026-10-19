@@ -1,4 +1,5 @@
 import {
+  guardEmailTransport,
   classifyEmailSendOutcome,
   emailTransportLedgerIdentifier,
   emailTransportMessageId,
@@ -92,7 +93,7 @@ export function createPublicIntakeEmailDeliveryPort(input: {
 
 async function send(transport: EmailTransport, message: PublicIntakeDeliveryMessage, dedupeKey: string): Promise<EmailSendResult> {
   try {
-    return await transport.send({ from: message.sender, to: message.to, subject: message.subject, html: message.html, text: message.text, replyTo: message.replyTo, idempotencyKey: dedupeKey });
+    return await guardEmailTransport(transport).send({ from: message.sender, to: message.to, subject: message.subject, html: message.html, text: message.text, replyTo: message.replyTo, idempotencyKey: dedupeKey });
   } catch {
     return failedEmailTransportResult();
   }

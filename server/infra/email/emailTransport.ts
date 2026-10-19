@@ -1,6 +1,6 @@
 import { postResendEmail } from "../resend/resendEmailClient.js";
-import type { EmailTransport } from "@openlup/platform/communications";
-export { emailTransportMessageId, emailTransportLedgerIdentifier, failedEmailTransportResult, classifyEmailSendOutcome, withEmailSendSkipReason, createInMemoryEmailTransport } from "@openlup/platform/communications";
+import { admitPolicyEnforcedEmailTransport, type EmailTransport } from "@openlup/platform/communications";
+export { guardEmailTransport, emailTransportMessageId, emailTransportLedgerIdentifier, failedEmailTransportResult, classifyEmailSendOutcome, withEmailSendSkipReason, createInMemoryEmailTransport } from "@openlup/platform/communications";
 export type { EmailMessage, EmailSendOutcome, EmailSendResult, EmailSendSkipReason, EmailSendOutcomeLike, EmailSendOutcomeProjection, EmailTransport, InMemoryEmailTransport } from "@openlup/platform/communications";
 export const DEFAULT_EMAIL_PROVIDER_KIND = "resend";
 
@@ -13,7 +13,7 @@ export function createResendTransport(opts: {
   apiKey: string;
   env?: Record<string, string | undefined>;
 }): EmailTransport {
-  return {
+  return admitPolicyEnforcedEmailTransport({
     providerKind: DEFAULT_EMAIL_PROVIDER_KIND,
     send(message) {
       return postResendEmail({
@@ -30,7 +30,7 @@ export function createResendTransport(opts: {
         env: opts.env,
       });
     },
-  };
+  });
 }
 
 /**

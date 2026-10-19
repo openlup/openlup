@@ -1,10 +1,9 @@
 # server/infra/email - provider-neutral email transport
 
-Status: source-of-truth
-Verified against `0dc20d72` (2026-09-04) - scope: `emailTransport.ts`,
-`emailNotificationControl.ts`, every consumer of `EmailTransport` and
-`postResendEmail` found by grep, and the render-parity test named below. No mail
-was sent and no provider account was inspected.
+Status: development-preview source contract.
+M04 B1 verification uses the package transport conformance, neutral caller
+transcripts and `emailEgressReference.test.ts` wire witnesses. These use synthetic
+senders and intercepted HTTP; no mail is sent and no provider account is inspected.
 
 This is the OSS swap point for outbound email. Everything above this boundary
 talks to the `EmailTransport` interface rather than to a named provider.
@@ -18,11 +17,10 @@ talks to the `EmailTransport` interface rather than to a named provider.
   values only; remote URLs and filesystem paths are deliberately outside this
   boundary.
 - `EmailTransport` - `{ providerKind, send(message) }`. `providerKind` is the
-  stable tag ledgers and observability record.
+  stable tag ledgers and observability record. Injection requires package-owned
+  admission; the tag does not authorize network effects.
 - `EmailSendOutcome` and `EmailSendResult` - the result types. They are neutral
-  *aliases*, not neutral *shapes*: both are re-exports of the concrete client's
-  `ResendEmailSendOutcome` / `ResendEmailPostResult`, and the outcome still
-  carries a `resendId` field. Two helpers exist precisely because of that leak -
+  package shapes retain a legacy `resendId` field for reference compatibility. Two helpers exist precisely because of that leak -
   `emailTransportMessageId()` reads the identifier at the boundary, and
   `emailTransportLedgerIdentifier()` writes it back onto the current source
   schema's legacy `resend_id` column. A fork replacing the provider keeps those
@@ -44,9 +42,8 @@ Implementations:
   composition roots use.
 - `createInMemoryEmailTransport()` - a non-provider reference transport. Captures
   sends in a readable `sent` array and makes no network call.
-  `emailTransport.test.ts` uses it to prove a consumer can send with zero
-  provider references - the same starting point a fork uses before writing its
-  own SES or SMTP adapter.
+  The package `transportConformance.test.ts` and egress tests retain the complete
+  ordered envelope/result and zero-network witnesses.
 
 `emailNotificationControl.ts` sits beside the transport and owns the
 administrative kill switch (`EmailNotificationControlPort`,
@@ -55,27 +52,34 @@ transport.
 
 ## To run on another provider
 
-Implement `EmailTransport.send` for your provider, mirroring
-`createResendTransport`, and construct it where `createEmailTransport` is called
-today. Nothing above this seam needs to change.
+Compose a new sender with the package `createGuardedEmailTransport` constructor.
+Supply a fresh explicit policy and consume its admitted recipient, credential and
+environment tag in the concrete sender. Unknown or incomplete policy refuses
+before sender entry; `drop` suppresses and `blocked` fails. Raw injected objects
+are refused even if their provider tag claims local capture. The package-created
+capture transport remains admitted and network-free.
+
+The maintained factory is explicitly registered through
+`admitPolicyEnforcedEmailTransport` because its existing client already enforces
+egress. That trusted host bridge must only register policy-enforcing senders;
+it adds no routing or credential change. Auth keeps that admission through
+`createAuthEmailTransport`, preserving the original envelope mapping. See the
+[package contract](../../../packages/platform/README.md#communications-import)
+for decision fields and the M04 changed-expectation ledger.
 
 ## Current source wiring
 
-Every Node email port already depends on the interface; none of them imports
-`postResendEmail`. Two ports require an injected transport and have no provider
-default at all: `accountingInvoiceDeliveryPort.ts` and
-`feedbackUploadNotificationPort.ts`. Five accept an optional `transport` and fall
-back to `createResendTransport({ apiKey, env: process.env })` when the caller
-omits it: `marketingEmailPort.ts`, `subscriptionDunningEmailPort.ts`,
-`subscriptionDunningScanEmailPort.ts`, `subscriptionLifecycleEmailPort.ts` and
-`transactionalEmailPort.ts`. Composition roots that already inject explicitly
-live in `server/runtime/**` and `server/adapters/supabase/**`. This is an
-inventory of current source wiring; it makes no claim about a mounted or
-deployed composition.
+The three reference transactional, dunning and marketing factories accept an
+optional transport and retain their existing maintained default selection.
+Invoice delivery requires an injected transport. Each of these four effect
+sites calls the neutral guard. The neutral admin-role and public-intake ports
+also require injection and call the same guard. The Auth hook checks its own
+transport admission and the API preserves maintained admission through the
+package envelope bridge. Runtime composition passes the explicitly admitted
+maintained factory where it already did; routes and schedules remain unchanged.
 
-Removing the five per-port defaults, so the provider is chosen once at
-composition, is the remaining mechanical step. It is a small change and nothing
-depends on it staying undone.
+This inventory describes source composition, not a selected or deployed provider.
+The concrete client remains the owner of the maintained policy and wire mapping.
 
 ## Scope
 

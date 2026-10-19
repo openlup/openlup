@@ -55,7 +55,7 @@ import {
   type EmailDeliveryTimelineClient,
 } from "./emailDeliveryTimeline.js";
 import { buildEmailOriginMetadata } from "../../infra/resend/emailOriginMetadata.js";
-import { classifyEmailSendOutcome, createResendTransport, withEmailSendSkipReason, type EmailTransport } from "../../infra/email/emailTransport.js";
+import { guardEmailTransport, classifyEmailSendOutcome, createResendTransport, withEmailSendSkipReason, type EmailTransport } from "../../infra/email/emailTransport.js";
 import {
   EMAIL_NOTIFICATION_ADMIN_DISABLED,
   createEmailNotificationControlPort,
@@ -111,7 +111,7 @@ export function createResendTransactionalEmailPort(input: {
     const { subject, html, text } = rendered;
     // R-1: the worker timeout must cancel the in-flight POST, otherwise an
     // orphaned send can complete after the row is re-claimed (dup email).
-    return transport.send({ from: fromEmail, to, subject, html, text, idempotencyKey, signal });
+    return guardEmailTransport(transport).send({ from: fromEmail, to, subject, html, text, idempotencyKey, signal });
   }
 
   async function recordTimeline(

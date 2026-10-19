@@ -21,7 +21,8 @@ separately authorized submission. No release, deployment or activation grant.
 | X3 | Add the approved 1,024 B type-only contracts browser limit; no existing cap increase. |
 | X4 | Documentation CLI fixture registration only: communications domain and matching route. |
 | Narrowing | Package only agnostic algorithms; maintained mail modules/factory and vendor-directory donors remain unchanged reference adapters; no new paths. |
-| Owner directive | Public module code is provider-agnostic; private vendor bindings stay at C5; existing reference adapters remain unchanged and neutrality stays green. |
+| Owner directive | Public module code is provider-agnostic; private vendor bindings stay at C5; reference preservation has only the explicit B1 exceptions below and neutrality stays green. |
+| B1 option (a), X5/X6 | Four raw-injection guard sites; invoice fixture admission and one refusal case with every prior assertion unchanged; minimal Auth bridge; maintained factory admission. All other frozen bytes and default behavior stay exact; two full reviews. |
 
 ## PR graph and scope
 
@@ -35,7 +36,7 @@ authorized release/adoption/staging. D2's maintained default remains reference-o
 | P2 | Retain the admitted-observation and lost-callback polling extraction through existing domain wrappers; reuse P1 transport/results/capture. Protocol mapping and atomic persistence remain reference-owned. Working-tree implementation; clean-candidate gates and native review pending. |
 | P3 | Content/presentation and Auth hook factories; proven-identical verification primitives; browser value closure. |
 | P4 | Agnostic effects/receipt/readback and reconciliation engines behind neutral ports; vendor mapping stays in the reference adapter; marketing automation is agnostic ports/contracts/conformance only. |
-| B1 | Separately approved transport-wide egress behavior. |
+| B1 | Mandatory package admission and policy guard at every supported network-mail injection. Four reference guard insertions, X5 invoice fixture/refusal case, X6 Auth bridge and maintained default admission. Local verification below; supervisor owns the signed candidate and two full reviews. |
 | B2 | Separately approved neutral `pl`/`en` defaults; enumerate changed public expectations and retain private legacy bindings. |
 | B3 | Four frozen direct-operation groups with schema/ACL/replay/refusal proof. |
 | C-compose / S1 | Explicit host composition/readiness, then separate set-version preparation; no duplicate executor. |
@@ -79,6 +80,47 @@ transport identifier compatibility fields remain; P2 does not claim to remove
 all legacy vocabulary. Effects/consent/native-store work stays in P4 and egress
 behavior stays in B1.
 
+## B1 egress boundary
+
+Authority: coordinator option (a) amends the preservation-only narrowing for
+exactly four raw-injection sites. Default selection and the concrete vendor
+client stay byte-identical. X5 adds only explicit admission of the invoice test
+fixture and one raw-injection refusal case; all prior assertions stay. X6 permits
+only the Auth bridge that passes the already-admitted maintained transport into
+the package hook; signature, rendering, sending and persistence order stay.
+The maintained factory's package-owned admission registry is within this grant.
+No manifests, export-map entries, dependencies, graph edges, schema or controls
+change. File edits only; signed commit, two fresh full reviews and delivery
+remain with the supervisor. No release, activation or adoption claim.
+
+Every intentional public alternate-transport expectation change:
+
+| # | Old → new |
+| --- | --- |
+| 1 | A raw injected send object can run without policy → unadmitted objects fail with `email_egress_unadmitted` before sender entry at transactional, dunning, marketing, invoice, admin and intake ports; raw Auth closures are refused too. |
+| 2 | Policy is wholly sender-specific → `createGuardedEmailTransport` requires a fresh explicit decision; missing/throwing policy gives `email_egress_policy_unavailable`, unknown/malformed decisions give `email_egress_policy_invalid`, with zero send calls, status zero, no identifier or exception text. |
+| 3 | No common block/drop enforcement → `blocked` is failure (`email_egress_blocked`); explicit `drop` is terminal skipped suppression with no sender, identifier or sent timestamp. |
+| 4 | Injected senders receive the intended address implicitly → sink admits only its explicit mailbox and preserves intended-recipient provenance in context; direct/production must explicitly retain the intended mailbox. Only one unadorned `local@domain.example` mailbox is admitted; whitespace, lists, display names and local-only domains are refused by this new policy boundary. |
+| 5 | Credential/tag selection is implicit → host policy supplies a nonblank credential and coherent environment tag, plus mode/reason/intended/effective recipients; unsupported fields or mismatches refuse. Concrete senders consume the context. Reasons are bounded lower-case token codes. |
+| 6 | A sender can claim a capture name/flag → names, copied shapes and flags cannot grant package admission; only actual package capture remains local and network-free with its original envelopes/ids. Admission belongs to the exact object in the loaded package instance; copying/serializing its shape, an independent package instance or a fresh raw closure does not preserve it. |
+| 7 | Arbitrary raw Email/Auth closures are supported without composition → use the validating network constructor and Auth envelope bridge; the trusted host admission bridge is reserved for implementations already enforcing policy internally. |
+| 8 | No common alternate provenance → network outcomes retain sender diagnostics/identifier/abort semantics and replace any sender-declared mode/reason with admitted mode/reason; refusal/drop cannot project as sent. Sender throws still follow existing caller uncertainty/propagation rules. |
+| 9 | Invoice synthetic raw stub sends without admission → the same fixture is explicitly admitted, all existing assertions stay; the new raw fixture must be uncertain after required timeline evidence with no send. |
+| 10 | Intake synthetic raw fixtures pass by structural shape → explicit fixture admission preserves all existing assertions; a new unadmitted transport is refused. |
+
+Unchanged: maintained reference sink/drop policy, primary/fallback/override keys,
+wire payload, tags, original-recipient header, optional absence, stable request
+key and AbortSignal; admin/consent/audit order, diagnostic/uncertainty rules,
+local capture, and subscription state/timing. The egress layer owns no durable
+write. No retry loop, fallback transport or default real-delivery policy is added.
+
+Simplicity pre-check: use one package identity registry and validating constructor
+at existing boundaries. An opt-in wrapper alone misses raw supported injections;
+global network interception cannot cover arbitrary transports. The trusted
+maintained-client bridge avoids duplicating its existing policy and changing
+sink provenance. This is an application composition boundary, not a sandbox
+against intentionally malicious host code.
+
 ## Witnesses
 
 | Witness | Isolated plant → failing test |
@@ -118,20 +160,58 @@ Required-selection additions: **13** (four mirrors; no pre-P1 removal).
 | P1 existing witnesses | 69 | 0.051960449 |
 | P1 synthetic witnesses | 36 | 0.499998535 |
 | P2 synthetic witnesses (32 package + 45 reference) | 77 | 0.015499756 |
-| Cumulative counted additions | **182** | **0.567458740** |
+| P1 + P2 counted subtotal | **182** | **0.567458740** |
 | P1 boundary iterations, separate | 120 | 0.053746826 |
 | P2 boundary iterations, separate | 6 | 0.006455322 |
-| Cumulative boundary iterations | **126** | **0.060202148** |
-| Cumulative runner additions | **308** | **0.627660889** |
+| P1 + P2 boundary subtotal | **126** | **0.060202148** |
+| P1 + P2 runner subtotal | **308** | **0.627660889** |
+| B1 synthetic witnesses (23 package + 21 reference/caller) | 44 | 0.147985352 |
+| B1 generated source-boundary iterations | 3 | 0.005675293 |
+| Cumulative counted additions | **226** | **0.715444092** |
+| Cumulative boundary iterations | **129** | **0.065877441** |
+| Cumulative runner additions | **355** | **0.781321534** |
 
-Against the cumulative **+100 authored/selected-case / +30 s** allowance,
-P2 adds 77 counted cases and six generated boundary iterations, with
+At P2 close, against the cumulative **+100 authored/selected-case / +30 s** allowance,
+P2 added 77 counted cases and six generated boundary iterations, with
 **0.021955078 s** summed file medians. X2 permits the recorded cumulative
 **82-case overrun** because **0.628 s < +30 s**. Post-loop cleanup must revisit
-this overrun; there is no new case allowance or budget reset. Remaining time
-allowance is **29.372339111 s**, baseline plus delta **596.227660889 s**.
+this overrun; there is no new case allowance or budget reset. At P2 close the remaining time
+allowance was **29.372339111 s**, baseline plus delta **596.227660889 s**.
 These are local timing proxies; hosted median time remains the binding limit.
-No root selector or mirror changes are needed for P2.
+No root selector or mirror changes were needed for P2.
+
+B1 adds **44 counted synthetic cases** and **3 generated boundary
+iterations**, with **0.153660645 s** summed file medians. Existing changed
+witness files are charged in full for time; their unchanged 21 cases are not
+newly added to required selectors. Only the one new case in each is counted as
+an addition. The inherited case overrun becomes **126**, with
+**0.781321534 s < +30 s** and **29.218678466 s** remaining.
+The hosted median bound and post-loop revisit remain binding; no allowance resets.
+Seven unrelated CI cases already present in the assigned base are excluded from
+B1's delta. Three identical passing selections supply these conservative local
+proxies; queue, wrapper and plant repetitions are excluded.
+
+B1's focused selection passes **165/165**. The complete required selection ran
+**7,727 cases: 7,726 passed and one artifact assertion failed**. The complete
+`npm test` ran **14,045 cases: 14,042 passed, one failed and two existing opt-in
+cases skipped**. The failed assertion is the unchanged content gate refusing the
+new untracked source and its two derived outputs; the raw policy similarly
+refuses five untracked catalogue entries. File-only authority forbids supplying
+tracked identity in this run. Existing explicit materialized-candidate APIs pass
+navigation/ownership/impact and pack-content/cap checks; these do not replace
+clean-commit raw gates. The supervisor must commit and rerun mandatory checks,
+artifact admission and two full native reviews before delivery.
+
+All ten isolated adverse plants fail the intended witnesses; restored unit and
+caller tests pass. Complete W3 subscription-mail transcripts include policy
+refusal, drop, sender failure/abort/throw and swallowed attempt-telemetry failure.
+A forbidden subscription-write fixture fault fails the full transcript witness.
+All source inputs restore byte-for-byte. Maintained wire witnesses cover actual
+sink/drop policy, key/header/tag/optional/signal behavior, isolated host
+block/production/direct decisions and Auth mapping. Existing Auth entrypoint
+tests are byte-identical. Build/API, ast-grep/lint/typecheck and both neutrality
+checks pass with zero increases. Subscription build passes and both output
+directories are removed. No task Git writes or native review cycles occur here.
 
 | P1 working-tree platform pack (historical; P2 artifact gates pending commit) | P1 final measure | Cap |
 | --- | ---: | ---: |
