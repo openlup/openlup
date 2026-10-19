@@ -68,7 +68,7 @@ describe('six real Git witnesses', () => {
       await writeFile(join(f.scratch, 'intent.json'), JSON.stringify({ intent }));
       await writeFile(f.statePath, JSON.stringify({ version: 1 }));
       await expect(f.cli('verify')).rejects.toThrow('prepare a version-2 session before review');
-      await expect(f.cli('prepare', '--new', join(f.scratch, 'intent.json'))).rejects.toThrow('session version must be 2');
+      await expect(f.cli('prepare', '--new', join(f.scratch, 'intent.json'))).rejects.toThrow('session version must be 2; a version-1 session');
       await rm(f.statePath);
       await f.cli('prepare', '--new', join(f.scratch, 'intent.json'));
       const initial = JSON.parse(await readFile(f.statePath, 'utf8'));

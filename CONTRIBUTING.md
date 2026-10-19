@@ -1203,7 +1203,9 @@ criteria and checking tool, group findings by root cause, consider simpler
 alternatives and record `pattern → simpler path`. This grants no delivery or
 settings authority. `prepare --new` records a changed intent or a rebase in the
 same append-only session history; findings, reviewers and the repair count carry
-on. Only `continue` adds cycles. A conflict or
+on. Only `continue` adds cycles. A version-1 session file from before
+2026-10-19 cannot be converted: delete `.context/scratch/agent-review/session.json`
+and prepare again. A conflict or
 failed queue carry-over is resolved by merging `main` and re-reviewing.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat

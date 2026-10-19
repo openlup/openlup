@@ -20,7 +20,7 @@ export const SHARED_INPUTS = ['scripts/', 'tests/setup/', 'src/test/',
 // removal-marker scans. All unlisted tests always run.
 export const TOOLING_INPUTS = {
   'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
-  'scripts/agent-review-gate.test.ts': [], // Synthetic Git objects and hook source.
+  'scripts/agent-review-gate.test.ts': [], // Real-Git witnesses of the session CLI and hosted admission.
   'scripts/public-ci-reuse.test.ts': [], // Recorded workflow/job responses.
   'scripts/documentation-impact.test.ts': [], // Synthetic ownership/Git fixtures.
   'scripts/documentation-bundle.test.ts': [], // Synthetic bundle and source fixtures.

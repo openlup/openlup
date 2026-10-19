@@ -25,7 +25,7 @@ export function requiredReviewers(risk) { demand(RISKS.includes(risk), 'risk is 
 function candidateValid(candidate) {
   demand(candidate && ['base', 'head', 'tree'].every(key => SHA.test(candidate[key])) && Array.isArray(candidate.changedPaths) && candidate.changedPaths.every(identity), 'candidate is invalid');
 }
-function stateValid(session) { demand(session?.version === 2, 'session version must be 2'); }
+function stateValid(session) { demand(session?.version === 2, 'session version must be 2; a version-1 session from before 2026-10-19 cannot be converted: delete .context/scratch/agent-review/session.json and prepare again'); }
 const latestPrepare = session => session.history.findLast(event => event.type === 'prepare');
 const latestIntent = session => latestPrepare(session)?.intent ?? session.intent;
 const authorIds = session => new Set([session.authorSessionId, ...session.history.filter(event => event.type === 'prepare').map(event => event.authorSessionId)]);
