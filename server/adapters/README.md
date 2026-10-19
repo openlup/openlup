@@ -83,11 +83,13 @@ Identity verification, account linking, admin directory gateways, profile reads 
 
 ## Communications package delegation
 
-The communications receipt, capture, webhook, preference-token, sync and ledger
+The communications receipt, capture, newsletter webhook, preference-token and sync
 adapters delegate to `@openlup/platform/communications`. Structural clients and
 RPC names are unchanged. The managed receipt binding keeps environment parsing,
 service-scope construction and fixture cleanup here; only its RPC/store algorithm
 moves. The direct receipt binding supplies its existing role-free transaction
 lane. Host senders, ACL composition, invitation copy/dedupe/expiry and the shared
 communications control-plane adapter stay at their current owners. No provider
-SDK or platform-to-outbox package dependency is added.
+SDK or platform-to-outbox package dependency is added. The mail-provider
+reference adapters, timeline and send-ledger helpers retain their original
+implementation and imports; no vendor adapter is published in the package.

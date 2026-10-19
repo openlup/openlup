@@ -829,13 +829,11 @@ export interface CapturedTransactionalDeliveryPort {
 type COMMUNICATION_CHANNEL = "email";
 type EMAIL_SEND_STATUSES = "queued" | "sent" | "delivered" | "bounced" | "complained" | "failed" | "skipped";
 type EMAIL_SEND_SKIP_REASONS = "sequence_paused" | "already_sent" | "template_unavailable" | "race_lost" | "policy_blocked" | "admin_disabled";
-type RESEND_EMAIL_EVENT_TYPES = "email.sent" | "email.delivered" | "email.delivery_delayed" | "email.opened" | "email.clicked" | "email.bounced" | "email.complained" | "email.failed" | "email.suppressed" | "email.scheduled";
 export type CommunicationChannel = COMMUNICATION_CHANNEL;
 /** The host supplies its persisted provider vocabulary. */
 export type CommunicationProvider<Provider extends string = string> = Provider;
 export type EmailSendStatus = EMAIL_SEND_STATUSES;
 export type EmailSendSkipReason = EMAIL_SEND_SKIP_REASONS;
-export type ResendEmailEventType = RESEND_EMAIL_EVENT_TYPES;
 type COMMUNICATION_PURPOSES = "transactional" | "tester_program" | "marketing_launch_offer" | "marketing_newsletter" | "subscription_dunning" | "admin_notification";
 type COMMUNICATION_PERMISSION_STATES = "unknown" | "granted" | "denied" | "suppressed";
 type COMMUNICATION_POLICY_DECISIONS = "allowed" | "blocked";
@@ -888,57 +886,6 @@ export declare function createCommunicationsContribution(options: {
     schedules?: Contribution["schedules"];
     requiredPorts?: readonly string[];
 }): Contribution;
-```
-## dist/communications/emailDeliveryTimeline.d.ts
-
-```ts
-import { type EmailSendOutcomeLike } from "./emailTransport.js";
-export type EmailDeliveryTimelineStatus = "planned" | "queued" | "blocked" | "skipped" | "processing" | "sent" | "delivered" | "delivery_delayed" | "bounced" | "complained" | "failed" | "missed" | "legacy_unlinked";
-export type EmailDeliveryPurpose = "transactional" | "tester_program" | "marketing_launch_offer" | "marketing_newsletter" | "subscription_dunning" | "admin_notification";
-export interface EmailDeliveryTimelineClient {
-    rpc?(name: string, params: Record<string, unknown>): PromiseLike<{
-        data: unknown;
-        error: unknown;
-    }>;
-}
-export interface EmailDeliveryTimelineInput {
-    dedupeKey: string;
-    templateSlug: string;
-    purpose: EmailDeliveryPurpose;
-    triggerSource: string;
-    triggerEvent: string;
-    status: EmailDeliveryTimelineStatus;
-    recipientEmail?: string | null;
-    clientId?: string | null;
-    authUserId?: string | null;
-    aggregateType?: string | null;
-    aggregateId?: string | null;
-    outboxEventId?: string | null;
-    platformJobRunId?: string | null;
-    scheduledDueAt?: string | null;
-    expectedSendAt?: string | null;
-    decisionId?: string | null;
-    emailSendId?: string | null;
-    providerKind?: string | null;
-    providerMessageId?: string | null;
-    lastErrorCode?: string | null;
-    metadata?: Record<string, unknown>;
-}
-export interface EmailDeliveryTimelineOptions {
-    required?: boolean;
-    context?: string;
-}
-export declare class EmailDeliveryTimelineError extends Error {
-    readonly cause: unknown;
-    constructor(message: string, cause?: unknown);
-}
-export declare function outboxDeliveryDedupeKey(outboxEventId: string): string;
-export declare function commerceOrderAggregateId(orderId: string): string;
-export declare function statusFromSendOutcome(outcome: EmailSendOutcomeLike): {
-    status: EmailDeliveryTimelineStatus;
-    lastErrorCode: string | null;
-};
-export declare function recordEmailDeliveryTimeline(client: EmailDeliveryTimelineClient, input: EmailDeliveryTimelineInput, options: EmailDeliveryTimelineOptions | undefined, defaultProviderKind: string): Promise<string | null>;
 ```
 ## dist/communications/emailHealthAssessment.d.ts
 
@@ -1004,24 +951,6 @@ export interface EmailHealthMetrics {
     stuckScheduled: number;
 }
 ```
-## dist/communications/emailLedgerLog.d.ts
-
-```ts
-/**
- * One uniform, greppable signal for a swallowed `email_sends` ledger-insert
- * failure, shared by every email port. The send itself already happened (or
- * failed) before this; the ledger write is best-effort, so we never throw here —
- * but emitting a single stable event code (`email_ledger_insert_failed`) lets a
- * log drain / Axiom alert cover all ports at once, instead of per-port ad-hoc
- * strings. Pairs with the email-health watchdog, which catches the aggregate
- * symptom in the persisted timeline.
- */
-export declare function logEmailLedgerInsertFailure(input: {
-    source: string;
-    templateSlug: string;
-    error: unknown;
-}): void;
-```
 ## dist/communications/emailNotificationControl.d.ts
 
 ```ts
@@ -1053,73 +982,10 @@ export declare function createEmailNotificationControlPort(client: EmailNotifica
 export declare const createSupabaseEmailNotificationControlPort: typeof createEmailNotificationControlPort;
 export {};
 ```
-## dist/communications/emailNotificationSkipLog.d.ts
-
-```ts
-export interface EmailNotificationSkipLogClient {
-    from(table: string): {
-        insert(row: Record<string, unknown>): PromiseLike<{
-            error: unknown;
-        }> | {
-            error: unknown;
-        } | {
-            select(columns: string): {
-                maybeSingle(): PromiseLike<{
-                    data: unknown;
-                    error: unknown;
-                }>;
-            };
-        };
-    };
-}
-export declare function logAdminDisabledEmailSend(input: {
-    client: EmailNotificationSkipLogClient;
-    source: string;
-    templateSlug: string;
-    originMetadata: Record<string, string>;
-    providerContext: Record<string, unknown>;
-}, adminDisabledReason: string): Promise<void>;
-```
-## dist/communications/emailOriginMetadata.d.ts
-
-```ts
-import { type ResolvedEmailOrigin } from "./originPolicy.js";
-export interface EmailOriginMetadataDefaults {
-    defaultOrigin: string;
-    productionEmailHosts: string[];
-}
-export interface EmailOriginMetadataInput {
-    baseUrl?: string | null;
-    originSource?: string | null;
-    environment?: string | null;
-    platformJobRunId?: string | null;
-    resolvedOrigin?: ResolvedEmailOrigin | null;
-}
-export declare function buildEmailOriginMetadata(input: EmailOriginMetadataInput, defaults: EmailOriginMetadataDefaults): Record<string, string>;
-export declare function withEmailOriginMetadata(providerResponse: Record<string, unknown>, originMetadata: Record<string, string>, extra: Record<string, unknown>): Record<string, unknown>;
-export declare function originFromUrl(raw: string | null | undefined): string | null;
-```
 ## dist/communications/emailTransport.d.ts
 
 ```ts
-/**
- * Provider-neutral email transport seam (the OSS swap point).
- *
- * Node email ports reach the maintained HTTP mail provider through
- * `postResendEmail`. A host can substitute an SMTP or capture transport by
- * implementing `EmailTransport`. Ports depend on that interface; endpoint,
- * authentication and response translation remain behind the HTTP client.
- *
- * `send()` returns the SAME `{ outcome, providerResponse }` the ports already
- * consume for their ledger/timeline writes, so swapping a port from
- * `postResendEmail` to an injected transport is behaviour-preserving.
- *
- * Note: this is the SEND seam only. It carries no cross-runtime parity
- * obligation: the Deno half was undeployed on 2026-09-04 and its source retired
- * on 2026-09-05, and every sender now renders through
- * src/domains/communications/email/render.ts.
- */
-import { type ResendEmailSendInput, type ResendEmailPostResult, type ResendEmailSendOutcome } from "./resendEmailClient.js";
+/** Provider-agnostic transport contract, outcome projection and capture transport. */
 export interface EmailMessage {
     from: string;
     to: string;
@@ -1139,9 +1005,23 @@ export interface EmailMessage {
     /** Cancels the in-flight send when the worker's per-row timeout fires. */
     signal?: AbortSignal;
 }
-/** Neutral aliases so ports type against the seam, not the maintained HTTP mail provider client. */
-export type EmailSendOutcome = ResendEmailSendOutcome;
-export type EmailSendResult = ResendEmailPostResult;
+/** Transport results preserve existing reference wire shapes. */
+export interface EmailSendOutcome {
+    ok: boolean;
+    /** Legacy identifier retained for reference result compatibility. */
+    resendId: string | null;
+    httpStatus: number;
+    providerError: string | null;
+    providerErrorCode?: string | null;
+    aborted: boolean;
+    suppressed?: "drop" | null;
+    egressMode?: "production" | "sandbox_direct" | "sandbox_sink" | "drop";
+    egressReason?: string;
+}
+export interface EmailSendResult {
+    outcome: EmailSendOutcome;
+    providerResponse: Record<string, unknown>;
+}
 export type EmailSendSkipReason = "admin_disabled" | "egress_suppressed";
 export interface EmailSendOutcomeLike {
     ok: boolean;
@@ -1174,41 +1054,6 @@ export interface EmailTransport {
     readonly providerKind: string;
     send(message: EmailMessage): Promise<EmailSendResult>;
 }
-/**
- * HTTP mail transport. Delegates verbatim to the isolated client
- * (endpoint, auth, error parsing, and the
- * fail-closed egress gateway all live there).
- */
-export declare function createResendTransport(opts: {
-    apiKey: string;
-    providerKind: string;
-    env?: Record<string, string | undefined>;
-}, postEmail: (input: ResendEmailSendInput) => Promise<ResendEmailPostResult>): EmailTransport;
-/**
- * Resolve the maintained HTTP mail provider API key for a Node composition root.
- *
- * Both environments have a key and both are valid; only the variable NAME
- * differs, because the two Vercel projects are provisioned separately:
- *
- *   the production project → RESEND_API_KEY
- *   the staging project    → RESEND_SANDBOX_API_KEY
- *
- * The concrete project names live in the deployment's secrets documentation,
- * deliberately not repeated here: this file is a publishable reference adapter
- * and a product name in it is counted vocabulary.
- *
- * A composition root that reads only `RESEND_API_KEY` therefore starts with an
- * empty key on staging, and every send fails with the provider's "API key is
- * invalid" — which reads like a revoked credential rather than a missing binding
- * and sends the reader looking for a key that was there all along. Prefer the
- * production name so production behaviour is unchanged, and fall back to the
- * staging name rather than requiring staging to be given a production variable:
- * its absence there is a deliberate control against mailing real customers from
- * a preview deployment.
- */
-export declare function resolveEmailApiKey(env: Record<string, string | undefined>): string;
-/** Default concrete binding exposed to Node composition roots. */
-export declare const createEmailTransport: typeof createResendTransport;
 export interface InMemoryEmailTransport extends EmailTransport {
     /** Every message handed to send(), in order — for tests and dry runs. */
     readonly sent: ReadonlyArray<EmailMessage>;
@@ -1253,13 +1098,9 @@ export * from "./communicationSync.js";
 export * from "./communicationSyncWorker.js";
 export * from "./consentPolicy.js";
 export * from "./contribution.js";
-export * from "./emailDeliveryTimeline.js";
 export * from "./emailHealthAssessment.js";
 export * from "./emailHealthMetricsPort.js";
-export * from "./emailLedgerLog.js";
 export * from "./emailNotificationControl.js";
-export * from "./emailNotificationSkipLog.js";
-export * from "./emailOriginMetadata.js";
 export * from "./emailTransport.js";
 export * from "./errors.js";
 export * from "./integrationEventSignature.js";
@@ -1270,20 +1111,12 @@ export * from "./originPolicy.js";
 export * from "./postgresTransactionalDeliveryStore.js";
 export * from "./preferencesToken.js";
 export * from "./publicPreferenceToken.js";
-export * from "./resendApiKey.js";
-export * from "./resendDeliveryReconciliation.js";
-export * from "./resendDeliveryReconciliationWorker.js";
-export * from "./resendEmailClient.js";
-export * from "./resendWebhookHandler.js";
-export * from "./resendWebhookPort.js";
-export * from "./resendWebhookVerifier.js";
 export * from "./shipmentNotifications.js";
 export * from "./sql.js";
 export * from "./standardWebhooks.js";
 export * from "./status.js";
 export * from "./transactionalDelivery.js";
 export * from "./transactionalDeliveryIdentifier.js";
-export * from "./transactionalEmailLedgerAttempt.js";
 export * from "./unsubscribeToken.js";
 export type * from "./contracts/authEmail.js";
 export type * from "./contracts/email.js";
@@ -1508,312 +1341,6 @@ export declare function createSupabasePublicPreferenceTokenPort(client: PublicPr
     }>;
 };
 ```
-## dist/communications/resendApiKey.d.ts
-
-```ts
-export type ResendKeyMode = "sandbox" | "live";
-export interface ResolvedResendKey {
-    apiKey: string | undefined;
-    mode: ResendKeyMode;
-}
-export declare function resolveResendApiKey(env: Record<string, string | undefined>): ResolvedResendKey;
-```
-## dist/communications/resendDeliveryReconciliation.d.ts
-
-```ts
-import type { ResendDeliveryReconciliationPort } from "./resendDeliveryReconciliationWorker.js";
-type QueryResult<T> = PromiseLike<{
-    data: T | null;
-    error: {
-        message?: string;
-    } | null;
-}>;
-type OrderedEmailSendsQuery = {
-    order(column: string, options?: {
-        ascending?: boolean;
-        nullsFirst?: boolean;
-    }): OrderedEmailSendsQuery;
-    limit(count: number): QueryResult<Array<Record<string, unknown>>>;
-};
-type SupabaseLikeClient = {
-    from(table: string): {
-        select(columns: string): {
-            eq(column: string, value: unknown): {
-                not(column: string, operator: string, value: unknown): {
-                    is(column: string, value: null): {
-                        lte(column: string, value: string): {
-                            order(column: string, options?: {
-                                ascending?: boolean;
-                                nullsFirst?: boolean;
-                            }): OrderedEmailSendsQuery;
-                        };
-                    };
-                };
-            };
-        };
-        update(patch: Record<string, unknown>): {
-            eq(column: string, value: unknown): QueryResult<unknown>;
-        };
-    };
-    rpc(name: string, args: Record<string, unknown>): QueryResult<unknown>;
-};
-export declare function createSupabaseResendDeliveryReconciliationPort(client: SupabaseLikeClient, eventSource: string): ResendDeliveryReconciliationPort;
-export {};
-```
-## dist/communications/resendDeliveryReconciliationWorker.d.ts
-
-```ts
-/**
- * the maintained HTTP mail provider delivery reconciliation (docs/platform/RUNTIME_AND_SELF_HOSTING.md Wave 4).
- *
- * Delivery status was WEBHOOK-ONLY: if a the maintained HTTP mail provider webhook is dropped, the
- * email_sends row freezes at `sent` and the delivery timeline never closes —
- * the `email_webhook_gap` detector counts exactly these. This worker polls the
- * provider for frozen sends and asks the atomic
- * communication_update_email_delivery_from_provider RPC to apply the same
- * transitions the webhook would.
- *
- * A polled complaint carries the provider-returned recipient into the same
- * atomic RPC as the webhook, so suppression remains replay-safe without a
- * second application-side writer.
- */
-export interface FrozenSendRow {
-    id: string;
-    resendId: string;
-    status: string | null;
-}
-export interface ResendEmailStatusRead {
-    ok: boolean;
-    lastEvent: string | null;
-    recipientEmail: string | null;
-    httpStatus: number;
-    providerError: string | null;
-}
-export interface ResendDeliveryReconciliationPort {
-    findFrozenSends(input: {
-        now: string;
-        graceMinutes: number;
-        limit: number;
-    }): Promise<FrozenSendRow[]>;
-    applyPolledEvent(input: {
-        sendId: string;
-        resendId: string;
-        webhookType: string;
-        eventAt: string;
-        recipientEmail: string | null;
-    }): Promise<void>;
-    recordPollAttempt(input: {
-        sendId: string;
-        attemptedAt: string;
-    }): Promise<void>;
-    recordSendNotFound(input: {
-        sendId: string;
-        threshold: number;
-    }): Promise<{
-        abandoned: boolean;
-    }>;
-}
-export declare const POLL_ABANDON_AFTER_NOT_FOUND = 3;
-export interface ResendReadFailureBreakdown {
-    notFound: number;
-    authFailed: number;
-    network: number;
-    providerError: number;
-    other: number;
-}
-export interface ResendDeliveryReconciliationResult {
-    checked: number;
-    reconciled: number;
-    stillPending: number;
-    terminalPolled: number;
-    failures: number;
-    abandoned: number;
-    failureBreakdown: ResendReadFailureBreakdown;
-}
-export declare function runResendDeliveryReconciliation(input: {
-    port: ResendDeliveryReconciliationPort;
-    readEmail: (resendId: string) => Promise<ResendEmailStatusRead>;
-    now: string;
-    graceMinutes: number;
-    limit: number;
-}): Promise<ResendDeliveryReconciliationResult>;
-```
-## dist/communications/resendEmailClient.d.ts
-
-```ts
-export type EgressMode = "production" | "sandbox_direct" | "sandbox_sink" | "drop";
-export interface EmailEgressDecision {
-    mode: EgressMode;
-    reason: string;
-    blockedReason?: string;
-    recipient: string | null;
-    apiKeyOverride?: string;
-    intendedRecipient: string;
-}
-export type EmailEgressResolver = (env: Record<string, string | undefined>, recipient: string) => EmailEgressDecision;
-export interface ResendEmailSendInput {
-    apiKey: string;
-    fromEmail: string;
-    to: string;
-    subject: string;
-    html: string;
-    /** Optional plain-text alternative; omitted from the outbound payload when absent. */
-    text?: string;
-    /** Optional reply mailbox. Kept absent from the outbound payload unless set. */
-    replyTo?: string;
-    idempotencyKey?: string;
-    attachments?: ReadonlyArray<{
-        filename: string;
-        content: string;
-    }>;
-    signal?: AbortSignal;
-    /** Runtime env for the egress decision; supplied by the host. */
-    env?: Record<string, string | undefined>;
-}
-export interface ResendEmailSendOutcome {
-    ok: boolean;
-    resendId: string | null;
-    httpStatus: number;
-    providerError: string | null;
-    /** Sanitized provider machine code when the maintained HTTP mail provider returned one (for retry policy). */
-    providerErrorCode?: string | null;
-    aborted: boolean;
-    /** Set when the egress gateway intentionally did not deliver to the real recipient. */
-    suppressed?: "drop" | null;
-    /** The egress mode the gateway resolved for this send. */
-    egressMode?: EgressMode;
-    egressReason?: string;
-}
-export interface ResendEmailPostResult {
-    outcome: ResendEmailSendOutcome;
-    providerResponse: Record<string, unknown>;
-}
-/** Host-owned wire endpoint and legacy diagnostic label. */
-export interface EmailHttpProvider {
-    endpoint: string;
-    httpErrorPrefix: string;
-}
-export declare function postResendEmail(input: ResendEmailSendInput, resolveEgressMode: EmailEgressResolver, provider: EmailHttpProvider, defaultEnv?: Record<string, string | undefined>): Promise<ResendEmailPostResult>;
-export interface ResendEmailReadResult {
-    ok: boolean;
-    httpStatus: number;
-    lastEvent: string | null;
-    recipientEmail: string | null;
-    providerError: string | null;
-}
-export declare function getResendEmail(input: {
-    apiKey: string;
-    resendId: string;
-    signal?: AbortSignal;
-}, provider: EmailHttpProvider): Promise<ResendEmailReadResult>;
-```
-## dist/communications/resendWebhookHandler.d.ts
-
-```ts
-export declare const RESEND_EVENT_MAP: Record<string, string>;
-export type EmailEnvironmentTag = "production" | "non_production";
-export type ResendWebhookAttemptOutcome = "unsupported_event" | "missing_email_id" | "send_not_found" | "foreign_send_not_found" | "processed";
-export interface ResendWebhookAttempt {
-    resendWebhookId: string | null;
-    resendEventType: string | null;
-    resendEmailId: string | null;
-    outcome: ResendWebhookAttemptOutcome;
-    httpStatus: number;
-    error?: string | null;
-    metadata?: Record<string, unknown> | null;
-}
-export interface ResendWebhookProviderEvent {
-    emailSendId: string;
-    resendId: string;
-    resendEventType: string;
-    eventAt: string;
-    metadata: Record<string, unknown>;
-}
-export interface ResendWebhookPort {
-    findEmailSendByResendId: (resendId: string) => Promise<{
-        id: string;
-    } | null>;
-    applyProviderEvent: (event: ResendWebhookProviderEvent) => Promise<void>;
-    recordAttempt: (attempt: ResendWebhookAttempt) => Promise<void>;
-}
-export interface ResendWebhookRequest {
-    method?: string;
-    rawBody: string;
-    headers: {
-        webhookId?: string;
-        timestamp?: string;
-        signature?: string;
-    };
-}
-export interface ResendWebhookResponse {
-    status: number;
-    body: Record<string, unknown> | "ok";
-}
-/** Cryptographic verification is injected by composition so the domain stays provider-client neutral. */
-export interface ResendWebhookSignatureInput {
-    rawBody: string;
-    webhookId: string | undefined;
-    timestamp: string | undefined;
-    signature: string | undefined;
-    secret: string;
-    now?: () => number;
-}
-export interface ResendWebhookHandlerDeps {
-    webhookSecret: string;
-    createPort: () => ResendWebhookPort;
-    verifySignature: (input: ResendWebhookSignatureInput) => boolean;
-    environmentTagName: string;
-    eventSource: string;
-    resolveReceiverEnvironmentTag?: () => EmailEnvironmentTag;
-    now?: () => number;
-    receivedAt?: () => Date;
-}
-export declare function createResendWebhookHandler(deps: ResendWebhookHandlerDeps): (request: ResendWebhookRequest) => Promise<ResendWebhookResponse>;
-export declare function readEmailEnvironmentTag(data: unknown, tagName: string): EmailEnvironmentTag | null;
-export declare function resolveResendEventTime(payload: {
-    created_at?: unknown;
-}, svixTimestamp: string | undefined, receivedAt: Date): {
-    eventAt: string;
-    source: "provider_created_at" | "svix_timestamp" | "received_at";
-};
-```
-## dist/communications/resendWebhookPort.d.ts
-
-```ts
-import type { ResendWebhookPort } from "./resendWebhookHandler.js";
-export interface ResendWebhookSupabaseClient {
-    from: (table: string) => unknown;
-    rpc?: (name: string, params: Record<string, unknown>) => Promise<{
-        data: unknown;
-        error?: unknown;
-    }>;
-}
-/** Supabase implementation of the narrow the maintained HTTP mail provider webhook persistence contract. */
-export declare function createSupabaseResendWebhookPort(client: ResendWebhookSupabaseClient): ResendWebhookPort;
-```
-## dist/communications/resendWebhookVerifier.d.ts
-
-```ts
-/** Svix's default replay window, retained from the Edge webhook handler. */
-export declare const RESEND_SVIX_TOLERANCE_SECONDS: number;
-export interface ResendWebhookVerificationInput {
-    rawBody: string;
-    webhookId: string | undefined;
-    timestamp: string | undefined;
-    signature: string | undefined;
-    secret: string;
-    /** Injectable UTC-seconds clock for deterministic characterization tests. */
-    now?: () => number;
-}
-/**
- * Verifies the maintained HTTP mail provider's Svix signature over the untouched request bytes.
- *
- * The provider accepts both the documented `v1,<base64>` member and the
- * historical bare base64 member. Do not parse or normalize `rawBody` before
- * calling this function: the bytes themselves are signed.
- */
-export declare function verifyResendWebhookSignature(input: ResendWebhookVerificationInput): boolean;
-```
 ## dist/communications/shipmentNotifications.d.ts
 
 ```ts
@@ -1898,8 +1425,6 @@ export declare function verifyStandardWebhookSignature(opts: {
 
 ```ts
 import type { EmailSendDecision, EmailSendStatus } from "./contracts/types.js";
-export declare function resendEventKind(eventType: string): string | null;
-export declare function nextEmailSendStatus(currentStatus: string | null, resendEventType: string): EmailSendStatus | null;
 export declare function isTerminalEmailSendStatus(status: string | null): status is EmailSendStatus;
 export declare function buildEmailSendDedupeKey(input: {
     recipientId: string;
@@ -1940,49 +1465,6 @@ export declare function createTransactionalDelivery(deps: {
 /** Narrow, portable receipt contract for the captured transactional action. */
 /** Bounded opaque identifiers keep commands and persisted evidence content-free. */
 export declare function isTransactionalDeliveryIdentifier(value: string): boolean;
-```
-## dist/communications/transactionalEmailLedgerAttempt.d.ts
-
-```ts
-import type { EmailSendOutcomeLike as TransactionalEmailSendOutcome } from "./emailTransport.js";
-export interface TransactionalEmailLedgerClient {
-    from(table: string): EmailSendsQueryBuilder;
-}
-interface EmailSendsQueryBuilder {
-    select(columns: string): EmailSendsQueryBuilder;
-    eq(column: string, value: unknown): EmailSendsQueryBuilder;
-    neq(column: string, value: unknown): EmailSendsQueryBuilder;
-    limit(count: number): PromiseLike<{
-        data: unknown;
-        error: {
-            code?: string;
-            message?: string;
-        } | null;
-    }>;
-    insert(row: Record<string, unknown>): EmailSendsInsertResult;
-}
-type EmailSendsInsertResult = PromiseLike<{
-    error: unknown;
-}> | {
-    select(columns: string): {
-        maybeSingle(): PromiseLike<{
-            data: unknown;
-            error: unknown;
-        }>;
-    };
-};
-export declare function logTransactionalEmailAttempt(input: {
-    client: TransactionalEmailLedgerClient;
-    source: string;
-    templateSlug: string;
-    outboxEventId: string;
-    orderId: string | null;
-    outcome: TransactionalEmailSendOutcome;
-    providerResponse: Record<string, unknown>;
-    sendAttemptId: string | null;
-    originMetadata: Record<string, string>;
-}): Promise<string | null>;
-export {};
 ```
 ## dist/communications/unsubscribeToken.d.ts
 

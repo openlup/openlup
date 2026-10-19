@@ -1,305 +1,114 @@
 # M04 communications import
 
-Status: development-preview implementation plan. Audience: platform reviewers
-and hosts replacing the existing public communications implementation.
+Status: development-preview plan; no stable-framework or activation claim.
 
 ## Outcome and authority
 
-P1 relocates the existing public server algorithms into the platform package with
-zero observable reference delta. The task starts at `cf36b01`; local source edits
-and verification are authorized. The supervisor owns DCO commits, native review
-and any later submission. This task grants no push, merge, publication, release,
-provider activation, credentials or deployment changes.
+Extract provider-agnostic communications with zero observable reference delta.
+Extraction identity: adopter C1 `a7a97fea6c00e42681fc2b680f3b5eb8a279b559`;
+public comparison base: `cf36b01`. Local edits and verification only; the
+supervisor owns commits, clean-candidate artifact proof, native review and any
+separately authorized submission. No release, deployment or activation grant.
+
+| Ruling | Binding boundary |
+| --- | --- |
+| E1 | No existing pack cap changes in M04; enforced limits remain binding. |
+| E2 | Five generic payment-webhook helpers delegate through `./http` with identical names, signatures and function identity; payment verification stays local. |
+| E3 | Move the existing public copy with zero output change; newer adopter deltas remain private at C5. |
+| X1 | Add only moved-code witnesses to required scope; preserve every pre-P1 selector. |
+| X1b | Mirror the same additions in execution registration and expected command; no control logic change; two control-path reviews. |
+| X2 | Count selected existing and synthetic cases; separate generated boundary iterations; +30 s summed median file time binds, with recorded case overruns revisited after the loop. |
+| X3 | Add the approved 1,024 B type-only contracts browser limit; no existing cap increase. |
+| X4 | Documentation CLI fixture registration only: communications domain and matching route. |
+| Narrowing | Package only agnostic algorithms; maintained mail modules/factory and vendor-directory donors remain unchanged reference adapters; no new paths. |
+| Owner directive | Public module code is provider-agnostic; private vendor bindings stay at C5; existing reference adapters remain unchanged and neutrality stays green. |
 
 ## PR graph and scope
 
-P1 declares `./communications`, `./communications/contracts` and additions to the
-existing `./http` once. The public stack is P1 → P2 transport → P3 content → P4 native
-stores/handlers. Separately approved B1 egress behavior follows P2,
-B2 content behavior follows P3, and B3 direct operations follows P4. Composition
-joins those slices before any separately authorized set-version preparation,
-release or adopter continuation. No later wave is implemented here.
+P1 → P2 → P3 → P4; B1 follows P2, B2 follows P3, B3 follows P4.
+C-compose joins B1/B2/B3 before S1 set-version preparation and separately
+authorized release/adoption/staging. D2's maintained default remains reference-owned.
 
-P1 preserves the current public copy rather than importing newer adopter drift.
-Reference shims bind renderer, environment observers, egress resolver, origin
-configuration, shared delivery control and receipt transaction lane. Browser-used
-renderer, preview/content defaults and support/template policy remain local;
-contracts contain only browser-safe types/ports. Existing public invitation
-logic, dunning words, token purposes, schemas, response/error bytes, send outcomes
-and ledger order stay unchanged. Trigger catalogue, gifts, new providers,
-identity implementation, control-plane adapter and deployment config are excluded.
-The approved E2 extension is applied: the payment webhook donor delegates the
-five generic HTTP helpers, retaining the original declared `VercelRequest` body
-reader signature and the same function object. The other four names are plain
-re-exports; its the payment provider verifier and tolerance remain local and unchanged. SQL is
-limited to three exact existing projections, with no migration or manifest edit.
+| PR | Bounded scope |
+| --- | --- |
+| P1 | Agnostic public-copy extraction, exports/graph, reference shims, SQL projections and conformance/consumer proof. |
+| P2 | Transport/result direction and agnostic observation engine behind neutral ports; vendor mapping remains reference-owned. |
+| P3 | Content/presentation and Auth hook factories; proven-identical verification primitives; browser value closure. |
+| P4 | Agnostic effects/receipt/readback and reconciliation engines behind neutral ports; vendor mapping stays in the reference adapter; marketing automation is agnostic ports/contracts/conformance only. |
+| B1 | Separately approved transport-wide egress behavior. |
+| B2 | Separately approved neutral `pl`/`en` defaults; enumerate changed public expectations and retain private legacy bindings. |
+| B3 | Four frozen direct-operation groups with schema/ACL/replay/refusal proof. |
+| C-compose / S1 | Explicit host composition/readiness, then separate set-version preparation; no duplicate executor. |
+
+## P1 boundary
+
+Only `./communications`, type-only `./communications/contracts` and helper values
+on existing `./http`. Actual graph: values `data` (receipt lane), `identity` (Auth
+URL); types `http`; contracts enabled. No platform-to-outbox dependency.
+
+Retain transport contract/results and capture; generic HTTP webhook helper; Auth
+Standard Webhooks/hook; consent/status helpers and tokens; receipt stores/ledgers;
+newsletter-sync worker/ports; contribution and three exact SQL projections at
+manifest positions 2/9/20. Reference shims supply renderer, environment/control,
+origin and transaction bindings. Browser renderer/content/template policy stays local.
+
+Mail client/key/verifier/handler/reconciliation modules, concrete factory,
+vendor-directory origin/timeline/send-ledger/skip helpers and vendor status
+mapping stay reference-owned. Both reference vendor directories retain exact
+comparison-base bytes. Package-only APIs serving those removed modules are excluded.
+Trigger catalogue, gifts, new providers, identity implementation, control-plane
+adapter, new schema, deployment configuration and later waves are excluded.
+
+## Witnesses
+
+| Witness | Isolated plant → failing test |
+| --- | --- |
+| W1 `webhookDialects.test.ts` | Remove Auth versioned-key parsing → versioned `key policy` rows. |
+| W1 same file | Bypass Auth signature verification → rotation/original-byte assertions; bypass replay guard → ±301 rows. |
+| W1 same file | Export reference protocol/factory → package separation assertion. |
+| W1 `hookRawReader.test.ts` | Apply generic body cap to Auth reader → large-stream assertion. |
+| W2 `transportConformance.test.ts` | Misclassify aborted result → result projection; drop explicit skip precedence → suppression/admin assertion. |
+| W2 same file | Lose capture → complete ordered envelope/outcome assertion. |
+
+W1 pins the package standard dialect and separation; unchanged reference tests
+retain the provider verifier dialect. W2 pins results/projections and capture,
+without a package mail client. W3 ordered failure/timeout/no-mutation transcripts
+and W5 host admission/binding/readback precede P4/composition changes. W4 locale
+and template exceptions precede P3/B2 changes. **No subscription mutation binds
+every PR:** communications cannot change subscription state/timing; preserve
+required versus best-effort audit and send ordering, stable keys and overlays.
 
 ## Verification ledger
 
-Admission baseline: **8,275 required runner cases / 595.6 s** provisional summed
-file medians. The cumulative M04 authored-case allowance is **+100 cases**, including newly
-selected existing witnesses and synthetic cases. Generated per-file iterations
-of an existing parameterized boundary test are counted separately and do not
-consume that allowance. The binding limit is **+30 s median hosted file time**;
-a case overrun is acceptable when time stays within +30 s and the ledger records
-it with numbers. The M04 post-loop clean-up must revisit it. These are the
-coordinator's X2 interpretation, not a reset of the baseline or a gate change.
+Admission baseline: **8,275 cases / 595.6 s**. Final measurements below count
+selected existing/synthetic cases separately from generated boundary iterations.
 
-| Property | P1 evidence / retained obligation |
-| --- | --- |
-| Existing public outputs | Unchanged reference tests for Auth email, transport/rendering, signatures, consent/status, sync, webhook/poll, token, receipt and ledger behavior; required selection only grows |
-| Contracts/module boundary | Existing package-boundary/import-map plants plus synthetic type-only contract check; actual export inventory in the cold consumer |
-| SQL identity | Three canonical/projection byte, digest and manifest-position comparisons; no new install chain |
-| HTTP helper | Synthetic stream/fallback/cap, exact refusal bytes and hex-HMAC dialect tests; unchanged the payment provider witnesses cover the delegating payment donor |
-| Contribution | Host-selected schema and dependency identity, no default route/handler/schedule activation |
-| Installed artifact | Existing required package gate, SDK-absent imports/refusals, declarations in NodeNext/Bundler, selected SDK and real PostgreSQL receipt replay/conflict/ACL proof |
-| Browser continuity | Public-reference subscription profile build, browser-used value closure retained |
-| Budget and size | Measure candidate case additions, timing and dry-pack bytes/files; no caps or gates relaxed |
+Required-selection additions: **13** (four mirrors; no pre-P1 removal).
 
-Local command results, counts, candidate pack sizes, unavailable proofs and
-cumulative budget usage must be recorded before supervisor admission. A clean
-signed candidate is required by the package producer; an uncommitted local run
-cannot replace that gate. Missing mandatory proof or an exceeded binding time
-limit remains a blocker; case overruns follow the X2 interpretation above.
-
-## Earlier run evidence (historical; not current acceptance)
-
-Candidate `e9eca83` moved the communications implementation. Run 1's fixture
-construction failure was repaired in run 2; the corrected helper, DOM-only
-contracts and unchanged the payment provider witnesses passed together (35 cases). Run 2's
-approved-access required/full suites failed only on the then-missing X1 mirror.
-Its `readRawBody` declaration used `HttpRequest`; the supervisor subsequently
-restored the original declared `VercelRequest` signature through E2. Neither
-historic result establishes acceptance of the merged run-3 candidate.
-
-Run 2 measured 101 existing witness cases, eight synthetic cases and 156 boundary
-iterations, with 0.627054 s summed local file medians. Its aggregate +265 counting
-and allowance-blocker interpretation are superseded by X2 below. The 2,127 s run-1
-broker delay, restricted-context failures and rejected zero-case timing samples
-remain in the original local reports; no native review budget is reset.
-
-Run 2's real-PostgreSQL source proof passed; it was not installed-artifact proof.
-Its dry pack measured 360,792 B packed / 1,463,614 B unpacked / 554 files, above
-the then-current 196,608 B / 1,048,576 B / 256 files. Main `71a5200` both refreshes
-and enforces the caps in `packages:check` and release preflight. Its platform
-aggregate limits are now 522,240 B packed / 2,088,960 B unpacked / 800 files;
-code limits are 440,320 B / 800 files and docs limits 40,960 B / 10 files. The
-released baseline is 0.16.0 / 256,973 B; the identity contracts browser cap is
-4,800 B. Run 3 preserves all of these controls. No new cap or cap change is
-authorized; early-pass success cannot waive the clean-commit artifact gate.
-
-## Run 3 merged candidate and X1/X2 ledger (2026-10-19)
-
-Start: `1e8c7ce`, merge of `71a5200` into P1, after supervisor commit `8c51415`.
-E2 is applied with seven original exported names and original declared signatures;
-run 3 must compare against `cf36b01`, including same-object delegation and unchanged
-the payment provider runtime nodes. The supervisor owns commits and native review; this author
-run edits files only and stops for a commit before artifact admission.
-
-X1 mirrors `package.json`'s required command in `PUBLIC_REQUIRED_TEST_SCOPE`:
-20 run-2 retained selectors plus restored `api/auth-send-email.test.ts`. The Auth
-entrypoint is the existing witness of the moved Auth hook/Standard Webhooks
-composition and must remain selected. No original required selector is removed.
-Catalogue command/execution digests, source-release contract and documentation
-navigation are regenerated through their repository generators. The closed
-execution-entrypoint inventory also needs these additive test registrations;
-run 3 requested that bounded control-path authority when policy exposed the gap.
-
-Fresh three-run local Vitest file measurements, with all selected cases passing:
-
-| Category | Added cases / iterations | Summed per-file median seconds |
+| Added work | Cases / iterations | Summed file medians (s) |
 | --- | ---: | ---: |
-| Existing required witnesses (21 files, including 3 restored Auth cases) | 104 | 0.068248 |
-| Synthetic package cases (5 files) | 8 | 0.525857 |
-| Existing parameterized boundary guard over 52 new files, separate | 156 | 0.063393 |
-| Counted witnesses + synthetic | 112 | 0.594105 |
-| All added runner work, including separate boundary iterations | 268 | 0.657498 |
+| Existing witnesses | 69 | 0.051960449 |
+| Synthetic witnesses | 36 | 0.499998535 |
+| Counted additions | **105** | **0.551958984** |
+| Boundary iterations, separate | **120** | **0.053746826** |
+| Total runner additions | **225** | **0.605705811** |
 
-The authored-case overrun is **12** (112 − 100), accepted under the coordinator's
-X2 interpretation while the binding time limit holds; post-loop clean-up must
-revisit these numbers. Boundary iterations consume no authored-case allowance.
-The local proxy adds **0.657498 s**, leaving **29.342502 s** under +30 s;
-adding it to the provisional 595.6 s baseline gives **596.257498 s**. This is
-median per-file elapsed time from three identical selections, summed after taking
-each file's median, including filtered boundary-file time. Queue and wrapper wall
-time are excluded. It is local evidence for the hosted-time budget, not a fresh
-hosted measurement. The supplied 8,275-case baseline is retained; current root
-suite totals are not subtracted from it to manufacture an addition count.
+X2 accepts the **5-case overrun** because **0.606 s < +30 s**;
+remaining allowance **29.394294189 s**, baseline plus delta **596.205705811 s**.
 
-Run 3 passes ast-grep, lint (zero errors, 33 warnings), all five typecheck
-projects, the subscription reference build, real-PostgreSQL source communications
-conformance and E2 exact declared-signature/runtime identity comparison against
-`cf36b01`. Tracked inputs stayed unchanged throughout this serialized early pass.
-Required selection records 7,653 passed / 2 failed / 0 skipped; the complete root
-suite records 13,903 passed / 11 failed / 2 existing opt-in skips. These are
-failing runs, not acceptance. No communications runtime witness failed.
-
-The failures have three control/fixture causes. The native merge-preview fixture
-reads committed HEAD, whose catalogue remains stale until a supervisor commit;
-uncommitted regeneration cannot affect that fixture. X1's new explicit selectors
-also need closed execution-entrypoint registrations and the public-check test's
-exact required-command expectation updated additively. Missing registrations
-cause the bare documentation and materialized-public fixtures to omit the new
-targets. Finally, the merged cap test requires a browser cap for every declared
-contracts entry; `./communications/contracts` has none in `release-gates.json`.
-The author's grant forbids cap/control changes, so these remain owner/supervisor
-blockers rather than a weakened test, dropped selector or invented cap.
-
-Exact commands, all failures and proof artifacts are recorded in local
-`p1-r3/report.md`. No commit request is issued while policy and the early suites
-are red. Clean committed package artifact proof, enforced caps and native review
-remain required after a separately authorized supervisor commit; no release or
-adoption is claimed. Self-retro: check the closed execution inventory and exact
-command witness together when adding required selectors; preserve the boundary
-between file-level repairs and owner-controlled cap registration.
-
-## Run 4 W1/W2 neutral conformance (2026-10-19)
-
-Assigned clean candidate `afb3634222e3e74c94e94c7b433e01c01330c20f`; same task
-worktree/branch. Extraction identity: adopter C1 merged #4397,
-`a7a97fea6c00e42681fc2b680f3b5eb8a279b559`, extraction record §1.10.
-Finite outcome: fresh neutral synthetic W1/W2 tests of the current public
-communications implementation and generic HTTP reader contrast. Private tests
-were read only for properties; no private code, fixtures, keys, addresses, brand
-or IDs are contributed. Source behavior, controls, dependencies and selectors
-are excluded. File edits and serial brokered verification only; no Git writes,
-commit, native admission, submission, release or adopter activation. The
-supervisor retains those later delivery responsibilities.
-
-Acceptance/proof: exact public verifier dialects and clock/byte/key refusals,
-hook stream policy, complete real transport/client outcomes and projections,
-signal forwarding and in-memory capture. Isolate each named W1/W2 negative plant,
-observe assertion failures, restore source bytes, then run ast-grep, lint,
-communications tests, platform build and policy/navigation regeneration. Heavy
-commands use `ai-resource-gate run --wait openlup:coverage --` with approved
-Docker/npm-cache context. X1b registration failures remain a separately pending
-control boundary. Reuse small parameterized suites and actual composition rather
-than another runner or mocked public exports. Results and budget follow below;
-local raw evidence is in `p1-r4/report.md` in the task scratchpad.
-
-Fresh tests live under `packages/platform/test/communications/`, already selected
-by the required package tier. W1 contributes **22** cases; W2 contributes **6**
-(the private witness's five top-ups plus a separate public capture case), **28**
-in total. No existing expectation or selector changed. The independent signer
-uses fresh synthetic material and UTF-8 content; expected policies are stated
-separately for Auth and the maintained HTTP mail provider, without asserting protocol equivalence. The hook
-is reached through its real signature/payload boundary, with downstream effects
-forbidden. The concrete transport delegates to the real the maintained HTTP mail provider client with a
-synthetic fetch and explicit host egress resolver. No requested property differs
-from the public behavior. Public environment tags and injected egress reasons
-are pinned as public values, rather than importing adopter binding values.
-
-| Witness / property | Fresh test | Plant → observed failing test |
-| --- | --- | --- |
-| W1 key forms, trimming and Auth-only versioned-secret parsing | `webhookDialects.test.ts`: six `key policy` rows | `auth-versioned-secret` → `key policy: 'versioned encoded secret'` and `'versioned literal secret'` (2 failures) |
-| W1 rotation members, bare/v1/other-version grammar; original signed UTF-8 whitespace | `webhookDialects.test.ts`: three `rotation signature grammar` rows and `requires the original whitespace and UTF-8 bytes` | `auth-signature-bypass` → all three grammar rows + original bytes (4); the provider signature-bypass plant → those four plus whitespace/versioned-secret policy rows (7) |
-| W1 Auth millisecond / the maintained HTTP mail provider second clocks, inclusive ±300 and refusal at ±301 | `webhookDialects.test.ts`: four `replay offset` rows | `auth-replay-bypass` and the provider replay-bypass plant separately → offsets -301 and 301 (2 each) |
-| W1 malformed empty/prefix/punctuation/length/noncanonical-pad-bit keys | `webhookDialects.test.ts`: five `refuses unusable secret` rows, signed using permissively decoded material | Matching invalid-key HMACs refused by both public verifiers; signature bypass plants additionally exercise the independent comparison boundary |
-| W1 stream precedence, drained stream with no fallback, uncapped Auth stream vs capped generic reader | `hookRawReader.test.ts`: three `Auth raw reader` rows; exact 400 envelopes/no downstream effects; generic reader contrast in each row | `hook-generic-cap` → `Auth raw reader: large stream` (1) |
-| W2 whole missing-ID, sanitized coded rejection, thrown/aborted results and projections | `transportConformance.test.ts`: four `concrete send` rows | `omit-provider-error-code` → `concrete send: 'sanitized coded rejection'` (1) |
-| W2 suppression means skipped, no network | `transportConformance.test.ts`: `suppression records a skip and performs no fetch` | `suppression-as-sent` → same test (1) |
-| W2 original AbortSignal reaches actual fetch | `transportConformance.test.ts`: all four concrete send rows | `lose-abort-signal` → all four concrete send rows (4) |
-| W2 complete ordered capture and whole outcomes, no fetch | `transportConformance.test.ts`: `in-memory capture retains complete ordered envelopes and outcomes` | `lose-capture` → same test (1) |
-
-All **10** isolated plants exited 1 with assertion failures. Each plant restored
-its source in `finally`; all communications/HTTP source bytes matched the initial
-snapshot after each plant and before final checks. `plants.json` retains the
-complete failing-test map and SHA-256 inventory. Final Git diff confirms zero
-runtime/control changes. No native review cycle, expiry or retry budget changed.
-
-Final restored-source checks: ast-grep **PASS**; lint **PASS** (0 errors, 33
-existing warnings); communications package **7 files / 32 cases PASS**, including
-all 28 new cases; platform build **PASS**. Three subsequent identical new-file
-selections each pass **3 files / 28 cases**. Publication policy with
-`--policy --docs-update` exits 1 solely on the pending **X1b executable-registration**
-family: `server/adapters/captured/transactionalDelivery.test.ts` is not registered.
-The check stops at that refusal; no completed navigation regeneration or later
-policy-stage success is claimed. Controls were left unchanged.
-
-| New file | Cases | Three local file-time samples (s) | Median (s) |
-| --- | ---: | --- | ---: |
-| `webhookDialects.test.ts` | 19 | 0.003110107 / 0.003113037 / 0.003124023 | 0.003113037 |
-| `hookRawReader.test.ts` | 3 | 0.008456299 / 0.008108398 / 0.007738770 | 0.008108398 |
-| `transportConformance.test.ts` | 6 | 0.011354248 / 0.012185303 / 0.011187744 | 0.011354248 |
-
-New-file summed median = **0.022575684 s**. Cumulative counted additions:
-104 existing witnesses + 36 synthetic = **140 cases**, **40** over the +100
-allowance under the recorded X2 interpretation. Existing generated boundary
-iterations remain **156**, separately counted; total runner additions **296**.
-Counted-case file medians now total **0.616680909 s**; including the
-unchanged boundary-file median gives **0.680073487 s**, leaving
-**29.319926513 s** against +30 s and a provisional baseline-plus-delta of
-**596.280073487 s**. The prior run's medians remain attributed to run 3;
-only these three new files were freshly measured. Local Vitest JSON per-file
-`endTime - startTime` medians are summed after taking each file's median; queue,
-wrapper and plant runs are excluded. This is local proxy evidence, not new
-hosted timing. Post-loop cleanup must revisit the case overrun.
-
-Delivery: requested test authoring and bounded verification are complete; X1b
-policy acceptance remains pending with its existing owner. No Git writes or
-external actions. Terminal self-retro: no test repairs or resource queue delays
-were needed. Keeping the generic-reader contrast inside the three hook cases
-and forwarding through the actual client avoided extra cases and a test-only
-transport abstraction; the separate capture case explains the 28-versus-27 tally.
-
-
-## Run 7 neutral authorship and selection narrowing
-
-Supervisor A/B/C refine P1 without changing the neutrality ratchet or controls.
-New package prose is neutral; reference shims keep the deployed provider kind,
-HTTP endpoint/error label, timeline default and callback/poller source values,
-then pass them to the extracted functions. Reference provider types keep their
-literal; package contracts accept a host-supplied provider type. These are host
-composition parameters, with no output or algorithm change.
-
-All four required-command mirrors remove only six P1 additions: the redundant
-Auth API selector, three provider-path timeline/ledger/skip witnesses and two
-provider-path key/verifier witnesses. No pre-P1 selector is removed. Neutral package
-conformance cases characterize the same timeline, logging and key-order boundaries;
-W1 covers the provider verifier and hook reader. Existing reference tests remain
-in the complete suite. The run-3/run-4 tables above are historical observations;
-the final run-7 ledger below supersedes their selection counts.
-
-Fresh run-7 measurements: three identical selections, all passing, with each
-file's local Vitest elapsed median summed. Queue/wrapper time is excluded;
-these are local proxies, not new hosted measurements.
-
-| Category | Cases / iterations | Summed file medians (s) |
+| Working-tree platform pack | Final measure | Cap |
 | --- | ---: | ---: |
-| Retained existing witnesses (15 files) | 79 | 0.052050781 |
-| Synthetic package witnesses (7 communications files plus HTTP helper) | 56 | 0.509342041 |
-| Counted additions | 135 | 0.561392822 |
-| Boundary iterations, separate | 156 | 0.063640381 |
-| All added runner work | 291 | 0.625033203 |
+| Packed / unpacked bytes | 328,629 / 1,340,236 | 522,240 / 2,088,960 |
+| Total files | 518 | 800 |
+| Code packed bytes / files | 274,103 / 501 | 440,320 / 800 |
+| Docs packed bytes / files | 22,119 / 5 | 40,960 / 10 |
+| Contracts gzip, communications / identity | 20 / 2,390 B | 1,024 / 4,800 B |
 
-Counted cases are **79 + 56 = 135**, a **35-case overrun** of +100 under X2;
-post-loop cleanup must revisit it. The binding +30 s allowance has
-**29.374966797 s** remaining; provisional 595.6 s baseline plus delta is
-**596.225033203 s**. The six removed additions account for 25 cases; neutral
-replacement cases add 20. All pre-P1 selectors remain selected.
+Medians are taken per file across three identical passing selections, then summed;
+queue/wrapper/plant time is excluded. These local proxies do not reset the hosted
+baseline. X2 accepts recorded case overruns only within +30 s; post-loop cleanup
+must revisit any overrun. Required mirrors preserve every pre-P1 selector.
 
-Run 7 required suite: **7,678 passed, no failures or skips**. Complete suite:
-**13,960 passed, 2 failed, 2 existing opt-in skips**. Both failures are the
-excluded documentation CLI fixture: its seed registers only the demo domain but
-materializes the retained communications test entrypoints, so source-map creation
-refuses an unregistered communications domain before either assertion. Removing
-the Auth selector resolved the earlier unknown-path failure; it did not settle
-this separate fixture obligation. No fixture, router or assertion was changed.
-
-Generators, documentation policy, ast-grep, lint (0 errors, 33 warnings), all
-five typechecks, subscription reference build, source real-PostgreSQL proof,
-both neutrality scripts and E2 comparison against `cf36b01` pass. The public
-neutrality check reports **zero increases**, with baseline/scanner unchanged.
-Exact comparisons against committed run-6 source confirm all five host
-parameterizations retain reference requests, responses, RPC arguments and event
-metadata. Reference provider type bytes remain identical to the P1 base.
-
-The full-suite fixture failure remains a delivery blocker outside this run's
-scope. The clean-commit package artifact gates remain the supervisor's next step;
-no fresh artifact admission, native review or external delivery is claimed.
-
-Self-retro: the materialized inventory refused untracked test files while Git
-writes were forbidden. Reusing the existing neutral conformance file removed
-that inventory change and preserved every replacement assertion. The Auth
-selector removal exposed a second fixture seed assumption; report the concrete
-scope blocker rather than silently remove more retained witnesses.
+Working-tree checks do not replace clean signed-candidate artifact admission or
+native review. SQL identity, type-only isolation, missing-peer refusal,
+NodeNext/Bundler declarations and real-PG receipt replay/conflict/ACL remain binding.

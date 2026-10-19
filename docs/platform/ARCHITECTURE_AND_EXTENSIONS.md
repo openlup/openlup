@@ -458,8 +458,9 @@ boundary contract for preview work rather than a support promise.
 M04 P1 adds `communications` within the platform rail, with isolated type-only
 `communications/contracts`. Its actual value edges are `data` (receipt lane)
 and `identity` (Auth verification URL); the Node handler shapes use a type edge
-to `http`. The host supplies egress, renderer, observation and shared control
-policy. No reference alias or provider SDK is imported by this capability.
+to `http`. The host supplies renderer, observation and shared control policy. Concrete mail
+transport, credentials, callback mapping and reconciliation stay in reference
+adapters; later observation/reconcile engines require neutral ports. No reference alias or provider SDK is imported by this capability.
 The contribution describes explicit host selections and never mounts a second
 executor. Browser preview values remain reference-owned. See the
 [M04 scope](plans/oss-m04-communications-triggers.md).

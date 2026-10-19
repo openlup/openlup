@@ -2402,10 +2402,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/emailDeliveryTimeline.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/communications/emailHealthAssessment.ts",
       "class": "public-output"
     },
@@ -2414,19 +2410,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/emailLedgerLog.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/communications/emailNotificationControl.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/emailNotificationSkipLog.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/emailOriginMetadata.ts",
       "class": "public-output"
     },
     {
@@ -2474,34 +2458,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/resendApiKey.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/resendDeliveryReconciliation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/resendDeliveryReconciliationWorker.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/resendEmailClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/resendWebhookHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/resendWebhookPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/resendWebhookVerifier.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/communications/shipmentNotifications.ts",
       "class": "public-output"
     },
@@ -2523,10 +2479,6 @@
     },
     {
       "path": "packages/platform/src/communications/transactionalDeliveryIdentifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/communications/transactionalEmailLedgerAttempt.ts",
       "class": "public-output"
     },
     {
@@ -3063,10 +3015,6 @@
     },
     {
       "path": "packages/platform/test/communications/sql.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/communications/transport.test.ts",
       "class": "public-output"
     },
     {
@@ -20341,7 +20289,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts server/runtime/auth/oidcComposition.test.ts server/adapters/captured/transactionalDelivery.test.ts server/adapters/supabase/communications/communicationSync.test.ts server/adapters/supabase/communications/newsletterWebhookPort.test.ts server/adapters/supabase/communications/publicPreferenceToken.test.ts server/adapters/supabase/communications/resendDeliveryReconciliation.test.ts server/adapters/supabase/communications/resendWebhookPort.test.ts server/adapters/supabase/transactionalDeliveryStore.test.ts server/infra/communications/integrationEventSignature.test.ts server/infra/email/emailNotificationControl.test.ts src/domains/communications/consentPolicy.test.ts src/domains/communications/newsletterIntegrationContracts.test.ts src/domains/communications/shipmentNotifications.test.ts src/domains/communications/status.test.ts src/domains/communications/transactionalDeliveryPort.test.ts src/domains/communications/unsubscribeToken.test.ts",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts server/runtime/auth/oidcComposition.test.ts server/adapters/captured/transactionalDelivery.test.ts server/adapters/supabase/communications/communicationSync.test.ts server/adapters/supabase/communications/newsletterWebhookPort.test.ts server/adapters/supabase/communications/publicPreferenceToken.test.ts server/adapters/supabase/transactionalDeliveryStore.test.ts server/infra/communications/integrationEventSignature.test.ts server/infra/email/emailNotificationControl.test.ts src/domains/communications/consentPolicy.test.ts src/domains/communications/newsletterIntegrationContracts.test.ts src/domains/communications/shipmentNotifications.test.ts src/domains/communications/status.test.ts src/domains/communications/transactionalDeliveryPort.test.ts src/domains/communications/unsubscribeToken.test.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -20353,7 +20301,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-f6b13996148f444d2f95b46e7d04032c6560dfc49307bff3c7b86d6ddad9536c"
+      "digest": "sha256-d4c2c25e41a8fc83a6545fcb55fcfcf8d930330c89e35b1f65fdd5821255b6c4"
     },
     {
       "path": "packages/core/package.json",

@@ -257,18 +257,16 @@ process.exit(0);
 export function proveCommunicationsConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { createInMemoryEmailTransport, postResendEmail, createPostgresTransactionalDeliveryStore, resolveCapturedDocumentDelivery } from "@openlup/platform/communications";
+import { createInMemoryEmailTransport, createPostgresTransactionalDeliveryStore, resolveCapturedDocumentDelivery } from "@openlup/platform/communications";
 import * as contracts from "@openlup/platform/communications/contracts";
 import { timingSafeStringEqual } from "@openlup/platform/http";
 assert.deepEqual(Object.keys(contracts), []);
 assert(timingSafeStringEqual("synthetic", "synthetic"));
+globalThis.fetch = () => { throw new Error("capture must never fetch"); };
 const transport = createInMemoryEmailTransport();
 assert.equal((await transport.send({ from: "sender@example.invalid", to: "recipient@example.invalid", subject: "Synthetic", html: "<p>Synthetic</p>" })).outcome.resendId, "in-memory-1");
 assert.equal(transport.sent.length, 1);
 assert.equal(resolveCapturedDocumentDelivery({}).refused, "document_delivery_channel_undeclared");
-globalThis.fetch = () => { throw new Error("drop must never fetch"); };
-const dropped = await postResendEmail({ apiKey: "synthetic", fromEmail: "sender@example.invalid", to: "recipient@example.invalid", subject: "Synthetic", html: "<p>Synthetic</p>" }, (_, intendedRecipient) => ({ mode: "drop", recipient: null, intendedRecipient, reason: "synthetic_drop" }), { endpoint: "https://mail.example.invalid/emails", httpErrorPrefix: "Synthetic HTTP" });
-assert.deepEqual(dropped.providerResponse, { suppressed: "drop", egress_reason: "synthetic_drop" });
 const store = createPostgresTransactionalDeliveryStore({ connectionString: "postgresql://unused.invalid/synthetic" });
 let missingPeer;
 await assert.rejects(() => store.readReceipt("synthetic:1"), error => {

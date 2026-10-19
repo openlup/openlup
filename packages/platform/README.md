@@ -21,7 +21,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
 | `./identity` | Experimental capability: identity engine, authorization, profile readers, session adapters and BFF factories |
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
-| `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport, webhook, delivery receipt and ledger algorithms; host-selected rendering, egress, observation and control policy |
+| `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, standard webhook verification and delivery receipts; host-selected rendering, egress, observation and control policy |
 | `./communications/contracts` | Type-only email, newsletter, Auth email, intake and receipt DTOs/ports; no Zod, Node or provider imports |
 
 ## Scheduled jobs
@@ -498,16 +498,17 @@ E2 is applied: the payment webhook module delegates these five generic helpers.
 `readRawBody` is the same package function object with its original declared
 `(req: VercelRequest) => Promise<string>` signature; the other four exports are
 plain re-exports. The payment provider verification and its replay tolerance stay local.
-The host also supplies the persisted provider kind, HTTP endpoint and legacy error
-label, timeline default, callback source and poller source. Reference bindings
-retain their deployed bytes; package tests use synthetic values. The type-only
-`CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>` accept the
-host's provider vocabulary; the reference types retain their original literal.
+The maintained mail transport, credentials, callback verification/mapping,
+reconciliation, timeline and send-ledger adapters remain in reference source.
+Their vendor directories retain the comparison-base bytes. The package exposes
+transport/result contracts and capture without a concrete mail factory.
+The type-only `CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>`
+accept host vocabulary; reference types retain their original literal.
 
 The required selection retains the moved-code witnesses and neutral package
 characterization tests. The package W1 hook reader witnesses the Auth composition;
 provider-specific reference test paths remain in the complete suite. The
-[M04 ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#run-7-neutral-authorship-and-selection-narrowing)
+[M04 ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#verification-ledger)
 records counted cases, separate boundary iterations and local timing provenance.
 The clean-commit artifact gate enforces all merged caps, including the 1,024 B
 limit on the new type-only contracts entry. Artifact admission still needs a

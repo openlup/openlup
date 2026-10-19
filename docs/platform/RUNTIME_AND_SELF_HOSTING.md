@@ -418,9 +418,12 @@ proof before those claims are available.
 
 The communications import changes implementation ownership, not installed runtime
 selection. Reference Auth email binds the same renderer and environment observers;
-The maintained HTTP mail provider transport binds the same egress policy, origin defaults and shared delivery
+The unchanged reference mail transport binds the same egress policy, origin defaults and shared delivery
 controls. Existing schedules, BFF routes, cron admission, provider activation and
 SQL installation remain host-owned and unchanged. Package contribution metadata
 requires the host-selected schema and advertises only supplied handlers, schedules,
 routes and required ports. No deployment configuration or second outbox executor
 is introduced.
+
+Concrete mail clients, callback verification/mapping, reconciliation and send-ledger
+adapters remain reference-owned; the package exports no mail-vendor factory.

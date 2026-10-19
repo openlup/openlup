@@ -1,27 +1,4 @@
-/**
- * Provider-neutral email transport seam (the OSS swap point).
- *
- * Node email ports reach the maintained HTTP mail provider through
- * `postResendEmail`. A host can substitute an SMTP or capture transport by
- * implementing `EmailTransport`. Ports depend on that interface; endpoint,
- * authentication and response translation remain behind the HTTP client.
- *
- * `send()` returns the SAME `{ outcome, providerResponse }` the ports already
- * consume for their ledger/timeline writes, so swapping a port from
- * `postResendEmail` to an injected transport is behaviour-preserving.
- *
- * Note: this is the SEND seam only. It carries no cross-runtime parity
- * obligation: the Deno half was undeployed on 2026-09-04 and its source retired
- * on 2026-09-05, and every sender now renders through
- * src/domains/communications/email/render.ts.
- */
-
-import {
-  type ResendEmailSendInput,
-  type ResendEmailPostResult,
-  type ResendEmailSendOutcome,
-} from "./resendEmailClient.js";
-
+/** Provider-agnostic transport contract, outcome projection and capture transport. */
 export interface EmailMessage {
   from: string;
   to: string;
@@ -39,9 +16,23 @@ export interface EmailMessage {
   signal?: AbortSignal;
 }
 
-/** Neutral aliases so ports type against the seam, not the maintained HTTP mail provider client. */
-export type EmailSendOutcome = ResendEmailSendOutcome;
-export type EmailSendResult = ResendEmailPostResult;
+/** Transport results preserve existing reference wire shapes. */
+export interface EmailSendOutcome {
+  ok: boolean;
+  /** Legacy identifier retained for reference result compatibility. */
+  resendId: string | null;
+  httpStatus: number;
+  providerError: string | null;
+  providerErrorCode?: string | null;
+  aborted: boolean;
+  suppressed?: "drop" | null;
+  egressMode?: "production" | "sandbox_direct" | "sandbox_sink" | "drop";
+  egressReason?: string;
+}
+export interface EmailSendResult {
+  outcome: EmailSendOutcome;
+  providerResponse: Record<string, unknown>;
+}
 
 export type EmailSendSkipReason = "admin_disabled" | "egress_suppressed";
 
@@ -145,66 +136,6 @@ export interface EmailTransport {
   readonly providerKind: string;
   send(message: EmailMessage): Promise<EmailSendResult>;
 }
-
-/**
- * HTTP mail transport. Delegates verbatim to the isolated client
- * (endpoint, auth, error parsing, and the
- * fail-closed egress gateway all live there).
- */
-export function createResendTransport(opts: {
-  apiKey: string;
-  providerKind: string;
-  env?: Record<string, string | undefined>;
-}, postEmail: (input: ResendEmailSendInput) => Promise<ResendEmailPostResult>): EmailTransport {
-  return {
-    providerKind: opts.providerKind,
-    send(message) {
-      return postEmail({
-        apiKey: opts.apiKey,
-        fromEmail: message.from,
-        to: message.to,
-        subject: message.subject,
-        html: message.html,
-        text: message.text,
-        replyTo: message.replyTo,
-        idempotencyKey: message.idempotencyKey,
-        attachments: message.attachments,
-        signal: message.signal,
-        env: opts.env,
-      });
-    },
-  };
-}
-
-/**
- * Resolve the maintained HTTP mail provider API key for a Node composition root.
- *
- * Both environments have a key and both are valid; only the variable NAME
- * differs, because the two Vercel projects are provisioned separately:
- *
- *   the production project → RESEND_API_KEY
- *   the staging project    → RESEND_SANDBOX_API_KEY
- *
- * The concrete project names live in the deployment's secrets documentation,
- * deliberately not repeated here: this file is a publishable reference adapter
- * and a product name in it is counted vocabulary.
- *
- * A composition root that reads only `RESEND_API_KEY` therefore starts with an
- * empty key on staging, and every send fails with the provider's "API key is
- * invalid" — which reads like a revoked credential rather than a missing binding
- * and sends the reader looking for a key that was there all along. Prefer the
- * production name so production behaviour is unchanged, and fall back to the
- * staging name rather than requiring staging to be given a production variable:
- * its absence there is a deliberate control against mailing real customers from
- * a preview deployment.
- */
-export function resolveEmailApiKey(env: Record<string, string | undefined>): string {
-  const primary = (env.RESEND_API_KEY ?? "").trim();
-  return primary || (env.RESEND_SANDBOX_API_KEY ?? "").trim();
-}
-
-/** Default concrete binding exposed to Node composition roots. */
-export const createEmailTransport = createResendTransport;
 
 export interface InMemoryEmailTransport extends EmailTransport {
   /** Every message handed to send(), in order — for tests and dry runs. */

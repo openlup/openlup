@@ -532,3 +532,7 @@ not an independent install chain or a new forward. The full selected canonical
 prefix and existing schema probes remain required. Managed receipt RPCs retain
 their current service scope; direct receipts retain one role-free transaction per
 operation and their accepted/failed replay boundaries.
+
+The narrowed import moves receipt stores and their ledger contracts. Reference
+mail-provider timeline/send-ledger implementations remain at their existing
+owners; no provider mapping or new schema enters the package.
