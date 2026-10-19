@@ -32,7 +32,6 @@ import type {
 } from "./contracts.js";
 import type { EmailRenderer, RenderEmailInput, RenderedEmail } from "./email/render.js";
 import type {
-  NewsletterProviderCapabilities,
   NewsletterSyncEvent,
 } from "./newsletterIntegrationContracts.js";
 
@@ -117,75 +116,5 @@ export interface CommunicationAdminTemplateContentWritePort {
 
 export type { NewsletterSyncEvent } from "./newsletterIntegrationContracts.js";
 
-export type NewsletterSyncOutcome =
-  | {
-      status: "sent";
-      remoteProfileId?: string | null;
-      responseSummary?: Record<string, unknown>;
-    }
-  | {
-      status: "skipped";
-      reason: string;
-      responseSummary?: Record<string, unknown>;
-    }
-  | {
-      status: "retry";
-      reason: string;
-      retryAfterSeconds?: number;
-    };
-
-export interface NewsletterSyncProviderPort {
-  readonly providerKind: string;
-  readonly capabilities: NewsletterProviderCapabilities;
-  sync(event: NewsletterSyncEvent): Promise<NewsletterSyncOutcome>;
-  reconcile?(): Promise<NewsletterSyncReconcileOutcome>;
-}
-
-export type NewsletterSyncReconcileOutcome =
-  | {
-      status: "skipped";
-      reason: string;
-      responseSummary?: Record<string, unknown>;
-    }
-  | {
-      status: "checked";
-      checked: number;
-      updated: number;
-      failures: number;
-      responseSummary?: Record<string, unknown>;
-    };
-
-export class CommunicationRecipientNotFoundError extends Error {
-  constructor(message = "Communication recipient not found") {
-    super(message);
-    this.name = "CommunicationRecipientNotFoundError";
-  }
-}
-
-export class CommunicationTemplateNotFoundError extends Error {
-  constructor(message = "Communication template not found") {
-    super(message);
-    this.name = "CommunicationTemplateNotFoundError";
-  }
-}
-
-export class CommunicationConflictError extends Error {
-  constructor(message = "Communication request conflicts with current state") {
-    super(message);
-    this.name = "CommunicationConflictError";
-  }
-}
-
-export class CommunicationValidationError extends Error {
-  constructor(message = "Communication request is invalid") {
-    super(message);
-    this.name = "CommunicationValidationError";
-  }
-}
-
-export class CommunicationUnavailableError extends Error {
-  constructor(message = "Communication capability is unavailable") {
-    super(message);
-    this.name = "CommunicationUnavailableError";
-  }
-}
+export type { NewsletterSyncOutcome, NewsletterSyncProviderPort, NewsletterSyncReconcileOutcome } from "@openlup/platform/communications/contracts";
+export { CommunicationRecipientNotFoundError, CommunicationTemplateNotFoundError, CommunicationConflictError, CommunicationValidationError, CommunicationUnavailableError } from "@openlup/platform/communications";

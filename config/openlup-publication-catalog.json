@@ -1210,6 +1210,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/oss-m04-communications-triggers.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2166,6 +2170,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/communications.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/composition.api.md",
       "class": "public-output"
     },
@@ -2218,6 +2230,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260807190000_comms_outbox_rail.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260809150000_job_run_ledger.sql",
       "class": "public-output"
     },
@@ -2226,11 +2242,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260810120001_transactional_delivery_receipts.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260810180001_self_host_actor_auth.sql",
       "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260810204057_customer_identity_read.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813120000_communications_control_plane.sql",
       "class": "public-output"
     },
     {
@@ -2310,6 +2334,162 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/accountingDocumentDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/authEmailError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/authEmailPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/authSendEmailHook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/capturedTransactionalDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/communicationSync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/communicationSyncWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/consentPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/authEmail.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/email.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/newsletter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/newsletterWebhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/publicIntake.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/transactionalDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contribution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailHealthAssessment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailHealthMetricsPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailNotificationControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailTransport.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/errors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/integrationEventSignature.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/managedTransactionalDeliveryStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/newsletterIntegrationContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/newsletterWebhookPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/originPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/postgresTransactionalDeliveryStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/preferencesToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/publicPreferenceToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/shipmentNotifications.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/standardWebhooks.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/status.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/transactionalDelivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/transactionalDeliveryIdentifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/unsubscribeToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/validation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/composeBundle.ts",
       "class": "public-output"
     },
@@ -2379,6 +2559,10 @@
     },
     {
       "path": "packages/platform/src/http/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/http/webhookSignature.ts",
       "class": "public-output"
     },
     {
@@ -2818,6 +3002,30 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/contribution.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/hookRawReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/sql.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/transportConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/webhookDialects.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/composition/composeBundle.test.ts",
       "class": "public-output"
     },
@@ -2871,6 +3079,10 @@
     },
     {
       "path": "packages/platform/test/http/staticAssets.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/http/webhookSignature.test.ts",
       "class": "public-output"
     },
     {
@@ -20077,7 +20289,7 @@
     },
     {
       "name": "test:required",
-      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts server/runtime/auth/oidcComposition.test.ts",
+      "command": "node scripts/run-vitest.mjs run scripts/agent-review-queue.test.ts scripts/agent-review-session.test.ts scripts/public-ci-reuse.test.ts scripts/agent-review-gate.test.ts scripts/source-preview-release.test.ts scripts/packages packages/core packages/outbox packages/platform server/runtime/outbox server/_lib server/adapters/managed server/adapters/postgres server/bff/admin/commerce/catalog server/bff/commerce server/domains/accounting server/domains/channels server/domains/commerce server/domains/communications server/domains/fulfillment server/domains/payment server/domains/platform server/domains/support server/runtime/communications/newsletterProviderRegistry.test.ts server/runtime/payment/paymentAdapterRegistry.test.ts server/shared src/checkout/adapters src/checkout/machine src/components/admin src/domains/customers src/domains/payment src/domains/platform src/domains/shipping src/domains/subscription src/lib/coreDomains.test.ts src/lib/orderRef.test.ts src/lib/paymentControlPlaneBoundary.test.ts src/pages/account/v2/sections/PaymentCardSetup.test.tsx src/public-reference tests/stripe server/runtime/auth/operatorAuthBinding.test.ts server/runtime/auth/operatorIdentityCommand.test.ts server/runtime/auth/operatorRoutes.test.ts server/runtime/auth/operatorSessionBinding.test.ts src/integrations/postgres/operatorAuthPort.test.ts src/lib/useAuth.test.tsx src/pages/admin/AuthCallbackPage.test.tsx src/pages/admin/LoginPage.test.tsx tests/postgres/operatorIdentityUpgrade.test.ts tests/postgres/operatorInvitationLifecycle.test.ts tests/postgres/operatorInvitationCatalogue.test.ts server/runtime/auth/identityReadiness.test.ts server/runtime/auth/referenceIdentity.test.ts server/runtime/auth/capturedIdentityMailbox.test.ts server/runtime/auth/oidcComposition.test.ts server/adapters/captured/transactionalDelivery.test.ts server/adapters/supabase/communications/communicationSync.test.ts server/adapters/supabase/communications/newsletterWebhookPort.test.ts server/adapters/supabase/communications/publicPreferenceToken.test.ts server/adapters/supabase/transactionalDeliveryStore.test.ts server/infra/communications/integrationEventSignature.test.ts server/infra/email/emailNotificationControl.test.ts src/domains/communications/consentPolicy.test.ts src/domains/communications/newsletterIntegrationContracts.test.ts src/domains/communications/shipmentNotifications.test.ts src/domains/communications/status.test.ts src/domains/communications/transactionalDeliveryPort.test.ts src/domains/communications/unsubscribeToken.test.ts",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -20089,7 +20301,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "package.json",
-      "digest": "sha256-8c6a0e019d89919ae50ba871aebcf1dba9d3105e14354d268bb398d5af5c3f95"
+      "digest": "sha256-d4c2c25e41a8fc83a6545fcb55fcfcf8d930330c89e35b1f65fdd5821255b6c4"
     },
     {
       "path": "packages/core/package.json",

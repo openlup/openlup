@@ -11,7 +11,8 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/http/runtime.test.ts"
+        "test/http/runtime.test.ts",
+        "test/http/webhookSignature.test.ts"
       ],
       "entrypoint": "dist/http/index.d.ts",
       "snapshot": "api/http.api.md"
@@ -125,6 +126,30 @@
       ],
       "entrypoint": "dist/identity/contracts/index.d.ts",
       "snapshot": "api/identity-contracts.api.md"
+    },
+    "./communications": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/communications/sql.test.ts",
+        "test/communications/contribution.test.ts",
+        "test/communications/transportConformance.test.ts"
+      ],
+      "entrypoint": "dist/communications/index.d.ts",
+      "snapshot": "api/communications.api.md"
+    },
+    "./communications/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/communications/contracts.test.ts"
+      ],
+      "entrypoint": "dist/communications/contracts/index.d.ts",
+      "snapshot": "api/communications-contracts.api.md"
     }
   },
   "pack": {
@@ -144,6 +169,7 @@
       "packedBytes": 256973
     },
     "browserEntries": {
+      "./communications/contracts": 1024,
       "./identity/contracts": 4800
     }
   }

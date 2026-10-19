@@ -30,6 +30,15 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The reference payment webhook module delegates its generic capped body reader,
+hex-HMAC verifier and constant-time comparison to `@openlup/platform/http`.
+Its `readRawBody` binding retains the declared `VercelRequest` parameter and the
+same package function object; the other four generic names are re-exports.
+The payment provider verification and its 300-second replay tolerance remain local. This
+shared primitive does not replace the Auth Standard Webhooks or the maintained HTTP mail provider signature
+protocols. The [communications owner](../../src/domains/communications/README.md#packaged-server-algorithms)
+describes the distinct verification boundaries.
+
 Opt-in direct OIDC composition authenticates a signed external issuer/subject
 into a deterministic UUID, then reuses the existing reconcile, actor-scoped
 profile and live membership ports. A token supplies no operator role. Keep one
@@ -443,3 +452,15 @@ Development-preview seams may change. The stable-framework requirements are the 
 extension contracts, a versioned release/BOM, a thin adopter app, conformance
 coverage, and upgrade tooling. Until that gate is complete, this document is a
 boundary contract for preview work rather than a support promise.
+
+## Communications capability import
+
+M04 P1 adds `communications` within the platform rail, with isolated type-only
+`communications/contracts`. Its actual value edges are `data` (receipt lane)
+and `identity` (Auth verification URL); the Node handler shapes use a type edge
+to `http`. The host supplies renderer, observation and shared control policy. Concrete mail
+transport, credentials, callback mapping and reconciliation stay in reference
+adapters; later observation/reconcile engines require neutral ports. No reference alias or provider SDK is imported by this capability.
+The contribution describes explicit host selections and never mounts a second
+executor. Browser preview values remain reference-owned. See the
+[M04 scope](plans/oss-m04-communications-triggers.md).

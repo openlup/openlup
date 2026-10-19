@@ -9,10 +9,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "identity/contracts"] as const;
-// identity is an adapter entry: its PostgreSQL profile adapter declares the data entry's pg types.
+export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "identity/contracts", "communications/contracts"] as const;
+// identity and communications are adapter entries: its PostgreSQL profile adapter declares the data entry's pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
-export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger", "identity"] as const;
+export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger", "identity", "communications"] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -253,6 +253,62 @@ process.exit(0);
 `, [connectionString]);
 }
 
+/** Runs from the installed artifact with optional peers physically absent. */
+export function proveCommunicationsConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createInMemoryEmailTransport, createPostgresTransactionalDeliveryStore, resolveCapturedDocumentDelivery } from "@openlup/platform/communications";
+import * as contracts from "@openlup/platform/communications/contracts";
+import { timingSafeStringEqual } from "@openlup/platform/http";
+assert.deepEqual(Object.keys(contracts), []);
+assert(timingSafeStringEqual("synthetic", "synthetic"));
+globalThis.fetch = () => { throw new Error("capture must never fetch"); };
+const transport = createInMemoryEmailTransport();
+assert.equal((await transport.send({ from: "sender@example.invalid", to: "recipient@example.invalid", subject: "Synthetic", html: "<p>Synthetic</p>" })).outcome.resendId, "in-memory-1");
+assert.equal(transport.sent.length, 1);
+assert.equal(resolveCapturedDocumentDelivery({}).refused, "document_delivery_channel_undeclared");
+const store = createPostgresTransactionalDeliveryStore({ connectionString: "postgresql://unused.invalid/synthetic" });
+let missingPeer;
+await assert.rejects(() => store.readReceipt("synthetic:1"), error => {
+  missingPeer = error;
+  return error.message.startsWith("OPENLUP_E_PEER_MISSING: pg is required by ") && Boolean(error.cause);
+});
+// No pool was created; closing repeats the cached initialization refusal.
+await assert.rejects(() => store.close(), error => error === missingPeer);
+`);
+}
+
+/** Sparse projected units are exercised in an owned disposable database only. */
+export function proveCommunicationsPostgres(consumer: string, connectionString: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import pg from "pg";
+import { COMMUNICATIONS_MIGRATIONS, createPostgresTransactionalDeliveryStore, createCapturedTransactionalDelivery, createTransactionalDelivery } from "@openlup/platform/communications";
+const connectionString = process.argv[2], client = new pg.Client({ connectionString });
+await client.connect();
+try {
+  for (const unit of COMMUNICATIONS_MIGRATIONS) await client.query(readFileSync(unit.url, "utf8"));
+  const store = createPostgresTransactionalDeliveryStore({ connectionString });
+  let deliveries = 0;
+  const delivery = createCapturedTransactionalDelivery({ outcome: () => { deliveries++; return { state: "accepted" }; } });
+  const action = createTransactionalDelivery({ store, delivery });
+  const command = { idempotencyKey: "synthetic:receipt", recipientReference: "contact:1", templateReference: "template:1" };
+  try {
+    const first = await action.send(command);
+    assert.equal(first.state, "accepted");
+    assert.deepEqual(await action.send(command), first);
+    assert.equal(deliveries, 1);
+    await assert.rejects(() => action.send({ ...command, templateReference: "template:2" }), error => error.message === "transactional_delivery_command_conflict");
+    await assert.rejects(() => client.query("SELECT * FROM public.communications_delivery_readiness($1)", ["11111111-1111-4111-8111-111111111111"]), error => error.message.includes("operator"));
+    await client.query("SET ROLE anon");
+    await assert.rejects(() => client.query("SELECT * FROM public.transactional_delivery_receipts"), error => error.code === "42501");
+    await client.query("RESET ROLE");
+  } finally { await store.close(); }
+} finally { await client.end(); }
+`, [connectionString]);
+}
+
 // Like the outbox proof: the trusted job service when CI supplies its identity, otherwise an owned
 // labelled container; a unique database either way, and no skip when neither is available.
 function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): void {
@@ -284,6 +340,7 @@ function proveDockerPostgres(consumer: string, environment: NodeJS.ProcessEnv): 
     docker(["exec", container, "psql", "-U", "postgres", "-d", database, "-v", "ON_ERROR_STOP=1", "-c",
       "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated; END IF; IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon; END IF; END $$;"]);
     provePostgresOperations(consumer, `postgresql://postgres@127.0.0.1:${port}/${database}`);
+    proveCommunicationsPostgres(consumer, `postgresql://postgres@127.0.0.1:${port}/${database}`);
     consumerNode(consumer, adapterOperations + `
 const operations = postgresOperations(process.argv[2]);
 // The appended identity adapters also require their migrated schema.
@@ -346,6 +403,7 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
+    proveCommunicationsConsumer(consumer);
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);

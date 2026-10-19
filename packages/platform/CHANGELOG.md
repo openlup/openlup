@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- Add experimental `./communications` and type-only `./communications/contracts`
+  entries by relocating the existing public implementation behind reference
+  bindings. Preserve current transport outcomes, signature policies, token
+  purposes, receipt replay and send/ledger order. Add generic webhook primitives
+  to the existing `./http` entry and three byte-identical canonical SQL projections.
+  Browser rendering/content, activation and deployment ownership stay with hosts.
+- Apply E2 payment-helper delegation with identical export names and declared
+  signatures, including `readRawBody`'s `VercelRequest` signature and function
+  identity. Keep the payment provider-specific verification local.
+- Keep maintained mail-provider clients, factories, callbacks, reconciliation,
+  timeline and send-ledger adapters at their unchanged reference owners.
+  Required selection additions witness only retained package code; the current
+  [verification ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#verification-ledger)
+  records counted cases, separate boundary iterations and the X2 time acceptance.
+  Existing package artifact caps remain binding.
+
+Migration: this opt-in import adds no schema forward or activation. Supply the
+existing reference renderer, egress/environment/control policy or equivalent host
+bindings when adopting the server factories. Apply the full selected canonical
+SQL prefix once; the three sparse projections must not be reapplied over an
+existing history. Package-set version preparation remains a separate step.
+
 Notable changes to this public-source workspace package are recorded here.
 “Unreleased” means no npm version carries the change yet; immutable OpenLup
 source previews may already ship some changes, and their release notes say

@@ -521,3 +521,18 @@ Until it is present, installed managed acceptance refuses. Existing labelled
 fixture-only grants in adapter conformance remain fixtures and cannot establish
 that the shipped chain supplies these permissions. The acceptance runner adds
 no compensating grants and never writes a fabricated native migration ledger.
+
+## Communications projections
+
+`COMMUNICATIONS_MIGRATIONS` carries byte-identical projections of the existing
+canonical comms outbox, transactional receipt and communications control-plane
+units at positions 2, 9 and 20. Their hashes, runner positions and canonical paths
+are checked against the unchanged manifest. They are a sparse module inventory,
+not an independent install chain or a new forward. The full selected canonical
+prefix and existing schema probes remain required. Managed receipt RPCs retain
+their current service scope; direct receipts retain one role-free transaction per
+operation and their accepted/failed replay boundaries.
+
+The narrowed import moves receipt stores and their ledger contracts. Reference
+mail-provider timeline/send-ledger implementations remain at their existing
+owners; no provider mapping or new schema enters the package.

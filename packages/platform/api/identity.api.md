@@ -488,6 +488,7 @@ export { NODE_HTTP_TIMEOUT_CODE, closeInputAfterResponse, runWithHttpDeadline, t
 export { applySecurityHeaders, contentTypeFor, looksLikeAsset, serveSpaStatic, type NodeSecurityHeaderPolicy, type StaticAssetReader, } from "./security.js";
 export { createDistStaticReader } from "./staticAssets.js";
 export { createNodeHttpRuntime, createRequestHandler, type HttpEntrypointRegistration, type HttpPathEntrypoint, type NodeCsrFallback, type NodeHttpRuntimeOptions, type NodeLegacyRedirect, } from "./runtime.js";
+export { MAX_WEBHOOK_BODY_BYTES, WebhookBodyTooLargeError, readRawBody, verifyHmacSignature, timingSafeStringEqual } from "./webhookSignature.js";
 ```
 ## dist/http/requestAdapter.d.ts
 
@@ -699,6 +700,52 @@ export type HttpHandler = (req: HttpRequest, res: HttpResponse) => Promise<unkno
 export type EntrypointLoader = () => Promise<{
     default: HttpHandler;
 }>;
+```
+## dist/http/webhookSignature.d.ts
+
+```ts
+import type { HttpRequest } from "./types.js";
+/** Hard cap on raw webhook body bytes — the payment provider events are well under 256 KiB. */
+export declare const MAX_WEBHOOK_BODY_BYTES = 1048576;
+/** Thrown by readRawBody when the streamed body exceeds MAX_WEBHOOK_BODY_BYTES. */
+export declare class WebhookBodyTooLargeError extends Error {
+    constructor();
+}
+/**
+ * Reads the exact raw request body bytes for provider webhook signature
+ * verification.
+ *
+ * `@vercel/node` (v3, the builder for `/api` functions in this Vite project)
+ * auto-parses `application/json` request bodies into `req.body` and IGNORES the
+ * `export const config = { api: { bodyParser: false } }` opt-out — that opt-out
+ * is a Next.js Pages Router convention, not a vanilla `@vercel/node` one
+ * (verified empirically against the hidden-preview deploy: a JSON payload posted
+ * with `Content-Type: application/json` arrives parsed, the same bytes posted as
+ * `text/plain` arrive raw). Re-serializing the parsed object with
+ * `JSON.stringify` does NOT reproduce the provider's exact bytes — the payment provider signs
+ * pretty-printed JSON, so a compacted re-serialization breaks HMAC verification.
+ *
+ * Reading the underlying request stream FIRST — before touching `req.body`,
+ * whose getter triggers the parse that consumes the stream — preserves the exact
+ * bytes when the platform parses lazily. When `req` is not a stream (unit tests
+ * pass a plain `{ body }` object) or the stream yields nothing (already
+ * consumed), we fall back to `req.body`.
+ */
+export declare function readRawBody(req: HttpRequest): Promise<string>;
+export declare function verifyHmacSignature(input: {
+    rawBody: string;
+    signatureHeader: string | undefined;
+    secret: string;
+}): boolean;
+/**
+ * Constant-time comparison of two shared-secret strings.
+ *
+ * Exported because it is not payment-specific: any route holding a shared token has to compare it
+ * the same way, and a second hand-rolled copy of a security primitive is how one of them quietly
+ * stops being constant-time. The length check comes first because `timingSafeEqual` THROWS on a
+ * length mismatch rather than returning false, and the length of a shared token is not the secret.
+ */
+export declare function timingSafeStringEqual(left: string, right: string): boolean;
 ```
 ## dist/identity/adminAuthBinding.d.ts
 

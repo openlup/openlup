@@ -1,0 +1,6 @@
+/** Sparse projections of canonical units, never an install chain. */
+export const COMMUNICATIONS_MIGRATIONS = [
+  { id: "20260807190000_comms_outbox_rail", catalogPath: "db/platform/migrations/20260807190000_comms_outbox_rail.sql", position: 2, sha256: "dfb3e9808714846738222bb74a1bfdb38ceafdde2ca8a0c71ab835739fb333bd", url: new URL("../../sql/20260807190000_comms_outbox_rail.sql", import.meta.url) },
+  { id: "20260810120001_transactional_delivery_receipts", catalogPath: "db/platform/migrations/20260810120001_transactional_delivery_receipts.sql", position: 9, sha256: "a157f075f8684c29958c565239c19a55894bffaaff4fd80e04ee689c926e33f7", url: new URL("../../sql/20260810120001_transactional_delivery_receipts.sql", import.meta.url) },
+  { id: "20260813120000_communications_control_plane", catalogPath: "db/platform/migrations/20260813120000_communications_control_plane.sql", position: 20, sha256: "dea5fe631f1329272989e1598f6f48aeb6ce67fa070ddeb0200f69f62fcd972a", url: new URL("../../sql/20260813120000_communications_control_plane.sql", import.meta.url) },
+] as const;

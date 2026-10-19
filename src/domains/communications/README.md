@@ -14,6 +14,31 @@ single boundary for transactional/marketing email side effects.
   or lifecycle facts (`clients`), DHL state (`fulfillment`), feedback content
   (`feedback`), or legal copy approval.
 
+## Packaged server algorithms
+
+The provider-agnostic server algorithms live in
+[`@openlup/platform/communications`](../../../packages/platform/src/communications/index.ts).
+This domain's neutral status helpers, consent, shipment plan, newsletter schema/capability and
+unsubscribe helpers delegate through the supported package entry. Server adapters
+and Auth email shims retain their host bindings. Type-only email, Auth email,
+newsletter, intake and delivery-receipt ports have the isolated
+[`communications/contracts`](../../../packages/platform/src/communications/contracts/index.ts)
+entry. Browser Zod contracts remain here.
+Mail-provider clients, concrete transport factories, callback mapping/verifiers,
+reconciliation, delivery timeline and send-ledger helpers remain reference-owned.
+The existing reference vendor directories are unchanged. P2/P4 may extract
+agnostic observation/reconcile engines behind neutral ports; vendor mapping
+stays in the reference adapter. Marketing automation contributes agnostic
+ports/contracts/conformance only.
+
+The browser-used renderer/block/link builders, support report, template HTML/DB
+policy and commerce/subscription preview content remain in reference source.
+Their closure must not import the server communications entry. M04 P1 preserves
+the current public copy, including dunning words, invitation dedupe/expiry,
+headers/tags, sink/drop outcomes and ledger ordering; later behavior proposals
+are separate changes. The trigger catalogue and production activation are
+outside this import.
+
 ## Public surface (import cross-domain ONLY these)
 - Admin clients: `admin*Client.ts` files for templates, active/content edits,
   email sends/events, notification recipients, permission reads/overrides and

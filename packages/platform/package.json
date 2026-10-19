@@ -105,6 +105,16 @@
       "types": "./dist/identity/contracts/index.d.ts",
       "import": "./dist/identity/contracts/index.js",
       "default": "./dist/identity/contracts/index.js"
+    },
+    "./communications": {
+      "types": "./dist/communications/index.d.ts",
+      "import": "./dist/communications/index.js",
+      "default": "./dist/communications/index.js"
+    },
+    "./communications/contracts": {
+      "types": "./dist/communications/contracts/index.d.ts",
+      "import": "./dist/communications/contracts/index.js",
+      "default": "./dist/communications/contracts/index.js"
     }
   },
   "repository": {

@@ -6,11 +6,11 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its eleven experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its thirteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
-| `./http` | Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
+| `./http` | Generic capped raw-body reader, hex HMAC and constant-time token comparison; Node request adaptation, deadlines, security headers and static documents, and `createNodeHttpRuntime` with its fixed request order |
 | `./bff` | `createBffDispatcher`, `lazyBffRoute`, the hosted router URL rewrite, the response envelope (`createBffResponder`), the observed request context and the health route |
 | `./scheduler` | Transport-neutral scheduled jobs (`ScheduledJob`, the job registry, the lease-aware runner and the authenticated HTTP cron entry), path-declared jobs from configuration, the node-cron scheduler with per-job advisory locks, hosted cron verification, the cron entrypoint guard (it compares the presented bearer token with `CRON_SECRET` in constant time) and direct job bindings |
 | `./blob` | Filesystem, S3-compatible, Supabase Storage and Vercel Blob adapters, and `bindBlobPort` |
@@ -21,6 +21,8 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
 | `./identity` | Experimental capability: identity engine, authorization, profile readers, session adapters and BFF factories |
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
+| `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, standard webhook verification and delivery receipts; host-selected rendering, egress, observation and control policy |
+| `./communications/contracts` | Type-only email, newsletter, Auth email, intake and receipt DTOs/ports; no Zod, Node or provider imports |
 
 ## Scheduled jobs
 
@@ -471,6 +473,48 @@ panel. Its explicit runtime must supply actual routes and readiness admission;
 the shell refuses a missing composition. See the
 [identity reference guide](../../docs/platform/IDENTITY.md#disposable-identity-reference)
 for both-bundle commands, the committed managed grants and installation limits.
+
+## Communications import
+
+M04 P1 relocates the existing public implementation without changing its reference
+outputs. The reference shims bind the existing renderer, egress resolver, origin
+defaults, delivery-shaping policy and receipt transaction lane. The package does
+not select a deployment, mount a route or schedule another executor.
+`createCommunicationsContribution` requires the host's version and schema
+inventory; supplied handlers, schedules, routes and ports describe only that
+host's selection.
+
+`COMMUNICATIONS_MIGRATIONS` projects three existing canonical units byte for byte:
+comms outbox (position 2), transactional receipts (9) and communications control
+plane (20). This sparse list is not a standalone migration chain. Apply the full
+selected canonical prefix through its existing runner; importing the module does
+not apply SQL or advertise missing managed/direct capabilities.
+
+Browser previews retain their reference renderer, content defaults and template
+policy. The Auth hook receives that same renderer through its reference shim.
+The standard Auth webhook and the maintained HTTP mail provider verifiers keep their separate signature
+formats and clocks; the generic helper added to `./http` replaces neither.
+E2 is applied: the payment webhook module delegates these five generic helpers.
+`readRawBody` is the same package function object with its original declared
+`(req: VercelRequest) => Promise<string>` signature; the other four exports are
+plain re-exports. The payment provider verification and its replay tolerance stay local.
+The maintained mail transport, credentials, callback verification/mapping,
+reconciliation, timeline and send-ledger adapters remain in reference source.
+Their vendor directories retain the comparison-base bytes. The package exposes
+transport/result contracts and capture without a concrete mail factory.
+The type-only `CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>`
+accept host vocabulary; reference types retain their original literal.
+
+The required selection retains the moved-code witnesses and neutral package
+characterization tests. The package W1 hook reader witnesses the Auth composition;
+provider-specific reference test paths remain in the complete suite. The
+[M04 ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#verification-ledger)
+records counted cases, separate boundary iterations and local timing provenance.
+The clean-commit artifact gate enforces all merged caps, including the 1,024 B
+limit on the new type-only contracts entry. Artifact admission still needs a
+clean supervisor commit.
+See the [M04 plan](../../docs/platform/plans/oss-m04-communications-triggers.md)
+for scope, later waves and verification limits.
 
 ## Package artifact limits
 

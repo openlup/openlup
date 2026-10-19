@@ -1199,3 +1199,13 @@ These assertions require an actual successful run; unit tests with synthetic
 keys do not certify an issuer. The recipe certifies only the direct composition,
 not managed federation or production hosting. The existing customer-own-row
 pgTAP witness remains required separately.
+
+## Auth email implementation ownership
+
+The existing Auth Send Email hook now delegates to the communications capability.
+Identity still owns verification URL construction and principal/session policy.
+The reference shim supplies the same renderer and environment observers, while
+content, transport and persistence remain injected. The hook retains its existing
+CORS and error bytes, stream-only reader, signature dialect/clock, template-control
+before send, and ledger before success behavior. Only the Auth email port slice
+moves to communications contracts; no identity implementation or SQL changes.
