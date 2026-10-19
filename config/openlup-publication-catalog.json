@@ -2402,6 +2402,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/deliveryReconciliation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/emailHealthAssessment.ts",
       "class": "public-output"
     },
@@ -2411,6 +2415,10 @@
     },
     {
       "path": "packages/platform/src/communications/emailNotificationControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/emailObservation.ts",
       "class": "public-output"
     },
     {
@@ -3007,6 +3015,10 @@
     },
     {
       "path": "packages/platform/test/communications/contribution.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/deliveryObservation.test.ts",
       "class": "public-output"
     },
     {
@@ -10335,6 +10347,10 @@
     },
     {
       "path": "server/domains/communications/customerEmailFlowReadiness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/communications/deliveryObservation.test.ts",
       "class": "public-output"
     },
     {

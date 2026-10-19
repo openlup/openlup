@@ -25,10 +25,19 @@ newsletter, intake and delivery-receipt ports have the isolated
 [`communications/contracts`](../../../packages/platform/src/communications/contracts/index.ts)
 entry. Browser Zod contracts remain here.
 Mail-provider clients, concrete transport factories, callback mapping/verifiers,
-reconciliation, delivery timeline and send-ledger helpers remain reference-owned.
-The existing reference vendor directories are unchanged. P2/P4 may extract
-agnostic observation/reconcile engines behind neutral ports; vendor mapping
-stays in the reference adapter. Marketing automation contributes agnostic
+poll protocol reads/mapping, delivery timeline and send-ledger helpers remain reference-owned.
+The existing reference vendor directories are unchanged. The two existing domain
+callback/polling entry points delegate to the package's `processEmailObservation`
+and `runDeliveryReconciliation` through neutral ports. Verification, event tables,
+environment admission, timestamp provenance and exact HTTP responses stay local.
+Lookup/apply failures retain retry responses; attempt telemetry stays best effort.
+Polling rotates non-404 reads even on failure, abandons only consecutive failed
+404s at threshold three, and keeps applying truth when rotation fails. Recipient
+and raw evidence reach the existing atomic convergence RPC unchanged. That RPC
+remains the only durable event/status/timeline/suppression writer; these engines
+never change subscription state or timing. Neutral and reference conformance
+cases cover ordering, replay, failures and recorded table/RPC effect allowlists.
+P4 consumes these seams for its separately scoped effects/readback work. Marketing automation contributes agnostic
 ports/contracts/conformance only.
 
 The browser-used renderer/block/link builders, support report, template HTML/DB

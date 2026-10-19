@@ -887,6 +887,74 @@ export declare function createCommunicationsContribution(options: {
     requiredPorts?: readonly string[];
 }): Contribution;
 ```
+## dist/communications/deliveryReconciliation.d.ts
+
+```ts
+export interface DeliveryPollCandidate {
+    id: string;
+    messageId: string;
+}
+export interface DeliveryStatusRead {
+    ok: boolean;
+    httpStatus: number;
+    recipientEmail: string | null;
+}
+/** The host maps its protocol to an opaque event type and terminal classification. */
+export interface DeliveryPollObservation {
+    eventType: string;
+    terminal: boolean;
+}
+export interface DeliveryReconciliationPort {
+    findFrozenSends(input: {
+        now: string;
+        graceMinutes: number;
+        limit: number;
+    }): Promise<DeliveryPollCandidate[]>;
+    applyPolledEvent(input: {
+        sendId: string;
+        messageId: string;
+        eventType: string;
+        eventAt: string;
+        recipientEmail: string | null;
+    }): Promise<void>;
+    recordPollAttempt(input: {
+        sendId: string;
+        attemptedAt: string;
+    }): Promise<void>;
+    recordSendNotFound(input: {
+        sendId: string;
+        threshold: number;
+    }): Promise<{
+        abandoned: boolean;
+    }>;
+}
+export declare const DELIVERY_POLL_ABANDON_AFTER_NOT_FOUND = 3;
+export interface DeliveryReadFailureBreakdown {
+    notFound: number;
+    authFailed: number;
+    network: number;
+    providerError: number;
+    other: number;
+}
+export interface DeliveryReconciliationResult {
+    checked: number;
+    reconciled: number;
+    stillPending: number;
+    terminalPolled: number;
+    failures: number;
+    abandoned: number;
+    failureBreakdown: DeliveryReadFailureBreakdown;
+}
+/** Sequential bounded polling around one host-owned atomic convergence writer. */
+export declare function runDeliveryReconciliation<Read extends DeliveryStatusRead>(input: {
+    port: DeliveryReconciliationPort;
+    readEmail: (messageId: string) => Promise<Read>;
+    observationFor: (read: Read) => DeliveryPollObservation | null;
+    now: string;
+    graceMinutes: number;
+    limit: number;
+}): Promise<DeliveryReconciliationResult>;
+```
 ## dist/communications/emailHealthAssessment.d.ts
 
 ```ts
@@ -981,6 +1049,38 @@ export declare function createEmailNotificationControlPort(client: EmailNotifica
 }): EmailNotificationControlPort;
 export declare const createSupabaseEmailNotificationControlPort: typeof createEmailNotificationControlPort;
 export {};
+```
+## dist/communications/emailObservation.d.ts
+
+```ts
+/** An authenticated, decoded, environment-admitted observation. Evidence is opaque. */
+export interface EmailObservation {
+    eventType: string;
+    eventAt: string;
+    metadata: Record<string, unknown>;
+}
+export interface EmailObservationPort {
+    findSend(messageId: string): Promise<{
+        id: string;
+    } | null>;
+    applyObservation(observation: EmailObservation & {
+        sendId: string;
+        messageId: string;
+    }): Promise<void>;
+    recordAttempt(attempt: EmailObservationDisposition): Promise<void>;
+}
+export type EmailObservationDisposition = {
+    outcome: "send_not_found";
+} | {
+    outcome: "processed";
+    sendId: string;
+};
+/** Lookup/apply failures propagate; attempt telemetry cannot overturn authoritative success. */
+export declare function processEmailObservation(input: {
+    port: EmailObservationPort;
+    messageId: string;
+    observation: () => EmailObservation;
+}): Promise<EmailObservationDisposition>;
 ```
 ## dist/communications/emailTransport.d.ts
 
@@ -1097,10 +1197,12 @@ export * from "./capturedTransactionalDelivery.js";
 export * from "./communicationSync.js";
 export * from "./communicationSyncWorker.js";
 export * from "./consentPolicy.js";
+export * from "./deliveryReconciliation.js";
 export * from "./contribution.js";
 export * from "./emailHealthAssessment.js";
 export * from "./emailHealthMetricsPort.js";
 export * from "./emailNotificationControl.js";
+export * from "./emailObservation.js";
 export * from "./emailTransport.js";
 export * from "./errors.js";
 export * from "./integrationEventSignature.js";
