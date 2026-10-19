@@ -22,7 +22,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./identity` | Experimental capability: identity engine, authorization, profile readers, session adapters and BFF factories |
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
-| `./communications/contracts` | Type-only email, newsletter, Auth email, intake and receipt DTOs/ports; no Zod, Node or provider imports |
+| `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
 
 ## Scheduled jobs
 
@@ -527,8 +527,7 @@ characterization tests. The package W1 hook reader witnesses the Auth compositio
 provider-specific reference test paths remain in the complete suite. The
 [M04 ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#verification-ledger)
 records counted cases, separate boundary iterations and local timing provenance.
-The clean-commit artifact gate enforces all merged caps, including the 1,024 B
-limit on the new type-only contracts entry. Artifact admission still needs a
+The clean-commit artifact gate enforces all merged caps, including the owner-read, measured limit on the complete contracts entry. Artifact admission still needs a
 clean supervisor commit.
 See the [M04 plan](../../docs/platform/plans/oss-m04-communications-triggers.md)
 for scope, later waves and verification limits.
@@ -543,3 +542,36 @@ baseline, with explanations in the new set's changelog section and release body.
 for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
 Artifact checks require a clean package directory; `--manifest-only` supplies no
 artifact evidence.
+
+### Pure email content and browser rendering
+
+`./communications/contracts` now exports `renderEmail`, the nine existing block
+constructors, `guideCardBlock` and per-template content factories.
+Each `create*ContentFactory` binds host-selected copy plus only the pure helpers
+it uses: order-reference formatting, payment-cause wording or marketing footer.
+Localized review routes remain in the reference helper.
+No copy pack, brand, locale choice, environment reader, provider client or sending
+policy moves into this entry. The existing email DTOs remain its canonical types.
+Reference `petName` compatibility inputs are translated to neutral `contextName`
+by their existing facades. Complete subjects, preheaders, ordered blocks and
+HTML/text remain byte-identical, including omitted and explicit optional fields.
+
+Browser previews continue through those facades to contracts values only. Auth
+uses its existing server hook factory with the same host renderer injection;
+its inactive public content binding still refuses with 503. Standard Auth,
+mail callback, integration-event and generic HTTP verification remain separate
+policies with their existing raw-byte and replay behavior. No crypto refactor,
+new entry, dependency or graph edge is part of P3.
+
+The contracts conformance test compiles the complete entry with no Node types
+and checks its value inventory and import closure. The cold consumer repeats the
+exact inventory and renders with fetch forbidden and optional peers absent,
+retaining all other consumer checks. Browser size measures every runtime export
+of the built entry through `browserEntryBytes`; it never measures a tree-shaken
+consumer subset. See the M04 ledger for the measured size, owner-read cap and
+working-tree versus signed-candidate evidence limits.
+
+P3's complete built contracts entry measures **5,992 B minified+gzip**;
+the owner-read cap is **11,776 B**, rounded to the nearest 512 B at about
+twice that measurement. Only this browser limit changes. Existing pack classes,
+other browser limits and clean-candidate artifact checks remain binding.

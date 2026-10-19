@@ -1,0 +1,29 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`W4 current public communications > pins admin/en active or pending: false 1`] = `"92d39f3f93187a83003508a2ae8a7fb57b2479301b80ae9739983c27b7dd4792"`;
+
+exports[`W4 current public communications > pins admin/en active or pending: true 1`] = `"56285c78accab247b2311efb69dae6e19751b83d3576fe7b81bab70e0e6c317a"`;
+
+exports[`W4 current public communications > pins admin/pl active or pending: false 1`] = `"a4ceb88b6b74b8bb597a3cccfbd0e53c2b1d9ca2ebb84bc26947f49e5f2f382b"`;
+
+exports[`W4 current public communications > pins admin/pl active or pending: true 1`] = `"98a7287f959c03999d98750768e082001e659017e5c125b9cfb95b0f04dcdf80"`;
+
+exports[`W4 current public communications > pins distributor/en active or pending: false 1`] = `"5b988071517c520f6ad18da07238e914765a8e16197f2bd9751c467e00f42ad6"`;
+
+exports[`W4 current public communications > pins distributor/en active or pending: true 1`] = `"e8c7e96f8a45778f95d8e3e9f7baaa2769e9558a29984756ae8903cff0e72466"`;
+
+exports[`W4 current public communications > pins distributor/pl active or pending: false 1`] = `"7d8330bbed773f48954706f85fdc253c8efef5dd8109f061f2c3ddaf88892bcc"`;
+
+exports[`W4 current public communications > pins distributor/pl active or pending: true 1`] = `"43f435a26fdb40880f610fed5800f1ef21fb1d5e99fae4adf510f47df1bc86a5"`;
+
+exports[`W4 current public communications > pins inquiry confirmation, operator copy, region, reply target and origin refusal 1`] = `"0e7f436990cd2dfb15f45f3347c5ab3137530e461e83267f8fb67b021c37433a"`;
+
+exports[`W4 current public communications > pins invoice output and required evidence: correction_issued 1`] = `"69d3e3fb56d784f92081366f4f7597be56a6ac041f927ee82cb32b5727eec2c9"`;
+
+exports[`W4 current public communications > pins invoice output and required evidence: invoice_issued 1`] = `"70780bb3ddd6cf2520486faa2e884d25501fd9e5cdb74c251d492ec796435071"`;
+
+exports[`W4 current public communications > pins legacy unsubscribe Polish success/replay: already_suppressed 1`] = `"faab046be95fa6d45f6866ea615b0079336221d805fc65cd5a15807ddf315144"`;
+
+exports[`W4 current public communications > pins legacy unsubscribe Polish success/replay: applied 1`] = `"65f6c15b079b1596ea19f0c00b065341bddff678414b6df85a7137310385acea"`;
+
+exports[`W4 current public communications > pins signed EN unsubscribe with its existing Polish document language 1`] = `"15c703c2f4601a7670fa844b75893212539b1fd38a1695b5524d328969a0deae"`;
