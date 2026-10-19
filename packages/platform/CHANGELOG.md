@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extract neutral admitted-observation and bounded polling orchestration through
+  existing `./communications`. Existing domain wrappers retain protocol mapping,
+  admission, evidence and persistence arguments. Keep lookup/apply/telemetry and
+  polling fairness/failure order; the database remains the single convergence
+  writer. No schema, dependency, manifest or route/schedule change.
+
 - Add experimental `./communications` and type-only `./communications/contracts`
   entries by relocating the existing public implementation behind reference
   bindings. Preserve current transport outcomes, signature policies, token
@@ -11,7 +17,7 @@
 - Apply E2 payment-helper delegation with identical export names and declared
   signatures, including `readRawBody`'s `VercelRequest` signature and function
   identity. Keep the payment provider-specific verification local.
-- Keep maintained mail-provider clients, factories, callbacks, reconciliation,
+- Keep maintained mail-provider clients, factories, callback protocol mapping, polling reads,
   timeline and send-ledger adapters at their unchanged reference owners.
   Required selection additions witness only retained package code; the current
   [verification ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#verification-ledger)
