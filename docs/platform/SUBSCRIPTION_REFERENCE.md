@@ -121,7 +121,7 @@ itself must run through authenticated HTTP.
 
 ```sh
 npm test
-npx vitest run server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
+npm test -- server/runtime/public-reference src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx
 npm --workspace @openlup/core run ci
 npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
@@ -182,14 +182,14 @@ its validated local auth origin. Build using the owned environment above.
 The component conformance journey runs without external services:
 
 ```sh
-npx vitest run src/public-reference/browserIdentity.test.tsx
+npm test -- src/public-reference/browserIdentity.test.tsx
 ```
 
 The direct identity installation proof requires Docker and applies the complete
 selected catalogue, preserving customer links, subscriptions and migration history:
 
 ```sh
-npx vitest run tests/postgres/customer_browser_identity.test.ts
+npm test -- tests/postgres/customer_browser_identity.test.ts
 ```
 
 With the owned installation, captured mailbox, server and Playwright Chromium

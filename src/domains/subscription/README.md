@@ -147,7 +147,7 @@ send time and adds it. Absent or null, both emails render exactly as before.
 
 ## Verification
 
-The [root public test command](../../../package.json) selects the shared
+The [root testing guidance](../../../CONTRIBUTING.md#test-scope-and-diagnostics) selects the shared
 subscription directory. The extracted engine has a separate package suite:
 `npm --workspace ./packages/core run ci`. A green root run does not establish
 that package result. Inspect

@@ -136,17 +136,13 @@ attempt and idempotency boundaries.
 ## Evidence and limits
 
 The links above identify implementation and tests to inspect. They do not record
-results. From the repository root, these are distinct execution scopes:
+results. Root Vitest discovers both shared `src/domains/subscription` and
+server `server/domains/subscription` tests, including reference runtime composition
+and renewal modal tests in the root shards. Core and installed package proof are
+separate. Follow [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diagnostics)
+for execution; [Published Tree CI](../../.github/workflows/published-tree-ci.yml)
+builds both reference profiles.
 
-| Command or source | Scope |
-| --- | --- |
-| `npm test` | The selected public suite includes the shared `src/domains/subscription` directory; it does not select local `server/domains/subscription` test files. |
-| `npm --workspace ./packages/core run ci` | The separate core package suite and package gates, including its own coverage and consumer checks. |
-| [Published Tree CI](../../.github/workflows/published-tree-ci.yml) | Invokes those scopes and separately tests public-reference runtime composition and the named renewal modal. |
-| Server-domain and gateway tests linked here | Source falsifiers requiring an explicit compatible run; their presence is not an executed public CI result. |
-
-See [contribution checks](../../CONTRIBUTING.md#development-preview-checks) and
-the [root test command](../../package.json) before choosing a narrower command.
 Some source tests depend on material absent from a selected preview. Record the
 actual command, revision, outcome and skipped prerequisites; do not widen a
 claim from a mocked service test to a database, provider or browser journey.

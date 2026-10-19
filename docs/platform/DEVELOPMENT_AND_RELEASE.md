@@ -48,19 +48,19 @@ See the comments in [Dependabot configuration](../../.github/dependabot.yml).
 
 Commands in this table run from the task worktree's repository root unless a
 workspace is explicitly selected. Detailed selectors, prerequisites and limits
-remain in [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
+remain in [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diagnostics).
 
 | Tool or command | Purpose and execution owner | Blocking status and evidence |
 | --- | --- | --- |
 | `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression <changed-path>` | Fast local structural feedback after edits; installed pre-commit scans staged TS/TSX. | Fix violations before committing. Keep `--no --` to avoid fetching another package. CLI output names the rule. |
-| `npm run lint` | File-wide suppression hygiene, ast-grep scans/rule tests, ESLint and import boundaries; local and CI `typecheck`. | Required. npm prelint builds core first; it is not just formatting. |
-| `npm run oss:published-tree -- --typecheck` | TypeScript projects checked against tracked preview compatibility debt; local and CI `typecheck`. | Required. Not equivalent to claiming zero compiler diagnostics. Build core first when invoking directly after source edits. |
+| `npm run lint` | File-wide suppression hygiene, ast-grep scans/rule tests, ESLint and import boundaries; local and CI `typecheck`. | Required. npm prelint builds Core, Outbox and Platform first; it is not just formatting. |
+| `npm run oss:published-tree -- --typecheck` | TypeScript projects checked against tracked preview compatibility debt; local and CI `typecheck`. | Required. Not equivalent to claiming zero compiler diagnostics. Run `npm run pretest` before invoking directly after package-source edits. |
 | `npm run oss:published-tree -- --policy` and `--inventory` | Publication classification, documentation ownership/impact/navigation and tree inventory; local and CI `self-check`. | Required. These check structure and recorded obligations, not the truth of arbitrary prose or runtime behavior. |
 | `node scripts/agent-review-session.mjs verify-command -- <heavy required command>` | Native review verification before and after the command, with unchanged HEAD tree and clean worktree; optional installed host resource broker. | Command wrapper; preserves every underlying required command and installed stamp. It runs no merge preview, proof lease or policy/inventory preflight. Independent PRs use their normal base; stacked PRs export the exact `OPENLUP_STACK_BASE`. No cache, hosted receipt, settings change or merge authority. |
 | `node scripts/public-ci-neutrality.mjs --base-commit <full-base-sha>` and UI neutrality smoke | Tree-wide shrink-only neutrality and portable UI boundary; local and CI `self-check`. | Required. Use the exact event/comparison base, not a guessed latest main. |
 | Shared `scripts/packages/required-package-gates.ts` in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover each publishable workspace and its required scripts; cold-pack the current set, check all APIs, then run each owning required batch with the same artifacts. Core retains complete CI obligations; Outbox owns schema/SQL/replay. | Required `install-proof` follows both builds in its own checkout, independently of root tests. Local package preparation and tests remain serial because they share build outputs. Missing routes, artifacts or runtimes refuse. Future modules use the same semantic consumer proof; only SQL modules require a database. |
 | `npm --workspace @openlup/core run ci` | Package coverage, runtime imports, type smoke, API snapshots, docs, release checks and packed-consumer smoke; local and CI `install-proof`. | Required through the shared API phase plus `ci:required`, with manifest/commit inputs. Manual mode still builds/packs; supplied mode executes the same assertions without repacking. Separate from root Vitest discovery. |
-| `npm run test:scoped` locally; `npm test -- --shard=N/4` in CI | Four independent `test-full-shard` runners retain npm cache/install/pretest and test limits. On PR/group events, `scripts/ci-test-scope.mjs` uses the event merge-base and the existing exclusion file to omit only bounded tooling fixtures with untouched inputs. Whole-tree scanners always run; shared root/tooling/workflow/setup inputs run everything; actual package-config reads belong to their rows. Local scope also includes staged, unstaged and untracked paths. Pushes, unknown events or errors exclude nothing. | Required `test` aggregates all four shards and refuses failure, cancellation or skips. No duplicate selector run or `test-full` job remains. Separate package gates and raw pgTAP retain their owners. |
+| `npm run test:scoped` locally; `npm test -- --shard=N/4` in CI | Root Vitest; see [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) for discovery, selection and sharding. | Required `test` refuses failure, cancellation or skipped shard jobs. Individually skipped cases remain missing proof. Package gates and raw pgTAP are separate. |
 | `node scripts/public-ci-pgtap.mjs` | Shipped SQL tests against a disposable managed baseline; local and CI `pgtap`. Requires Docker and the pinned Supabase CLI. | Raw diagnostic. Start, replay, cleanup failures and unexplained new failures block delivery under contribution rules. |
 | `npm run build` and subscription-profile build | Install/build proof for reference profiles; local and CI `install-proof`. | Required. A build does not prove a browser journey, live provider or production deployment. |
 | `npm run check:dco-signoff -- <full-base-sha> <full-head-sha>` | Sign-off on the full commit range; local and CI `dco`. | Required. Empty ranges and malformed identities are not success evidence. |
@@ -177,7 +177,7 @@ An aggregate Actions workflow can be red while its required statuses are green.
 Inspect the individual job and its raw log, exact SHA, event, run and attempt.
 Skipped, cancelled or timed-out execution cannot prove a passing check. The
 [diagnostic debt record](plans/public-ci-known-red.md) distinguishes the current
-finite SQL debt from archived failures; neither is permission to ignore a red
+last recorded SQL closure from archived failures; neither is permission to ignore a red
 run. Compare failures with the exact base; disclose new failures and missing
 execution. Required success is not complete-suite success.
 

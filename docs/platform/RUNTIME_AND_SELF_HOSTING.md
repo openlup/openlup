@@ -340,9 +340,11 @@ safe because deletion is idempotent.
 
 This remains a portable, default-off preview: the paired PostgreSQL migrations
 describe the data contract, but do not provide an installer, host certification,
-public MCP deployment, or production activation. Public test selection and
-second-runtime conformance remain future adoption work and are not supplied by
-this preview.
+public MCP deployment, or production activation. Root discovery includes the
+[prune runtime](../../server/runtime/observability/customerDiagnosticPruneRuntime.test.ts)
+and [job](../../server/domains/observability/customerDiagnosticPruneJob.test.ts)
+falsifiers; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) for
+execution. Second-runtime and deployed conformance remain separate adoption proof.
 
 ## Provider and host boundaries
 

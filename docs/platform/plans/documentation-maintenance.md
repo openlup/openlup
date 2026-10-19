@@ -101,8 +101,10 @@ bytes belong to committed HEAD. Do not run Markdown code blocks or MDX.
 
 1. **Plan and first falsifiers — lead plus independent review.** Validate the
    implementation route against current public constraints. Record a cold-context
-   navigation baseline before edits. New source helpers are import-only; new tests
-   are executed through the existing published-tree falsifier entrypoint.
+   navigation baseline before edits. Historical design: new source helpers were
+   import-only and new tests used one published-tree falsifier entrypoint. That
+   test arrangement is superseded by independently discovered files; follow
+   [testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics).
 2. **Guard — guard worker.** Own cohesive routing/impact helpers and their focused
    regression cases. The lead owns shared checker integration and config. Prove
    refusal for missing history, orphan paths/anchors, unchanged/cosmetic docs,
