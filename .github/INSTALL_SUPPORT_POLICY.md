@@ -7,9 +7,10 @@ the exact development-preview revision can run `npm ci`, the public policy,
 inventory and typecheck gates, `npm test`, and `npm run build`. Its optional
 OCI/Compose artifacts are release-proof inputs, not a supported consumer
 entrypoint yet: no public command prepares their immutable image and port
-inputs. The bounded checks and build do not start or prove a database,
-migrations, scheduler, API, checkout, mutations or subscriptions, and must not
-be presented as evidence for those capabilities.
+inputs. Tests may start owned disposable databases and prove selected SQL
+boundaries; follow [testing](../CONTRIBUTING.md#test-scope-and-diagnostics).
+The build does not activate a full application, and bounded checks do not
+certify its migrations, scheduler, API, checkout, mutations or subscriptions.
 
 There is also an **opt-in disposable local subscription reference** with a
 separate owned Supabase setup, captured payment and mailbox, and a selected

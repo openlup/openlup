@@ -17,6 +17,15 @@ the diagnostic results or waive their obligations.
 
 ## Current checkpoint
 
+Last recorded repair checkpoint, 2026-10-04: [PR #137](https://github.com/openlup/openlup/pull/137),
+merged as `628835967c56a01055dbb9d54c7ae8453d3361d1`, introduced the account below.
+Its exact successful hosted run/attempt is not bound in this record; the earlier
+#130 runs below are not evidence of this repair's success. Counts and skips here
+are historical observations, not a fresh result for the current checkout.
+Inspect `supabase/tests` for the current file inventory and follow
+[testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics) for the runner and
+proof limits; no new SQL or root-suite pass is recorded here.
+
 The managed forward `20261004123000_runtime_capability_rls_closure.sql` closes the twelve
 failing or aborted SQL files from the earlier checkpoint. It repairs the
 installed trigram operator schema, narrows unnecessary client/payment-method
@@ -24,16 +33,16 @@ projections and admits only the existing callers' required columns and helpers.
 The separately approved control must precede this forward's comparison base
 and introduction parent. The immutable baseline remains unchanged.
 
-The complete SQL suite retains all 205 existing files and adds two capability
+The recorded SQL suite retained all 205 existing files and added two capability
 and renewal-lock regressions: 207 files and 4,626 assertions. The repaired support/operator
 invoker paths execute as `service_role`; authenticated profile proofs retain
 RLS isolation. No existing SQL assertion was removed or skipped. Those runtime
 witnesses use the owner only for fixtures and state observation. Supplementary
 owner-only characterization is not proof of service execution, and test-only
-application grants do not supply missing runtime permissions. Replaying the committed baseline and ordered forwards into a fresh owned database preserves this result.
+application grants do not supply missing runtime permissions. A present-day replay needs its own command, revision, exit and file/assertion evidence.
 
-Unrestricted npm verification must pass without new skips. The one skipped
-file and two skipped cases described in the archived checkpoint are unchanged.
+Unrestricted npm verification must pass without new skips. At this checkpoint,
+the archived one skipped file and two skipped cases were reported unchanged.
 Local committed-chain verification and hosted source/group/main checks are
 separate evidence; the delivery PR records the exact commit and CI runs. A
 proposed SQL overlay alone does not prove the committed chain or hosted CI.
@@ -66,7 +75,7 @@ Measurement date: 2026-10-04. [PR #130](https://github.com/openlup/openlup/pull/
 [main run 37194320482, attempt 1](https://github.com/openlup/openlup/actions/runs/37194320482)
 reported 245 failed Vitest cases in 115 files and 55 failing or aborted SQL files.
 
-Current hosted evidence: [source run 37195393571, attempt 1](https://github.com/openlup/openlup/actions/runs/37195393571),
+Hosted evidence at the archived #130 checkpoint: [source run 37195393571, attempt 1](https://github.com/openlup/openlup/actions/runs/37195393571),
 [merge-group run 37195802928, attempt 1](https://github.com/openlup/openlup/actions/runs/37195802928)
 and [merged-main run 37196000352, attempt 1](https://github.com/openlup/openlup/actions/runs/37196000352).
 Source and group passed all six mechanical checks and native admission. The main
@@ -95,7 +104,7 @@ composition and idempotent required policy data; retired tests had ended
 historical/tooling or unavailable unmounted-view obligations. Existing money,
 replay, authorization and concurrency contracts remain in scope.
 
-### Remaining current SQL obligations
+### SQL obligations at the archived checkpoint
 
 The triage owner for every row is OpenLup maintainer. Counts distinguish emitted
 assertion failures from missing execution; these are observations at the measured

@@ -15,9 +15,11 @@ export const SHARED_INPUTS = ['scripts/', 'tests/setup/', 'src/test/',
 // Only bounded fixtures belong here. Inputs are relative to the checkout;
 // every row also has SHARED_INPUTS. Package rows conservatively include all
 // packages (exports, builds, packs, manifests and package documentation).
-// No row for agent-review-session, source-preview-release, public-ci-neutrality
-// or oss-published-tree-check: they exercise repository-wide policy/inventory or
-// removal-marker scans. All unlisted tests always run.
+// Session decision tables are unlisted and always run; they do not scan the
+// repository. Source-preview, neutrality and published-tree tests remain unlisted
+// for their repository-wide policy/inventory or removal-marker scans.
+// Review each row against every actual repository read in its import closure;
+// see CONTRIBUTING.md#extend-tooling-selection-conservatively.
 export const TOOLING_INPUTS = {
   'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
   'scripts/agent-review-gate.test.ts': [], // Real-Git witnesses of the session CLI and hosted admission.

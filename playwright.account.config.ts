@@ -45,7 +45,8 @@ export default defineConfig({
       name: "tablet-chromium",
       use: { ...devices["Desktop Chrome"], viewport: { width: 820, height: 1180 } },
     },
-    // Required staging proof is isolated from the optional public a11y projects.
+    // Retained staging projects; scripts/deploy-hidden-preview-sonner is absent
+    // from the public tree. These targets establish no runnable public proof.
     // Never inherit the global bypass header or credential-bearing capture settings.
     {
       name: "sonner-chromium",
@@ -59,30 +60,13 @@ export default defineConfig({
       testMatch: "account-sonner.browser.ts",
       use: { ...devices["Desktop Safari"], extraHTTPHeaders: {}, trace: "off", screenshot: "off", video: "off" },
     },
-    // Wave 5's customer-diagnostic staging journey. It lives here rather than in a config
-    // of its own because a new root `playwright.*.config.ts` is an unregistered root file
-    // for `npm run oss:readiness -- --check`, and registering one would mean editing the
-    // readiness scanner and its policy catalogue for a test lane.
-    //
-    // It reaches nothing else implicitly. The staging deploy invokes the two sonner
-    // projects by name (`--project=sonner-chromium --project=sonner-webkit`) and
-    // `smoke:account:preview:ui` passes an explicit `tests/preview/account/a11y.spec.ts`
-    // file filter, which selects nothing under this project's own `testDir`. The runner
-    // `scripts/staging-customer-diagnostic-journey.ts` selects it by `--project`.
-    //
-    // It keeps the shared `use` - the account suite's base URL chain and the
-    // `x-vercel-protection-bypass` header an immutable candidate needs - and overrides only
-    // the two things this journey owns: the candidate URL the runner already refused to
-    // proceed without, and a longer per-test timeout for an ordered multi-route story.
+    // The customer-diagnostic staging spec is shipped and selected here; its
+    // former staging runner is absent. Running it needs explicit candidate and
+    // prerequisite evidence. See CONTRIBUTING.md#test-scope-and-diagnostics.
     {
       name: "customer-diagnostic",
       testDir: "./tests/preview/customer-diagnostic",
-      // The SUM of the eight legs' own bounded ceilings, not slack. Two of them drive the
-      // whole shipped funnel - a refused checkout submit and a double card decline through
-      // the Payment Element - and three rotate the diagnostic segment with a reload, which
-      // the ingest's 20-per-minute per-segment admission cap makes mandatory rather than
-      // optional. Every wait inside them is bounded, so the worst case IS this sum rather
-      // than a hang; a healthy run finishes far below it.
+      // Bounded deadline for the shipped ordered, multi-route staging journey.
       timeout: 600_000,
       use: {
         ...devices["Desktop Chrome"],

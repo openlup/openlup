@@ -196,9 +196,8 @@ The repository checker also calls the UI neutrality counting process with
 `--counts-json` to count its existing patterns over the supplied sources. Running that checker without
 arguments still scans the UI source directory and refuses any forbidden hit.
 Published Tree CI runs the repository ratchet in required `self-check` and its
-CLI refusal tests separately in required `test`; unrestricted root diagnostics
-do not replace either gate. The independent core CI step retains this package's
-complete verification when root diagnostics are red.
+CLI refusal tests in required root `test`. This package's independent proof
+belongs to `install-proof`; see [repository testing](https://github.com/openlup/openlup/blob/openlup-core-v0.12.0/CONTRIBUTING.md#test-scope-and-diagnostics).
 
 Together these interfaces let the repository measure existing findings without
 making one package import another package's internals. They provide source

@@ -173,6 +173,11 @@ rulesets, merge authority, DCO, two reviewers for sensitive paths, and expiry.
 
 ## 3. Test strategy
 
+Historical proposal and timing targets below, not current inventory or measured
+budgets. Follow [testing](../../../CONTRIBUTING.md#test-scope-and-diagnostics) for
+the current three-file native-review batch and scope rules; the pure session
+tables remain unlisted and always run.
+
 - **Logic module** (`scripts/agent-review-decide.mjs`, pure). Inputs are
   plain objects: candidate, session, reports, clock and group facts. Outputs
   are a verdict and a reason. Tests are tables of

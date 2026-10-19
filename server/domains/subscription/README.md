@@ -157,9 +157,9 @@ Use [runtime boundaries](../../../docs/platform/RUNTIME_AND_SELF_HOSTING.md)
 and [architecture](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md) for
 composition and ownership. Historical records do not establish current behavior.
 
-The [root public test command](../../../package.json) does not select the local
-`server/domains/subscription` tests. The workflow map's
+Root Vitest discovers both shared and server subscription tests. Follow
+[Test scope and diagnostics](../../../CONTRIBUTING.md#test-scope-and-diagnostics)
+and the workflow map's
 [evidence section](../../../docs/platform/SUBSCRIPTION_WORKFLOWS.md#evidence-and-limits)
-distinguishes source falsifiers, the selected shared suite, the core package
-checks and reference-profile evidence. Record an actual compatible test run;
+for execution and proof limits. Record the actual command and result;
 the presence of a test file does not prove its result or a live installation.

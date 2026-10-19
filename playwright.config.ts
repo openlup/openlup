@@ -13,6 +13,7 @@ const bypassToken =
 
 export default defineConfig({
   testDir: "./tests/preview",
+  // Retained target; this spec is absent from the public tree, not runnable proof.
   testMatch: ["admin-oms-preview.spec.ts"],
   timeout: 120_000,
   expect: { timeout: 15_000 },

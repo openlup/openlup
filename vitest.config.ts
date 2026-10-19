@@ -13,21 +13,10 @@ const useSummaryCoverageReporter = process.env.VITEST_COVERAGE_SUMMARY_ONLY === 
 const coverageReportsDirectory = process.env.VITEST_COVERAGE_DIR ?? "./coverage";
 const buildOutDir = process.env.OPENLUP_BUILD_OUT_DIR ?? "dist";
 
-// RR-L4: the per-file timeout budget's weights, read ONCE here in the main process
-// and handed to workers through `provide`.
-//
-// Two constraints shape this. A setup file cannot read the manifest itself: under
-// the coverage lane its `import.meta.url` is not a file: URL, so a filesystem read
-// from there throws for every test file in the run. And this config file is a
-// RETAINED (published) source while the per-file duration manifest is a
-// WITHHELD one, so naming that path here would put a read of a file the published
-// tree does not have into the published tree - `oss-split-rehearsal` refuses it,
-// and it is right to.
-//
-// So the path arrives the same way `OPENLUP_VITEST_EXCLUDE_FILE` does, from a caller
-// that is allowed to know it. With no variable set - a published tree, or a bare
-// `npx vitest` - there are no weights and every file keeps the flat ceiling, which
-// is exactly the behaviour before budgets existed.
+// Optional external duration pins are read once in this main-process config
+// and provided to src/test/setup.ts. Without OPENLUP_VITEST_DURATIONS_FILE,
+// test/hook timeouts keep their flat defaults. The public tree supplies no
+// duration updater or planner. See CONTRIBUTING.md#test-scope-and-diagnostics.
 const repositoryRoot = process.cwd();
 const durationManifestFile = process.env.OPENLUP_VITEST_DURATIONS_FILE;
 const durationManifest: DurationSections = durationManifestFile
@@ -38,38 +27,12 @@ const durationManifest: DurationSections = durationManifestFile
 // repository-relative test path per line; every listed file is dropped from the
 // run.
 //
-// ⛔ THIS IS THE ONLY LEVEL THAT WORKS. Vitest 4 copies a closed allow-list of
-// CLI options into each entry of `projects` (`resolveProjects` in vitest's
-// cli-api chunk: logHeapUsage, allowOnly, sequence, testTimeout, pool, globals,
-// retry, bail, isolate, fileParallelism and ten more). `exclude` is not on that
-// list, so a root-level `--exclude` never reaches any project and is silently
-// dropped. Measured on this tree, not inferred: an otherwise identical config
-// WITHOUT `projects` takes `vitest list server/domains/catalog --exclude <one
-// file>` from 8 files to 7; WITH `projects` it stays at 8. `scripts/run-vitest.mjs`
-// pushed that flag for years and every caller believed it was skipping files.
-//
-// An unusable entry throws here rather than being ignored, so a run that cannot
-// honour the exclusion fails loudly instead of quietly running the file.
-//
-// Metacharacters are split into two classes, because an exclusion entry is a
-// literal path and this repository really does ship test files whose names are
-// dynamic route segments: `api/bff/[...path].test.ts` and
-// `server/bff/admin/marketing/prelaunch/leads/[sourceRef].test.ts`.
-//
-//   REFUSED: `*`, `?`, `{`, `}` - these mean "this caller sent a glob". No file
-//   in this tree is named with them, so a loud refusal stays the honest answer
-//   and `scripts/vitest-exclusion-contract.test.ts` still pins it.
-//
-//   ESCAPED: `[ ] ( ) ! + @ |` - these do occur in real filenames here. Measured
-//   on this tree, not inferred: `exclude` reaches tinyglobby's `ignore` (and
-//   `picomatch.isMatch` for the runtime file check), where an UNESCAPED
-//   `api/bff/[...path].test.ts` is a bracket expression that excludes NOTHING -
-//   `globSync(["api/**/*.{test,spec}.ts"], { ignore: [thatPath] })` still
-//   returns 97 files, while the escaped form returns 96 and drops exactly that
-//   one file. Rejecting them instead, as this function used to, made those five
-//   paths permanently unexcludable, which the exact coverage-shard selection in
-//   `scripts/ci-vitest-runner.ts` needs. Escaping is a no-op for every path
-//   without them, so existing callers are unaffected.
+// Apply exclusions inside both projects: root CLI --exclude does not propagate
+// to these projects. ci-test-scope.mjs supplies conservative exact-path selections;
+// see CONTRIBUTING.md#extend-tooling-selection-conservatively.
+// Refuse glob-only metacharacters (* ? { }); escape literal filename characters
+// ([ ] ( ) ! + @ |), including dynamic-route names such as api/bff/[...path].test.ts.
+// Malformed entries refuse instead of silently changing the selected scope.
 const GLOB_ONLY_METACHARACTERS = /[*?{}]/;
 const LITERAL_PATH_METACHARACTERS = /[[\]()!+@|]/g;
 
@@ -99,7 +62,7 @@ const exactExclusions = readExactExclusions();
 // "100%") to override per machine. CI is intentionally left untouched so the
 // dedicated coverage-shard worker counts below stay authoritative. Local V8
 // coverage is more CPU/I/O contention-sensitive than plain Vitest, so it uses a
-// lower default cap that matches the weak-machine guidance in docs/TESTING.md.
+// lower default cap; see CONTRIBUTING.md#test-scope-and-diagnostics.
 const localWorkerCap =
   process.env.VITEST_MAX_WORKERS ??
   (process.env.CI === "true" ? undefined : isCoverageRun ? "50%" : "75%");
@@ -110,12 +73,8 @@ export default defineConfig({
     outDir: buildOutDir,
   },
   test: {
-    // Verify W1: environment routing lives in `projects` below —
-    // `environmentMatchGlobs` was removed in Vitest 4 and had become silently
-    // ignored config, so every test (including server/scripts) ran in jsdom.
-    // jsdom accounted for ~48% of coverage CPU while only ~90 of 441 src
-    // .test.ts files touch the DOM. The two projects are disjoint: a .test.ts
-    // that needs a DOM opts back in with a @vitest-environment jsdom pragma.
+    // Environment routing lives in projects below. A Node-project test needing
+    // DOM opts in with @vitest-environment jsdom; see the canonical testing guide.
     globals: true,
     // Only this config runs in the Vitest main process. Workers are forked with their
     // own argv (`[node, workers/forks.js]`), so a setup file cannot see `--coverage`
@@ -131,7 +90,7 @@ export default defineConfig({
     testTimeout: flatTestTimeoutMs(isCoverageRun),
     hookTimeout: flatTestTimeoutMs(isCoverageRun),
     // Product-test failures are deterministic evidence and are never retried.
-    // Infrastructure retries belong to the CI wrapper after explicit classification.
+    // The public wrapper/workflow adds no automatic infrastructure retry.
     retry: 0,
     // Keep serial coverage available for explicit reproduction. CI uses two
     // workers so V8 coverage does not collapse into the very slow single-worker
@@ -159,11 +118,8 @@ export default defineConfig({
             // W10: node-postgres RLS round-trip (docker-gated, self-skips when no daemon).
             "tests/postgres/**/*.{test,spec}.ts",
             "tests/platform/**/*.{test,spec}.ts",
-            // Checkout preview FIXTURES only, and only `.test.ts`: the mailbox
-            // generator is real logic (it decides what the fail-closed checkout
-            // limiter counts) and needs a credential-free unit lane. Playwright's
-            // own `testMatch: ["**/*.spec.ts"]` keeps the browser specs beside it
-            // out of vitest, exactly as the two globs above intend.
+            // Only checkout helper .test.ts files; adjacent Playwright .spec.ts
+            // journeys retain their explicit browser runner.
             "tests/preview/checkout/helpers/**/*.test.ts",
           ],
           exclude: [
@@ -218,7 +174,7 @@ export default defineConfig({
       exclude: [
         "**/*.test.{ts,tsx}",
         "**/*.spec.{ts,tsx}",
-        // Product coverage owns only api/server/src/supabase (the include list
+        // Product coverage owns only api/server/src (the include list
         // above). V8 can still report imported files outside `include`, so keep
         // the non-product test/tooling roots explicitly out of the denominator.
         "mcp/**",

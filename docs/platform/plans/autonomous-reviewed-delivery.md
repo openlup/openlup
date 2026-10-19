@@ -400,7 +400,8 @@ artifact upload/download path are removed.
 
 The `native-review` job runs from trusted main after the six mechanical checks,
 when `OPENLUP_NATIVE_QUEUE=enabled`. It reads all pages of PR comments and
-considers marked receipts only from `OWNER`, `MEMBER` or `COLLABORATOR` authors.
+considers marked receipts only from users whose repository permission is `admin`,
+`maintain` or `write`.
 It selects the newest valid receipt matching the live head, fetches the required
 SHAs using `transfer.fsckObjects=true`, and recomputes the tree, paths and risk
 floor. It checks PASS, reviewer count, expiry, fork point or pinned ancestry,
