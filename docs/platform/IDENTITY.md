@@ -1105,8 +1105,19 @@ composition. Managed bundles refuse raw upstream composition with
 `OIDC_NATIVE_SESSION_REQUIRED`; retain native federation, native auth IDs,
 email-trust policy, actor tokens and native membership there.
 
+JWKS selection accepts RSA/RS256 and P-256/ES256 public signing keys within the
+configured algorithm allowlist. `use` may be `sig` or absent; absent `alg` is
+inferred from the key type and curve. Encryption keys, unsupported algorithms
+and incompatible key types/curves are ignored. Certificate metadata such as
+`x5c`, `x5t` and `x5t#S256` does not change selection. The set must contain at
+least one usable signing key, with bounded key IDs unique among usable keys.
+Malformed sets, private key material and invalid signing key parameters refuse.
+
 Discovery expires within one hour and JWKS within five minutes. `max-age` and
-`Age` can shorten these bounds; `no-store` and `no-cache` prevent reuse. Each
+`Age` can shorten these bounds; `no-store` prevents reuse. `no-cache` instead
+limits reuse to 30 seconds, matching the minimum JWKS refresh interval; shorter
+explicit freshness bounds still apply. Readiness and verification can use that
+freshly fetched set, then must revalidate it at expiry. Each
 fetch rejects redirects and has a three-second deadline including its streamed
 body, capped at 64 KiB. Concurrent loads coalesce. Every JWKS attempt, successful
 or unsuccessful and including initial loading, starts a 30-second refresh

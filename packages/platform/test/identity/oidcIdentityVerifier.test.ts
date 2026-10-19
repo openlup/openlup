@@ -4,15 +4,19 @@ import { createOidcIdentityVerifier, type OidcIdentityVerifierConfig } from "../
 const issuer = "https://issuer.example.com/realm";
 const audience = "customer-api";
 const epoch = 1900000000000;
-async function fixture(config: Partial<OidcIdentityVerifierConfig> = {}) {
+async function fixture(config: Partial<OidcIdentityVerifierConfig> = {}, cacheControl?: string) {
   let time = epoch, unavailable = false;
   const first = await jose.generateKeyPair("RS256");
   const second = await jose.generateKeyPair("RS256");
-  const jwk = async (pair: typeof first, kid: string) => ({ ...await jose.exportJWK(pair.publicKey), alg: "RS256", kid, use: "sig" });
-  let keys = [await jwk(first, "first")];
+  const jwk = async (pair: typeof first, kid: string) => ({ ...await jose.exportJWK(pair.publicKey), alg: "RS256", kid, use: "sig",
+    x5c: ["c3ludGhldGlj"], x5t: "c3ludGhldGlj", "x5t#S256": "c3ludGhldGlj" });
+  const encryption = { ...await jwk(second, "encryption"), alg: "RSA-OAEP", use: "enc" };
+  let keys: unknown = [await jwk(first, "first"), encryption];
   const fetch = vi.fn(async (url: string | URL | Request) => {
     if (unavailable) throw new Error("synthetic transport failure");
-    return Response.json(String(url).endsWith("openid-configuration") ? { issuer, jwks_uri: `${issuer}/keys` } : { keys });
+    const discovery = String(url).endsWith("openid-configuration");
+    return Response.json(discovery ? { issuer, jwks_uri: `${issuer}/keys` } : { keys },
+      { headers: { "cache-control": cacheControl ?? `public, max-age=${discovery ? 3600 : 300}, must-revalidate` } });
   });
   const loadJwt = vi.fn(async () => jose);
   const verifier = createOidcIdentityVerifier({ issuer, audience, algorithms: ["RS256"], maxTokenLifetimeSeconds: 3600, ...config }, { fetch, loadJwt, now: () => time });
@@ -20,13 +24,45 @@ async function fixture(config: Partial<OidcIdentityVerifierConfig> = {}) {
     iss: issuer, aud: audience, sub: "subject", email: "customer@example.com", email_verified: true,
     iat: Math.floor(time / 1000), exp: Math.floor(time / 1000) + 300, ...claims,
   }).setProtectedHeader({ alg: algorithm, kid }).sign(pair.privateKey);
-  return { verifier, token, fetch, loadJwt, first, second, jwk, advance: (ms: number) => { time += ms; },
-    rotate: async () => { keys = [await jwk(second, "second")]; }, fail: () => { unavailable = true; } };
+  return { verifier, token, fetch, loadJwt, first, second, jwk, encryption, publish: (value: unknown) => { keys = value; }, advance: (ms: number) => { time += ms; },
+    rotate: async () => { keys = [await jwk(second, "second"), encryption]; }, fail: () => { unavailable = true; } };
 }
 const denied = (code: string) => ({ ok: false, code });
 it("construction_and_import_are_cold", async () => {
   const f = await fixture(); expect(f.fetch).not.toHaveBeenCalled(); expect(f.loadJwt).not.toHaveBeenCalled();
   expect((await f.verifier.verifyToken(await f.token())).ok).toBe(true);
+});
+it("mixed_jwks_selects_signing_keys_and_ignores_certificate_metadata", async () => {
+  const f = await fixture();
+  const signing = await f.jwk(f.first, "first");
+  f.publish([signing, { ...f.encryption, kid: "first" },
+    { ...signing, kid: "unsupported", alg: "RS512" },
+    { kty: "EC", alg: "RS256", kid: "incompatible" },
+    { kty: "EC", crv: "P-384", alg: "ES256", kid: "other-curve" }]);
+  expect((await f.verifier.readiness()).state).toBe("ready");
+  expect((await f.verifier.verifyToken(await f.token())).ok).toBe(true);
+  expect(f.fetch).toHaveBeenCalledTimes(2);
+});
+it.each(["RS256", undefined])("encryption_keys_never_verify_tokens_even_with_signing_alg %s", async alg => {
+  const f = await fixture();
+  f.publish([await f.jwk(f.first, "first"), { ...f.encryption, alg }]);
+  expect((await f.verifier.readiness()).state).toBe("ready");
+  f.advance(30000);
+  expect(await f.verifier.verifyToken(await f.token({}, "encryption", f.second))).toEqual(denied("OIDC_KID_UNKNOWN"));
+});
+it.each([
+  ["not-an-array", {}], ["empty", []], ["non-object-key", [null]],
+  ["oversize", Array.from({ length: 65 }, () => ({ kty: "RSA", use: "enc" }))],
+  ["encryption-only", [{ kty: "RSA", use: "enc", alg: "RSA-OAEP" }]],
+  ["unsupported-only", [{ kty: "RSA", alg: "RS512", kid: "unsupported" }]],
+])("malformed_or_unusable_jwks_refuses %s", async (_name, keys) => {
+  const f = await fixture(); f.publish(keys);
+  expect((await f.verifier.readiness()).code).toBe("OIDC_JWKS_INVALID");
+});
+it.each(["duplicate", "unbounded-kid", "private-material"])("malformed_signing_keys_refuse %s", async kind => {
+  const f = await fixture(); const signing = await f.jwk(f.first, "first");
+  f.publish(kind === "duplicate" ? [signing, signing] : [{ ...signing, ...(kind === "unbounded-kid" ? { kid: "x".repeat(129) } : { d: "private" }) }]);
+  expect((await f.verifier.readiness()).code).toBe("OIDC_JWKS_INVALID");
 });
 it("requires_verified_signature_and_allowed_algorithm", async () => {
   const f = await fixture();
@@ -35,9 +71,11 @@ it("requires_verified_signature_and_allowed_algorithm", async () => {
   expect(await f.verifier.verifyToken(hmac)).toEqual(denied("OIDC_TOKEN_INVALID"));
   expect(await f.verifier.verifyToken("e30.e30.e30")).toEqual(denied("OIDC_TOKEN_INVALID"));
 });
-it.each(["RS256", "ES256"] as const)("supports_declared_asymmetric_profile %s", async algorithm => {
+it.each([
+  ["RS256", true], ["ES256", true], ["RS256", false], ["ES256", false],
+] as const)("supports_declared_asymmetric_profile %s with_metadata=%s", async (algorithm, metadata) => {
   const pair = await jose.generateKeyPair(algorithm);
-  const keys = [{ ...await jose.exportJWK(pair.publicKey), alg: algorithm, use: "sig", kid: "key" }];
+  const keys = [{ ...await jose.exportJWK(pair.publicKey), ...(metadata ? { alg: algorithm, use: "sig" } : {}), kid: "key" }];
   const verifier = createOidcIdentityVerifier({ issuer, audience, algorithms: [algorithm], maxTokenLifetimeSeconds: 3600 }, {
     loadJwt: async () => jose, now: () => epoch,
     fetch: async url => Response.json(String(url).endsWith("openid-configuration") ? { issuer, jwks_uri: `${issuer}/keys` } : { keys }),
@@ -141,11 +179,39 @@ it("cache_directives_shorten_lifetimes_and_readiness_needs_keys", async () => {
   f.advance(30000); f.fail(); expect((await f.verifier.readiness()).state).toBe("unknown");
   expect((await f.verifier.readiness()).jwks.loaded).toBe(false);
 });
-it("no_store_is_not_reused", async () => {
+it.each(["no-store", "no-cache, no-store"])("no_store_is_not_reused %s", async control => {
   const f = await fixture(); const upstream = f.fetch.getMockImplementation()!;
-  f.fetch.mockImplementation(async url => { const response = await upstream(url); response.headers.set("cache-control", "no-store"); return response; });
+  f.fetch.mockImplementation(async url => { const response = await upstream(url); response.headers.set("cache-control", control); return response; });
   expect((await f.verifier.verifyToken(await f.token())).ok).toBe(true);
   expect(await f.verifier.verifyToken(await f.token())).toEqual(denied("OIDC_JWKS_REFRESH_RATE_LIMITED"));
+});
+it.each(["no-cache", "no-cache, max-age=120"])("no_cache_is_short_lived_and_revalidated %s", async control => {
+  const f = await fixture({}, control);
+  const report = await f.verifier.readiness();
+  expect(report.state).toBe("ready");
+  expect(report.discovery.valid).toBe(true); expect(report.jwks.loaded).toBe(true);
+  expect(report.discovery.expiresAt).toBe(new Date(epoch + 30000).toISOString());
+  expect(report.jwks.expiresAt).toBe(new Date(epoch + 30000).toISOString());
+  expect((await f.verifier.verifyToken(await f.token())).ok).toBe(true);
+  expect(f.fetch).toHaveBeenCalledTimes(2);
+  f.advance(30000);
+  expect((await f.verifier.readiness()).state).toBe("ready");
+  expect(f.fetch).toHaveBeenCalledTimes(4);
+  f.advance(30000); f.fail();
+  const expired = await f.verifier.readiness();
+  expect(expired.state).toBe("unknown"); expect(expired.jwks.loaded).toBe(false);
+  expect(await f.verifier.verifyToken(await f.token())).toEqual(denied("OIDC_DISCOVERY_UNAVAILABLE"));
+});
+it("no_cache_respects_shorter_max_age_and_age", async () => {
+  const f = await fixture({}, "no-cache, max-age=20"); const upstream = f.fetch.getMockImplementation()!;
+  f.fetch.mockImplementation(async url => { const response = await upstream(url); response.headers.set("age", "5"); return response; });
+  const report = await f.verifier.readiness(); expect(report.state).toBe("ready");
+  expect(report.discovery.expiresAt).toBe(new Date(epoch + 15000).toISOString());
+  expect(report.jwks.expiresAt).toBe(new Date(epoch + 15000).toISOString());
+  f.advance(15000);
+  const expired = await f.verifier.readiness();
+  expect(expired.code).toBe("OIDC_JWKS_REFRESH_RATE_LIMITED"); expect(expired.jwks.loaded).toBe(false);
+  f.advance(15000); expect((await f.verifier.readiness()).state).toBe("ready");
 });
 it("configuration_and_loader_refusals_are_sanitized", async () => {
   const invalid = await fixture({ issuer: "http://issuer.example.com" });

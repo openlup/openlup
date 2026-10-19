@@ -93,8 +93,10 @@ export function createOidcIdentityVerifier(config: OidcIdentityVerifierConfig, d
         const control = response.headers.get("cache-control") ?? "";
         const ages = [...control.matchAll(/(?:^|,)\s*max-age\s*=\s*"?(\d+)"?/gi)].map(match => Number(match[1]));
         const age = Number(response.headers.get("age") ?? "0");
-        const seconds = /(?:^|,)\s*(?:no-store|no-cache)(?:\s|,|$)/i.test(control) ? 0
-          : Math.max(0, Math.min(maxAge, ...ages) - (Number.isFinite(age) && age >= 0 ? age : maxAge));
+        // Revalidate no-cache documents at the next permitted JWKS refresh.
+        const cacheBound = /(?:^|,)\s*no-cache(?:\s|,|$)/i.test(control) ? 30 : maxAge;
+        const seconds = /(?:^|,)\s*no-store(?:\s|,|$)/i.test(control) ? 0
+          : Math.max(0, Math.min(maxAge, cacheBound, ...ages) - (Number.isFinite(age) && age >= 0 ? age : maxAge));
         return { value, expires: now() + seconds * 1000 };
       })()]);
     } catch (error) {
@@ -132,10 +134,11 @@ export function createOidcIdentityVerifier(config: OidcIdentityVerifierConfig, d
       for (const key of value.keys) {
         if (!record(key) || ["d", "p", "q", "dp", "dq", "qi", "oth", "k"].some(field => field in key)) return refuse("OIDC_JWKS_INVALID");
         if ((key.use !== undefined && key.use !== "sig") || (key.key_ops !== undefined && (!Array.isArray(key.key_ops) || !key.key_ops.length || !key.key_ops.every(operation => operation === "verify")))) continue;
-        const alg = key.alg ?? (key.kty === "RSA" ? "RS256" : key.kty === "EC" && key.crv === "P-256" ? "ES256" : "");
-        if (!settings.algorithms.includes(alg as "RS256" | "ES256")) continue;
-        if (!bounded(key.kid, 128) || (alg === "RS256" ? key.kty !== "RSA" || !bounded(key.n, 2048) || !bounded(key.e, 16)
-          : key.kty !== "EC" || key.crv !== "P-256" || !bounded(key.x, 128) || !bounded(key.y, 128))) return refuse("OIDC_JWKS_INVALID");
+        const alg = key.alg === undefined ? (key.kty === "RSA" ? "RS256" : key.kty === "EC" && key.crv === "P-256" ? "ES256" : "") : key.alg;
+        if (!settings.algorithms.includes(alg as "RS256" | "ES256")
+          || (alg === "RS256" ? key.kty !== "RSA" : key.kty !== "EC" || key.crv !== "P-256")) continue;
+        if (!bounded(key.kid, 128) || (alg === "RS256" ? !bounded(key.n, 2048) || !bounded(key.e, 16)
+          : !bounded(key.x, 128) || !bounded(key.y, 128))) return refuse("OIDC_JWKS_INVALID");
         eligible.push({ ...key, alg: String(alg) });
       }
       if (!eligible.length || new Set(eligible.map(key => key.kid)).size !== eligible.length) return refuse("OIDC_JWKS_INVALID");

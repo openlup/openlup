@@ -8,6 +8,14 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Select usable OIDC signing keys from mixed JWKS documents, ignoring encryption
+  keys, unsupported algorithms and incompatible key types/curves. Signing keys
+  may omit `alg` and `use`; certificate metadata is accepted. Keep malformed-set,
+  duplicate signing-key ID and encryption-key verification refusals.
+  Migration: `no-cache` discovery/JWKS responses now permit up to 30 seconds of
+  reuse before revalidation, subject to shorter `max-age`/`Age` bounds;
+  `no-store` still prevents reuse. No schema or API changes are required.
+
 - Add an opt-in OIDC access-token verifier with issuer discovery, bounded rotating
   JWKS, strict signed claims and deterministic issuer/subject UUID principals.
   Direct PostgreSQL composition uses normal account reconciliation, actor-scoped
