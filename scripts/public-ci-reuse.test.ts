@@ -8,6 +8,7 @@ function fixture() {
     path: ".github/workflows/published-tree-ci.yml", repository, head_repository: repository,
     head_branch: "gh-readonly-queue/main/pr-1", status: "completed", conclusion: "success" };
   const jobs = ["dco", "typecheck", "install-proof", "test", "self-check", "gitleaks", "test-full", "pgtap",
+    "test-shard (1/4)", "test-shard (2/4)", "test-shard (3/4)", "test-shard (4/4)",
     "test-full-shard (1/4)", "test-full-shard (2/4)", "test-full-shard (3/4)", "test-full-shard (4/4)"].map((name, id) => ({
     id: id + 1, name, head_sha: sha, status: "completed", conclusion: "success",
   }));
@@ -73,20 +74,26 @@ describe("exact-commit post-merge reuse", () => {
   ])("falls back on missing or contradictory execution evidence %#", async mutate => {
     const f = fixture(); mutate(f); expect(await completedMergeGroup(f.input)).toBe(false);
   });
-  it.each(["failure", "cancelled", "skipped", "timed_out", ""])(
-    "refuses a %s full-root aggregate even when the run is green", async conclusion => {
+  it.each(["test", "test-full"].flatMap(name =>
+    ["failure", "cancelled", "skipped", "timed_out", "", "unknown"].map(conclusion => ({
+      name, conclusion, label: `refuses a ${conclusion} ${name === "test-full" ? "full-root" : "required"} aggregate even when the run is green`,
+    }))))(
+    "$label", async ({ name, conclusion }) => {
       const f = fixture();
-      f.jobs.find(job => job.name === "test-full")!.conclusion = conclusion;
+      f.jobs.find(job => job.name === name)!.conclusion = conclusion;
       expect(await completedMergeGroup(f.input)).toBe(false);
     },
   );
-  it("refuses missing or duplicate full-root aggregates", async () => {
+  it.each([
+    { name: "test-full", label: "refuses missing or duplicate full-root aggregates" },
+    { name: "test", label: "refuses missing or duplicate required aggregates" },
+  ])("$label", async ({ name }) => {
     const missing = fixture();
-    missing.jobs.splice(missing.jobs.findIndex(job => job.name === "test-full"), 1);
+    missing.jobs.splice(missing.jobs.findIndex(job => job.name === name), 1);
     missing.result.total_count--;
     expect(await completedMergeGroup(missing.input)).toBe(false);
     const duplicate = fixture();
-    duplicate.jobs.push({ ...duplicate.jobs.find(job => job.name === "test-full")!, id: 99 });
+    duplicate.jobs.push({ ...duplicate.jobs.find(job => job.name === name)!, id: 99 });
     duplicate.result.total_count++;
     expect(await completedMergeGroup(duplicate.input)).toBe(false);
   });

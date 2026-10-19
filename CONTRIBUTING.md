@@ -292,6 +292,18 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
+The required root tests run on four independent standard runners as
+`test-shard (1/4)` through `(4/4)`. Each restores the existing npm cache,
+runs `npm ci` and the unchanged `pretest:required`, then invokes the complete
+required selection below with only `--shard=N/4` appended. The fixed matrix
+permits four parallel jobs with fail-fast disabled. The stable required `test`
+job waits for all four and succeeds only for a successful matrix; failure,
+cancellation, skipped or missing results refuse success within the original
+trusted event fence. Each leg and aggregate retain the 20-minute ceiling.
+Native review still depends on the same six required contexts, including `test`.
+This command does not enable V8 coverage instrumentation. Package percentage
+thresholds and no-zero checks still run independently in `install-proof`.
+
 The raw full-root diagnostic runs on four standard runners as
 `test-full-shard (1/4)` through `(4/4)`, using Vitest's native file sharding.
 Each runner independently restores the existing npm download cache, installs
@@ -303,7 +315,7 @@ The stable raw `test-full` job waits for the matrix and succeeds only when every
 shard succeeds; failed, cancelled or skipped shards cannot produce a green
 aggregate. Its raw diagnostic status and the six required contexts are unchanged.
 Main-push reuse still requires a complete successful merge-group run for the same
-commit, including the full-root aggregate.
+commit, including both the required `test` and full-root aggregates.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
@@ -366,7 +378,9 @@ GATE_PACKS="$(mktemp -d)"
 # Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
 node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
-# test: hosted CI uses a separate checkout, in parallel with install-proof.
+# test: local unsharded equivalent; hosted test-shard has four independent
+# checkouts/installations, each appending only --shard=N/4 (N = 1, 2, 3, 4).
+# All run in parallel with install-proof.
 npm run test:required -- server/runtime/public-reference \
   src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx \
   scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts \
@@ -710,8 +724,8 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 The projected `npm test` command owns the complete root Vitest test
 scope. The independent `test-full-shard` matrix invokes that command with only
 `--shard=N/4` and preserves each raw failure result. The stable `test-full`
-aggregate requires all four successes, as described above. The required `test` job
-uses `npm run test:required -- …`, retaining every former main selector in order
+aggregate requires all four successes, as described above. The required `test-shard`
+matrix uses `npm run test:required -- … --shard=N/4`, retaining every former main selector in order
 and appending the existing subscription, materialized contract, documentation
 and neutrality CLI falsifiers to the same discovery. The package gate runs independently in `install-proof` and includes core's separate checks. Run `npm test` for the complete public diagnostics
 and narrower paths while iterating. Required success is not complete-suite success. The root Vitest
@@ -748,13 +762,14 @@ loads the lint configuration with a conditional `imports` map.
 and API migration-note refusals. The required cold package gate owns the actual
 build, pack and isolated install proof; the root tests do not repeat it through
 synthetic publisher and set-preflight workflow executions.
-The public test job appends the profile and tooling falsifier selectors to
-`test:required`, so one Vitest invocation schedules all required root files.
-Hosted package gates run in `install-proof`, alongside `test`, without sharing
+Each required shard appends the same profile and tooling falsifier selectors to
+`test:required`, then the native shard flag partitions that complete discovery.
+Locally the unsharded invocation schedules all required root files once.
+Hosted package gates run in `install-proof`, alongside the required shards, without sharing
 checkouts, installations, package outputs or databases. The PostgreSQL job service
 belongs to `install-proof`; root SQL falsifiers retain their owned fixtures. In
 one local checkout, package gates still finish first because cold preparation
-replaces package build outputs. Both existing jobs retain their 20-minute ceiling
+replaces package build outputs. Both job families retain their 20-minute ceiling
 and all test limits; their required test and package commands remain separate. Compare
 the longest required path and summed job durations separately. The complete root
 scope also discovers these falsifiers.
