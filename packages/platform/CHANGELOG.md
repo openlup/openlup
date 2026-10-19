@@ -8,31 +8,19 @@ SemVer promise.
 
 ## [Unreleased]
 
-- Refuse foreign OIDC issuers before discovery or JWKS lookup, including unknown
-  key IDs during a refresh rate limit, preserving the 401 credential refusal.
-  Strict bounded compact JWS parsing and the algorithm allowlist precede network
-  access; signature and verified claim checks remain required.
-  Migration: malformed encodings now refuse before key lookup, and foreign-issuer
-  unknown-key tokens return an issuer refusal instead of a refresh-related 503.
-  No configuration, schema or API changes are required.
-
-- Select usable OIDC signing keys from mixed JWKS documents, ignoring encryption
-  keys, unsupported algorithms and incompatible key types/curves. Signing keys
-  may omit `alg` and `use`; certificate metadata is accepted. Keep malformed-set,
-  duplicate signing-key ID and encryption-key verification refusals.
-  Migration: `no-cache` discovery/JWKS responses now permit up to 30 seconds of
-  reuse before revalidation, subject to shorter `max-age`/`Age` bounds;
-  `no-store` still prevents reuse. No schema or API changes are required.
-
-- Add an opt-in OIDC access-token verifier with issuer discovery, bounded rotating
-  JWKS, strict signed claims and deterministic issuer/subject UUID principals.
-  Direct PostgreSQL composition uses normal account reconciliation, actor-scoped
-  profile reads and live operator membership. Add an isolated real-issuer recipe
-  for refresh, rotation, session termination and ACL conformance. Managed bundles
-  require native federation sessions. No schema or default login flow changes.
-  OIDC refusal constants/types are exported only from the server identity entry.
-  Migration: import `OIDC_FAILURE_CODES` and `OidcFailureCode` from
-  `@openlup/platform/identity` instead of `@openlup/platform/identity/contracts`.
+- Add an opt-in OIDC access-token verifier for direct identity composition:
+  pinned issuer discovery, bounded rotating JWKS that selects usable signing keys
+  (encryption keys and unsupported algorithms are ignored; `no-cache` responses
+  revalidate within 30 seconds, `no-store` is never reused), strict compact-JWS
+  parsing that refuses a foreign issuer or disallowed algorithm before any key
+  lookup, verified `iss`/`aud`/`exp`/`nbf`/`email_verified` claims and a
+  deterministic issuer/subject UUID principal. Direct PostgreSQL composition uses
+  normal account reconciliation, actor-scoped profile reads and live operator
+  membership; managed bundles keep native federation sessions and refuse raw
+  upstream tokens. An opt-in, digest-pinned real-issuer recipe proves expiry,
+  refresh, key rotation, session end, refusals and customer/operator binding.
+  OIDC refusal constants are exported from the server identity entry. No schema,
+  default login flow or existing export changes.
 
 - Add an opt-in disposable identity reference shell with separate customer/operator
   browser mounts, a private captured mailbox for the direct bundle and opt-in
