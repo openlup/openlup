@@ -8,18 +8,26 @@ const invitation = {
   email: "invitee@example.com", role: "admin" as const,
   expiresAt: "2030-01-01T00:01:00.000Z",
 };
-function fixture(enabled = true) {
+function fixture(enabled = true, transport = createInMemoryEmailTransport()) {
   const insert = vi.fn(async () => ({ error: null }));
   const query = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn(async () => ({ data: { enabled }, error: null })), insert };
   query.select.mockReturnValue(query); query.eq.mockReturnValue(query);
   const rpc = vi.fn(async () => ({ data: "10000000-0000-4000-8000-000000000003", error: null }));
-  const transport = createInMemoryEmailTransport();
   const send = vi.spyOn(transport, "send");
   const port = createAdminRoleNotificationPort({ client: { from: () => query, rpc }, transport,
     fromEmail: "Application <operator@example.com>", siteUrl: "https://app.example.com" });
   return { port, send, rpc, insert };
 }
 describe("operator invitation notification", () => {
+  it("refuses raw injection before send and records failure rather than a receipt", async () => {
+    const send = vi.fn(async () => { throw new Error("must not send"); });
+    const { port, insert } = fixture(true, { providerKind: "in-memory", sent: [], send });
+    await expect(port.sendRoleGranted({ ...invitation, locale: "en" })).resolves.toEqual({
+      ok: false, providerMessageId: null, providerError: "email_egress_unadmitted", skipped: false, skipReason: null,
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", sent_at: null, resend_id: null }));
+  });
   it.each([
     ["en", "Your operator membership is active.", "pending", "Access begins"],
     ["pl", "Twoje uprawnienia operatora są aktywne.", "Zaproszenie oczekuje na przyjęcie", "Dostęp rozpocznie"],

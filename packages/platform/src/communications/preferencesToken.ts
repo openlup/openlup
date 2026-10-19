@@ -1,16 +1,22 @@
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export interface CommunicationPreferenceTokenPayload {
+export type LegacyCommunicationPreferencePurpose = "tester_program" | "marketing_launch_offer" | "marketing_newsletter";
+
+export interface CommunicationPreferenceTokenPayload<Purpose extends string = LegacyCommunicationPreferencePurpose> {
   email: string;
-  purpose: "tester_program" | "marketing_launch_offer" | "marketing_newsletter";
+  purpose: Purpose;
   expiresAt: number;
 }
 
+export function verifyCommunicationPreferenceToken(token: string, secret: string, nowMs?: number): CommunicationPreferenceTokenPayload | null;
+export function verifyCommunicationPreferenceToken<Purpose extends string>(token: string, secret: string, nowMs: number | undefined, registry: CommunicationPurposeRegistry<Purpose>): CommunicationPreferenceTokenPayload<Purpose> | null;
 export function verifyCommunicationPreferenceToken(
   token: string,
   secret: string,
   nowMs = Date.now(),
-): CommunicationPreferenceTokenPayload | null {
+  registry?: CommunicationPurposeRegistry<string>,
+): CommunicationPreferenceTokenPayload<string> | null {
   const parts = token.split(".");
   if (parts.length !== 2 || !secret) return null;
   const [encoded, signature] = parts;
@@ -24,9 +30,10 @@ export function verifyCommunicationPreferenceToken(
     const expiresAt = typeof payload.expiresAt === "number" ? payload.expiresAt : 0;
     if (!email.includes("@") || expiresAt < nowMs) return null;
     if (
+      typeof purpose !== "string" || (registry ? !registry.has(purpose) :
       purpose !== "tester_program" &&
       purpose !== "marketing_launch_offer" &&
-      purpose !== "marketing_newsletter"
+      purpose !== "marketing_newsletter")
     ) {
       return null;
     }
@@ -36,8 +43,8 @@ export function verifyCommunicationPreferenceToken(
   }
 }
 
-export function createCommunicationPreferenceToken(
-  payload: CommunicationPreferenceTokenPayload,
+export function createCommunicationPreferenceToken<Purpose extends string = LegacyCommunicationPreferencePurpose>(
+  payload: CommunicationPreferenceTokenPayload<Purpose>,
   secret: string,
 ): string {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");

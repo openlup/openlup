@@ -99,6 +99,12 @@ provider access, including on local and preview runtimes. No request host or
 forwarded header supplies a fallback. Valid configured flows retain quota,
 padding and non-enumerating responses. This source change activates no route.
 
+The Auth mail endpoint passes the already-admitted maintained transport through
+`createAuthEmailTransport` into the package hook. The bridge preserves the
+sender/recipient envelope and legacy identifier projection. Signature verification,
+content rendering, administrative control, send and persistence keep their
+existing order. The endpoint adds no policy fallback or direct-delivery mode.
+
 ## Self-host boundary
 
 The platform target is portable PostgreSQL with a reproducible baseline and
@@ -405,6 +411,15 @@ detect preview emails linking to production. An empty list admits no live Tpay
 callback and gives the email check no production domains to recognize. See the
 [pending preview upgrade notes](../../.github/VERSIONING_AND_EOL.md#pending-preview-upgrade-notes-public-coordinates)
 for the accompanying `OPENLUP_` configuration rename.
+
+Mail injection requires package-owned admission. New network adapters compose
+`createGuardedEmailTransport` with a fresh explicit host policy and consume the
+admitted recipient, credential and environment tag. Unknown/malformed decisions
+refuse before sender entry. The maintained client already enforces its reference
+sink/drop policy; its factory registers that implementation explicitly without
+rerouting or changing wire/key semantics. Provider tags and arbitrary capture
+claims grant no admission. The [transport contract](../../server/infra/email/README.md#contract)
+explains the host trust boundary and local capture semantics.
 
 ## Preview posture
 

@@ -20,6 +20,7 @@ import {
   type AuthEmailTransportPort,
   type AuthEmailTransportResult,
 } from "./authEmailPorts.js";
+import { guardAuthEmailTransport } from "./emailEgress.js";
 import { verifyStandardWebhookSignature } from "./standardWebhooks.js";
 
 const CORS_HEADERS = {
@@ -265,7 +266,7 @@ export function createAuthSendEmailHookCandidate(deps: AuthSendEmailHookDeps, ho
     const templateSlug = `auth-${actionType}`;
     const enabled = await deps.persistence.isTemplateEnabled(templateSlug, new AbortController().signal);
     const sendResult = enabled
-      ? await deps.transport.send({
+      ? await guardAuthEmailTransport(deps.transport).send({
         sender: selectFromEmail(deps, email), recipient: email,
         subject: rendered.subject, html: rendered.html, text: rendered.text,
       })

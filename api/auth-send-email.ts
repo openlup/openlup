@@ -13,7 +13,8 @@ import type { VercelRequest, VercelResponse } from "../server/_lib/types/vercel.
 import { createServiceRoleClient, readSupabaseAdminServiceEnv } from "../server/_lib/admin-domain/auth.js";
 import { createSupabaseAuthEmailPersistencePort } from "../server/adapters/supabase/authEmailPersistencePort.js";
 import { createAuthSendEmailHookCandidate } from "../server/domains/auth/authSendEmailHook.js";
-import { createEmailTransport, emailTransportMessageId, resolveEmailApiKey } from "../server/infra/email/emailTransport.js";
+import { createEmailTransport, resolveEmailApiKey } from "../server/infra/email/emailTransport.js";
+import { createAuthEmailTransport } from "@openlup/platform/communications";
 import { createAuthEmailContentPort } from "#auth-email-content";
 import {
   APP_FROM_EMAIL,
@@ -35,25 +36,7 @@ const persistence = createSupabaseAuthEmailPersistencePort({
 const handler = createAuthSendEmailHookCandidate({
   persistence,
   content: createAuthEmailContentPort(),
-  transport: {
-    providerKind: emailTransport.providerKind,
-    async send(message) {
-      const result = await emailTransport.send({
-        from: message.sender,
-        to: message.recipient,
-        subject: message.subject,
-        html: message.html,
-        text: message.text,
-      });
-      return {
-        outcome: {
-          ...result.outcome,
-          messageId: emailTransportMessageId(result.outcome),
-        },
-        providerResponse: result.providerResponse,
-      };
-    },
-  },
+  transport: createAuthEmailTransport(emailTransport),
   fromEmail: env.FROM_EMAIL ?? APP_FROM_EMAIL,
   hookSecret: env.SEND_EMAIL_HOOK_SECRET ?? "",
   authServiceUrl: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",

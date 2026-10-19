@@ -14,6 +14,7 @@ import {
 } from "./emailDeliveryTimeline.js";
 import { type ResendEmailSendOutcome } from "../../infra/resend/resendEmailClient.js";
 import {
+  guardEmailTransport,
   classifyEmailSendOutcome,
   createResendTransport,
   type EmailSendSkipReason,
@@ -270,7 +271,7 @@ export function createResendMarketingEmailPort(config: {
         };
       }
       const sendAttemptId = await recordTimeline(input, "processing");
-      const { outcome: rawOutcome, providerResponse } = await transport.send({
+      const { outcome: rawOutcome, providerResponse } = await guardEmailTransport(transport).send({
         from: fromEmail,
         to: input.to,
         subject: input.subject,

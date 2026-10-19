@@ -2366,6 +2366,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/consentPurposeRegistry.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/contracts/abandonedCart.ts",
       "class": "public-output"
     },
@@ -2398,6 +2402,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/contracts/consent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/contracts/email.ts",
       "class": "public-output"
     },
@@ -2407,6 +2415,10 @@
     },
     {
       "path": "packages/platform/src/communications/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/marketingAutomation.ts",
       "class": "public-output"
     },
     {
@@ -2558,6 +2570,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/emailEgress.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/emailHealthAssessment.ts",
       "class": "public-output"
     },
@@ -2599,6 +2615,10 @@
     },
     {
       "path": "packages/platform/src/communications/newsletterWebhookPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/newsletterWebhookProcessing.ts",
       "class": "public-output"
     },
     {
@@ -3162,6 +3182,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/authEgress.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/consentDefaults.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/consentRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/contracts.test.ts",
       "class": "public-output"
     },
@@ -3174,7 +3206,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/effectsWitness.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/emailEgress.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/hookRawReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/marketingConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -10514,6 +10558,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/communications/effectsComposition.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/communications/emailHealthAssessment.test.ts",
       "class": "public-output"
     },
@@ -12055,6 +12103,10 @@
     },
     {
       "path": "server/infra/email/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "server/infra/email/emailEgressReference.test.ts",
       "class": "public-output"
     },
     {
@@ -20143,6 +20195,10 @@
     },
     {
       "path": "tests/platform/customerJourneyReadWork.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/mailEgressCallers.test.ts",
       "class": "public-output"
     },
     {
