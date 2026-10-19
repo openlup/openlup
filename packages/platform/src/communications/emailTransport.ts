@@ -1,5 +1,5 @@
-/** Provider-agnostic transport contract, outcome projection and capture transport. */
 import { admitPolicyEnforcedEmailTransport } from "./emailEgress.js";
+/** Provider-agnostic transport contract, outcome projection and capture transport. */
 export interface EmailMessage {
   from: string;
   to: string;

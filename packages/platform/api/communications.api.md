@@ -1127,6 +1127,7 @@ export declare function processEmailObservation(input: {
 ## dist/communications/emailTransport.d.ts
 
 ```ts
+/** Provider-agnostic transport contract, outcome projection and capture transport. */
 export interface EmailMessage {
     from: string;
     to: string;
@@ -1493,8 +1494,8 @@ export declare const shipmentNotificationEventSchema: z.ZodObject<{
     orderId: z.ZodGUID;
     clientId: z.ZodGUID;
     status: z.ZodEnum<{
-        exception: "exception";
         delivered: "delivered";
+        exception: "exception";
         dispatched: "dispatched";
         shipped: "shipped";
     }>;

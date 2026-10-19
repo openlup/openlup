@@ -4,7 +4,13 @@ export const shipmentNotificationEventSchema = z
   .object({
     orderId: z.guid(),
     clientId: z.guid(),
-    status: z.enum(["dispatched", "shipped", "delivered", "exception"]),
+    // Preserve published declaration order without changing runtime enum options.
+    status: z.enum(["dispatched", "shipped", "delivered", "exception"]) as z.ZodEnum<{
+      delivered: "delivered";
+      exception: "exception";
+      dispatched: "dispatched";
+      shipped: "shipped";
+    }>,
     trackingNumbers: z.array(z.string().trim().min(1).max(160)).max(20),
     trackingReferences: z
       .array(
