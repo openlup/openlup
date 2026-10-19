@@ -100,6 +100,21 @@ export function assertPortBindings(container, managedPortBase) {
     }
   }
 }
+export function assertManagedAcceptanceTargets(apiUrl, databaseUrl, base) {
+  for (const [value, protocol, port, label] of [
+    [apiUrl, "http:", base + 1, "API"],
+    [databaseUrl, "postgresql:", base + 2, "database"],
+  ]) {
+    let target;
+    try { target = new URL(value); } catch { throw new Error(`Identity acceptance ${label} target unavailable`); }
+    // Query parameters can override the database driver's connection host and port.
+    if (target.protocol !== protocol || !["127.0.0.1", "[::1]"].includes(target.hostname)
+      || target.port !== String(port) || target.search || target.hash
+      || (label === "API" && (target.username || target.password || target.pathname !== "/"))) {
+      throw new Error(`Identity acceptance ${label} target must use loopback at its allocated port`);
+    }
+  }
+}
 async function freePort() {
   return new Promise((done, reject) => {
     const server = createServer(); server.once("error", reject);
@@ -163,7 +178,7 @@ export async function main(args = process.argv.slice(2)) {
       managedStarted = true;
       must("supabase", ["start", "--workdir", directory, "--exclude", "realtime,storage-api,imgproxy,studio,postgres-meta,edge-runtime,logflare,vector,supavisor"]);
       const credentials = parseEnv(must("supabase", ["status", "--workdir", directory, "-o", "env"]));
-      if (credentials.API_URL !== `http://127.0.0.1:${base + 1}` || !credentials.ANON_KEY || !credentials.SERVICE_ROLE_KEY) throw new Error("Owned managed credentials unavailable");
+      if (!credentials.ANON_KEY || !credentials.SERVICE_ROLE_KEY) throw new Error("Owned managed credentials unavailable");
       const managedIds = must("docker", ["ps", "-aq", "--filter", `label=com.supabase.cli.project=${project}`]).split("\n").filter(Boolean);
       const containers = managedIds.length ? JSON.parse(must("docker", ["inspect", ...managedIds])) : [];
       for (const container of containers) {
@@ -177,6 +192,7 @@ export async function main(args = process.argv.slice(2)) {
       if (!password) throw new Error("Owned managed database credential unavailable");
       database = `postgresql://supabase_admin:${encodeURIComponent(password)}@127.0.0.1:${base + 2}/postgres`;
       auth = { url: credentials.API_URL, anonKey: credentials.ANON_KEY, serviceKey: credentials.SERVICE_ROLE_KEY, mail: `http://127.0.0.1:${base + 4}`, emailFrequencyMs };
+      assertManagedAcceptanceTargets(auth.url, database, base);
     }
     const marker = { version: 1, runId, bundle, origin, containerId: owned.containerId };
     writeFileSync(join(directory, "identity-owner.json"), JSON.stringify(marker), { mode: 0o600 });

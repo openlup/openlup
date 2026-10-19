@@ -146,8 +146,8 @@ The disposable bundle supplies package observations from its build module graph,
 while startup still checks the selected bundle, schema and complete environment.
 The default public route policy is unchanged.
 
-The reference HTTP shell checks percent encoding in the pathname, leaving
-encoded query values available on declared routes. In particular,
+The reference HTTP shell refuses percent encoding in the pathname and malformed
+query encoding, validating query escapes once without rewriting or double-decoding them. In particular,
 `/account/auth/callback?returnTo=%2Faccount` serves the identity document;
 encoded path separators and traversal paths still return 404. Callback fragments
 remain in the browser and are consumed by the selected authentication adapter.

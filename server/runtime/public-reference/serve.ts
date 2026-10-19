@@ -89,6 +89,8 @@ function requestPath(request: IncomingMessage): string | null {
     || raw.includes("\\") || raw.includes("#")
     || rawPath.split("/").some((segment) => segment === "." || segment === "..")) return null;
   try {
+    // Validate once without rewriting the query used by downstream handlers.
+    decodeURIComponent(raw.slice(rawPath.length));
     return new URL(raw, "http://public-reference.invalid").pathname;
   } catch {
     return null;

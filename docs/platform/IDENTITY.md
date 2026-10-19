@@ -1005,6 +1005,7 @@ containers must have the run's project label, and every published host port must
 be inside the runner's allocated block (base through base + 10, inclusive).
 An unexpected port or unavailable binding data refuses acceptance. Ownership
 rechecks repeat the bundle's publication check.
+The managed API and database connection targets must use `127.0.0.1` or `[::1]` at the allocated API and database ports, without connection-query overrides.
 Cleanup checks container identity and labels; cleanup failure fails the run and
 retains the directory for recovery.
 

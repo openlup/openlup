@@ -146,7 +146,7 @@ import { buildIdentityReferenceRuntime, createIdentityAcceptanceDatabase, identi
 import { EventEmitter } from "node:events";
 import type { Server } from "node:http";
 import type { Pool } from "pg";
-import { acceptanceBundle, assertContainerOwnership, assertPortBindings, managedAcceptanceEmailFrequencyMs, managedEmailWaitMs, renderManagedAcceptanceConfig } from "../../../tests/identity/runAcceptance.mjs";
+import { acceptanceBundle, assertContainerOwnership, assertManagedAcceptanceTargets, assertPortBindings, managedAcceptanceEmailFrequencyMs, managedEmailWaitMs, renderManagedAcceptanceConfig } from "../../../tests/identity/runAcceptance.mjs";
 import { build, type Plugin } from "vite";
 import { enforceDeploymentRoutePolicy, validateIdentityReferenceProfile, withIdentityReferencePolicy, IDENTITY_ROUTES } from "./referenceIdentityPolicy.js";
 import { enforceDeploymentRoutePolicy as publicPolicy } from "../../_lib/publicDeploymentPolicies.js";
@@ -371,6 +371,23 @@ it("managed acceptance permits wildcard bindings only inside its allocated port 
     { HostIp: "", HostPort: "58424" },
   ] };
   expect(() => assertPortBindings({ NetworkSettings: { Ports }, HostConfig: { PortBindings: Ports } }, 58420)).not.toThrow();
+});
+it.each(["127.0.0.1", "[::1]"])("managed acceptance connects only to allocated loopback targets (%s)", host => {
+  expect(() => assertManagedAcceptanceTargets(`http://${host}:58421`, `postgresql://owner:synthetic@${host}:58422/postgres`, 58420)).not.toThrow();
+});
+it.each(["0.0.0.0", "[::]", "192.0.2.1", "external.invalid"])("managed acceptance refuses a non-loopback API target (%s)", host => {
+  expect(() => assertManagedAcceptanceTargets(`http://${host}:58421`, "postgresql://owner:synthetic@127.0.0.1:58422/postgres", 58420)).toThrow("API target must use loopback");
+});
+it.each(["0.0.0.0", "[::]", "192.0.2.1", "external.invalid"])("managed acceptance refuses a non-loopback database target (%s)", host => {
+  expect(() => assertManagedAcceptanceTargets("http://127.0.0.1:58421", `postgresql://owner:synthetic@${host}:58422/postgres`, 58420)).toThrow("database target must use loopback");
+});
+it.each([
+  ["http://127.0.0.1:58423", "postgresql://owner:synthetic@127.0.0.1:58422/postgres"],
+  ["http://127.0.0.1:58421", "postgresql://owner:synthetic@127.0.0.1:58423/postgres"],
+  ["http://127.0.0.1:58421", "postgresql://owner:synthetic@127.0.0.1:58422/postgres?host=external.invalid"],
+  ["http://127.0.0.1:58421", "postgresql://owner:synthetic@127.0.0.1:58422/postgres?port=58423"],
+])("managed acceptance refuses mismatched ports and database connection overrides (%s)", (api, database) => {
+  expect(() => assertManagedAcceptanceTargets(api, database, 58420)).toThrow("target must use loopback at its allocated port");
 });
 it.each(["58419", "58431", "0", "", "not-a-port", "58424suffix", undefined])("managed acceptance refuses an unallocated or invalid published port (%s) in either inspect view", HostPort => {
   for (const view of ["NetworkSettings", "HostConfig"]) {
@@ -606,9 +623,10 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
     operatorActions: { inviteAdminUser: vi.fn(), removeAdminUser: vi.fn() }, delivery: { deliver: vi.fn() },
     privacy: { export: called, erase: vi.fn() }, emailTrustPolicy: createVerifierResultOnlyEmailTrustPolicy(),
   };
+  const adaptedQuery = vi.fn();
   const runtime = loaded.createReferenceIdentity({ bundle, env: { ...processEnvironment }, migrationIdentity: "complete", ports,
     createRoutes: (selected: typeof ports) => [{ route: "/api/bff/admin/identity/privacy/export", pattern: /^\/api\/bff\/admin\/identity\/privacy\/export$/, params: [],
-      handler: async (_req: HttpRequest, res: HttpResponse) => { await selected.privacy.export(); res.status(200).json({ ok: true }); } }],
+      handler: async (req: HttpRequest, res: HttpResponse) => { adaptedQuery(req.query); await selected.privacy.export(); res.status(200).json({ ok: true }); } }],
   });
   const candidate = { artifact: "synthetic", configuration: "synthetic", environment: "test", database: runId, schema: "complete" };
   let missing = false;
@@ -637,10 +655,20 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
     expect(listen).toHaveBeenCalledOnce();
     // The managed link's fragment stays in the browser; its encoded query reaches HTTP.
     for (const method of ["GET", "HEAD"]) {
+      for (const query of ["returnTo=%2Faccount", "returnTo=%252F&literal=%25"]) {
+        const writeHead = vi.fn(), end = vi.fn();
+        const request = { url: `/account/auth/callback?${query}`, method, headers: req.headers };
+        server.emit("request", request, { writeHead, end });
+        expect(writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ "content-type": "text/html; charset=utf-8", "content-length": String(Buffer.byteLength(document)) }));
+        expect(end).toHaveBeenCalledWith(method === "HEAD" ? undefined : document);
+        expect(request.url).toBe(`/account/auth/callback?${query}`);
+      }
+    }
+    for (const query of ["returnTo=%", "returnTo=%ZZ", "returnTo=%E0%A4%A", "returnTo=%2Faccount&other=%ZZ", "%ZZ=value"]) {
       const writeHead = vi.fn(), end = vi.fn();
-      server.emit("request", { url: "/account/auth/callback?returnTo=%2Faccount", method, headers: req.headers }, { writeHead, end });
-      expect(writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ "content-type": "text/html; charset=utf-8", "content-length": String(Buffer.byteLength(document)) }));
-      expect(end).toHaveBeenCalledWith(method === "HEAD" ? undefined : document);
+      server.emit("request", { url: `/account/auth/callback?${query}`, method: "GET", headers: req.headers }, { writeHead, end });
+      expect(writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+      expect(end).toHaveBeenCalledWith("Not found\n");
     }
     for (const path of ["/account%2Fauth/callback?returnTo=%2Faccount", "/account/../account/auth/callback?returnTo=%2Faccount", "//reference.invalid/account/auth/callback?returnTo=%2Faccount"]) {
       const writeHead = vi.fn(), end = vi.fn();
@@ -649,13 +677,14 @@ it.each(["node-postgres", "node-supabase"] as const)("disposable profile admits 
       expect(end).toHaveBeenCalledWith("Not found\n");
     }
     const { Readable } = await import("node:stream");
-    const request = Object.assign(Readable.from(["{}"]), { url: "/api/bff/admin/identity/privacy/export", method: "POST", headers: req.headers });
+    const request = Object.assign(Readable.from(["{}"]), { url: "/api/bff/admin/identity/privacy/export?returnTo=%252F&literal=%25", method: "POST", headers: req.headers });
     await new Promise<void>((done, reject) => {
       const response = { statusCode: 0, headersSent: false, setHeader: vi.fn(), getHeader: vi.fn(), hasHeader: vi.fn(() => true), end: done, destroy: reject };
       server.emit("request", request, response);
       setTimeout(() => reject(new Error("Identity dispatch did not complete")), 2000).unref();
     });
     expect(called).toHaveBeenCalledOnce();
+    expect(adaptedQuery).toHaveBeenCalledWith({ returnTo: "%2F", literal: "%" });
     expect(ports.operatorAuthorization.authorize).toHaveBeenCalled();
   } finally { server.close(); }
 });
