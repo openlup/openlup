@@ -28,7 +28,8 @@ contracts contain only browser-safe types/ports. Existing public invitation
 logic, dunning words, token purposes, schemas, response/error bytes, send outcomes
 and ledger order stay unchanged. Trigger catalogue, gifts, new providers,
 identity implementation, control-plane adapter and deployment config are excluded.
-The payment webhook donor remains untouched pending a path extension. SQL is
+The approved E2 extension makes the payment webhook donor re-export the generic
+HTTP helpers; its Stripe verifier and tolerance remain local and unchanged. SQL is
 limited to three exact existing projections, with no migration or manifest edit.
 
 ## Verification ledger
@@ -42,7 +43,7 @@ newly selected existing witnesses. This is not a fresh allowance per PR.
 | Existing public outputs | Unchanged reference tests for Auth email, transport/rendering, signatures, consent/status, sync, webhook/poll, token, receipt and ledger behavior; required selection only grows |
 | Contracts/module boundary | Existing package-boundary/import-map plants plus synthetic type-only contract check; actual export inventory in the cold consumer |
 | SQL identity | Three canonical/projection byte, digest and manifest-position comparisons; no new install chain |
-| HTTP helper | Synthetic stream/fallback/cap, exact refusal bytes and hex-HMAC dialect tests; payment donor unchanged |
+| HTTP helper | Synthetic stream/fallback/cap, exact refusal bytes and hex-HMAC dialect tests; unchanged Stripe witnesses cover the delegating payment donor |
 | Contribution | Host-selected schema and dependency identity, no default route/handler/schedule activation |
 | Installed artifact | Existing required package gate, SDK-absent imports/refusals, declarations in NodeNext/Bundler, selected SDK and real PostgreSQL receipt replay/conflict/ACL proof |
 | Browser continuity | Public-reference subscription profile build, browser-used value closure retained |
@@ -53,7 +54,7 @@ cumulative budget usage must be recorded before supervisor admission. A clean
 signed candidate is required by the package producer; an uncommitted local run
 cannot replace that gate. Missing proof or an exceeded allowance remains a blocker.
 
-## Local author status
+## Initial implementation evidence (candidate `e9eca83`)
 
 The pre-commit focused pass executed 1,012 cases in 68 files: 1,011 passed and one
 new helper test failed during fixture construction, before entering production
@@ -79,3 +80,42 @@ candidate diagnostic additionally identifies the required-test command mirror
 that needs a bounded companion-path extension. No git-state or control change
 was made. The owner must resolve the case allowance before admission; elapsed
 queue time and focused results do not waive any required proof.
+
+## Run 2 local evidence (2026-10-19)
+
+E2 delegates only the generic payment webhook exports to the existing HTTP entry;
+the Stripe implementation and existing tests are unchanged. Before/after export
+comparison finds the same seven names and mutually assignable types. The
+`readRawBody` parameter is now named `HttpRequest` rather than `VercelRequest` in
+its resolved declaration; the generic type additionally declares optional
+`abortSignal`. This is compatibility evidence, not literal declaration spelling
+identity. Emitted generic helper and Stripe runtime bodies compare identically.
+The corrected helper, DOM-only contracts assertion and unchanged Stripe witnesses
+pass together (35 cases).
+
+Required selection retains the original command prefix and 20 of P1's additions.
+Each retained suite directly witnesses a moved or shimmed unit. Thirteen additions
+whose subjects remain byte-identical reference code were removed, including the
+browser renderers and unchanged presenters/ports. Fresh three-run measurement is
+**156 boundary iterations + 101 existing witness cases + 8 synthetic cases = 265
+added cases**, with **0.627 s** summed per-file medians. P1 exceeds the cumulative
++100 case allowance by **165**; the measured additions are below +30 s. Neither
+allowance was changed.
+
+Ast-grep, lint (zero errors), published-tree typecheck and the subscription
+reference build pass. After repeating the broad suites with Docker, npm-cache and
+local-listener access, required selection has 7,627 passed / 1 failed / 0 skipped;
+the complete root suite has 13,888 passed / 2 failed / 2 existing opt-in skips.
+The remaining failures assert the pending X1 command mirror. The mirror source
+was not edited. Initial restricted runs and their permission failures remain
+recorded separately; they are not passing results.
+
+Real PostgreSQL source conformance passes for the projected SQL, durable receipt
+replay with one delivery, conflict, operator refusal and anonymous ACL refusal.
+It does not replace installed-artifact proof. Dry pack measures **360,792 B packed /
+1,463,614 B unpacked / 554 files**, exceeding the unchanged total caps of
+196,608 B / 1,048,576 B / 256 files. Standalone platform `ci:required` refuses its
+missing verified pack manifest/commit. The complete required package gate remains
+owed after the supervisor commits the actual clean inputs. X1, the case/pack
+allowances and clean-commit proof still block admission; no acceptance or delivery
+is claimed.
