@@ -60,7 +60,7 @@ export async function runOidcIdentityConformance(setup: { issuerOrigin: string; 
         const page = await context.newPage(); await page.goto(rp.loginUrl(issuer.issuerFor(realm), client));
         await page.locator('input[name="username"]').fill(username);
         await page.locator('input[name="password"]').fill(issuer.password);
-        await page.locator('input[type="submit"]').click(); await page.waitForURL(rp.redirectUri + "?**");
+        await page.locator('#kc-login').click(); await page.waitForURL(rp.redirectUri + "?**");
         assert.equal(await page.textContent("body"), "Authenticated", "Real authorization-code login refused");
         const cookie = (await context.cookies(rp.origin)).find(value => value.name === rp.cookieName);
         assert(cookie?.httpOnly && cookie.sameSite === "Lax", "RP session cookie missing or unsafe");
