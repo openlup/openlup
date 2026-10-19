@@ -288,14 +288,16 @@ export declare function createSupabaseCommunicationSyncStore(client: Communicati
 ## dist/communications/communicationSyncWorker.d.ts
 
 ```ts
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
+import type { NewsletterMarketingPurpose } from "./contracts/newsletter.js";
 import type { NewsletterSyncEvent, NewsletterSyncProviderPort } from "./contracts/newsletter.js";
-export interface CommunicationSyncStore {
+export interface CommunicationSyncStore<Purpose extends string = NewsletterMarketingPurpose> {
     claimBatch(input: {
         providerKind: string;
         batchSize: number;
         visibilitySeconds: number;
         maxAttempts: number;
-    }): Promise<NewsletterSyncEvent[]>;
+    }): Promise<NewsletterSyncEvent<Purpose>[]>;
     markSent(input: {
         eventId: string;
         claimToken: string;
@@ -331,15 +333,17 @@ export interface CommunicationSyncRunResult {
     skippedEvents: number;
 }
 export declare const DEFAULT_COMMUNICATION_SYNC_CONFIG: CommunicationSyncConfig;
-export declare function runCommunicationSyncDispatch(input: {
-    store: CommunicationSyncStore;
-    provider: NewsletterSyncProviderPort;
+export declare function runCommunicationSyncDispatch<Purpose extends string = NewsletterMarketingPurpose>(input: {
+    store: CommunicationSyncStore<Purpose>;
+    provider: NewsletterSyncProviderPort<Purpose>;
     config?: Partial<CommunicationSyncConfig>;
+    registry?: CommunicationPurposeRegistry<Purpose>;
 }): Promise<CommunicationSyncRunResult>;
-export declare function runCommunicationSyncDispatchForProviders(input: {
-    store: CommunicationSyncStore;
-    providers: NewsletterSyncProviderPort[];
+export declare function runCommunicationSyncDispatchForProviders<Purpose extends string = NewsletterMarketingPurpose>(input: {
+    store: CommunicationSyncStore<Purpose>;
+    providers: NewsletterSyncProviderPort<Purpose>[];
     config?: Partial<CommunicationSyncConfig>;
+    registry?: CommunicationPurposeRegistry<Purpose>;
 }): Promise<CommunicationSyncRunResult>;
 export interface CommunicationReconcileRunResult {
     ok: boolean;
@@ -356,6 +360,7 @@ export declare function runCommunicationSyncReconcile(input?: {
 ## dist/communications/consentPolicy.d.ts
 
 ```ts
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
 import type { CommunicationPermissionState, CommunicationPurpose } from "./contracts/types.js";
 export type CommunicationRecipientKind = "external_contact" | "tester" | "customer" | "lead" | "admin_internal";
 export interface CommunicationPermissionSnapshot {
@@ -363,8 +368,8 @@ export interface CommunicationPermissionSnapshot {
     source?: string | null;
     legacySequencePaused?: boolean | null;
 }
-export interface CommunicationPolicyInput {
-    purpose: CommunicationPurpose;
+export interface CommunicationPolicyInput<Purpose extends string = CommunicationPurpose> {
+    purpose: Purpose;
     recipientKind: CommunicationRecipientKind;
     permission: CommunicationPermissionSnapshot | null;
 }
@@ -372,8 +377,16 @@ export interface CommunicationPolicyResult {
     decision: "allowed" | "blocked";
     reason: string;
 }
-export declare function evaluateCommunicationPolicy(input: CommunicationPolicyInput): CommunicationPolicyResult;
+export declare function evaluateCommunicationPolicy<Purpose extends string = CommunicationPurpose>(input: CommunicationPolicyInput<Purpose>, registry?: CommunicationPurposeRegistry<Purpose>): CommunicationPolicyResult;
 export declare function consentStateFromBoolean(value: boolean | null | undefined): CommunicationPermissionState;
+```
+## dist/communications/consentPurposeRegistry.d.ts
+
+```ts
+import type { CommunicationPurpose } from "./contracts/types.js";
+import type { CommunicationPurposeDefinition, CommunicationPurposeRegistry } from "./contracts/consent.js";
+export declare function createCommunicationPurposeRegistry<const Purpose extends string = never>(additions?: readonly CommunicationPurposeDefinition<Purpose>[]): CommunicationPurposeRegistry<CommunicationPurpose | Purpose>;
+export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"transactional" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "subscription_dunning" | "admin_notification">;
 ```
 ## dist/communications/contracts/authEmail.d.ts
 
@@ -439,6 +452,22 @@ export interface AuthEmailPersistencePort {
         providerResponse: Record<string, unknown>;
         metadata: Record<string, unknown>;
     }): Promise<void>;
+}
+```
+## dist/communications/contracts/consent.d.ts
+
+```ts
+import type { CommunicationPurpose } from "./types.js";
+export type CommunicationPurposeClassification = "marketing" | "non-marketing";
+export interface CommunicationPurposeDefinition<Purpose extends string = CommunicationPurpose> {
+    readonly id: Purpose;
+    readonly classification: CommunicationPurposeClassification;
+}
+/** Immutable, explicitly composed identifiers; registration is never permission. */
+export interface CommunicationPurposeRegistry<Purpose extends string = CommunicationPurpose> {
+    readonly purposes: readonly CommunicationPurposeDefinition<Purpose>[];
+    has(value: unknown): value is Purpose;
+    classification(purpose: Purpose): CommunicationPurposeClassification | undefined;
 }
 ```
 ## dist/communications/contracts/email.d.ts
@@ -627,6 +656,62 @@ export interface RenderedEmail {
 }
 export type EmailRenderer = (input: RenderEmailInput) => RenderedEmail;
 ```
+## dist/communications/contracts/marketingAutomation.d.ts
+
+```ts
+/** Scope is selected by the host. Remote account state is never local consent authority. */
+export interface MarketingAutomationScope {
+    readonly bindingId: string;
+    readonly accountReference: string;
+    readonly audienceReference: string;
+}
+export interface MarketingAutomationClaim {
+    readonly scope: MarketingAutomationScope;
+    readonly effectId: string;
+    readonly idempotencyKey: string;
+    readonly claimToken: string;
+    readonly generation: number;
+    readonly deadlineMs: number;
+    readonly attempt: number;
+    /** Opaque host reference; no email, profile attributes, tokens or payload bodies. */
+    readonly subjectReference: string;
+}
+export type MarketingAutomationObservation = {
+    readonly effectId: string;
+    readonly generation: number;
+    readonly observedAtMs: number;
+} & ({
+    readonly status: "accepted";
+    readonly remoteReference: string;
+} | {
+    readonly status: "ambiguous";
+    readonly retryAfterMs: number;
+} | {
+    readonly status: "throttled";
+    readonly retryAfterMs: number;
+} | {
+    readonly status: "refused";
+    readonly reason: "restricted" | "unsupported" | "deadline" | "scope";
+});
+export interface MarketingAutomationProviderPort {
+    readonly scope: MarketingAutomationScope;
+    /** Admission is explicit and short lived; scope, deadline and idempotency fences apply at effect time too. */
+    admit(claim: MarketingAutomationClaim, nowMs: number): Promise<"admitted" | "refused">;
+    /** Acknowledgement needs an observation; acceptance does not mean delivery or grant consent. */
+    apply(claim: MarketingAutomationClaim, nowMs: number): Promise<MarketingAutomationObservation>;
+    /** Reconcile ambiguity before retrying an effect that might already have been accepted. */
+    observe(claim: MarketingAutomationClaim, nowMs: number): Promise<MarketingAutomationObservation | null>;
+}
+export interface MarketingAutomationStorePort {
+    /** Unsupported/no-trigger work is not claimed. No runner or schedule is installed by this contract. */
+    claim(scope: MarketingAutomationScope, nowMs: number): Promise<MarketingAutomationClaim | null>;
+    /** Atomic scope + current token + generation + deadline check before provider admission. */
+    isCurrent(claim: MarketingAutomationClaim, nowMs: number): Promise<boolean>;
+    /** Persist observation/history with the same fences; stale workers cannot settle newer work. */
+    settle(claim: MarketingAutomationClaim, observation: MarketingAutomationObservation, nowMs: number): Promise<boolean>;
+    history(scope: MarketingAutomationScope, effectId: string): Promise<readonly MarketingAutomationObservation[]>;
+}
+```
 ## dist/communications/contracts/newsletter.d.ts
 
 ```ts
@@ -636,26 +721,26 @@ export type NewsletterSyncEventType = "subscribe" | "update" | "unsubscribe" | "
 export type NewsletterWebhookEventType = "subscribe" | "update" | "unsubscribe" | "suppress" | "complaint" | "bounce" | "email_change" | "profile_update" | "ignored";
 export type NewsletterProviderCapabilityKey = "subscribe" | "unsubscribe" | "suppress" | "unsuppress" | "doubleOptIn" | "emailChange" | "listMembership" | "webhookIdempotency" | "retryAfter";
 export type NewsletterProviderCapabilities = Record<NewsletterProviderCapabilityKey, boolean>;
-export interface NewsletterWebhookEvent {
+export interface NewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> {
     providerKind: NewsletterProviderKind;
     providerEventId: string;
     eventType: NewsletterWebhookEventType;
     email: string | null;
     remoteProfileId: string | null;
     remoteListId: string | null;
-    purpose: NewsletterMarketingPurpose | null;
+    purpose: Purpose | null;
     explicitOptInEvidence: boolean;
     doubleOptInStatus: "confirmed" | "pending" | "unknown";
     occurredAt: string | null;
     rawPayload: Record<string, unknown>;
 }
-export interface NewsletterSyncEvent {
+export interface NewsletterSyncEvent<Purpose extends string = NewsletterMarketingPurpose> {
     id: string;
     claimToken: string;
     contactId: string;
     normalizedEmail: string;
     eventType: NewsletterSyncEventType;
-    purpose: NewsletterMarketingPurpose;
+    purpose: Purpose;
     payload: Record<string, unknown>;
     attemptCount: number;
     originProviderKind?: NewsletterProviderKind | null;
@@ -676,10 +761,10 @@ export type NewsletterSyncOutcome = {
     reason: string;
     retryAfterSeconds?: number;
 };
-export interface NewsletterSyncProviderPort {
+export interface NewsletterSyncProviderPort<Purpose extends string = NewsletterMarketingPurpose> {
     readonly providerKind: string;
     readonly capabilities: NewsletterProviderCapabilities;
-    sync(event: NewsletterSyncEvent): Promise<NewsletterSyncOutcome>;
+    sync(event: NewsletterSyncEvent<Purpose>): Promise<NewsletterSyncOutcome>;
     reconcile?(): Promise<NewsletterSyncReconcileOutcome>;
 }
 export type NewsletterSyncReconcileOutcome = {
@@ -698,9 +783,9 @@ export type NewsletterSyncReconcileOutcome = {
 
 ```ts
 import type { NewsletterMarketingPurpose, NewsletterWebhookEvent } from "./newsletter.js";
-export type NormalizedNewsletterWebhookEvent = NewsletterWebhookEvent;
-export interface NewsletterWebhookPort {
-    recordProviderEvent(input: NewsletterWebhookEvent & {
+export type NormalizedNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> = NewsletterWebhookEvent<Purpose>;
+export interface NewsletterWebhookPort<Purpose extends string = NewsletterMarketingPurpose> {
+    recordProviderEvent(input: NewsletterWebhookEvent<Purpose> & {
         state: "unknown" | "granted" | "denied" | "suppressed" | null;
         processingStatus: "received" | "ignored";
     }): Promise<{
@@ -712,7 +797,7 @@ export interface NewsletterWebhookPort {
         contactId: string;
         providerKind: string;
         providerEventId: string;
-        purpose: NewsletterMarketingPurpose;
+        purpose: Purpose;
         state: "granted" | "suppressed";
         reason: string;
         metadata: Record<string, unknown>;
@@ -1269,6 +1354,10 @@ export type * from "./contracts/publicIntake.js";
 export type * from "./contracts/transactionalDelivery.js";
 export type * from "./contracts/newsletterWebhook.js";
 export type { NewsletterSyncProviderPort, NewsletterSyncOutcome, NewsletterSyncReconcileOutcome } from "./contracts/newsletter.js";
+export * from "./consentPurposeRegistry.js";
+export type * from "./contracts/consent.js";
+export type * from "./contracts/marketingAutomation.js";
+export * from "./newsletterWebhookProcessing.js";
 ```
 ## dist/communications/integrationEventSignature.d.ts
 
@@ -1308,11 +1397,13 @@ export declare function createManagedTransactionalDeliveryStore(client: ManagedT
 ## dist/communications/newsletterIntegrationContracts.d.ts
 
 ```ts
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
 import { z } from "./validation.js";
 export declare const NEWSLETTER_MARKETING_PURPOSES: readonly ["marketing_launch_offer", "marketing_newsletter"];
 export declare const NEWSLETTER_SYNC_EVENT_TYPES: readonly ["subscribe", "update", "unsubscribe", "suppress"];
 export declare const NEWSLETTER_WEBHOOK_EVENT_TYPES: readonly ["subscribe", "update", "unsubscribe", "suppress", "complaint", "bounce", "email_change", "profile_update", "ignored"];
 export declare const NEWSLETTER_PROVIDER_CAPABILITY_KEYS: readonly ["subscribe", "unsubscribe", "suppress", "unsuppress", "doubleOptIn", "emailChange", "listMembership", "webhookIdempotency", "retryAfter"];
+import type { NewsletterMarketingPurpose } from "./contracts/newsletter.js";
 import type { NewsletterSyncEventType, NewsletterProviderCapabilityKey, NewsletterProviderCapabilities, NewsletterWebhookEvent } from "./contracts/newsletter.js";
 export type { NewsletterProviderKind, NewsletterMarketingPurpose, NewsletterSyncEventType, NewsletterWebhookEventType, NewsletterProviderCapabilityKey, NewsletterProviderCapabilities, NewsletterWebhookEvent, NewsletterSyncEvent } from "./contracts/newsletter.js";
 export declare const defaultNewsletterProviderCapabilities: NewsletterProviderCapabilities;
@@ -1381,9 +1472,61 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     payload: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
 }, z.core.$strip>;
 export type CanonicalNewsletterWebhookEvent = z.infer<typeof canonicalNewsletterWebhookEventSchema>;
-export declare function normalizeCanonicalNewsletterWebhookEvent(event: CanonicalNewsletterWebhookEvent): NewsletterWebhookEvent;
+export declare function normalizeCanonicalNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose>(event: Omit<CanonicalNewsletterWebhookEvent, "purpose"> & {
+    purpose?: Purpose | null;
+}): NewsletterWebhookEvent<Purpose>;
 export declare function requiredNewsletterCapabilityForEvent(eventType: NewsletterSyncEventType): NewsletterProviderCapabilityKey;
 export declare function supportsNewsletterSyncEvent(capabilities: NewsletterProviderCapabilities, eventType: NewsletterSyncEventType): boolean;
+/** Explicit registry binding; legacy schemas above retain their two-purpose default. */
+export declare function createNewsletterIntegrationSchemas<Purpose extends string>(registry: CommunicationPurposeRegistry<Purpose>): {
+    purpose: z.ZodCustom<Purpose, Purpose>;
+    webhookEvent: z.ZodObject<{
+        providerKind: z.ZodString;
+        providerEventId: z.ZodString;
+        eventType: z.ZodEnum<{
+            email_change: "email_change";
+            update: "update";
+            subscribe: "subscribe";
+            unsubscribe: "unsubscribe";
+            suppress: "suppress";
+            complaint: "complaint";
+            bounce: "bounce";
+            profile_update: "profile_update";
+            ignored: "ignored";
+        }>;
+        email: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        remoteProfileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        remoteListId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        explicitOptInEvidence: z.ZodOptional<z.ZodBoolean>;
+        doubleOptInStatus: z.ZodOptional<z.ZodEnum<{
+            unknown: "unknown";
+            confirmed: "confirmed";
+            pending: "pending";
+        }>>;
+        occurredAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        payload: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        purpose: z.ZodOptional<z.ZodNullable<z.ZodCustom<Purpose, Purpose>>>;
+    }, z.core.$strip>;
+    syncEvent: z.ZodObject<{
+        id: z.ZodString;
+        claimToken: z.ZodString;
+        contactId: z.ZodString;
+        normalizedEmail: z.ZodString;
+        eventType: z.ZodEnum<{
+            update: "update";
+            subscribe: "subscribe";
+            unsubscribe: "unsubscribe";
+            suppress: "suppress";
+        }>;
+        purpose: z.ZodCustom<Purpose, Purpose>;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        attemptCount: z.ZodNumber;
+        originProviderKind: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        originProviderEventId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        remoteProfileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        remoteListId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>;
+};
 ```
 ## dist/communications/newsletterWebhookPort.d.ts
 
@@ -1399,6 +1542,27 @@ export interface NewsletterWebhookRpcClient {
     }>;
 }
 export declare function createSupabaseNewsletterWebhookPort(client: NewsletterWebhookRpcClient): NewsletterWebhookPort;
+```
+## dist/communications/newsletterWebhookProcessing.d.ts
+
+```ts
+import type { NewsletterMarketingPurpose, NewsletterWebhookEvent } from "./contracts/newsletter.js";
+import type { NewsletterWebhookPort } from "./contracts/newsletterWebhook.js";
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
+export interface NewsletterWebhookProcessResult {
+    provider: string;
+    providerEventId: string;
+    replayed?: boolean;
+    status?: "processed" | "ignored";
+    reason?: string;
+    localState?: "granted" | "suppressed";
+}
+export declare function processNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose>(input: {
+    providerKind: string;
+    event: NewsletterWebhookEvent<Purpose>;
+    port: NewsletterWebhookPort<Purpose | NewsletterMarketingPurpose>;
+    registry?: CommunicationPurposeRegistry<Purpose>;
+}): Promise<NewsletterWebhookProcessResult>;
 ```
 ## dist/communications/originPolicy.d.ts
 
@@ -1458,17 +1622,21 @@ export declare function createPostgresTransactionalDeliveryStore(env: PostgresDa
 ## dist/communications/preferencesToken.d.ts
 
 ```ts
-export interface CommunicationPreferenceTokenPayload {
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
+export type LegacyCommunicationPreferencePurpose = "tester_program" | "marketing_launch_offer" | "marketing_newsletter";
+export interface CommunicationPreferenceTokenPayload<Purpose extends string = LegacyCommunicationPreferencePurpose> {
     email: string;
-    purpose: "tester_program" | "marketing_launch_offer" | "marketing_newsletter";
+    purpose: Purpose;
     expiresAt: number;
 }
 export declare function verifyCommunicationPreferenceToken(token: string, secret: string, nowMs?: number): CommunicationPreferenceTokenPayload | null;
-export declare function createCommunicationPreferenceToken(payload: CommunicationPreferenceTokenPayload, secret: string): string;
+export declare function verifyCommunicationPreferenceToken<Purpose extends string>(token: string, secret: string, nowMs: number | undefined, registry: CommunicationPurposeRegistry<Purpose>): CommunicationPreferenceTokenPayload<Purpose> | null;
+export declare function createCommunicationPreferenceToken<Purpose extends string = LegacyCommunicationPreferencePurpose>(payload: CommunicationPreferenceTokenPayload<Purpose>, secret: string): string;
 ```
 ## dist/communications/publicPreferenceToken.d.ts
 
 ```ts
+import type { CommunicationPurposeRegistry, CommunicationPurposeDefinition } from "./contracts/consent.js";
 import type { CommunicationPreferenceTokenPayload } from "./preferencesToken.js";
 export interface PublicPreferenceTokenSupabaseClient {
     rpc(fn: string, args: Record<string, unknown>): Promise<{
@@ -1484,6 +1652,13 @@ export declare function createSupabasePublicPreferenceTokenPort(client: PublicPr
         purpose: "marketing_launch_offer" | "marketing_newsletter" | "tester_program";
         state: PublicPreferenceState;
     }>;
+};
+/** The host owns persistence and any synchronization policy for registered purposes. */
+export declare function createRegisteredPublicPreferenceTokenPort<Purpose extends string>(input: {
+    registry: CommunicationPurposeRegistry<Purpose>;
+    persist: (payload: CommunicationPreferenceTokenPayload<Purpose>, state: PublicPreferenceState, definition: CommunicationPurposeDefinition<Purpose>) => Promise<unknown>;
+}): {
+    updatePreference(payload: CommunicationPreferenceTokenPayload<Purpose>, state: PublicPreferenceState): Promise<unknown>;
 };
 ```
 ## dist/communications/shipmentNotifications.d.ts

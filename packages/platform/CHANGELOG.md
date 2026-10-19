@@ -1,6 +1,104 @@
 # Changelog
 
-## Unreleased
+## [Unreleased]
+
+- Add an opt-in immutable consent-purpose registry with mandatory classification,
+  registry-bound policy/token/newsletter contracts and explicit host preference
+  persistence. Legacy defaults and managed purpose CHECKs remain unchanged;
+  registration grants no permission and creates no implicit synchronization.
+  Extract neutral newsletter event processing and preserve host effects/readback.
+  Add marketing automation ports and synthetic conformance without a runner,
+  provider activation, schema or package-graph change.
+
+Migration: P4 generalizes the existing purpose-bearing declarations with finite
+legacy defaults. Calls and type references that omit a purpose argument retain
+the same built-in purposes. Registry composition is opt-in: thread the same
+registered purpose union through newsletter events, provider/store/webhook ports,
+policy and token payloads, and pass the registry to dispatch, schema construction
+and preference-token verification. Registration grants no consent, provider
+activation or managed database support. Custom persistence remains host-owned;
+the managed permission/sync CHECKs and existing token signing bytes are unchanged.
+The legacy managed preference adapter still returns the same expanded three-value
+purpose union.
+
+Before (existing imports from `@openlup/platform/communications` or its contracts
+entry; declarations shown with unrelated members omitted):
+
+```ts
+interface NewsletterWebhookEvent { purpose: NewsletterMarketingPurpose | null }
+interface NewsletterSyncEvent { purpose: NewsletterMarketingPurpose }
+interface NewsletterSyncProviderPort {
+  sync(event: NewsletterSyncEvent): Promise<NewsletterSyncOutcome>;
+}
+type NormalizedNewsletterWebhookEvent = NewsletterWebhookEvent;
+interface NewsletterWebhookPort {
+  recordProviderEvent(input: NewsletterWebhookEvent & {
+    state: "unknown" | "granted" | "denied" | "suppressed" | null;
+    processingStatus: "received" | "ignored";
+  }): Promise<{ providerEventId: string; contactId: string | null; inserted: boolean }>;
+  // setPermissionFromProvider input.purpose: NewsletterMarketingPurpose
+}
+interface CommunicationSyncStore {
+  // claimBatch(input): Promise<NewsletterSyncEvent[]>
+}
+interface CommunicationPolicyInput { purpose: CommunicationPurpose }
+interface CommunicationPreferenceTokenPayload {
+  email: string;
+  purpose: "tester_program" | "marketing_launch_offer" | "marketing_newsletter";
+  expiresAt: number;
+}
+declare function evaluateCommunicationPolicy(input: CommunicationPolicyInput): CommunicationPolicyResult;
+declare function createCommunicationPreferenceToken(payload: CommunicationPreferenceTokenPayload, secret: string): string;
+declare function normalizeCanonicalNewsletterWebhookEvent(event: CanonicalNewsletterWebhookEvent): NewsletterWebhookEvent;
+// runCommunicationSyncDispatch / runCommunicationSyncDispatchForProviders:
+// store: CommunicationSyncStore; provider(s): NewsletterSyncProviderPort (or array)
+```
+
+After (the unchanged members and return types above are retained):
+
+```ts
+interface NewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> {
+  purpose: Purpose | null;
+}
+interface NewsletterSyncEvent<Purpose extends string = NewsletterMarketingPurpose> {
+  purpose: Purpose;
+}
+interface NewsletterSyncProviderPort<Purpose extends string = NewsletterMarketingPurpose> {
+  sync(event: NewsletterSyncEvent<Purpose>): Promise<NewsletterSyncOutcome>;
+}
+type NormalizedNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> = NewsletterWebhookEvent<Purpose>;
+interface NewsletterWebhookPort<Purpose extends string = NewsletterMarketingPurpose> {
+  recordProviderEvent(input: NewsletterWebhookEvent<Purpose> & {
+    state: "unknown" | "granted" | "denied" | "suppressed" | null;
+    processingStatus: "received" | "ignored";
+  }): Promise<{ providerEventId: string; contactId: string | null; inserted: boolean }>;
+  // setPermissionFromProvider input.purpose: Purpose
+}
+interface CommunicationSyncStore<Purpose extends string = NewsletterMarketingPurpose> {
+  // claimBatch(input): Promise<NewsletterSyncEvent<Purpose>[]>
+}
+interface CommunicationPolicyInput<Purpose extends string = CommunicationPurpose> {
+  purpose: Purpose;
+}
+type LegacyCommunicationPreferencePurpose = "tester_program" | "marketing_launch_offer" | "marketing_newsletter";
+interface CommunicationPreferenceTokenPayload<Purpose extends string = LegacyCommunicationPreferencePurpose> {
+  email: string;
+  purpose: Purpose;
+  expiresAt: number;
+}
+declare function evaluateCommunicationPolicy<Purpose extends string = CommunicationPurpose>(input: CommunicationPolicyInput<Purpose>, registry?: CommunicationPurposeRegistry<Purpose>): CommunicationPolicyResult;
+declare function createCommunicationPreferenceToken<Purpose extends string = LegacyCommunicationPreferencePurpose>(payload: CommunicationPreferenceTokenPayload<Purpose>, secret: string): string;
+declare function normalizeCanonicalNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose>(event: Omit<CanonicalNewsletterWebhookEvent, "purpose"> & { purpose?: Purpose | null }): NewsletterWebhookEvent<Purpose>;
+// runCommunicationSyncDispatch / runCommunicationSyncDispatchForProviders now
+// carry Purpose extends string = NewsletterMarketingPurpose through their store
+// and provider(s), and accept registry?: CommunicationPurposeRegistry<Purpose>.
+// verifyCommunicationPreferenceToken retains its old three-argument overload;
+// the new fourth-argument registry overload returns the registered payload type.
+```
+
+No SQL forward, stock-store capability expansion or package-set version change is
+part of this migration. Existing legacy schemas and purpose-less webhook fallback
+remain finite and unchanged.
 
 - B1: require package egress admission before every supported injected mail send.
   `createGuardedEmailTransport` validates a fresh explicit host policy, refuses
@@ -50,8 +148,6 @@ Notable changes to this public-source workspace package are recorded here.
 source previews may already ship some changes, and their release notes say
 which. Declaration snapshots track candidate drift, not a stable API or
 SemVer promise.
-
-## [Unreleased]
 
 ## [0.16.0]
 

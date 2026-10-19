@@ -498,6 +498,22 @@ export interface CommerceEngagementEmailContent {
     readonly reviewEffects: Record<Locale, ReviewEffectsEmailCopy>;
 }
 ```
+## dist/communications/contracts/consent.d.ts
+
+```ts
+import type { CommunicationPurpose } from "./types.js";
+export type CommunicationPurposeClassification = "marketing" | "non-marketing";
+export interface CommunicationPurposeDefinition<Purpose extends string = CommunicationPurpose> {
+    readonly id: Purpose;
+    readonly classification: CommunicationPurposeClassification;
+}
+/** Immutable, explicitly composed identifiers; registration is never permission. */
+export interface CommunicationPurposeRegistry<Purpose extends string = CommunicationPurpose> {
+    readonly purposes: readonly CommunicationPurposeDefinition<Purpose>[];
+    has(value: unknown): value is Purpose;
+    classification(purpose: Purpose): CommunicationPurposeClassification | undefined;
+}
+```
 ## dist/communications/contracts/email.d.ts
 
 ```ts
@@ -701,6 +717,8 @@ export type * from "./newsletterWebhook.js";
 export type * from "./publicIntake.js";
 export type * from "./transactionalDelivery.js";
 export type * from "./types.js";
+export type * from "./consent.js";
+export type * from "./marketingAutomation.js";
 export * from "./render.js";
 export * from "./blocks.js";
 export * from "./commerceEmailContent.js";
@@ -740,6 +758,62 @@ export * from "./subscriptionResumed.js";
 export * from "./subscriptionWelcome.js";
 export * from "./subscriptionWinback.js";
 ```
+## dist/communications/contracts/marketingAutomation.d.ts
+
+```ts
+/** Scope is selected by the host. Remote account state is never local consent authority. */
+export interface MarketingAutomationScope {
+    readonly bindingId: string;
+    readonly accountReference: string;
+    readonly audienceReference: string;
+}
+export interface MarketingAutomationClaim {
+    readonly scope: MarketingAutomationScope;
+    readonly effectId: string;
+    readonly idempotencyKey: string;
+    readonly claimToken: string;
+    readonly generation: number;
+    readonly deadlineMs: number;
+    readonly attempt: number;
+    /** Opaque host reference; no email, profile attributes, tokens or payload bodies. */
+    readonly subjectReference: string;
+}
+export type MarketingAutomationObservation = {
+    readonly effectId: string;
+    readonly generation: number;
+    readonly observedAtMs: number;
+} & ({
+    readonly status: "accepted";
+    readonly remoteReference: string;
+} | {
+    readonly status: "ambiguous";
+    readonly retryAfterMs: number;
+} | {
+    readonly status: "throttled";
+    readonly retryAfterMs: number;
+} | {
+    readonly status: "refused";
+    readonly reason: "restricted" | "unsupported" | "deadline" | "scope";
+});
+export interface MarketingAutomationProviderPort {
+    readonly scope: MarketingAutomationScope;
+    /** Admission is explicit and short lived; scope, deadline and idempotency fences apply at effect time too. */
+    admit(claim: MarketingAutomationClaim, nowMs: number): Promise<"admitted" | "refused">;
+    /** Acknowledgement needs an observation; acceptance does not mean delivery or grant consent. */
+    apply(claim: MarketingAutomationClaim, nowMs: number): Promise<MarketingAutomationObservation>;
+    /** Reconcile ambiguity before retrying an effect that might already have been accepted. */
+    observe(claim: MarketingAutomationClaim, nowMs: number): Promise<MarketingAutomationObservation | null>;
+}
+export interface MarketingAutomationStorePort {
+    /** Unsupported/no-trigger work is not claimed. No runner or schedule is installed by this contract. */
+    claim(scope: MarketingAutomationScope, nowMs: number): Promise<MarketingAutomationClaim | null>;
+    /** Atomic scope + current token + generation + deadline check before provider admission. */
+    isCurrent(claim: MarketingAutomationClaim, nowMs: number): Promise<boolean>;
+    /** Persist observation/history with the same fences; stale workers cannot settle newer work. */
+    settle(claim: MarketingAutomationClaim, observation: MarketingAutomationObservation, nowMs: number): Promise<boolean>;
+    history(scope: MarketingAutomationScope, effectId: string): Promise<readonly MarketingAutomationObservation[]>;
+}
+```
 ## dist/communications/contracts/newsletter.d.ts
 
 ```ts
@@ -749,26 +823,26 @@ export type NewsletterSyncEventType = "subscribe" | "update" | "unsubscribe" | "
 export type NewsletterWebhookEventType = "subscribe" | "update" | "unsubscribe" | "suppress" | "complaint" | "bounce" | "email_change" | "profile_update" | "ignored";
 export type NewsletterProviderCapabilityKey = "subscribe" | "unsubscribe" | "suppress" | "unsuppress" | "doubleOptIn" | "emailChange" | "listMembership" | "webhookIdempotency" | "retryAfter";
 export type NewsletterProviderCapabilities = Record<NewsletterProviderCapabilityKey, boolean>;
-export interface NewsletterWebhookEvent {
+export interface NewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> {
     providerKind: NewsletterProviderKind;
     providerEventId: string;
     eventType: NewsletterWebhookEventType;
     email: string | null;
     remoteProfileId: string | null;
     remoteListId: string | null;
-    purpose: NewsletterMarketingPurpose | null;
+    purpose: Purpose | null;
     explicitOptInEvidence: boolean;
     doubleOptInStatus: "confirmed" | "pending" | "unknown";
     occurredAt: string | null;
     rawPayload: Record<string, unknown>;
 }
-export interface NewsletterSyncEvent {
+export interface NewsletterSyncEvent<Purpose extends string = NewsletterMarketingPurpose> {
     id: string;
     claimToken: string;
     contactId: string;
     normalizedEmail: string;
     eventType: NewsletterSyncEventType;
-    purpose: NewsletterMarketingPurpose;
+    purpose: Purpose;
     payload: Record<string, unknown>;
     attemptCount: number;
     originProviderKind?: NewsletterProviderKind | null;
@@ -789,10 +863,10 @@ export type NewsletterSyncOutcome = {
     reason: string;
     retryAfterSeconds?: number;
 };
-export interface NewsletterSyncProviderPort {
+export interface NewsletterSyncProviderPort<Purpose extends string = NewsletterMarketingPurpose> {
     readonly providerKind: string;
     readonly capabilities: NewsletterProviderCapabilities;
-    sync(event: NewsletterSyncEvent): Promise<NewsletterSyncOutcome>;
+    sync(event: NewsletterSyncEvent<Purpose>): Promise<NewsletterSyncOutcome>;
     reconcile?(): Promise<NewsletterSyncReconcileOutcome>;
 }
 export type NewsletterSyncReconcileOutcome = {
@@ -811,9 +885,9 @@ export type NewsletterSyncReconcileOutcome = {
 
 ```ts
 import type { NewsletterMarketingPurpose, NewsletterWebhookEvent } from "./newsletter.js";
-export type NormalizedNewsletterWebhookEvent = NewsletterWebhookEvent;
-export interface NewsletterWebhookPort {
-    recordProviderEvent(input: NewsletterWebhookEvent & {
+export type NormalizedNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> = NewsletterWebhookEvent<Purpose>;
+export interface NewsletterWebhookPort<Purpose extends string = NewsletterMarketingPurpose> {
+    recordProviderEvent(input: NewsletterWebhookEvent<Purpose> & {
         state: "unknown" | "granted" | "denied" | "suppressed" | null;
         processingStatus: "received" | "ignored";
     }): Promise<{
@@ -825,7 +899,7 @@ export interface NewsletterWebhookPort {
         contactId: string;
         providerKind: string;
         providerEventId: string;
-        purpose: NewsletterMarketingPurpose;
+        purpose: Purpose;
         state: "granted" | "suppressed";
         reason: string;
         metadata: Record<string, unknown>;

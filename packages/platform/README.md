@@ -557,6 +557,41 @@ single durable convergence/suppression writer. These ports add no in-memory
 replay authority, database store or second executor. Legacy transport identifier
 fields remain compatibility residue; new ports use `messageId`.
 
+`createCommunicationPurposeRegistry` composes immutable exact identifiers with a
+mandatory `marketing` or `non-marketing` classification. Its built-ins cannot be
+redeclared. Existing policy, token and newsletter schema calls keep their finite
+defaults. Passing a registry to policy evaluation, token verification or
+`createNewsletterIntegrationSchemas` recognizes its identifiers without granting
+permission. Custom marketing purposes still require a grant and respect
+suppression; built-in tester pause and permission rules stay in force.
+
+`createRegisteredPublicPreferenceTokenPort` requires an explicit host persistence
+function and passes the exact purpose and frozen classification to it. It creates
+no sync event. Stock managed permission and newsletter-sync tables retain their
+finite CHECKs; registering a purpose does not expand those stores. Additional
+persistence and schema requirements belong to the adopter. No new purpose, table,
+migration, preference UI, URL or default fan-out is installed.
+
+`processNewsletterWebhookEvent` supplies the existing event → permission →
+settlement sequence behind neutral ports. Reference HTTP admission and signature
+mapping stay local. Explicit registered purposes survive permission writes;
+purpose-less feedback still targets exactly the two existing marketing purposes.
+Verified opt-in, suppression and replay rules are unchanged. Registered dispatch
+checks the batch's purposes before provider effects and retains claim tokens,
+echo and capability skips, retry behavior and counters. Sync-settled and accepted
+receipts are distinct from delivered evidence. Existing job admission, binding,
+leases, finish-run linkage and operator readback retain their host composition.
+No shared sender pipeline is added: required audit and best-effort send paths
+keep their distinct ordering and failure semantics.
+
+`MarketingAutomationProviderPort` and `MarketingAutomationStorePort` describe
+explicit scope, claim/generation fences, admission/deadlines, idempotency,
+observations/history and ambiguity/backoff. The synthetic substitute-provider
+conformance suite is an executable contract, not an installed worker or a remote
+provider certification. Evidence carries opaque references; remote feedback does
+not grant local consent. No trigger catalogue, schedule or provider activation
+is supplied.
+
 The required selection retains the moved-code witnesses and neutral package
 characterization tests. The package W1 hook reader witnesses the Auth composition;
 provider-specific reference test paths remain in the complete suite. The
