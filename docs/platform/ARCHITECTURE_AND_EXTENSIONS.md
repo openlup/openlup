@@ -262,7 +262,9 @@ Rules that need a contract the kernel does not export yet say so.
 Development-preview rules may still change (see
 [Compatibility posture](#compatibility-posture)).
 
-### Modules and distributions
+<a id="modules-and-distributions"></a>
+
+### Package placement decision (canonical)
 
 A module is a capability or infrastructure responsibility with an owner, public
 entry, ports, data obligations and conformance evidence. A package is an npm
@@ -287,6 +289,28 @@ and export maps establish the selected set. Identity's planned physical home is
 entry, preferably `@openlup/platform/identity/contracts`, with no server imports.
 Only genuinely shared contracts belong in core; importing platform as a whole
 is not a browser-safety guarantee.
+
+Place a new module at declared subpaths of `@openlup/platform` by default.
+Use core and outbox only for their defined roles above. UI remains a future
+artifact role, with no current name reservation or bootstrap obligation. Record
+placement and the topology-trigger check in the module/API packet before
+implementation.
+
+A separate package needs evidence of incompatible supported peers, incompatible
+runtime, measured installation/native-build cost, a distinct supported lifecycle
+or maintainer, or a real independent consumer poorly served by subpaths. First
+assess whether an isolated subpath suffices; for adapters also consider an
+existing port, optional peer or application adapter. A provider name alone is
+not a trigger. Record the evidence and compatibility and maintenance ownership
+in the same packet. A trigger requires an explicit maintainer decision under
+the applicable authority; it grants no bootstrap or publication authority. A
+new npm name also needs the maintainer's manual bootstrap before its first
+release, not before its contribution PR; follow
+[package release setup](../../.github/VERSIONING_AND_EOL.md#package-releases).
+
+Size growth is not a topology trigger. When measured growth exceeds a cap,
+raise that cap in a reviewed change with the applicable maintainer read of the
+proposed budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 
 ### Package kinds and dependency direction
 
@@ -359,14 +383,9 @@ split installation of ordinary dependencies or guarantee tree shaking. The
 [packed-consumer proof](../../CONTRIBUTING.md#required-and-raw-checks) must
 establish physical SDK absence and declaration usability, not just source scans.
 
-Separate an integration artifact only on evidence: incompatible peer ranges in
-supported cold installs; a genuinely different browser/edge/Node runtime;
-measured installation cost; a different maintenance or release lifecycle; or
-an actual independent consumer. First assess an existing port, isolated
-subpath, optional peer or application adapter. A trigger calls for an owner
-decision with compatibility and maintenance ownership, not automatic permission
-to create or publish a package. Generic supported orchestration remains the
-platform's responsibility.
+For a separate integration artifact, follow the canonical
+[package placement decision](#package-placement-decision-canonical).
+Generic supported orchestration remains the platform's responsibility.
 
 ### Contributions, seams and readiness
 

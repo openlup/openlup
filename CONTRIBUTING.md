@@ -32,6 +32,9 @@ The remaining commands in this guide require an OpenLup source checkout.
 
 ## Contribution shape
 
+Before planning a module or npm name, follow the canonical
+[package placement decision](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
+
 Before implementing, obtain the accountable human's task scope and the applicable
 maintainer authorization under the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md).
 Record whether it covers only local work or also publication, pull-request

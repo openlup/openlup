@@ -611,6 +611,9 @@ is not created by the message. No production action is granted.
 
 ### Package artifact limits
 
+Size growth follows the cap-change route, with the applicable maintainer read,
+not a new package: see the canonical [package placement decision](../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical).
+
 `npm run packages:check` builds and packs by default. Caps, the content allowlist
 and browser-entry limits also run in `--release-set`, the preflight's
 `--cold --out` producer and the tag publisher. The growth tripwire runs only
