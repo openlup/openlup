@@ -32,7 +32,7 @@ authorized release/adoption/staging. D2's maintained default remains reference-o
 | PR | Bounded scope |
 | --- | --- |
 | P1 | Agnostic public-copy extraction, exports/graph, reference shims, SQL projections and conformance/consumer proof. |
-| P2 | Transport/result direction and agnostic observation engine behind neutral ports; vendor mapping remains reference-owned. |
+| P2 | Retain the admitted-observation and lost-callback polling extraction through existing domain wrappers; reuse P1 transport/results/capture. Protocol mapping and atomic persistence remain reference-owned. Working-tree implementation; clean-candidate gates and native review pending. |
 | P3 | Content/presentation and Auth hook factories; proven-identical verification primitives; browser value closure. |
 | P4 | Agnostic effects/receipt/readback and reconciliation engines behind neutral ports; vendor mapping stays in the reference adapter; marketing automation is agnostic ports/contracts/conformance only. |
 | B1 | Separately approved transport-wide egress behavior. |
@@ -59,6 +59,26 @@ comparison-base bytes. Package-only APIs serving those removed modules are exclu
 Trigger catalogue, gifts, new providers, identity implementation, control-plane
 adapter, new schema, deployment configuration and later waves are excluded.
 
+## P2 boundary
+
+`processEmailObservation` owns local lookup → one atomic apply → best-effort
+attempt telemetry for already authenticated, decoded and environment-admitted
+input. Evidence/clock construction remains lazy until lookup succeeds.
+`runDeliveryReconciliation` owns the existing bounded sequential polling,
+fairness rotation, failed-404 threshold three and counters. The host classifies
+snapshots after rotation; opaque event names, recipient and metadata retain
+reference meaning. Query/read/not-found-store throws still propagate; rotation
+and apply failures retain their original counter/continuation behavior.
+
+The existing callback and polling domain entry points delegate; API routes,
+cron admission, client/key selection and persistence adapters stay unchanged.
+The database convergence RPC remains the sole durable observation/suppression
+writer. Both frozen vendor directories match `cf36b01`; no manifest, dependency,
+migration, graph edge, required selector or new executor is introduced. Existing
+transport identifier compatibility fields remain; P2 does not claim to remove
+all legacy vocabulary. Effects/consent/native-store work stays in P4 and egress
+behavior stays in B1.
+
 ## Witnesses
 
 | Witness | Isolated plant → failing test |
@@ -69,6 +89,14 @@ adapter, new schema, deployment configuration and later waves are excluded.
 | W1 `hookRawReader.test.ts` | Apply generic body cap to Auth reader → large-stream assertion. |
 | W2 `transportConformance.test.ts` | Misclassify aborted result → result projection; drop explicit skip precedence → suppression/admin assertion. |
 | W2 same file | Lose capture → complete ordered envelope/outcome assertion. |
+
+P2 adds neutral package observation/polling cases and fresh reference domain
+characterizations under already required directory selectors. Their W3 assertions
+inspect the complete injected effect log, including best-effort telemetry failures
+and actual reference table/RPC adapters; they do not infer safety from narrow
+TypeScript ports or an unchanged mocked subscription object. Existing reference
+witnesses remain unchanged. Durable replay/chronology/suppression remains a SQL
+property rather than an in-memory engine claim.
 
 W1 pins the package standard dialect and separation; unchanged reference tests
 retain the provider verifier dialect. W2 pins results/projections and capture,
@@ -87,16 +115,25 @@ Required-selection additions: **13** (four mirrors; no pre-P1 removal).
 
 | Added work | Cases / iterations | Summed file medians (s) |
 | --- | ---: | ---: |
-| Existing witnesses | 69 | 0.051960449 |
-| Synthetic witnesses | 36 | 0.499998535 |
-| Counted additions | **105** | **0.551958984** |
-| Boundary iterations, separate | **120** | **0.053746826** |
-| Total runner additions | **225** | **0.605705811** |
+| P1 existing witnesses | 69 | 0.051960449 |
+| P1 synthetic witnesses | 36 | 0.499998535 |
+| P2 synthetic witnesses (32 package + 45 reference) | 77 | 0.015499756 |
+| Cumulative counted additions | **182** | **0.567458740** |
+| P1 boundary iterations, separate | 120 | 0.053746826 |
+| P2 boundary iterations, separate | 6 | 0.006455322 |
+| Cumulative boundary iterations | **126** | **0.060202148** |
+| Cumulative runner additions | **308** | **0.627660889** |
 
-X2 accepts the **5-case overrun** because **0.606 s < +30 s**;
-remaining allowance **29.394294189 s**, baseline plus delta **596.205705811 s**.
+Against the cumulative **+100 authored/selected-case / +30 s** allowance,
+P2 adds 77 counted cases and six generated boundary iterations, with
+**0.021955078 s** summed file medians. X2 permits the recorded cumulative
+**82-case overrun** because **0.628 s < +30 s**. Post-loop cleanup must revisit
+this overrun; there is no new case allowance or budget reset. Remaining time
+allowance is **29.372339111 s**, baseline plus delta **596.227660889 s**.
+These are local timing proxies; hosted median time remains the binding limit.
+No root selector or mirror changes are needed for P2.
 
-| Working-tree platform pack | Final measure | Cap |
+| P1 working-tree platform pack (historical; P2 artifact gates pending commit) | P1 final measure | Cap |
 | --- | ---: | ---: |
 | Packed / unpacked bytes | 328,629 / 1,340,236 | 522,240 / 2,088,960 |
 | Total files | 518 | 800 |
@@ -108,6 +145,22 @@ Medians are taken per file across three identical passing selections, then summe
 queue/wrapper/plant time is excluded. These local proxies do not reset the hosted
 baseline. X2 accepts recorded case overruns only within +30 s; post-loop cleanup
 must revisit any overrun. Required mirrors preserve every pre-P1 selector.
+
+P2 donor characterizations passed before delegation (45 fresh reference cases
+plus six unchanged polling cases). After delegation, 1,512 synthetic donor/current
+scenarios have equal responses, counters and ordered port/persistence transcripts.
+The focused selection passes 135 cases; all 40 retained reference/SQL witness
+files retain their P1 hashes. Isolated swallow-apply, abandon-auth, drop-recipient
+and omit-rotation plants fail the neutral witnesses. A prohibited table-write
+injection into the reference test store fails W3 even on swallowed telemetry
+failure; that injection is a fixture fault, not an engine implementation mutation.
+All plants are restored and the 77 new cases pass.
+
+The raw policy CLI reads Git's tracked inventory and refuses the four untracked
+P2 files before a supervisor commit. Supplementary materialized-candidate
+navigation/ownership/impact checks use the existing candidate-path APIs; they do
+not substitute for that raw CLI gate. Package artifact/cold-consumer gates and
+two full native reviews await the clean supervisor candidate.
 
 Working-tree checks do not replace clean signed-candidate artifact admission or
 native review. SQL identity, type-only isolation, missing-peer refusal,

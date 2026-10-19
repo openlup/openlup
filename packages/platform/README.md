@@ -21,7 +21,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
 | `./identity` | Experimental capability: identity engine, authorization, profile readers, session adapters and BFF factories |
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
-| `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, standard webhook verification and delivery receipts; host-selected rendering, egress, observation and control policy |
+| `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Type-only email, newsletter, Auth email, intake and receipt DTOs/ports; no Zod, Node or provider imports |
 
 ## Scheduled jobs
@@ -499,11 +499,28 @@ E2 is applied: the payment webhook module delegates these five generic helpers.
 `(req: VercelRequest) => Promise<string>` signature; the other four exports are
 plain re-exports. The payment provider verification and its replay tolerance stay local.
 The maintained mail transport, credentials, callback verification/mapping,
-reconciliation, timeline and send-ledger adapters remain in reference source.
+poll read/mapping, timeline and send-ledger adapters remain in reference source.
 Their vendor directories retain the comparison-base bytes. The package exposes
 transport/result contracts and capture without a concrete mail factory.
 The type-only `CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>`
 accept host vocabulary; reference types retain their original literal.
+
+`processEmailObservation` accepts already authenticated, decoded and environment-admitted
+input. It looks up a local send, constructs evidence only when found, applies one
+observation and records best-effort telemetry. Lookup and apply failures propagate.
+`runDeliveryReconciliation` polls candidates sequentially, rotates every non-404
+read, and delegates consecutive failed-404 abandonment at threshold three to the
+store. Rotation failure is counted without dropping delivery truth; apply failure
+continues the batch. Candidate-query, read and not-found-store throws propagate.
+The host classifies protocol snapshots after rotation and passes recipient/evidence
+through unchanged. The existing reference domain entry points use both engines;
+routes and schedules remain the same.
+
+Neither engine writes suppression or subscription state. Both callback and poll
+composition retain `communication_update_email_delivery_from_provider` as the
+single durable convergence/suppression writer. These ports add no in-memory
+replay authority, database store or second executor. Legacy transport identifier
+fields remain compatibility residue; new ports use `messageId`.
 
 The required selection retains the moved-code witnesses and neutral package
 characterization tests. The package W1 hook reader witnesses the Auth composition;

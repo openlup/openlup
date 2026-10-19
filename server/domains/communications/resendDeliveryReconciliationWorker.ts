@@ -1,3 +1,8 @@
+import {
+  DELIVERY_POLL_ABANDON_AFTER_NOT_FOUND,
+  runDeliveryReconciliation,
+} from "@openlup/platform/communications";
+
 /**
  * Resend delivery reconciliation (docs/platform/RUNTIME_AND_SELF_HOSTING.md Wave 4).
  *
@@ -64,7 +69,7 @@ export interface ResendDeliveryReconciliationPort {
 // un-pollable and excluded from re-polling. With an adopter-configured polling lag of at most 30 minutes this is
 // ~1.5h of 404s on a send already >=45min old — unambiguous that the id is
 // permanently unreadable by the polling account (wrong-account or purged).
-export const POLL_ABANDON_AFTER_NOT_FOUND = 3;
+export const POLL_ABANDON_AFTER_NOT_FOUND = DELIVERY_POLL_ABANDON_AFTER_NOT_FOUND;
 
 // Bounded histogram of read-failure classes (counts only, never per-send rows).
 export interface ResendReadFailureBreakdown {
@@ -87,14 +92,6 @@ export interface ResendDeliveryReconciliationResult {
   failureBreakdown: ResendReadFailureBreakdown;
 }
 
-function classifyReadFailure(breakdown: ResendReadFailureBreakdown, httpStatus: number): void {
-  if (httpStatus === 404) breakdown.notFound += 1;
-  else if (httpStatus === 401 || httpStatus === 403) breakdown.authFailed += 1;
-  else if (httpStatus === 0) breakdown.network += 1;
-  else if (httpStatus >= 500 && httpStatus <= 599) breakdown.providerError += 1;
-  else breakdown.other += 1;
-}
-
 export async function runResendDeliveryReconciliation(input: {
   port: ResendDeliveryReconciliationPort;
   // Injected provider reader (server/infra stays out of domain imports); the
@@ -104,74 +101,28 @@ export async function runResendDeliveryReconciliation(input: {
   graceMinutes: number;
   limit: number;
 }): Promise<ResendDeliveryReconciliationResult> {
-  const result: ResendDeliveryReconciliationResult = {
-    checked: 0,
-    reconciled: 0,
-    stillPending: 0,
-    terminalPolled: 0,
-    failures: 0,
-    abandoned: 0,
-    failureBreakdown: { notFound: 0, authFailed: 0, network: 0, providerError: 0, other: 0 },
-  };
-
-  const frozen = await input.port.findFrozenSends({
+  return runDeliveryReconciliation({
     now: input.now,
     graceMinutes: input.graceMinutes,
     limit: input.limit,
+    readEmail: (messageId) => input.readEmail(messageId),
+    observationFor: (read) => {
+      const webhookType = read.lastEvent ? LAST_EVENT_TO_WEBHOOK_TYPE[read.lastEvent] ?? null : null;
+      if (!webhookType || webhookType === "email.sent") return null;
+      return { eventType: webhookType, terminal: ["email.bounced", "email.complained", "email.failed"].includes(webhookType) };
+    },
+    port: {
+      findFrozenSends: async (query) => (await input.port.findFrozenSends(query))
+        .map((send) => ({ id: send.id, messageId: send.resendId })),
+      recordPollAttempt: (attempt) => input.port.recordPollAttempt(attempt),
+      recordSendNotFound: (attempt) => input.port.recordSendNotFound(attempt),
+      applyPolledEvent: (event) => input.port.applyPolledEvent({
+        sendId: event.sendId,
+        resendId: event.messageId,
+        webhookType: event.eventType,
+        eventAt: event.eventAt,
+        recipientEmail: event.recipientEmail,
+      }),
+    },
   });
-
-  for (const send of frozen) {
-    result.checked += 1;
-    const read = await input.readEmail(send.resendId);
-    // The 404 path records the same timestamp together with its consecutive
-    // not-found count in recordSendNotFound. Every other read rotates directly.
-    if (read.httpStatus !== 404) {
-      try {
-        await input.port.recordPollAttempt({ sendId: send.id, attemptedAt: input.now });
-      } catch {
-        // Rotation is fairness bookkeeping, not authority over provider truth.
-        // Keep applying a terminal observation even when this write fails.
-        result.failures += 1;
-      }
-    }
-    if (!read.ok) {
-      result.failures += 1;
-      classifyReadFailure(result.failureBreakdown, read.httpStatus);
-      // Only a 404 is terminal for a specific id (unreadable by this account /
-      // purged). Auth (401/403), network (0), and outage (5xx) are systemic or
-      // transient — abandoning on them would hide real gaps, so they only feed
-      // the histogram.
-      if (read.httpStatus === 404) {
-        const { abandoned } = await input.port.recordSendNotFound({
-          sendId: send.id,
-          threshold: POLL_ABANDON_AFTER_NOT_FOUND,
-        });
-        if (abandoned) result.abandoned += 1;
-      }
-      continue;
-    }
-    const webhookType = read.lastEvent ? LAST_EVENT_TO_WEBHOOK_TYPE[read.lastEvent] ?? null : null;
-    if (!webhookType || webhookType === "email.sent") {
-      // Provider still says only "sent": nothing to reconcile yet.
-      result.stillPending += 1;
-      continue;
-    }
-    try {
-      await input.port.applyPolledEvent({
-        sendId: send.id,
-        resendId: send.resendId,
-        webhookType,
-        eventAt: input.now,
-        recipientEmail: read.recipientEmail,
-      });
-      result.reconciled += 1;
-      if (["email.bounced", "email.complained", "email.failed"].includes(webhookType)) {
-        result.terminalPolled += 1;
-      }
-    } catch {
-      result.failures += 1;
-    }
-  }
-
-  return result;
 }

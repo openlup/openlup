@@ -283,7 +283,9 @@ and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-
 ### Required and raw checks
 
 Use the exact Node patch recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
-`packageManager` field of `package.json`), and the committed npm lockfile. From
+`packageManager` field of `package.json`), and the committed npm lockfile. CI and
+release workflows pin the same Node 24.21.0, which bundles npm 11.19.0, so newer
+Node 24 releases cannot change npm beneath the existing assertions. From
 the root of a materialized development-preview tree, these are the commands the
 mechanical/diagnostic jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
 run; each comment names its job. The inherited `native-review` job additionally

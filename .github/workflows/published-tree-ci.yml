@@ -59,7 +59,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
       # No install: the check reads git and nothing else, so it runs on the bare runtime.
       - name: Sign-off on every pull-request commit
         if: github.event_name == 'pull_request'
@@ -109,7 +109,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
           cache: npm
       - name: Check completed merge-group evidence for this main push
         id: reused
@@ -155,7 +155,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
           cache: npm
       # The public root build is the complete build truth. Its bounded chain is projected into
       # package.json and catalogued; CI does not call a source-only prebuild or deployment guard.
@@ -206,7 +206,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
           cache: npm
       - name: Check completed merge-group evidence for this main push
         id: reused
@@ -257,7 +257,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
           cache: npm
       - name: Check completed merge-group evidence for this main push
         id: reused
@@ -304,7 +304,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
       # No install: the check reads the tracked inventory, the surface catalog and the root
       # manifest, and imports nothing outside this tree. It fails when a path appears that no
       # publishable family claims, when one appears that a withholding family would have removed,
@@ -357,7 +357,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
           package-manager-cache: false
       - name: Check completed merge-group evidence for this main push
         id: reused
@@ -415,7 +415,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version-file: .nvmrc
+          node-version: 24.21.0
       - name: Await exact-candidate native review
         env:
           GH_TOKEN: ${{ github.token }}

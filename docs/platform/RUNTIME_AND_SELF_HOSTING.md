@@ -425,5 +425,12 @@ requires the host-selected schema and advertises only supplied handlers, schedul
 routes and required ports. No deployment configuration or second outbox executor
 is introduced.
 
-Concrete mail clients, callback verification/mapping, reconciliation and send-ledger
+Concrete mail clients, callback verification/mapping, polling reads and send-ledger
 adapters remain reference-owned; the package exports no mail-vendor factory.
+The existing callback handler and polling worker now delegate admitted-observation
+and bounded-scan sequencing to neutral package engines. The same routes construct
+the same persistence ports: callbacks and poll reads still converge through one
+atomic database RPC. Telemetry failure stays best effort; authoritative callback
+failures remain retryable and polling retains its failure counters and fairness.
+No runtime registration, SQL installation or subscription timing change follows
+from this extraction.

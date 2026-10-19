@@ -1,3 +1,5 @@
+import { processEmailObservation } from "@openlup/platform/communications";
+
 export const RESEND_EVENT_MAP: Record<string, string> = {
   "email.sent": "sent",
   "email.delivered": "delivered",
@@ -146,41 +148,44 @@ export function createResendWebhookHandler(deps: ResendWebhookHandlerDeps) {
       }
 
       const port = deps.createPort();
-      const send = await port.findEmailSendByResendId(resendId);
-      if (!send) {
-        await recordAttemptSafely(() => port, {
-          resendWebhookId: webhookId,
-          resendEventType,
-          resendEmailId: resendId,
-          outcome: "send_not_found",
-          httpStatus: 200,
-          metadata: { data_keys: safeDataKeys(data) },
-        });
-        return { status: 200, body: { ignored: true, reason: "send_not_found" } };
-      }
-
-      const eventTime = resolveResendEventTime(payload, request.headers.timestamp, receivedAt());
-      await port.applyProviderEvent({
-        emailSendId: send.id,
-        resendId,
-        resendEventType,
-        eventAt: eventTime.eventAt,
-        metadata: {
-          providerEventId: webhookId,
-          eventMetadata: data ?? {},
-          link: isRecord(data) && isRecord(data.click) && typeof data.click.link === "string" ? data.click.link : null,
-          source: "resend-webhook",
-          eventTimeSource: eventTime.source,
+      const disposition = await processEmailObservation({
+        messageId: resendId,
+        port: {
+          findSend: (messageId) => port.findEmailSendByResendId(messageId),
+          applyObservation: (observation) => port.applyProviderEvent({
+            emailSendId: observation.sendId,
+            resendId: observation.messageId,
+            resendEventType: observation.eventType,
+            eventAt: observation.eventAt,
+            metadata: observation.metadata,
+          }),
+          recordAttempt: (attempt) => port.recordAttempt({
+            resendWebhookId: webhookId,
+            resendEventType,
+            resendEmailId: resendId,
+            outcome: attempt.outcome,
+            httpStatus: 200,
+            metadata: attempt.outcome === "processed" ? { send_id: attempt.sendId } : { data_keys: safeDataKeys(data) },
+          }),
+        },
+        observation: () => {
+          const eventTime = resolveResendEventTime(payload, request.headers.timestamp, receivedAt());
+          return {
+            eventType: resendEventType,
+            eventAt: eventTime.eventAt,
+            metadata: {
+              providerEventId: webhookId,
+              eventMetadata: data ?? {},
+              link: isRecord(data) && isRecord(data.click) && typeof data.click.link === "string" ? data.click.link : null,
+              source: "resend-webhook",
+              eventTimeSource: eventTime.source,
+            },
+          };
         },
       });
-      await recordAttemptSafely(() => port, {
-        resendWebhookId: webhookId,
-        resendEventType,
-        resendEmailId: resendId,
-        outcome: "processed",
-        httpStatus: 200,
-        metadata: { send_id: send.id },
-      });
+      if (disposition.outcome === "send_not_found") {
+        return { status: 200, body: { ignored: true, reason: "send_not_found" } };
+      }
       return { status: 200, body: { success: true } };
     } catch (error) {
       return { status: 500, body: { error: String(error) } };
