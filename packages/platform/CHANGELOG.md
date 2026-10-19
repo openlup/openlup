@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add an opt-in immutable consent-purpose registry with mandatory classification,
+  registry-bound policy/token/newsletter contracts and explicit host preference
+  persistence. Legacy defaults and managed purpose CHECKs remain unchanged;
+  registration grants no permission and creates no implicit synchronization.
+  Extract neutral newsletter event processing and preserve host effects/readback.
+  Add marketing automation ports and synthetic conformance without a runner,
+  provider activation, schema or package-graph change.
+
 - Extract neutral admitted-observation and bounded polling orchestration through
   existing `./communications`. Existing domain wrappers retain protocol mapping,
   admission, evidence and persistence arguments. Keep lookup/apply/telemetry and

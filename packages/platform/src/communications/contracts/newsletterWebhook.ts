@@ -1,7 +1,7 @@
 import type { NewsletterMarketingPurpose, NewsletterWebhookEvent } from "./newsletter.js";
-export type NormalizedNewsletterWebhookEvent = NewsletterWebhookEvent;
-export interface NewsletterWebhookPort {
-  recordProviderEvent(input: NewsletterWebhookEvent & {
+export type NormalizedNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> = NewsletterWebhookEvent<Purpose>;
+export interface NewsletterWebhookPort<Purpose extends string = NewsletterMarketingPurpose> {
+  recordProviderEvent(input: NewsletterWebhookEvent<Purpose> & {
     state: "unknown" | "granted" | "denied" | "suppressed" | null;
     processingStatus: "received" | "ignored";
   }): Promise<{ providerEventId: string; contactId: string | null; inserted: boolean }>;
@@ -9,7 +9,7 @@ export interface NewsletterWebhookPort {
     contactId: string;
     providerKind: string;
     providerEventId: string;
-    purpose: NewsletterMarketingPurpose;
+    purpose: Purpose;
     state: "granted" | "suppressed";
     reason: string;
     metadata: Record<string, unknown>;

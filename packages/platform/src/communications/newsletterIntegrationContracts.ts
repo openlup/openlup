@@ -1,3 +1,4 @@
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
 import { z } from "./validation.js";
 
 export const NEWSLETTER_MARKETING_PURPOSES = [
@@ -100,9 +101,9 @@ export type CanonicalNewsletterWebhookEvent = z.infer<
   typeof canonicalNewsletterWebhookEventSchema
 >;
 
-export function normalizeCanonicalNewsletterWebhookEvent(
-  event: CanonicalNewsletterWebhookEvent,
-): NewsletterWebhookEvent {
+export function normalizeCanonicalNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose>(
+  event: Omit<CanonicalNewsletterWebhookEvent, "purpose"> & { purpose?: Purpose | null },
+): NewsletterWebhookEvent<Purpose> {
   return {
     providerKind: event.providerKind,
     providerEventId: event.providerEventId,
@@ -132,4 +133,21 @@ export function supportsNewsletterSyncEvent(
   eventType: NewsletterSyncEventType,
 ): boolean {
   return capabilities[requiredNewsletterCapabilityForEvent(eventType)] === true;
+}
+
+/** Explicit registry binding; legacy schemas above retain their two-purpose default. */
+export function createNewsletterIntegrationSchemas<Purpose extends string>(registry: CommunicationPurposeRegistry<Purpose>) {
+  const purpose = z.custom<Purpose>((value) => registry.has(value), "unregistered_communication_purpose");
+  return {
+    purpose,
+    webhookEvent: canonicalNewsletterWebhookEventSchema.extend({ purpose: purpose.nullable().optional() }),
+    syncEvent: z.object({
+      id: z.string().min(1), claimToken: z.string().min(1), contactId: z.string().min(1),
+      normalizedEmail: z.string().email(), eventType: newsletterSyncEventTypeSchema,
+      purpose, payload: z.record(z.string(), z.unknown()), attemptCount: z.number().int().min(0),
+      originProviderKind: newsletterProviderKindSchema.nullable().optional(),
+      originProviderEventId: z.string().nullable().optional(), remoteProfileId: z.string().nullable().optional(),
+      remoteListId: z.string().nullable().optional(),
+    }),
+  };
 }

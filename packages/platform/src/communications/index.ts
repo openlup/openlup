@@ -34,3 +34,7 @@ export type * from "./contracts/publicIntake.js";
 export type * from "./contracts/transactionalDelivery.js";
 export type * from "./contracts/newsletterWebhook.js";
 export type { NewsletterSyncProviderPort, NewsletterSyncOutcome, NewsletterSyncReconcileOutcome } from "./contracts/newsletter.js";
+export * from "./consentPurposeRegistry.js";
+export type * from "./contracts/consent.js";
+export type * from "./contracts/marketingAutomation.js";
+export * from "./newsletterWebhookProcessing.js";

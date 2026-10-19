@@ -37,8 +37,25 @@ and raw evidence reach the existing atomic convergence RPC unchanged. That RPC
 remains the only durable event/status/timeline/suppression writer; these engines
 never change subscription state or timing. Neutral and reference conformance
 cases cover ordering, replay, failures and recorded table/RPC effect allowlists.
-P4 consumes these seams for its separately scoped effects/readback work. Marketing automation contributes agnostic
-ports/contracts/conformance only.
+The newsletter HTTP wrapper now delegates admitted event processing to the same
+package. Event persistence precedes permission writes and settlement; verified
+opt-in, replay and the two-purpose fallback are preserved. Explicit registry-bound
+package consumers can carry registered identifiers through injected ports.
+`createCommunicationPurposeRegistry` freezes identifiers/classifications; default
+policy, token links, customer UI and admin lists stay unchanged. Registration is
+not permission or provider activation. Custom preference persistence requires an
+explicit host binding and creates no implicit newsletter synchronization. Managed
+permission and sync CHECKs remain finite; adopters own additional persistence.
+
+W3 records complete receipt, newsletter and feedback effects on failure/replay,
+including uncertain accepted writes and stale claims. W5 invokes actual dispatch
+and reconcile jobs with the selected registry/store and finish-run identity, and
+exercises unchanged operator evidence enrichment for sent, delayed, failed and
+delivered states. No communication outcome changes subscription state or timing.
+Accepted/captured/sync-settled never means delivered. Existing native stores,
+control-plane readback, cron admission and sender-specific audit ordering remain
+in place. Marketing automation contributes only agnostic ports/contracts and
+synthetic conformance, with no runner or remote consent authority.
 
 The browser-used renderer/block/link builders, support report, template HTML/DB
 policy and commerce/subscription preview content remain in reference source.

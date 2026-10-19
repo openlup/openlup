@@ -1,5 +1,7 @@
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
 import type {
   NewsletterSyncEvent,
+  NewsletterMarketingPurpose,
   NewsletterSyncProviderPort,
 } from "./contracts/newsletter.js";
 import {
@@ -7,13 +9,13 @@ import {
   supportsNewsletterSyncEvent,
 } from "./newsletterIntegrationContracts.js";
 
-export interface CommunicationSyncStore {
+export interface CommunicationSyncStore<Purpose extends string = NewsletterMarketingPurpose> {
   claimBatch(input: {
     providerKind: string;
     batchSize: number;
     visibilitySeconds: number;
     maxAttempts: number;
-  }): Promise<NewsletterSyncEvent[]>;
+  }): Promise<NewsletterSyncEvent<Purpose>[]>;
   markSent(input: {
     eventId: string;
     claimToken: string;
@@ -58,18 +60,22 @@ export const DEFAULT_COMMUNICATION_SYNC_CONFIG: CommunicationSyncConfig = {
   backoffSeconds: 300,
 };
 
-export async function runCommunicationSyncDispatch(input: {
-  store: CommunicationSyncStore;
-  provider: NewsletterSyncProviderPort;
+export async function runCommunicationSyncDispatch<Purpose extends string = NewsletterMarketingPurpose>(input: {
+  store: CommunicationSyncStore<Purpose>;
+  provider: NewsletterSyncProviderPort<Purpose>;
   config?: Partial<CommunicationSyncConfig>;
+  registry?: CommunicationPurposeRegistry<Purpose>;
 }): Promise<CommunicationSyncRunResult> {
   const config = { ...DEFAULT_COMMUNICATION_SYNC_CONFIG, ...input.config };
+  const registry = input.registry;
   const events = await input.store.claimBatch({
     providerKind: input.provider.providerKind,
     batchSize: clamp(config.batchSize, 1, 100),
     visibilitySeconds: clamp(config.visibilitySeconds, 60, 3600),
     maxAttempts: clamp(config.maxAttempts, 1, 20),
   });
+
+  if (registry && events.some(event => !registry.has(event.purpose))) throw new Error("unregistered_communication_purpose");
 
   const result: CommunicationSyncRunResult = {
     ok: true,
@@ -171,10 +177,11 @@ export async function runCommunicationSyncDispatch(input: {
   return result;
 }
 
-export async function runCommunicationSyncDispatchForProviders(input: {
-  store: CommunicationSyncStore;
-  providers: NewsletterSyncProviderPort[];
+export async function runCommunicationSyncDispatchForProviders<Purpose extends string = NewsletterMarketingPurpose>(input: {
+  store: CommunicationSyncStore<Purpose>;
+  providers: NewsletterSyncProviderPort<Purpose>[];
   config?: Partial<CommunicationSyncConfig>;
+  registry?: CommunicationPurposeRegistry<Purpose>;
 }): Promise<CommunicationSyncRunResult> {
   if (input.providers.length === 0) {
     return {
@@ -197,6 +204,7 @@ export async function runCommunicationSyncDispatchForProviders(input: {
       store: input.store,
       provider,
       config: input.config,
+      registry: input.registry,
     }));
   }
   return aggregateProviderResults(results);

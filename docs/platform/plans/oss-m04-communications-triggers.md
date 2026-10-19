@@ -32,7 +32,7 @@ authorized release/adoption/staging. D2's maintained default remains reference-o
 | PR | Bounded scope |
 | --- | --- |
 | P1 | Agnostic public-copy extraction, exports/graph, reference shims, SQL projections and conformance/consumer proof. |
-| P2 | Retain the admitted-observation and lost-callback polling extraction through existing domain wrappers; reuse P1 transport/results/capture. Protocol mapping and atomic persistence remain reference-owned. Working-tree implementation; clean-candidate gates and native review pending. |
+| P2 | Retain the admitted-observation and lost-callback polling extraction through existing domain wrappers; reuse P1 transport/results/capture. Protocol mapping and atomic persistence remain reference-owned. Merged in #207 at `45bdce5`; source and integration native reviews and clean-candidate gates passed. |
 | P3 | Content/presentation and Auth hook factories; proven-identical verification primitives; browser value closure. |
 | P4 | Agnostic effects/receipt/readback and reconciliation engines behind neutral ports; vendor mapping stays in the reference adapter; marketing automation is agnostic ports/contracts/conformance only. |
 | B1 | Separately approved transport-wide egress behavior. |
@@ -133,7 +133,7 @@ allowance is **29.372339111 s**, baseline plus delta **596.227660889 s**.
 These are local timing proxies; hosted median time remains the binding limit.
 No root selector or mirror changes are needed for P2.
 
-| P1 working-tree platform pack (historical; P2 artifact gates pending commit) | P1 final measure | Cap |
+| P1 platform pack (historical measurement) | P1 final measure | Cap |
 | --- | ---: | ---: |
 | Packed / unpacked bytes | 328,629 / 1,340,236 | 522,240 / 2,088,960 |
 | Total files | 518 | 800 |
@@ -156,12 +156,59 @@ injection into the reference test store fails W3 even on swallowed telemetry
 failure; that injection is a fixture fault, not an engine implementation mutation.
 All plants are restored and the 77 new cases pass.
 
-The raw policy CLI reads Git's tracked inventory and refuses the four untracked
-P2 files before a supervisor commit. Supplementary materialized-candidate
+Before the supervisor commit, the raw policy CLI read Git's tracked inventory
+and refused the four untracked P2 files. Supplementary materialized-candidate
 navigation/ownership/impact checks use the existing candidate-path APIs; they do
-not substitute for that raw CLI gate. Package artifact/cold-consumer gates and
-two full native reviews await the clean supervisor candidate.
+not substitute for that raw CLI gate. The signed P2 candidate subsequently passed package artifact/cold-consumer gates,
+required/full suites and two full source reviews. Two integration reviewers bound
+the actual merge-group candidate before #207 merged at `45bdce5`.
 
 Working-tree checks do not replace clean signed-candidate artifact admission or
 native review. SQL identity, type-only isolation, missing-peer refusal,
 NodeNext/Bundler declarations and real-PG receipt replay/conflict/ACL remain binding.
+
+## P4 registry, effects and readback
+
+One P4 candidate keeps the internal order: W3/W5 baseline witnesses and plants,
+then registry/contracts, then newsletter processing delegation and composition
+proof. It reuses receipt, observation, reconciliation and native-store machinery;
+there is no shared sender pipeline, SQL, package export, graph, selector, control,
+cron or deployment change. The reference vendor directories stay unchanged.
+
+Explicit immutable registration adds exact identifiers with mandatory marketing
+classification. Default policy/token/schema behavior and built-in special branches
+are preserved; registry-bound verification accepts every registered identifier,
+including non-marketing. Registration grants no permission. Custom marketing
+still requires a grant and respects suppression. Registered newsletter schemas,
+contracts and injected stores/providers preserve identifiers; purpose-less
+feedback retains the two built-in marketing purposes. Custom preference writes
+require an explicit host persistence binding, with no implicit sync. Stock managed
+permission/sync CHECKs remain finite. No new purpose, UI or schema is installed;
+additional persistence and adopter purpose composition remain adopter-owned.
+
+Marketing automation is limited to neutral ports/contracts and synthetic
+substitute-provider conformance: scoped bindings, admission/deadlines, token and
+generation fences, replay, observation/history, ambiguity/backoff, restrictions,
+no-trigger and opaque-reference privacy boundaries. No activated worker or remote
+account certification is claimed, and remote feedback supplies no local consent.
+
+W3 covers ordered receipt replay/conflict/effect failure/uncertain accepted-write
+failure, claim → effect → fenced sync settlement including retry/timeout and
+best-effort paths, plus actual reference feedback processing. W5 invokes existing
+host dispatch/reconcile jobs and selected registry/store, admission/driver/busy
+refusals, durable synthetic settlement, response and finish-run identity. The
+unchanged actual operator enrichment preserves sent, delayed, failed and delivered
+evidence and event linkage. Accepted/captured/sync-settled never becomes delivered;
+communications never mutate subscription state/timing. Subject and fixture plants
+are identified separately in the implementation evidence, restored before normal
+verification. Existing required selectors already cover every new witness.
+
+P4 adds **71 counted cases**, measured at **0.023664 s** summed per-file
+medians over three identical passing selections. Retaining P1/P2, the running
+count is **253** (**153 over +100**) and the local time proxy including
+prior boundary iterations is **0.661061 s < +30 s**. X2 permits the
+recorded case overrun within the time limit; post-loop cleanup must revisit it.
+These measurements do not reset the allowance or replace the hosted median.
+Concurrent P3 changes are not part of this fork; the supervisor must reconcile
+the cumulative ledger when integrating that predecessor. P4 adds 12 generated boundary iterations, separately measured at 0.009736 s;
+the cumulative boundary count is 138.

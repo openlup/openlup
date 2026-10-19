@@ -5,3 +5,5 @@ export type * from "./newsletterWebhook.js";
 export type * from "./publicIntake.js";
 export type * from "./transactionalDelivery.js";
 export type * from "./types.js";
+export type * from "./consent.js";
+export type * from "./marketingAutomation.js";
