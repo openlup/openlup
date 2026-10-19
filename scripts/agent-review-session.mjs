@@ -12,7 +12,7 @@ import { continueOwner, demand, prepareCandidate, receiptSummary, recordReport, 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 export async function git(cwd, ...args) {
-  return (await execute('git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false', '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024 })).stdout;
+  return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false', '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: '/usr/bin:/bin' } })).stdout;
 }
 export async function captureCommittedReviewCandidate(cwd, base, head, runGit = git) {
   demand(SHA.test(base) && SHA.test(head), 'base and head must be full commit digests');

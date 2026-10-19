@@ -44,7 +44,7 @@ describe('hosted review decisions', () => {
   it.each([
     '.github/workflows/extra.yml', 'scripts/agent-review-decide.mjs', 'scripts/documentation-git.ts',
     'package.json', 'package-lock.json', 'packages/core/package.json', 'packages/core/package-lock.json',
-    'supabase/migrations/0001_extra.sql', 'config/platform-migration-manifest.json',
+    'supabase/migrations/0001_extra.sql', 'db/platform/migrations/0001_extra.sql', 'config/platform-migration-manifest.json',
   ])('refuses protected base move %s', path => {
     expect(carryOver({ ...facts, movedPaths: [path] }).ok).toBe(false);
   });
@@ -89,7 +89,10 @@ describe('hosted review decisions', () => {
       if (scenario === 'live head changed') await expect(wait).rejects.toThrow('PR head changed');
       else if (scenario === 'expiry during admission') await expect(wait).rejects.toThrow('expired');
       else if (scenario === 'main moved') await expect(wait).rejects.toThrow('main moved');
-      else { await expect(wait).resolves.toBeUndefined(); expect(log).toHaveBeenLastCalledWith(expect.stringContaining(group ? 'unchanged tree' : 'reviewed PR head')); }
+      else {
+        await expect(wait).resolves.toBeUndefined(); expect(log).toHaveBeenLastCalledWith(expect.stringContaining(group ? 'unchanged tree' : 'reviewed PR head'));
+        expect(runGit.mock.calls).toContainEqual([expect.any(String), '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', receipt.base, receipt.head, ...(group ? [groupHead] : [])]);
+      }
     } finally { log.mockRestore(); }
   });
   it('polls on the injected clock and reports a bounded timeout without Git', async () => {
