@@ -12,6 +12,7 @@ export * from "./emailHealthMetricsPort.js";
 export * from "./emailNotificationControl.js";
 export * from "./emailObservation.js";
 export * from "./emailTransport.js";
+export * from "./emailEgress.js";
 export * from "./errors.js";
 export * from "./integrationEventSignature.js";
 export * from "./managedTransactionalDeliveryStore.js";

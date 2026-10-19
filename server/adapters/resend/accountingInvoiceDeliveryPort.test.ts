@@ -1,8 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
+import { admitPolicyEnforcedEmailTransport } from "@openlup/platform/communications";
 import type { EmailTransport } from "../../infra/email/emailTransport.js";
 import { createAccountingInvoiceDeliveryPort } from "./accountingInvoiceDeliveryPort.js";
 
 describe("accounting invoice delivery email adapter", () => {
+  it("refuses an unadmitted raw transport after required evidence and before send", async () => {
+    const calls: string[] = [];
+    const send = vi.fn(async () => { calls.push("transport"); throw new Error("must not send"); });
+    const result = await createAccountingInvoiceDeliveryPort({
+      client: { rpc: async () => { calls.push("timeline"); return { data: "timeline-1", error: null }; } },
+      transport: { providerKind: "in-memory", send },
+      fromEmail: "hello@example.test", baseUrl: "https://preview.example.test",
+    }).sendInvoiceDocument(delivery());
+    expect(result).toMatchObject({ status: "uncertain", error: { providerError: "email_egress_unadmitted", httpStatus: 0 } });
+    expect(calls).toEqual(["timeline"]);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("records required processing evidence before sending the PDF with a stable key", async () => {
     const calls: string[] = [];
     const rpc = vi.fn(async () => {
@@ -171,5 +185,5 @@ function delivery() {
 }
 
 function transportStub(send: EmailTransport["send"]): EmailTransport & { send: ReturnType<typeof vi.fn> } {
-  return { providerKind: "resend", send: vi.fn(send) };
+  return admitPolicyEnforcedEmailTransport({ providerKind: "resend", send: vi.fn(send) });
 }

@@ -7,7 +7,7 @@ import {
   type AccountingInvoiceEmailDeliveryPort,
 } from "../../../src/domains/accounting/invoiceDeliveryPorts.js";
 import { appEmailBrandForOrigin } from "../../../src/lib/brand/appBrand.js";
-import type { EmailTransport } from "../../infra/email/emailTransport.js";
+import { guardEmailTransport, type EmailTransport } from "../../infra/email/emailTransport.js";
 import {
   recordEmailDeliveryTimeline,
   type EmailDeliveryTimelineClient,
@@ -48,7 +48,7 @@ export function createAccountingInvoiceDeliveryPort(input: {
       });
 
       try {
-        const { outcome } = await transport.send({
+        const { outcome } = await guardEmailTransport(transport).send({
           from: fromEmail,
           to: delivery.recipientEmail,
           subject: rendered.subject,
