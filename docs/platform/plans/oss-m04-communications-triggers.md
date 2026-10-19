@@ -40,7 +40,7 @@ authorized release/adoption/staging. D2's maintained default remains reference-o
 | P4 | Agnostic effects/receipt/readback and reconciliation engines behind neutral ports; vendor mapping stays in the reference adapter; marketing automation is agnostic ports/contracts/conformance only. |
 | B1 | Mandatory package admission and policy guard at every supported network-mail injection. Four reference guard insertions, X5 invoice fixture/refusal case, X6 Auth bridge and maintained default admission. Local verification below; supervisor owns the signed candidate and two full reviews. |
 | B2 | Separately approved neutral `pl`/`en` defaults; enumerate changed public expectations and retain private legacy bindings. |
-| B3 | [Native stores](#b3-native-stores) for four frozen direct-operation groups; file-only candidate, with schema/ACL/replay/refusal proof and delivery gates recorded below. |
+| B3 | [Native stores](#b3-native-stores) for four frozen direct-operation groups; committed candidate with main merged, with schema/ACL/replay/refusal proof and delivery gates recorded below. |
 | C-compose / S1 | Explicit host composition/readiness, then separate set-version preparation; no duplicate executor. |
 
 ## P1 boundary
@@ -408,11 +408,25 @@ do not reset the allowance or replace the binding hosted median.
 
 ## B3 native stores
 
-Status: development-preview implementation candidate, 2026-10-19. The authorized
-outcome is the four D8 native groups. Work is confined to the assigned B3 worktree
-at `0c62f937848fbe1e436ee1f82149a750edf44abf`, with file edits and local proof only.
-The supervisor retains commits, two fresh full native reviews, submission and any
-later delivery authority. B2 is an independent change; its content is excluded.
+Status: development-preview committed implementation candidate, 2026-10-19.
+The authorized outcome is the four D8 native groups. B3 was committed as
+`eacfc4b`; HEAD `34149946b06e553571ba6188af25d1edd9cb2c0d` merges main
+`e4074906178c44036f22848a317b99a974dcc984`. This review repair is wording only
+in the assigned B3 worktree, with file edits and local checks; no Git writes,
+code/test changes or external delivery. The supervisor retains review and any
+separately authorized submission/delivery steps. B2 is independent and excluded.
+
+### B3 coordinator rulings
+
+COORDINATOR RULING B3 (D8, owner delegate, rev 12), verbatim except that one private adopter name is replaced by a bracketed placeholder:
+
+> APPROVED 1–5 as worded, and 6 as stated. Record this verbatim. Basis: the owner's D8 = build all four groups, with the frozen inventory and "no gifts purpose, marketing scope, second queue or provider". Public OpenLup has no native store, so one CREATE-only schema forward is the smallest way to deliver the approved outcome. 1. Schema: approved. One CREATE-only forward 20261019200000_communications_native_operations.sql, five tables, manifest position 70 (append), byte-identical projection into packages/platform/sql, plus the mechanical objectInventorySha256 and derived-digest refresh. Conditions: - It passes the existing expand-only predicate unchanged: no function, grant, REVOKE, trigger or ALTER of old objects, and no loosening of the classifier. - ACL safety comes only from runtime refusal on unsafe effective privileges, with both clean and poisoned default/inherited ACLs tested. - Fresh install, upgrade from 69 with representative state, runner replay and ledger-tamper refusal are all proven. 2. Topology: confirmed as the reading of "no second queue". Native sync rides public.outbox_events, and runCommunicationSyncDispatch stays the only executor. The sidecar is never claimable and has no lease, clock or drainer. One durable work identity per event and target binding. 3. Consent: approved as the bounded native guarantee: P4 policy plus an authoritative permission snapshot plus a durable decision record, with the existing active-recipient gate for admin notifications. The managed frequency caps (16 h / 2 days / 4 weeks) and legacy contact-touching are NOT ported. The docs and the capability declaration must say so explicitly; never claim managed parity. Evaluate is not a send-time fence, and the docs say that too. 4. Support API: approved. Minimal trusted registration and readback, plus a callable reference binding. Capture is never pollable or delivered. Cron/API/UI activation belongs to C-compose; no timer, worker or cron in B3. 5. Control paths: approved for exactly those six, additive only. No existing check removed or loosened. 6. Budget: measure it. Any overrun of the time budget comes back to me. Overall: - Two fresh full reviews, since this touches schema and controls. - No package cap change: if the SQL projection pushes any @openlup/platform cap or tripwire over, stop and come back. A cap raise needs the owner's read. - No change to the managed path, [the private adopter] or C5. - Sequence B3 after B2 or in parallel as you see fit, but in separate PRs.
+
+COORDINATOR RULING (owner delegate), verbatim:
+
+> Approved: B3's scope gains exactly the CONTRIBUTING.md Development-preview checks M04 paragraph, descriptive only (three→four canonical sparse SQL projections plus the B3 installed-native-proof sentences as proposed). Added review criterion: no command, rule or control text changes anywhere in CONTRIBUTING.md.
+
+Case overrun 335 acknowledged (time within X2).
 
 The native factories live in the existing server communications entry. Hosts
 register actual network acceptances, supply neutral observations and explicitly
@@ -468,7 +482,7 @@ adopter contract and are not assertions that those files existed publicly.
 | B3-S1 | No D8 native objects → one ordered additive native forward, exact projection and manifest position/digest. | Fresh/full upgrade/replay/prefix/refusal and live object inventory. |
 | B3-A1 | Server entry lacks four factories/types → existing server entry exports native factories/contracts; browser runtime inventory and import safety remain the same. | API diff/Migration block, built and packed import/optional-peer proofs. |
 | B3-B1 | Public reference has only managed callers and separate native receipt/control binding → explicit named native lifecycle binding with configuration/schema/role refusals, cleanup and truthful evidence. | Selected-bundle actual-binding tests, readback; existing managed branch unchanged. |
-| B3-X1 | Required selectors lacked native PG/binding tests → two paths appended to the root command and all three mirrors; no prior selector or check is removed. | Selector/policy falsifiers and actual required run. |
+| B3-X1 | Main’s scoped discovery now selects both native PG/binding tests; package.json and the three publication control files have no B3 delta against merged main. No prior selector or check is removed. | Scoped discovery and actual required run. |
 | B3-X2 | Cold proof covered receipts only → all four installed native factories, missing-peer refusals, complete-catalogue setup and planted no-op/token/delivery/executor failures. | Actual tarballs and real PG plus falsifier tests. |
 
 The reference directory additionally checks active human admin/distributor
@@ -535,31 +549,37 @@ native factories, optional-peer refusals, NodeNext/Bundler declarations and all
 three package-owned required batches pass in the disclosed materialized-artifact
 proof. The artifact producer's committed-candidate checks are not bypassed.
 
-Lint and typecheck pass (zero errors); both neutrality checks report zero increases.
-Changed-file secret scanning passes without a scanner exception. Platform measured
+Before this wording repair, lint and typecheck passed (zero errors), and both
+neutrality checks reported zero increases. Changed-file secret scanning passed
+without a scanner exception. Platform measured
 404,342 packed / 1,730,654 unpacked bytes, 672 files, code class 340,944 bytes and
 docs class 28,551 bytes; all unchanged artifact/browser caps pass. Both public and
 subscription reference builds pass; subscription output directories were removed.
 
-Ordinary `packages:check` and `required-package-gates` refuse the uncommitted
-platform tree. `test:required` finishes with 7,973 passes and one untracked-source
-artifact refusal (7,974 cases); complete `npm test` finishes with 14,338 passes,
-two corresponding tracking/discovery refusals and two existing skipped cases
-(14,342 cases). Neither raw suite is claimed green. Ordinary publication policy
-also refuses the still-untracked new paths. The existing materialized catalogue
-API validates the explicit candidate path inventory; it is supplementary evidence,
-not signed/clean-candidate admission.
+Verification recorded for the committed, merged candidate: local pgTAP with
+pinned Supabase CLI **2.98.2** reports **Result PASS, 210 files / 4,700 tests**;
+complete `npm test` reports **14,300 passed / 2 opt-in skips**; real-PG native
+tests report **18/18**. These supersede the earlier uncommitted-tree tracking
+refusals; those refusals do not describe this HEAD. This wording-only repair
+does not rerun those suites or establish clean-candidate package admission.
 
-The old contribution-guide paragraph still says three SQL projections and
-reference-owned reconciliation. That owner paragraph is outside the approved
-exact path inventory; a bounded permission request and concrete replacement are
-pending, so it was not silently edited. Its repository/tests/tooling doc-impact
-obligations remain open. Architecture's runtime-boundaries section remains correct;
-the supervisor's draft carries its delta-bound no-impact trailer. No tracking,
-commit, DCO operation, native review/receipt, submission, merge or release occurred.
-Before delivery the supervisor must settle the contribution paragraph, track the
-candidate, complete the applicable maintainer read, commit, run both fresh full
-native reviews and the actual clean-candidate verification/package gates.
+The approved descriptive M04 paragraph in `CONTRIBUTING.md` was edited in the
+committed B3 change: it now describes four canonical sparse SQL projections and
+the installed native proof. Its repository/tests/tooling owner obligations are
+addressed by that paragraph; no command, rule or control text was changed there.
+Main's scoped discovery already selects the two B3 tests. Against
+`e4074906178c44036f22848a317b99a974dcc984`, `package.json`,
+`scripts/oss-publication-policy.ts`, `scripts/oss-publication-contract.ts` and
+`scripts/oss-published-tree-check.test.ts` carry no B3 delta. Of the six approved
+control paths, only `scripts/packages/platform-cold-consumer.ts` (+85) and
+`scripts/packages/platform-cold-consumer.test.ts` (+30/−1) retain a B3 delta.
+Architecture's runtime-boundaries section remains correct; commit `eacfc4b`
+records the delta-bound `server` no-impact trailer. The contribution paragraph
+and candidate tracking/commit are complete, not pending permission or tracking
+blockers. The supervisor retains the applicable stabilized read, two fresh full
+native reviews (including the simpler-solution perspective), actual final
+verification/package gates and separately authorized delivery. This repair
+creates no review receipt, submission, merge or release authority.
 
 Self-retro: a millisecond conversion would have collapsed immutable microsecond
 facts; the shared codec now preserves PostgreSQL precision and a real-PG replay
