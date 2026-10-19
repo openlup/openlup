@@ -1,6 +1,9 @@
 # Intent: autonomous delivery with accountable review
 
-Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts (W2), merge-group carry-over (W4, #121) and the fork-point review base (W5, #122) amended on 2026-10-03.
+Status: native-session implementation, updated by the owner-approved
+[2026-10-19 simplification](native-review-simplification-proposal.md). Transport
+option A (PR comments) is implemented in this change. Queue activation is dated
+in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
 Audience: maintainers and contributors designing the development workflow.
 
 ## Outcome
@@ -52,30 +55,25 @@ behavior and tests. Known control, trust-boundary and public-contract paths are
 ineligible; semantic security, payment, durable-data, release, dependency,
 executable-instruction and unknown risks remain on the two-review route even
 when a filename looks ordinary. The one reviewer explicitly confirms ordinary
-semantics and simplicity. If uncertain, a full refresh obtains two fresh reviews
-of the same committed candidate within the existing continuation budget.
+semantics and simplicity. Uncertainty requires two fresh reviews of the same
+committed candidate.
 Neither a self-declared low-risk label nor a small diff is proof of low risk.
-Changed-tree queue integration keeps two independent full reviews.
+A merge group that cannot carry over is rejected: merge `main` and re-review.
 
-Complete prior coverage and exact validated lineage allow one fresh cold closure
-review for a committed narrow repair within unchanged intent, scope and base.
-Necessary neutral prior finding cards, actual repair and interaction context are
-allowed; old verdicts and author history are not. Every prior material finding
-needs a disposition. The reviewer independently confirms semantic risk: control,
-security, schema, executable instruction and unknown repairs retain two focused
-reviews, regardless of filenames. Reduced repair reviews cannot renew inherited
-evidence expiry; unavailable or expired coverage requires two fresh full-scope
-reviews with all prior findings and lineage retained.
+Commit repairs and give fresh reviewers the open finding cards, actual repair
+and interaction context, without old verdicts or author history. The new tree
+needs passing review by the required reviewer count, with every material finding
+closed. Evidence expires 24 hours after the earliest counted PASS report for the
+current candidate. There is no closure-lineage or inherited-expiry route.
 
-Unchanged prepare preserves evidence. The review-cycle budget persists across
-prepare and full-review escalation: cycles 1–3 are automatic, a cycle 3 that did
-not pass pauses for a rethink with a fresh simplicity reviewer before automatic
-cycles 4 and 5, and cycle 6 needs the owner. At a pause or exhaustion the
-supervisor regroups the execution approach within existing authority while
-keeping honest blocked evidence; there is no budget reset, bypass or automatic
-merge. Changed intent requires explicit regrouping. An ancestor-preserving base
-integration requires fresh full-scope review, preserving history and budget. Stop optional edits
-when criteria, required review and checks pass, then complete authorized delivery.
+Unchanged prepare preserves evidence. Three repair cycles are automatic;
+`needs_owner` then requires the owner to continue, narrow or stop. Record an
+authorized continuation with `continue "<note>"`, which adds three cycles.
+A rethink of criteria, tools and simpler alternatives remains recommended
+practice, not an encoded gate. A rebase or changed intent starts a new session
+with `prepare --new`, archiving and referencing the old session. Merging main
+requires fresh review of the resulting candidate. Stop optional edits when
+criteria, review and checks pass, then complete authorized delivery.
 
 The supervisor in the active task conversation launches fresh-context reviewers
 through the platform's native subagent tools, using the existing subscription.
@@ -99,39 +97,36 @@ have separate OS authority. A report written by the author is not independent
 review. The supervisor must obtain actual platform observations; receipt
 validation checks their declared binding and completeness but cannot establish
 independence against a dishonest actor with control of the entire session.
+Source objects are trusted through Git's own hashing, with
+`transfer.fsckObjects=true` on hosted fetches.
 
 ## Approved native queue follow-up
 
 Extend that same native process to an optional GitHub merge queue without a
 model API, reviewer host, new secret or transfer of subscription authentication.
-The active supervisor retains source-review evidence and transports it through
-a main-only dispatch artifact for the reviewed PR head, and for the exact
-merge-group CI run/attempt only when the source review does not carry over (W4).
-All six mechanical jobs remain required. Activated queue admission adds a
-seventh bounded job which rechecks current source, group, artifact and native
-review identity before success. A source-head change after auto-merge was armed
-cannot inherit the old admission.
+The active supervisor posts the summary from
+`node scripts/agent-review-session.mjs receipt <PR>` as a PR comment using
+`gh pr comment <PR> --body-file -`, within delivery authority. Option A replaces
+the historical dispatch/artifact transport under the 2026-10-19 simplification.
+The old run-keyed integration receipt route is superseded too. All six mechanical
+checks remain required. The bounded `native-review` job reads eligible comments,
+recomputes source tree and reviewer floor, and checks live head, base and expiry.
+A source-head change cannot inherit the old admission.
 
-For the one-source pilot, compare the actual entire group tree with the reviewed
-source tree. Equal trees need no additional review; a different tree requires
-two fresh independent full integration reviews with unchanged approved criteria.
-Since 2026-10-03 (W4), a group that is exactly the reviewed change on a base
-whose net change avoids its paths and the admission, identity-binding,
-dependency and migration machinery carries the source review over instead.
-Keep source and group identities separate and leave the source branch unchanged.
-This does not alter the nonqueue base-integration protocol or reset its repair
-budget. At most two automatic queue-rebuild retries are a separate bound;
-exhaustion or unknown membership returns honest blocked evidence to the supervisor.
+Carry-over remains available when the group tree equals the reviewed tree, or
+when `git merge-tree` predicts exactly that group and the base's net change
+avoids the reviewed paths and admission, identity-binding, dependency and
+migration machinery. Otherwise reject the group: merge `main` and re-review.
+The [plan](autonomous-reviewed-delivery.md#source-evidence-and-carry-over) lists
+the exact protected paths. The optional `OPENLUP_STACK_BASE` pin must lie between
+the fork point and HEAD and already be on actual main for hosted admission.
+At most two automatic queue-rebuild retries remain separate from repair cycles.
 
-Foundation implementation and authorized delivery through merge do not activate
-settings. Activation needs an exact separately approved proposal and live refusal
-proof, including changed heads, rebuilt groups, same-SHA attempt replay (for
-merge-group runs the source review does not carry over to, since W2 and W4), and
-synthetic-tip DCO. Fixture success or unavailable sandbox evidence does not
-establish activation. Review freshness is checked at admission, not guaranteed
-at the later GitHub merge; Actions source attribution cannot isolate a workflow
-against a malicious writer who can spoof the same context. The queue retains
-the existing process-evidence boundary and grants no production or release authority.
+Foundation delivery does not authorize settings activation. The original live
+activation proof is historical; current guidance and dated activation evidence
+are linked above. Freshness is checked at admission, not guaranteed at the later
+merge, and Actions source attribution cannot isolate a malicious writer who can
+spoof the same context. No production or release authority is granted.
 
 ## Boundaries and falsifiers
 
@@ -149,7 +144,7 @@ remain optional components; they do not create a requirement for an external
 model service or cryptographic separation in the same task.
 
 The design fails if self-approval replaces actual independent review, an erased
-finding or renewed expiry admits a stale or dirty candidate, green tests conceal
+finding or invalid expiry admits a stale or dirty candidate, green tests conceal
 a violated approved goal, optional advice starts another repair, exhausted cycles
 are silently restarted, simple tasks require a long ceremony, or ordinary
 authorized repairs repeatedly ask

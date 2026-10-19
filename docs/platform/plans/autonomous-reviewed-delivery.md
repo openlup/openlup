@@ -1,9 +1,17 @@
 # Plan: autonomous reviewed delivery
 
-Status: native-session implementation; queue admission is active (dated evidence in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)); pull-request receipts (W2), merge-group carry-over (W4, #121) and the fork-point review base (W5, #122) amended on 2026-10-03.
+Status: native-session implementation, updated by the owner-approved
+[2026-10-19 simplification](native-review-simplification-proposal.md). Transport
+option A (PR comments) is implemented in this change. Queue activation is dated
+in [Development and release](../DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering).
 Audience: contributors implementing and verifying the development workflow.
 
 ## Approved convergence implementation wave
+
+Historical approval record. Its closure-lineage, inherited-expiry, repair-cycle
+and rethink/owner-cycle protocol is superseded by the owner-approved
+2026-10-19 simplification. The steps and acceptance below describe that earlier
+wave; current rules and commands are in the lifecycle and session interface.
 
 The maintainer authorized planning, implementation, dogfooding and delivery
 through merge for this bounded correction. The outcome is a review process that
@@ -111,8 +119,7 @@ run, a dashboard, service framework or permanent third reviewer.
    reviewer must explicitly confirm ordinary semantics. Mode changes, removed
    test obligations and hidden trust-boundary effects do not become routine by
    using an innocuous filename; uncertainty triggers two fresh full reviews on
-   the same candidate through the existing bounded full-refresh route. A
-   specialist can fill one role. A third reviewer
+   the same candidate. A specialist can fill one role. A third reviewer
    is reserved for an uncovered concern or dispute. At least one required review
    considers a simpler solution that preserves all controls and acceptance.
 3. Launch each reviewer through the current platform's native subagent tools with
@@ -131,60 +138,47 @@ run, a dashboard, service framework or permanent third reviewer.
    another repair; there is no quota. A complete evidence-backed no-findings
    verdict is valid.
    Failed, timed-out, partial or materially failing review cannot count as a pass.
-5. Batch material repairs, commit and obtain fresh independent review of that
-   exact candidate. A narrow repair within unchanged intent, scope and base may
-   use one cold closure reviewer after complete initial coverage and prior rounds
-   are retained. That reviewer receives neutral prior finding cards, the actual
-   committed repair and sufficient interaction context, without old verdicts or
-   author history. Validate all prior finding dispositions and independently
-   confirm semantic risk; control, security, schema, executable instruction and
-   unknown repairs use two focused reviews. Missing, incomplete or expired prior
-   coverage requires two fresh reviews of the full approved scope. Prior timestamps
-   remain immutable; reduced review cannot renew inherited expiry.
-   Continuation cycles 1–3 across repair and full-review escalation are
-   automatic; cycle 3 is a full review. A cycle 3 that did not pass pauses for a
-   rethink with a fresh cold simplicity reviewer, which admits automatic cycles
-   4 and 5; cycle 6 needs an explicit owner decision. On a pause or exhaustion
-   preserve blocked evidence and regroup the execution approach within actual
-   authority; never silently reset the counter or auto-admit. Agent or session changes carry unresolved finding
-   cards, failed attempts, consumed budgets and evidence expiry in existing
-   task state; changing context cannot restart admission or erase history.
-   Changed intent requires explicit regrouping. An
-   ancestor-preserving base integration requires fresh full-scope review,
-   preserving history and budget.
-   The supervisor needs no repeat owner approval for unchanged authorized goals.
+5. Batch material repairs, commit and obtain fresh independent review of the
+   new tree by the required reviewer count. Give reviewers the open finding
+   cards, actual repair and interaction context, without old verdicts or author
+   history. Every material finding needs explicit closure. Three repair cycles
+   are automatic; `needs_owner` then requires an owner decision to continue,
+   narrow or stop. An authorized `continue "<note>"` adds three cycles. A rethink
+   remains recommended practice, not an encoded gate. Preserve findings and
+   failed attempts in the task record. A rebase or changed intent starts a new
+   session with `prepare --new`, referencing the old session. Merging `main`
+   requires fresh review of the resulting candidate.
 6. Record bounded session evidence and retry the installed gate. Verify and
-   pre-push refuse missing, stale, dirty, mismatched, incomplete or bypassed review.
-   Unchanged prepare retains current evidence. `needs_agent_review` returns
-   control to the active supervisor; blocked evidence requires regrouping rather
-   than another automatic repair cycle. Once criteria, required review and checks
-   pass, stop optional edits. Push or merge only under actual task authority.
+   pre-push refuse missing, stale, dirty, mismatched, incomplete or unresolved
+   review. Unchanged prepare retains current evidence. Handle
+   `needs_agent_review` in the active task. Once criteria, review and checks
+   pass, stop optional edits and complete only authorized delivery.
 
 ## Evidence contract and limits
 
-Bind each receipt to repository, request/authority, approved criteria and scope,
-base, committed head, tree, risk/required roles, observed reviewer execution IDs,
-complete results, unresolved material findings and a bounded validity interval.
-Repair evidence retains the exact committed parent chain, complete prior rounds,
-stable finding identities and explicit dispositions. The current request cannot
-erase prior material findings, drop a required role, reset the cycle count or
-rewrite prior timestamps. Reduced review retains the validity interval of the
-latest full-coverage round; only genuine fresh full-scope coverage establishes a
-new interval. A closure reviewer independently
-confirms repair eligibility and the actual repair/interactions; prior approvals
-are not rebound to a different SHA. Complete failed reports may supply findings,
-but partial, unavailable or expired prior coverage cannot authorize closure.
-The gate computes the candidate and checks freshness and exact binding rather
-than accepting an arbitrary author-selected candidate or bypass flag. The same
-receipt may be reused for pre-push only while all those bindings remain valid.
-An unchanged installation baseline never constitutes task approval.
+Local session evidence binds the approved intent, scope and criteria to the
+candidate's base, committed head and tree, reviewer identities and reports.
+History retains stable finding IDs; a material finding stays open until a
+report on a current or later candidate lists it in `closes`. Advice never blocks.
+Each candidate needs one reviewer for prose/routine work or two for sensitive
+or unknown work, with the changed-path and mode floor able to raise the count.
+Reviewers must be cold, non-author, distinct and not reused from earlier candidates.
+
+Evidence expires 24 hours after the earliest counted PASS report for the current
+candidate. There is no inherited expiry or closure-lineage validation. The gate
+captures the candidate and checks the clean worktree and exact tree binding.
+An unchanged installation baseline is not task approval. The hosted summary
+receipt carries only PR, base, head, tree, risk, reviewers, verdict, expiry and
+session digest; admission independently recomputes the tree and risk floor.
 
 The supervisor's native tool observations provide process evidence. The session
 receipt is not cryptographic remote attestation that an agent ran, and the same
 task does not establish hard signer/author OS separation. Honest orchestration
 must obtain actual independent platform results; a typed approval JSON is not
 an alternative. Tests of receipt consistency do not prove malicious-author
-isolation. This limitation must remain visible in activation and proof claims.
+isolation. Source objects are trusted through Git's own hashing, with
+`transfer.fsckObjects=true` on hosted fetches. This limitation must remain visible
+in activation and proof claims.
 
 Hosted CI still requires actual success from the existing mechanical checks;
 skipped or neutral checks are not successful execution. Generic GitHub observers
@@ -202,17 +196,13 @@ and pre-push paths and the supervisor recovery after `needs_agent_review`.
 Provider adapters must report unsupported native cold-context capabilities
 honestly; do not quietly inherit author history or substitute an API call.
 
-Also prove unchanged prepare preserves evidence, advisory-only results can pass,
-eligible repairs use one closure reviewer, semantic security/control changes
-escalate, missing prior coverage and erased findings refuse, reduced reviews
-cannot renew expiry, and a third automatic continuation stays blocked. Exercise full-review escalation
-without resetting the counter, plus dirty/stale lineage and concurrent prepare.
-Installed verification must refuse workflow drift before expensive commands or
-replacement of prior logs. Its heavy-check lock in the same worktree refuses overlapping verify
-without stealing another task's lock or interfering with its checks. Perform two
-installed CLI/hook dogfooding passes, batching material repairs between them; repeat
-affected scenarios and report observed reviewer counts and limitations. No general
-test-result cache or diagnostic-red Draft publication exception is part of this wave.
+Also prove unchanged prepare preserves evidence, advice does not block, stable
+material findings require closure, expiry applies to the current candidate,
+and the fourth repair needs an owner continuation. Check new-session archival
+after a rebase or changed intent, lock exclusion and atomic state writes.
+Historical installed workflow-drift and heavy-check serialization proofs belong
+to local verification; the simplified session does not run policy/inventory
+checks or maintain a proof lease. No general test-result cache is introduced.
 
 Source implementation and fixture tests are preparation. Claim live enforcement
 only after the installed paths refuse those counterexamples and admit a complete
@@ -244,140 +234,91 @@ for this native-session route.
 
 ## Native session interface
 
-The supervisor writes approved intent data to the ignored
-`.context/scratch/agent-review/intent.json` file: `intent` contains `risk`, `scope`,
-`criteria` and `requiredRoles`; an adapter may supply an observed
-`authorSessionId`. A first request also needs `simplicityPreCheck`, at most
-2048 characters: the smallest adequate alternative the author considered after
-reading [Review lessons](../../../CONTRIBUTING.md#review-lessons). The root
-request records it; continuations do not repeat it.
-`node scripts/agent-review-session.mjs prepare` computes the
-candidate, role floor and request binding, then stores bounded session state in
-`.context/scratch/agent-review/session.json`. The candidate's base is its fork
-point, `git merge-base HEAD origin/main`; evidence stays current while `main`
-moves ahead and that fork point is unchanged. For an optional stack,
-`OPENLUP_STACK_BASE` pins an exact predecessor on HEAD's ancestry at or above
-that fork point. The candidate additionally binds `stackBase`, equal to `base`;
-the same environment pin is required for local prepare, record and verify.
-Committed hosted reconstruction preserves that field. Admission verifies through
-the live main ref and immutable GitHub comparison that the reviewed base is
-already on main; it repeats this check during admission. Group carry-over also
-checks ancestry before accepting tree equality. Neither source nor integration
-receipts can introduce a pending predecessor. Ordinary unpinned sessions keep
-their existing shape and fork-point refusal behavior. An unchanged candidate retains its
-request and reports. A committed repair adds a bounded `history` round and a
-version-2 request with `continuation`: cycle, review mode, prior-round digest,
-actual delta paths, neutral finding cards and repair risk. The optional top-level `repairRisk`
-is `ordinary`, `security`, `control`, `schema`, `instructions` or `unknown`; its
-default is `unknown`. Initial `intent.risk` is `prose`, `routine`, `behavior`
-or `unknown`: routine selects one correctness reviewer after the changed-path
-floor; behavior and unknown select two. The initial routine report must include
-`routineSemantics: true` after an independent semantic assessment. False or
-missing assessment blocks admission; `fullRefresh: true` on the same committed
-candidate obtains two fresh full reviews and retains the earlier observation.
-With complete prior coverage, `closure` uses one reviewer
-for an eligible ordinary repair and `focused` uses two for sensitive or unknown
-repairs; both cover the actual delta, interactions and original criteria. `full`
-uses two reviewers covering the full approved scope when coverage is unavailable,
-incomplete or expired. Ancestor-preserving base integration also uses `full`,
-covering the approved scope and incoming integration paths; it inherits no old
-coverage. Optional `fullRefresh: true` requests full coverage on the same SHA
-for unavailable, expired or failing evidence, preserving history, findings and
-cycle budget. A complete fresh current pass remains idempotent even when a
-refresh is requested. Recovery permits semantic escalation without a pointless
-source edit.
-Only actual complete full coverage establishes a new validity interval. Neither
-file grants publication authority or creates another planning document.
+The supervisor writes ignored `.context/scratch/agent-review/intent.json`:
 
-`status` reports admission or `needs_agent_review`; missing roles include exact
-request data for native review. Exhausted repair cycles, changed intent without
-an explicitly approved transition, or nonancestor integration produce
-`needs_rescope`, preserving the existing evidence rather than accepting a new
-root. The supervisor regroups the execution approach within actual authority;
-this CLI grants no owner approval or merge authority.
+```json
+{ "authorSessionId": "<supervisor session id>",
+  "intent": { "risk": "<prose|routine|behavior|unknown>",
+    "scope": ["<changed paths>"], "criteria": "<approved criteria>" } }
+```
 
-For an owner-approved scope expansion, `prepare` accepts top-level `regroup`
-with exactly `priorRequestDigest`, `priorIntentDigest`, `nextIntentDigest` and
-`ownerDecision`, alongside `fullRefresh: true`. The digests bind the preserved
-request and both intents; `ownerDecision` records the actual human decision,
-not a cryptographic owner signature. The same author, every previous scope path
-and at least one additional path are required, with behavior or unknown risk
-and a clean ancestor-preserving committed candidate. Criteria-only replacement,
-scope shrink and a new root refuse. The existing version-2 continuation retains
-the transition, all history and findings, consumes the next existing cycle and
-requires two fresh full reviews even when the source SHA is unchanged. It does
-not reset the cycle budget. An identical repeated prepare preserves partial
-or complete evidence and its original expiry; later unchanged-intent rounds may
-carry only the exact transition already present in their preserved lineage.
+Codex may omit `authorSessionId` to use `CODEX_THREAD_ID`. Read
+[Review lessons](../../../CONTRIBUTING.md#review-lessons) and put the simplicity
+pre-check in the first review request as prose, outside this JSON.
 
-Cycles 1–3 are automatic; `prepare` gives cycles 3 and 4 full coverage without
-a `fullRefresh` flag, and cycle 6 is full with the flag its owner continuation
-requires. After a cycle 3 whose round did not pass, the next repair `prepare`
-reports `needs_rescope` until the spec carries a top-level `rethink` with
-exactly:
-- `priorRequestDigest`: SHA256 of `JSON.stringify` of the preserved third
-  request;
-- `reviewerId` and `sessionId`: the fresh cold simplicity reviewer, neither the
-  author nor any earlier reviewer or session; later reviewers cannot reuse them,
-  and hosted admission refuses them as integration reviewers;
-- `completedAt`: no earlier than the third request and its reports, and no
-  later than the new request;
-- `findingClasses`: classes of `{ class, findingIds }` that together list
-  every material finding card of every round so far exactly once, resolved or
-  not;
-- `pattern`, `rootCause`, `simplicityCheck` and `rationale`: bounded text;
-- `alternatives`: one to sixteen simpler alternatives considered;
-- `decision`: `keep`, `change`, `narrow` or `intent`;
-- `lesson`: at most 240 characters, written `pattern → simpler path`.
+```bash
+node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json
+node scripts/agent-review-session.mjs record report.json
+node scripts/agent-review-session.mjs verify
+node scripts/agent-review-session.mjs status
+```
 
-`intent` requires an owner `regroup` in the same transition; the other
-decisions keep the approved intent. `narrow` changes fewer paths within the
-approved scope. The rethink binds only cycle 4. A later spec may repeat the
-preserved record: `prepare` then attaches nothing new, and on the unchanged
-cycle 4 candidate it returns the stored round even with `fullRefresh`. To
-refresh an expired cycle 4, drop `rethink` from the spec; the refresh becomes
-cycle 5. Cycles 4 and 5 are automatic. Any cycle may carry an owner `regroup`;
-it never adds a cycle.
-A cycle 3 that passed needs no rethink, for example before a later base
-integration.
+`prepare [--new] <intent.json>` captures the candidate and reviewer floor and
+writes version-2 state to `.context/scratch/agent-review/session.json`. The base
+is the single `git merge-base --all HEAD origin/main`; no or multiple merge bases
+refuse. `OPENLUP_STACK_BASE` may pin a predecessor between that fork point and
+HEAD. Documentation and local review use the same pin; hosted admission requires
+the pinned base to be an ancestor of actual main and the reviewed head. A
+predecessor-only landing preserves the candidate and expiry. An unpinned review
+remains valid while main moves ahead without changing the fork point.
 
-For cycle 6, `prepare` accepts `ownerContinuation` with exactly
-`priorRequestDigest`, `candidateDigest` and `ownerDecision`, alongside
-`fullRefresh: true`. Both digests are computed SHA256 of `JSON.stringify` of
-the preserved fifth request and the actual candidate respectively; they are
-computed evidence, not owner quotations. Record the actual fresh human decision
-in `ownerDecision`. This process evidence is not an authenticated owner
-signature. Cycle 6 keeps the approved intent and author unless the same
-transition carries an owner `regroup`. A cycle 3 owner continuation recorded
-before cycle 3 became automatic stays valid; `prepare` accepts a new one only at
-cycle 6. Wrong
-bindings, a missing or misplaced rethink, reduced coverage at cycles 3, 4 or 6,
-missing history and a seventh cycle refuse. An unchanged repeat retains the
-round and its original expiry; expired evidence still blocks delivery.
+Unchanged prepare preserves evidence. Preparing a new tree after an earlier
+candidate increments `cycle`; three repairs are automatic. Beyond the allowed
+cycles, `needs_owner` refuses until the owner authorizes continuation:
 
-The supervisor launches fresh native agents and uses their actual execution IDs
-and complete structured results. `agentReviewReportBinding(request)` supplies
-the exact request digest and candidate fields for each report; `record
-<observed-report.json>` records the observation. `verify` exits nonzero until
-all required roles pass with complete scope/criteria, no material findings and
-the simplicity perspective. `advisoryFindings` may carry bounded optional advice
-without blocking a pass. Material findings may classify their semantic `risk`;
-missing or unknown risk cannot establish ordinary closure eligibility. Each
-repair report includes `closure` evidence: `coveredDelta`, `interactionsChecked`,
-`ordinarySemantics` and all `resolvedFindings` card IDs. Reviewers receive the
-current request's neutral cards, never the stored prior reports or verdicts.
-`coveredCriteria` is a boolean. A finding's optional `risk` uses the same enum
-as `repairRisk`; omitted risk is unknown. Keep descriptive effects in `effect`,
-rather than putting free prose or a checklist in typed fields. A malformed
-observation is refused without deleting prior evidence and may be corrected
-against the same request without changing code or restarting review.
+```bash
+node scripts/agent-review-session.mjs continue "<owner decision and reason>"
+```
+
+This records a timestamped note and adds three cycles. A rethink is recommended
+practice: question the goal, criteria and tool, group findings by cause and
+consider a simpler approach. It is not a state-file gate. A rebase or changed
+intent uses `prepare --new <intent.json>`: archive the old state as
+`session-<timestamp>.json` and reference its digest. Version-1 state refuses
+with "start a new session with prepare --new".
+
+Each actual fresh reviewer supplies a report in this shape:
+
+```json
+{ "reviewer": "<native execution id>", "cold": true, "verdict": "PASS",
+  "tree": "<reviewed tree>", "findings": [], "closes": [] }
+```
+
+`verdict` is `PASS` or `FAIL`. Findings have stable `id`, `summary` and `material`
+fields. A report on the current or a later candidate closes a finding through
+`closes: ["<finding id>"]`. Every material finding must be closed; optional advice
+(`material: false`) never blocks. Reviewers cannot be the author, duplicate each
+other or reuse earlier candidates' reviewer IDs. Required reviewer count is one
+for prose/routine work and two for sensitive/material behaviour or unknown risk;
+paths and executable/mode/symlink changes establish a floor that intent can raise.
+Reviewers assess semantics independently and escalate uncertainty to two reviews.
+
+`verify` exits zero and prints `reviewed` only with a clean matching candidate,
+enough PASS reports, closed material findings and unexpired evidence. Expiry is
+24 hours after the earliest counted PASS report for the current candidate.
+Failures use `needs_agent_review`, `needs_owner`, `stale`, `expired`, `dirty` or
+`invalid` with an actionable reason; `status` prints JSON.
+
+`receipt <PR>` requires passing verify and prints a PR comment body: the marker
+`<!-- openlup-native-review-receipt v2 -->` followed by a fenced JSON summary
+`{pr, base, head, tree, risk, reviewers, verdict, expires, sessionDigest}`.
+The supervisor posts it within delivery authority:
+
+```bash
+node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -
+```
+
+`verify-command [--resource PROFILE] -- CMD ARGS...` verifies before and after
+the command, requiring an unchanged HEAD tree and clean worktree. With a resource
+profile it invokes the existing `ai-resource-gate` broker; nested broker use
+refuses. Merge previews, proof leases and policy/inventory runs are removed
+from this wrapper. Exclusive locking and atomic rename protect state writes;
+input/state bounds remain 1 MiB/8 MiB.
+
 The report schema in `scripts/agent-review-session.mjs` is the implementation
-contract; these files are process evidence, never cryptographic execution
-attestation.
-
-The earlier signed-receipt controller and hosted observer have been retired.
-Native sessions and queue admission are the active path; their shared raw Git
-object authentication remains. No model service or separate signer is required.
+contract. Receipts are process evidence, not cryptographic remote attestation
+or hard signer isolation. Source objects are trusted through Git's own hashing.
+No model service or separate signer is required.
 
 ## Sources and attribution
 
@@ -393,8 +334,9 @@ not a vendor-certified guarantee or a claim of universal best practice.
 ## Historical implementation boundary
 
 Earlier work introduced authenticated source graphs, signed-receipt validation
-and a hosted mechanical-check observer. The native session gate reuses source
-validation while keeping execution under the active subscription. Signed receipt,
+and a hosted mechanical-check observer. Raw object-graph authentication was
+removed by the 2026-10-19 simplification; Git's own hashing now supplies source
+object integrity while review stays under the active subscription. Signed receipt,
 App and protected-key provisioning are not default-route acceptance criteria.
 Historical fixture results and reviews prove only the mechanisms they exercised;
 they do not attest the current candidate or any new installation.
@@ -417,144 +359,66 @@ merge while queue activation remains off. No production, release, new secret,
 subscription-authentication transfer, paid model call or settings change is
 authorized by foundation delivery.
 
-The simpler alternative of required GitHub PR approvals does not establish
-native evidence or bind integration review to a queue base/head/tree. A compact
-main-only artifact transport preserves existing native review without a hosted
-model or a separate service. Retain all six mechanical checks and their failure
-signals. The seventh `native-review` job provides the additional admission
+The original follow-up used main-only artifact transport and separate integration
+reviews. Those mechanisms are superseded by the 2026-10-19 simplification: PR
+comment summaries and source-review carry-over are the only admission route.
+Retain all six mechanical checks and their failure signals. The seventh `native-review` job provides the additional admission
 condition only after separate activation.
 
-### Source and integration evidence
+### Source evidence and carry-over
 
-1. Commit and review the source through the existing session protocol. Obtain
-   actual complete fresh native observations in this conversation; never copy a
-   PASS to a new SHA. Preserve criteria, source scope, findings, lineage, expiry
-   and the review-cycle budget. Record the actual PR head and tree, distinct
-   from the PR workflow's test-merge checkout.
-2. Select the authenticated Published Tree CI run and current attempt. Transport
-   the complete source state for that exact target. A changed source head after
-   auto-merge arming needs current source evidence, even if mechanical CI is green.
-3. For a queue event, resolve actual queue membership and the live group ref.
-   Bind repository, PR, source head/tree, queue-entry ID and enqueue time, event
-   base/head/tree/ref, and workflow run/attempt. The pilot admits the first entry
-   only, whose base is current `main`; later waiting entries may remain queued.
-   Unknown, incomplete, ambiguous or batched membership refuses. A branch-name
-   pattern is only a routing hint, not source provenance.
-4. If the complete group tree equals the reviewed source tree, require no
-   additional model review. Otherwise prepare separate native group state for
-   the exact event base/head/tree and obtain two fresh independent full
-   integration reviews under the source's unchanged approved criteria. Review
-   actual interactions, including sensitive or unknown behavior; disjoint paths
-   or an author label cannot establish noninteraction. Group reviewers receive
-   exact source context and criteria without author history or prior verdicts,
-   and their execution identities cannot reuse the source reviewers' contexts.
-   Keep the source branch unchanged and do not turn integration evidence into a
-   rewritten source approval. (Amended by W4, below: a group that is exactly the
-   reviewed change on a base whose net change avoids its paths and the listed
-   machinery also carries the source review over.)
-5. The active supervisor submits and follows admission within this conversation.
-   Missing or invalid evidence is an agent recovery condition within authorized
-   scope, not a request for the maintainer to move reports or repeat approval.
-   At most two automatic retries may recover a rebuilt queue candidate. Each
-   new candidate gets its actual binding and required evidence; these retries
-   neither restart source repair cycles nor permit infinite requeueing.
-   Exhaustion, unresolved findings or unknown membership stays blocked while the
-   supervisor regroups within actual authority.
+The supervisor reviews the committed source in the active conversation and posts
+its summary as soon as the PR is open and ready. A new head needs new evidence.
+For a merge group, admission uses the PR number from
+`gh-readonly-queue/main/pr-<N>-<sha>` and actual event base/head identities.
 
-The nonqueue ancestor-preserving base-integration rule remains fresh full-scope
-review with retained history and budget. The queue route is a separate identity
-mode; it does not silently change that rule or authorize cross-base repair reuse.
+Source review carries over when:
+- the group tree equals the reviewed tree; or
+- `git merge-tree --write-tree` of the group base and reviewed head predicts
+  exactly the group tree, and the base's net change since the reviewed base
+  touches neither the change's paths nor `.github/`, `scripts/agent-review-*`,
+  `scripts/documentation-git.ts`, root or `packages/<name>/package.json`,
+  `package-lock.json`, `supabase/migrations/` or
+  `config/platform-migration-manifest.json`.
+
+Otherwise reject the group: merge `main` and re-review. There is no run-keyed or
+integration-review receipt route. At most two automatic queue-rebuild retries
+remain separate from the source repair counter. Review grants no settings,
+publication, merge or release authority.
 
 ### Native transport and admission
 
-Large complete native state uses a lossless version-3 transport envelope with
-exactly `version`, `encoding: gzip-base64`, the SHA256 of the expanded JSON bytes,
-and canonical base64 `data`. Inputs at or below 56,000 bytes retain their existing
-plain JSON form. Larger inputs compress without dropping history, findings,
-criteria, scopes or observations. Both CLI input forms and both trusted-main
-submission paths use this same codec; immutable artifacts carry the encoded
-`input` and `binding` wrapper, and every admission consumer, including source carry-over into a merge group,
-decodes before the existing native verification.
+Transport option A was chosen on 2026-10-19. The supervisor posts
+`agent-review-session.mjs receipt <PR>` output with
+`gh pr comment <PR> --body-file -`. The queue script exposes only `wait`; the
+old dispatch workflow, transport input/submit commands, compressed envelopes and
+artifact upload/download path are removed.
 
-The wire bound remains 56,000 bytes, artifact JSON remains at most 60,000 bytes,
-and expanded JSON is bounded at 512,000 bytes. Decoding refuses invalid gzip,
-noncanonical base64, digest mismatch, invalid UTF-8, extra envelope fields and
-nested envelopes. Incompressible or oversized complete evidence refuses rather
-than being truncated. Existing artifact ZIP provenance and digest checks, target
-bindings, live identity, freshness, scope, reviewer counts and lineage validation
-remain authoritative. Compression provides transport capacity, not review or
-publication authority.
+The `native-review` job runs from trusted main after the six mechanical checks,
+when `OPENLUP_NATIVE_QUEUE=enabled`. It reads all pages of PR comments and
+considers marked receipts only from `OWNER`, `MEMBER` or `COLLABORATOR` authors.
+It selects the newest valid receipt matching the live head, fetches the required
+SHAs using `transfer.fsckObjects=true`, and recomputes the tree, paths and risk
+floor. It checks PASS, reviewer count, expiry, fork point or pinned ancestry,
+and merge-group carry-over. Polling is every 15 seconds for at most twenty
+minutes. Missing, stale or mismatched evidence refuses with an actionable reason.
 
-For a merge-group run that the source review does not carry over to (W4, in the
-amendment below), the supervisor creates input from the task worktree with
-`node scripts/agent-review-queue.mjs input RUN ATTEMPT PR source-session.json group-session.json`.
-Pull-request runs, and carried-over groups, use the source receipt described in
-the amendment below. Replace `RUN`, `ATTEMPT` and `PR` with tool-observed
-positive numeric identities. A group whose tree equals the reviewed tree carries
-over, so in practice the run-keyed route serves changed trees, which require the
-group state.
-The command outputs JSON for
-`gh workflow run native-review-admission.yml --ref main --json`, passed on stdin.
-Input creation does not dispatch automatically. Dispatch is a GitHub write and
-requires the task's actual delivery authority. The contributor checks show the
-complete redirection example. Compact input is bounded at 56,000 bytes; missing
-coverage cannot be removed to fit transport.
+The W2/W3 artifact-provenance and W4 separate-integration amendments are historical
+and superseded by the 2026-10-19 simplification. W4's bounded carry-over conditions
+and W5's fork-point base remain. Live historical proof: #122's group carried
+over from its source receipt on an unchanged tree, without a live session.
 
-`native-review-admission.yml` is transport only. Trusted `main` scripts validate
-the states against authenticated Git objects without executing candidate code
-or installing its dependencies. The workflow uploads one validated receipt
-artifact named for the target run/attempt and finishes. No model runs on GitHub,
-no subscription authentication is copied there, and no signing service or
-Checks-write publisher is provisioned.
-
-With `OPENLUP_NATIVE_QUEUE=enabled`, the seventh job runs for eligible PR and
-merge-group events after the existing six jobs finish. It requires six actual
-successes, then waits at most twenty minutes for the target receipt. It checks
-artifact digest, trusted dispatch workflow/run provenance, native completeness,
-lineage and expiry, current PR head and live queue tuple; final observation must
-match the initial binding. A different run or attempt cannot reuse a run-keyed
-artifact. Missing, malformed, stale, partial, failed or changed evidence refuses
-admission.
-
-**Amendment, approved 2026-10-03** (base-move and receipt plan, W2).
-- For pull-request events, a source receipt keyed to the PR number and the exact
-  reviewed head and tree also admits. It is created with
-  `agent-review-queue.mjs input-source`, and its artifact is named
-  `native-review-pr-<PR>-<head>`.
-- One such receipt admits every run and attempt of that head. Admission
-  re-verifies the live pull request, the run identity and the review's
-  freshness each time.
-- Several receipts for one head are allowed. An artifact failing provenance is
-  skipped rather than fatal.
-- Merge-group runs keep the run-keyed receipt above unchanged (until W4, below).
-- W3 follow-up: on a pull-request run, an unreadable or untrusted run-keyed
-  artifact no longer blocks the source receipt. Both pull-request paths require an integer head
-  repository ID.
-- The activation proof below is the record of the activation decision. The
-  same-SHA and changed-group properties it names now hold only for merge groups
-  the source review does not carry over to (W4).
-- W4, approved 2026-10-03 (#121): item 4 above is amended. The source review carries
-  over to a merge group whose tree is the reviewed tree, or that is exactly the
-  reviewed change on its queue base, when the base's net change avoids the
-  change's paths and the admission, identity-binding, dependency and migration
-  machinery. Then the pull request's source
-  receipt admits the group. Other groups keep the two integration reviews.
-  Live proof: #122's merge group was admitted by its source receipt alone
-  (unchanged tree), with no run-keyed receipt or live session.
-- W5, approved 2026-10-03 (#122): the local review base is the candidate's
-  fork point (see [Native session interface](#native-session-interface)).
-  Hosted admission is unchanged.
-The configured local mirror retains all six jobs and refuses workflow drift;
-local verification does not assert hosted queue activation.
-
-Freshness is sampled at final admission. A successful GitHub context has no
-native receipt expiry timer, so this design does not guarantee validity at the
-eventual merge. Required context attribution to GitHub Actions establishes
-process provenance, not isolation from a malicious repository writer capable of
-spoofing the same context. These limits match the native process-evidence model;
-a stronger security boundary requires a separately approved design.
+Freshness is checked at admission, not guaranteed at the eventual merge. A
+successful GitHub context has no native receipt expiry timer, and Actions source
+attribution does not isolate a malicious writer capable of spoofing that context.
+These remain process-evidence limits.
 
 ### Verification and separate activation decision
+
+Historical activation plan. The run/attempt integration receipts and artifact
+provenance below are superseded by the 2026-10-19 simplification. Current
+admission uses comment receipts and rejects groups that cannot carry over;
+this record grants no new authority or current acceptance obligations.
 
 Implement and test authenticated source/group identity, whole-tree equality,
 changed-tree two-review requirements, stale/partial findings, expiry, input
@@ -621,12 +485,17 @@ Prove it live right after the switch, before relying on it:
    first.
 2. A second pull request, stacked on the first and reviewed before the first
    merged, is admitted with "unchanged tree" carry-over using its own source
-   receipt, with no run-keyed integration receipt.
+   receipt, without an additional receipt.
 
 If either step fails, the owner restores the squash settings and the guidance
 change is reverted.
 
 ### Stack-base and local proof implementation (2026-10-17)
+
+Historical record. The proof-lease, merge-preview and policy/inventory wrapper
+parts below are superseded by the 2026-10-19 simplification. The stack pin and
+bounded resource-broker command wrapper remain as described in the current
+[session interface](#native-session-interface).
 
 Outcome: update the same bounded PR with optional immutable predecessor bases,
 early merged-tree policy/inventory proof and coordinated heavy local commands.

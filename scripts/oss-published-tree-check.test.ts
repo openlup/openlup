@@ -408,8 +408,8 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(admission).toContain("github.event.pull_request.user.login != 'dependabot[bot]'");
     expect(admission).toContain("needs: [dco, typecheck, install-proof, test, self-check, gitleaks]");
     expect(admission).toContain("timeout-minutes: 25");
-    expect(admission).toContain("actions: read\n      contents: read\n      pull-requests: read");
-    expect(admission).not.toMatch(/(?:actions|contents|pull-requests): write/u);
+    expect(admission).toContain("issues: read\n      contents: read\n      pull-requests: read");
+    expect(admission).not.toMatch(/(?:actions|contents|issues|pull-requests): write/u);
     expect(admission).toContain("ref: main\n          fetch-depth: 0\n          persist-credentials: false");
     expect(admission).toContain("run: node scripts/agent-review-queue.mjs wait");
     expect(admission).not.toContain("npm ci");
@@ -504,7 +504,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   });
 
   it("pins CI and release runtimes while relaying the exact pack runtime to publication", () => {
-    for (const name of ["published-tree-ci", "native-review-admission", "publish-package", "publish-packages", "publish-source-preview"]) {
+    for (const name of ["published-tree-ci", "publish-package", "publish-packages", "publish-source-preview"]) {
       const source = readFileSync(join(ROOT, `.github/workflows/${name}.yml`), "utf8");
       const setups = source.split(/^ {6}- uses: actions\/setup-node@/mu).slice(1);
       expect(setups.length, name).toBeGreaterThan(0);

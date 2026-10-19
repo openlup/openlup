@@ -10,6 +10,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "packages/core/scripts/release-bundle.ts", "packages/core/scripts/release-check.ts",
   "packages/core/test/assertNoZeroCoverage.ts", "packages/core/vitest.config.ts",
   "packages/core/scripts/neutrality-tree-counts.ts", "packages/ui/smoke/neutrality.ts",
+  "scripts/agent-review-decide.mjs",
   "scripts/agent-review-session.mjs", "scripts/agent-review-session.test.ts",
   "scripts/agent-review-queue.mjs", "scripts/agent-review-queue.test.ts",
   "scripts/agent-review-gate.test.ts",

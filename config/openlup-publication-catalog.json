@@ -70,10 +70,6 @@
       "class": "public-output"
     },
     {
-      "path": ".github/workflows/native-review-admission.yml",
-      "class": "public-output"
-    },
-    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -1207,6 +1203,10 @@
     },
     {
       "path": "docs/platform/plans/early-package-gates.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/plans/native-review-simplification-proposal.md",
       "class": "platform-documentation"
     },
     {
@@ -3586,11 +3586,11 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/agent-review-gate.test.ts",
+      "path": "scripts/agent-review-decide.mjs",
       "class": "public-output"
     },
     {
-      "path": "scripts/agent-review-hook.mjs",
+      "path": "scripts/agent-review-gate.test.ts",
       "class": "public-output"
     },
     {

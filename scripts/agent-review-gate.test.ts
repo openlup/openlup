@@ -1,123 +1,113 @@
-import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { deflateSync } from "node:zlib";
-import { afterEach, describe, expect, it } from "vitest";
-import { readReviewObjects, reviewTreeEntries, verifyReviewObjectGraph } from "./agent-review-hook.mjs";
+import { execFileSync } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { captureSessionCandidate, git as reviewGit, sessionMain, verifyCandidateCommand } from './agent-review-session.mjs';
+import { carryOverSourceReview, waitNativeAdmission } from './agent-review-queue.mjs';
 
-describe("native review source graph authentication", () => {
-  const scratch = tmpdir();
-  const owned: string[] = [];
-  afterEach(() => { for (const directory of owned.splice(0)) rmSync(directory, { recursive: true, force: true }); });
-  function harness() {
-    mkdirSync(scratch, { recursive: true });
-    const cwd = mkdtempSync(join(scratch, "fixture-")); owned.push(cwd);
-    const git = (...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
-    const commit = () => { git("add", "file.txt"); git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "fixture"); };
-    git("init", "--quiet", "-b", "main"); writeFileSync(join(cwd, "file.txt"), "baseline\n"); commit();
-    const base = git("rev-parse", "HEAD");
-    writeFileSync(join(cwd, "file.txt"), "changed\n"); commit();
-    const expected = { base, head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}") };
-    return { cwd, git, expected };
+const directories: string[] = [];
+afterEach(async () => { vi.restoreAllMocks(); for (const cwd of directories.splice(0)) await rm(cwd, { recursive: true, force: true }); });
+const intent = { risk: 'routine', criteria: 'Preserve the reviewed source' };
+async function fixture() {
+  const cwd = await mkdtemp(join(tmpdir(), 'native-review-v2-')); directories.push(cwd);
+  const git = (...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0', ...args], { encoding: 'utf8' }).trim();
+  const commit = () => { git('add', 'source.txt'); git('commit', '-qm', 'fixture'); };
+  git('init', '-q', '-b', 'main'); await writeFile(join(cwd, 'source.txt'), 'before\n'); commit();
+  const base = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', base);
+  await writeFile(join(cwd, 'source.txt'), 'reviewed\n'); commit(); const head = git('rev-parse', 'HEAD');
+  const scratch = join(cwd, '.context', 'scratch'); await mkdir(scratch, { recursive: true });
+  const statePath = join(scratch, 'agent-review', 'session.json');
+  const env = { CODEX_THREAD_ID: 'author' };
+  const cli = (...args: string[]) => sessionMain(args, { cwd, env });
+  async function review() {
+    const request = join(scratch, 'intent.json'); await writeFile(request, JSON.stringify({ intent })); await cli('prepare', request);
+    const session = JSON.parse(await readFile(statePath, 'utf8'));
+    const path = join(scratch, 'report.json');
+    await writeFile(path, JSON.stringify({ reviewer: 'cold-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [] }));
+    await cli('record', path); return JSON.parse(await readFile(statePath, 'utf8'));
   }
-  async function archivedHistory() {
-    const f = harness();
-    for (let index = 0; index < 4; index += 1) {
-      writeFileSync(join(f.cwd, "file.txt"), `${index}:${"x".repeat(1800)}`);
-      f.git("add", "file.txt"); f.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "archive");
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  return { cwd, git, base, head, commit, scratch, statePath, cli, review };
+}
+
+describe('six real Git witnesses', () => {
+  it('prepare / record / verify and receipt PASS, with scratch ignored', async () => {
+    const f = await fixture(); const session = await f.review();
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    expect(console.log).toHaveBeenLastCalledWith(expect.stringContaining(RECEIPT_MARKER));
+    expect(session.version).toBe(2);
+  });
+  it('refuses a commit after review', async () => {
+    const f = await fixture(); await f.review();
+    await writeFile(join(f.cwd, 'source.txt'), 'unreviewed\n'); f.commit();
+    await expect(f.cli('verify')).rejects.toThrow('candidate changed');
+  });
+  it('still passes when origin/main moves beyond the fork point', async () => {
+    const f = await fixture(); await f.review();
+    const tree = f.git('rev-parse', `${f.base}^{tree}`);
+    const main = f.git('commit-tree', tree, '-p', f.base, '-m', 'unrelated main move');
+    f.git('update-ref', 'refs/remotes/origin/main', main);
+    await expect(f.cli('verify')).resolves.toBe(0);
+  });
+  it.each([false, true])('merge group carry-over with overlapping base move = %s', async overlap => {
+    const f = await fixture(); const candidate = await captureSessionCandidate(f.cwd, undefined, { env: {} });
+    f.git('checkout', '-q', '--detach', f.base);
+    if (overlap) f.git('update-index', '--chmod=+x', 'source.txt');
+    else { await writeFile(join(f.cwd, 'other.txt'), 'disjoint\n'); f.git('add', 'other.txt'); }
+    f.git('commit', '-qm', 'base move'); const base = f.git('rev-parse', 'HEAD');
+    const tree = f.git('merge-tree', '--write-tree', base, f.head);
+    const head = f.git('commit-tree', tree, '-p', base, '-p', f.head, '-m', 'queue group');
+    const decision = await carryOverSourceReview(f.cwd, candidate, { base, head, tree });
+    expect(decision.ok).toBe(!overlap);
+    expect(decision.reason).toContain(overlap ? 'merge main and re-review' : 'disjoint base move');
+    if (!overlap) {
+      await mkdir(join(f.scratch, 'agent-review'));
+      await writeFile(join(f.scratch, 'intent.json'), JSON.stringify({ intent }));
+      await writeFile(f.statePath, JSON.stringify({ version: 1 }));
+      await expect(f.cli('verify')).rejects.toThrow('start a new session with prepare --new');
+      await f.cli('prepare', '--new', join(f.scratch, 'intent.json'));
+      const restarted = JSON.parse(await readFile(f.statePath, 'utf8'));
+      expect(restarted.previousSessionDigest).toMatch(/^[a-f0-9]{64}$/);
+      expect((await readdir(join(f.scratch, 'agent-review'))).some(name => /^session-.*\.json$/.test(name))).toBe(true);
     }
-    function advance(contents: string) {
-      writeFileSync(join(f.cwd, "file.txt"), contents);
-      f.git("add", "file.txt"); f.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "candidate");
-    }
-    advance("review base\n"); const base = f.git("rev-parse", "HEAD");
-    advance("candidate\n");
-    const expected = () => ({ base, head: f.git("rev-parse", "HEAD"), tree: f.git("rev-parse", "HEAD^{tree}") });
-    // Lower only the existing constant in a disposable module, so the same
-    // tests exercise old and new readers without large generated fixtures.
-    const original = readFileSync(new URL("./agent-review-hook.mjs", import.meta.url), "utf8");
-    const bounded = original.replace("const OBJECT_BYTES = 128 * 1024 * 1024;", "const OBJECT_BYTES = 4096;");
-    expect(bounded).not.toBe(original);
-    const module = join(f.cwd, "bounded-hook.mjs"); writeFileSync(module, bounded);
-    const { verifyReviewObjectGraph: verify } = await import(pathToFileURL(module).href);
-    return { ...f, advance, expected, verify };
-  }
-  it("refuses an oversized delta after accepting a small delta on large unrelated history", async () => {
-    const f = await archivedHistory();
-    await expect(f.verify(f.cwd, f.expected())).resolves.toBeDefined();
-    // Each object and both bound snapshots fit; the accumulated delta does not.
-    for (let index = 0; index < 3; index += 1) f.advance(`${index}:${"y".repeat(1400)}`);
-    f.advance("small final snapshot\n");
-    await expect(f.verify(f.cwd, f.expected())).rejects.toThrow("object authentication exceeds byte bound");
   });
-  it("refuses a planted bad delta blob after accepting large unrelated history", async () => {
-    const f = await archivedHistory();
-    await expect(f.verify(f.cwd, f.expected())).resolves.toBeDefined();
-    const blob = f.git("rev-parse", "HEAD:file.txt");
-    const bytes = Buffer.from("corrupted\n");
-    const target = join(f.cwd, ".git", "objects", blob.slice(0, 2), blob.slice(2));
-    chmodSync(target, 0o644);
-    writeFileSync(target, deflateSync(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes])));
-    await expect(f.verify(f.cwd, f.expected())).rejects.toThrow("object digest differs from its claimed identity");
-  });
-  it("authenticates history beyond the byte bound while charging only the delta and bound snapshots", async () => {
-    const f = await archivedHistory();
-    const graph = await f.verify(f.cwd, f.expected());
-    expect(graph.authenticatedBytes).toBeGreaterThan(4096);
-    expect(graph.boundedBytes).toBeLessThan(4096);
-    expect(reviewTreeEntries(graph, graph.baseTree)).toMatchObject([{ path: "file.txt", size: 12 }]);
-    expect(reviewTreeEntries(graph, graph.headTree)).toMatchObject([{ path: "file.txt", size: 10 }]);
-    // Old blobs are still authenticated: corrupt one outside the review delta.
-    const historical = f.git("rev-parse", `${f.expected().base}~1:file.txt`);
-    const bytes = Buffer.from("bad historical bytes\n");
-    const target = join(f.cwd, ".git", "objects", historical.slice(0, 2), historical.slice(2));
-    chmodSync(target, 0o644);
-    writeFileSync(target, deflateSync(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes])));
-    await expect(f.verify(f.cwd, f.expected())).rejects.toThrow("object digest differs from its claimed identity");
-  });
-  it("authenticates the actual reachable object graph of an unchanged fixture", async () => {
-    const f = harness();
-    const graph = await verifyReviewObjectGraph(f.cwd, f.expected);
-    const entries = reviewTreeEntries(graph, graph.headTree);
-    expect(entries).toHaveLength(1);
-    const [entry] = entries;
-    expect(entry).toMatchObject({ path: "file.txt", mode: "100644" });
-    const objects = await readReviewObjects(f.cwd, [entry.object]);
-    expect(objects.get(entry.object)?.bytes).toEqual(readFileSync(join(f.cwd, "file.txt")));
-  });
-  it("refuses raw commit bytes stored under another claimed commit digest", async () => {
-    const f = harness();
-    const raw = execFileSync("/usr/bin/git", ["-C", f.cwd, "cat-file", "commit", f.expected.head]);
-    const replaced = Buffer.concat([raw, Buffer.from("forged trailing commit message\n")]);
-    const target = join(f.cwd, ".git", "objects", f.expected.head.slice(0, 2), f.expected.head.slice(2));
-    chmodSync(target, 0o644);
-    writeFileSync(target, deflateSync(Buffer.concat([Buffer.from(`commit ${replaced.length}\0`), replaced])));
-    expect(f.git("rev-parse", "HEAD")).toBe(f.expected.head);
-    // Some Git versions refuse corrupt loose objects during revision peeling;
-    // direct graph authentication must also refuse independently of that behavior.
-    await expect(verifyReviewObjectGraph(f.cwd, { base: f.expected.base, head: f.expected.head, tree: f.expected.tree })).rejects.toThrow();
-  });
-  it("refuses benign tree bytes substituted under a different claimed tree digest", async () => {
-    const f = harness();
-    const baseTree = f.git("rev-parse", `${f.expected.base}^{tree}`);
-    const raw = execFileSync("/usr/bin/git", ["-C", f.cwd, "cat-file", "tree", baseTree]);
-    writeFileSync(join(f.cwd, "file.txt"), "baseline\n"); f.git("read-tree", baseTree);
-    const target = join(f.cwd, ".git", "objects", f.expected.tree.slice(0, 2), f.expected.tree.slice(2));
-    chmodSync(target, 0o644);
-    writeFileSync(target, deflateSync(Buffer.concat([Buffer.from(`tree ${raw.length}\0`), raw])));
-    await expect(verifyReviewObjectGraph(f.cwd, { base: f.expected.base, head: f.expected.head, tree: f.expected.tree })).rejects.toThrow();
-  });
-  it("refuses a hash-valid commit whose late parent header does not establish Git ancestry", async () => {
-    const f = harness();
-    const raw = Buffer.from(`tree ${f.expected.tree}\nauthor Fixture <fixture@example.invalid> 1 +0000\ncommitter Fixture <fixture@example.invalid> 1 +0000\nparent ${f.expected.base}\n\nlate parent fixture\n`);
-    const object = Buffer.concat([Buffer.from(`commit ${raw.length}\0`), raw]);
-    const digest = createHash("sha1").update(object).digest("hex");
-    const directory = join(f.cwd, ".git", "objects", digest.slice(0, 2)); mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, digest.slice(2)), deflateSync(object));
-    expect(f.git("rev-list", "--parents", digest)).toBe(digest);
-    await expect(verifyReviewObjectGraph(f.cwd, { base: f.expected.base, head: digest, tree: f.expected.tree })).rejects.toThrow();
+  it('hosted wait admits in one fake API poll and verify-command runs only its stub command', async () => {
+    const f = await fixture(); const candidate = await captureSessionCandidate(f.cwd, undefined, { env: {} });
+    const now = Date.now(); let session = prepareCandidate(null, { ...candidate, intent, authorSessionId: 'author' }, now);
+    session = recordReport(session, { reviewer: 'reviewer', cold: true, tree: candidate.tree, verdict: 'PASS', findings: [], closes: [] }, now);
+    const receipt = receiptSummary(session, 12, now);
+    const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: f.head } };
+    const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, author_association: 'MEMBER', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : { object: { sha: f.base } }) };
+    const runGit = vi.fn(async (cwd, ...args) => {
+      if (args.includes('fetch')) { expect(args).toEqual(['-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', f.base, f.head]); return ''; }
+      return reviewGit(cwd, ...args);
+    });
+    const sleep = vi.fn();
+    await waitNativeAdmission({ cwd: f.cwd, event: { number: 12, repository: { private: false }, pull_request: { head: { sha: f.head } } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api, runGit, sleep });
+    expect(sleep).not.toHaveBeenCalled(); expect(console.log).toHaveBeenLastCalledWith(expect.stringContaining('reviewed PR head'));
+    const run = vi.fn(async () => 0);
+    const snapshot = (cwd, base) => captureSessionCandidate(cwd, base, { env: {} });
+    await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub-check', args: ['arg'], env: {}, run, snapshot })).resolves.toBe(0);
+    expect(run).toHaveBeenCalledWith('stub-check', ['arg'], f.cwd, expect.objectContaining({ OPENLUP_HEAVY_ACTIVE: f.cwd }));
+    await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', env: { AI_RESOURCE_GATE_ACTIVE: '1' }, run })).rejects.toThrow('nested');
+    const frozen = async () => candidate;
+    const broker = join(f.scratch, 'ai-resource-gate'); await writeFile(broker, 'stub'); await chmod(broker, 0o700);
+    await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', resource: 'openlup:coverage', env: { PATH: f.scratch }, run, snapshot: frozen })).resolves.toBe(0);
+    expect(run).toHaveBeenLastCalledWith(broker, ['run', '--wait', `openlup:coverage:${f.cwd.split('/').at(-1)}`, '--', 'stub'], f.cwd, expect.any(Object));
+    const untouched = vi.fn();
+    await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', env: {}, run: untouched, snapshot: async () => ({ ...candidate, clean: false }) })).rejects.toThrow('dirty');
+    expect(untouched).not.toHaveBeenCalled();
+    let samples = 0;
+    await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', env: {}, run, snapshot: async () => ++samples === 1 ? candidate : { ...candidate, tree: 'e'.repeat(40) } })).rejects.toThrow('stale');
+    const pin = 'e'.repeat(40);
+    const pinGit = vi.fn(async (_cwd, ...args) => args[0] === 'merge-base' && args[1] === '--all' ? f.base : args[0] === 'rev-parse' ? (args.at(-1).includes('tree') ? candidate.tree : f.head) : '');
+    await expect(captureSessionCandidate(f.cwd, pin, { env: { OPENLUP_STACK_BASE: pin }, runGit: pinGit })).resolves.toMatchObject({ base: pin });
+    expect(pinGit.mock.calls).toContainEqual([f.cwd, 'merge-base', '--is-ancestor', f.base, pin]);
+    expect(pinGit.mock.calls).toContainEqual([f.cwd, 'merge-base', '--is-ancestor', pin, f.head]);
+    await expect(captureSessionCandidate(f.cwd, pin, { env: {}, runGit: pinGit })).rejects.toThrow('fork point changed');
+    await expect(captureSessionCandidate(f.cwd, undefined, { env: { OPENLUP_STACK_BASE: 'bad' }, runGit: pinGit })).rejects.toThrow('full commit digest');
   });
 });
