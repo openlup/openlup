@@ -3058,11 +3058,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/hookRawReader.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/sql.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/communications/transport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/transportConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/webhookDialects.test.ts",
       "class": "public-output"
     },
     {
