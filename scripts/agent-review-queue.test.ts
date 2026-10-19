@@ -6,7 +6,7 @@ const time = 1000;
 const receipt = { pr: 12, base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), risk: 'routine', reviewers: ['reviewer'], verdict: 'PASS', expires: time + 86400000, sessionDigest: 'd'.repeat(64) };
 const observed = { ...receipt, baseValid: true, changedPaths: ['source.txt'] };
 const body = (value = receipt) => `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
-const comment = (patch = {}) => ({ id: 1, body: body(), author_association: 'OWNER', created_at: '2026-10-19T00:00:00Z', ...patch });
+const comment = (patch = {}) => ({ id: 1, body: body(), author_association: 'OWNER', user: { login: 'review-owner', type: 'User' }, created_at: '2026-10-19T00:00:00Z', ...patch });
 
 describe('hosted review decisions', () => {
   it.each([
@@ -51,10 +51,41 @@ describe('hosted review decisions', () => {
   it.each(['not JSON', `${RECEIPT_MARKER}\n{}`, `prefix\n${body()}`, `${RECEIPT_MARKER}\n\`\`\`json\n{\n\`\`\``])('ignores malformed receipt %s', value => {
     expect(parseReceipt(value)).toBeNull();
   });
-  it.each(['OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR', 'NONE'])('checks author association %s', async association => {
-    const api = { get: vi.fn(async () => [comment({ author_association: association })]) };
+  it.each([
+    ['CONTRIBUTOR', { permission: 'admin', role_name: 'admin' }, true],
+    ['CONTRIBUTOR', { permission: 'write', role_name: 'write' }, true],
+    ['CONTRIBUTOR', { permission: 'write', role_name: 'maintain' }, true],
+    ['CONTRIBUTOR', { permission: 'maintain' }, true],
+    ['CONTRIBUTOR', { role_name: 'admin' }, true],
+    ['CONTRIBUTOR', { role_name: 'maintain' }, true],
+    ['CONTRIBUTOR', { role_name: 'write' }, true],
+    ['CONTRIBUTOR', { permission: 'write', role_name: 'custom-writer' }, true],
+    ['CONTRIBUTOR', { permission: 'read' }, false],
+    ['CONTRIBUTOR', { permission: 'none' }, false],
+    ['CONTRIBUTOR', { permission: 'read', role_name: 'triage' }, false],
+    ['OWNER', { permission: 'read', role_name: 'admin' }, false],
+    ['MEMBER', { permission: 'read' }, false],
+    ['COLLABORATOR', { permission: 'none' }, false],
+    ['NONE', { permission: 'admin' }, true],
+    ['OWNER', {}, false],
+    ['OWNER', null, false],
+  ])('checks repository permission for %s: %j', async (association, access, trusted) => {
+    const api = { get: vi.fn(async path => path.includes('/collaborators/') ? access : [comment({ author_association: association })]) };
     const found = await readReceipts(api, '/repos/openlup/openlup', 12, receipt.head, time);
-    expect(found).toHaveLength(['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association) ? 1 : 0);
+    expect(found).toHaveLength(trusted ? 1 : 0);
+    expect(api.get).toHaveBeenCalledWith('/repos/openlup/openlup/collaborators/review-owner/permission');
+  });
+  it.each(['404', '403', 'network failure'])('refuses a failed permission lookup: %s', async message => {
+    const api = { get: vi.fn(async path => {
+      if (path.includes('/collaborators/')) throw new Error(message);
+      return [comment()];
+    }) };
+    await expect(readReceipts(api, '/repos/o/r', 12, receipt.head, time)).resolves.toEqual([]);
+  });
+  it.each([{ login: 'review-bot[bot]', type: 'Bot' }, { login: 'ghost', type: 'Mannequin' }, { type: 'User' }, null])('refuses bots and missing user identity: %j', async user => {
+    const api = { get: vi.fn(async () => [comment({ user })]) };
+    await expect(readReceipts(api, '/repos/o/r', 12, receipt.head, time)).resolves.toEqual([]);
+    expect(api.get).toHaveBeenCalledTimes(1);
   });
   it('paginates and chooses the newest valid matching comment, ignoring malformed and stale receipts', async () => {
     const old = comment({ id: 2 }); const newer = comment({ id: 3, body: body({ ...receipt, reviewers: ['new'] }) });
@@ -62,15 +93,16 @@ describe('hosted review decisions', () => {
     first[0] = comment({ id: 105, body: body({ ...receipt, head: 'e'.repeat(40) }) });
     first[1] = comment({ id: 106, body: body({ ...receipt, expires: time }) });
     first[2] = comment({ id: 107, body: body({ ...receipt, pr: 13 }) });
-    const api = { get: vi.fn(async path => path.endsWith('page=1') ? first : [old, newer]) };
+    const api = { get: vi.fn(async path => path.includes('/collaborators/') ? { permission: 'admin' } : path.endsWith('page=1') ? first : [old, newer]) };
     expect((await readReceipts(api, '/repos/o/r', 12, receipt.head, time)).map(item => item.reviewers)).toEqual([['new'], ['reviewer']]);
-    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(api.get).toHaveBeenCalledTimes(3);
   });
   it.each(['newer bad base', 'equal-tree group', 'live head changed', 'expiry during admission', 'main moved'])('wait checks %s with fake API and Git', async scenario => {
     let clock = time; let mainReads = 0;
     const group = scenario === 'equal-tree group'; const groupHead = 'f'.repeat(40);
     const event = { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } }, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${groupHead}`, base_sha: receipt.base, head_sha: groupHead } };
     const api = { get: vi.fn(async path => {
+      if (path.includes('/collaborators/')) return { permission: 'admin' };
       if (path.includes('/issues/')) return scenario === 'newer bad base' ? [comment(), comment({ id: 2, body: body({ ...receipt, base: 'e'.repeat(40) }) })] : [comment()];
       if (path.includes('/pulls/')) return { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: scenario === 'live head changed' ? groupHead : receipt.head } };
       mainReads += 1;
@@ -92,14 +124,24 @@ describe('hosted review decisions', () => {
       else { await expect(wait).resolves.toBeUndefined(); expect(log).toHaveBeenLastCalledWith(expect.stringContaining(group ? 'unchanged tree' : 'reviewed PR head')); }
     } finally { log.mockRestore(); }
   });
-  it('polls on the injected clock and reports a bounded timeout without Git', async () => {
+  it.each(['read', 'lookup failure'])('refuses across wait polls, caching only a real permission: %s', async permission => {
     let clock = time;
-    const api = { get: vi.fn(async path => path.includes('/pulls/') ? { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: receipt.head } } : []) };
+    const api = { get: vi.fn(async path => {
+      if (path.includes('/pulls/')) return { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: receipt.head } };
+      if (path.includes('/collaborators/')) {
+        if (permission === 'lookup failure') throw new Error('403');
+        return { permission };
+      }
+      return [comment(), comment({ id: 2, user: { login: 'REVIEW-OWNER', type: 'User' } })];
+    }) };
     const sleep = vi.fn(async ms => { clock += ms; }); const runGit = vi.fn();
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       await expect(waitNativeAdmission({ event: { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api, runGit, now: () => clock, sleep, deadlineMs: 30000 })).rejects.toThrow('bounded 20-minute receipt wait expired');
       expect(sleep.mock.calls).toEqual([[15000], [15000]]); expect(runGit).not.toHaveBeenCalled();
+      const lookups = api.get.mock.calls.filter(([path]) => path.includes('/collaborators/')).length;
+      // A real 'read' answer is cached; a failed lookup is retried on every poll, never trusted.
+      if (permission === 'read') expect(lookups).toBe(1); else expect(lookups).toBeGreaterThanOrEqual(3);
     } finally { log.mockRestore(); }
   });
 });
