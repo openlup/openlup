@@ -408,8 +408,9 @@ See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
 ## Schema continuity and readiness
 
 [`IDENTITY_MIGRATIONS`](../../packages/platform/src/identity/sql.ts) records the
-canonical path, SHA-256 digest and runner position of five complete units, at
-positions 11, 12, 29, 60 and 67. The package SQL files retain every canonical byte.
+canonical path, SHA-256 digest and runner position of seven complete units, at
+positions 11, 12, 29, 60, 67, 68 and 69, including operator challenges at 68 and
+privacy erasure receipts at 69. The package SQL files retain every canonical byte.
 They are a projection for inspection and host migration composition, not a
 standalone chain: earlier foundation migrations and intervening units still
 matter. Never apply a package projection on top of an already applied canonical
