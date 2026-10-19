@@ -67,7 +67,7 @@ const SETUP_NODE = "uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5b
 const MAIN_ASSERT_STEP = "Assert the Node and npm contract of the dispatched main commit";
 const MAIN_ASSERT = [`        run: |\n          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"\n          test "$(npm --version)" = "11.19.0"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"\n`].join("");
 const TARGET_ASSERT_STEP = "Assert the target's Node and npm contract";
-const TARGET_ASSERT = ["        working-directory: target\n        run: |\n", `          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node.split(".")[0]')"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"\n`].join("");
+const TARGET_ASSERT = ["        working-directory: target\n        run: |\n", `          test "$(cat .nvmrc)" = "$(node -p 'process.versions.node')"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).engines.node')" = "24.x"\n`, `          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')" = "npm@11.19.0"\n`].join("");
 const TARGET_BLOCK = `      # After the gate the target is reviewed main code, checked out into its own directory.\n      - ${TARGET_CHECKOUT}      - name: ${TARGET_ASSERT_STEP}\n${TARGET_ASSERT}`;
 const RELEASE_MAIN = "      # As in the preflight: main's commit, its Node and its gate before anything of the target.\n";
 const PREFLIGHT_IN_FLIGHT = "      # GitHub keeps one pending run per concurrency group and cancels the older one, so a dispatch\n";
@@ -451,7 +451,7 @@ describe("each release job against a hostile off-main target", () => {
     git(origin, "init", "--quiet");
     git(origin, "checkout", "--quiet", "-b", "main");
     write("scripts/packages/release-gate.ts", readFileSync(join(ROOT, "scripts/packages/release-gate.ts"), "utf8"));
-    write(".nvmrc", "24\n");
+    write(".nvmrc", "24.21.0\n");
     write("package.json", '{ "type": "module", "engines": { "node": "24.x" }, "packageManager": "npm@11.19.0" }\n');
     git(origin, "add", "--all");
     git(origin, "commit", "--quiet", "-m", "main");

@@ -36,18 +36,17 @@ placement below; it preserves all proofs, selectors, six required contexts and
 Current execution is documented in [Development and release](../DEVELOPMENT_AND_RELEASE.md).
 
 The existing six contexts remain `dco`, `typecheck`, `install-proof`, `test`,
-`self-check` and `gitleaks`. `npm run test:required` preserves the former main
-root-test command, including every selector and its ordering. The required test
-job retains standalone subscription tests, complete core CI and the materialized
-contract falsifiers, and additionally runs the neutrality CLI refusal tests.
-Lint blocks `typecheck`; UI neutrality and the tree ratchet block `self-check`.
+`self-check` and `gitleaks`. The 19 October CI simplification supersedes the
+selector command and independent full-root diagnostic: four full-root shards
+now feed required `test`, with conservative tooling-input selection on PR/group
+events. Whole-tree falsifiers always run. Complete core CI remains in the
+independent `install-proof` package gate. Lint blocks `typecheck`; UI neutrality
+and the tree ratchet block `self-check`.
 
-Independent `test-full` runs unrestricted `npm test`; independent `pgtap` runs
-all supplied SQL tests against the committed managed baseline and ordered
-forwards with Supabase CLI 2.98.2. Jobs preserve actual diagnostic exits; current
-results and unresolved obligations are separated from dated historical failures
-in the diagnostic record. No dependencies
-on successful full-root diagnostics can prevent required core checks or pgTAP.
+Independent `pgtap` runs all supplied SQL tests against the committed managed
+baseline and ordered forwards with Supabase CLI 2.98.2. It preserves actual exits
+and remains independent of root tests. Current results and unresolved obligations
+are separated from dated historical failures in the diagnostic record.
 Actions use full commit pins and jobs retain trusted event-metadata fences,
 including inherited merge-group validation and the optional `native-review`
 admission job. That job depends on the six required contexts, independently of

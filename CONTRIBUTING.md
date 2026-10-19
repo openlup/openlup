@@ -106,10 +106,9 @@ its users or operators can observe.
    never enter a commit.
    The witness lands in the same pull request as package tests, and the
    package's tests join the required test selection, so required CI runs them
-   while the package is still unreleased. As with `packages/outbox`, that pull
-   request extends `test:required`, the required scope in
-   `scripts/oss-publication-policy.ts` and its pinned expectation in
-   `scripts/oss-published-tree-check.test.ts`, and the root Vitest configuration.
+   while the package is still unreleased. As with `packages/outbox`, extend the
+   root Vitest configuration so `npm test` discovers the new package tests;
+   the four hosted shards feed the required `test` aggregate.
 3. **Refactor in later pull requests.** Each refactoring pull request keeps the
    witness unchanged. A refactor changes nothing a consumer can observe:
    results, side effects, ordering, errors and fault modes, operational logs,
@@ -209,7 +208,7 @@ Default unstacked reviews retain their existing fork-point refusal rules.
 For each heavy final local command, use:
 
 ```sh
-node scripts/agent-review-session.mjs verify-command --resource openlup:coverage -- npm run test:required
+node scripts/agent-review-session.mjs verify-command --resource openlup:coverage -- npm run test:scoped
 ```
 
 Keep every required command below, including package gates and coverage; this
@@ -294,8 +293,8 @@ and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 `packageManager` field of `package.json`), and the committed npm lockfile. CI and
 release workflows pin Node 24.21.0, which bundles npm 11.19.0, so newer Node 24
-releases cannot change npm beneath the existing assertions. `.nvmrc` remains the
-local Node major (`24`); the local npm contract is unchanged. From
+releases cannot change npm beneath the existing assertions. `.nvmrc` pins the same
+24.21.0 runtime locally; the npm contract is unchanged. From
 the root of a materialized development-preview tree, these are the commands the
 mechanical/diagnostic jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
 run; each comment names its job. The inherited `native-review` job additionally
@@ -304,18 +303,19 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
-The raw full-root diagnostic runs on four standard runners as
+The required root suite runs on four standard runners as
 `test-full-shard (1/4)` through `(4/4)`, using Vitest's native file sharding.
-Each runner independently restores the existing npm download cache, installs
-with `npm ci` and invokes `npm test -- --shard=N/4`, including the existing
-package-build pretest. The matrix permits all four jobs in parallel and disables
-fail-fast so a failed shard does not cancel the others. Test discovery, isolation,
-worker limits, timeouts, retries and separate coverage/package gates are unchanged.
-The stable raw `test-full` job waits for the matrix and succeeds only when every
-shard succeeds; failed, cancelled or skipped shards cannot produce a green
-aggregate. Its raw diagnostic status and the six required contexts are unchanged.
-Main-push reuse still requires a complete successful merge-group run for the same
-commit, including the full-root aggregate.
+Each runner restores the npm download cache, installs with `npm ci`, selects
+bounded tooling fixtures from the event diff, then invokes `npm test -- --shard=N/4`
+with the existing package-build pretest. All four runners derive the same included
+set before sharding. The matrix permits four parallel jobs and disables fail-fast.
+The required check named exactly `test` waits for the matrix with `if: always()`
+under the same trusted event fence and asserts its result is `success`. Failed,
+cancelled or skipped shards refuse the aggregate. There is no duplicate selector
+run or separate `test-full` aggregate. Worker limits, timeouts, retries,
+coverage/package gates and the six required context names remain unchanged.
+Main-push reuse requires a complete successful merge-group run for the same
+commit, including `test` and the raw pgTAP result.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
@@ -362,7 +362,7 @@ npm ci
 
 # Root typecheck consumes the built core package; build it after install and source edits.
 npm --workspace @openlup/core run build
-# npm run lint, npm run test:required and npm test also build core through npm pre-scripts
+# npm run lint and npm test also build core through npm pre-scripts
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
 # typecheck
@@ -378,17 +378,10 @@ GATE_PACKS="$(mktemp -d)"
 # Local SQL proof owns one ephemeral PostgreSQL container; CI passes its job service identity/port.
 node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
-# test: hosted CI uses a separate checkout, in parallel with install-proof.
-npm run test:required -- server/runtime/public-reference \
-  src/pages/account/v2/subscriptions/modals/RescheduleModal.test.tsx \
-  scripts/oss-published-tree-check.test.ts scripts/documentation-impact.test.ts \
-  scripts/documentation-bundle.test.ts scripts/documentation-cli.test.ts \
-  scripts/ast-grep/check-filewide-ignore.test.ts \
-  scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts \
-  scripts/public-ci-neutrality.test.ts
-# test-full: raw complete Vitest diagnostics locally
-npm test
+# test: omit bounded tooling fixtures whose inputs are untouched, including dirty files.
+npm run test:scoped
 # Hosted test-full-shard runs four parallel independent installations, each with:
+# node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE points to runner temp)
 # npm test -- --shard=N/4 (N = 1, 2, 3, 4)
 # self-check (needs no install)
 npm run oss:published-tree -- --policy
@@ -401,7 +394,7 @@ node scripts/public-ci-pgtap.mjs
 gitleaks git . --config config/gitleaks.toml --redact --no-banner
 ```
 
-The `prelint`, `pretest:required` and `pretest` npm scripts build `@openlup/core`
+The `prelint` and `pretest` npm scripts build `@openlup/core`
 before their respective root commands. When running
 `npm run oss:published-tree -- --typecheck` directly after editing core source,
 first run `npm --workspace @openlup/core run build`.
@@ -600,11 +593,12 @@ The complete projected root command inventory is `build`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
 `check:dco-signoff`, `guard:client-secret-boundary`,
 `guard:public-reference-site-routes`, `lint`, `prelint`,
-`oss:published-tree`, `packages:check`, `release:bump`, `pretest`,
-`pretest:required`, `test`, and `test:required`.
+`oss:published-tree`, `packages:check`, `release:bump`, `pretest`, `test`, and `test:scoped`.
+This reclassifies the complete current root script inventory; all commands are
+public, with `test:scoped` as the local wrapper around the unchanged `test` command.
 `npm run build` is the public build truth; its public-reference subcommands and
 guards are internal links in that bounded chain. Published Tree CI invokes the
-build, required root coverage, complete diagnostics, DCO check, and publication checks from this inventory.
+build, sharded required root tests, DCO check, and publication checks from this inventory.
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
 
@@ -719,14 +713,40 @@ namespace, in actual package artifacts. These checks add no command or CI job.
 
 ### Test scope and diagnostics
 
-The projected `npm test` command owns the complete root Vitest test
-scope. The independent `test-full-shard` matrix invokes that command with only
-`--shard=N/4` and preserves each raw failure result. The stable `test-full`
-aggregate requires all four successes, as described above. The required `test` job
-uses `npm run test:required -- …`, retaining every former main selector in order
-and appending the existing subscription, materialized contract, documentation
-and neutrality CLI falsifiers to the same discovery. The package gate runs independently in `install-proof` and includes core's separate checks. Run `npm test` for the complete public diagnostics
-and narrower paths while iterating. Required success is not complete-suite success. The root Vitest
+The projected `npm test` command owns the complete root Vitest scope and is
+required through the four `test-full-shard` runners and their `test` aggregate.
+Run `npm run test:scoped` locally, or narrower paths while iterating.
+The full `npm test` still runs in hosted CI shards on shared triggers.
+There is no `test:required` selector list. The independent `install-proof` job
+still owns the separate package gates.
+
+On `pull_request` and `merge_group`, [ci-test-scope.mjs](scripts/ci-test-scope.mjs)
+diffs checked-out HEAD against its merge-base with the event's exact base SHA.
+Its single declarative table lists only tooling test files with bounded inputs.
+Untouched rows are written as exact paths to `OPENLUP_VITEST_EXCLUDE_FILE`, the
+existing root Vitest exclusion seam. All unlisted tests run, including the
+repository-wide session policy/inventory, source removal-marker, publication
+policy and neutrality tests. Every root file, `scripts/**`, `.github/**`,
+both root setup directories and their commerce-cache import trigger every
+mapped test; individual rows add the actual package config, package,
+source-directory and outbox wiring inputs. This deliberately favors extra tests
+over fragile dependency precision. Add every newly read input to the row, or
+remove the row when a test begins scanning the whole repository.
+
+Pushes, manual/unknown events, unreadable metadata, missing history and Git
+errors write an empty exclusion file and run everything. Locally, the wrapper
+creates and cleans a temporary exclusion file; `node scripts/ci-test-scope.mjs
+--base <ref>` uses the merge-base of HEAD and that ref (default `origin/main`
+without GitHub event metadata), plus staged, unstaged and untracked paths.
+Docs and config used only in synthetic fixtures are not shared inputs; the three
+rows reading the actual package config declare it explicitly. Local `npm test`
+remains unfiltered without the exclusion variable. Each shard computes the same set
+from the same candidate and event before deterministic native sharding. The
+scope unit tests cover triggers, failure fallback, deletion/rename paths,
+merge-base semantics and identical shard selection. This optimization changes
+which bounded fixtures need rerunning; it never converts a failed test to success.
+
+The root Vitest
 configuration does not collect the standalone `packages/core` test suite with the root configuration. From the repository root, run
 `npm --workspace @openlup/core run ci` for that package's separate checks
 (equivalently, use its local command from the package directory). Published Tree CI
@@ -735,7 +755,7 @@ packed-consumer checks. A green root suite alone still does not prove those chec
 CI also builds the opt-in subscription profile and runs its runtime composition
 tests plus the existing renewal modal tests. The disposable database and browser
 journey has its own evidence; a build or mocked test does not stand in for it.
-The required test command also includes the source preview release falsifiers
+The root suite always includes the source preview release falsifiers
 (`scripts/source-preview-release.test.ts`). The source preview
 falsifiers also check bounded 404 reads of the exact draft ID returned by
 creation and refusal of a changed draft before publication. Under `scripts/packages`, it runs the
@@ -760,16 +780,15 @@ loads the lint configuration with a conditional `imports` map.
 and API migration-note refusals. The required cold package gate owns the actual
 build, pack and isolated install proof; the root tests do not repeat it through
 synthetic publisher and set-preflight workflow executions.
-The public test job appends the profile and tooling falsifier selectors to
-`test:required`, so one Vitest invocation schedules all required root files.
+The root discovery includes the profile and tooling falsifiers; only bounded
+tooling rows whose inputs are untouched may be excluded as described above.
 Hosted package gates run in `install-proof`, alongside `test`, without sharing
 checkouts, installations, package outputs or databases. The PostgreSQL job service
 belongs to `install-proof`; root SQL falsifiers retain their owned fixtures. In
 one local checkout, package gates still finish first because cold preparation
 replaces package build outputs. Both existing jobs retain their 20-minute ceiling
 and all test limits; their required test and package commands remain separate. Compare
-the longest required path and summed job durations separately. The complete root
-scope also discovers these falsifiers.
+the longest required path and summed job durations separately. Unscoped local runs discover all of these falsifiers.
 
 The root test command has no directory or file filters. It collects the shipped
 Node and DOM tests under `api`, `mcp`, `scripts`, `server`, `src` and `tests`,
@@ -921,19 +940,18 @@ full-root and managed SQL diagnostics are expected green. Matching named debt is
 permission to ignore a red run. When triaging a change, compare fresh
 Vitest failure identities and per-file assertion counts, and pgTAP file summaries,
 with the exact PR base, normalizing log timestamps and ANSI formatting first.
-`test-full` and `pgtap` expose raw failures in separate diagnostic
-jobs. They do not suppress tests or normalize exits. Installation, database
+The required `test` aggregate exposes root failures; `pgtap` remains a raw
+diagnostic job. They do not suppress tests or normalize exits. Installation, database
 start/replay/cleanup and unexplained new failures block delivery; naming those
 failures does not waive broken CI. Use the hosted pull-request run's raw logs
-for this comparison, or a local run with `--diagnostics`. The six existing required contexts retain
+for this comparison, or the corresponding local commands. The six existing required contexts retain
 their coverage, with blocking lint and neutrality. Promoting diagnostic jobs to
 required checks is the maintainer's ruleset decision; this contribution changes
 no repository settings. Release workflows still check those six contexts, so a
-red diagnostic result is not automatically a release refusal.
+red root suite now refuses release through `test`; raw pgTAP retains its diagnostic status.
 
-Documentation falsifiers run as independent test files, selected explicitly by
-the combined required command above and discovered individually by the complete
-root run. They cover routing, source impact, bare-runtime CLI and bundle
+Documentation falsifiers run as independent test files, discovered individually by the complete root run and subject to the bounded
+tooling-input selection described above. They cover routing, source impact, bare-runtime CLI and bundle
 corruption without importing one test file from another. Those tests create disposable Git
 fixtures; they do not publish or validate the meaning of arbitrary prose.
 See [Documentation maintenance](docs/platform/DOCUMENTATION.md) for regeneration,
@@ -1181,7 +1199,7 @@ reading, exact merge scope and protected release approval still apply.
      uses one repair cycle;
    - then update the source-state copy and resubmit the receipt.
 8. **Hosted checks.** The six required contexts and `native-review` must pass.
-   Compare raw `test-full` and `pgtap` failures with the exact base.
+   Compare required root and raw `pgtap` failures with the exact base.
 9. **Revalidate authority and evidence.** The pull request states its sign-off
    class and actual delivery grant. Recheck the live head and applicable
    review/receipt identity and expiry before each write. Any later material

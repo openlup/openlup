@@ -16,13 +16,13 @@ Scan all tracked text regardless of extension. Local dirty execution also scans 
 
 The `self-check` job runs both the existing UI neutrality gate and this tree-wide ratchet as blocking checks. The ratchet receives the event base through `--base-commit`; diagnostic root or database test failures do not relax either neutrality check.
 
-The required `test` job explicitly runs the CLI falsifiers after its existing required root scope, subscription tests, complete core package checks and publication command-contract tests:
+The root suite always discovers the neutrality CLI falsifiers. For focused local diagnosis:
 
 ```bash
 npx vitest run scripts/public-ci-neutrality.test.ts
 ```
 
-Run this command from the repository root with the pinned development dependencies installed. The local verification helper mirrors that required invocation. Collection through unrestricted `npm test` alone is insufficient: that command runs in the separate raw `test-full` diagnostic job, and `pgtap` is a separate raw diagnostic job. Their failures remain visible and do not change the six existing required contexts or the release workflows' context selection. Promoting diagnostic coverage requires a separate maintainer decision.
+Run this command from the repository root with pinned development dependencies installed. The 19 October CI simplification makes the four full-root shards feed required `test`; the scope table never excludes this repository-wide scanner test. Complete core package checks run independently in `install-proof`. Raw `pgtap` remains separate. The six required context names and release workflows' context selection are unchanged.
 
 ## Count and baseline rules
 

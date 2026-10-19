@@ -10,8 +10,8 @@ API, production deployment or supported adopter upgrade.
 ## Start with the right route
 
 Run contributor commands from the repository root of a dedicated task worktree,
-using Node 24 and npm 11.19.0. CI and release workflows pin Node 24.21.0
-(the bundled npm is 11.19.0); local `.nvmrc` remains `24`. Package commands below
+using Node 24.21.0 and npm 11.19.0. CI, release workflows and local `.nvmrc`
+pin the same runtime (the bundled npm is 11.19.0). Package commands below
 explicitly select their workspace. A maintainer's installed local helper may create that worktree and
 mirror the required CI commands; it is not a public npm dependency. Other
 contributors use the public commands in [CONTRIBUTING](../../CONTRIBUTING.md#required-and-raw-checks).
@@ -58,9 +58,9 @@ remain in [contribution checks](../../CONTRIBUTING.md#development-preview-checks
 | `npm run oss:published-tree -- --policy` and `--inventory` | Publication classification, documentation ownership/impact/navigation and tree inventory; local and CI `self-check`. | Required. These check structure and recorded obligations, not the truth of arbitrary prose or runtime behavior. |
 | `node scripts/agent-review-session.mjs verify-command -- <heavy required command>` | Cheap policy/inventory/native preflight, predicted merged-tree checks, worktree output exclusion and optional installed host resource broker. | Local final-proof wrapper; preserves every underlying required command and installed stamp. Independent PRs use their normal base; stacked PRs export the exact `OPENLUP_STACK_BASE`. No cache, hosted receipt, settings change or merge authority. |
 | `node scripts/public-ci-neutrality.mjs --base-commit <full-base-sha>` and UI neutrality smoke | Tree-wide shrink-only neutrality and portable UI boundary; local and CI `self-check`. | Required. Use the exact event/comparison base, not a guessed latest main. |
-| Shared `scripts/packages/required-package-gates.ts` and the combined `npm run test:required -- …` invocation in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover every publishable package workspace and its required scripts; cold-pack the current set, check all APIs, then run each package's owning required batch with the same verified artifacts. Core retains complete CI obligations; Outbox owns schema/SQL/replay. One root discovery then schedules the protected selectors, subscription composition and tooling falsifiers. | Required in independent hosted jobs: package proof follows both builds in `install-proof`, while root tests run in `test`. Separate checkouts isolate destructive package preparation; local commands sharing one checkout remain serial. Both existing 20-minute budgets and all test limits remain unchanged. Future modules use the same route and supply their own semantic consumer proof. Missing routes, artifacts or a required runtime refuse. Only SQL modules require a database. Root required tests alone do not cover package proof. |
+| Shared `scripts/packages/required-package-gates.ts` in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover each publishable workspace and its required scripts; cold-pack the current set, check all APIs, then run each owning required batch with the same artifacts. Core retains complete CI obligations; Outbox owns schema/SQL/replay. | Required `install-proof` follows both builds in its own checkout, independently of root tests. Local package preparation and tests remain serial because they share build outputs. Missing routes, artifacts or runtimes refuse. Future modules use the same semantic consumer proof; only SQL modules require a database. |
 | `npm --workspace @openlup/core run ci` | Package coverage, runtime imports, type smoke, API snapshots, docs, release checks and packed-consumer smoke; local and CI `install-proof`. | Required through the shared API phase plus `ci:required`, with manifest/commit inputs. Manual mode still builds/packs; supplied mode executes the same assertions without repacking. Separate from root Vitest discovery. |
-| `npm test` locally; `npm test -- --shard=N/4` in CI | Complete root Vitest diagnostics. Four independent hosted `test-full-shard` runners retain npm cache/install/pretest and all test limits; the stable `test-full` aggregate succeeds only after all four succeed. | Raw diagnostic, not a required GitHub status. Preserve actual failures and compare the exact base before attributing regressions. |
+| `npm run test:scoped` locally; `npm test -- --shard=N/4` in CI | Four independent `test-full-shard` runners retain npm cache/install/pretest and test limits. On PR/group events, `scripts/ci-test-scope.mjs` uses the event merge-base and the existing exclusion file to omit only bounded tooling fixtures with untouched inputs. Whole-tree scanners always run; shared root/tooling/workflow/setup inputs run everything; actual package-config reads belong to their rows. Local scope also includes staged, unstaged and untracked paths. Pushes, unknown events or errors exclude nothing. | Required `test` aggregates all four shards and refuses failure, cancellation or skips. No duplicate selector run or `test-full` job remains. Separate package gates and raw pgTAP retain their owners. |
 | `node scripts/public-ci-pgtap.mjs` | Shipped SQL tests against a disposable managed baseline; local and CI `pgtap`. Requires Docker and the pinned Supabase CLI. | Raw diagnostic. Start, replay, cleanup failures and unexplained new failures block delivery under contribution rules. |
 | `npm run build` and subscription-profile build | Install/build proof for reference profiles; local and CI `install-proof`. | Required. A build does not prove a browser journey, live provider or production deployment. |
 | `npm run check:dco-signoff -- <full-base-sha> <full-head-sha>` | Sign-off on the full commit range; local and CI `dco`. | Required. Empty ranges and malformed identities are not success evidence. |
@@ -91,8 +91,9 @@ After committing and recording required native reviews, `openlup-dev verify`:
 - runs the mechanical equivalents locally, in an environment like a hosted
   runner's: a temporary directory outside every checkout, four Vitest workers
   and no global Git identity;
-- runs the raw `test-full` and pgTAP diagnostics only with `--diagnostics`, or
-  pgTAP alone when the range reaches database inputs;
+- must mirror the required root `npm run test:scoped` route; pgTAP remains a raw
+  diagnostic selected with `--diagnostics` or when the range reaches database inputs;
+  an older helper that calls `test:required` needs updating before it can verify this tree;
 - adds publication leak checks and advisory release eligibility.
 
 Its logs identify each command and exit code. Read `REQUIRED PASS` separately
