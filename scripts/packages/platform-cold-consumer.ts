@@ -270,8 +270,13 @@ globalThis.fetch = () => { throw new Error("drop must never fetch"); };
 const dropped = await postResendEmail({ apiKey: "synthetic", fromEmail: "sender@example.invalid", to: "recipient@example.invalid", subject: "Synthetic", html: "<p>Synthetic</p>" }, (_, intendedRecipient) => ({ mode: "drop", recipient: null, intendedRecipient, reason: "synthetic_drop" }));
 assert.deepEqual(dropped.providerResponse, { suppressed: "drop", egress_reason: "synthetic_drop" });
 const store = createPostgresTransactionalDeliveryStore({ connectionString: "postgresql://unused.invalid/synthetic" });
-try { await assert.rejects(() => store.readReceipt("synthetic:1"), error => error.message.startsWith("OPENLUP_E_PEER_MISSING: pg is required by ") && Boolean(error.cause)); }
-finally { await store.close(); }
+let missingPeer;
+await assert.rejects(() => store.readReceipt("synthetic:1"), error => {
+  missingPeer = error;
+  return error.message.startsWith("OPENLUP_E_PEER_MISSING: pg is required by ") && Boolean(error.cause);
+});
+// No pool was created; closing repeats the cached initialization refusal.
+await assert.rejects(() => store.close(), error => error === missingPeer);
 `);
 }
 
