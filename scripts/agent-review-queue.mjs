@@ -14,16 +14,29 @@ export function parseReceipt(body) {
   const match = /^```json\s*\n([\s\S]*?)\n```\s*$/u.exec(body.slice(RECEIPT_MARKER.length + 1));
   try { return match ? JSON.parse(match[1]) : null; } catch { return null; }
 }
-export async function readReceipts(api, root, pr, head, now) {
+export async function readReceipts(api, root, pr, head, now, permissions = new Map()) {
   const comments = [];
   for (let page = 1; ; page += 1) {
     const batch = await api.get(`${root}/issues/${pr}/comments?per_page=100&page=${page}`);
     demand(Array.isArray(batch), 'PR comments response is invalid'); comments.push(...batch);
     if (batch.length < 100) break;
   }
-  return comments.filter(comment => ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association))
-    .sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at) || b.id - a.id)
-    .map(comment => parseReceipt(comment.body)).filter(receipt => receipt?.pr === pr && receipt.head === head && admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok);
+  const receipts = [];
+  comments.sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at) || b.id - a.id);
+  for (const comment of comments) {
+    const receipt = parseReceipt(comment.body); const login = comment.user?.login;
+    if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    const key = login.toLowerCase();
+    if (!permissions.has(key)) {
+      try {
+        const access = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
+        // The base permission covers custom roles; use role_name only when absent.
+        permissions.set(key, ['admin', 'maintain', 'write'].includes(access?.permission ?? access?.role_name));
+      } catch { /* A failed lookup never establishes trust; the next poll asks again. */ }
+    }
+    if (permissions.get(key)) receipts.push(receipt);
+  }
+  return receipts;
 }
 async function ancestor(runGit, cwd, base, head) {
   try { await runGit(cwd, 'merge-base', '--is-ancestor', base, head); return true; } catch { return false; }
@@ -45,12 +58,13 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
   const prNumber = group ? Number(match?.[1]) : event.number;
   demand(Number.isSafeInteger(prNumber) && prNumber > 0, 'event must name one PR on main');
   if (group) demand(event.action === 'checks_requested' && group.base_ref === 'refs/heads/main' && SHA.test(group.head_sha) && SHA.test(group.base_sha) && (!env.GITHUB_SHA || env.GITHUB_SHA === group.head_sha) && (!env.GITHUB_REF || env.GITHUB_REF === group.head_ref), 'merge group identity differs from the event');
-  const start = now(); let reason = 'post a current receipt comment from an owner, member or collaborator';
+  const permissions = new Map();
+  const start = now(); let reason = 'post a current receipt comment from a user with write, maintain or admin permission';
   while (now() - start < deadlineMs) {
     const pr = await api.get(`${root}/pulls/${prNumber}`);
     demand(pr.number === prNumber && pr.state === 'open' && pr.draft === false && !pr.merged && pr.base?.ref === 'main' && SHA.test(pr.head?.sha), 'PR must be the live open main candidate');
     if (!group) demand(event.pull_request?.head?.sha === pr.head.sha, 'PR head changed; rerun CI for the current head', 'stale');
-    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now());
+    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions);
     for (const receipt of receipts) {
       const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main), 'main commit identity is invalid');
       const refs = [...new Set([receipt.base, receipt.head, main, ...(group ? [group.base_sha, group.head_sha] : [])])];
@@ -60,7 +74,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
         await runGit(cwd, 'update-ref', 'refs/remotes/origin/main', main);
         candidate = await captureCommittedReviewCandidate(cwd, receipt.base, receipt.head, runGit);
         const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, 'origin/main')).trim().split('\n');
-        baseValid = forks.length === 1 && SHA.test(forks[0]) && (receipt.base === forks[0] || await ancestor(runGit, cwd, receipt.base, main) && await ancestor(runGit, cwd, receipt.base, receipt.head));
+        baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }

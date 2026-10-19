@@ -164,6 +164,15 @@ variables enabled and the ruleset requiring six mechanical statuses plus
 `native-review`. This is dated activation evidence, not a promise about another
 repository or future settings.
 
+The admission script is checked out from `main`, but the job YAML comes from
+the PR or merge-group tree. A candidate can replace `native-review` with a
+successful no-op. Review of `.github/` edits is the current in-repo control;
+carry-over's protected-path refusal does not prevent a modified job from skipping
+admission. A separately authorized owner must configure a ruleset-required
+workflow pinned to a trusted definition outside candidate control to close this
+bypass. Requiring the status name alone does not pin its implementation. See
+[Merge queue](../../CONTRIBUTING.md#merge-queue) for the control and residual risk.
+
 An aggregate Actions workflow can be red while its required statuses are green.
 Inspect the individual job and its raw log, exact SHA, event, run and attempt.
 Skipped, cancelled or timed-out execution cannot prove a passing check. The
