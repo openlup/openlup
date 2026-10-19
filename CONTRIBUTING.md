@@ -459,9 +459,9 @@ material finding IDs require closure; evidence expires 24 hours after the
 earliest counted PASS report for the current candidate. Unchanged prepare
 preserves evidence. Three repair cycles are automatic; `needs_owner` then
 requires an owner decision recorded with `continue "<note>"`, adding three.
-A rethink remains recommended practice. A rebase or changed intent starts a
-new session with `prepare --new`, referencing the archived session and retaining
-its repair count and allowed cycles; only `continue` adds cycles. Put the
+A rethink remains recommended practice. `prepare --new` records a changed
+intent or a rebase in the same append-only session history; findings, reviewers
+and the repair count carry on. Only `continue` adds cycles. Put the
 simplicity pre-check in the first review request as prose. See the
 [native session interface](docs/platform/plans/autonomous-reviewed-delivery.md#native-session-interface).
 A branch remains verifiable while main advances without changing its fork point.
@@ -1103,9 +1103,9 @@ reading, exact merge scope and protected release approval still apply.
    This distinction never bypasses an actually applicable exhausted limit.
 
    The session state is `.context/scratch/agent-review/session.json`;
-   `prepare --new <intent.json>` archives the previous session and references its digest
-   after a rebase or changed intent, retaining its repair count and allowed cycles;
-   only `continue` adds cycles.
+   `prepare --new <intent.json>` records a changed intent or a rebase in the same
+   append-only session history; findings, reviewers and the repair count carry on.
+   Only `continue` adds cycles.
 4. **Local verification.** Finish source, generated inventories and tracked
    task/plan edits before the final proof interval. Build, pack, consumer and root
    commands sharing mutable dist/output run sequentially; parallelize only truly
@@ -1175,17 +1175,17 @@ Commit repairs before review. Give fresh reviewers the open finding cards and
 obtain passing review of the new tree by the required reviewer count. Stable
 finding IDs remain open until a report lists them in `closes`; every material
 finding must be closed. Expiry is 24 hours from the earliest counted PASS report
-for the current candidate. Reviewers must be cold, distinct from the author and
-each other, and not reused from earlier candidates.
+for the current candidate. Reviewers must be cold, distinct from every author
+recorded in the session history and each other, and not reused from earlier candidates.
 
 Three repair cycles are automatic. `needs_owner` then requires the owner to
 continue, narrow or stop; `continue "<note>"` records an authorized continuation
 and adds three cycles. A rethink remains recommended practice: question the
 criteria and checking tool, group findings by root cause, consider simpler
 alternatives and record `pattern → simpler path`. This grants no delivery or
-settings authority. A rebase or changed intent starts a new session with
-`prepare --new`, archiving and referencing the previous session while retaining
-its repair count and allowed cycles; only `continue` adds cycles. A conflict or
+settings authority. `prepare --new` records a changed intent or a rebase in the
+same append-only session history; findings, reviewers and the repair count carry
+on. Only `continue` adds cycles. A conflict or
 failed queue carry-over is resolved by merging `main` and re-reviewing.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
@@ -1237,6 +1237,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-19, native review simplification rethink: Resetting state and
+  hand-copying fields across a session boundary drops whichever control was
+  forgotten → never discard state: append a new intent and candidate to the
+  same append-only history so every existing check still applies.
 - 2026-10-15, module-boundary lint rule: cycles 0–2 each found another
   import-specifier escape → replace a growing denylist with an allowlist of the
   canonical forms, or reuse the resolver.

@@ -145,8 +145,9 @@ run, a dashboard, service framework or permanent third reviewer.
    are automatic; `needs_owner` then requires an owner decision to continue,
    narrow or stop. An authorized `continue "<note>"` adds three cycles. A rethink
    remains recommended practice, not an encoded gate. Preserve findings and
-   failed attempts in the task record. A rebase or changed intent starts a new
-   session with `prepare --new`, referencing the old session. Merging `main`
+   failed attempts in the task record. `prepare --new` records a changed intent
+   or a rebase in the same append-only session history; findings, reviewers and
+   the repair count carry on. Merging `main`
    requires fresh review of the resulting candidate.
 6. Record bounded session evidence and retry the installed gate. Verify and
    pre-push refuse missing, stale, dirty, mismatched, incomplete or unresolved
@@ -272,10 +273,13 @@ node scripts/agent-review-session.mjs continue "<owner decision and reason>"
 
 This records a timestamped note and adds three cycles. A rethink is recommended
 practice: question the goal, criteria and tool, group findings by cause and
-consider a simpler approach. It is not a state-file gate. A rebase or changed
-intent uses `prepare --new <intent.json>`: archive the old state as
-`session-<timestamp>.json` and reference its digest. Version-1 state refuses
-with "start a new session with prepare --new".
+consider a simpler approach. It is not a state-file gate.
+`prepare --new <intent.json>` records a changed intent or a rebase in the same
+append-only session history; findings, reviewers and the repair count carry on.
+Each prepare event records its intent, candidate and author; verdicts and receipts
+use the latest intent. Reviewers must differ from every author in the history.
+With no existing state, `--new` behaves like the first prepare. Unsupported
+state versions refuse; `--new` does not discard them.
 
 Each actual fresh reviewer supplies a report in this shape:
 
@@ -448,7 +452,9 @@ success cannot admit a new run/attempt with no new receipt. Prove exact live
 membership and base/head/tree/ref attribution, stale receipt failure, bounded
 wait expiry and rebuild recovery. Confirm the synthetic tip's DCO behavior and
 that the actual squash author email is `dev@openlup.com`; either unproven behavior
-blocks activation. No DCO exemption or unsupported email assumption is allowed.
+blocks activation. Since 2026-10-19, a changed or sensitive group that cannot
+carry over is rejected: merge `main` and re-review instead of obtaining integration
+reviews. No DCO exemption or unsupported email assumption is allowed.
 Keep queue settings inactive until the exact proposal and these live results
 support the owner's activation decision. A merge of foundation code is not that
 decision and does not authorize production or a release.

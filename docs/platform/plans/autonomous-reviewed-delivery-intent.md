@@ -70,8 +70,9 @@ Unchanged prepare preserves evidence. Three repair cycles are automatic;
 `needs_owner` then requires the owner to continue, narrow or stop. Record an
 authorized continuation with `continue "<note>"`, which adds three cycles.
 A rethink of criteria, tools and simpler alternatives remains recommended
-practice, not an encoded gate. A rebase or changed intent starts a new session
-with `prepare --new`, archiving and referencing the old session. Merging main
+practice, not an encoded gate. `prepare --new` records a changed intent or a
+rebase in the same append-only session history; findings, reviewers and the
+repair count carry on. Merging main
 requires fresh review of the resulting candidate. Stop optional edits when
 criteria, review and checks pass, then complete authorized delivery.
 

@@ -96,15 +96,14 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       const observed = { ...await captureSessionCandidate(cwd, undefined, { env }), intent: spec.intent, authorSessionId: spec.authorSessionId ?? env.CODEX_THREAD_ID };
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
         try { await git(cwd, 'merge-base', '--is-ancestor', session.candidate.head, observed.head); }
-        catch { throw new Error('invalid: rebased history; start a new session with prepare --new'); }
+        catch { throw new Error('invalid: rebased history; use prepare --new'); }
       }
       const next = prepareCandidate(session, observed, Date.now(), fresh);
-      if (fresh && session) await rename(path, join(directory, `session-${Date.now()}.json`));
       await saveState(path, next);
       demand(next.cycle <= next.allowedCycles, 'record an owner continuation with continue "<note>"', 'needs_owner');
       console.log(JSON.stringify(next, null, 2)); return 0;
     }
-    demand(session?.version === 2, 'start a new session with prepare --new');
+    demand(session?.version === 2, 'prepare a version-2 session before review');
     if (verb === 'status') { console.log(JSON.stringify(session, null, 2)); return 0; }
     if (verb === 'continue') { session = continueOwner(session, args[0], Date.now()); await saveState(path, session); return 0; }
     if (verb === 'verify-command') {

@@ -128,9 +128,9 @@ alone preserves the exact review without refreshing its expiry or resetting
 history. No pin is needed for an independent PR, whose existing rules remain.
 An ancestor-preserving base integration, such as
 merging `main` to resolve a textual conflict, requires fresh full-scope review
-within the same budget. A rebase or changed intent starts a new session with
-`prepare --new`, referencing the previous session and retaining its repair
-count and allowed cycles. Only an authorized `continue` adds cycles.
+within the same budget. `prepare --new` records a changed intent or a rebase
+in the same append-only session history; findings, reviewers and the repair
+count carry on. Only an authorized `continue` adds cycles.
 This nonqueue route admits no cross-base reuse; the
 merge-queue carry-over below is the only one. Once criteria, required review and
 checks pass, stop optional edits and continue only authorized delivery steps.

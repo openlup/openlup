@@ -67,11 +67,17 @@ describe('six real Git witnesses', () => {
       await mkdir(join(f.scratch, 'agent-review'));
       await writeFile(join(f.scratch, 'intent.json'), JSON.stringify({ intent }));
       await writeFile(f.statePath, JSON.stringify({ version: 1 }));
-      await expect(f.cli('verify')).rejects.toThrow('start a new session with prepare --new');
+      await expect(f.cli('verify')).rejects.toThrow('prepare a version-2 session before review');
+      await expect(f.cli('prepare', '--new', join(f.scratch, 'intent.json'))).rejects.toThrow('session version must be 2');
+      await rm(f.statePath);
       await f.cli('prepare', '--new', join(f.scratch, 'intent.json'));
-      const restarted = JSON.parse(await readFile(f.statePath, 'utf8'));
-      expect(restarted.previousSessionDigest).toMatch(/^[a-f0-9]{64}$/);
-      expect((await readdir(join(f.scratch, 'agent-review'))).some(name => /^session-.*\.json$/.test(name))).toBe(true);
+      const initial = JSON.parse(await readFile(f.statePath, 'utf8'));
+      await f.cli('prepare', '--new', join(f.scratch, 'intent.json'));
+      const next = JSON.parse(await readFile(f.statePath, 'utf8'));
+      expect(next.history.slice(0, -1)).toEqual(initial.history);
+      expect(next.cycle).toBe(initial.cycle);
+      expect(next).not.toHaveProperty('previousSessionDigest');
+      expect((await readdir(join(f.scratch, 'agent-review'))).some(name => /^session-.*\.json$/.test(name))).toBe(false);
     }
   });
   it('hosted wait admits in one fake API poll and verify-command runs only its stub command', async () => {

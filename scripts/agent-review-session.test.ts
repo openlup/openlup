@@ -101,6 +101,10 @@ describe('native review decisions', () => {
     }
   });
   it.each([
+    [0, 3, false, 0, 'needs_agent_review'],
+    [0, 3, true, 1, 'needs_agent_review'],
+    [1, 3, false, 1, 'needs_agent_review'],
+    [1, 3, true, 2, 'needs_agent_review'],
     [2, 3, false, 2, 'needs_agent_review'],
     [2, 3, true, 3, 'needs_agent_review'],
     [3, 3, true, 4, 'needs_owner'],
@@ -109,19 +113,63 @@ describe('native review decisions', () => {
     [5, 6, true, 6, 'needs_agent_review'],
     [7, 6, false, 7, 'needs_owner'],
   ])('--new preserves budget %i/%i (changed tree: %s)', (cycle, allowedCycles, changed, expectedCycle, code) => {
-    const session = { ...passed(), cycle, allowedCycles };
+    const session = { ...continueOwner(passed(), 'Existing owner continuation', time), cycle, allowedCycles };
     const bytes = JSON.stringify(session);
     const nextObserved = { ...observed, head: 'd'.repeat(40), tree: changed ? 'e'.repeat(40) : observed.tree,
       intent: { ...intent, criteria: 'Approved changed intent' }, authorSessionId: 'author' };
     const next = prepareCandidate(session, nextObserved, time + 1, true);
-    expect(next).toMatchObject({ cycle: expectedCycle, allowedCycles, previousSessionDigest: digest(session), intent: nextObserved.intent });
-    expect(next.history).toHaveLength(1);
+    expect(next).toMatchObject({ cycle: expectedCycle, allowedCycles });
+    expect(next).not.toHaveProperty('previousSessionDigest');
+    expect(next.history.slice(0, -1)).toEqual(session.history);
+    expect(next.history.at(-1)).toMatchObject({ type: 'prepare', intent: nextObserved.intent, candidate: next.candidate, authorSessionId: 'author' });
     expect(verdict(next, nextObserved, time + 1).code).toBe(code);
     if (code === 'needs_owner') {
       expect(() => recordReport(next, report({ tree: nextObserved.tree }), time + 1)).toThrow('needs_owner');
       expect(continueOwner(next, 'Owner authorizes continuation', time + 1).allowedCycles).toBe(allowedCycles + 3);
     }
     expect(JSON.stringify(session)).toBe(bytes);
+  });
+  it.each([false, true])('--new keeps F1 open until explicitly closed (changed tree: %s)', changed => {
+    let session = recordReport(prepare(), report({ verdict: 'FAIL', findings: [{ id: 'F1', summary: 'broken clamp', material: true }] }), time);
+    const next = { ...observed, head: 'd'.repeat(40), tree: changed ? 'e'.repeat(40) : observed.tree,
+      intent: { risk: 'behavior', criteria: 'Approved changed intent' }, authorSessionId: 'next-author' };
+    session = prepareCandidate(session, next, time + 1, true);
+    for (const reviewer of ['reviewer-2', 'reviewer-3']) session = recordReport(session, report({ reviewer, tree: next.tree }), time + 1);
+    expect(verdict(session, next, time + 1)).toMatchObject({ code: 'needs_agent_review', reason: 'close every material finding' });
+    session = recordReport(session, report({ reviewer: 'reviewer-4', tree: next.tree, closes: ['F1'] }), time + 1);
+    expect(verdict(session, next, time + 1).ok).toBe(true);
+    expect(receiptSummary(session, 12, time + 1).risk).toBe('behavior');
+  });
+  it.each(['reviewer-1', 'author', 'next-author'])('--new refuses historical reviewer or author %s', reviewer => {
+    let session = prepareCandidate(passed(), { ...observed, intent, authorSessionId: 'next-author' }, time + 1, true);
+    session = prepareCandidate(session, { ...observed, intent, authorSessionId: 'third-author' }, time + 2, true);
+    expect(() => recordReport(session, report({ reviewer }), time + 2)).toThrow(reviewer === 'reviewer-1' ? 'already used' : 'independent');
+    session = recordReport(session, report({ reviewer: 'fresh-reviewer' }), time + 2);
+    session.history.at(-1).report.reviewer = reviewer;
+    expect(verdict(session, observed, time + 2).code).toBe('invalid');
+  });
+  it.each(['routine', 'behavior'])('--new renews expired same-tree evidence with fresh %s reviewers', risk => {
+    let session = passed(); const now = time + 86400000;
+    expect(verdict(session, observed, now).code).toBe('expired');
+    session = prepareCandidate(session, { ...observed, intent: { ...intent, risk }, authorSessionId: 'author' }, now, true);
+    expect(session.cycle).toBe(0);
+    session = recordReport(session, report({ reviewer: 'reviewer-2' }), now);
+    expect(verdict(session, observed, now).code).toBe(risk === 'routine' ? 'reviewed' : 'needs_agent_review');
+    session = recordReport(session, report({ reviewer: 'reviewer-3' }), now);
+    expect(verdict(session, observed, now).ok).toBe(true);
+    expect(receiptSummary(session, 12, now)).toMatchObject({ risk, expires: now + 86400000 });
+  });
+  it.each([false, true])('first prepare accepts --new = %s and hashes intent history', fresh => {
+    const session = prepareCandidate(null, { ...observed, intent, authorSessionId: 'author' }, time, fresh);
+    expect(session).toEqual(prepare());
+    const next = prepareCandidate(session, { ...observed, intent: { ...intent, criteria: 'Changed goal' }, authorSessionId: 'author' }, time, true);
+    const alteredHistory = structuredClone(next); alteredHistory.history[0].intent.criteria = 'Different original goal';
+    expect(digest(alteredHistory)).not.toBe(digest(next));
+    expect(next.history[0].intent).toEqual(intent);
+  });
+  it.each([false, true])('--new retains version and timestamp validation (bad version: %s)', badVersion => {
+    const session = prepare(); if (badVersion) session.version = 1;
+    expect(() => prepareCandidate(session, { ...observed, intent, authorSessionId: 'author' }, time - 1, true)).toThrow(badVersion ? 'version' : 'time');
   });
   it.each([
     ['dirty source', { clean: false }], ['missing author', { authorSessionId: '' }],
