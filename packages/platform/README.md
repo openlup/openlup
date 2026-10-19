@@ -620,8 +620,8 @@ constructors, `guideCardBlock` and per-template content factories.
 Each `create*ContentFactory` binds host-selected copy plus only the pure helpers
 it uses: order-reference formatting, payment-cause wording or marketing footer.
 Localized review routes remain in the reference helper.
-No copy pack, brand, locale choice, environment reader, provider client or sending
-policy moves into this entry. The existing email DTOs remain its canonical types.
+In P3 no copy pack, brand, locale choice, environment reader, provider client or
+sending policy moved into this entry. B2 adds the explicit neutral defaults below. The existing email DTOs remain its canonical types.
 Reference `petName` compatibility inputs are translated to neutral `contextName`
 by their existing facades. Complete subjects, preheaders, ordered blocks and
 HTML/text remain byte-identical, including omitted and explicit optional fields.
@@ -645,3 +645,28 @@ P3's complete built contracts entry measures **5,992 B minified+gzip**;
 the owner-read cap is **11,776 B**, rounded to the nearest 512 B at about
 twice that measurement. Only this browser limit changes. Existing pack classes,
 other browser limits and clean-candidate artifact checks remain binding.
+
+
+M04 B2 adds four default factories in this same pure contracts entry:
+`createInvoiceDocumentContentFactory`, `createRoleNotificationContentFactory`,
+`createInquiryContentFactory` and `createOptOutContentFactory`. Each accepts an
+optional complete bilingual copy replacement; each content call takes an explicit
+`pl`/`en` locale. Invoice takes resolved order/document references, kind and account
+URL; role takes role, operator URL and optional pending expiry. Inquiry builds
+receipt/notice blocks from caller details, signoff and URL without sending or
+promising a response time. Opt-out returns display strings for seven outcomes;
+it verifies no token and writes no consent. Hosts own brand, locale selection,
+URLs, policy and delivery.
+
+The reference invoice adapter defaults to its byte-identical Polish output; explicit
+construction locale EN maps to `/account?sekcja=orders`, while the production
+composition still omits locale. All existing role outputs remain identical.
+The reference opt-out page now selects Polish/EN throughout, escapes display values,
+and uses neutral selected-communications/service-message wording. Its methods,
+verification, purpose allowlist, durable RPC, headers and statuses are unchanged.
+Generic inquiry is only a pure binding; the existing private-label sender stays
+unchanged. Invoice/role gain Polish canon previews; no sender/registry activation.
+See the [complete B2 expectation ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#b2-changed-expectations-and-preservation)
+and [default conformance tests](test/communications/contentDefaults.test.ts).
+The measured B2 contracts entry is 8,210 B minified+gzip under the unchanged
+11,776 B cap; this is a local built-entry measurement, not release admission.

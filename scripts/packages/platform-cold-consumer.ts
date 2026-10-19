@@ -260,7 +260,7 @@ import assert from "node:assert/strict";
 import { createInMemoryEmailTransport, createPostgresTransactionalDeliveryStore, resolveCapturedDocumentDelivery } from "@openlup/platform/communications";
 import * as contracts from "@openlup/platform/communications/contracts";
 import { timingSafeStringEqual } from "@openlup/platform/http";
-assert.deepEqual(Object.keys(contracts).sort(), ["accentBox","button","createAbandonedCartContentFactory","createBackInStockContentFactory","createCheckoutExpiredContentFactory","createCheckoutRecoveryContentFactory","createOrderCanceledContentFactory","createOrderDraftContentFactory","createOrderPaidContentFactory","createOrderRefundedContentFactory","createPaymentFailedContentFactory","createReorderReminderContentFactory","createReturnEmailsContentFactory","createReviewEffectsContentFactory","createReviewRequestContentFactory","createShipmentDeliveredContentFactory","createShipmentDispatchedContentFactory","createShipmentExceptionContentFactory","createSubscriptionActivationActionRequiredContentFactory","createSubscriptionAddressChangedContentFactory","createSubscriptionCancelledContentFactory","createSubscriptionCycleSkippedContentFactory","createSubscriptionDeliveryRescheduledContentFactory","createSubscriptionPackageChangedContentFactory","createSubscriptionPauseReminderContentFactory","createSubscriptionPausedContentFactory","createSubscriptionPaymentExpiredContentFactory","createSubscriptionPaymentFailedContentFactory","createSubscriptionPaymentRecoveredContentFactory","createSubscriptionRenewalAtRiskContentFactory","createSubscriptionRenewalUpcomingContentFactory","createSubscriptionResumedContentFactory","createSubscriptionWelcomeContentFactory","createSubscriptionWinbackContentFactory","dataTable","divider","featureCard","guideCardBlock","heading","linkParagraph","list","paragraph","renderEmail"]);
+assert.deepEqual(Object.keys(contracts).sort(), ["accentBox","button","createAbandonedCartContentFactory","createBackInStockContentFactory","createCheckoutExpiredContentFactory","createCheckoutRecoveryContentFactory","createInquiryContentFactory","createInvoiceDocumentContentFactory","createOptOutContentFactory","createOrderCanceledContentFactory","createOrderDraftContentFactory","createOrderPaidContentFactory","createOrderRefundedContentFactory","createPaymentFailedContentFactory","createReorderReminderContentFactory","createReturnEmailsContentFactory","createReviewEffectsContentFactory","createReviewRequestContentFactory","createRoleNotificationContentFactory","createShipmentDeliveredContentFactory","createShipmentDispatchedContentFactory","createShipmentExceptionContentFactory","createSubscriptionActivationActionRequiredContentFactory","createSubscriptionAddressChangedContentFactory","createSubscriptionCancelledContentFactory","createSubscriptionCycleSkippedContentFactory","createSubscriptionDeliveryRescheduledContentFactory","createSubscriptionPackageChangedContentFactory","createSubscriptionPauseReminderContentFactory","createSubscriptionPausedContentFactory","createSubscriptionPaymentExpiredContentFactory","createSubscriptionPaymentFailedContentFactory","createSubscriptionPaymentRecoveredContentFactory","createSubscriptionRenewalAtRiskContentFactory","createSubscriptionRenewalUpcomingContentFactory","createSubscriptionResumedContentFactory","createSubscriptionWelcomeContentFactory","createSubscriptionWinbackContentFactory","dataTable","divider","featureCard","guideCardBlock","heading","linkParagraph","list","paragraph","renderEmail"]);
 // Optional peers are physically absent in this phase. Rendering must be pure.
 const previousFetch = globalThis.fetch;
 globalThis.fetch = () => { throw new Error("contracts rendering must never fetch"); };
@@ -270,6 +270,18 @@ try {
   assert(rendered.html.includes("&lt;probe&gt;"));
   assert(rendered.html.includes('href="https://example.invalid"'));
   assert.equal(rendered.text, "<probe>\\n\\nOpen: https://example.invalid\\n\\nEN footer");
+  for (const locale of ["pl", "en"]) {
+    const invoice = contracts.createInvoiceDocumentContentFactory().invoiceDocumentEmailContent(locale, { kind: "invoice", orderRef: "ORDER-1", documentNumber: "DOC/1", accountDocumentsUrl: "https://example.test/documents" });
+    assert.equal(invoice.subject, locale === "pl" ? "Faktura do zamówienia ORDER-1" : "Invoice for order ORDER-1");
+    assert.equal(invoice.blocks[3].href, "https://example.test/documents");
+    const role = contracts.createRoleNotificationContentFactory().roleNotificationEmailContent(locale, { role: "admin", operatorUrl: "https://example.test/admin" });
+    assert.equal(role.subject, locale === "pl" ? "Uprawnienia operatora: admin" : "Operator membership: admin");
+    const inquiry = contracts.createInquiryContentFactory();
+    const vars = { displayName: "Alex Example", contact: "alex@example.test", details: [], operatorUrl: "https://example.test/inquiry" };
+    assert.equal(inquiry.inquiryReceiptEmailContent(locale, vars, "Team").subject, locale === "pl" ? "Otrzymaliśmy Twoje zapytanie" : "We've received your inquiry");
+    assert.equal(inquiry.inquiryNoticeEmailContent(locale, vars, "Team").blocks[3].href, vars.operatorUrl);
+    assert.equal(contracts.createOptOutContentFactory().optOutContent(locale, "error", "support@example.test").title, locale === "pl" ? "Błąd" : "Error");
+  }
 } finally { globalThis.fetch = previousFetch; }
 assert(timingSafeStringEqual("synthetic", "synthetic"));
 globalThis.fetch = () => { throw new Error("capture must never fetch"); };

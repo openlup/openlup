@@ -370,6 +370,13 @@ compares the Auth bridge with the previous envelope/result mapping. Run these
 focused tests before the complete required and diagnostic suites. No selector is
 removed or added by B1; the complete suite retains the reference witnesses.
 
+B2 extends the existing exact contracts inventory by four factory names and adds
+bounded Polish/EN invoice, role, inquiry and opt-out smoke assertions inside the
+installed consumer's fetch-forbidden phase. Existing optional-peer refusal,
+no-fetch, SQL, type-resolution and other consumer assertions are retained. No
+selector or check is removed or loosened; see the
+[B2 ledger](docs/platform/plans/oss-m04-communications-triggers.md#b2-neutral-content-and-reference-mapping).
+
 P3's W4 invoice/correction fixture explicitly admits its existing synthetic sender
 when combined with B1. Its output snapshots, assertions and case count stay unchanged.
 

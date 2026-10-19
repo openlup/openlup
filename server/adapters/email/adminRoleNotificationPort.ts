@@ -1,6 +1,5 @@
-import { button, heading, paragraph } from "../../../src/domains/communications/email/blocks.js";
+import { renderReferenceRole } from "../../../src/domains/communications/email/referenceContentBinding.js";
 import { emailPresentation } from "#email-presentation";
-import { renderEmail } from "../../../src/domains/communications/email/render.js";
 import type { AdminRoleNotificationPort, AdminRoleNotificationSkipReason } from "../../domains/platform/inviteAdminUserUseCase.js";
 import {
   guardEmailTransport,
@@ -114,43 +113,7 @@ function renderRoleGrantedEmail(
   siteUrl: string,
   expiresAt?: string,
 ) {
-  const copy = expiresAt === undefined ? (locale === "pl" ? {
-    subject: `Uprawnienia operatora: ${role}`,
-    heading: "Uprawnienia operatora",
-    status: "Twoje uprawnienia operatora są aktywne.",
-    body: `Przyznano Ci rolę ${role}. Otwórz panel operatora, aby się zalogować.`,
-    button: "Otwórz panel operatora",
-    footer: "Jeśli nie oczekujesz tych uprawnień, skontaktuj się z zespołem aplikacji.",
-  } : {
-    subject: `Operator membership: ${role}`,
-    heading: "Operator membership",
-    status: "Your operator membership is active.",
-    body: `You have the ${role} role. Open the operator panel to sign in.`,
-    button: "Open operator panel",
-    footer: "If you did not expect this membership, contact the application team.",
-  }) : locale === "pl" ? {
-    subject: `Zaproszenie operatora: ${role}`,
-    heading: "Zaproszenie operatora",
-    status: `Zaproszenie oczekuje na przyjęcie do ${expiresAt}.`,
-    body: `Zaproszono Cię do roli ${role}. Dostęp rozpocznie się po wejściu do panelu operatora ze zweryfikowanym kontem.`,
-    button: "Otwórz panel operatora",
-    footer: "Jeśli nie oczekujesz tego zaproszenia, skontaktuj się z zespołem aplikacji.",
-  } : {
-    subject: `Operator invitation: ${role}`,
-    heading: "Operator invitation",
-    status: `Your invitation is pending until ${expiresAt}.`,
-    body: `You are invited as ${role}. Access begins when you enter the operator panel with your verified account.`,
-    button: "Open operator panel",
-    footer: "If you did not expect this invitation, contact the application team.",
-  };
-  return renderEmail({
-    brand: emailPresentation.emailBrandForOrigin(siteUrl),
-    locale,
-    subject: copy.subject,
-    preheader: copy.status,
-    blocks: [heading(copy.heading), paragraph(copy.status), paragraph(copy.body),
-      button(copy.button, `${siteUrl}/admin`), paragraph(copy.footer, { muted: true })],
-  });
+  return renderReferenceRole(locale, { role, siteUrl, expiresAt });
 }
 
 function skippedResult(): RoleNotificationResult {

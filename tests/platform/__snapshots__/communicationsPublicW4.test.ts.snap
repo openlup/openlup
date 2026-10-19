@@ -22,8 +22,8 @@ exports[`W4 current public communications > pins invoice output and required evi
 
 exports[`W4 current public communications > pins invoice output and required evidence: invoice_issued 1`] = `"70780bb3ddd6cf2520486faa2e884d25501fd9e5cdb74c251d492ec796435071"`;
 
-exports[`W4 current public communications > pins legacy unsubscribe Polish success/replay: already_suppressed 1`] = `"faab046be95fa6d45f6866ea615b0079336221d805fc65cd5a15807ddf315144"`;
+exports[`W4 current public communications > pins localized legacy unsubscribe success/replay: already_suppressed 1`] = `"33a29c94538c2cc9bc34be3f999c181364cb9971e9a3395453ca27eea929c4c1"`;
 
-exports[`W4 current public communications > pins legacy unsubscribe Polish success/replay: applied 1`] = `"65f6c15b079b1596ea19f0c00b065341bddff678414b6df85a7137310385acea"`;
+exports[`W4 current public communications > pins localized legacy unsubscribe success/replay: applied 1`] = `"f04b407b730b519d1f8caf4610be03a0480255a864fc4bced95bb777e1ac78b3"`;
 
-exports[`W4 current public communications > pins signed EN unsubscribe with its existing Polish document language 1`] = `"15c703c2f4601a7670fa844b75893212539b1fd38a1695b5524d328969a0deae"`;
+exports[`W4 current public communications > pins signed EN unsubscribe with its selected document language 1`] = `"5c55bd4f423188c1a9dedcd77e284ec40dcf2b2cf1256a7d4d0bda3aca6ace6d"`;

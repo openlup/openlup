@@ -188,7 +188,7 @@ describe("unsubscribe route - transport", () => {
     await route(get("/api/unsubscribe", { token, lang: "en" }), out.res);
 
     expect(out.status()).toBe(200);
-    expect(out.body()).toContain("You're unsubscribed");
+    expect(out.body()).toContain("You&#39;re unsubscribed");
     expect(rpc).toHaveBeenCalledTimes(1);
   });
 });
@@ -236,8 +236,8 @@ describe("unsubscribe route - legacy tester link", () => {
 
     expect(out.status()).toBe(200);
     expect(out.body()).toContain("Wypisano");
-    expect(out.body()).toContain("wiadomosci marketingowych i dla testerow");
-    expect(out.body()).toContain("obslugi konta, zamowien, platnosci i subskrypcji");
+    expect(out.body()).toContain("wybranych wiadomości");
+    expect(out.body()).toContain("obsługi konta, zamówień, płatności i subskrypcji");
     expect(out.body()).not.toContain("wiadomosci transakcyjne");
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenCalledWith("communication_apply_unsubscribe", expect.objectContaining({
@@ -257,8 +257,8 @@ describe("unsubscribe route - legacy tester link", () => {
     await route(get("/api/unsubscribe?id=tester-1&email=jan@example.com"), out.res);
 
     expect(out.status()).toBe(200);
-    expect(out.body()).toContain("Juz wypisany/a");
-    expect(out.body()).toContain("wiadomosci marketingowych i dla testerow");
+    expect(out.body()).toContain("Już wypisano");
+    expect(out.body()).toContain("wybranych wiadomości");
     expect(out.body()).not.toContain("wiadomosci transakcyjne");
   });
 
@@ -340,7 +340,7 @@ describe("unsubscribe route - signed token", () => {
 
     await route(get(tokenUrl(await signedMarketingToken("a@b.com"), "lang=en&")), out.res);
 
-    expect(out.body()).toContain("You're unsubscribed");
+    expect(out.body()).toContain("You&#39;re unsubscribed");
   });
 
   it.each([
@@ -379,7 +379,7 @@ describe("unsubscribe route - signed token", () => {
     await route(get("/api/unsubscribe?token=garbage.sig"), out.res);
 
     expect(out.status()).toBe(400);
-    expect(out.body()).toContain("Link nieprawidlowy lub wygasl");
+    expect(out.body()).toContain("Link nieprawidłowy lub wygasł");
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -402,7 +402,7 @@ describe("unsubscribe route - signed token", () => {
     await route(get(tokenUrl(stale)), out.res);
 
     expect(out.status()).toBe(400);
-    expect(out.body()).toContain("Link nieprawidlowy lub wygasl");
+    expect(out.body()).toContain("Link nieprawidłowy lub wygasł");
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -495,6 +495,6 @@ describe("unsubscribe route - default export", () => {
     await handler(get("/api/unsubscribe?token=garbage.sig"), out.res);
 
     expect(out.status()).toBe(400);
-    expect(out.body()).toContain("Link nieprawidlowy lub wygasl");
+    expect(out.body()).toContain("Link nieprawidłowy lub wygasł");
   });
 });

@@ -45,3 +45,7 @@ export * from "./subscriptionRenewalUpcoming.js";
 export * from "./subscriptionResumed.js";
 export * from "./subscriptionWelcome.js";
 export * from "./subscriptionWinback.js";
+export * from "./invoiceDocumentContent.js";
+export * from "./roleNotificationContent.js";
+export * from "./inquiryContent.js";
+export * from "./optOutContent.js";
