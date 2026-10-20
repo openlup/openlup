@@ -551,6 +551,15 @@ assert.equal(contracts.COMMERCE_CONTRACT_VERSION, "commerce.v0");
 assert.equal("createCommerceQuoteSchemas" in contracts, false);
 assert.equal("catalogFactsProvenanceSchema" in contracts, false);
 assert.deepEqual(pricing.splitIncludedVat(12300, 2300), { netMinor: 10000, vatMinor: 2300 });
+assert.deepEqual(pricing.calculateIncludedVat(12300, 2300), { netMinor: 10000, vatMinor: 2300 });
+assert.equal(contracts.COMMERCE_OFFER_PRICING_CONTRACT_VERSION, "commerce.offer-pricing.v1");
+assert.equal("createCommerceOfferPricingHandler" in contracts, false);
+const readiness = pricing.createOfferPolicyReadinessCache({ now: () => 0 });
+assert.equal((await readiness.read({ readOfferPolicyV2Readiness: async () => ({ ready: true }) })).ready, false);
+const cache = pricing.createCommerceOfferPricingCache({ ttlMs: 10, now: () => 0 });
+const value = { contractVersion: contracts.COMMERCE_OFFER_PRICING_CONTRACT_VERSION };
+assert.equal(await cache.read("v1", async () => value), value);
+assert.equal(await cache.read("v1", async () => { throw new Error("cached"); }), value);
 const { z } = await import("zod");
 const schemas = pricing.createCommerceQuoteSchemas({ currencySchema: z.string().regex(/^[A-Z]{3}$/),
   productSlugSchema: z.string().min(1), contextSchema: z.object({ mode: z.enum(["one_time", "subscription"]), promoCodes: z.array(z.string()) }) });

@@ -1,12 +1,13 @@
+import "./neutralFixtures.js";
 import { describe, expect, it, vi } from "vitest";
 
-import type { CreateQuoteRequest } from "../../../src/domains/commerce/contracts.js";
+import type { CreateQuoteRequest } from "./quoteSchemaFixtures.js";
 import {
   CommerceQuoteError,
   type CommerceQuotePort,
-} from "../../../src/domains/commerce/ports.js";
-import { COMMERCE_MIN_AUTO_ORDER_UNITS } from "../../../src/domains/commerce/recommendationPolicyDeps.js";
-import { projectCommerceOfferPricing } from "./commerceOfferPricing.js";
+} from "./quoteSchemaFixtures.js";
+import { COMMERCE_MIN_AUTO_ORDER_UNITS } from "./offerFixtures.js";
+import { projectCommerceOfferPricing } from "./offerFixtures.js";
 
 const product = {
   skuCode: "opaque:lamb.v1",
@@ -35,17 +36,17 @@ function quotePort(input: {
       return {
         contractVersion: "commerce.v0",
         quote: {
-          currency: "PLN",
-          subtotalGross: { amountMinor: subtotal, currency: "PLN" },
-          discountTotalGross: { amountMinor: discount, currency: "PLN" },
+          currency: "XXX",
+          subtotalGross: { amountMinor: subtotal, currency: "XXX" },
+          discountTotalGross: { amountMinor: discount, currency: "XXX" },
           // Deliberately includes a fake delivery residual. The product-only
           // projection must ignore totalGross and use subtotal-discount.
-          totalGross: { amountMinor: subtotal - discount + 1490, currency: "PLN" },
+          totalGross: { amountMinor: subtotal - discount + 1490, currency: "XXX" },
           lines: [
             {
               unitPriceGross: {
                 amountMinor: subscription ? 1340 : 1490,
-                currency: "PLN",
+                currency: "XXX",
               },
             },
           ],

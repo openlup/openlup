@@ -194,7 +194,18 @@
         "test/pricing/commercePricingPolicyErrors.test.ts",
         "test/pricing/quoteContracts.test.ts",
         "test/pricing/catalogFactsProvenance.test.ts",
-        "test/pricing/commerceTaxProfileGuard.test.ts"
+        "test/pricing/commerceTaxProfileGuard.test.ts",
+        "test/pricing/dbBackedCommerceQuotePort.test.ts",
+        "test/pricing/dbBackedCommerceQuoteHelpers.test.ts",
+        "test/pricing/commerceQuoteSnapshotExpect.test.ts",
+        "test/pricing/dbBackedCommerceQuoteSnapshotVerifier.test.ts",
+        "test/pricing/commerceQuoteHandler.test.ts",
+        "test/pricing/commerceQuoteBatchHandler.test.ts",
+        "test/pricing/commerceOfferPricing.test.ts",
+        "test/pricing/commerceOfferPricingHandler.test.ts",
+        "test/pricing/commerceOfferPricingCache.test.ts",
+        "test/pricing/offerPolicyReadiness.test.ts",
+        "test/pricing/offerPricingContracts.test.ts"
       ],
       "entrypoint": "dist/pricing/index.d.ts",
       "snapshot": "api/pricing.api.md"
@@ -206,7 +217,8 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/pricing/subscriptionPricePolicy.test.ts",
-        "test/pricing/quoteContracts.test.ts"
+        "test/pricing/quoteContracts.test.ts",
+        "test/pricing/offerPricingContracts.test.ts"
       ],
       "entrypoint": "dist/pricing/contracts/index.d.ts",
       "snapshot": "api/pricing-contracts.api.md"
@@ -232,7 +244,7 @@
       "./communications/contracts": 11776,
       "./identity/contracts": 4800,
       "./catalog/contracts": 4096,
-      "./pricing/contracts": 320
+      "./pricing/contracts": 416
     }
   }
 }

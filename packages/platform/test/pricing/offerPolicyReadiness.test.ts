@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   OFFER_POLICY_V2_READINESS_CONTRACT,
   createOfferPolicyReadinessCache,
-} from "./offerPolicyReadiness.js";
+} from "../../src/pricing/index.js";
 
 const green = {
   contractVersion: OFFER_POLICY_V2_READINESS_CONTRACT,

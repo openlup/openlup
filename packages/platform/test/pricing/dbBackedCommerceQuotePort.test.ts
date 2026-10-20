@@ -1,19 +1,20 @@
+import "./neutralFixtures.js";
 import { describe, expect, it, vi } from "vitest";
-import type { CatalogReadPort } from "../../../src/domains/catalog/ports.js";
-import type { CatalogProduct } from "../../../src/domains/catalog/types.js";
-import { createQuoteResponseSchema } from "../../../src/domains/commerce/contracts.js";
+import type { CatalogReadPort } from "./catalogFixtures.js";
+import type { CatalogProduct } from "./catalogFixtures.js";
+import { createQuoteResponseSchema } from "./quoteSchemaFixtures.js";
 import {
   CommercePriceAuthorityError,
   type CommercePriceAuthorityPort,
   type PricingResolverPort,
-} from "../../../src/domains/pricing/ports.js";
-import type { ResolvedPrice, ResolvePriceQuery } from "../../../src/domains/pricing/types.js";
-import { readSettlementProfile } from "../../../src/lib/currency/platformCurrency.js";
+} from "../../src/pricing/index.js";
+import type { ResolvedPrice, ResolvePriceQuery } from "@openlup/core/pricing";
+import { readSettlementProfile } from "./neutralFixtures.js";
 import {
   createLegacyCommerceQuoteCatalogReadPort,
   type CommerceQuoteCatalogReadPort,
-} from "./commerceQuoteCatalogReadPort.js";
-import { createDbBackedCommerceQuotePort } from "./dbBackedCommerceQuotePort.js";
+} from "./catalogFixtures.js";
+import { createDbBackedCommerceQuotePort } from "./quoteEngineFixtures.js";
 
 const COVERAGE_CONSTRAINT = { kind: "feeding_days" as const, value: 21, dailyKcalOverride: 328 };
 const settlementProfile = readSettlementProfile();
@@ -68,8 +69,8 @@ describe("db backed commerce quote port", () => {
     expect(response.quote.lines[0]).toMatchObject({
       sku: "opaque:lamb-launch.v1",
       productSlug: "lamb",
-      unitPriceGross: { amountMinor: 1340, currency: "PLN" },
-      lineSubtotalGross: { amountMinor: 18760, currency: "PLN" },
+      unitPriceGross: { amountMinor: 1340, currency: "XXX" },
+      lineSubtotalGross: { amountMinor: 18760, currency: "XXX" },
     });
     expect(response.quote.lines[0].pricingComponents).toEqual([
       expect.objectContaining({ componentType: "base_unit", amountMinor: 20860 }),
@@ -154,15 +155,15 @@ describe("db backed commerce quote port", () => {
       category: "standard",
       vatRateBps: 2300,
       legalBasis: "Example VAT rule",
-      netAmount: { amountMinor: 10000, currency: "PLN" },
-      vatAmount: { amountMinor: 2300, currency: "PLN" },
-      grossAmount: { amountMinor: 12300, currency: "PLN" },
+      netAmount: { amountMinor: 10000, currency: "XXX" },
+      vatAmount: { amountMinor: 2300, currency: "XXX" },
+      grossAmount: { amountMinor: 12300, currency: "XXX" },
     });
     expect(response.quote).toMatchObject({
-      subtotalGross: { amountMinor: 12300, currency: "PLN" },
-      totalGross: { amountMinor: 12300, currency: "PLN" },
-      netTotal: { amountMinor: 10000, currency: "PLN" },
-      taxTotal: { amountMinor: 2300, currency: "PLN" },
+      subtotalGross: { amountMinor: 12300, currency: "XXX" },
+      totalGross: { amountMinor: 12300, currency: "XXX" },
+      netTotal: { amountMinor: 10000, currency: "XXX" },
+      taxTotal: { amountMinor: 2300, currency: "XXX" },
     });
   });
 
@@ -173,7 +174,7 @@ describe("db backed commerce quote port", () => {
         pricingResolverPort: createPricingResolver({}),
         taxProfile: {
           included: true,
-          country: "PL",
+          country: "ZZ",
           category: "pet_food",
           vatRateBps: 1,
           legalBasis: "Misconfigured test rate",
@@ -474,7 +475,7 @@ function catalogProduct(): CatalogProduct {
       netWeightGrams: 400,
       pricing: {
         status: "configured",
-        listPrice: { amountMinor: 1490, currency: "PLN" },
+        listPrice: { amountMinor: 1490, currency: "XXX" },
         taxCategory: "pet_food",
         externalRefs: {
           paymentProviderPriceId: null,
@@ -492,7 +493,7 @@ function catalogProduct(): CatalogProduct {
         netWeightGrams: 400,
         pricing: {
           status: "configured",
-          listPrice: { amountMinor: 1490, currency: "PLN" },
+          listPrice: { amountMinor: 1490, currency: "XXX" },
           taxCategory: "pet_food",
           externalRefs: {
             paymentProviderPriceId: null,

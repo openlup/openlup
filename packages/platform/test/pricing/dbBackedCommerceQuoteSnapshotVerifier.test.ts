@@ -1,7 +1,8 @@
+import "./neutralFixtures.js";
 import { describe, expect, it, vi } from "vitest";
-import type { CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
-import type { CommerceQuotePort } from "../../../src/domains/commerce/ports.js";
-import { createDbBackedCommerceQuoteSnapshotVerifier } from "./dbBackedCommerceQuoteSnapshotVerifier.js";
+import type { CreateQuoteResponse } from "./quoteSchemaFixtures.js";
+import type { CommerceQuotePort } from "./quoteSchemaFixtures.js";
+import { createDbBackedCommerceQuoteSnapshotVerifier } from "./snapshotFixtures.js";
 
 describe("DB-backed commerce quote snapshot verifier", () => {
   it("re-quotes with hidden context and accepts matching snapshots", async () => {
@@ -71,7 +72,7 @@ function quoteResponse(): CreateQuoteResponse {
   return {
     contractVersion: "commerce.v0" as const,
     quote: {
-      currency: "PLN" as const,
+      currency: "XXX" as const,
       taxIncluded: true as const,
       context: {
         mode: "subscription" as const,
@@ -85,26 +86,26 @@ function quoteResponse(): CreateQuoteResponse {
         sku: "opaque:lamb-launch.v1",
         productSlug: "lamb" as const,
         quantity: 14,
-        unitPriceGross: { amountMinor: 1340, currency: "PLN" as const },
-        lineSubtotalGross: { amountMinor: 18760, currency: "PLN" as const },
+        unitPriceGross: { amountMinor: 1340, currency: "XXX" as const },
+        lineSubtotalGross: { amountMinor: 18760, currency: "XXX" as const },
         tax: {
           included: true as const,
-          country: "PL" as const,
+          country: "ZZ" as const,
           category: "pet_food" as const,
           vatRateBps: 800 as const,
-          legalBasis: "PL VAT Annex 3 item 10c" as const,
-          netAmount: { amountMinor: 17370, currency: "PLN" as const },
-          vatAmount: { amountMinor: 1390, currency: "PLN" as const },
-          grossAmount: { amountMinor: 18760, currency: "PLN" as const },
+          legalBasis: "Example VAT rule" as const,
+          netAmount: { amountMinor: 17370, currency: "XXX" as const },
+          vatAmount: { amountMinor: 1390, currency: "XXX" as const },
+          grossAmount: { amountMinor: 18760, currency: "XXX" as const },
         },
       }],
       discounts: [],
       pricingComponents: [],
-      subtotalGross: { amountMinor: 18760, currency: "PLN" as const },
-      discountTotalGross: { amountMinor: 0, currency: "PLN" as const },
-      totalGross: { amountMinor: 18760, currency: "PLN" as const },
-      netTotal: { amountMinor: 17370, currency: "PLN" as const },
-      taxTotal: { amountMinor: 1390, currency: "PLN" as const },
+      subtotalGross: { amountMinor: 18760, currency: "XXX" as const },
+      discountTotalGross: { amountMinor: 0, currency: "XXX" as const },
+      totalGross: { amountMinor: 18760, currency: "XXX" as const },
+      netTotal: { amountMinor: 17370, currency: "XXX" as const },
+      taxTotal: { amountMinor: 1390, currency: "XXX" as const },
     },
   };
 }

@@ -1,33 +1,34 @@
+import "./neutralFixtures.js";
 import { describe, expect, it, vi } from "vitest";
-import type { VercelResponse } from "../../_lib/types/vercel.js";
+import type { HttpResponse as VercelResponse } from "../../src/http/index.js";
 
 import {
   COMMERCE_OFFER_PRICING_CONTRACT_VERSION,
   COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION,
   type CommerceOfferPricingResponse,
-} from "../../../src/domains/commerce/offerPricingContracts.js";
+} from "./quoteSchemaFixtures.js";
 import {
   COMMERCE_OFFER_PRICING_ASSIGNED_CACHE_CONTROL,
   COMMERCE_OFFER_PRICING_CACHE_CONTROL,
   createCommerceOfferPricingHandler,
-} from "./commerceOfferPricingHandler.js";
+} from "./handlerFixtures.js";
 
 const price = {
   productSlug: "lamb",
   unitCount: 14,
   oneTime: {
-    packageGross: { amountMinor: 20_860, currency: "PLN" },
-    unitGross: { amountMinor: 1490, currency: "PLN" },
+    packageGross: { amountMinor: 20_860, currency: "XXX" },
+    unitGross: { amountMinor: 1490, currency: "XXX" },
   },
   subscriptionInitial: {
-    packageGross: { amountMinor: 10_430, currency: "PLN" },
-    unitGross: { amountMinor: 745, currency: "PLN" },
+    packageGross: { amountMinor: 10_430, currency: "XXX" },
+    unitGross: { amountMinor: 745, currency: "XXX" },
   },
   subscriptionRecurring: {
-    packageGross: { amountMinor: 18_760, currency: "PLN" },
-    unitGross: { amountMinor: 1340, currency: "PLN" },
+    packageGross: { amountMinor: 18_760, currency: "XXX" },
+    unitGross: { amountMinor: 1340, currency: "XXX" },
   },
-  catalogAnchorUnitGross: { amountMinor: 1490, currency: "PLN" },
+  catalogAnchorUnitGross: { amountMinor: 1490, currency: "XXX" },
   initialDiscountPercent: 50,
   recurringDiscountPercent: 10,
 } as const;
@@ -108,11 +109,11 @@ describe("commerce offer pricing handler", () => {
       pricingPolicy: policy,
       products: [price], minimum: { oneTime: price, subscription: price },
       shipping: {
-        gross: { amountMinor: 1500, currency: "PLN" as const },
-        discountGross: { amountMinor: 1500, currency: "PLN" as const },
-        payable: { amountMinor: 0, currency: "PLN" as const },
+        gross: { amountMinor: 1500, currency: "XXX" as const },
+        discountGross: { amountMinor: 1500, currency: "XXX" as const },
+        payable: { amountMinor: 0, currency: "XXX" as const },
       },
-      minimumProductPayable: { amountMinor: 100, currency: "PLN" as const },
+      minimumProductPayable: { amountMinor: 100, currency: "XXX" as const },
     };
     const readOfferPricing = vi.fn(async () => v2Payload);
     const resolvePricingPolicy = vi.fn(() => policy);

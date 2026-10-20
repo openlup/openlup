@@ -88,6 +88,8 @@ export type { CommerceQuotePricingComponent, CommerceQuoteContext, CommerceQuote
 export type { QuotePromotionEvidence, CommerceCodeRejectionDetail } from "./evidence.js";
 export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "./provenance.js";
 export type { CatalogFactsProvenance } from "./provenance.js";
+export { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "./offer.js";
+export type { CommerceOfferPrice, CommerceProductOfferPricing, CommerceOfferPricingResponse } from "./offer.js";
 ```
 ## dist/pricing/contracts/money.d.ts
 
@@ -119,6 +121,52 @@ export interface CommerceTaxBreakdown extends CommerceTaxProfile {
     vatAmount: CommerceMoney;
     grossAmount: CommerceMoney;
 }
+```
+## dist/pricing/contracts/offer.d.ts
+
+```ts
+import type { CommerceMoney } from "./money.js";
+import type { PricingPolicySnapshot } from "./offerPolicy.js";
+export declare const COMMERCE_OFFER_PRICING_CONTRACT_VERSION: "commerce.offer-pricing.v1";
+export declare const COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION: "commerce.offer-pricing.v2";
+export interface CommerceOfferPrice {
+    packageGross: CommerceMoney;
+    unitGross: CommerceMoney;
+}
+export interface CommerceProductOfferPricing {
+    productSlug: string;
+    unitCount: number;
+    oneTime: CommerceOfferPrice;
+    subscriptionInitial: CommerceOfferPrice;
+    subscriptionRecurring: CommerceOfferPrice;
+    catalogAnchorUnitGross: CommerceMoney;
+    initialDiscountPercent: number;
+    recurringDiscountPercent: number;
+}
+export type CommerceOfferPricingResponse<ScopeV1 extends string = string, ScopeV2 extends string = string> = {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_CONTRACT_VERSION;
+    scope: ScopeV1;
+    products: CommerceProductOfferPricing[];
+    minimum: {
+        oneTime: CommerceProductOfferPricing;
+        subscription: CommerceProductOfferPricing;
+    };
+} | {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION;
+    scope: ScopeV2;
+    products: CommerceProductOfferPricing[];
+    minimum: {
+        oneTime: CommerceProductOfferPricing;
+        subscription: CommerceProductOfferPricing;
+    };
+    pricingPolicy: PricingPolicySnapshot;
+    shipping: {
+        gross: CommerceMoney;
+        discountGross: CommerceMoney;
+        payable: CommerceMoney;
+    };
+    minimumProductPayable: CommerceMoney;
+};
 ```
 ## dist/pricing/contracts/offerPolicy.d.ts
 

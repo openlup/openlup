@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createCommerceQuoteSchemas, createCommerceQuotePrimitives, CommerceQuoteError,
   CommerceQuoteCatalogReadError, quoteDiscountSchema as packageDiscount, catalogFactsProvenanceSchema as packageFacts,
   quoteCodeRejectionDetailSchema as packageDetail } from "@openlup/platform/pricing";
@@ -45,4 +45,25 @@ describe("quote foundation reference bindings", () => {
       expect(outcome(commerceQuoteSchema, value)).toEqual(outcome(bound.commerceQuoteSchema, value));
     }
   });
+});
+
+it("keeps the observed request reference on all three handler bindings", async () => {
+  const { createCommerceQuoteHandler } = await import("./commerceQuoteHandler.js");
+  const { createCommerceQuoteBatchHandler } = await import("./commerceQuoteBatchHandler.js");
+  const { createCommerceOfferPricingHandler } = await import("./commerceOfferPricingHandler.js");
+  const { installObservedRequestContext } = await import("../../_lib/observability/requestContext.js");
+  const { BFF_REQUEST_REFERENCE_HEADER } = await import("@openlup/platform/bff");
+  const quotePort = { createQuote: vi.fn() };
+  for (const handler of [createCommerceQuoteHandler({ quotePort }),
+    createCommerceQuoteBatchHandler({ quotePort }),
+    createCommerceOfferPricingHandler({ readOfferPricing: vi.fn() })]) {
+    const req = { method: "OPTIONS", headers: {}, query: {} } as Parameters<typeof handler>[0];
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn() } as unknown as Parameters<typeof handler>[1];
+    vi.mocked(res.status).mockReturnValue(res);
+    const context = installObservedRequestContext(req, res);
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(405);
+    expect(res.setHeader).toHaveBeenCalledWith(BFF_REQUEST_REFERENCE_HEADER, context.requestId);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ meta: { requestId: context.requestId } }));
+  }
 });

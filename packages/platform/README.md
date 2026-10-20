@@ -25,8 +25,8 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
-| `./pricing` | Experimental strict price authority, subscription policy schemas/math, assignment tokens and refusal mapping |
-| `./pricing/contracts` | Dependency-free authority/policy DTOs and version constants |
+| `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
+| `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 
 ## Pricing
 
@@ -60,14 +60,31 @@ server compatibility paths export the same error classes and provenance/tax func
 The portable schema counterparts stay server-side; binding tests compare their
 results and diagnostics with browser validation.
 
+`createDbBackedCommerceQuotePort` owns the existing quote computation and price,
+tax and component helpers. Hosts supply bounded catalog/price reads, settlement
+values, a flat shipping read, promotion application and context callbacks. The
+reference binds `getShippingFlatMinor`, industry context and existing promotion
+implementation. Shipping is read before promotion application; the original VAT
+helper and both discount lanes are preserved. Snapshot comparison accepts injected
+response validation and request reconstruction, so rich context stays local.
+
+Quote, ordered batch and offer handlers take the host's schemas and BFF responder;
+the reference binds its observed request context. Their error identities, refusal
+mapping, promotion acceptance/fallback and public evidence refusal are unchanged.
+Offer projection requires roster, representative-request, unit-count, floor and
+wire-scope policy. It retains v1/v2 responses, partial degradation only for a
+missing configured price, and the first successfully priced representative.
+The offer cache bounds success freshness from load start and retains its separate
+failure TTL; readiness keeps its 60-second positive and 5-second negative caps.
+No acquisition selection, threshold shipping, promotion implementation, store,
+SQL descriptor, migration, route or activation is added.
+
 The package witnesses in `test/pricing/` move the incumbent authority, policy,
-token, error-mapping, quote-equation, provenance and tax-guard assertions.
-Reference composition and rich catalog-adapter tests remain in the application.
-The existing cold consumer imports both pricing entries, exercises quote validation
-and tax refusal, and compiles installed declarations without optional provider peers.
-DB quote computation, snapshots, handlers, offer projection, readiness and settings
-remain reference-owned in this part. No store, SQL descriptor, migration, route,
-acquisition selection or activation is added.
+token, quote, snapshot, handler, offer, cache and readiness assertions. Currency
+fixtures use synthetic identifiers while preserving the same arithmetic and
+refusals. Reference schemas, rich catalog/context policy and composition remain
+in the application. The existing cold consumer exercises both entries and
+compiles installed declarations without optional provider peers.
 
 ## Catalog
 
