@@ -52,7 +52,9 @@ code reads `shipping_rules`; the table exists (migration
 `ShippingRule`); a deployment-only seed script adds two rules for local and
 verify runs. A live quote instead prices shipping as a **flat per-order gross**
 read from `commerce_settings`
-(`getShippingFlatMinor`, `server/domains/commerce/dbBackedCommerceQuotePort.ts`),
+(`getShippingFlatMinor`, injected by the reference wrapper
+`server/domains/commerce/dbBackedCommerceQuotePort.ts` into
+`packages/platform/src/pricing/dbBackedCommerceQuotePort.ts`),
 resolved before promotions so a shipping-lane discount has a real amount to
 zero. Discounts are then summed in two independent lanes — shipping and
 everything else — and the quote validates them separately. Operators change the
