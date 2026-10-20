@@ -153,6 +153,14 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+The subscription reference's closed browser import inventory includes exactly
+`pricing/contracts/index.js`, `offerPolicy.js` and `policy.js` from the emitted
+platform package. Its retained browser policy schemas consume those version
+constants through the package entry; schema validation and wire pairing remain
+unchanged. The inventory admits no pricing server entry, token crypto, readiness
+or secret configuration. [The pricing package](../../packages/platform/README.md#pricing)
+owns the extracted authority and DTOs.
+
 The communications import inventory grants first-party browser imports only to
 the explicitly selected disposable profile. It does not change ordinary public
 mutation/webhook admission, deployment routes or default clocks. Native diagnostics

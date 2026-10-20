@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "identity/contracts", "communications/contracts"] as const;
+export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "identity/contracts", "communications/contracts"] as const;
 // identity and communications are adapter entries: its PostgreSQL profile adapter declares the data entry's pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger", "identity", "communications"] as const;
@@ -541,6 +541,18 @@ assert.deepEqual(catalog.parseCatalogActiveSkuSelection([" ITEM-1 "]), ["ITEM-1"
 assert.throws(() => catalog.parseCatalogActiveSkuSelection(["ITEM-1", " ITEM-1 "]), /catalog_active_sku_selection_invalid/);
 const handler = catalog.createCatalogDraftHandler({ store: {}, registry: {}, authorizeOperator: async () => null });
 assert.deepEqual(await handler.execute({}, {}), { outcome: "unauthorized", reason: "draft_operator_required" });
+`);
+    consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as pricing from "@openlup/platform/pricing";
+import * as contracts from "@openlup/platform/pricing/contracts";
+assert.equal(pricing.OFFER_POLICY_V2, contracts.OFFER_POLICY_V2);
+assert.equal(pricing.deriveSubscriptionUnitPrice(1490, { discountBps: 1000, roundingQuantumMinor: 10, roundingRule: "FLOOR_TO_QUANTUM" }), 1340);
+assert.equal("createPricingPolicyToken" in contracts, false);
+assert.equal("subscriptionPricePolicyRevisionSchema" in contracts, false);
+assert.throws(() => pricing.pricingPolicySnapshotSchema.parse({ offerPolicyVersion: contracts.OFFER_POLICY_V1, promotionEngineVersion: contracts.PROMOTION_ENGINE_V2 }));
+const authority = pricing.createCommercePriceAuthorityPort({ listPriceLists: async () => [] });
+await assert.rejects(authority.resolvePrice({ variantId: "item", mode: "one_time", regionCode: "AA", currency: "XXX", channel: "test", atTime: "2026-09-09T00:00:00.000Z" }), error => error instanceof pricing.CommercePriceAuthorityError && error.code === "active_price_list_not_found");
 `);
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);

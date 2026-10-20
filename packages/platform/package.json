@@ -125,6 +125,16 @@
       "types": "./dist/catalog/contracts/index.d.ts",
       "import": "./dist/catalog/contracts/index.js",
       "default": "./dist/catalog/contracts/index.js"
+    },
+    "./pricing": {
+      "types": "./dist/pricing/index.d.ts",
+      "import": "./dist/pricing/index.js",
+      "default": "./dist/pricing/index.js"
+    },
+    "./pricing/contracts": {
+      "types": "./dist/pricing/contracts/index.d.ts",
+      "import": "./dist/pricing/contracts/index.js",
+      "default": "./dist/pricing/contracts/index.js"
     }
   },
   "repository": {

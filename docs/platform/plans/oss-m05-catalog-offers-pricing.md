@@ -59,6 +59,24 @@ later P7/P4 work. P1 preserves reference preview/proposal responses, canonicaliz
 portability and SKU-pack refusal behaviour. Executable lifecycle administration
 and publication require a separate bounded plan and activation decision.
 
+## P2a
+
+Cut: `@openlup/platform/pricing` and `./pricing/contracts` own the existing
+price authority, subscription price policy, pricing-policy token, neutral error
+mapping and offer-policy constants/types. Browser schemas and flag, secret and
+readiness composition remain reference-owned.
+
+Preserved OpenLup behaviour: authority reads remain sequential, base before
+history; an invalid base prevents history lookup and retains refusal precedence.
+History lookup uses the validated `base.priceListId`, including malformed-adapter
+observations, rather than substituting the selected-list identity.
+
+Tests: **25 moved, 3 new**. After C1's 34, P1's 5 and P2a's 3 new cases,
+the programme balance is **58 of 100**; generated boundary iterations remain
+separate.
+
+P2a measured: pending committed gates
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected

@@ -181,6 +181,31 @@
       ],
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"
+    },
+    "./pricing": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/pricing/commercePriceAuthority.test.ts",
+        "test/pricing/subscriptionPricePolicy.test.ts",
+        "test/pricing/pricingPolicyToken.test.ts",
+        "test/pricing/commercePricingPolicyErrors.test.ts"
+      ],
+      "entrypoint": "dist/pricing/index.d.ts",
+      "snapshot": "api/pricing.api.md"
+    },
+    "./pricing/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/pricing/subscriptionPricePolicy.test.ts"
+      ],
+      "entrypoint": "dist/pricing/contracts/index.d.ts",
+      "snapshot": "api/pricing-contracts.api.md"
     }
   },
   "pack": {
@@ -202,7 +227,8 @@
     "browserEntries": {
       "./communications/contracts": 11776,
       "./identity/contracts": 4800,
-      "./catalog/contracts": 4096
+      "./catalog/contracts": 4096,
+      "./pricing/contracts": 320
     }
   }
 }

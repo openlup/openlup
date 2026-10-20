@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createCommercePriceAuthorityPort, type CommercePriceAuthorityReadPort, type TimedAuthorityValue } from "./commercePriceAuthority.js";
-import { type CommercePriceAuthorityQuery } from "./ports.js";
-import { digestSubscriptionPricePolicy } from "./subscriptionPricePolicy.js";
-import type { ResolvedPrice } from "./types.js";
+import { createCommercePriceAuthorityPort, type CommercePriceAuthorityReadPort, type TimedAuthorityValue } from "../../src/pricing/index.js";
+import { type CommercePriceAuthorityQuery } from "../../src/pricing/index.js";
+import { digestSubscriptionPricePolicy } from "../../src/pricing/index.js";
+import type { ResolvedPrice } from "@openlup/core/pricing";
 
 const LIST_ID = "00000000-0000-4000-8000-000000000001";
 const NOW = "2026-09-09T10:00:00.000Z";
@@ -109,5 +109,34 @@ describe("strict commerce price authority", () => {
     const failure = new Error("read unavailable");
     const authority = createCommercePriceAuthorityPort(reads({ listPriceLists: async () => { throw failure; } }));
     await expect(authority.resolvePrice(QUERY)).rejects.toBe(failure);
+  });
+});
+
+describe("OpenLup authority read ordering", () => {
+  it("validates the base before starting history and preserves the base refusal", async () => {
+    const listSubscriptionPolicyHistory = vi.fn(async () => { throw new Error("history unavailable"); });
+    let settleBase!: (value: ReadonlyArray<TimedAuthorityValue<ResolvedPrice>>) => void;
+    const baseRead = new Promise<ReadonlyArray<TimedAuthorityValue<ResolvedPrice>>>((resolve) => { settleBase = resolve; });
+    const listExactBaseEntries = vi.fn(() => baseRead);
+    const authority = createCommercePriceAuthorityPort(reads({ listExactBaseEntries, listSubscriptionPolicyHistory }));
+    const resolution = authority.resolvePrice(QUERY);
+    await vi.waitFor(() => expect(listExactBaseEntries).toHaveBeenCalledOnce());
+    expect(listSubscriptionPolicyHistory).not.toHaveBeenCalled();
+    settleBase([]);
+    await expect(resolution).rejects.toMatchObject({ code: "base_price_not_found" });
+    expect(listSubscriptionPolicyHistory).not.toHaveBeenCalled();
+  });
+
+  it("queries history using the observed base identity and propagates its raw read failure", async () => {
+    const failure = new Error("history unavailable");
+    const listSubscriptionPolicyHistory = vi.fn(async () => { throw failure; });
+    const authority = createCommercePriceAuthorityPort(reads({
+      listExactBaseEntries: async () => [timed({ ...BASE, priceListId: "observed-list" })],
+      listSubscriptionPolicyHistory,
+    }));
+    await expect(authority.resolvePrice(QUERY)).rejects.toBe(failure);
+    expect(listSubscriptionPolicyHistory).toHaveBeenCalledWith({
+      priceListId: "observed-list", regionCode: QUERY.regionCode, currency: QUERY.currency, channel: QUERY.channel,
+    });
   });
 });

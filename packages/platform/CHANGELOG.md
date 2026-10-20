@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental `./pricing` and `./pricing/contracts` entries by moving the existing OpenLup authority, subscription policy, assignment token and refusal mapping unchanged. Named reference exports preserve identity; browser schemas and feature-flag/secret/readiness composition remain local. Quote, offer and acquisition behavior remains for later P2 parts.
+
 - Add experimental `catalog` and dependency-free `catalog/contracts` entries by
   moving the existing public neutral foundation, product types, draft logic,
   read ports and projections unchanged. Reference paths delegate; browser
