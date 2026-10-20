@@ -377,12 +377,15 @@ reservation and shipping-handler exclusions remain intact; no communications
 integration is introduced. Existing D8, bundle parity and P6 obligations stay open
 as recorded below and above.
 
-Final diff versus `34eaffb3a734fec44b481323aac169e078e3d67c`:
-**21/35 production/tooling paths**, comprising 19 reference source paths and two
-generated JSON companions. Tests and prose are excluded from this path count.
+Merged HEAD `8aa75ec8fc40a11011fdf8e68cd20bd7eaf4b102`, diff versus fork point
+`b47f5f3b1180aa9c6cdff3f3244f0f6675c2b010`:
+**20/35 production/tooling paths**, comprising 19 reference source paths and one
+publication catalogue JSON companion. The 30 changed paths also include five
+test files and five prose files, excluded from this path count. The committed
+source-release contract matches main and is not part of the P5 delta.
 **12 new executed cases** consume the coordinator's supplied post-extraction
-planning balance **17 → 5**; this is not a claim that the separate extraction
-has landed in this checkout. The allocation is currency 2 (both normal/fallback
+planning balance **17 → 5**. P5 leaves **5** for P7; the planned P7 allocation
+consumes **5 → 0**. The allocation is currency 2 (both normal/fallback
 tables in one case, exponent refusal in one), promotion parity/browser closure 3,
 W6 4 and SSR/locale/lifecycle 3. The existing D8, bundle parity and P6 rows are
 unchanged.
@@ -392,11 +395,15 @@ Collection on the final source: subscribe entry model **8**, promotion binding
 DOM **2**. All are in existing include globs: Node `src/**/*.{test,spec}.ts` and
 `tests/platform/**/*.{test,spec}.ts`, DOM `src/**/*.{test,spec}.tsx`; the builder
 Node path explicitly selects the DOM environment for actual persistence. The
-full focused selection collected and passed **19 files / 122 cases**. Existing
+slot-time focused selection passed **21 files / 153 cases** (19 files / 134
+cases, plus two direct promotion handler suites / 19 cases), with two workers.
+All five changed test files were explicitly listed: **5 files / 19 cases**,
+including the three new files / seven cases. Existing
 client, document panel, bundle helper, quote/cache, draft, subscribe journey,
 product FAQ/support, reference-store and public-entry SSR guards remain intact.
 
-The existing browser measurement helper reports **22,007 B** for the promotion
+At merged HEAD `8aa75ec8`, the existing browser measurement helper reports
+**22,007 B** for the promotion
 client, **20,610 B** for the code client and **43,459 B** for the opt-in reference
 routes (minified+gzip, including their runtime closures). Replacing only the two
 schema inputs with their baseline versions makes browser bundling refuse Node
@@ -404,21 +411,40 @@ built-ins; a comparable baseline browser-byte total is therefore unavailable.
 These are application measurements, not package-entry limits. No package or
 browser budget change is requested.
 
-Working-tree pretest, structural scan, lint, typecheck, static and subscription
-builds, focused tests, collection and diff whitespace checks pass. Lint retains
-existing warnings. Build outputs were removed. Root neutrality has zero increases
-against the assigned base; its default moving-main comparison also reports an
-unrelated shipping-evidence difference. The publication catalogue and source
-contract were regenerated with their existing generators. The materialized
-candidate passes inventory, contract, navigation and all four documentation
-impact obligations. The index-based policy command refuses the new untracked
-paths until the supervisor stages them, as this implementation grant forbids Git
-writes; committed-candidate policy/native review remain supervisor obligations.
+Cold platform pack at merged HEAD `8aa75ec8`: **1,134 files / 1,110 code files /
+734,526 packed B / 3,320,052 unpacked B / 621,446 code gzip B**; root docs
+**38,785 gzip B / 5 files**. All three package artifacts pass existing caps and
+content checks; no package file, cap or baseline changes in P5.
+
+Slot-time structural scan, lint, all five typecheck projects (including tests),
+static and subscription builds, focused tests, collection and P5-scoped diff
+whitespace checks pass. Lint reports zero errors and 33 warnings. Cold packing,
+all three API snapshot checks and all three installed consumers pass, including
+disposable PostgreSQL proofs. Core smoke types, documentation and release checks
+also pass. Broad tests and coverage were excluded by the slot-time grant; the
+aggregate package runner was not invoked because it includes coverage. These
+focused results do not claim that aggregate gate. Two default-cache attempts
+failed on a local write restriction; reruns using a task-owned cache passed.
+
+The publication catalogue covers all 30 P5 paths with no missing or stale rows;
+policy and inventory pass across 5,392 public paths. Navigation regeneration
+produces no delta, and all four documentation impact obligations are answered.
+The source-release snapshot remains unchanged under the current release flow;
+checks validate computed bindings and report its stale aggregate snapshot as
+expected. P5 changes no package changelog or fragment. Root neutrality reports
+zero increases against the fork point; UI neutrality also passes. All five
+commits, including the merge, carry DCO sign-off. Task-created untracked build
+directories were removed. The only repository edit from this slot-time pass is
+this ledger; commits, native candidate review and delivery remain supervisor
+obligations.
 
 Self-retro: checking actual legacy renderer fields caught incorrect new fixture
 assumptions before handoff. Use rendered composition cards and FAQ/supplement
 facts to test the supplied-details seam; keep the finite case allocation rather
-than adding a second harness or new runner. No successor work is opened.
+than adding a second harness or new runner. Slot-time lesson: a default cache
+write restriction caused two failed attempts; a task-owned cache preserved the
+existing checks without a repository or host configuration change. No successor
+work is opened.
 
 ## Witness ledger
 
