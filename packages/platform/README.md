@@ -732,8 +732,10 @@ The maintained mail transport, credentials, callback verification/mapping,
 poll read/mapping, timeline and send-ledger adapters remain in reference source.
 B1 changes only the four raw-injection guard sites in the reference delivery
 adapters and the approved invoice test fixture; the concrete client and all
-other vendor-directory files retain the comparison-base bytes. The package exposes
-transport/result contracts and capture without a concrete mail factory.
+other vendor-directory files retain the comparison-base bytes. The neutral
+`./communications` entry exposes transport/result contracts and capture without
+concrete mail wiring. The platform ships opt-in vendor adapter subpaths;
+default wiring includes none, and adopters choose or replace them.
 The type-only `CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>`
 accept host vocabulary; reference types retain their original literal.
 
@@ -743,8 +745,9 @@ whole decision and enters the sender only for a coherent `production`,
 `sandbox_direct` or `sandbox_sink` decision. The sender receives the effective
 recipient and a frozen context with intended recipient, host-selected credential,
 mode, reason and environment tag. It must consume that context when selecting
-credentials and emitting provider metadata. The package reads no environment and
-contains no provider client. Missing/throwing policy, unknown modes, mismatched
+credentials and emitting provider metadata. The neutral entry reads no environment
+and contains no provider client. Opt-in adapters consume this same guard and
+host-selected context. Missing/throwing policy, unknown modes, mismatched
 recipients/tags, blank credentials or unsupported fields fail with status zero,
 no identifier and bounded error codes. Reasons are lower-case token codes up to
 80 characters. One unadorned `local@domain.example` recipient mailbox is required;

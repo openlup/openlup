@@ -2202,6 +2202,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-resend.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications.api.md",
       "class": "public-output"
     },
@@ -2903,6 +2907,10 @@
     },
     {
       "path": "packages/platform/src/communications/publicPreferenceToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resend/index.ts",
       "class": "public-output"
     },
     {
@@ -3863,6 +3871,14 @@
     },
     {
       "path": "packages/platform/test/communications/nativeSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/resend/egress.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/resend/protocol.test.ts",
       "class": "public-output"
     },
     {

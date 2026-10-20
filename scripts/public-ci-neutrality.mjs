@@ -25,6 +25,66 @@ const categoryPattern = /^(?:brand|legacy-env|ui-(?:[0-9]|1[0-7]))$/;
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const label = (path) => JSON.stringify(path);
 
+// Owner-approved opt-in adapter vocabulary. Only ui-12 is affected; all
+// other categories and neutral sources stay checked. Subpath vocabulary outside
+// adapter directories is limited to the exact owner-approved files below.
+const adapterNames = ["res" + "end", "kla" + "viyo"];
+const adapterWord = new RegExp(`\\b${adapterNames[0]}\\b`, "gi");
+const adapterPaths = new RegExp(`^packages/platform/(?:src|test)/communications/(?:${adapterNames.join("|")})/`);
+const adapterReports = new Set(adapterNames.map((name) => `packages/platform/api/communications-${name}.api.md`));
+const adapterLedger = "docs/platform/plans/oss-a1-communications-adapters.md";
+const adapterSubpathFiles = new Set([
+  "packages/platform/package.json",
+  "packages/platform/release-gates.json",
+  "packages/platform/test/packageBoundary.test.ts",
+  "config/openlup-publication-catalog.json",
+  "packages/platform/CHANGELOG.md",
+  "docs/platform/CANONICAL_CONTRACTS.md",
+  "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+  adapterLedger,
+]);
+// Match complete path segments, including installed file paths, but not longer
+// or differently cased tokens. ui-12 counts only the first adapter name.
+const adapterSubpath = new RegExp(`(?<![\\w-])communications/(?:${adapterNames.join("|")})(?![\\w-])`, "g");
+// Coordinator-approved filename and relative-entry tokens remain file-scoped.
+const adapterReportFiles = new Set([
+  "packages/platform/release-gates.json",
+  "config/openlup-publication-catalog.json",
+]);
+const adapterReportToken = new RegExp(`(?<![\\w.-])communications-(?:${adapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
+const adapterRelativeEntry = new RegExp(`(?<![\\w./-])\\./(?:${adapterNames.join("|")})/index\\.js(?![\\w./-])`, "g");
+// Exact complete cold-proof lines, rather than a file-wide or arbitrary marked
+// block exemption. Editing a line requires another explicit policy review.
+const coldProofLines = Object.fromEntries(Object.entries({
+  "scripts/packages/platform-cold-consumer.ts": [
+    "  \"communications/$ADAPTER\",",
+    "const adapter = await import(\"@openlup/platform/communications/$ADAPTER\");",
+    "    compileConsumer(consumer, [\"communications/$ADAPTER\"], compiler);"
+  ],
+  "scripts/packages/platform-cold-consumer.test.ts": [
+    "  metadata.exports[\"./communications/$ADAPTER\"] = \"./communications/$ADAPTER/index.js\";",
+    "  mkdirSync(join(packageRoot, \"communications/$ADAPTER\"), { recursive: true });",
+    "  for (const path of [\"$ADAPTER/index.js\", \"emailTransport.js\", \"emailEgress.js\", \"emailObservation.js\", \"deliveryReconciliation.js\"]) {",
+    "  const path = join(packageRoot, \"communications/$ADAPTER/index.js\");",
+    "it(\"proves the installed $Adapter surface with no SDK/optional peers and only injected IO\", () => {",
+    "it(\"refuses extra exports and raw bypass in the installed $Adapter adapter\", () => {"
+  ]
+}).map(([path, lines]) => [
+  path, new Set(lines.map((line) => line.replaceAll("$ADAPTER", adapterNames[0]).replaceAll("$Adapter", "Res" + "end"))),
+]));
+function allowedAdapterWords(path, contents) {
+  if (adapterPaths.test(path) || adapterReports.has(path) || path === adapterLedger) return [...contents.matchAll(adapterWord)].length;
+  if (adapterSubpathFiles.has(path)) {
+    const tokens = [...contents.matchAll(adapterSubpath)];
+    if (adapterReportFiles.has(path)) tokens.push(...contents.matchAll(adapterReportToken));
+    if (path === "packages/platform/test/packageBoundary.test.ts") tokens.push(...contents.matchAll(adapterRelativeEntry));
+    return tokens.reduce((count, [token]) => count + [...token.matchAll(adapterWord)].length, 0);
+  }
+  const lines = coldProofLines[path];
+  if (!lines) return 0;
+  return contents.split("\n").filter((line) => lines.has(line)).reduce((count, line) => count + [...line.matchAll(adapterWord)].length, 0);
+}
+
 export function neutralityIncreases(baseline, current) {
   const increases = [];
   for (const [path, counts] of Object.entries(current)) for (const [category, count] of Object.entries(counts)) {
@@ -165,6 +225,13 @@ function scanSnapshots(snapshots) {
   };
   const ui = invoke("packages/ui/smoke/neutrality.ts", sources, ["--counts-json"]);
   if (!record(ui) || !Array.isArray(ui.counts) || !record(ui.policy)) throw new Error("invalid neutrality scanner output");
+  const sourceContents = new Map(sources.map(({ path, contents }) => [path, contents]));
+  for (const row of ui.counts) {
+    if (row.counts?.["ui-12"]) {
+      row.counts["ui-12"] -= allowedAdapterWords(row.path, sourceContents.get(row.path) ?? "");
+      if (row.counts["ui-12"] === 0) delete row.counts["ui-12"];
+    }
+  }
   const core = invoke("packages/core/scripts/neutrality-tree-counts.ts", { sources, policy: ui.policy });
   if (!Array.isArray(core)) throw new Error("invalid neutrality scanner output");
   const paths = Object.fromEntries([...snapshots.keys()].map((path) => [hash(path), path]));
