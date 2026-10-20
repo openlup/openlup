@@ -24,7 +24,7 @@ marketing lifecycle semantics and the
 host composition. P2 owns the Klaviyo factory and private construction; P3 owns
 consumer composition. C-PR1b supplies the neutral consent-push contract; P2 owns
 its real-adapter implementation and evidence.
-P2 inherits immediate withdrawal despite grant-caused fences/quarantine, preserving same-key withdrawal fences and account-level cooling (`retryable/cooling` with finite `afterSeconds`).
+P2 inherits immediate withdrawal despite this subject's grant-caused fences/quarantine, preserving same-key withdrawal fences and account-level cooling (`retryable/cooling` with finite `afterSeconds`).
 Versioning, private adoption, production activation and account certification are
 separate outcomes. No default sender, callback, route, schedule or recovery send
 is installed by these surfaces.
@@ -247,8 +247,8 @@ list relationship. Jobs receive no historical-import flag, consent timestamp,
 SMS/push/tracking consent or local evidence reference. No flow, campaign,
 sender, import, suppression-management or account-sweep endpoint is called.
 
-A withdrawal bypasses per-subject fences and quarantine caused by an earlier
-unsettled grant, including ambiguous acceptance, failed recording, unresolved
+A withdrawal bypasses per-subject fences and quarantine caused by this subject's
+earlier unsettled grants, including ambiguous acceptance, failed recording, unresolved
 dispatch and partial persistence. It still respects its own same-key replay fence
 and account-level provider cooling (`retryable/cooling` with finite `afterSeconds`),
 including observed cooldowns whose persistence failed. The shared availability
@@ -257,8 +257,11 @@ A private in-memory cause record on the shared availability identity also
 retains a failed grant admission when no grant journal bytes survived; its key
 keeps settlement unresolved until host reconciliation. It disappears on host
 restart, when availability starts closed for explicit reconciliation.
-Grant uncertainty does not reopen the account for other operations; unrelated
-host quarantine still requires explicit host repair. Its success carries
+Another subject's uncertain entry cannot hold this subject's withdrawal. Known
+grant-caused availability quarantine is bypassable by withdrawals across subjects;
+provider cooling still applies to everyone. Grant uncertainty does not reopen the
+account for other operations; unclassified host quarantine still requires explicit
+host repair. Its success carries
 `reconcileRequired:true`; failed withdrawal recording preserves acknowledgement
 with `journal:"unknown"`. Grants remain restricted during unconfirmed
 withdrawal. Pre-settlement or incomplete reads retain UNKNOWN. The host's

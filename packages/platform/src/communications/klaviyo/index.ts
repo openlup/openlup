@@ -258,17 +258,16 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
       return "saved";
     } catch { await quarantineAccount(affectedKey); return "uncertain"; }
   }
-  // Only known grant uncertainty may be bypassed. Keep quarantine sticky for
-  // other operations, and keep unrelated host faults closed until host repair.
+  // Only this subject's uncertain entries constrain its withdrawal. Known grant
+  // quarantine is bypassable across subjects; unclassified host faults stay closed.
   function bypassGrantFence(r: Request, ledger: Ledger): boolean {
     if (r.operation !== "consent.push" || r.payload.action !== "withdraw") return false;
-    const uncertain = Object.entries(ledger.entries).filter(([key]) => key !== keyOf(r)).map(([, e]) => e).filter(e => e.phase !== "settled" ||
+    const uncertain = Object.entries(ledger.entries).filter(([key, e]) => key !== keyOf(r) && subjectKey(e.request) === subjectKey(r)).map(([, e]) => e).filter(e => e.phase !== "settled" ||
       e.result?.kind === "unknown" || e.result && "journal" in e.result && e.result.journal === "unknown");
     const causes = grantQuarantines.get(availability);
     if ((quarantine || availability.quarantined) && !causes?.size) return false;
-    return (uncertain.length > 0 || !!causes?.size) && (!causes || [...causes.values()].every(owner => owner === subjectKey(r))) &&
-      uncertain.every(e => subjectKey(e.request) === subjectKey(r) &&
-      e.request.operation === "consent.push" && e.request.payload.action === "grant");
+    return (uncertain.length > 0 || !!causes?.size) &&
+      uncertain.every(e => e.request.operation === "consent.push" && e.request.payload.action === "grant");
   }
   async function releaseSlot(r?: Request): Promise<boolean> {
     try {

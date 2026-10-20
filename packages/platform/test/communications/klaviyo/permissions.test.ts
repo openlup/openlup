@@ -1,10 +1,33 @@
 import { afterAll, beforeAll, expect } from "vitest";
-import { assertGrantEffectControls, conformanceCase } from "../helpers/marketingSyncConformance.js";
+import { assertGrantEffectControls, assertMultiSubjectWithdrawal, conformanceCase } from "../helpers/marketingSyncConformance.js";
 import { binding, cleanupPlants, fixture, planted, preparePlants, pushRequest, request, withdraw } from "./harness.js";
 
-const names = ["missing-ref", "binding", "generation", "generation-key", "lost-admission", "push-completed", "unverified", "no-trigger", "suppression-clearing", "global-widening", "hide-race", "pending-withdrawal", "skip-withdrawal", "early-read", "body-import", "flow-endpoint", "import-endpoint", "suppression-endpoint", "extra-profile", "extra-payload-keys", "grant-fenced-withdrawal", "cooldown", "withdraw-as-grant", "old-grant-start", "delay-withdrawal", "withdraw-redispatch", "substituted-authority", "remote-grant", "broadened-grant", "suppression-present", "suppression-unknown", "suppression-at-effect", "rejected-job"];
+const names = ["missing-ref", "binding", "generation", "generation-key", "lost-admission", "push-completed", "unverified", "no-trigger", "suppression-clearing", "global-widening", "hide-race", "pending-withdrawal", "skip-withdrawal", "early-read", "body-import", "flow-endpoint", "import-endpoint", "suppression-endpoint", "extra-profile", "extra-payload-keys", "grant-fenced-withdrawal", "cooldown", "withdraw-as-grant", "old-grant-start", "delay-withdrawal", "withdraw-redispatch", "substituted-authority", "remote-grant", "broadened-grant", "suppression-present", "suppression-unknown", "suppression-at-effect", "rejected-job", "account-wide-uncertain-scan"];
 beforeAll(() => preparePlants(names)); afterAll(cleanupPlants);
 const row = (id: string, plants: string[], scenario: (h: ReturnType<typeof planted>, plant: string) => Promise<void>) => conformanceCase(id, plants, scenario, planted);
+const multiSubject = (factory: ReturnType<typeof planted>["factory"], label: string) => assertMultiSubjectWithdrawal(async cooling => {
+  const f = fixture(factory), other = { ...f.state.subject, subjectReference: "subject:A", id: "owned_A", email: "other@example.invalid", externalReference: "local:A" };
+  const projection = { ...request("profile.sync").payload.projection, email: other.email, externalReference: other.externalReference };
+  f.config.subjectMapper = ref => ref === "subject:A" ? other : ref === "subject:1" ? f.state.subject : undefined;
+  f.authorizations.set("authorization:profile:A", { ...f.authorizations.get("authorization:profile.sync")!, subjectReference: "subject:A" });
+  f.localEvidence.set("local-consent:A", { ...f.localEvidence.get("local-consent:1")!, subjectReference: "subject:A", projection });
+  if (cooling) expect(await f.provider.consentPush.push(pushRequest()), `${label}/multi-subject unsettled grant`).toMatchObject({ kind: "acknowledged" });
+  f.state.fault = (url, init) => init.method === "GET" && url.includes("/owned_A?") ? Response.json({ data: { ...f.state.remote.data, id: other.id,
+    attributes: { ...f.state.remote.data.attributes, email: other.email, external_id: other.externalReference } } }) :
+    init.method === "PATCH" ? new Response(null, { status: cooling ? 429 : 500, headers: { "Retry-After": "60" } }) : undefined;
+  const profile = request("profile.sync", { subjectReference: "subject:A", authorizationReference: "authorization:profile:A",
+    payload: { projection, consentEvidenceReference: "local-consent:A" } });
+  expect(await f.rebuild().profiles.sync(profile), `${label}/multi-subject unrelated profile`).toMatchObject(
+    cooling ? { kind: "retryable", reason: "cooling" } : { kind: "unknown", reason: "acceptance_ambiguous" });
+  f.state.fault = undefined;
+  if (!cooling) {
+    let once = true;
+    f.state.storageFault = (phase, next) => { if (once && phase === "cas" && next?.includes('"kind":"acknowledged"')) { once = false; return "false"; } };
+    expect(await f.rebuild().consentPush.push(pushRequest()), `${label}/multi-subject grant journal unknown`).toMatchObject({ kind: "acknowledged", journal: "unknown" });
+    f.state.storageFault = undefined;
+  }
+  return { withdraw: () => f.rebuild().consentPush.push(withdraw()), effects: f.effects };
+}, label);
 row("CP01", ["missing-ref", "substituted-authority", "remote-grant", "broadened-grant"], async (h, plant) => {
   if (plant === "missing-ref") {
     expect(await h.provider.consentPush.push(pushRequest({ payload: { action: "grant", consentEvidenceReference: "" } })), "CP01/missing-ref").toMatchObject({ kind: "refused", reason: "invalid_request" });
@@ -93,7 +116,8 @@ row("CP03", ["binding", "generation", "generation-key", "lost-admission", "push-
     }
   }
 });
-row("CP04", ["hide-race", "pending-withdrawal", "skip-withdrawal", "early-read", "withdraw-as-grant", "old-grant-start", "delay-withdrawal"], async (h, plant) => {
+row("CP04", ["hide-race", "pending-withdrawal", "skip-withdrawal", "early-read", "withdraw-as-grant", "old-grant-start", "delay-withdrawal", "account-wide-uncertain-scan"], async (h, plant) => {
+  await multiSubject(h.factory, `CP04/${plant}`);
   if (plant === "skip-withdrawal") h.state.fault = (_url, init) => init.method === "POST" ? new Response(null, { status: 500 }) : undefined;
   const first = await h.provider.consentPush.push(pushRequest());
   expect(first.kind).toBe(plant === "skip-withdrawal" ? "unknown" : "acknowledged"); h.state.fault = undefined;
@@ -195,7 +219,8 @@ row("KP03", ["cooldown"], async h => {
     await f.rebuild().consentPush.push(pushRequest({ requestId: "new" })); expect(f.effects()).toHaveLength(effects);
   }
 });
-row("KP04", ["grant-fenced-withdrawal", "rejected-job", "push-completed", "hide-race", "skip-withdrawal", "pending-withdrawal", "withdraw-redispatch"], async (h, plant) => {
+row("KP04", ["grant-fenced-withdrawal", "rejected-job", "push-completed", "hide-race", "skip-withdrawal", "pending-withdrawal", "withdraw-redispatch", "account-wide-uncertain-scan"], async (h, plant) => {
+  await multiSubject(h.factory, `KP04/${plant}`);
   for (const fault of ["acceptance_ambiguous", "dispatch_unresolved", "record_failed", "ack-record_failed", "partial-persistence", "missing-admission"] as const) {
     const f = fixture(h.factory);
     if (fault === "acceptance_ambiguous" || fault === "record_failed") f.state.fault = (_url, init) => init.method === "POST" ? new Response(null, { status: 500 }) : undefined;

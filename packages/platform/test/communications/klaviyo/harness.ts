@@ -87,6 +87,8 @@ export function fixture(factory: Factory = createKlaviyoMarketingAdapter, option
 export type Harness = ReturnType<typeof fixture>;
 
 const mutations: Record<string, [string, string][]> = {
+  "account-wide-uncertain-scan": [['key !== keyOf(r) && subjectKey(e.request) === subjectKey(r)', 'key !== keyOf(r)'],
+    ['uncertain.every(e => e.request.operation === "consent.push"', 'uncertain.every(e => subjectKey(e.request) === subjectKey(r) && e.request.operation === "consent.push"']],
   binding: [['if (!equal(r.binding, binding)) return refused(r, "binding");', 'if (false) return refused(r, "binding");']],
   target: [['if (snapshot && !equal(s, snapshot))', 'if (false)']],
   consent: [['const local = input.localEvidence.get(ref);', 'const local = input.localEvidence.get(ref) ?? input.localEvidence.get("local-consent:1");']],
