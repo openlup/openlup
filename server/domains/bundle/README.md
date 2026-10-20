@@ -12,8 +12,11 @@ These server paths are named compatibility bindings over the application code in
 They retain the shared reference admin kit, operation spec/flags, schemas,
 responder, wire versions and BundleRpcError subclass; handlers receive that
 constructor by identity. Catalog read error identity is re-exported from the
-package. Native/managed stores, RPC marshalling and runtime composition retain
-their owners. No SQL or mounted surface changes in this application slice.
+package. The native read store and its queries now live in catalog with named
+reference compatibility exports and an injected data executor. Native write and
+managed stores, pooled transactions, RPC marshalling and runtime composition retain
+their owners. The package projects canonical SQL 16/19 unchanged; it adds no
+migration or mounted surface.
 
 - **Owns:** the semantic write port (`adminBundleWritePort.ts`) and the write
   handlers built from the generic agent-domain kit (`adminBundleHandler.ts`).
@@ -26,8 +29,8 @@ their owners. No SQL or mounted surface changes in this application slice.
   folds one batched answer through the pure kernel in
   `src/domains/bundle/availability.ts`.
 - **Does not own:** storage. No table name, routine name or data client appears in
-  this folder. Both live in `server/adapters/`, and the deployment's runtime
-  binding decides which one answers.
+  this folder. The native read implementation is package-owned; reference adapters
+  retain the writer and managed implementation. Runtime binding selects the store.
 - **Does not own:** the composition rules themselves. A non-empty
   `composition_constraint` is handed to the injected `CompositionRulesPort`; this
   domain stores and forwards the envelope and never interprets it.
@@ -47,12 +50,12 @@ The first two are a fast refusal, not the boundary. The routine re-derives what 
 can see and refuses independently, so a confused or compromised caller changes
 nothing about what is enforced.
 
-## Publish is human-only, twice over
+## Publish authority depends on the selected chain
 
-`activate` and `deactivate` are gated at two independent machine-checked layers:
-the handler factory refuses a non-human actor from the spec's `allowedActorKinds`
+`activate` and `deactivate` use the handler human-only gate on both chains.
+The handler factory refuses a non-human actor from the spec's `allowedActorKinds`
 (the actor kind is re-derived from the admin registry, never taken from the
-caller), and the routine RAISEs `42501 publish_requires_human` on its own. They are
+caller). The managed routine also raises `42501 publish_requires_human` on its own. They are
 also structurally absent from the agent head — `mcp/bundle/tools.ts` carries no
 path for either, so there is nothing to call rather than a call that is refused.
 

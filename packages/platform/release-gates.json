@@ -171,11 +171,7 @@
         "test/catalog/bundleAvailability.test.ts",
         "test/catalog/bundleAvailabilityService.test.ts",
         "test/catalog/bundleCatalogReadPort.test.ts",
-        "test/catalog/sellableBundleHandler.test.ts",
-        "../../tests/platform/catalog/adminBundleHandler.test.ts",
-        "../../tests/platform/catalog/adminBundleReadHandler.test.ts",
-        "../../tests/platform/catalog/bundleCompositionConformance.test.ts",
-        "../../tests/platform/catalog/bundleBindings.test.ts"
+        "test/catalog/sellableBundleHandler.test.ts"
       ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"
@@ -190,8 +186,7 @@
         "test/catalog/catalogProductTypeContracts.test.ts",
         "test/catalog/catalogDraftContracts.test.ts",
         "test/catalog/catalogMediaResolution.test.ts",
-        "test/catalog/catalogLifecycleContracts.test.ts",
-        "../../tests/platform/catalog/bundleBindings.test.ts"
+        "test/catalog/catalogLifecycleContracts.test.ts"
       ],
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"
@@ -289,6 +284,32 @@
       "entrypoint": "dist/communications/resend/index.d.ts",
       "snapshot": "api/communications-resend.api.md"
     },
+    "./inventory": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/inventory/contracts.test.ts",
+        "test/inventory/adminInventoryConformance.test.ts",
+        "test/inventory/inventoryAvailabilityCharacterization.test.ts",
+        "test/inventory/newPurchaseStockBoundary.test.ts"
+      ],
+      "entrypoint": "dist/inventory/index.d.ts",
+      "snapshot": "api/inventory.api.md"
+    },
+    "./inventory/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/inventory/contracts.test.ts",
+        "test/inventory/newPurchaseStockBoundary.test.ts"
+      ],
+      "entrypoint": "dist/inventory/contracts/index.d.ts",
+      "snapshot": "api/inventory-contracts.api.md"
+    },
     "./shipping": {
       "role": "capability",
       "maturity": "experimental",
@@ -338,6 +359,7 @@
       "./catalog/contracts": 4096,
       "./pricing/contracts": 416,
       "./promotions/contracts": 32,
+      "./inventory/contracts": 32,
       "./shipping/contracts": 32
     }
   }

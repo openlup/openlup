@@ -2234,6 +2234,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/inventory-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/inventory.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/job-ledger.api.md",
       "class": "public-output"
     },
@@ -2311,6 +2319,14 @@
     },
     {
       "path": "packages/platform/sql/20260810204057_customer_identity_read.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812140000_sellable_bundle_catalog.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql",
       "class": "public-output"
     },
     {
@@ -2438,7 +2454,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/bundleCatalogQueries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/bundleCatalogReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleCatalogStore.ts",
       "class": "public-output"
     },
     {
@@ -2547,6 +2571,10 @@
     },
     {
       "path": "packages/platform/src/catalog/sellableSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/sql.ts",
       "class": "public-output"
     },
     {
@@ -3315,6 +3343,42 @@
     },
     {
       "path": "packages/platform/src/identity/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/adminInventory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/contracts/inventory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/contracts/newPurchaseStock.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/inventoryHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/newPurchaseStockAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/schemas.ts",
       "class": "public-output"
     },
     {
@@ -4187,6 +4251,22 @@
     },
     {
       "path": "packages/platform/test/identity/sql.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/adminInventoryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/inventoryAvailabilityCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/newPurchaseStockBoundary.test.ts",
       "class": "public-output"
     },
     {
@@ -21138,6 +21218,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/inventory/inventoryOperatorBoundaryCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/mailEgressCallers.test.ts",
       "class": "public-output"
     },
@@ -21175,6 +21259,10 @@
     },
     {
       "path": "tests/postgres/adminMembershipAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/bundleNative.test.ts",
       "class": "public-output"
     },
     {

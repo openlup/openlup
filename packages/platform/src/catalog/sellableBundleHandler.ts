@@ -10,7 +10,7 @@ import type { BundleAvailabilityService } from "./bundleAvailabilityService.js";
 
 /**
  * The public sellable-bundle feed handler, shaped after the reference catalog
- * handler (`server/domains/catalog/referenceCatalogHandler.ts`): GET-only, one
+ * handler: GET-only, one
  * port call, validate the body before sending, and never serve an unvalidated
  * shape.
  *
