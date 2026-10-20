@@ -43,8 +43,9 @@ import {
  *
  * Like the catalog head, it submits the SAME write contracts the MCP agent head
  * uses — with the two exceptions the agent structurally does not have: activate
- * and deactivate, which are human-only at the handler, at the write routine, and
- * by absence from the generated MCP tools.
+ * and deactivate, which are human-only at the handler (and also at the managed
+ * write routine; the native routine relies on the handler gate) and by absence
+ * from the generated MCP tools.
  */
 /** The list route's own status vocabulary; taken from the contract, never restated. */
 type BundleStatusFilter = ListBundlesRequest["status"];
