@@ -135,7 +135,9 @@
         "test/packageBoundary.test.ts",
         "test/communications/sql.test.ts",
         "test/communications/contribution.test.ts",
-        "test/communications/transportConformance.test.ts"
+        "test/communications/transportConformance.test.ts",
+        "test/communications/marketingSyncConformance.test.ts",
+        "test/communications/marketingSyncCompatibility.test.ts"
       ],
       "entrypoint": "dist/communications/index.d.ts",
       "snapshot": "api/communications.api.md"
@@ -146,7 +148,9 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/communications/contracts.test.ts"
+        "test/communications/contracts.test.ts",
+        "test/communications/marketingSyncConformance.test.ts",
+        "test/communications/marketingSyncCompatibility.test.ts"
       ],
       "entrypoint": "dist/communications/contracts/index.d.ts",
       "snapshot": "api/communications-contracts.api.md"

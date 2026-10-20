@@ -30,6 +30,19 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Neutral marketing sync lives in the existing communications contracts subtree
+and is re-exported as types by both communications entries. It adds no runtime
+factory, provider SDK, environment reader, host callback, configuration registry
+or package subpath. The private subject mapper, durable admission/journal,
+account leases and provider payload translation belong inside the selected
+adapter's construction and infrastructure boundary. P2 owns that construction.
+The public families expose profile sync, consent readback and erasure; discovery,
+profile reads, history, events and membership remain outside the public surface.
+Positive consent writes are deferred pending an owner decision. The
+[canonical lifecycle](CANONICAL_CONTRACTS.md#neutral-marketing-sync) owns replay,
+negative-only feedback and evidence-bound completion. No default composition
+changes and no existing M04 implementation gains new obligations.
+
 C-compose keeps communications admission in the reference host and uses Core's
 existing readiness checker. The selected callable identities become the
 communications contribution's route/schedule bindings; stale artifact,

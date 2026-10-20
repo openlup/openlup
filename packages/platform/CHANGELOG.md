@@ -21,6 +21,11 @@ component enum member; communications snapshots reorder update/email_change; pro
 the existing all member in status/scope enums.
 Members and runtime behavior are unchanged. No SQL, data or activation migration is introduced.
 
+- Add 14 experimental provider-neutral marketing-sync types through the existing
+  communications and communications/contracts entries: profile sync, negative
+  consent readback and erasure request/status. Existing M04 providers remain
+  assignable. Positive consent writes are deferred; no adapter, callback,
+  activation or package subpath is added. Migration: none for existing callers.
 - Move promotion admin handlers/ports/DTOs/server schemas and native evaluator
   read/sweep into promotions, preserving reference kit/error/currency bindings.
   Project unchanged canonical SQL units 47/48 with descriptor hashes and positions;
