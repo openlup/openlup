@@ -2206,6 +2206,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-resend.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications.api.md",
       "class": "public-output"
     },
@@ -2406,6 +2410,58 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/adminBindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/adminBundleHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/adminBundleReadHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/adminBundleWritePort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleAvailabilityService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleBindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleCatalogReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleRuleCodes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/bundleAdmin.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/bundleAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/bundleRead.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/draft.ts",
       "class": "public-output"
     },
@@ -2483,6 +2539,10 @@
     },
     {
       "path": "packages/platform/src/catalog/resolvedSkuProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/sellableBundleHandler.ts",
       "class": "public-output"
     },
     {
@@ -2839,6 +2899,10 @@
     },
     {
       "path": "packages/platform/src/communications/publicPreferenceToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/resend/index.ts",
       "class": "public-output"
     },
     {
@@ -3690,6 +3754,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/bundleAvailability.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/bundleAvailabilityService.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/bundleCatalogReadPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/bundleRules.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/bundleTestBindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/catalogActiveSkuSelection.test.ts",
       "class": "public-output"
     },
@@ -3727,6 +3811,10 @@
     },
     {
       "path": "packages/platform/test/catalog/resolvedSkuProjection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/sellableBundleHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -3795,6 +3883,14 @@
     },
     {
       "path": "packages/platform/test/communications/nativeSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/resend/egress.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/resend/protocol.test.ts",
       "class": "public-output"
     },
     {
@@ -9770,15 +9866,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/bundle/adminBundleHandler.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/bundle/adminBundleHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/bundle/adminBundleReadHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -9790,23 +9878,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/bundle/bundleAvailabilityService.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/bundle/bundleAvailabilityService.ts",
       "class": "public-output"
     },
     {
-      "path": "server/domains/bundle/bundleCatalogReadPort.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/bundle/bundleCatalogReadPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/bundle/sellableBundleHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -15258,19 +15334,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/bundle/availability.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/bundle/availability.ts",
       "class": "public-output"
     },
     {
       "path": "src/domains/bundle/bundleRuleCodes.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/bundle/bundleRules.test.ts",
       "class": "public-output"
     },
     {
@@ -20923,6 +20991,22 @@
     },
     {
       "path": "tests/platform/catalog-draft-extension.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/catalog/adminBundleHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/catalog/adminBundleReadHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/catalog/bundleBindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/catalog/bundleCompositionConformance.test.ts",
       "class": "public-output"
     },
     {

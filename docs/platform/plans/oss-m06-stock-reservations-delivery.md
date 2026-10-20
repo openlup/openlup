@@ -39,7 +39,7 @@ P1a adds the inventory entries, explicit DTOs, unchanged schema counterparts and
 
 P1a: 23 total paths, seven production paths; 24 exports against the 49 cap. Four authored cases plus 15 generated package-boundary iterations add 19 root invocations, with no physical test moves. All are collected; focused added test-body time is 12.75 ms (6.31 ms authored, 6.44 ms generated), not an isolated whole-suite wall-time delta or hosted percentile. The affected nine-file root batch passes 1,070 cases; the package-local inventory batch passes two.
 
-Pack before → after: 971 → 986 files; 951 → 966 code files; 614,196 → 620,197 packed B; 2,749,012 → 2,781,986 unpacked B; 525,409 → 530,816 code gzip B. Root docs: 35,868 → 36,044 gzip B, five files throughout. Inventory contracts: 20/32 browser bytes. No cap or released baseline changes.
+Pack before → after (post-merge): 971 → 1,031 files; 951 → 1,011 code files; 614,196 → 667,038 packed B; 2,749,012 → 2,984,720 unpacked B; 525,409 → 576,665 code gzip B. Root docs: 35,868 → 37,098 gzip B, five files throughout. Inventory contracts: 20/32 browser bytes. No cap or released baseline changes.
 
 ## Shipping lane (P3a–P3c)
 

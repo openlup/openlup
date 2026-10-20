@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BundleCatalogReadError } from "./bundleCatalogReadPort.js";
+import { BundleCatalogReadError } from "../../src/catalog/bundleCatalogReadPort.js";
 
 describe("bundleCatalogReadPort", () => {
   it("carries a stable error name and message through the read boundary", () => {

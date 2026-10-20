@@ -13,7 +13,7 @@ deployment and activation require separate authorization.
 ## PR graph and scope
 
 The complete M04 stack, including C-compose and S1, precedes M05 implementation.
-P1 → P2a → P2b → P2c → P3a → P3b → P4 → P5 → P6 → P7 → S1.
+P1 → P2a → P2b → P2c → P3a → P3b → P4a → P4b → P5 → P6 → P7 → S1.
 P2 is split into three parts; checkout, claims and finalize stay with the checkout module.
 
 | PR | Bounded scope |
@@ -24,11 +24,14 @@ P2 is split into three parts; checkout, claims and finalize stay with the checko
 | P2c | Additive acquisition-terms selection and promise-consent API; required injected financial policy, no default policy, reference activation off. |
 | P3a | Unchanged promotion application/acceptance with explicit host bindings; additive resolved-terms callback argument; ≤35 production/tooling paths. |
 | P3b | Admin, existing native read/sweep store and SQL 47/48 descriptor; no new migration; ≤35 production/tooling paths. |
-| P4 | Unchanged fixed bundle composition, allocation, availability and admin boundary; selected native stores/descriptor where needed. |
+| P4a | Unchanged fixed-bundle application/admin in existing catalog entries; no native store or SQL; ≤35 production/tooling paths. |
+| P4b | Native read store and SQL 16/19 descriptor with real PostgreSQL proof; no new migration; ≤35 production/tooling paths. |
 | P5 | Neutral browse/product/cart/builder/admin UI consuming explicit data/locale/media ports and lifecycle-ready DTOs; preserve existing fences. |
 | P6 | Bounded refactoring after unchanged imports and preserved witnesses; no new functional scope. |
 | P7 | Reference/default composition, selected native stores/schema/readiness and consumer/readback proof; no new capability or activation. |
 | S1 | Separate existing-set version preparation and final packed-artifact/cold-consumer proof; no inferred version. |
+
+Execution change: P4 split into P4a (application/admin, ≤35 paths) and P4b (native read store and SQL 16/19 descriptor, ≤35 paths), replacing the master P4 ≤25 row; reason: full cut is 36 paths; two reviewable PRs.
 
 ## P1 boundary
 
@@ -274,6 +277,60 @@ browser clients reach the admin schemas through the promotions server entry via
 the reference contract re-exports; no admin bundle is built in this tree, so an
 admin browser bundle needs a browser-safe schema home first.
 
+## P4a
+
+The unchanged move puts bundle rules/codes, pure availability, catalog read port,
+stock service, admin write port, nine mutation handlers, four read/preview
+handlers and the public sellable feed in the existing catalog server entry.
+Core composition contracts/ports and allocation retain their existing owners.
+Native read stores, SQL, migrations, mounting and activation are outside this slice.
+OpenLup preview selection and refusal behavior are preserved; newer selection and
+readiness differences in the comparison inventory are not adopted.
+
+Reference wrappers bind the existing lifecycle predicate, stock status/reason
+helpers, shared admin kit, operation spec/flags, response schemas, responder and
+wire versions. The reference-owned BundleRpcError constructor is injected;
+BundleCatalogReadError moves once and remains identical through its named shim.
+No shared kit or operation authority is relocated or duplicated.
+
+Browser-reached bundle schemas continue defining Zod locally. Catalog contracts
+add plain DTO types only, with no Zod, Node, ambient loader or cross-contract-entry
+imports; server handlers receive the reference validators. The one binding case
+checks DTO/schema type parity and both browser client closures. Catalog server
+remains non-adapter in P4a; no data edge is introduced.
+
+Four W4 equivalents preserve ordered captured composition, one deduplicated stock
+request, 2,001 → 801/800/400 allocation and unknown stock; invalid composition;
+machine virtual draft versus unsupported fulfillment; and activation authority.
+The new equivalents use XXX (EUR → XXX); the original witness is unchanged.
+Witness provenance: the supplied characterization is held outside this tree and
+is byte-identical at its original and current reference points; neither that
+commit object nor witness file is present in this public checkout.
+Seven suites relocate unchanged: 44 package cases and 18 root binding cases,
+62 total. Five new executed cases leave the programme balance at **22**.
+
+Changed production/tooling paths versus eeb549c: **30/35**, including JSON
+companions. Pack: **1,010 files / 990 code files / 649,889 packed B /
+2,909,269 unpacked B / 561,429 code gzip B**; root docs **36,506 gzip B / 5
+files**. Catalog contracts remain **3,281/4,096 B** minified+gzip. All measurements
+are within existing caps; no released baseline or growth tripwire changes.
+Collection confirms each moved/new file inside an existing include: package
+rules 20, availability 11, stock service 6, read port 1, feed 6; root admin mutation
+6, admin read 12, W4 conformance 4, binding/browser closure 1. Generated source
+boundary iterations remain separate from the five programme cases.
+
+### Bundle parity pending ledger
+
+Each row remains PENDING, not N/A, and must be dispositioned before M05 S1,
+together with D8 and P6. Package application proof closes none of these rows.
+
+| Outcome | Status and remaining proof |
+| --- | --- |
+| Native database independent human-only actor-kind gate | PENDING: native database has no independent gate; handler gate only. |
+| Native history actor identity | PENDING: native actor fields are null versus managed audit identity. |
+| Native mounted admin/feed with actual stock | PENDING: P7 composition proof. |
+| Replay/concurrency beyond sequential replay | PENDING: characterize incumbent outcomes before claiming stronger guarantees. |
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected
@@ -284,7 +341,7 @@ neutral subject; exporting types alone does not close a witness.
 | W1 | 7; strict price authority, quote/offer and acquisition promise/refusal boundaries | Deferred to P2a–P2c; source witness unchanged. |
 | W2 | 5; frozen subscription money, retry bytes, acquisition consent and explicit edits | Deferred to P2a–P2c/adoption; source witness unchanged. |
 | W3 | 4; promotion adjustment/acceptance, floors and advisory versus durable claim | Four neutral package conformance transcripts in P3a; source witness unchanged. |
-| W4 | 4; captured bundle composition/readback, allocation, stock and human activation | Deferred to P4; source witness unchanged. |
+| W4 | 4; captured bundle composition/readback, allocation, stock and human activation | Four neutral bound package conformance transcripts in P4a; original witness remains outside this tree and unchanged. |
 | W5 | 5; exact document/head/membership join, stale/mixed heads and legacy versus outage | Subjects not moved; no synthetic readback claim; source witness unchanged. |
 | W6 | 4; quote-to-draft transfer/reload/navigation and fresh-consent refusal | Deferred to P5; source witness unchanged. |
 | W7 | 2; authority/request/proposal/evidence transcript and advanced-head refusal | Subjects not moved; proposal remains distinct from publication; source witness unchanged. |

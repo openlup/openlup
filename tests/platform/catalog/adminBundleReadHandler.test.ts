@@ -16,12 +16,12 @@ import {
   createAdminBundleListHandler,
   createAdminBundlePreviewPriceHandler,
   type AdminBundleReadHandlerDeps,
-} from "./adminBundleReadHandler.js";
+} from "../../../server/domains/bundle/adminBundleReadHandler.js";
 import type {
   BundleCatalogReadPort,
   BundleComponentRow,
   BundleDetail,
-} from "./bundleCatalogReadPort.js";
+} from "../../../server/domains/bundle/bundleCatalogReadPort.js";
 
 // Request/response types are DERIVED from the handler the factory returns rather
 // than imported from the hosting SDK: the thing under test is the handler's own
