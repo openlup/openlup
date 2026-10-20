@@ -10,7 +10,7 @@ Hidden stock/ATP/reservation control plane: stock ledger, available-to-promise, 
 ## Public surface (import cross-domain ONLY these)
 - `inventoryClient.ts` — hidden admin inventory BFF client.
 - `contracts.ts` — stock / ATP / reservation / subscription forecast contracts.
-- `ports.ts` — reservation + read ports.
+- `ports.ts` — named compatibility exports of `@openlup/platform/inventory` read/mutation ports and errors.
 - `atp.ts` — re-export shim over the core available-to-promise kernel.
 - `forecast.ts` — the pure demand-forecast helper, still local to this domain.
 
@@ -23,6 +23,10 @@ Hidden stock/ATP/reservation control plane: stock ledger, available-to-promise, 
   ports, client, and the ATP shim)
 - Server domain: `server/domains/inventory/inventoryHandlers.ts`
 - Managed persistence adapter: `server/adapters/managed/inventory/inventoryPort.ts`
+
+## Package boundary
+
+`@openlup/platform/inventory/contracts` owns explicit inventory DTOs with no runtime imports. The server entry owns stock/reservation/request schemas and read/mutation ports; its forecast response schema requires an injected stock-master provider validator, with no default. Browser validators remain local here and keep their exact wire constraints. The reference forecast response type remains derived from its local validator to retain its exact provider type. The named server handler/native-store wrappers inject that same exact validator and preserve existing import paths. The package's native store retains stock/reservation/ATP/forecast reads and refuses stock adjustment. Its new-purchase projection returns a structurally declared bundle-stock port without importing catalog; host composition supplies normalized rows, defaults, missing-function fallback, observation and the existing availability calculation. No transport, stock-wait SQL or cycle writer moves. W1/W9 transplants and conformance tests pin projection and operator behavior; transport/native parity remains pending in the [M06 ledger](../../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#inventory-lane-p1ap2c). ATP contracts and arithmetic remain in Core.
 
 ## ATP region configuration
 

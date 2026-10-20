@@ -30,6 +30,16 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The shipping server entry owns address lookup and authenticated address-book
+handlers and row helpers. Reference bindings retain geographic, source and tax
+validation, conflict identity and the canonical country default; hosts supply
+these explicitly. Address persistence remains behind the existing ports.
+The same entry owns flat-rate administration with required host schemas,
+authorization resolver and responder; its reference binding preserves amount
+validation and error mapping. Selection, manual address entry and text pickup
+search remain reference UI, without npm exports or a vendor map loader.
+Bundle stock renders the catalog availability answer without deriving inventory.
+
 Neutral marketing sync lives in the existing communications contracts subtree
 and is re-exported as types by both communications entries. It adds no runtime
 factory, provider SDK, environment reader, host callback, configuration registry
@@ -414,14 +424,20 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+Inventory remains a non-adapter entry with no catalog import; its bundle-stock shapes are declared structurally. Admin handlers bind host response writers, and native reads require the provider value and validator. The new-purchase projection takes normalized reads, host defaults, fallback, observation and availability calculation; transports and cycle writers retain their owners.
+
 Catalog now also owns fixed-bundle application/admin factories at its existing
-entry. Its only cross-module edges remain type-only http/bff handler/responder
-inputs; there is no data, pricing or promotions edge. Reference wrappers bind
+entry. Its cross-module edges are type-only data/http/bff inputs: the native read
+store takes the data entry's executor without constructing a driver or pool.
+There is no pricing or promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
 versions and the RPC error constructor. Browser-reached schemas retain their
 reference owner and never re-export the server entry; catalog contracts expose
-plain bundle DTO types. No native store moves in this slice, so catalog remains
-non-adapter and neither entry requires optional provider peers.
+plain bundle DTO types. Catalog server is now an adapter because its declarations
+reach optional pg types; runtime import and executor reads still work without
+peers. Contracts remains a non-adapter. The native writer, pooled transaction
+binding and transport remain reference-owned; sparse SQL projections add no
+installation chain or migration.
 
 The experimental promotions module has one value edge to pricing through
 `pricing/index.js`, for acquisition binding and the protocol constant. Type-only

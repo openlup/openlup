@@ -1,3 +1,4 @@
+import type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from '@openlup/platform/shipping/contracts';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -24,7 +25,7 @@ export function ShippingRateCard({ accessToken }: { accessToken: string | undefi
   const queryClient = useQueryClient();
   const [zlInput, setZlInput] = useState('');
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError } = useQuery<AdminShippingRateResponse>({
     queryKey: ['admin-shipping-rate'],
     enabled: Boolean(accessToken),
     retry: false,
@@ -35,7 +36,7 @@ export function ShippingRateCard({ accessToken }: { accessToken: string | undefi
     if (data?.shippingFlatMinor != null) setZlInput((data.shippingFlatMinor / 100).toFixed(2));
   }, [data?.shippingFlatMinor]);
 
-  const setRate = useMutation({
+  const setRate = useMutation<AdminSetShippingRateResponse, Error, AdminSetShippingRateRequest["shippingFlatMinor"]>({
     mutationFn: (shippingFlatMinor: number) =>
       setAdminShippingRate(accessToken as string, { shippingFlatMinor }),
     onSuccess: (result) => {

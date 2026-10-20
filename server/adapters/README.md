@@ -13,6 +13,14 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 ## Owns
 
+The native bundle read store and query statements are implemented by
+`@openlup/platform/catalog`. The former PostgreSQL paths retain named exports;
+runtime callers still supply the executor, with no pool or role-switch change.
+The native write store, pooled transaction/RPC binding and managed adapters remain
+here. Catalog's SQL descriptor projects canonical units 16/19 unchanged; it is not
+an installation chain. Real PostgreSQL tests characterize incumbent reads,
+write-routine rollback/replay and grants, without mounted or actor-kind parity.
+
 - Provider-specific execution decisions for a named local port.
 - Simulator/noop implementations used by hidden preview and local tests.
 - Mapping from provider responses back to domain-neutral result objects.

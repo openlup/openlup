@@ -171,12 +171,15 @@ Changed replay fields cannot add effects. Lost admission fences both same-key
 and new-key redispatch. Partial or unsupported readback cannot clear any pending
 withdrawal, including one without an earlier grant; sufficient-readback positive
 controls permit a fresh local grant. Unknown grant settlement preserves
-reconciliation. Synthetic evidence does not certify real provider behavior or
+reconciliation. The model counts its own accepted/acknowledged grants for the
+configured subject/audience, including confirmed-journal acknowledgements; CP04
+pins immediate withdrawal reconciliation and rejects acknowledgement as settlement.
+Synthetic evidence does not certify real provider behavior or
 account capabilities.
 
 K03/K04 include strict exact-optional consent-push probes without adding cases.
 Both built entries reject 47 unmarked forbidden-state probes each, with positive
-controls. The original 21 invariant plants and 52 consent-push plant cycles stay
+controls. The original 21 invariant plants and 53 consent-push plant cycles stay
 inside the twenty contract cases. Fixture and virtual compiler paths resolve
 from their owning test modules for root and package-local execution.
 
