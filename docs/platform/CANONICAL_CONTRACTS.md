@@ -439,7 +439,8 @@ inside their two declared source/test directories, their exact API reports and
 exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
 the platform manifest, release gates, package boundary test, publication
-catalogue, changelog, this page, the architecture page and the A1 ledger.
+catalogue, platform CHANGELOG and validated platform `changes/*.md` fragments,
+this page, the architecture page and the A1 ledger.
 Those same two subpath tokens are allowed in only the A1 reference binding and
 its adjacent test under `server/runtime/communications`; bare adapter words
 receive no allowance there. A paired out-of-scope token plant must still fail.
@@ -604,3 +605,15 @@ executor, callback or automatic retry. Even `reconcileRequired:false` proves no
 remote effect. Receipt evidence stays the original admitted request while the
 result echoes the current call; replay identity excludes generation and rejects
 changed audience, action or evidence with `invalid_request`.
+
+## Source release snapshots
+
+The source-release contract separates authored runtime, repository/release
+identity, database seam and signed typecheck compatibility from derived digest
+bindings. PR/main/merge-group policy and inventory checks run derivation against
+live inputs without requiring a fresh committed snapshot. Digests refresh only
+at release prep; source prepare and package preflight, protected prepare/plan and
+publication/resume compare canonical snapshot bytes against exact target Git
+objects. The authored publication catalogue keeps exact rows except for regular,
+non-executable, content-validated package `changes/*.md` fragments. Git binds all
+remaining source contents and modes. This is preview evidence, not stability.

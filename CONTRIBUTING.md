@@ -598,6 +598,11 @@ A source review carries over to a merge group when either:
   identity fence, package manifests and lockfiles, `db/platform/migrations/`,
   `supabase/migrations/` and the platform migration manifest). Other check
   configuration is not on this list; the group's mechanical checks run with it.
+  A moved `packages/<name>/package.json` does not block carry-over when main's
+  and the change's edits to it only add new, disjoint subpath `exports` keys,
+  preserve existing values with order-sensitive comparison, and leave every
+  other key unchanged. The merged manifest must preserve those values and contain
+  exactly both additions; root manifests and lockfiles still block.
 
 Then the source receipt admits the group without another receipt or live session.
 The six mechanical checks on the group tree cover behavioural interaction.
@@ -948,7 +953,8 @@ after applying migrations (falsified by
 Against the same base, `--policy` refuses a change that removes or changes a
 line of a publishable package's API snapshot (`release-gates.json`
 `packageSurface`) unless that package's single `## [Unreleased]` changelog
-section carries a `Migration:` block, or a real coherent set bump above the base
+section or a validated package fragment in the exact head Git tree carries a
+`Migration:` block, or a real coherent set bump above the base
 has moved it into the unique candidate-version section while leaving a unique
 empty Unreleased section. The candidate section must match the package manifest
 and set; stale notes at an unchanged version, another version, duplicate
@@ -965,7 +971,8 @@ reappears in order can look additive. Behaviour or schema changes and withdrawal
 followed by re-admission of a package still need semantic review. Reviewers must
 check the actual compatibility change and useful before/after migration steps;
 the API snapshots, tests and release classification remain separate obligations.
-Keep useful migration notes in Unreleased until release preparation. A newly
+Keep useful migration notes in a package fragment until release preparation;
+legacy Unreleased notes remain valid and drain at the next set bump. A newly
 approved bounded programme may combine the implementation and set bump in one
 PR: the bump moves those notes into the candidate-version section and opens a
 fresh empty Unreleased section. Do not duplicate notes into that empty section
@@ -1042,8 +1049,11 @@ reviewed pull request, either release preparation alone or an explicitly approve
 bounded implementation-and-set-bump contribution, runs
 `npm run release:bump -- --set <version>`,
 which updates every publishable package's version carriers and every exact
-internal pin on one, and opens each changelog's version section below a fresh
-Unreleased heading. Merging it authorizes no release.
+internal pin on one, and assembles each changelog's version section below a fresh
+Unreleased heading: legacy Unreleased body first, then fragments in byte order
+of path. All packages are validated and planned before writes, and only
+consumed fragments are deleted after successful writes. Historical sections
+remain byte-identical. Merging it authorizes no release.
 A release is then dispatched with `publish-package.yml` and package `all` for the
 reviewed commit, and one maintainer approval of the protected `release`
 environment authorizes every package of the set. Dispatching the set again
@@ -1055,26 +1065,47 @@ OIDC with `--tag latest`, without another approval.
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) lists every
 check and the maintainer setup.
 
-A new or renamed path also needs its row in
-`config/openlup-publication-catalog.json`. After changing that catalogue, a
-`package.json` or a `package-lock.json`, regenerate the contract from the
-repository root and commit the result:
+A new or renamed path needs its authored row in
+`config/openlup-publication-catalog.json`, except the single fragment pattern
+`packages/{core,outbox,platform}/changes/*.md`. These fragments are admitted as
+`public-output` only after content and regular, non-executable mode validation;
+nested directories and other extensions refuse. The catalogue remains an
+explicit classification and execution inventory, not a generated list.
 
-```bash
-node --experimental-strip-types --input-type=module - <<'NODE'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { SOURCE_RELEASE_CONTRACT_PATH, deriveSourceReleaseContract } from './scripts/oss-source-release-contract.ts';
-const { contents } = deriveSourceReleaseContract((path) => existsSync(path) ? readFileSync(path) : undefined);
-writeFileSync(SOURCE_RELEASE_CONTRACT_PATH, contents);
-NODE
+For a notable package change, add a uniquely named
+`packages/<core|outbox|platform>/changes/<programme>-<slice>.md` fragment instead
+of editing CHANGELOG. Use ordinary bullets, optional `###` subsections, useful
+`Migration:` blocks and the existing size-growth bullet where needed. Empty
+files, `#`/`##` headings and conflict markers refuse. No new universal fragment
+gate is imposed; reviewers still check whether notes describe the change.
+The existing Migration gate reads the exact head Git tree's fragments alongside
+legacy Unreleased, validates fragments even for additive changes, and retains
+the coherent prepared-version alternative. Source fragments never ship in npm.
+
+Ordinary module and dependency PRs keep the committed source-release contract
+snapshot unchanged. Both `--policy` and `--inventory` run its generator and
+validate structure and authored identity, runtime, database seam and signed
+compatibility. They report stale aggregate bindings without failing; missing
+catalogue rows, broken derivation and other policy failures still refuse.
+
+Refresh digests **at release preparation only**, after the set bump (when
+applicable) and the authored catalogue updates, in the reviewed preparation PR:
+
+```sh
+node --experimental-strip-types scripts/source-release-preparation.ts --write
+node --experimental-strip-types scripts/source-release-preparation.ts --check
 ```
 
-The snippet keeps the contract's identity and `compatibility` and rewrites its
-digest fields; on an unchanged tree it rewrites the same bytes. The release
-workflow's descendant check enforces the complete self-consistency, byte for byte,
-before a preview is tagged. CI checks only part of it: `npm run oss:published-tree -- --inventory`
-compares several digest values with the tree, but not `inventory.classDigest`
-and not the contract's bytes.
+The command validates live catalogue/inventory and migration inputs, plans the
+snapshot before writing, then atomically replaces that file. It preserves
+authored identity and compatibility, is byte-stable on repeat, and writes nothing
+on validation failure. It never authors catalogue decisions. Commit the fresh
+snapshot with the preparation change. Source-preview prepare, package/set
+preflight, protected prepare/plan, and tag publication including resume require
+canonical byte equality against the exact target Git objects. A later change to
+a bound input requires another reviewed refresh. Remaining source bytes and
+modes are bound by the target Git commit; the JSON is not a per-source content
+hash list. Merging preparation still grants no release authority.
 
 The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe
@@ -1103,6 +1134,11 @@ CI activation and verification order remain unchanged.
 <!-- openlup-doc-impact {"unit":"tests","digest":"sha256-9bc9d077d462c3b6b310bc4a61a79297acbcacc587ac490b1e067256431d8ed6","reason":"The component journey, optional captured-mail browser proof and direct disposable PostgreSQL proof reuse the existing runners. The PostgreSQL proof uses Node for server cryptography and explicitly binds the shared storage mocks and an empty URL query to window for the browser adapter; it needs no DOM. Test commands, execution ownership and full required verification duties remain unchanged; installation proofs continue to require their owned local services."} -->
 
 ## Pull requests
+
+Dependency update bots remain signals for maintainer-owned signed contributions.
+An ordinary lockfile update keeps the source-release digest snapshot unchanged;
+PR checks derive live bindings. Only a reviewed release-preparation contribution
+refreshes the committed snapshot before strict release admission.
 
 ### Local contribution handoff
 
@@ -1469,8 +1505,13 @@ other or touch the same shared files:
   the source branch. Each upper PR still needs its own source receipt.
 - Before relying on carry-over, check `git merge-tree --write-tree` of the queue
   base and the head. The canonical carry-over rule applies: unchanged tree or
-  exact disjoint application relative to the reviewed predecessor. Other base
-  changes are rejected: merge `main` and re-review.
+  exact disjoint application relative to the reviewed predecessor.
+  A moved `packages/<name>/package.json` does not block carry-over when main's
+  and the change's edits to it only add new, disjoint subpath `exports` keys,
+  preserve existing values with order-sensitive comparison, and leave every
+  other key unchanged. The merged manifest must preserve those values and contain
+  exactly both additions; root manifests and lockfiles still block.
+  Other base changes are rejected: merge `main` and re-review.
 - If another change on `main` conflicts with it, merge `main` into it once (do
   not rebase), regenerate its shared records and get a fresh full review, as
   for a textual conflict.

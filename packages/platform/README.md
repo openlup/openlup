@@ -988,3 +988,7 @@ Core readiness, explicit provider ports and host-supplied schedules. Native
 readback and signed-token bridges do not promise managed frequency caps, legacy
 tester-source parity, a send-time fence or a full native network sender. The
 opt-in browser profile adds no npm entry or UI package export.
+
+Source contributors record notable changes in package changelog fragments;
+release preparation assembles the shipped CHANGELOG. Follow the
+[public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
