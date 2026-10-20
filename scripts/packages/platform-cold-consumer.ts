@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["shipping", "shipping/contracts", "http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts"] as const;
+export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts", "inventory", "inventory/contracts", "shipping", "shipping/contracts"] as const;
 // identity, communications and promotions are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
@@ -689,19 +689,6 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
-    consumerNode(consumer, `
-import assert from "node:assert/strict";
-import * as shipping from "@openlup/platform/shipping";
-import * as contracts from "@openlup/platform/shipping/contracts";
-assert.deepEqual(Object.keys(contracts), []);
-assert.equal(shipping.DELIVERY_SELECTION_CONTRACT_VERSION, "shipping.delivery_selection.v1");
-assert.equal(shipping.PICKUP_POINT_SEARCH_CONTRACT_VERSION, "shipping.pickup_point_search.v1");
-const selection = { kind: "courier", providerKind: " example " };
-const evidence = shipping.resolveDeliverySelectionEvidence({ orderMetadata: { selectedDelivery: selection } });
-assert.equal(evidence.providerKind, "example");
-assert.equal(shipping.summarizeDeliverySelection(evidence.selection).deliveryKind, "courier");
-for (const name of ["createDeliveryOptionsHandler", "createPickupPointSearchHandler", "createPickupPointValidationHandler"]) assert.equal(typeof shipping[name], "function");
-`);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);

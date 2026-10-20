@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
+
 - Add experimental opt-in Node `communications/resend` with exactly three
   functions for guarded transport, authenticated webhook handling and GET-only
   delivery reconciliation.

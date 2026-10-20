@@ -289,6 +289,28 @@
       "entrypoint": "dist/communications/resend/index.d.ts",
       "snapshot": "api/communications-resend.api.md"
     },
+    "./inventory": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/inventory/contracts.test.ts"
+      ],
+      "entrypoint": "dist/inventory/index.d.ts",
+      "snapshot": "api/inventory.api.md"
+    },
+    "./inventory/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/inventory/contracts.test.ts"
+      ],
+      "entrypoint": "dist/inventory/contracts/index.d.ts",
+      "snapshot": "api/inventory-contracts.api.md"
+    },
     "./shipping": {
       "role": "capability",
       "maturity": "experimental",
@@ -334,6 +356,7 @@
       "./catalog/contracts": 4096,
       "./pricing/contracts": 416,
       "./promotions/contracts": 32,
+      "./inventory/contracts": 32,
       "./shipping/contracts": 32
     }
   }

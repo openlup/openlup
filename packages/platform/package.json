@@ -151,6 +151,16 @@
       "import": "./dist/communications/resend/index.js",
       "default": "./dist/communications/resend/index.js"
     },
+    "./inventory": {
+      "types": "./dist/inventory/index.d.ts",
+      "import": "./dist/inventory/index.js",
+      "default": "./dist/inventory/index.js"
+    },
+    "./inventory/contracts": {
+      "types": "./dist/inventory/contracts/index.d.ts",
+      "import": "./dist/inventory/contracts/index.js",
+      "default": "./dist/inventory/contracts/index.js"
+    },
     "./shipping": {
       "types": "./dist/shipping/index.d.ts",
       "import": "./dist/shipping/index.js",
