@@ -477,6 +477,9 @@ for both-bundle commands, the committed managed grants and installation limits.
 
 ## Communications import
 
+For adoption from `0.16.0`, follow the [0.17.0 Migration guidance](CHANGELOG.md#0170)
+for the complete package set, canonical SQL installation and host-owned bindings.
+
 M04 P1 relocates the existing public implementation without changing its reference
 outputs. The reference shims bind the existing renderer, egress resolver, origin
 defaults, delivery-shaping policy and receipt transaction lane. The package does
@@ -735,9 +738,13 @@ commits an authoritative denied/suppressed permission and default-purpose sync
 work together; tester permission adds no marketing work. The trusted
 `registerNativeSyncWorkInTransaction` helper contains the same registration SQL
 used by `registerWork`; standalone input validation still precedes database entry.
-Sync transactions include the existing consent authority in their safe-effective-
-privilege prerequisite. Callers own the transaction and may not independently
-commit sidecar/rail effects. It grants no claim token or provider authority.
+This helper is a trusted host transaction seam: its caller-owned executor must
+already hold the lane's safe effective privileges; the function does not check
+them. Standard native sync factory transactions check
+`public.communication_native_sync_state`, `public.outbox_events` and
+`public.communication_recipient_consents`. The caller owns the transaction and
+must commit or roll back permission, sidecar and existing-rail effects atomically.
+Use a safely admitted lane; the helper grants no claim token or provider authority.
 
 Reference composition remains outside the package: actual installed factories,
 Core readiness, explicit provider ports and host-supplied schedules. Native
