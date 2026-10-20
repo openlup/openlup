@@ -491,74 +491,77 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     }
   });
 
-  it.each(sourceExtensions.flatMap((extension) => [0, 1, 10].map((depth) => ({ extension, depth }))))(
-    "admits own files and declared entries and refuses every other module path in $extension at depth $depth",
-    async ({ extension, depth }) => {
+  it.each(sourceExtensions)(
+    "admits own files and declared entries and refuses every other module path in %s at every supported depth",
+    async (extension) => {
       const config = await loadConfig();
-      const file = (module: string) => `packages/platform/src/${module}/${"nested/".repeat(depth)}usesModule.${extension}`;
-      const up = "../".repeat(depth + 1);
-      const refusal = (module: string) => expect.stringContaining(`packages/platform module "${module}"`);
-      const admitted = async (module: string, specifier: string, onlyTypes = false) => {
-        for (const source of loadSources(specifier, extension, onlyTypes)) {
-          const messages = await moduleMessages(config, source, file(module));
-          if (!onlyTypes || typeOnlyForm.test(source)) expect(messages).toEqual([]);
-          else expect(messages).toContainEqual(refusal(module));
-        }
-      };
-      const refused = async (module: string, specifier: string) => {
-        for (const source of loadSources(specifier, extension, false)) expect(await moduleMessages(config, source, file(module))).toContainEqual(refusal(module));
-      };
+      // These depth cases read the same immutable config; keep every input and assertion.
+      for (const depth of [0, 1, 10]) {
+        const file = (module: string) => `packages/platform/src/${module}/${"nested/".repeat(depth)}usesModule.${extension}`;
+        const up = "../".repeat(depth + 1);
+        const refusal = (module: string) => expect.stringContaining(`packages/platform module "${module}"`);
+        const admitted = async (module: string, specifier: string, onlyTypes = false) => {
+          for (const source of loadSources(specifier, extension, onlyTypes)) {
+            const messages = await moduleMessages(config, source, file(module));
+            if (!onlyTypes || typeOnlyForm.test(source)) expect(messages).toEqual([]);
+            else expect(messages).toContainEqual(refusal(module));
+          }
+        };
+        const refused = async (module: string, specifier: string) => {
+          for (const source of loadSources(specifier, extension, false)) expect(await moduleMessages(config, source, file(module))).toContainEqual(refusal(module));
+        };
 
-      // Own internals, from the module's files and through the source root.
-      for (const specifier of ["./own.js", `${up}composition/own.js`, ...(depth > 0 ? ["../own.js"] : [])]) await admitted("composition", specifier);
-      // Declared value edges through the target's entry.
-      await admitted("composition", `${up}data/index.js`);
-      await admitted("communications", `${up}data/index.js`);
-      await admitted("communications", `${up}identity/index.js`);
-      await admitted("communications", `${up}http/index.js`, true);
-      await refused("communications", `${up}data/postgresGateway.js`);
-      await refused("communications", `${up}bff/index.js`);
-      await admitted("identity", `${up}bff/index.js`);
-      await admitted("identity", `${up}data/index.js`);
-      await admitted("identity", `${up}kernel/index.js`);
-      await admitted("identity", `${up}http/index.js`, true);
-      await refused("identity", `${up}data/postgresGateway.js`);
-      await refused("identity", `${up}composition/index.js`);
-      await refused("identity", `${up}scheduler/index.js`);
-      await admitted("bff", `${up}kernel/index.js`);
-      // A types edge admits type-only imports; any load that brings in a value is refused.
-      await admitted("http", `${up}bff/index.js`, true);
-      await admitted("job-ledger", `${up}data/index.js`, true);
-      // Deep imports into a neighbour, even along a declared edge.
-      for (const specifier of [`${up}data/postgresGateway.js`, `${up}data/index.ts`, `${up}data/index`, `${up}data`, `${up}data/`]) await refused("composition", specifier);
-      await refused("http", `${up}bff/dispatch.js`);
-      // Undeclared directions, even through the target's public entry.
-      await refused("kernel", `${up}composition/index.js`);
-      await refused("data", `${up}blob/index.js`);
-      await refused("scheduler", `${up}bff/index.js`);
-      await refused("migrations", `${up}kernel/index.js`);
-      await refused("blob", `${up}data/index.js`);
-      // Escapes around the relative entry: package self-reference, URL, unnormalized or out-of-source paths.
-      for (const specifier of [
-        "@openlup/platform/composition", "@openlup/platform", "file:///packages/platform/src/composition/index.js",
-        `${up}kernel/../composition/index.js`, `./x/../${up}composition/index.js`, `${up}./composition/index.js`,
-        `${up}../src/composition/index.js`, `././${up}composition/index.js`, `./.x/../${up}composition/index.js`,
-        `${up}kernel/.x/../../composition/index.js`, `./..\\composition\\index.js`, `./%2e%2e/composition/index.js`,
-        `${up}kernel//../composition/index.js`, `.//${up}composition/index.js`,
-        ...["\t", "\n", "\r"].flatMap((control) => [`${up}kernel/${control}../composition/index.js`, `./${control}${up}composition/index.js`]),
-        "\tfile:///packages/platform/src/composition/index.js", " file:///packages/platform/src/composition/index.js",
-        // A dependency without an exports map resolves a climb in its subpath back into this tree.
-        "accepts/../../packages/platform/src/composition/index.js", "zod/../../packages/platform/src/data/postgresGateway.js",
-        "accepts/./index.js", "accepts//index.js", "accepts/", "accepts/%2e%2e/index.js", "node:fs/../index.js",
-        // A case-insensitive file system resolves another spelling of the scope to the workspace links.
-        "@OpenLup/platform/composition", "@OPENLUP/platform", "@openLup/core/platform-runtime",
-        // Test and fixture files are outside these rules, so a production file may not relay through one.
-        "./bridge.testFixtures.js", "./bridge.test.js", `${up}kernel/bridge.testFixtures.ts`,
-      ]) await refused("kernel", specifier);
-      // Ordinary package and built-in specifiers stay admitted.
-      for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime", "./testing.js", "./latest.js"]) await admitted("kernel", specifier);
+        // Own internals, from the module's files and through the source root.
+        for (const specifier of ["./own.js", `${up}composition/own.js`, ...(depth > 0 ? ["../own.js"] : [])]) await admitted("composition", specifier);
+        // Declared value edges through the target's entry.
+        await admitted("composition", `${up}data/index.js`);
+        await admitted("communications", `${up}data/index.js`);
+        await admitted("communications", `${up}identity/index.js`);
+        await admitted("communications", `${up}http/index.js`, true);
+        await refused("communications", `${up}data/postgresGateway.js`);
+        await refused("communications", `${up}bff/index.js`);
+        await admitted("identity", `${up}bff/index.js`);
+        await admitted("identity", `${up}data/index.js`);
+        await admitted("identity", `${up}kernel/index.js`);
+        await admitted("identity", `${up}http/index.js`, true);
+        await refused("identity", `${up}data/postgresGateway.js`);
+        await refused("identity", `${up}composition/index.js`);
+        await refused("identity", `${up}scheduler/index.js`);
+        await admitted("bff", `${up}kernel/index.js`);
+        // A types edge admits type-only imports; any load that brings in a value is refused.
+        await admitted("http", `${up}bff/index.js`, true);
+        await admitted("job-ledger", `${up}data/index.js`, true);
+        // Deep imports into a neighbour, even along a declared edge.
+        for (const specifier of [`${up}data/postgresGateway.js`, `${up}data/index.ts`, `${up}data/index`, `${up}data`, `${up}data/`]) await refused("composition", specifier);
+        await refused("http", `${up}bff/dispatch.js`);
+        // Undeclared directions, even through the target's public entry.
+        await refused("kernel", `${up}composition/index.js`);
+        await refused("data", `${up}blob/index.js`);
+        await refused("scheduler", `${up}bff/index.js`);
+        await refused("migrations", `${up}kernel/index.js`);
+        await refused("blob", `${up}data/index.js`);
+        // Escapes around the relative entry: package self-reference, URL, unnormalized or out-of-source paths.
+        for (const specifier of [
+          "@openlup/platform/composition", "@openlup/platform", "file:///packages/platform/src/composition/index.js",
+          `${up}kernel/../composition/index.js`, `./x/../${up}composition/index.js`, `${up}./composition/index.js`,
+          `${up}../src/composition/index.js`, `././${up}composition/index.js`, `./.x/../${up}composition/index.js`,
+          `${up}kernel/.x/../../composition/index.js`, `./..\\composition\\index.js`, `./%2e%2e/composition/index.js`,
+          `${up}kernel//../composition/index.js`, `.//${up}composition/index.js`,
+          ...["\t", "\n", "\r"].flatMap((control) => [`${up}kernel/${control}../composition/index.js`, `./${control}${up}composition/index.js`]),
+          "\tfile:///packages/platform/src/composition/index.js", " file:///packages/platform/src/composition/index.js",
+          // A dependency without an exports map resolves a climb in its subpath back into this tree.
+          "accepts/../../packages/platform/src/composition/index.js", "zod/../../packages/platform/src/data/postgresGateway.js",
+          "accepts/./index.js", "accepts//index.js", "accepts/", "accepts/%2e%2e/index.js", "node:fs/../index.js",
+          // A case-insensitive file system resolves another spelling of the scope to the workspace links.
+          "@OpenLup/platform/composition", "@OPENLUP/platform", "@openLup/core/platform-runtime",
+          // Test and fixture files are outside these rules, so a production file may not relay through one.
+          "./bridge.testFixtures.js", "./bridge.test.js", `${up}kernel/bridge.testFixtures.ts`,
+        ]) await refused("kernel", specifier);
+        // Ordinary package and built-in specifiers stay admitted.
+        for (const specifier of ["pg", "zod", "node:fs/promises", "@openlup/core/platform-runtime", "./testing.js", "./latest.js"]) await admitted("kernel", specifier);
+      }
     },
-    // Each case lints several hundred TypeScript sources; hosted runners need more than the default.
+    // Each extension checks all three depths; retain the existing bounded deadline.
     60_000);
 
   it.each(sourceExtensions)("keeps refusing self-reference and URL escapes beyond the deepest module depth in %s", async (extension) => {

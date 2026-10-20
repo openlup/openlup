@@ -134,3 +134,11 @@ there is no provider call or independent executor. A failed work insert rolls
 back permission persistence. Signed-token routes select this adapter explicitly;
 missing database/binding/provider identity refuses without managed fallback.
 Native legacy tester lookup is unavailable, while the managed adapter retains it.
+
+The native promotion read/sweep implementation now belongs to
+`@openlup/platform/promotions`; `postgres/promotionClaims.ts` retains its two
+named compatibility exports. The host still injects the same query executor.
+The package does not add a reservation or claim writer; managed promotion
+adapters remain here with their existing read-only/mirror fences. Native query
+characterization moves with the store, while real PostgreSQL evidence lives in
+`tests/postgres/promotionsNative.test.ts` and uses the complete canonical chain.

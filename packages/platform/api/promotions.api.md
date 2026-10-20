@@ -160,6 +160,301 @@ export declare function createRequestContextStore(options: RequestContextOptions
 import type { HttpRequest } from "../http/index.js";
 export declare function rewriteBffRouterRequestUrl(req: HttpRequest): void;
 ```
+## dist/data/binding.d.ts
+
+```ts
+import { type PostgresDataGatewayEnv } from "./postgresGateway.js";
+import type { DataGatewayPort } from "@openlup/core/platform-runtime";
+import type { SupabaseCreateClient } from "./supabaseClientFactory.js";
+type Env = Record<string, string | undefined>;
+type ActorClaims = {
+    sub?: string;
+    role?: string;
+} | null;
+/** Actor-only data access for one request. */
+export type ActorOnlyDataPort = {
+    asActor: <T>(claims: ActorClaims, work: (gateway: unknown) => Promise<T>) => Promise<T>;
+};
+export interface DataPortBindingOptions {
+    /** Replaces the bindings' supabase-js `createClient` for this call (tests). */
+    createClientImpl?: SupabaseCreateClient;
+    resolveAccessToken?: (claims: ActorClaims) => string | null;
+}
+export interface DataBindingDependencies {
+    /** The supabase-js `createClient` used by every supabase gateway these bindings build. */
+    createSupabaseClient: SupabaseCreateClient;
+    /** Builds the direct-PostgreSQL gateway; defaults to `createPostgresDataGateway`. */
+    createPostgresGateway?: (env: PostgresDataGatewayEnv) => DataGatewayPort;
+}
+export interface DataBindings {
+    /** Resolve the DataGatewayPort for a bundle's declared data capability kind. */
+    bindDataPort(dataKind: string, env: Env, requestOptions?: DataPortBindingOptions): DataGatewayPort | null;
+    /** Bind one request to actor-only data access. */
+    bindRequestActorDataPort(accessToken: string, env: Env, requestOptions?: DataPortBindingOptions): ActorOnlyDataPort | null;
+    /** Resolve and bind the active bundle's data gateway, cached per bundle and data configuration. */
+    bindBundleDataPort(env: Env): DataGatewayPort | null;
+}
+/** Create one set of data bindings; the bundle data port cache belongs to this set. */
+export declare function createDataBindings(deps: DataBindingDependencies): DataBindings;
+export {};
+```
+## dist/data/index.d.ts
+
+```ts
+export { createPostgresDataGateway, createPostgresGatewayTypeOverrides, createPostgresRoleFreeTransactionLane, postgresTimestampTzToRfc3339, resolvePostgresDataGatewayEnv, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions, type PostgresRoleFreeTransactionLane, } from "./postgresGateway.js";
+export { PgGatewayClient, PgQueryBuilder, type PgQueryExecutor, type PgShimError, type PgShimResult, } from "./queryBuilder.js";
+export { createActorClient, createServiceClient, readSupabaseActorDataGatewayEnv, readSupabaseDataGatewayEnv, type SupabaseCreateClient, type SupabaseDataGatewayEnv, } from "./supabaseClientFactory.js";
+export { createSupabaseDataGateway, type SupabaseDataGatewayOptions } from "./supabaseGateway.js";
+export { createDataBindings, type ActorOnlyDataPort, type DataBindingDependencies, type DataBindings, type DataPortBindingOptions, } from "./binding.js";
+```
+## dist/data/postgresGateway.d.ts
+
+```ts
+import type { Pool } from "pg";
+import type { DataGatewayPort } from "@openlup/core/platform-runtime";
+export interface PostgresDataGatewayEnv {
+    /** Postgres connection string (DATABASE_URL). Empty until a node-postgres deploy supplies it. */
+    connectionString: string;
+}
+export interface PostgresDataGatewayOptions {
+    /** Injection seam: tests pass a stub pool; production lazily builds a real pg.Pool from env. */
+    poolFactory?: (env: PostgresDataGatewayEnv) => Pool | Promise<Pool>;
+}
+/** Convert node-postgres timestamptz text to lossless RFC 3339. */
+export declare function postgresTimestampTzToRfc3339(value: string): string;
+/** Keep PostgREST-compatible, lossless timestamp strings at the gateway edge. */
+export declare function createPostgresGatewayTypeOverrides(TypeOverridesCtor: typeof import("pg").TypeOverrides): import("pg").TypeOverrides;
+/**
+ * Capability-local, role-free transaction lane.
+ *
+ * The platform manifest intentionally creates no service role. This is not an
+ * alternate DataGatewayPort access mode: a deployment hands one lane to exactly
+ * one adapter that calls its own rail RPCs, and names that lane after the
+ * capability, because the name is the access rule. Its lifecycle reuses the same
+ * pooled BEGIN/callback/COMMIT|ROLLBACK/release implementation as the public
+ * gateway below, but it never changes the connection role.
+ */
+export interface PostgresRoleFreeTransactionLane {
+    run<T>(work: (gateway: unknown) => Promise<T>): Promise<T>;
+    close(): Promise<void>;
+}
+/**
+ * Build a node-postgres-backed DataGatewayPort. Pure: NO pool/connection is created until a port
+ * method runs work (lazy, like the supabase adapter), so the slot binds even before DATABASE_URL is
+ * present (keeps composeBundle({}) non-null). The pool is created once and reused across calls.
+ */
+export declare function createPostgresDataGateway(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): DataGatewayPort;
+/**
+ * Build one role-free, per-operation lane. Do not use this for generic service
+ * work: DataGatewayPort.asService remains the mandatory service_role boundary.
+ * Only a named owner-authority capability of the deployment may hold a lane.
+ */
+export declare function createPostgresRoleFreeTransactionLane(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresRoleFreeTransactionLane;
+/** Resolve the gateway env from process env (DATABASE_URL), mirroring the supabase binding shape. */
+export declare function resolvePostgresDataGatewayEnv(env: Record<string, string | undefined>): PostgresDataGatewayEnv;
+```
+## dist/data/queryBuilder.d.ts
+
+```ts
+import type { PoolClient } from "pg";
+import { type PgQueryExecutor, type PgShimError, type PgShimResult } from "./queryBuilderSql.js";
+export type { PgQueryExecutor, PgShimError, PgShimResult };
+/**
+ * Builder over one pg client. Chainable + awaitable (PromiseLike). Every value flows through a param
+ * accumulator, so the rendered SQL contains only $N placeholders for values.
+ */
+export declare class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimResult<T>> {
+    private readonly client;
+    private state;
+    constructor(client: PgQueryExecutor, table: string);
+    select(columns: string, options?: {
+        count?: string;
+        head?: boolean;
+    }): this;
+    insert(values: Record<string, unknown> | Array<Record<string, unknown>>): this;
+    update(values: Record<string, unknown>): this;
+    eq(column: string, value: unknown): this;
+    gt(column: string, value: unknown): this;
+    gte(column: string, value: unknown): this;
+    lte(column: string, value: unknown): this;
+    in(column: string, values: unknown[]): this;
+    is(column: string, value: unknown): this;
+    ilike(column: string, value: string): this;
+    order(column: string, options?: {
+        ascending?: boolean;
+    }): this;
+    limit(count: number): this;
+    range(from: number, to: number): Promise<PgShimResult<T>>;
+    maybeSingle(): Promise<PgShimResult<T>>;
+    single(): Promise<PgShimResult<T>>;
+    then<R1 = PgShimResult<T>, R2 = never>(onfulfilled?: ((value: PgShimResult<T>) => R1 | PromiseLike<R1>) | null, onrejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null): Promise<R1 | R2>;
+    private run;
+    private runExactCount;
+    private shape;
+    private compile;
+    private compileSelect;
+    private compileInsert;
+    private compileUpdate;
+    private renderWhere;
+    private renderOrder;
+    private renderLimitOffset;
+}
+/** supabase-js-style client over one acquired pg client: `.from(t)` + `.rpc(fn, args)`. */
+export declare class PgGatewayClient {
+    private readonly client;
+    constructor(client: PgQueryExecutor);
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+    from<T = Record<string, unknown>>(table: string): PgQueryBuilder<T>;
+    rpc(functionName: string, args?: Record<string, unknown>): Promise<PgShimResult>;
+}
+export type { PoolClient };
+```
+## dist/data/queryBuilderSql.d.ts
+
+```ts
+/** PostgREST-shaped error the consumers narrow on (`.code`, `.message`, `.details`, `.hint`). */
+export interface PgShimError {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+}
+export interface PgShimResult<T = unknown> {
+    data: T;
+    error: PgShimError | null;
+    count?: number | null;
+}
+/** Minimal query surface we need from a pg client (Pool acquires a PoolClient per request). */
+export interface PgQueryExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export type Filter = {
+    kind: "eq" | "gte" | "lte" | "gt";
+    column: string;
+    value: unknown;
+} | {
+    kind: "in";
+    column: string;
+    values: unknown[];
+} | {
+    kind: "ilike";
+    column: string;
+    value: string;
+} | {
+    kind: "is";
+    column: string;
+    value: unknown;
+};
+export interface OrderBy {
+    column: string;
+    ascending: boolean;
+}
+export declare function quoteIdent(raw: string): string;
+export declare function renderColumns(columns: string): string;
+export declare function renderFilter(filter: Filter, params: ParamAccumulator): string;
+/**
+ * PostgREST `count=exact` rendered as a SEPARATE aggregate over the same FROM/WHERE — deliberately
+ * NOT a `COUNT(*) OVER()` folded into the row query. PostgREST's exact count ignores limit/offset,
+ * and a window function emits no row at all for an empty page, so an offset past the end would
+ * report 0 instead of the true total. Keeping it separate also leaves the row projection
+ * byte-identical: there is no synthetic column to strip before cardinality shaping.
+ */
+export declare function renderCountQuery(table: string, filters: readonly Filter[], params: ParamAccumulator): string;
+/**
+ * PostgREST refuses an out-of-bounds page instead of answering an empty one -- but ONLY when it
+ * knows the total, i.e. when an exact count was requested; without one it answers 200 and `[]`,
+ * which is what this shim already did. The boundary is strict: offset === total is a legal empty
+ * page, offset === total + 1 is not. Measured against PostgREST 14.10 before this was written,
+ * including the `details` sentence, which carries the two numbers a caller pages on.
+ */
+export declare function rangeNotSatisfiable(offset: number | null, total: number | null): PgShimError | null;
+/**
+ * INSERT ... VALUES ... RETURNING, with the column list taken from the FIRST row and every later
+ * row required to carry the same key set. Deriving the columns from row 0 alone and binding the
+ * rest positionally is how a batch used to lose a column silently: an extra key vanished, a missing
+ * one bound NULL over a DEFAULT. PostgREST answers PGRST102 "All object keys must match" to exactly
+ * this payload -- and keeps answering it under `Prefer: missing=default`, measured -- so the shim
+ * refuses too. Refusal, not union: parity is the point, and this builder exposes no Prefer header
+ * through which a caller could ask for anything else.
+ */
+export declare function renderInsertStatement(table: string, rows: readonly Record<string, unknown>[], projection: string, params: ParamAccumulator): string;
+export declare function unwrapRpcRows(rows: Record<string, unknown>[], functionName: string): unknown;
+/** Accumulates values and hands back $1,$2,… placeholders — the single injection-safety chokepoint. */
+export declare class ParamAccumulator {
+    readonly values: unknown[];
+    add(value: unknown): string;
+}
+export declare function joinParts(parts: string[]): string;
+export declare function toShimError(error: unknown): PgShimError;
+```
+## dist/data/supabaseClientFactory.d.ts
+
+```ts
+/** Structural shape of the supabase-js `createClient` we depend on (injection seam for tests). */
+export type SupabaseCreateClient = (url: string, key: string, options?: {
+    auth?: {
+        persistSession?: boolean;
+        autoRefreshToken?: boolean;
+    };
+    global?: {
+        headers?: Record<string, string>;
+    };
+}) => unknown;
+export interface SupabaseDataGatewayEnv {
+    /** Project URL (SUPABASE_URL / VITE_SUPABASE_URL). */
+    url: string;
+    /** Anon/publishable key — used for actor (RLS-bound) clients. */
+    anonKey: string;
+    /** Service-role key — used for elevated (RLS-bypassing) clients. */
+    serviceRoleKey: string;
+}
+/** Read the gateway env using the same precedence the inline sites use today. */
+export declare function readSupabaseDataGatewayEnv(env: Record<string, string | undefined>): SupabaseDataGatewayEnv | null;
+/** Read env for actor-only gateway consumers. Does not require the elevated service-role key. */
+export declare function readSupabaseActorDataGatewayEnv(env: Record<string, string | undefined>): SupabaseDataGatewayEnv | null;
+/**
+ * Build an elevated (service-role) supabase client — byte-identical to the inline
+ * `createClient(env.url, env.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })`
+ * shape the BFF handlers use today.
+ */
+export declare function createServiceClient(env: SupabaseDataGatewayEnv, factory: SupabaseCreateClient): unknown;
+/**
+ * Build an actor (RLS-bound) supabase client — anon key + the actor's Bearer access token, matching
+ * the inline `createAdminAuthClient` / `createCustomerClient` shape. When no token is supplied the
+ * global Authorization header is omitted (identical to the inline `accessToken ? {...} : {}`).
+ */
+export declare function createActorClient(env: SupabaseDataGatewayEnv, accessToken: string | null, factory: SupabaseCreateClient): unknown;
+```
+## dist/data/supabaseGateway.d.ts
+
+```ts
+import type { DataGatewayPort } from "@openlup/core/platform-runtime";
+import { type SupabaseCreateClient, type SupabaseDataGatewayEnv } from "./supabaseClientFactory.js";
+type ActorClaims = {
+    sub?: string;
+    role?: string;
+} | null;
+export interface SupabaseDataGatewayOptions {
+    /** The supabase-js `createClient` (tests pass a stub). */
+    createClientImpl: SupabaseCreateClient;
+    /**
+     * Resolve an actor's Bearer access token from their claims. The port contract carries only
+     * `{ sub, role }`, but RLS needs the raw JWT; call sites that have the request token bind it here.
+     * Returns null → anon (RLS-bound but unauthenticated) client.
+     */
+    resolveAccessToken?: (claims: ActorClaims) => string | null;
+}
+/**
+ * Build a supabase-backed DataGatewayPort from resolved env. Pure: no client is created until a
+ * port method runs work (matches the per-request creation the inline sites do today).
+ */
+export declare function createSupabaseDataGateway(env: SupabaseDataGatewayEnv, options: SupabaseDataGatewayOptions): DataGatewayPort;
+export {};
+```
 ## dist/http/deadline.d.ts
 
 ```ts
@@ -3461,6 +3756,959 @@ export declare function assertSupportedCommerceTaxProfile(taxProfile: CommerceTa
 import { z } from "zod";
 export { z };
 ```
+## dist/promotions/adminBindings.d.ts
+
+```ts
+import type { z } from "zod";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { createPromotionCodePreview } from "./promotionCodePreview.js";
+/** Structural inputs to the existing host admin kit; no kit implementation lives here. */
+export type AdminAuthorization = {
+    ok: true;
+    userId: string;
+    role: "admin" | "distributor";
+    isMachineActor: boolean;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    message: string;
+    identityCode?: string;
+};
+export type AuthorizeAdmin = () => Promise<AdminAuthorization>;
+export interface AgentDomainQuerySpec<T> {
+    readonly key: string;
+    readonly requestSchema: z.ZodType<T, unknown>;
+    readonly gate: "read";
+    readonly allowedActorKinds: readonly ("human" | "machine")[];
+}
+export interface AgentDomainMutationSpec<T> extends Omit<AgentDomainQuerySpec<T>, "gate"> {
+    readonly gate: "mutation";
+    readonly lifecycleMarkers: readonly never[];
+}
+type Handler = (req: HttpRequest, res: HttpResponse) => Promise<void>;
+type ErrorMapper = (res: HttpResponse, error: unknown, failureMessage: string) => void;
+interface ReadOptions<T> {
+    readonly authorizeAdmin: AuthorizeAdmin;
+    readonly toResponse: (value: T) => Record<string, unknown>;
+    readonly responseSchema: {
+        safeParse(value: unknown): {
+            success: boolean;
+            data?: unknown;
+        };
+    };
+    readonly invalidResponseMessage: string;
+    readonly failureMessage: string;
+}
+interface MutationOptions<Request, Result> extends Omit<ReadOptions<Result>, "responseSchema" | "invalidResponseMessage"> {
+    readonly mutation: AgentDomainMutationSpec<Request>;
+    readonly invoke: (actorId: string, request: Request) => Promise<Result>;
+    readonly responseSchema?: ReadOptions<Result>["responseSchema"];
+    readonly invalidResponseMessage?: string;
+    readonly invalidRequestMessage: string;
+    readonly mapError?: ErrorMapper;
+}
+interface QueryOptions<Request, Result> extends ReadOptions<Result> {
+    readonly query: AgentDomainQuerySpec<Request>;
+    readonly load: (actorId: string, request: Request) => Promise<Result>;
+    readonly invalidRequestMessage: string;
+    readonly mapError?: ErrorMapper;
+}
+export interface PromotionAdminBindings extends BffResponder, Pick<ReturnType<typeof createPromotionCodePreview>, "generatePromotionCode" | "normalizePromotionCode" | "previewPromotionCode" | "verifyPromotionPreviewProof"> {
+    createAdminMutationHandler<Request, Result>(options: MutationOptions<Request, Result>): Handler;
+    createAdminReadHandler<Result>(options: ReadOptions<Result> & {
+        load(): Promise<Result>;
+    }): Handler;
+    createAdminParameterizedReadHandler<Request, Result>(options: QueryOptions<Request, Result>): Handler;
+    mapRpcError: ErrorMapper;
+    resolveAdmin(authorize: AuthorizeAdmin, res: HttpResponse): Promise<Omit<Extract<AdminAuthorization, {
+        ok: true;
+    }>, "ok"> | null>;
+    /** The host constructor is passed by identity, preserving instanceof and SQLSTATE mapping. */
+    DomainRpcError: new (sqlstate: string | undefined, pgMessage: string) => Error & {
+        sqlstate: string | undefined;
+        pgMessage: string;
+    };
+}
+export {};
+```
+## dist/promotions/adminPromotionCodesContracts.d.ts
+
+```ts
+import { z } from "./validation.js";
+export declare const PROMOTION_CODE_STATUSES: readonly ["draft", "active", "paused", "archived"];
+export declare const PROMOTION_CODE_EFFECTIVE_STATUSES: readonly ["active", "draft", "paused", "scheduled", "expired", "archived"];
+export declare const PROMOTION_CODE_STATUS_FILTERS: readonly ["active", "draft", "paused", "scheduled", "expired", "archived", "expired_or_archived"];
+export declare const PROMOTION_CODE_SCOPES: readonly ["one_time", "subscription_initial"];
+export declare const promotionCodeBenefitSchema: z.ZodUnion<readonly [z.ZodUnion<readonly [z.ZodObject<{
+    lane: z.ZodLiteral<"product">;
+    kind: z.ZodLiteral<"target_percentage">;
+    valueBps: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    lane: z.ZodLiteral<"product">;
+    kind: z.ZodLiteral<"fixed_amount">;
+    valueMinor: z.ZodNumber;
+}, z.core.$strict>]>, z.ZodUnion<readonly [z.ZodObject<{
+    lane: z.ZodLiteral<"shipping">;
+    kind: z.ZodLiteral<"percentage">;
+    valueBps: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    lane: z.ZodLiteral<"shipping">;
+    kind: z.ZodLiteral<"fixed_amount">;
+    valueMinor: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    lane: z.ZodLiteral<"shipping">;
+    kind: z.ZodLiteral<"free_shipping">;
+}, z.core.$strict>]>, z.ZodObject<{
+    lane: z.ZodLiteral<"product">;
+    kind: z.ZodLiteral<"percentage">;
+    valueBps: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    lane: z.ZodLiteral<"shipping">;
+    kind: z.ZodLiteral<"percentage">;
+    valueBps: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    lane: z.ZodLiteral<"product">;
+    kind: z.ZodLiteral<"fixed_amount">;
+    valueMinor: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    lane: z.ZodLiteral<"shipping">;
+    kind: z.ZodLiteral<"fixed_amount">;
+    valueMinor: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    lane: z.ZodEnum<{
+        product: "product";
+        shipping: "shipping";
+    }>;
+    kind: z.ZodEnum<{
+        percentage: "percentage";
+        fixed_amount: "fixed_amount";
+    }>;
+    validationState: z.ZodLiteral<"unsupported_legacy_value">;
+}, z.core.$strict>]>;
+export declare const promotionCodePreviewContextSchema: z.ZodObject<{
+    referenceProductMinor: z.ZodNumber;
+    oneTimeProductMinor: z.ZodNumber;
+    subscriptionProductMinor: z.ZodNumber;
+    shippingMinor: z.ZodNumber;
+}, z.core.$strict>;
+export declare const promotionCodePreviewRequestSchema: z.ZodObject<{
+    benefits: z.ZodArray<z.ZodUnion<readonly [z.ZodUnion<readonly [z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"target_percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>]>, z.ZodUnion<readonly [z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"free_shipping">;
+    }, z.core.$strict>]>, z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodEnum<{
+            product: "product";
+            shipping: "shipping";
+        }>;
+        kind: z.ZodEnum<{
+            percentage: "percentage";
+            fixed_amount: "fixed_amount";
+        }>;
+        validationState: z.ZodLiteral<"unsupported_legacy_value">;
+    }, z.core.$strict>]>>;
+    scopes: z.ZodArray<z.ZodEnum<{
+        one_time: "one_time";
+        subscription_initial: "subscription_initial";
+    }>>;
+    promotionEngineVersion: z.ZodDefault<z.ZodEnum<{
+        "promotion-engine.v2": "promotion-engine.v2";
+        "promotion-engine.v1": "promotion-engine.v1";
+    }>>;
+    minimumReferenceMinor: z.ZodDefault<z.ZodNumber>;
+    context: z.ZodObject<{
+        referenceProductMinor: z.ZodNumber;
+        oneTimeProductMinor: z.ZodNumber;
+        subscriptionProductMinor: z.ZodNumber;
+        shippingMinor: z.ZodNumber;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export declare const promotionCodePreviewResultSchema: z.ZodObject<{
+    scope: z.ZodEnum<{
+        one_time: "one_time";
+        subscription_initial: "subscription_initial";
+    }>;
+    productPayableMinor: z.ZodNumber;
+    shippingPayableMinor: z.ZodNumber;
+    effectiveProductDiscountBps: z.ZodNumber;
+    winner: z.ZodEnum<{
+        code: "code";
+        automatic: "automatic";
+    }>;
+    floorApplied: z.ZodBoolean;
+    adjustments: z.ZodArray<z.ZodObject<{
+        lane: z.ZodEnum<{
+            product: "product";
+            shipping: "shipping";
+        }>;
+        kind: z.ZodEnum<{
+            target_percentage: "target_percentage";
+            percentage: "percentage";
+            fixed_amount: "fixed_amount";
+            free_shipping: "free_shipping";
+        }>;
+        amountOffMinor: z.ZodNumber;
+        beforeMinor: z.ZodNumber;
+        afterMinor: z.ZodNumber;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+export declare const promotionCodePreviewResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    promotionEngineVersion: z.ZodEnum<{
+        "promotion-engine.v2": "promotion-engine.v2";
+        "promotion-engine.v1": "promotion-engine.v1";
+    }>;
+    previewProof: z.ZodString;
+    results: z.ZodArray<z.ZodObject<{
+        scope: z.ZodEnum<{
+            one_time: "one_time";
+            subscription_initial: "subscription_initial";
+        }>;
+        productPayableMinor: z.ZodNumber;
+        shippingPayableMinor: z.ZodNumber;
+        effectiveProductDiscountBps: z.ZodNumber;
+        winner: z.ZodEnum<{
+            code: "code";
+            automatic: "automatic";
+        }>;
+        floorApplied: z.ZodBoolean;
+        adjustments: z.ZodArray<z.ZodObject<{
+            lane: z.ZodEnum<{
+                product: "product";
+                shipping: "shipping";
+            }>;
+            kind: z.ZodEnum<{
+                target_percentage: "target_percentage";
+                percentage: "percentage";
+                fixed_amount: "fixed_amount";
+                free_shipping: "free_shipping";
+            }>;
+            amountOffMinor: z.ZodNumber;
+            beforeMinor: z.ZodNumber;
+            afterMinor: z.ZodNumber;
+        }, z.core.$strip>>;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+export declare const promotionCodeCreateRequestSchema: z.ZodObject<{
+    name: z.ZodString;
+    description: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    code: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"automatic">;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"manual">;
+        value: z.ZodString;
+    }, z.core.$strict>], "kind">;
+    benefits: z.ZodArray<z.ZodUnion<readonly [z.ZodUnion<readonly [z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"target_percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>]>, z.ZodUnion<readonly [z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"free_shipping">;
+    }, z.core.$strict>]>]>>;
+    scopes: z.ZodArray<z.ZodEnum<{
+        one_time: "one_time";
+        subscription_initial: "subscription_initial";
+    }>>;
+    validFrom: z.ZodString;
+    validTo: z.ZodNullable<z.ZodString>;
+    minimumReferenceMinor: z.ZodDefault<z.ZodNumber>;
+    redemptionLimitGlobal: z.ZodDefault<z.ZodNullable<z.ZodNumber>>;
+    redemptionLimitPerCustomer: z.ZodDefault<z.ZodNullable<z.ZodNumber>>;
+    status: z.ZodDefault<z.ZodEnum<{
+        draft: "draft";
+        active: "active";
+    }>>;
+    previewContext: z.ZodOptional<z.ZodObject<{
+        referenceProductMinor: z.ZodNumber;
+        oneTimeProductMinor: z.ZodNumber;
+        subscriptionProductMinor: z.ZodNumber;
+        shippingMinor: z.ZodNumber;
+    }, z.core.$strict>>;
+    previewProof: z.ZodOptional<z.ZodString>;
+    idempotencyKey: z.ZodString;
+}, z.core.$strict>;
+export declare const promotionCodeCreateResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    id: z.ZodString;
+    code: z.ZodString;
+    status: z.ZodEnum<{
+        draft: "draft";
+        active: "active";
+        archived: "archived";
+        paused: "paused";
+    }>;
+    revision: z.ZodNumber;
+    idempotent: z.ZodBoolean;
+}, z.core.$strip>;
+export declare const promotionCodeUpdateRequestSchema: z.ZodObject<{
+    id: z.ZodString;
+    expectedRevision: z.ZodNumber;
+    updates: z.ZodObject<{
+        status: z.ZodOptional<z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            archived: "archived";
+            paused: "paused";
+        }>>;
+        validFrom: z.ZodOptional<z.ZodString>;
+        validTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        redemptionLimitGlobal: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        redemptionLimitPerCustomer: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    }, z.core.$strict>;
+    previewContext: z.ZodOptional<z.ZodObject<{
+        referenceProductMinor: z.ZodNumber;
+        oneTimeProductMinor: z.ZodNumber;
+        subscriptionProductMinor: z.ZodNumber;
+        shippingMinor: z.ZodNumber;
+    }, z.core.$strict>>;
+    previewProof: z.ZodOptional<z.ZodString>;
+    idempotencyKey: z.ZodString;
+}, z.core.$strict>;
+export declare const promotionCodeUpdateResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    id: z.ZodString;
+    status: z.ZodEnum<{
+        draft: "draft";
+        active: "active";
+        archived: "archived";
+        paused: "paused";
+    }>;
+    revision: z.ZodNumber;
+    idempotent: z.ZodBoolean;
+}, z.core.$strip>;
+export declare const promotionCodesListRequestSchema: z.ZodObject<{
+    q: z.ZodOptional<z.ZodString>;
+    status: z.ZodDefault<z.ZodEnum<{
+        draft: "draft";
+        active: "active";
+        archived: "archived";
+        expired: "expired";
+        paused: "paused";
+        scheduled: "scheduled";
+        expired_or_archived: "expired_or_archived";
+        all: "all";
+    }>>;
+    scope: z.ZodDefault<z.ZodEnum<{
+        one_time: "one_time";
+        subscription_initial: "subscription_initial";
+        shipping: "shipping";
+        all: "all";
+        both: "both";
+    }>>;
+    cursor: z.ZodOptional<z.ZodString>;
+    limit: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+}, z.core.$strict>;
+export declare const promotionCodeSummarySchema: z.ZodObject<{
+    id: z.ZodString;
+    code: z.ZodString;
+    name: z.ZodString;
+    description: z.ZodNullable<z.ZodString>;
+    benefits: z.ZodArray<z.ZodUnion<readonly [z.ZodUnion<readonly [z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"target_percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>]>, z.ZodUnion<readonly [z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"free_shipping">;
+    }, z.core.$strict>]>, z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"percentage">;
+        valueBps: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"product">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodLiteral<"shipping">;
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        lane: z.ZodEnum<{
+            product: "product";
+            shipping: "shipping";
+        }>;
+        kind: z.ZodEnum<{
+            percentage: "percentage";
+            fixed_amount: "fixed_amount";
+        }>;
+        validationState: z.ZodLiteral<"unsupported_legacy_value">;
+    }, z.core.$strict>]>>;
+    promotionEngineVersion: z.ZodEnum<{
+        "promotion-engine.v2": "promotion-engine.v2";
+        "promotion-engine.v1": "promotion-engine.v1";
+    }>;
+    scopes: z.ZodArray<z.ZodEnum<{
+        one_time: "one_time";
+        subscription_initial: "subscription_initial";
+    }>>;
+    status: z.ZodEnum<{
+        draft: "draft";
+        active: "active";
+        archived: "archived";
+        paused: "paused";
+    }>;
+    effectiveStatus: z.ZodEnum<{
+        draft: "draft";
+        active: "active";
+        archived: "archived";
+        expired: "expired";
+        paused: "paused";
+        scheduled: "scheduled";
+    }>;
+    validFrom: z.ZodString;
+    validTo: z.ZodNullable<z.ZodString>;
+    minimumReferenceMinor: z.ZodNumber;
+    redemptionLimitGlobal: z.ZodNullable<z.ZodNumber>;
+    redemptionLimitPerCustomer: z.ZodNullable<z.ZodNumber>;
+    redeemedCount: z.ZodNumber;
+    reservedCount: z.ZodNumber;
+    remainingCount: z.ZodNullable<z.ZodNumber>;
+    createdAt: z.ZodString;
+    revision: z.ZodNumber;
+}, z.core.$strip>;
+export declare const promotionCodesListResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    codes: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        code: z.ZodString;
+        name: z.ZodString;
+        description: z.ZodNullable<z.ZodString>;
+        benefits: z.ZodArray<z.ZodUnion<readonly [z.ZodUnion<readonly [z.ZodObject<{
+            lane: z.ZodLiteral<"product">;
+            kind: z.ZodLiteral<"target_percentage">;
+            valueBps: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            lane: z.ZodLiteral<"product">;
+            kind: z.ZodLiteral<"fixed_amount">;
+            valueMinor: z.ZodNumber;
+        }, z.core.$strict>]>, z.ZodUnion<readonly [z.ZodObject<{
+            lane: z.ZodLiteral<"shipping">;
+            kind: z.ZodLiteral<"percentage">;
+            valueBps: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            lane: z.ZodLiteral<"shipping">;
+            kind: z.ZodLiteral<"fixed_amount">;
+            valueMinor: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            lane: z.ZodLiteral<"shipping">;
+            kind: z.ZodLiteral<"free_shipping">;
+        }, z.core.$strict>]>, z.ZodObject<{
+            lane: z.ZodLiteral<"product">;
+            kind: z.ZodLiteral<"percentage">;
+            valueBps: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            lane: z.ZodLiteral<"shipping">;
+            kind: z.ZodLiteral<"percentage">;
+            valueBps: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            lane: z.ZodLiteral<"product">;
+            kind: z.ZodLiteral<"fixed_amount">;
+            valueMinor: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            lane: z.ZodLiteral<"shipping">;
+            kind: z.ZodLiteral<"fixed_amount">;
+            valueMinor: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            lane: z.ZodEnum<{
+                product: "product";
+                shipping: "shipping";
+            }>;
+            kind: z.ZodEnum<{
+                percentage: "percentage";
+                fixed_amount: "fixed_amount";
+            }>;
+            validationState: z.ZodLiteral<"unsupported_legacy_value">;
+        }, z.core.$strict>]>>;
+        promotionEngineVersion: z.ZodEnum<{
+            "promotion-engine.v2": "promotion-engine.v2";
+            "promotion-engine.v1": "promotion-engine.v1";
+        }>;
+        scopes: z.ZodArray<z.ZodEnum<{
+            one_time: "one_time";
+            subscription_initial: "subscription_initial";
+        }>>;
+        status: z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            archived: "archived";
+            paused: "paused";
+        }>;
+        effectiveStatus: z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            archived: "archived";
+            expired: "expired";
+            paused: "paused";
+            scheduled: "scheduled";
+        }>;
+        validFrom: z.ZodString;
+        validTo: z.ZodNullable<z.ZodString>;
+        minimumReferenceMinor: z.ZodNumber;
+        redemptionLimitGlobal: z.ZodNullable<z.ZodNumber>;
+        redemptionLimitPerCustomer: z.ZodNullable<z.ZodNumber>;
+        redeemedCount: z.ZodNumber;
+        reservedCount: z.ZodNumber;
+        remainingCount: z.ZodNullable<z.ZodNumber>;
+        createdAt: z.ZodString;
+        revision: z.ZodNumber;
+    }, z.core.$strip>>;
+    nextCursor: z.ZodNullable<z.ZodString>;
+    capabilities: z.ZodObject<{
+        mutationsEnabled: z.ZodBoolean;
+    }, z.core.$strict>;
+    legacyCompatibility: z.ZodObject<{
+        ready: z.ZodBoolean;
+        unprojectedCount: z.ZodNumber;
+        collisionGroupCount: z.ZodNumber;
+    }, z.core.$strict>;
+}, z.core.$strip>;
+export type PromotionCodeBenefit = z.infer<typeof promotionCodeBenefitSchema>;
+export type PromotionCodePreviewRequest = z.infer<typeof promotionCodePreviewRequestSchema>;
+export type PromotionCodePreviewResponse = z.infer<typeof promotionCodePreviewResponseSchema>;
+export type PromotionCodeCreateRequest = z.infer<typeof promotionCodeCreateRequestSchema>;
+export type PromotionCodeCreateResponse = z.infer<typeof promotionCodeCreateResponseSchema>;
+export type PromotionCodeUpdateRequest = z.infer<typeof promotionCodeUpdateRequestSchema>;
+export type PromotionCodeUpdateResponse = z.infer<typeof promotionCodeUpdateResponseSchema>;
+export type PromotionCodesListRequest = z.infer<typeof promotionCodesListRequestSchema>;
+export type PromotionCodeSummary = z.infer<typeof promotionCodeSummarySchema>;
+export type PromotionCodesListResponse = z.infer<typeof promotionCodesListResponseSchema>;
+```
+## dist/promotions/adminPromotionCodesDataPort.d.ts
+
+```ts
+import type { PromotionCodeCreateRequest, PromotionCodeSummary, PromotionCodesListRequest, PromotionCodeUpdateRequest } from "./contracts/index.js";
+export interface PromotionCodesListResult {
+    codes: PromotionCodeSummary[];
+    nextCursor: string | null;
+    legacyCompatibility: {
+        ready: boolean;
+        unprojectedCount: number;
+        collisionGroupCount: number;
+    };
+}
+export interface PromotionCodeCreateResult {
+    id: string;
+    code: string;
+    status: "draft" | "active" | "paused" | "archived";
+    idempotent: boolean;
+    revision: number;
+}
+export interface PromotionCodeUpdateResult {
+    id: string;
+    status: "draft" | "active" | "paused" | "archived";
+    idempotent: boolean;
+    revision: number;
+}
+export interface AdminPromotionCodesDataPort {
+    list(actorId: string, input: PromotionCodesListRequest): Promise<PromotionCodesListResult>;
+    definition(actorId: string, id: string): Promise<{
+        benefits: PromotionCodeSummary["benefits"];
+        scopes: PromotionCodeCreateRequest["scopes"];
+        minimumReferenceMinor: number;
+        revision: number;
+        status: "draft" | "active" | "paused" | "archived";
+        validFrom: string;
+        validTo: string | null;
+        promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
+    }>;
+    create(input: {
+        actorId: string;
+        request: PromotionCodeCreateRequest;
+        resolvedCode: string;
+        requestFingerprint: string;
+    }): Promise<PromotionCodeCreateResult>;
+    update(input: {
+        actorId: string;
+        request: PromotionCodeUpdateRequest;
+        requestFingerprint: string;
+    }): Promise<PromotionCodeUpdateResult>;
+}
+```
+## dist/promotions/adminPromotionCodesHandler.d.ts
+
+```ts
+import type { AuthorizeAdmin, PromotionAdminBindings } from "./adminBindings.js";
+import type { HttpRequest as VercelRequest, HttpResponse as VercelResponse } from "../http/index.js";
+import type { AdminPromotionCodesDataPort } from "./adminPromotionCodesDataPort.js";
+export interface AdminPromotionCodesHandlerDeps {
+    dataPort: AdminPromotionCodesDataPort;
+    authorizeAdmin: AuthorizeAdmin;
+    previewSecret: string;
+}
+export declare function createAdminPromotionCodesHandlers({ createAdminMutationHandler, createAdminParameterizedReadHandler, mapRpcError, DomainRpcError, resolveAdmin, sendBffError, sendBffSuccess, sendMethodNotAllowed, generatePromotionCode, normalizePromotionCode, previewPromotionCode, verifyPromotionPreviewProof }: Omit<PromotionAdminBindings, "createAdminReadHandler">): {
+    createAdminPromotionCodesListHandler: (deps: AdminPromotionCodesHandlerDeps) => (req: VercelRequest, res: VercelResponse) => Promise<void>;
+    createAdminPromotionCodePreviewHandler: (deps: Pick<AdminPromotionCodesHandlerDeps, "authorizeAdmin" | "previewSecret">) => (req: VercelRequest, res: VercelResponse) => Promise<void>;
+    createAdminPromotionCodeCreateHandler: (deps: AdminPromotionCodesHandlerDeps) => (req: VercelRequest, res: VercelResponse) => Promise<void>;
+    createAdminPromotionCodeUpdateHandler: (deps: AdminPromotionCodesHandlerDeps) => (req: VercelRequest, res: VercelResponse) => Promise<void>;
+};
+```
+## dist/promotions/adminPromotionsContracts.d.ts
+
+```ts
+import { z } from "./validation.js";
+/** Admin promotion schemas; raw adapter rows never cross this boundary. */
+export declare function createAdminPromotionSchemas({ currencySchema: platformCurrencySchema }: {
+    currencySchema: z.ZodType<string>;
+}): {
+    PROMOTION_STATUSES: readonly ["draft", "active", "paused", "archived"];
+    adminPromotionSemanticBenefitSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"target_percentage">;
+        valueBps: z.ZodNumber;
+        reference: z.ZodLiteral<"catalog_list_price">;
+        unitTargets: z.ZodArray<z.ZodObject<{
+            variantId: z.ZodString;
+            sku: z.ZodNullable<z.ZodString>;
+            referenceMinor: z.ZodNumber;
+            targetMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>>;
+    }, z.core.$strip>, z.ZodObject<{
+        kind: z.ZodLiteral<"percentage">;
+        valuePercent: z.ZodNumber;
+    }, z.core.$strip>, z.ZodObject<{
+        kind: z.ZodLiteral<"fixed_amount">;
+        valueMinor: z.ZodNumber;
+        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+    }, z.core.$strip>, z.ZodObject<{
+        kind: z.ZodLiteral<"free_shipping">;
+    }, z.core.$strip>, z.ZodObject<{
+        kind: z.ZodLiteral<"unavailable">;
+        reason: z.ZodLiteral<"system_managed_metadata_incomplete">;
+    }, z.core.$strip>], "kind">;
+    adminPromotionV2MirrorSchema: z.ZodObject<{
+        id: z.ZodString;
+        status: z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            archived: "archived";
+            paused: "paused";
+        }>;
+    }, z.core.$strip>;
+    adminPromotionSchema: z.ZodObject<{
+        id: z.ZodString;
+        code: z.ZodNullable<z.ZodString>;
+        name: z.ZodString;
+        triggerType: z.ZodEnum<{
+            automatic: "automatic";
+            coupon_code: "coupon_code";
+            referral: "referral";
+        }>;
+        discountType: z.ZodEnum<{
+            percentage: "percentage";
+            fixed_amount: "fixed_amount";
+            free_shipping: "free_shipping";
+        }>;
+        semanticBenefit: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"target_percentage">;
+            valueBps: z.ZodNumber;
+            reference: z.ZodLiteral<"catalog_list_price">;
+            unitTargets: z.ZodArray<z.ZodObject<{
+                variantId: z.ZodString;
+                sku: z.ZodNullable<z.ZodString>;
+                referenceMinor: z.ZodNumber;
+                targetMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"percentage">;
+            valuePercent: z.ZodNumber;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"fixed_amount">;
+            valueMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"free_shipping">;
+        }, z.core.$strip>, z.ZodObject<{
+            kind: z.ZodLiteral<"unavailable">;
+            reason: z.ZodLiteral<"system_managed_metadata_incomplete">;
+        }, z.core.$strip>], "kind">;
+        systemManaged: z.ZodBoolean;
+        readOnly: z.ZodBoolean;
+        v2Mirror: z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            status: z.ZodEnum<{
+                draft: "draft";
+                active: "active";
+                archived: "archived";
+                paused: "paused";
+            }>;
+        }, z.core.$strip>>;
+        appliesToKind: z.ZodEnum<{
+            order_total: "order_total";
+            line_with_variant: "line_with_variant";
+            line_with_category: "line_with_category";
+        }>;
+        stackingRule: z.ZodEnum<{
+            exclusive: "exclusive";
+            stackable_with_any: "stackable_with_any";
+            stackable_with_loyalty: "stackable_with_loyalty";
+        }>;
+        eligibility: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        validFrom: z.ZodString;
+        validTo: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            archived: "archived";
+            paused: "paused";
+        }>;
+        regionAvailability: z.ZodArray<z.ZodString>;
+        redemptionLimitGlobal: z.ZodNullable<z.ZodNumber>;
+        redemptionLimitPerCustomer: z.ZodNullable<z.ZodNumber>;
+    }, z.core.$strip>;
+    adminPromotionsListResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.v0">;
+        promotions: z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            code: z.ZodNullable<z.ZodString>;
+            name: z.ZodString;
+            triggerType: z.ZodEnum<{
+                automatic: "automatic";
+                coupon_code: "coupon_code";
+                referral: "referral";
+            }>;
+            discountType: z.ZodEnum<{
+                percentage: "percentage";
+                fixed_amount: "fixed_amount";
+                free_shipping: "free_shipping";
+            }>;
+            semanticBenefit: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"target_percentage">;
+                valueBps: z.ZodNumber;
+                reference: z.ZodLiteral<"catalog_list_price">;
+                unitTargets: z.ZodArray<z.ZodObject<{
+                    variantId: z.ZodString;
+                    sku: z.ZodNullable<z.ZodString>;
+                    referenceMinor: z.ZodNumber;
+                    targetMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>>;
+            }, z.core.$strip>, z.ZodObject<{
+                kind: z.ZodLiteral<"percentage">;
+                valuePercent: z.ZodNumber;
+            }, z.core.$strip>, z.ZodObject<{
+                kind: z.ZodLiteral<"fixed_amount">;
+                valueMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>, z.ZodObject<{
+                kind: z.ZodLiteral<"free_shipping">;
+            }, z.core.$strip>, z.ZodObject<{
+                kind: z.ZodLiteral<"unavailable">;
+                reason: z.ZodLiteral<"system_managed_metadata_incomplete">;
+            }, z.core.$strip>], "kind">;
+            systemManaged: z.ZodBoolean;
+            readOnly: z.ZodBoolean;
+            v2Mirror: z.ZodNullable<z.ZodObject<{
+                id: z.ZodString;
+                status: z.ZodEnum<{
+                    draft: "draft";
+                    active: "active";
+                    archived: "archived";
+                    paused: "paused";
+                }>;
+            }, z.core.$strip>>;
+            appliesToKind: z.ZodEnum<{
+                order_total: "order_total";
+                line_with_variant: "line_with_variant";
+                line_with_category: "line_with_category";
+            }>;
+            stackingRule: z.ZodEnum<{
+                exclusive: "exclusive";
+                stackable_with_any: "stackable_with_any";
+                stackable_with_loyalty: "stackable_with_loyalty";
+            }>;
+            eligibility: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+            validFrom: z.ZodString;
+            validTo: z.ZodNullable<z.ZodString>;
+            status: z.ZodEnum<{
+                draft: "draft";
+                active: "active";
+                archived: "archived";
+                paused: "paused";
+            }>;
+            regionAvailability: z.ZodArray<z.ZodString>;
+            redemptionLimitGlobal: z.ZodNullable<z.ZodNumber>;
+            redemptionLimitPerCustomer: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strip>>;
+    }, z.core.$strip>;
+    adminPromotionUpdatePayloadSchema: z.ZodObject<{
+        name: z.ZodOptional<z.ZodString>;
+        discountValue: z.ZodOptional<z.ZodNumber>;
+        stackingRule: z.ZodOptional<z.ZodEnum<{
+            exclusive: "exclusive";
+            stackable_with_any: "stackable_with_any";
+            stackable_with_loyalty: "stackable_with_loyalty";
+        }>>;
+        status: z.ZodOptional<z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            archived: "archived";
+            paused: "paused";
+        }>>;
+        eligibility: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        validFrom: z.ZodOptional<z.ZodString>;
+        validTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        redemptionLimitGlobal: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        redemptionLimitPerCustomer: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    }, z.core.$strict>;
+    adminPromotionUpdateRequestSchema: z.ZodObject<{
+        id: z.ZodString;
+        updates: z.ZodObject<{
+            name: z.ZodOptional<z.ZodString>;
+            discountValue: z.ZodOptional<z.ZodNumber>;
+            stackingRule: z.ZodOptional<z.ZodEnum<{
+                exclusive: "exclusive";
+                stackable_with_any: "stackable_with_any";
+                stackable_with_loyalty: "stackable_with_loyalty";
+            }>>;
+            status: z.ZodOptional<z.ZodEnum<{
+                draft: "draft";
+                active: "active";
+                archived: "archived";
+                paused: "paused";
+            }>>;
+            eligibility: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            validFrom: z.ZodOptional<z.ZodString>;
+            validTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            redemptionLimitGlobal: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            redemptionLimitPerCustomer: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    adminPromotionUpdateResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.v0">;
+        updated: z.ZodLiteral<true>;
+        id: z.ZodString;
+    }, z.core.$strip>;
+};
+```
+## dist/promotions/adminPromotionsDataPort.d.ts
+
+```ts
+import type { AdminPromotion, AdminPromotionUpdatePayload, AdminSubscriptionBandEntry } from "./contracts/index.js";
+/**
+ * @agent-domain-anti-reference
+ * NOT THE REFERENCE — Promotions back-compat harness port (see
+ * `adminPromotionsHandler.ts`); copy the catalog `@agent-domain-reference` port.
+ *
+ * Server-side data access for the admin discounts editor. Promotions are a
+ * single-row service-role UPDATE; the subscription band is an atomic RPC. The
+ * promotion-edit audit now goes through the non-repudiable
+ * `record_admin_audit_event` fn and is a REQUIRED step (Wave 4.5) — no longer a
+ * best-effort write that could silently vanish.
+ */
+export interface AdminPromotionsAuditEntry {
+    actorId: string;
+    actorEmail: string | null;
+    action: "promo_update" | "promo_status_change" | "shipping_rate_change";
+    promotionId: string;
+    newValue: Record<string, unknown>;
+}
+export interface AdminPromotionsDataPort {
+    listPromotions(): Promise<AdminPromotion[]>;
+    updatePromotion(id: string, updates: AdminPromotionUpdatePayload): Promise<void>;
+    listSubscriptionBand(): Promise<AdminSubscriptionBandEntry[]>;
+    setSubscriptionBandPercent(percent: number): Promise<{
+        updatedSkuCount: number;
+        appliedPercent: number;
+    }>;
+    /** Flat shipping rate (gross minor units) from commerce_settings; 0 when unset. */
+    getShippingFlatMinor(): Promise<number>;
+    /** Upsert the flat shipping rate (gross minor units). */
+    setShippingFlatMinor(minor: number): Promise<void>;
+    /**
+     * Set a SKU's one-time (list) price across the active price list via the
+     * append-only `admin_set_catalog_price` RPC. Subscription prices are untouched
+     * (re-apply the band to recompute them). The RPC writes its own audit row.
+     */
+    setCatalogPrice(input: {
+        actorId: string;
+        sku: string;
+        unitPriceMinor: number;
+    }): Promise<void>;
+    recordPromotionAudit(entry: AdminPromotionsAuditEntry): Promise<void>;
+}
+```
+## dist/promotions/adminPromotionsHandler.d.ts
+
+```ts
+import type { createAdminPromotionSchemas } from "./adminPromotionsContracts.js";
+import type { AuthorizeAdmin, PromotionAdminBindings } from "./adminBindings.js";
+import type { AdminPromotionsDataPort } from "./adminPromotionsDataPort.js";
+/** Human-admin promotion edits retain the required audit and the existing non-atomic update boundary. */
+export interface AdminPromotionsListHandlerDeps {
+    dataPort: AdminPromotionsDataPort;
+    authorizeAdmin: AuthorizeAdmin;
+}
+export interface AdminPromotionUpdateHandlerDeps {
+    dataPort: AdminPromotionsDataPort;
+    authorizeAdmin: AuthorizeAdmin;
+}
+export declare function createAdminPromotionsHandlers({ createAdminMutationHandler, createAdminReadHandler, mapRpcError }: Pick<PromotionAdminBindings, "createAdminMutationHandler" | "createAdminReadHandler" | "mapRpcError">, { adminPromotionUpdateRequestSchema, adminPromotionUpdateResponseSchema, adminPromotionsListResponseSchema }: Pick<ReturnType<typeof createAdminPromotionSchemas>, "adminPromotionUpdateRequestSchema" | "adminPromotionUpdateResponseSchema" | "adminPromotionsListResponseSchema">): {
+    createAdminPromotionsListHandler: ({ dataPort, authorizeAdmin, }: AdminPromotionsListHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminPromotionUpdateHandler: ({ dataPort, authorizeAdmin, }: AdminPromotionUpdateHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+};
+```
 ## dist/promotions/contracts/index.d.ts
 
 ```ts
@@ -3470,7 +4718,11 @@ export type PromotionCodeBenefit = {
     kind: "target_percentage";
     valueBps: number;
 } | {
-    lane: "product" | "shipping";
+    lane: "product";
+    kind: "fixed_amount";
+    valueMinor: number;
+} | {
+    lane: "shipping";
     kind: "fixed_amount";
     valueMinor: number;
 } | {
@@ -3521,6 +4773,332 @@ export interface PromotionCodePreviewResponse {
         }>;
     }>;
 }
+/** Admin DTOs are schema outputs; validation remains in the server entry. */
+/** Promotion admin output DTOs. Validation and host policy belong to the server entry. */
+export type AdminPromotion = {
+    id: string;
+    code: string | null;
+    name: string;
+    triggerType: "coupon_code" | "automatic" | "referral";
+    discountType: "percentage" | "fixed_amount" | "free_shipping";
+    semanticBenefit: {
+        kind: "target_percentage";
+        valueBps: number;
+        reference: "catalog_list_price";
+        unitTargets: {
+            variantId: string;
+            sku: string | null;
+            referenceMinor: number;
+            targetMinor: number;
+            currency: string;
+        }[];
+    } | {
+        kind: "percentage";
+        valuePercent: number;
+    } | {
+        kind: "fixed_amount";
+        valueMinor: number;
+        currency: string;
+    } | {
+        kind: "free_shipping";
+    } | {
+        kind: "unavailable";
+        reason: "system_managed_metadata_incomplete";
+    };
+    systemManaged: boolean;
+    readOnly: boolean;
+    v2Mirror: {
+        id: string;
+        status: "draft" | "active" | "paused" | "archived";
+    } | null;
+    appliesToKind: "order_total" | "line_with_variant" | "line_with_category";
+    stackingRule: "exclusive" | "stackable_with_any" | "stackable_with_loyalty";
+    eligibility: Record<string, unknown>;
+    validFrom: string;
+    validTo: string | null;
+    status: "draft" | "active" | "paused" | "archived";
+    regionAvailability: string[];
+    redemptionLimitGlobal: number | null;
+    redemptionLimitPerCustomer: number | null;
+};
+export type AdminPromotionV2Mirror = {
+    id: string;
+    status: "draft" | "active" | "paused" | "archived";
+};
+export type AdminPromotionSemanticBenefit = {
+    kind: "target_percentage";
+    valueBps: number;
+    reference: "catalog_list_price";
+    unitTargets: {
+        variantId: string;
+        sku: string | null;
+        referenceMinor: number;
+        targetMinor: number;
+        currency: string;
+    }[];
+} | {
+    kind: "percentage";
+    valuePercent: number;
+} | {
+    kind: "fixed_amount";
+    valueMinor: number;
+    currency: string;
+} | {
+    kind: "free_shipping";
+} | {
+    kind: "unavailable";
+    reason: "system_managed_metadata_incomplete";
+};
+export interface AdminPromotionsListResponse {
+    contractVersion: "commerce.v0";
+    promotions: AdminPromotion[];
+}
+export type AdminPromotionUpdatePayload = {
+    name?: string | undefined;
+    discountValue?: number | undefined;
+    stackingRule?: "exclusive" | "stackable_with_any" | "stackable_with_loyalty" | undefined;
+    status?: "draft" | "active" | "paused" | "archived" | undefined;
+    eligibility?: Record<string, unknown> | undefined;
+    validFrom?: string | undefined;
+    validTo?: string | null | undefined;
+    redemptionLimitGlobal?: number | null | undefined;
+    redemptionLimitPerCustomer?: number | null | undefined;
+};
+export interface AdminPromotionUpdateRequest {
+    id: string;
+    updates: AdminPromotionUpdatePayload;
+}
+export type AdminPromotionUpdateResponse = {
+    contractVersion: "commerce.v0";
+    updated: true;
+    id: string;
+};
+export type PromotionCodeCreateRequest = {
+    name: string;
+    description: string | null;
+    code: {
+        kind: "automatic";
+    } | {
+        kind: "manual";
+        value: string;
+    };
+    benefits: ({
+        lane: "product";
+        kind: "target_percentage";
+        valueBps: number;
+    } | {
+        lane: "product";
+        kind: "fixed_amount";
+        valueMinor: number;
+    } | {
+        lane: "shipping";
+        kind: "percentage";
+        valueBps: number;
+    } | {
+        lane: "shipping";
+        kind: "fixed_amount";
+        valueMinor: number;
+    } | {
+        lane: "shipping";
+        kind: "free_shipping";
+    })[];
+    scopes: ("one_time" | "subscription_initial")[];
+    validFrom: string;
+    validTo: string | null;
+    minimumReferenceMinor: number;
+    redemptionLimitGlobal: number | null;
+    redemptionLimitPerCustomer: number | null;
+    status: "draft" | "active";
+    idempotencyKey: string;
+    previewContext?: {
+        referenceProductMinor: number;
+        oneTimeProductMinor: number;
+        subscriptionProductMinor: number;
+        shippingMinor: number;
+    } | undefined;
+    previewProof?: string | undefined;
+};
+export type PromotionCodeCreateResponse = {
+    contractVersion: "commerce.v0";
+    id: string;
+    code: string;
+    status: "draft" | "active" | "paused" | "archived";
+    revision: number;
+    idempotent: boolean;
+};
+export type PromotionCodeUpdateRequest = {
+    id: string;
+    expectedRevision: number;
+    updates: {
+        status?: "draft" | "active" | "paused" | "archived" | undefined;
+        validFrom?: string | undefined;
+        validTo?: string | null | undefined;
+        redemptionLimitGlobal?: number | null | undefined;
+        redemptionLimitPerCustomer?: number | null | undefined;
+    };
+    idempotencyKey: string;
+    previewContext?: {
+        referenceProductMinor: number;
+        oneTimeProductMinor: number;
+        subscriptionProductMinor: number;
+        shippingMinor: number;
+    } | undefined;
+    previewProof?: string | undefined;
+};
+export type PromotionCodeUpdateResponse = {
+    contractVersion: "commerce.v0";
+    id: string;
+    status: "draft" | "active" | "paused" | "archived";
+    revision: number;
+    idempotent: boolean;
+};
+export type PromotionCodesListRequest = {
+    status: "draft" | "active" | "paused" | "archived" | "scheduled" | "expired" | "expired_or_archived" | "all";
+    scope: "shipping" | "one_time" | "subscription_initial" | "all" | "both";
+    limit: number;
+    q?: string | undefined;
+    cursor?: string | undefined;
+};
+export type PromotionCodeSummary = {
+    id: string;
+    code: string;
+    name: string;
+    description: string | null;
+    benefits: ({
+        lane: "product";
+        kind: "target_percentage";
+        valueBps: number;
+    } | {
+        lane: "product";
+        kind: "fixed_amount";
+        valueMinor: number;
+    } | {
+        lane: "shipping";
+        kind: "percentage";
+        valueBps: number;
+    } | {
+        lane: "shipping";
+        kind: "fixed_amount";
+        valueMinor: number;
+    } | {
+        lane: "shipping";
+        kind: "free_shipping";
+    } | {
+        lane: "product";
+        kind: "percentage";
+        valueBps: number;
+    } | {
+        lane: "shipping";
+        kind: "percentage";
+        valueBps: number;
+    } | {
+        lane: "product";
+        kind: "fixed_amount";
+        valueMinor: number;
+    } | {
+        lane: "shipping";
+        kind: "fixed_amount";
+        valueMinor: number;
+    } | {
+        lane: "product" | "shipping";
+        kind: "percentage" | "fixed_amount";
+        validationState: "unsupported_legacy_value";
+    })[];
+    promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
+    scopes: ("one_time" | "subscription_initial")[];
+    status: "draft" | "active" | "paused" | "archived";
+    effectiveStatus: "draft" | "active" | "paused" | "archived" | "scheduled" | "expired";
+    validFrom: string;
+    validTo: string | null;
+    minimumReferenceMinor: number;
+    redemptionLimitGlobal: number | null;
+    redemptionLimitPerCustomer: number | null;
+    redeemedCount: number;
+    reservedCount: number;
+    remainingCount: number | null;
+    createdAt: string;
+    revision: number;
+};
+export type PromotionCodesListResponse = {
+    contractVersion: "commerce.v0";
+    codes: {
+        id: string;
+        code: string;
+        name: string;
+        description: string | null;
+        benefits: ({
+            lane: "product";
+            kind: "target_percentage";
+            valueBps: number;
+        } | {
+            lane: "product";
+            kind: "fixed_amount";
+            valueMinor: number;
+        } | {
+            lane: "shipping";
+            kind: "percentage";
+            valueBps: number;
+        } | {
+            lane: "shipping";
+            kind: "fixed_amount";
+            valueMinor: number;
+        } | {
+            lane: "shipping";
+            kind: "free_shipping";
+        } | {
+            lane: "product";
+            kind: "percentage";
+            valueBps: number;
+        } | {
+            lane: "shipping";
+            kind: "percentage";
+            valueBps: number;
+        } | {
+            lane: "product";
+            kind: "fixed_amount";
+            valueMinor: number;
+        } | {
+            lane: "shipping";
+            kind: "fixed_amount";
+            valueMinor: number;
+        } | {
+            lane: "product" | "shipping";
+            kind: "percentage" | "fixed_amount";
+            validationState: "unsupported_legacy_value";
+        })[];
+        promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
+        scopes: ("one_time" | "subscription_initial")[];
+        status: "draft" | "active" | "paused" | "archived";
+        effectiveStatus: "draft" | "active" | "paused" | "archived" | "scheduled" | "expired";
+        validFrom: string;
+        validTo: string | null;
+        minimumReferenceMinor: number;
+        redemptionLimitGlobal: number | null;
+        redemptionLimitPerCustomer: number | null;
+        redeemedCount: number;
+        reservedCount: number;
+        remainingCount: number | null;
+        createdAt: string;
+        revision: number;
+    }[];
+    nextCursor: string | null;
+    capabilities: {
+        mutationsEnabled: boolean;
+    };
+    legacyCompatibility: {
+        ready: boolean;
+        unprojectedCount: number;
+        collisionGroupCount: number;
+    };
+};
+export type PromotionStatus = "draft" | "active" | "paused" | "archived";
+export interface AdminSubscriptionBandEntry {
+    variantId: string;
+    sku: string | null;
+    oneTimeMinor: number;
+    subscriptionMinor: number;
+    percent: number;
+}
 ```
 ## dist/promotions/index.d.ts
 
@@ -3536,7 +5114,17 @@ export * from "./promotionCodePreview.js";
 export * from "./promotionQuoteBinding.js";
 export * from "./promotionQuoteAcceptance.js";
 export * from "./promotionAcceptanceTelemetry.js";
-export type { PromotionCodeBenefit, PromotionCodePreviewRequest, PromotionCodePreviewResponse } from "./contracts/index.js";
+export * from "./adminBindings.js";
+export * from "./adminPromotionsContracts.js";
+export * from "./adminPromotionCodesContracts.js";
+export * from "./adminPromotionsHandler.js";
+export * from "./adminPromotionCodesHandler.js";
+export * from "./adminPromotionsDataPort.js";
+export * from "./adminPromotionCodesDataPort.js";
+export * from "./promotionClaimSweepPort.js";
+export * from "./promotionClaims.js";
+export * from "./sql.js";
+export type { PromotionStatus, AdminPromotion, AdminPromotionV2Mirror, AdminPromotionSemanticBenefit, AdminPromotionsListResponse, AdminPromotionUpdatePayload, AdminPromotionUpdateRequest, AdminPromotionUpdateResponse } from "./contracts/index.js";
 ```
 ## dist/promotions/promoDataPort.d.ts
 
@@ -3662,6 +5250,33 @@ export declare function resolvePromotionBenefitDefinition(row: {
     benefit_value_bps?: unknown;
     benefit_value_minor?: unknown;
 }): PromotionBenefitDefinition;
+```
+## dist/promotions/promotionClaims.d.ts
+
+```ts
+import type { CommercePromoDataPort } from "./promoDataPort.js";
+import { type PromotionClaimSweepPort } from "./promotionClaimSweepPort.js";
+import type { PgQueryExecutor } from "../data/index.js";
+export declare function createPostgresCommercePromoDataPort(executor: PgQueryExecutor): CommercePromoDataPort;
+export declare function createPostgresPromotionClaimSweepPort(executor: PgQueryExecutor): PromotionClaimSweepPort;
+```
+## dist/promotions/promotionClaimSweepPort.d.ts
+
+```ts
+export interface PromotionClaimSweepCounts {
+    checked: number;
+    cancelled: number;
+    skipped: number;
+}
+export interface PromotionClaimSweepPort {
+    sweep(input: {
+        now: string;
+        limit: number;
+        claimLeaseMinutes: number;
+        graceMinutes: number;
+    }): Promise<PromotionClaimSweepCounts>;
+}
+export declare function parsePromotionClaimSweepCounts(value: unknown): PromotionClaimSweepCounts;
 ```
 ## dist/promotions/promotionCodePreview.d.ts
 
@@ -3978,4 +5593,28 @@ export declare function createQuotePromotionV2({ promotionCustomerSemantic, mini
     }>;
     legacyPromotionDataPort: (port: CommercePromoDataPort) => CommercePromoDataPort;
 };
+```
+## dist/promotions/sql.d.ts
+
+```ts
+/** Sparse projections of canonical units, never an install chain. */
+export declare const PROMOTIONS_MIGRATIONS: readonly [{
+    readonly id: "20260817180000_promotion_claim_lifecycle";
+    readonly catalogPath: "db/platform/migrations/20260817180000_promotion_claim_lifecycle.sql";
+    readonly position: 47;
+    readonly sha256: "86ba6f2e610ea2d2a39057c029a1fc7f106fc94f1658becf719a41e14ddabc7d";
+    readonly url: URL;
+}, {
+    readonly id: "20260817180100_promotion_claim_lifecycle_validation";
+    readonly catalogPath: "db/platform/migrations/20260817180100_promotion_claim_lifecycle_validation.sql";
+    readonly position: 48;
+    readonly sha256: "a958ce7b18762e43ef15e34b5ff947fc1d6a9b6aa419bca5f2b84e412ac14868";
+    readonly url: URL;
+}];
+```
+## dist/promotions/validation.d.ts
+
+```ts
+import { z } from "zod";
+export { z };
 ```

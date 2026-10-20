@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePromotionClaimSweepCounts } from "./promotionClaimSweepPort.js";
+import { parsePromotionClaimSweepCounts } from "../../src/promotions/promotionClaimSweepPort.js";
 
 describe("promotion claim sweep contract", () => {
   it("accepts the neutral bounded-sweep counters", () => {

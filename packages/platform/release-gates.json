@@ -246,7 +246,11 @@
         "test/promotions/promotionCodeQuotePort.test.ts",
         "test/promotions/promotionCodePreview.test.ts",
         "test/promotions/promotionQuoteBinding.test.ts",
-        "test/promotions/promotionQuoteAcceptance.test.ts"
+        "test/promotions/promotionQuoteAcceptance.test.ts",
+        "test/promotions/adminPromotionCodesDataPort.test.ts",
+        "test/promotions/adminPromotionCodesContracts.test.ts",
+        "test/promotions/promotionClaimSweepPort.test.ts",
+        "test/promotions/promotionClaims.test.ts"
       ],
       "entrypoint": "dist/promotions/index.d.ts",
       "snapshot": "api/promotions.api.md"
@@ -258,7 +262,8 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/promotions/applicationConformance.test.ts",
-        "test/promotions/promotionCodePreview.test.ts"
+        "test/promotions/promotionCodePreview.test.ts",
+        "test/promotions/adminPromotionCodesContracts.test.ts"
       ],
       "entrypoint": "dist/promotions/contracts/index.d.ts",
       "snapshot": "api/promotions-contracts.api.md"
