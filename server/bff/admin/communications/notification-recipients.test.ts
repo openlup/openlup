@@ -27,3 +27,7 @@ function response() {
     json(value: unknown) { this.payload = value; return this; },
   };
 }
+it("native recipient requests fail closed when verified admin authority is missing",async()=>{
+ vi.stubEnv("PLATFORM_BUNDLE","node-postgres");
+ try{const res=response();await handler({method:"GET",headers:{}} as never,res as never);expect(res.statusCode).not.toBe(200);}finally{vi.unstubAllEnvs();}
+});

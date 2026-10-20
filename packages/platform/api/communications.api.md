@@ -1448,6 +1448,12 @@ export interface NativeDeliveryStore extends DeliveryReconciliationPort {
         recipientEmail: string | null;
         source: "poll" | "callback";
     }): Promise<void>;
+    findByMessageId(messageId: string): Promise<{
+        id: string;
+    } | null>;
+    listEvidence(input: {
+        limit: number;
+    }): Promise<NativeDeliveryEvidence[]>;
     readEvidence(sendId: string): Promise<NativeDeliveryEvidence | null>;
     close(): Promise<void>;
 }
@@ -1751,9 +1757,25 @@ export interface NativeCommunicationSyncStore extends CommunicationSyncStore {
     registerWork(input: NativeSyncRegistration): Promise<{
         id: string;
     }>;
+    registerPreference(input: {
+        email: string;
+        purpose: "tester_program" | NewsletterMarketingPurpose;
+        state: "denied" | "suppressed";
+    }): Promise<{
+        updated: true;
+        email: string;
+        purpose: "tester_program" | NewsletterMarketingPurpose;
+        state: "denied" | "suppressed";
+        workId: string | null;
+        alreadySuppressed: boolean;
+    }>;
     close(): Promise<void>;
 }
 export declare const nativeSyncEventType: (binding: string) => string;
+/** Trusted host transaction seam; registration validation remains shared with the standalone store. */
+export declare function registerNativeSyncWorkInTransaction(db: SqlExecutor, options: Pick<NativeSyncOptions, "binding" | "providerKind">, input: NativeSyncRegistration): Promise<{
+    id: string;
+}>;
 /** No sidecar claim/lease/drainer. Only runCommunicationSyncDispatch executes membership effects. */
 export declare function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv, options: NativeSyncOptions): NativeCommunicationSyncStore;
 ```

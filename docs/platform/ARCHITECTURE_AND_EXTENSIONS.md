@@ -30,6 +30,21 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+C-compose keeps communications admission in the reference host and uses Core's
+existing readiness checker. The selected callable identities become the
+communications contribution's route/schedule bindings; stale artifact,
+configuration, environment, database or schema identity prevents entry. Other
+selected implementations need their own real contributions in that same report;
+an independently admitted identity or outbox candidate grants no communications
+authority. Schema inventories are presence metadata, not ACL or SQL-body proof.
+
+The admin email page mounts a distinct native evidence panel alongside its
+managed historical list. Native accepted/unobserved, observed state, abandonment,
+membership work and installation-scoped consent snapshots retain their separate
+meanings. The disposable communications browser entry reuses that panel through a
+closed import inventory; it adds no npm export or reusable UI package surface.
+Default static/deployment profiles do not acquire the operator surface.
+
 The reference payment webhook module delegates its generic capped body reader,
 hex-HMAC verifier and constant-time comparison to `@openlup/platform/http`.
 Its `readRawBody` binding retains the declared `VercelRequest` parameter and the

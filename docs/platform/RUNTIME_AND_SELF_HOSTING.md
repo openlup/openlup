@@ -23,9 +23,13 @@ dispatches injected membership work, exposes authorized recipient operations and
 evaluates durable consent. It closes each capability pool on success or failure.
 The full position-70 catalogue and trusted owner-authority connection are
 prerequisites; verified human operator identity is additionally required for the
-directory. It supplies no provider reader, cron, timer, worker or UI activation.
-Existing managed route composition remains unchanged; selecting a native bundle
-alone does not convert those routes. Consent excludes managed frequency caps and
+directory. C-compose adds selected native bridges for callbacks, reconciliation,
+recipient operations and signed-token preferences. Native membership dispatch
+requires an explicitly supplied provider and uses the existing job ledger and
+sync worker; a missing provider refuses instead of selecting a silent no-op.
+The native watchdog requires a selected readback function and reports unavailable
+when that function or storage cannot be used. Managed thresholds and branches
+remain unchanged. No default timer or deployment cadence is installed. Consent excludes managed frequency caps and
 legacy contact-touching and is not a send-time fence. See the
 [package recipe](../../packages/platform/README.md#native-communications-operations-development-preview).
 
@@ -144,6 +148,26 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The communications browser profile is separately opt-in with
+`OPENLUP_REFERENCE_PROFILE=communications`. Build it with the existing
+`build:public-reference` entrypoint and relative, disposable output directories.
+Its closed import inventory is `config/public-reference-communications-imports.json`;
+the ordinary static profile does not include the panel. The selected page is
+`/admin/communications`, with an in-memory admin-session input and authenticated
+native evidence requests. No credential is stored in browser persistence.
+
+A host constructs `createReferenceCommunications` with its actual routes, ports,
+handlers and supplied schedules, then awaits `admitReferenceCommunications` using
+an independently observed installed package inventory and complete schema-ledger
+identity. `communicationsReferenceMount` accepts only an admitted candidate and
+loopback origin; `startPublicReferenceServer` checks it before listening or binding
+clocks. It refuses separately admitted identity/outbox candidates: their actual
+contributions must be part of the one aggregate admission instead. Candidate
+identity is rechecked on HTTP and schedule entry. Ordinary public deployment
+policy, the default build, static routes and empty cron configuration stay inert.
+No host cadence or live provider operation is authorized by building this profile.
+
 
 An explicitly supplied identity candidate builds its handlers from typed ports
 and snapshots its environment. Startup checks that environment against the host

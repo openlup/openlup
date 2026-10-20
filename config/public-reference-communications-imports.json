@@ -1,0 +1,12 @@
+{
+  "description": "Closed imports for the strictly opt-in disposable communications reference; ordinary public build remains inert.",
+  "files": [
+    "src/public-reference/communications-main.tsx",
+    "src/pages/admin/email-sends/NativeEvidencePanel.tsx",
+    "src/domains/communications/nativeEvidenceClient.ts",
+    "src/domains/communications/nativeEvidenceContracts.ts",
+    "src/lib/bff/client.ts",
+    "src/lib/bff/contracts.ts",
+    "src/lib/validation/zod.ts"
+  ]
+}

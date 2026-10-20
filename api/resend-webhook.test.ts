@@ -46,3 +46,7 @@ describe("/api/resend-webhook", () => {
     expect(recordAttempt).toHaveBeenCalledWith(expect.objectContaining({ outcome: "unsupported_event" }));
   });
 });
+it("selected native callback never constructs persistence for an invalid signature",async()=>{
+ vi.stubEnv("PLATFORM_BUNDLE","node-postgres");
+ try{const route=createResendWebhookRouteHandler({webhookSecret:secret,readRawBody:async()=>"{}"});const res=response();await route({method:"POST",headers:{}} as never,res as never);expect(res.statusCode).toBe(401);}finally{vi.unstubAllEnvs();}
+});

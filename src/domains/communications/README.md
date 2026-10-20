@@ -286,3 +286,27 @@ pause state remains host-owned. See the [native package recipe](../../../package
 [B3 changed expectations](../../../docs/platform/plans/oss-m04-communications-triggers.md#b3-native-stores)
 and [real-PG conformance](../../../tests/postgres/communicationsNative.test.ts).
 The callable binding adds no HTTP cron/UI activation or default network provider.
+
+## Selected composition and native operator evidence
+
+C-compose's reference root is `server/runtime/communications/referenceComposition.ts`.
+It assembles the existing Contribution and Core readiness facts from actual
+selected callables. `communicationsSchema.ts` declares managed/direct presence
+requirements; hosts still prove the complete installed catalogue and safe ACLs.
+The `triggerBindings.ts` projection binds implemented canon rows only and refuses
+unknown, duplicate or inert rows. It creates no cadence or deployment activation.
+
+`nativeEvidenceContracts.ts` and `nativeEvidenceClient.ts` expose a bounded browser
+read model, separate from managed send history. `NativeEvidencePanel` is mounted
+in the existing admin page and the opt-in communications browser profile. It
+shows accepted/unobserved or actual observations, unknown abandonment, membership
+settlement and installation-scoped decision snapshots; it never converts capture
+or membership acknowledgement into delivery. Missing authorization/storage is
+unavailable, not a healthy empty list. Refresh removes stale evidence on failure.
+
+Signed-token preference and unsubscribe bridges retain their existing verification,
+purpose restrictions, response/copy/privacy behavior. Native writes atomically
+persist refusal and register existing-rail work; legacy tester parity, managed
+frequency caps and a native general network sender are excluded. The public plan's
+C-compose ledger records each changed expectation and the owning-module open T07
+destinations. No string match or HTML shell establishes those destinations.

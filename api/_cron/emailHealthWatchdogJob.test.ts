@@ -367,3 +367,9 @@ describe("runEmailHealthWatchdogCron", () => {
     });
   });
 });
+it("native watchdog reports unavailable instead of healthy zero when its selected readback is missing",async()=>{
+ const req={method:"GET",headers:{authorization:"Bearer synthetic"}} as VercelRequest;
+ const env={PLATFORM_BUNDLE:"node-postgres",CRON_SECRET:"synthetic",COMMERCE_EMAIL_HEALTH_WATCHDOG_ENABLED:"true"};
+ expect(await runEmailHealthWatchdogCron(req,env)).toEqual({status:503,body:{ok:false,error:"native_health_binding_required"}});
+ expect((await runEmailHealthWatchdogCron(req,env,undefined,undefined,async()=>{throw new Error("unavailable");})).status).toBe(503);
+});
