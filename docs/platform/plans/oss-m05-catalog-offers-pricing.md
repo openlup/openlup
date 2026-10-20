@@ -353,15 +353,16 @@ not replace, the supervisor's committed-candidate package gates.
 ### Bundle parity pending ledger
 
 The owner accepted Bundle-1 and Bundle-2 as capability gaps on 2026-10-20:
-"zgadzam sie na rekomendacje". Bundle-3 remains PENDING for Phase B stock-backed
-mounted proof. Bundle-4 is closed only to the incumbent contention characterization
+"zgadzam sie na rekomendacje". Bundle-3 is closed for the M05 mounted readback
+boundary with an injected stock reader; its native stock read remains M06 P5a
+work. Bundle-4 is closed only to the incumbent contention characterization
 proved on real PostgreSQL in P7 Phase A; no stronger replay guarantee is claimed.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
 | Bundle-1: Native database independent human-only actor-kind gate | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native human-only publication relies on the handler gate; independent database actor-kind enforcement is absent. First item of a future native-backend parity round. |
 | Bundle-2: Native history actor identity | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native principal audit exists; managed-equivalent actor kind/email history is unavailable and not claimed. |
-| Bundle-3: Native mounted admin/feed with actual stock | PENDING; closed by the P7 proofs native-mounted-bundle-admin-stock-readback and native-bundle-replay-contention-characterization. |
+| Bundle-3: Native mounted admin/feed readback (M05) | Closed for M05: mounted admin/feed readback proven through the merged M06 availability builder with an injected stock reader. The real native stock read is M06's PENDING row (NewPurchaseStockReadPort native implementation, → M06 P5a), dispositioned there. |
 | Bundle-4: Replay/concurrency beyond sequential replay | CLOSED as incumbent characterization by P7 Phase A `native-bundle-replay-contention-characterization` on real PostgreSQL: global-key blocking, commit/unique-conflict rollback, first-attempt rollback, and conflicting payload/entity/routine recognition. No payload-bound or exactly-once guarantee. |
 
 ## P6 — bounded refactor and fixture neutralization
@@ -417,7 +418,9 @@ witnesses remain unchanged. D8-1..4 and Bundle-1/2 are accepted native-backend
 capability gaps under the owner decision above, with no parity claim; Bundle-1
 is the first item of a future native-backend parity round. These gaps must be
 named in the S1 CHANGELOG/docs as "not supported on the native backend". The
-managed path is unaffected. Bundle-3/4 stay PENDING until the named P7 proofs.
+managed path is unaffected. Bundle-3 is closed for M05 by P7's mounted readback
+with an injected stock reader; the native reader remains M06 P5a work. Bundle-4
+is closed by P7's real-PostgreSQL replay/contention characterization only.
 
 The original seven-path proof compares production tokens with comments removed,
 allows only the named VAT delegation, compares API declaration tokens, and checks each test's
@@ -460,14 +463,18 @@ building the existing workspaces restored collection without source changes.
 Lesson: absent build outputs → build existing prerequisites before collection.
 The chosen constant location avoided a thirteenth production source path.
 
-## P7 — Phase A inert native composition
+## P7 — inert native composition and M05 mounted readback
 
-Status: implemented working tree on the P6 predecessor
+Status: Phase A plus Phase B M05 readback implemented on the assigned task
+branch, after merging main `32a31f37` (including M06 P1b), with P6 stack base
 `4cab99ad16871e84c273188fedce2cfb53ee9143`; no Git writes, signed candidate,
 submission, merge, release or activation. The supervisor owns commits, applicable
 API read, fresh native review and delivery. Scope is the unchanged native store
-cut, sparse projections, explicit inert roots, companions and four bounded cases.
-P5 source is absent on this stack. M06 implementation and stock-backed proof,
+cut, sparse projections, explicit inert roots, companions and five bounded cases.
+Phase B adds one port-boundary test double case and ledger wording only; the
+coordinator permits an injected `NewPurchaseStockReadPort` feeding the merged M06
+builder, without a native stock claim. P5 source is absent on this stack.
+M06 implementation and native stock proof,
 default BFF/browser/profile/prerender changes and release preparation are excluded.
 
 ### Source and API ledger
@@ -501,19 +508,21 @@ default off; default caller routes and shipped pages/profile remain unchanged.
 
 ### Proof and case ledger
 
-Phase A writes **4 of 5** explicit cases; **1 remains** for Phase B. There is no
+Phase A provides four explicit cases; Phase B supplies the single remaining
+`native-mounted-bundle-admin-stock-readback` case. There is no
 skipped case or new parameterized expansion. Existing generated source-boundary
 iterations remain separate from the programme's authored-case budget.
 
 | Case | File | Observed result |
 | --- | --- | --- |
+| #1 `native-mounted-bundle-admin-stock-readback` | `tests/postgres/m05CatalogComposition.test.ts` | PASS: native catalog/bundle rows on the canonical PostgreSQL chain, selected admin/feed handlers registered by the inert reference composition, and component-derived bundle availability through the merged M06 builder with an injected stock reader. Changing one component from four units to zero changes both readbacks; reader calls assert both component SKUs, horizon and exclusion options. No native stock implementation is proved. |
 | #2 `native-bundle-replay-contention-characterization` | `tests/postgres/m05CatalogComposition.test.ts` | PASS on real PostgreSQL: independent blocked transactions on disjoint entities; first commit yields exact `23505`/`uq_catalog_bundle_write_events_key` and aborted/rolled-back second effects; first rollback lets the second commit; conflicting payload/entity/routine reuse is recognized without extra effects. Bundle-4 CLOSED to this characterization only. |
 | #3 native consumer readback | Same PostgreSQL file | PASS: native document/identifier envelope, strict price authority and quote/offer projection, existing native authorizer, exact transported draft bytes/fingerprint, durable revision/receipt and admin open-state readback, denied access and unchanged catalog authority. Existing issuance returns no acquisition acceptance token. P5 builder display/Continue wiring is absent and remains for the slot merge. |
 | #4 selected readiness / cold-consumer refusal | `tests/platform/catalog/m05Composition.test.ts` | PASS: actual callable/store identities, unsupported declarations, absent store/stock refusal, missing ports, incomplete/unknown schema and mismatched candidate refusal; packed SDK-absent consumer runs the reused real-operation/named-refusal scenario. |
 | #5 `SSR/default-exposure-unchanged` | `tests/platform/catalog/m05ReferenceComposition.test.ts` | PASS: both original pages render identically through the app and SSR entry, undeclared catalog/builder/admin/feed paths remain unexposed, empty BFF caller table and activation default preserved. |
 
-`vitest list` collects **2 / 1 / 1** cases in those three files respectively.
-The initial focused run collects and passes **1,202 cases in 9 explicit files**,
+Phase A `vitest list` collected **2 / 1 / 1** cases in those three files respectively.
+The initial Phase A focused run collects and passes **1,202 cases in 9 explicit files**,
 including package-boundary, cold-consumer, moved-store and selected contract
 regressions. No broad test command, coverage or resource gate runs.
 Pretest, focused ast-grep, lint (33 existing warnings, zero errors), public-tree
@@ -534,28 +543,46 @@ supervisor's committed-candidate review and delivery gates.
 
 ### Size, pending work and self-retro
 
-Recomputed last from the final diff against the P6 head
-`4cab99ad16871e84c273188fedce2cfb53ee9143`, counting the mapper rename once,
-this phase has **37 changed entries**: **20 production/tooling/schema entries**,
-**11 runtime source files**, **4 test paths** and **13 documentation/API-report
-paths**. Counting both rename endpoints instead gives **38 distinct changed
-paths**, **21 production/tooling/schema paths** and **12 runtime source paths**,
-including the removed mapper. The 20 production/tooling/schema entries and 11
-runtime source files remain within the respective **35 / 20** ceilings;
-no package/lockfile, canonical migration, dependency, cap, review control,
-dispatcher/auth control, M06 source or other worktree changes.
+Recomputed last with `--no-renames`, taking the union of each committed diff
+and working-tree changes. Against the review base
+`32a31f377122994826e0126980ec5444db6095f3`
+(`git merge-base HEAD origin/main`), the combined P6/P7 delta has **91 distinct
+changed paths**: **33 production/tooling/schema paths**, **24 runtime source
+paths** (including the removed mapper), **41 test/helper paths** and
+**17 documentation/API-report paths**. These combined figures include P6 and
+are not the P7-only runtime budget.
 
-Bundle-3 is **PENDING**, with only a placeholder comment for
-`native-mounted-bundle-admin-stock-readback`. After the slot-time main merge,
-consume M06 P1b's `createPostgresAdminInventoryPort`,
+Against P6 `4cab99ad16871e84c273188fedce2cfb53ee9143`, excluding main-only
+paths by retaining Phase A's own `4cab99ad..659b167` path set plus Phase B's
+working changes, P7 has **38 distinct changed paths**:
+**21 production/tooling/schema paths / 35**, **12 runtime source paths / 20**
+(including the removed mapper), **4 test/helper paths** and
+**13 documentation/API-report paths**. Counting the mapper move once instead
+is **37 entries**, **20 production/tooling/schema entries**, and **11 runtime
+source files**. The unfiltered P6-to-HEAD diff has **62 paths**, including main
+carry-over; it is not P7's own scope. Phase B adds **0 production/tooling/schema
+paths**, **0 runtime source paths** and **1 case**, completing **5 P7 cases**;
+the programme balance is **5 → 0**. No production file is changed in Phase B.
+
+Final Phase B focused verification: `vitest list` collects **3 / 1 / 1** cases
+in the PostgreSQL, composition and reference files; all **5 pass**. The six
+focused catalog/inventory package suites pass **31 cases**. Public-tree typecheck
+reports **0 unresolved edges / 0 diagnostics**; changed-file ESLint, ast-grep,
+policy (**7 obligations / 0 unanswered**), neutrality (**0 increases**) and
+`git diff --check` pass. Navigation needs no regeneration: policy validates the
+current projections. No broad tests, coverage or resource-gate command runs.
+
+Bundle-3 is closed for the M05 boundary by
+`native-mounted-bundle-admin-stock-readback`. The merged inventory entry supplies
 `createNewPurchaseStockAvailabilityPort`, `NewPurchaseStockReadPort`,
 `NewPurchaseStockRow`, `NewPurchaseStockMode` and
-`NewPurchaseStockAvailabilityOptions` where actually merged. The native normalized
-read supplying the new-purchase budget remains a Phase B gate: do not infer it
-from an admin stock DTO or synthesize renewal demand. P7 injects the resulting
-real `BundleStockPort` read-only. P5 consumer-derived builder/admin rendering and
-SSR inputs are likewise wired only after their source arrives. No canned stock,
-acceptance token or publication receipt substitutes for either proof.
+`NewPurchaseStockAvailabilityOptions`. The case assigns the builder result to
+catalog's `BundleStockPort` without shape casts, then selects the reference
+composition inside the test. The injected stock reader is a port-boundary test
+double; the native normalized reader remains M06's PENDING disposition toward
+P5a. Neither this case nor its real PostgreSQL catalog/bundle rows proves native
+stock. P5 consumer-derived builder/admin rendering and SSR inputs remain for the
+slot merge after their source arrives.
 
 Self-retro: early fixture failures identified required document payload/provenance
 and the actual native operator allowlist. A packed proof also raced a package
@@ -564,6 +591,10 @@ path is unchanged store bodies, the existing authorizer/readiness checker and
 inert declarations. The mapper-move follow-up confirmed that an unused helper
 needs no compatibility copy or extra public API; generating companions after
 removing the stale path kept inventory and policy consistent.
+Phase B fixture corrections consumed two focused batches (7.35 s and 8.25 s):
+use the HTTP slug contract and the existing native gateway timestamp parser;
+use a writable temporary npm cache for the packed consumer. Existing parser
+configuration avoided a production change or duplicate serialization logic.
 
 ## Witness ledger
 

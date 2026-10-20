@@ -1,10 +1,14 @@
 import type { HttpRequest } from "@openlup/platform/http";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { CATALOG_MIGRATIONS, canonicalCatalogDraftJson, createCatalogProductTypeRegistry, createPostgresCatalogSkuEnvelopeReadPort } from "@openlup/platform/catalog";
+import { IncomingMessage } from "node:http";
+import { Socket } from "node:net";
+import { Pool, TypeOverrides, type PoolClient } from "pg";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { CATALOG_MIGRATIONS, canonicalCatalogDraftJson, createCatalogProductTypeRegistry, createPostgresCatalogSkuEnvelopeReadPort, type BundleStockPort } from "@openlup/platform/catalog";
 import { createDbBackedCommerceQuotePort, projectCommerceOfferPricing, type CreateQuoteRequest, type CommerceQuoteCatalogReadPort } from "@openlup/platform/pricing";
+import { createPostgresGatewayTypeOverrides } from "@openlup/platform/data";
+import { createNewPurchaseStockAvailabilityPort, type NewPurchaseStockReadPort, type NewPurchaseStockRow, type NewPurchaseStockMode, type NewPurchaseStockAvailabilityOptions } from "@openlup/platform/inventory";
 import { createPostgresCommercePromoDataPort } from "@openlup/platform/promotions";
 import { resolveAdminAuthBinding } from "../../server/runtime/auth/adminAuthBinding.js";
 import { createSchemaProbe } from "@openlup/core/readiness";
@@ -15,6 +19,8 @@ import { m05CatalogSchema } from "../../server/runtime/public-reference/m05Catal
 import { resolveAutomaticQuotePromotions } from "../../server/domains/commerce/quoteAutomaticPromotions.js";
 import { applyPromotionCodesV2 } from "../../server/domains/commerce/quotePromotionCodeAdjustments.js";
 import { createRoutePromotionAcceptanceIssuer } from "../../server/bff/commerce/promotionCodeQuoteComposition.js";
+import { deriveOfferAvailability } from "../../src/domains/commerce/offerAvailability.js";
+import { createResponse } from "../helpers/catalogRouteResponse.js";
 import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, pool: Pool;
@@ -45,7 +51,84 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await pool?.end(); await container?.remove(); });
 
-// Phase B case #1: native-mounted-bundle-admin-stock-readback. Pending merged native inventory read/projection; no skipped test or canned stock.
+it("native-mounted-bundle-admin-stock-readback", async () => {
+  const code = "p7-stock";
+  await pool.query("INSERT INTO public.catalog_skus(product_id,sku,title,status,sellable_standalone) SELECT product_id,'P7-SECOND','Synthetic second unit','active',true FROM public.catalog_skus WHERE sku='P7-UNIT'");
+  await pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor) SELECT p.price_list_id,s.id,'one_time',1000 FROM public.price_entries p CROSS JOIN public.catalog_skus s WHERE p.variant_id=(SELECT id FROM public.catalog_skus WHERE sku='P7-UNIT') AND p.mode='one_time' AND s.sku='P7-SECOND'");
+  await pool.query("SELECT public.admin_upsert_bundle_draft($1,$2,'Synthetic stock set','virtual')", [actor, code]);
+  await pool.query("SELECT public.admin_set_bundle_composition($1,$2,$3,'commit','p7-stock-composition')", [actor, code, JSON.stringify([
+    { ...component, quantity: 2 },
+    { sku: "P7-SECOND", quantity: 1, is_addon: false, sort_order: 1 },
+  ])]);
+  await pool.query("SELECT public.admin_set_bundle_target_price($1,$2,'one_time',3000,'XXX','gross','commit','p7-stock-price')", [actor, code]);
+  await pool.query("SELECT public.admin_activate_bundle($1,$2)", [actor, code]);
+
+  // Port-boundary test double only: catalog/composition rows use PostgreSQL;
+  // the native NewPurchaseStockReadPort implementation remains M06 P5a work.
+  const stockRow = (sku: string, availableForNewPurchases: number): NewPurchaseStockRow => ({
+    sku, catalogSkuId: null, source: "local", providerForSale: null, activeHolds: 0, safetyStock: 0,
+    available: 40, stale: false, renewalDemand: 40 - availableForNewPurchases, availableForNewPurchases, excludedOrderHolds: 0,
+  });
+  const injectedRows = new Map<string, NewPurchaseStockRow>([
+    ["P7-UNIT", stockRow("P7-UNIT", 12)], ["P7-SECOND", stockRow("P7-SECOND", 4)],
+  ]);
+  const injectedStockReaderDouble: NewPurchaseStockReadPort = {
+    read: vi.fn<NewPurchaseStockReadPort["read"]>(async ({ skus }) => new Map(skus.map(sku => {
+      const row = injectedRows.get(sku);
+      if (!row) throw new Error(`Unexpected injected stock SKU: ${sku}`);
+      return [sku, row];
+    }))),
+  };
+  const mode: NewPurchaseStockMode = "new_purchase";
+  const options: NewPurchaseStockAvailabilityOptions = { mode, horizonDays: 7, lowStockThreshold: 2 };
+  const observe = { warn: vi.fn() };
+  const stock: BundleStockPort = createNewPurchaseStockAvailabilityPort({
+    readPort: injectedStockReaderDouble, functionMissingFallback: null, functionMissingError: "synthetic_missing_function",
+    defaultLowStockThreshold: 20, defaultHorizonDays: 30, deriveOfferAvailability, observe,
+  }, options);
+  const auth = resolveAdminAuthBinding({ PLATFORM_BUNDLE: "node-postgres", PLATFORM_OPERATOR_ID: actor, PLATFORM_OPERATOR_TOKEN: token, DATABASE_URL: container!.connectionString });
+  if (!auth.binding) throw new Error("native auth unavailable");
+  const unused = () => { throw new Error("unselected_callback"); };
+  // Match the native gateway's timestamp contract for validated HTTP readback.
+  const readPool = new Pool({ connectionString: container!.connectionString, types: createPostgresGatewayTypeOverrides(TypeOverrides) });
+  const binding = createM05CatalogBinding({
+    executor: executor(readPool), data: { connectionString: container!.connectionString }, auth: auth.binding, stock,
+    registry: createCatalogProductTypeRegistry([]), version: JSON.parse(readFileSync("packages/platform/package.json", "utf8")).version,
+    catalogue: { version: "complete-catalogue", migration: manifest.forward.at(-1).file },
+    quote: unused, offer: unused, applyPromotions: unused, flags: { read: true },
+  });
+  const readMounted = async (path: string, query: HttpRequest["query"]) => {
+    const handler = binding.handlers[path];
+    expect(binding.routes[`@openlup/platform/catalog:${path}`]).toBe(handler);
+    const req: HttpRequest = Object.assign(new IncomingMessage(new Socket()), {
+      method: "GET", query, headers: { authorization: `Bearer ${token}` },
+    });
+    const res = createResponse();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    return vi.mocked(res.json).mock.calls.at(-1)?.[0];
+  };
+  try {
+    expect(binding.ports["@openlup/platform/catalog:stock"]).toBe(stock.getAvailability);
+    for (const remaining of [4, 0]) {
+      injectedRows.set("P7-SECOND", stockRow("P7-SECOND", remaining));
+      const availability = { sellableNow: remaining, status: remaining === 0 ? "out_of_stock" : "available", limitingSku: "P7-SECOND" };
+      expect(await readMounted("/api/bff/admin/commerce/bundles/get", { code, currency: "XXX" })).toMatchObject({
+        ok: true, data: { bundle: { code, status: "active", availability: { ...availability, components: [
+          { sku: "P7-UNIT", quantity: 2, sellableNow: 12 }, { sku: "P7-SECOND", quantity: 1, sellableNow: remaining },
+        ] } } },
+      });
+      expect(await readMounted("/api/bff/catalog/bundles", {})).toMatchObject({
+        ok: true, data: { bundles: [{ code, price: { amountMinor: 3000, currency: "XXX" }, availability }] },
+      });
+    }
+    expect(injectedStockReaderDouble.read).toHaveBeenCalledTimes(4);
+    for (let call = 1; call <= 4; call++) expect(injectedStockReaderDouble.read).toHaveBeenNthCalledWith(call, {
+      skus: ["P7-UNIT", "P7-SECOND"], horizonDays: 7, excludeOrderId: null,
+    });
+    expect(observe.warn).not.toHaveBeenCalled();
+  } finally { await binding.close(); await readPool.end(); }
+}, 30_000);
 
 it("native-bundle-replay-contention-characterization", async () => {
   for (const code of ["P7-A", "P7-B", "P7-C", "P7-D"]) {
