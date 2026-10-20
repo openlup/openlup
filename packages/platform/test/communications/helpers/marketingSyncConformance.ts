@@ -168,7 +168,7 @@ export function pushRequest(overrides: Partial<ConsentPushRequest> = {}): Consen
 }
 
 /** Offline single-subject model for the additive family, injectable into shared CP rows. */
-export function syntheticPush(plant?: PushPlant) {
+export function syntheticPush(plant?: PushPlant, grantEffect: "audience" | "account-wide" = "audience") {
   const state = {
     generation: 1, now: 10, erased: false, localGranted: false, remote: "unknown" as ConsentReadback["remoteConsent"],
     authority: true, allPurposes: true, supportedGlobal: true, safeListOnly: true, identity: true,
@@ -179,7 +179,7 @@ export function syntheticPush(plant?: PushPlant) {
   };
   const operations = structuredClone(synthetic().provider.capabilities.operations);
   const capabilities: ConsentPushPort["capabilities"] = { binding, audience, operations: { ...operations,
-    "consent.push": { ...operations["profile.sync"], grantEffect: "audience" },
+    "consent.push": { ...operations["profile.sync"], grantEffect },
   } };
   const effects: { action: "grant" | "withdraw"; audience: SyncAudience; requestId: string; evidence: string }[] = [];
   const journal = new Map<string, { semantic: string; result: ConsentPushResult }>();
@@ -280,13 +280,30 @@ export function syntheticPush(plant?: PushPlant) {
   return { port, state, effects, read };
 }
 export type PushHarness = ReturnType<typeof syntheticPush>;
-export type PushFactory = (plant?: PushPlant) => PushHarness;
+export type PushFactory = (plant?: PushPlant, grantEffect?: "audience" | "account-wide") => PushHarness;
+
+/** Reused by real adapters, including immutable capability declarations. */
+export async function assertGrantEffectControls(fresh: () => {
+  port: ConsentPushPort; request: ConsentPushRequest; effects: () => readonly unknown[];
+  arm: (flow: string) => void;
+}, label: string) {
+  for (const armed of ["safe", ...flowVariants] as const) {
+    const h = fresh();
+    const effect = h.port.capabilities.operations["consent.push"].grantEffect;
+    expect(["audience", "account-wide"], `${label}/declared grant effect`).toContain(effect);
+    if (armed !== "safe") h.arm(armed);
+    const allowed = armed === "safe" || armed.startsWith("other:") && effect === "audience";
+    expect(await h.port.push(h.request), `${label}/${armed}/${effect} effect-scoped admission`).toMatchObject(
+      allowed ? { kind: "acknowledged", reconcileRequired: false } : { kind: "refused", reason: "restricted" });
+    expect(h.effects(), `${label}/${armed}/${effect} effect-scoped dispatch`).toHaveLength(allowed ? 1 : 0);
+  }
+}
 
 // Four registrations; variants and baseline/plant/restored executions stay inside each row.
 // P2 injects the real adapter factory into these same rows, rather than a second synthetic dialect.
 export function consentPushSuite(factory: PushFactory) {
-  const row = (id: string, plants: PushPlant[], scenario: (fresh: () => ReturnType<PushFactory>, label: string) => Promise<void>) =>
-    conformanceCase<PushPlant, () => ReturnType<PushFactory>>(id, plants, (fresh, plant) => scenario(fresh, `${id}/${plant}`), plant => () => factory(plant));
+  const row = (id: string, plants: PushPlant[], scenario: (fresh: (effect?: "audience" | "account-wide") => ReturnType<PushFactory>, label: string) => Promise<void>) =>
+    conformanceCase<PushPlant, (effect?: "audience" | "account-wide") => ReturnType<PushFactory>>(id, plants, (fresh, plant) => scenario(fresh, `${id}/${plant}`), plant => effect => factory(plant, effect));
   row("CP01", ["missing-ref:absent", "missing-ref:empty", "missing-ref:blank", ...authorityVariants.map(value => `authority:${value}` as const),
     "authority:revoked-grant", "authority:revoked-withdraw", "authority:wrong-direction-grant", "authority:wrong-direction-withdraw", "authority:all-purposes", "remote-grant", "broaden-grant", "second-audience"], async (fresh, label) => {
     const valid = fresh();
@@ -333,20 +350,12 @@ export function consentPushSuite(factory: PushFactory) {
     }
   });
   row("CP02", ["unverified", ...flowVariants.map(value => `flow:${value}` as const), ...suppressionVariants.map(value => `suppression-clear:${value}` as const)], async (fresh, label) => {
-    for (const grantEffect of ["audience", "account-wide"] as const) {
-      const h = fresh(); Reflect.set(h.port.capabilities.operations["consent.push"], "grantEffect", grantEffect);
-      expect(h.port.capabilities.operations["consent.push"].grantEffect, `${label}/declared grant effect`).toBe(grantEffect);
-      expect(await h.port.push(pushRequest()), `${label}/verified no-trigger safe positive`).toMatchObject({ kind: "acknowledged", reconcileRequired: false });
-      expect(h.effects, `${label}/safe singleton grant`).toHaveLength(1);
-    }
-    for (const grantEffect of ["audience", "account-wide"] as const) {
-      for (const armed of flowVariants.filter(value => value.startsWith("other:"))) {
-        const h = fresh(); h.state.armed = armed;
-        Reflect.set(h.port.capabilities.operations["consent.push"], "grantEffect", grantEffect);
-        expect(await h.port.push(pushRequest()), `${label}/${armed}/${grantEffect} effect-scoped admission`).toMatchObject(
-          grantEffect === "audience" ? { kind: "acknowledged", reconcileRequired: false } : { kind: "refused", reason: "restricted" });
-        expect(h.effects, `${label}/${armed}/${grantEffect} effect-scoped dispatch`).toHaveLength(grantEffect === "audience" ? 1 : 0);
-      }
+    for (const effect of ["audience", "account-wide"] as const) {
+      await assertGrantEffectControls(() => {
+        const h = fresh(effect);
+        return { port: h.port, request: pushRequest(), effects: () => h.effects,
+          arm: (flow: string) => { h.state.armed = flow; } };
+      }, label);
     }
     for (const state of ["unsupported", "verification_pending", "absent"] as const) {
       const h = fresh();
@@ -357,7 +366,7 @@ export function consentPushSuite(factory: PushFactory) {
       expect(result, `${label}/${state} capability`).toMatchObject({ kind: "refused", reason: state === "absent" ? "unsupported" : state });
     }
     for (const armed of flowVariants) {
-      const h = fresh(); h.state.armed = armed; Reflect.set(h.port.capabilities.operations["consent.push"], "grantEffect", "account-wide");
+      const h = fresh("account-wide"); h.state.armed = armed;
       const result = await h.port.push(pushRequest());
       expect(h.effects, `${label}/${armed} zero-grant-effect`).toEqual([]);
       expect(result, `${label}/${armed} no-trigger refusal`).toMatchObject({ kind: "refused", reason: "restricted" });

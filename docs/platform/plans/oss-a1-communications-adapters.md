@@ -244,8 +244,20 @@ list relationship. Jobs receive no historical-import flag, consent timestamp,
 SMS/push/tracking consent or local evidence reference. No flow, campaign,
 sender, import, suppression-management or account-sweep endpoint is called.
 
-A withdrawal proceeds despite an earlier unsettled grant. Its success carries
-`reconcileRequired:true`, and grants remain restricted during unconfirmed
+A withdrawal bypasses per-subject fences and quarantine caused by an earlier
+unsettled grant, including ambiguous acceptance, failed recording, unresolved
+dispatch and partial persistence. It still respects its own same-key replay fence
+and account-level provider cooling (`retryable/cooling` with finite `afterSeconds`),
+including observed cooldowns whose persistence failed. The shared availability
+identity retains that provider deadline across in-process adapter reconstruction.
+A private in-memory cause record on the shared availability identity also
+retains a failed grant admission when no grant journal bytes survived; its key
+keeps settlement unresolved until host reconciliation. It disappears on host
+restart, when availability starts closed for explicit reconciliation.
+Grant uncertainty does not reopen the account for other operations; unrelated
+host quarantine still requires explicit host repair. Its success carries
+`reconcileRequired:true`; failed withdrawal recording preserves acknowledgement
+with `journal:"unknown"`. Grants remain restricted during unconfirmed
 withdrawal. Pre-settlement or incomplete reads retain UNKNOWN. The host's
 existing reconciliation supplies authenticated, binding/subject/request-bound
 provider settlement facts; only a fresh complete read taken after every earlier
@@ -259,7 +271,11 @@ The P2 executed inventory is 28 explicit adapter cases plus six generated source
 boundary cases: **34 total**. S01–S12 use C-PR1's provider-agnostic
 `conformanceCase` baseline/plant/restored runner against injected provider HTTP;
 H01–H08 fold all original protocol obligations into labeled sequential
-subassertions. CP01–CP04 and KP01–KP04 are the eight consent-push cases. The two
+subassertions. CP01–CP04 and KP01–KP04 are the eight consent-push cases. CP02 shares the
+capability-reading grant-effect controls with the neutral helper, including the
+adapter's frozen account-wide declaration. KP04 pins immediate withdrawal for
+each grant uncertainty and kills a grant-ambiguity fence plant; KP03 pairs it
+with finite account-cooling refusal. KP01 checks exact payload attribute keys. The two
 existing cold-consumer cases also exercise the new installed-byte proof without
 new registrations. Fixtures resolve through `import.meta.url`. Default pacing is tested with fast HTTP and a real advancing clock. Source plants are
 transpiled into isolated temporary modules and removed afterwards; tracked

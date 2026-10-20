@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, expect } from "vitest";
-import { conformanceCase } from "../helpers/marketingSyncConformance.js";
+import { assertGrantEffectControls, conformanceCase } from "../helpers/marketingSyncConformance.js";
 import { binding, cleanupPlants, fixture, planted, preparePlants, pushRequest, request, withdraw } from "./harness.js";
 
-const names = ["missing-ref", "binding", "generation", "generation-key", "lost-admission", "push-completed", "unverified", "no-trigger", "suppression-clearing", "global-widening", "hide-race", "pending-withdrawal", "skip-withdrawal", "early-read", "body-import", "flow-endpoint", "import-endpoint", "suppression-endpoint", "extra-profile", "cooldown", "withdraw-as-grant", "old-grant-start", "delay-withdrawal", "withdraw-redispatch", "substituted-authority", "remote-grant", "broadened-grant", "suppression-present", "suppression-unknown", "suppression-at-effect", "rejected-job"];
+const names = ["missing-ref", "binding", "generation", "generation-key", "lost-admission", "push-completed", "unverified", "no-trigger", "suppression-clearing", "global-widening", "hide-race", "pending-withdrawal", "skip-withdrawal", "early-read", "body-import", "flow-endpoint", "import-endpoint", "suppression-endpoint", "extra-profile", "extra-payload-keys", "grant-fenced-withdrawal", "cooldown", "withdraw-as-grant", "old-grant-start", "delay-withdrawal", "withdraw-redispatch", "substituted-authority", "remote-grant", "broadened-grant", "suppression-present", "suppression-unknown", "suppression-at-effect", "rejected-job"];
 beforeAll(() => preparePlants(names)); afterAll(cleanupPlants);
 const row = (id: string, plants: string[], scenario: (h: ReturnType<typeof planted>, plant: string) => Promise<void>) => conformanceCase(id, plants, scenario, planted);
 row("CP01", ["missing-ref", "substituted-authority", "remote-grant", "broadened-grant"], async (h, plant) => {
@@ -32,6 +32,16 @@ row("CP01", ["missing-ref", "substituted-authority", "remote-grant", "broadened-
 });
 row("CP02", ["unverified", "no-trigger", "suppression-present", "suppression-unknown", "suppression-at-effect"], async (h, plant) => {
   expect(h.provider.consentPush.capabilities.operations["consent.push"].grantEffect).toBe("account-wide");
+  expect(Object.isFrozen(h.provider.consentPush.capabilities.operations["consent.push"])).toBe(true);
+  await assertGrantEffectControls(() => {
+    const f = fixture(h.factory); let port = f.provider.consentPush;
+    return { get port() { return port; }, request: pushRequest(), effects: f.effects,
+      arm: () => {
+        f.config.verification!.noTrigger.accountWideGrant = false;
+        // Reconstruct from host verification; the adapter's declared capabilities stay frozen.
+        port = f.rebuild().consentPush;
+      } };
+  }, `CP02/${plant}`);
   if (plant === "unverified") {
     const f = fixture(h.factory, { pending: true });
     expect(f.provider.consentPush.capabilities.operations["consent.push"].state, "CP02/unverified").toBe("verification_pending");
@@ -115,11 +125,14 @@ row("CP04", ["hide-race", "pending-withdrawal", "skip-withdrawal", "early-read",
     expect(await h.provider.consentPush.push(withdraw({ requestId: "host:reissue" }))).toMatchObject({ kind: "acknowledged" }); expect(h.effects()).toHaveLength(3);
   }
 });
-row("KP01", ["body-import", "flow-endpoint", "import-endpoint", "suppression-endpoint", "extra-profile"], async (h, plant) => {
+row("KP01", ["body-import", "flow-endpoint", "import-endpoint", "suppression-endpoint", "extra-profile", "extra-payload-keys"], async (h, plant) => {
   expect(await h.provider.consentPush.push(pushRequest())).toMatchObject({ kind: "acknowledged" });
   const call = h.effects()[0];
   expect(call.url, `KP01/${plant} exact permitted endpoint`).toBe("https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs");
-  expect(call.body.data.attributes, "KP01/body-import").not.toHaveProperty("historical_import");
+  expect(Object.keys(call.body), `KP01/${plant} exact envelope keys`).toEqual(["data"]);
+  expect(Object.keys(call.body.data), `KP01/${plant} exact data keys`).toEqual(["type", "attributes", "relationships"]);
+  expect(call.body.data.type).toBe("profile-subscription-bulk-create-job");
+  expect(Object.keys(call.body.data.attributes), `KP01/${plant} exact attribute keys`).toEqual(["profiles"]);
   expect(call.body.data.attributes.profiles, `KP01/${plant} exact singleton`).toEqual({ data: [{ type: "profile", id: "owned_1", attributes: { email: "synthetic@example.invalid", subscriptions: { email: { marketing: { consent: "SUBSCRIBED" } } } } }] });
   expect(call.body.data.relationships).toEqual({ list: { data: { type: "list", id: "LIST1" } } });
   expect(JSON.stringify(call.body)).not.toMatch(/consented_at|grant:1|sms|tracking/);
@@ -142,7 +155,34 @@ row("KP03", ["cooldown"], async h => {
   h.state.fault = (_url, init) => init.method === "POST" ? new Response(null, { status: 429, headers: { "Retry-After": "60" } }) : undefined;
   expect(await h.provider.consentPush.push(pushRequest())).toMatchObject({ kind: "retryable", reason: "cooling" });
   h.state.fault = undefined; const calls = h.state.calls.length;
+  const cooled = await h.rebuild().consentPush.push(withdraw());
+  expect(cooled, "KP03/cooldown withdrawal respects account cooling").toMatchObject({ kind: "retryable", reason: "cooling", afterSeconds: 60 });
+  if (cooled.kind === "retryable") expect(Number.isFinite(cooled.afterSeconds)).toBe(true);
+  expect(h.state.calls, "KP03/cooldown zero withdrawal HTTP").toHaveLength(calls);
+
   expect(await h.rebuild().consentPush.push(pushRequest({ requestId: "fresh" })), "KP03/cooldown").toMatchObject({ kind: "retryable", reason: "cooling" }); expect(h.state.calls).toHaveLength(calls);
+  const lostCooling = fixture(h.factory);
+  lostCooling.state.fault = (_url, init) => init.method === "POST" ? new Response(null, { status: 429, headers: { "Retry-After": "60" } }) : undefined;
+  lostCooling.state.storageFault = (phase, next) => phase === "cas" && JSON.parse(next!).coolingUntil > 0 ? "false" : undefined;
+  expect(await lostCooling.provider.consentPush.push(pushRequest())).toMatchObject({ kind: "retryable", reason: "cooling", afterSeconds: 60 });
+  lostCooling.state.fault = undefined; lostCooling.state.storageFault = undefined;
+  const lostCalls = lostCooling.state.calls.length;
+  expect(await lostCooling.rebuild().consentPush.push(withdraw()), "KP03/cooldown lost persistence retains provider cooling").toMatchObject({ kind: "retryable", reason: "cooling", afterSeconds: 60 });
+  expect(lostCooling.state.calls, "KP03/cooldown lost persistence zero withdrawal HTTP").toHaveLength(lostCalls);
+  const ambiguous = fixture(h.factory);
+  ambiguous.state.fault = (_url, init) => init.method === "POST" ? new Response(null, { status: 500 }) : undefined;
+  expect(await ambiguous.provider.consentPush.push(pushRequest())).toMatchObject({ kind: "unknown", reason: "acceptance_ambiguous" });
+  ambiguous.state.fault = () => new Response(null, { status: 429, headers: { "Retry-After": "60" } });
+  expect(await ambiguous.provider.consentPush.push(withdraw()), "KP03/cooldown cooling despite grant ambiguity").toMatchObject({ kind: "retryable", reason: "cooling", afterSeconds: 60 });
+  ambiguous.state.fault = undefined;
+  const beforeRetry = ambiguous.state.calls.length;
+  const waiting = await ambiguous.rebuild().consentPush.push(withdraw());
+  expect(waiting, "KP03/cooldown withdrawal stays account cooled").toMatchObject({ kind: "retryable", reason: "cooling", afterSeconds: 60 });
+  if (waiting.kind === "retryable") expect(Number.isFinite(waiting.afterSeconds)).toBe(true);
+  expect(ambiguous.state.calls, "KP03/cooldown no withdrawal HTTP during cooling").toHaveLength(beforeRetry);
+  ambiguous.state.now += 61000;
+  expect(await ambiguous.rebuild().consentPush.push(withdraw()), "KP03/cooldown host retries after provider cooling").toMatchObject({ kind: "acknowledged", reconcileRequired: true });
+  expect(ambiguous.effects().map(c => c.method)).toEqual(["POST", "DELETE"]);
   for (const mode of ["date-429", "timeout", "500", "redirect", "non-json"] as const) {
     const f = fixture(); f.state.fault = (_url, init) => {
       if (init.method !== "POST") return;
@@ -155,7 +195,32 @@ row("KP03", ["cooldown"], async h => {
     await f.rebuild().consentPush.push(pushRequest({ requestId: "new" })); expect(f.effects()).toHaveLength(effects);
   }
 });
-row("KP04", ["rejected-job", "push-completed", "hide-race", "skip-withdrawal", "pending-withdrawal", "withdraw-redispatch"], async (h, plant) => {
+row("KP04", ["grant-fenced-withdrawal", "rejected-job", "push-completed", "hide-race", "skip-withdrawal", "pending-withdrawal", "withdraw-redispatch"], async (h, plant) => {
+  for (const fault of ["acceptance_ambiguous", "dispatch_unresolved", "record_failed", "ack-record_failed", "partial-persistence", "missing-admission"] as const) {
+    const f = fixture(h.factory);
+    if (fault === "acceptance_ambiguous" || fault === "record_failed") f.state.fault = (_url, init) => init.method === "POST" ? new Response(null, { status: 500 }) : undefined;
+    if (fault !== "acceptance_ambiguous") {
+      let once = true;
+      f.state.storageFault = (phase, next) => {
+        const marker = (fault === "dispatch_unresolved" || fault === "missing-admission") ? '"phase":"dispatched"' : fault === "record_failed" ? '"kind":"unknown"' : '"kind":"acknowledged"';
+        if (once && phase === "cas" && next?.includes(marker)) { once = false; return fault === "missing-admission" ? "throw" : fault === "partial-persistence" || fault === "dispatch_unresolved" ? "lost" : "false"; }
+      };
+    }
+    expect(await f.provider.consentPush.push(pushRequest()), `KP04/${plant}/${fault} grant uncertainty`).toMatchObject(
+      fault === "acceptance_ambiguous" ? { kind: "unknown", reason: fault } : (fault === "dispatch_unresolved" || fault === "missing-admission") ? { kind: "unknown", reason: "dispatch_unresolved" } : fault === "record_failed" ? { kind: "unknown", reason: "record_failed" } : { kind: "acknowledged", journal: "unknown" });
+    f.state.fault = undefined;
+    // Keep withdrawal recording broken too: its accepted wire effect must remain honest.
+    if (fault === "record_failed") f.state.storageFault = (phase, next) => phase === "cas" && next?.includes('"action":"withdraw"') && next.includes('"kind":"acknowledged"') ? "false" : undefined;
+    const w = withdraw();
+    const result = await f.rebuild().consentPush.push(w);
+    expect(result, `KP04/${plant}/${fault} withdrawal bypasses grant fence`).toMatchObject({ kind: "acknowledged", reconcileRequired: true,
+      journal: fault === "acceptance_ambiguous" ? "confirmed" : "unknown" });
+    expect(f.effects().map(c => c.method), `KP04/${plant}/${fault} immediate withdrawal`).toEqual((fault === "dispatch_unresolved" || fault === "missing-admission") ? ["DELETE"] : ["POST", "DELETE"]);
+    f.state.storageFault = undefined;
+    const count = f.effects().length;
+    await f.rebuild().consentPush.push(w);
+    expect(f.effects(), `KP04/${plant}/${fault} same-key withdrawal never redispatches`).toHaveLength(count);
+  }
   if (plant === "rejected-job") {
     for (const status of [400, 429]) {
       const f = fixture(h.factory); f.state.fault = (_url, init) => init.method === "POST" ? new Response(null, { status, headers: { "Retry-After": "1" } }) : undefined;
@@ -182,6 +247,7 @@ row("KP04", ["rejected-job", "push-completed", "hide-race", "skip-withdrawal", "
     const original = withdraw({ audience: scope });
     expect(await f.provider.consentPush.push(original)).toMatchObject({ kind: "unknown", reason: "acceptance_ambiguous" });
     f.state.fault = undefined; const count = f.state.calls.length;
+    expect(await f.rebuild().consentPush.push(original), "KP04/own unresolved withdrawal same-key replay").toMatchObject({ kind: "unknown", reason: "acceptance_ambiguous" });
     const replay = await f.rebuild().consentPush.push({ ...original, requestId: "new-withdrawal" });
     expect(f.state.calls, "KP04/withdraw-redispatch zero additional HTTP").toHaveLength(count);
     expect(replay, "KP04/own unresolved withdrawal fence").toMatchObject({ kind: "unknown", reason: "dispatch_unresolved" });

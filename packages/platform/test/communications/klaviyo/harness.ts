@@ -110,13 +110,14 @@ const mutations: Record<string, [string, string][]> = {
   "withdraw-redispatch": [['if (r.operation !== "consent.read" && pending.some(e => !withdrawing || e.request.operation !== "consent.push" || e.request.payload.action !== "grant"))', 'if (r.operation !== "consent.read" && pending.length > 0 && !withdrawing)'], ['if (Object.values(ledger.entries).some(e => subjectKey(e.request) === owner && e.phase !== "settled" && (!withdrawing || e.request.operation !== "consent.push" || e.request.payload.action !== "grant")))', 'if (Object.values(ledger.entries).some(e => subjectKey(e.request) === owner && e.phase !== "settled") && !withdrawing)']],
   "record-quarantine": [['        ledger.quarantined = true;', '        ledger.quarantined = false;']],
   pacing: [['if (!quarantine && !availability.quarantined && !ledger.quarantined && !ledger.slot && ledger.coolingUntil <= now() && delay > 0 && delay < Math.min(timeoutMs, r.deadlineMs - now()))', 'if (false)']],
-  "read-quarantine": [['        ledger.quarantined = true;', '        ledger.quarantined = false;'], ['if (r.operation !== "consent.read") await releaseSlot();', 'await releaseSlot();']],
+  "read-quarantine": [['        ledger.quarantined = true;', '        ledger.quarantined = false;'], ['if (r.operation !== "consent.read") await releaseSlot(r);', 'await releaseSlot();']],
   "read-fact": [['} catch { await quarantineAccount(key); }\n      const afterPersistence', '} catch { quarantine = true; return unknown(r,"record_failed"); }\n      const afterPersistence']],
   "read-generation": [['const afterPersistence = guard(); if (afterPersistence)', 'const afterPersistence = guard(); if (false)']],
   "withdraw-as-grant": [['if (r.operation === "consent.push") {', 'if (r.operation === "consent.push") { if (r.payload.action === "withdraw" && !input.localEvidence.get("grant:1")?.current) return "restricted";']],
   "old-grant-start": [['if (s.generation !== r.generation)', 'if (false)'], ['if (snapshot && !equal(s, snapshot))', 'if (snapshot && !equal({...s,generation:0}, {...snapshot,generation:0}))']],
+  "grant-fenced-withdrawal": [['const withdrawing = r.operation === "consent.push" && r.payload.action === "withdraw";', 'const withdrawing = r.operation === "consent.push" && r.payload.action === "withdraw"; if (withdrawing && Object.values(ledger.entries).some(e => e.request.operation === "consent.push" && e.request.payload.action === "grant" && e.result?.kind === "unknown")) return unknown(r,"dispatch_unresolved");']],
   "delay-withdrawal": [['const withdrawing = r.operation === "consent.push" && r.payload.action === "withdraw";', 'const withdrawing = r.operation === "consent.push" && r.payload.action === "withdraw"; if(withdrawing && Object.values(ledger.entries).some(e=>e.request.operation==="consent.push" && e.request.payload.action==="grant" && !e.grantSettled)) return unknown(r,"dispatch_unresolved");']],
-  cooldown: [['next.ledger.coolingUntil = Math.max(next.ledger.coolingUntil, now() + afterSeconds * 1000);', 'next.ledger.coolingUntil = 0;']],
+  cooldown: [['providerCooling.set(availability, Math.max(providerCooling.get(availability) ?? 0, now() + afterSeconds * 1000));', 'void 0;'], ['next.ledger.coolingUntil = Math.max(next.ledger.coolingUntil, now() + afterSeconds * 1000);', 'next.ledger.coolingUntil = 0;']],
   "missing-ref": [['text(object(p).consentEvidenceReference) &&', 'true &&'], ['const local = input.localEvidence.get(ref);', 'const local = input.localEvidence.get(ref) ?? input.localEvidence.get("grant:1");']],
   "push-completed": [['kind: "acknowledged", receipt, journal: quarantine', 'kind: "completed", receipt, journal: quarantine']],
   unverified: [[': { state: "verification_pending" as const };', ': { state: "supported" as const, evidenceReference:"fault",maxRequestBytes,maxFeedbackItems };']],
@@ -151,9 +152,9 @@ export async function preparePlants(names: string[]) {
   for (const name of names) {
     let changed = source;
     for (const [before, after] of mutations[name] ?? []) { expect(changed, `${name} source plant target exists`).toContain(before); changed = changed.replaceAll(before, after); }
-    if (["body-import", "flow-endpoint", "import-endpoint", "suppression-endpoint", "extra-profile"].includes(name)) {
+    if (["body-import", "flow-endpoint", "import-endpoint", "suppression-endpoint", "extra-profile", "extra-payload-keys"].includes(name)) {
       const endpoint = name === "flow-endpoint" ? "/api/flows" : name === "import-endpoint" ? "/api/profile-bulk-import-jobs" : "/api/profile-suppression-bulk-create-jobs";
-      const bad = name === "body-import" ? command.replace('attributes: { profiles:', 'attributes: { historical_import: true, profiles:') : name === "extra-profile" ? command.replace('profiles: { data: [', 'profiles: { data: [{type:"profile",attributes:{email:"extra@example.invalid"}},') : command.replace('path: `/api/${type}s`', `path: "${endpoint}"`);
+      const bad = name === "extra-payload-keys" ? command.replace("attributes: { profiles:", "attributes: { unapproved: true, profiles:") : name === "body-import" ? command.replace('attributes: { profiles:', 'attributes: { historical_import: true, profiles:') : name === "extra-profile" ? command.replace('profiles: { data: [', 'profiles: { data: [{type:"profile",attributes:{email:"extra@example.invalid"}},') : command.replace('path: `/api/${type}s`', `path: "${endpoint}"`);
       writeFileSync(join(temporary, `${name}-command.mjs`), compile(bad));
       changed = changed.replace('"./consentPush.js"', `"./${name}-command.mjs"`);
     }

@@ -3,6 +3,11 @@ import type { MarketingAutomationClaim, MarketingAutomationObservation, Marketin
 import type { NewsletterSyncProviderPort } from "../contracts/newsletter.js";
 import { consentCommand } from "./consentPush.js";
 
+// Retain the cause when a grant admission CAS throws before any journal bytes
+// survive. Shared host availability keeps it across adapter reconstruction;
+// a fresh host process still starts quarantined for explicit reconciliation.
+const grantQuarantines = new WeakMap<object, Map<string, string>>();
+const providerCooling = new WeakMap<object, number>();
 const REVISION = "2026-07-15";
 const ORIGIN = "https://a.klaviyo.com";
 type Request = SyncRequest | ConsentPushRequest;
@@ -214,12 +219,24 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
   const availability = input.storage.availability;
   if (!availability || availability.account !== binding.account || availability.environment !== binding.environment ||
     !["busy", "quarantined"].every(k => { const d = Object.getOwnPropertyDescriptor(availability, k); return d?.writable && typeof d.value === "boolean"; })) throw new Error("Invalid account availability record");
+  if (!availability.quarantined) grantQuarantines.delete(availability);
   let quarantine = false;
-  const closeAccount = () => { quarantine = true; availability.quarantined = true; };
+  let activeRequest: Request | undefined;
+  const closeAccount = () => {
+    quarantine = true; availability.quarantined = true;
+    if (activeRequest?.operation === "consent.push" && activeRequest.payload.action === "grant") {
+      const grants = grantQuarantines.get(availability) ?? new Map<string, string>();
+      grants.set(keyOf(activeRequest), subjectKey(activeRequest)); grantQuarantines.set(availability, grants);
+    } else grantQuarantines.delete(availability);
+  };
   const load = async () => {
     let raw: string | null;
     try { raw = await input.storage.get(accountKey); } catch { closeAccount(); throw new Error("storage"); }
-    try { return { raw, ledger: parseLedger(raw) }; } catch { closeAccount(); throw new Error("journal"); }
+    try {
+      const ledger = parseLedger(raw);
+      ledger.coolingUntil = Math.max(ledger.coolingUntil, providerCooling.get(availability) ?? 0);
+      return { raw, ledger };
+    } catch { closeAccount(); throw new Error("journal"); }
   };
   async function quarantineAccount(affectedKey?: string): Promise<void> {
     closeAccount();
@@ -241,10 +258,23 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
       return "saved";
     } catch { await quarantineAccount(affectedKey); return "uncertain"; }
   }
-  async function releaseSlot(): Promise<boolean> {
-    if (quarantine || availability.quarantined) return false;
+  // Only known grant uncertainty may be bypassed. Keep quarantine sticky for
+  // other operations, and keep unrelated host faults closed until host repair.
+  function bypassGrantFence(r: Request, ledger: Ledger): boolean {
+    if (r.operation !== "consent.push" || r.payload.action !== "withdraw") return false;
+    const uncertain = Object.entries(ledger.entries).filter(([key]) => key !== keyOf(r)).map(([, e]) => e).filter(e => e.phase !== "settled" ||
+      e.result?.kind === "unknown" || e.result && "journal" in e.result && e.result.journal === "unknown");
+    const causes = grantQuarantines.get(availability);
+    if ((quarantine || availability.quarantined) && !causes?.size) return false;
+    return (uncertain.length > 0 || !!causes?.size) && (!causes || [...causes.values()].every(owner => owner === subjectKey(r))) &&
+      uncertain.every(e => subjectKey(e.request) === subjectKey(r) &&
+      e.request.operation === "consent.push" && e.request.payload.action === "grant");
+  }
+  async function releaseSlot(r?: Request): Promise<boolean> {
     try {
-      const release = await load(); release.ledger.slot = false;
+      const release = await load();
+      if ((quarantine || availability.quarantined) && (!r || !bypassGrantFence(r, release.ledger))) return false;
+      release.ledger.slot = false;
       if (await persist(release.raw, release.ledger) === "saved") return true;
     } catch { /* The durable slot stays held until host repair. */ }
     await quarantineAccount(); return false;
@@ -296,7 +326,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
       await new Promise<void>(resolve => setTimeout(resolve, delay));
       try { ({ raw, ledger } = await load()); } catch { closeAccount(); return { status: 0, failure: retry(r, "host") }; }
     }
-    if (quarantine || availability.quarantined || ledger.quarantined || ledger.slot || ledger.coolingUntil > now() || ledger.nextAt > now()) return { status: 0, failure: retry(r, "cooling", Math.max(1, Math.ceil((Math.max(ledger.coolingUntil, ledger.nextAt) - now()) / 1000))) };
+    if ((!bypassGrantFence(r, ledger) && (quarantine || availability.quarantined || ledger.quarantined || ledger.slot)) || ledger.coolingUntil > now() || ledger.nextAt > now()) return { status: 0, failure: retry(r, "cooling", Math.max(1, Math.ceil((Math.max(ledger.coolingUntil, ledger.nextAt) - now()) / 1000))) };
     if (mutation && (r.operation === "profile.sync" || r.operation === "consent.push" && r.payload.action === "grant") && ledger.tombstones.includes(subjectKey(r))) return { status: 0, failure: refused(r, "restricted") };
     if (mutation && r.operation === "consent.push" && r.payload.action === "grant" && Object.values(ledger.withdrawals).some(w => w.owner === subjectKey(r) && !w.resolved && overlaps(w.audience, r.audience))) return { status: 0, failure: refused(r, "restricted") };
     const before = guard(); if (before) return { status: 0, failure: refused(r, before) };
@@ -311,7 +341,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     try {
       if (remaining <= 0) return { status: 0, failure: refused(r, "deadline") };
       const recheck = guard(); if (recheck) return { status: 0, failure: refused(r, recheck) };
-      if (availability.quarantined || !availability.busy) return { status: 0, failure: retry(r, "cooling") };
+      if (availability.quarantined && !bypassGrantFence(r, ledger) || !availability.busy) return { status: 0, failure: retry(r, "cooling") };
       let credential: ReturnType<Configuration["resolveCredential"]>;
       try { credential = input.resolveCredential(); } catch { return { status: 0, failure: retry(r, "host") }; }
       if (!credential || !equal(credential.binding, binding) || !text(credential.key) || /\s/.test(credential.key)) return { status: 0, failure: refused(r, "binding") };
@@ -324,6 +354,9 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
         const value = response.headers.get("retry-after");
         const parsed = value && /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : value ? (Date.parse(value) - now()) / 1000 : NaN;
         const afterSeconds = Number.isFinite(parsed) && parsed >= 0 && Number.isFinite(now() + Math.ceil(parsed) * 1000) ? Math.max(1, Math.ceil(parsed)) : 60;
+        // A lost cooldown write must never turn the withdrawal exemption into
+        // permission to ignore an observed account-level provider rate limit.
+        providerCooling.set(availability, Math.max(providerCooling.get(availability) ?? 0, now() + afterSeconds * 1000));
         try {
           const next = await load(); next.ledger.coolingUntil = Math.max(next.ledger.coolingUntil, now() + afterSeconds * 1000);
           if (await persist(next.raw, next.ledger) !== "saved") closeAccount();
@@ -355,7 +388,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     } catch { return { status: 0, failure: ambiguous() }; }
     finally {
       clearTimeout(timeout);
-      if (r.operation !== "consent.read") await releaseSlot();
+      if (r.operation !== "consent.read") await releaseSlot(r);
     }
     }
     const answer = await transfer();
@@ -403,7 +436,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     const pending = Object.values(ledger.entries).filter(e => subjectKey(e.request) === owner && e.phase !== "settled");
     const withdrawing = r.operation === "consent.push" && r.payload.action === "withdraw";
     if (r.operation !== "consent.read" && pending.some(e => !withdrawing || e.request.operation !== "consent.push" || e.request.payload.action !== "grant")) return unknown(r, "dispatch_unresolved");
-    if (quarantine || availability.quarantined || ledger.quarantined || ledger.coolingUntil > now()) return retry(r, "cooling", Math.max(1, Math.ceil((ledger.coolingUntil - now()) / 1000)));
+    if ((!bypassGrantFence(r, ledger) && (quarantine || availability.quarantined || ledger.quarantined)) || ledger.coolingUntil > now()) return retry(r, "cooling", Math.max(1, Math.ceil((ledger.coolingUntil - now()) / 1000)));
     const proof = authority(r, latest); if (proof) return refused(r, proof);
     if (!ownsAvailability) return retry(r, "cooling");
     if (ledger.tombstones.includes(owner) && (r.operation === "profile.sync" || r.operation === "consent.push" && r.payload.action === "grant")) return refused(r, "restricted");
@@ -501,6 +534,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     let reconcileRequired = false;
     if (withdrawing) {
       const earlier = Object.entries(ledger.entries).filter(([, e]) => subjectKey(e.request) === owner && e.request.operation === "consent.push" && e.request.payload.action === "grant" && !e.grantSettled).map(([k]) => k);
+      for (const [grant, subject] of grantQuarantines.get(availability) ?? []) if (subject === owner && !earlier.includes(grant)) earlier.push(grant);
       reconcileRequired = earlier.length > 0;
       ledger.withdrawals[key] = { owner, audience: r.audience, earlier, resolved: false };
     }
@@ -517,7 +551,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     if (wire.failure) settled = wire.failure;
     else if (!command.expected.includes(wire.status)) settled = unknown(r, "acceptance_ambiguous", receipt);
     else {
-      settled = result(r, { kind: "acknowledged", receipt, journal: quarantine ? "unknown" : "confirmed", ...(r.operation === "consent.push" ? { reconcileRequired } : {}) });
+      settled = result(r, { kind: "acknowledged", receipt, journal: quarantine || availability.quarantined || ledger.quarantined ? "unknown" : "confirmed", ...(r.operation === "consent.push" ? { reconcileRequired } : {}) });
       if (r.operation === "profile.sync") {
         const found = wire.body === undefined ? target.id : profileData(wire.body, target, r.payload.projection);
         if (wire.body !== undefined && !found) settled = unknown(r, "acceptance_ambiguous", receipt);
@@ -565,10 +599,10 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     } catch { return result(fallback, { kind: "refused", reason: "invalid_request" }); }
     if (r.operation !== operation) return result(r, { kind: "refused", reason: "binding" });
     const ownsAvailability = !availability.busy;
-    if (ownsAvailability) availability.busy = true;
+    if (ownsAvailability) { availability.busy = true; activeRequest = copy(r); }
     try { return await execute(r, ownsAvailability); }
     catch { closeAccount(); return result({ ...fallback, subjectReference: r.subjectReference, requestId: r.requestId, generation: r.generation }, { kind: "unknown", reason: "record_failed" }); }
-    finally { if (ownsAvailability) availability.busy = false; }
+    finally { if (ownsAvailability) { availability.busy = false; activeRequest = undefined; } }
   }
   const scope = copy(input.legacy?.scope ?? { bindingId: binding.namespace, accountReference: binding.account, audienceReference: audience.kind === "audience" ? audience.reference : "account-wide" });
   function legacyRequest(claim: MarketingAutomationClaim): Request | undefined {
