@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.ts";
 
@@ -11,6 +15,20 @@ const packed = (extra: Array<[string, string]> = [], replace: Record<string, str
 const rules = (entries: TarballEntry[]) => checkTarballEntries(entry, entries, readTracked).map(({ rule }) => rule);
 
 describe("tarball gate", () => {
+  it("actual npm files lists exclude fragments for every admitted package; the tarball gate refuses a leak", () => {
+    for (const name of ["core", "outbox", "platform"]) {
+      const root = mkdtempSync(join(tmpdir(), "fragment-pack-"));
+      try {
+        writeFileSync(join(root, "package.json"), readFileSync(new URL(`../../packages/${name}/package.json`, import.meta.url)));
+        mkdirSync(join(root, "changes")); writeFileSync(join(root, "changes/p-one.md"), "- Pending.\n");
+        writeFileSync(join(root, "CHANGELOG.md"), "# Shipped notes\n");
+        const result = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--ignore-scripts", "--offline", "--json"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })) as Array<{ files: Array<{ path: string }> }>;
+        const files = result[0]!.files.map(({ path }) => path);
+        expect(files).toContain("CHANGELOG.md"); expect(files.some((path) => path.startsWith("changes/"))).toBe(false);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
+    expect(rules(packed([["changes/p-one.md", "- Pending.\n"]]))).toEqual(["package-content-allowlist"]);
+  });
   it("accepts tracked files, built output of tracked sources and the tracked manifest", () => {
     expect(rules(packed())).toEqual([]);
   });

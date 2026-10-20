@@ -5010,6 +5010,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/changelog-fragments.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/changelog-fragments.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/eslint-import-map.test.ts",
       "class": "public-output"
     },
@@ -5251,6 +5259,14 @@
     },
     {
       "path": "scripts/source-preview-release.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/source-release-preparation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/source-release-preparation.ts",
       "class": "public-output"
     },
     {
