@@ -8,7 +8,7 @@ describe("communications migration projection", () => {
     const root = new URL("../../../../", import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL("config/platform-migration-manifest.json", root), "utf8"));
     const entries = [manifest.baseline, ...manifest.forward];
-    expect(COMMUNICATIONS_MIGRATIONS.map((unit) => unit.position)).toEqual([2, 9, 20]);
+    expect(COMMUNICATIONS_MIGRATIONS.map((unit) => unit.position)).toEqual([2, 9, 20, 70]);
     for (const unit of COMMUNICATIONS_MIGRATIONS) {
       const canonical = readFileSync(new URL(unit.catalogPath, root));
       const projected = readFileSync(unit.url);

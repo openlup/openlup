@@ -16,7 +16,18 @@ presentation binding, not a new route/sender. Private-label inquiry and adopter
 legacy copy/locale exceptions remain owned by their current hosts. See the
 [B2 mapping ledger](plans/oss-m04-communications-triggers.md#b2-changed-expectations-and-preservation).
 
-
+The native [communications lifecycle binding](../../server/runtime/communications/communicationsLifecycleBinding.ts)
+is an explicit host-callable capability for `node-postgres` with `DATABASE_URL`.
+It registers real network references, reconciles injected neutral observations,
+dispatches injected membership work, exposes authorized recipient operations and
+evaluates durable consent. It closes each capability pool on success or failure.
+The full position-70 catalogue and trusted owner-authority connection are
+prerequisites; verified human operator identity is additionally required for the
+directory. It supplies no provider reader, cron, timer, worker or UI activation.
+Existing managed route composition remains unchanged; selecting a native bundle
+alone does not convert those routes. Consent excludes managed frequency caps and
+legacy contact-touching and is not a send-time fence. See the
+[package recipe](../../packages/platform/README.md#native-communications-operations-development-preview).
 
 The reference BFF mounts `POST /api/bff/admin/identity/privacy/export` and
 `POST /api/bff/admin/identity/privacy/erase` in the shipped entrypoint, including

@@ -1098,6 +1098,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261019200000_communications_native_operations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2278,6 +2282,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261019200000_communications_native_operations.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -2626,6 +2634,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/nativeOperations.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/newsletterIntegrationContracts.ts",
       "class": "public-output"
     },
@@ -2639,6 +2651,26 @@
     },
     {
       "path": "packages/platform/src/communications/originPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/postgresCommunicationSync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/postgresConsentEvaluator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/postgresDeliveryReconciliation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/postgresNativeOperations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/postgresNotificationRecipients.ts",
       "class": "public-output"
     },
     {
@@ -3239,6 +3271,18 @@
     },
     {
       "path": "packages/platform/test/communications/marketingConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/nativeDelivery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/nativeDirectoryConsent.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/nativeSync.test.ts",
       "class": "public-output"
     },
     {
@@ -5355,6 +5399,14 @@
     },
     {
       "path": "server/adapters/postgres/communicationsControlPlane.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/communicationsLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/communicationsLifecycle.ts",
       "class": "public-output"
     },
     {
@@ -12599,6 +12651,14 @@
     },
     {
       "path": "server/runtime/commerce/promotionClaimsBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/communicationsLifecycleBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/communicationsLifecycleBinding.ts",
       "class": "public-output"
     },
     {
@@ -20243,6 +20303,10 @@
     },
     {
       "path": "tests/postgres/adminMembershipAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/communicationsNative.test.ts",
       "class": "public-output"
     },
     {

@@ -144,9 +144,15 @@ The M04 communications import extends the existing platform consumer and require
 selection with its retained reference witnesses. The isolated contracts entry
 compiles without optional provider peers; the mixed server entry compiles after
 selecting the existing PostgreSQL peers. Its packed proof checks no-egress capture,
-optional-driver refusal, three exact canonical SQL projections and durable receipt replay,
-conflict and access refusal in the existing owned disposable PostgreSQL lane.
-The concrete mail client, callback mapping and reconciliation remain reference-owned.
+optional-driver refusal, four exact canonical sparse SQL projections and durable
+receipt replay, conflict and access refusal in the existing owned disposable
+PostgreSQL lane. B3 adds useful installed polling, sync, recipient-directory and
+consent operations after the complete canonical catalogue is installed by the
+existing reference runner in a separately owned cluster. Negative fixtures reject
+no-op stores, wrong tokens, false delivery and repeat execution; the required
+native PG/binding selectors also cover upgrade, replay, ACL refusal and atomic
+rollback. Managed paths, concrete mail protocol mapping and activation remain
+reference-owned; no check, budget or clean-candidate gate is relaxed.
 These additions do not create another runner or relax required coverage. The
 producer still requires a clean committed candidate, so local uncommitted checks
 must be followed by the supervisor's exact signed-candidate package gate. The

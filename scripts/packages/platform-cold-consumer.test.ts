@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -200,4 +200,33 @@ it("the SDK-absent phase admits only the five supplied packages, including neste
     const consumer = fixture(); mkdirSync(join(consumer, "node_modules", suffix), { recursive: true });
     expect(() => assertConsumerIsolation(consumer, root)).toThrow(/Unexpected cold dependency/);
   }
+});
+
+function nativeCommunicationsFixture(mode: "correct" | "no-op" | "wrong-token" | "false-delivery" | "second-executor") {
+  const consumer=fixture();
+  writeFileSync(join(consumer,"node_modules/@openlup/platform/index.js"), `
+const mode=${JSON.stringify(mode)};
+let observed=mode==="false-delivery"?"delivered":null,settled=false,recipient=null;
+export const createPostgresDeliveryReconciliationPort=()=>({
+ registerNetworkTarget:async input=>{if(input.evidence!=="network_accepted")throw Error("capture refused");return {id:"send"};},
+ findFrozenSends:async()=>mode==="no-op"?[]:[{id:"send",messageId:"network:cold"}],
+ readEvidence:async()=>({observedState:observed}),applyPolledEvent:async()=>{observed="delivered";},close:async()=>{},
+});
+export const createPostgresCommunicationSyncStore=()=>({
+ registerWork:async()=>({id:"work"}),claimBatch:async()=>settled&&mode!=="second-executor"?[]:[{id:"work",claimToken:"current"}],
+ markSent:async input=>{if(mode==="wrong-token")return true;if(settled||input.claimToken!=="current")return false;settled=true;return true;},close:async()=>{},
+});
+export const createPostgresNotificationRecipientsPort=()=>({
+ createNotificationRecipient:async input=>{recipient={...input,id:"recipient"};},listNotificationRecipients:async()=>({recipients:recipient?[recipient]:[]}),
+ updateNotificationRecipient:async input=>{recipient.active=input.active;},deleteNotificationRecipient:async()=>{recipient=null;},close:async()=>{},
+});
+export const createPostgresConsentEvaluator=()=>({evaluate:async()=>({allowed:false,decisionId:"decision"}),guarantees:{managedFrequencyCaps:false,legacyContactTouching:false,sendTimeFence:false},close:async()=>{}});
+`);
+  return consumer;
+}
+it("admits a complete native operations transcript through the installed-consumer witness",()=>{
+  proveNativeCommunicationsOperations(nativeCommunicationsFixture("correct"),"postgresql://unused.invalid/synthetic");
+});
+it.each(["no-op","wrong-token","false-delivery","second-executor"] as const)("turns the native operations witness red for %s",mode=>{
+  expect(()=>proveNativeCommunicationsOperations(nativeCommunicationsFixture(mode),"postgresql://unused.invalid/synthetic")).toThrow();
 });

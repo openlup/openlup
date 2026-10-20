@@ -1358,6 +1358,11 @@ export * from "./consentPurposeRegistry.js";
 export type * from "./contracts/consent.js";
 export type * from "./contracts/marketingAutomation.js";
 export * from "./newsletterWebhookProcessing.js";
+export * from "./nativeOperations.js";
+export * from "./postgresDeliveryReconciliation.js";
+export * from "./postgresCommunicationSync.js";
+export * from "./postgresNotificationRecipients.js";
+export * from "./postgresConsentEvaluator.js";
 ```
 ## dist/communications/integrationEventSignature.d.ts
 
@@ -1393,6 +1398,83 @@ export interface ManagedTransactionalDeliveryStoreClient {
 }
 /** Managed adapter over the three receipt RPCs; access scope belongs to its binding. */
 export declare function createManagedTransactionalDeliveryStore(client: ManagedTransactionalDeliveryStoreClient): TransactionalDeliveryReceiptStore;
+```
+## dist/communications/nativeOperations.d.ts
+
+```ts
+import type { PostgresDataGatewayOptions } from "../data/index.js";
+import type { DeliveryReconciliationPort } from "./deliveryReconciliation.js";
+import type { CommunicationRecipientKind } from "./consentPolicy.js";
+export interface NativeCommunicationsOptions extends PostgresDataGatewayOptions {
+    binding: string;
+}
+export type NativeObservationKind = "sent" | "delayed" | "delivered" | "bounced" | "complained" | "failed";
+export interface NativeNetworkTarget {
+    sourceKey: string;
+    messageId: string;
+    recipientEmail: string;
+    templateReference: string;
+    acceptedAt: string;
+    /** Only a host that observed a real network acceptance may register this fact. */
+    evidence: "network_accepted";
+}
+export interface NativeDeliveryEvidence {
+    id: string;
+    sourceKey: string;
+    messageId: string;
+    acceptedAt: string;
+    observedState: NativeObservationKind | null;
+    observedAt: string | null;
+    lastPollAt: string | null;
+    notFoundCount: number;
+    abandonedAt: string | null;
+    observations: {
+        key: string;
+        kind: NativeObservationKind;
+        occurredAt: string;
+        source: "poll" | "callback";
+    }[];
+}
+export interface NativeDeliveryStore extends DeliveryReconciliationPort {
+    registerNetworkTarget(input: NativeNetworkTarget): Promise<{
+        id: string;
+    }>;
+    applyObservation(input: {
+        sendId: string;
+        messageId: string;
+        observationKey: string;
+        kind: NativeObservationKind;
+        occurredAt: string;
+        recipientEmail: string | null;
+        source: "poll" | "callback";
+    }): Promise<void>;
+    readEvidence(sendId: string): Promise<NativeDeliveryEvidence | null>;
+    close(): Promise<void>;
+}
+export type NativeNotificationType = "packaging_digest" | "new_signup" | "commerce_payment_critical";
+export interface NativeNotificationRecipient {
+    id: string;
+    email: string;
+    name: string | null;
+    active: boolean;
+    notification_type: NativeNotificationType;
+    created_at: string;
+}
+export interface NativeConsentInput {
+    email: string;
+    purpose: string;
+    recipientKind?: CommunicationRecipientKind;
+    sourceTable?: "testers" | "waitlist" | "clients" | "b2b_inquiries" | "notification_recipients";
+    sourceId?: string | null;
+}
+export interface NativeConsentDecision {
+    allowed: boolean;
+    reason: string;
+    decisionId: string;
+}
+export declare class NativeConsentEvaluationUnavailableError extends Error {
+    constructor(cause: unknown);
+}
 ```
 ## dist/communications/newsletterIntegrationContracts.d.ts
 
@@ -1608,6 +1690,144 @@ export declare function isProductionEmailOrigin(origin: string, productionHosts:
 export declare function readEmailOriginConfiguration(env: Record<string, string | undefined>, fallback: EmailOriginConfiguration): EmailOriginConfiguration;
 export declare function resolveEmailOrigin(input: EmailOriginInput): EmailOriginResolution;
 ```
+## dist/communications/postgresCommunicationSync.d.ts
+
+```ts
+import type { SqlExecutor } from "@openlup/core/readiness";
+import type { PostgresDataGatewayEnv } from "../data/index.js";
+import type { CommunicationSyncStore } from "./communicationSyncWorker.js";
+import type { NewsletterSyncEventType, NewsletterMarketingPurpose } from "./contracts/newsletter.js";
+import type { NativeCommunicationsOptions } from "./nativeOperations.js";
+/** Structural seam for the existing outbox store, scoped to this operation's transaction. */
+export interface NativeSyncRail {
+    claimBatch(input: {
+        eventTypes: string[];
+        knownEventTypes: string[];
+        batchSize: number;
+        visibilitySeconds: number;
+        maxAttempts: number;
+    }): Promise<{
+        id: string;
+        attempts: number;
+        metadata: Record<string, unknown>;
+    }[]>;
+    markProcessed(input: {
+        eventId: string;
+        claimToken: string;
+        metadata?: Record<string, unknown>;
+    }): Promise<{
+        applied: boolean;
+    }>;
+    markFailed(input: {
+        eventId: string;
+        claimToken: string;
+        error: string;
+        outcome: "retry" | "discard";
+        baseDelaySeconds: number;
+        maxDelaySeconds: number;
+        maxAttempts: number;
+        snoozeSeconds: number;
+    }): Promise<{
+        status: string;
+    }>;
+}
+export interface NativeSyncRegistration {
+    sourceKey: string;
+    contactId: string;
+    normalizedEmail: string;
+    eventType: NewsletterSyncEventType;
+    purpose: NewsletterMarketingPurpose;
+    payload?: Record<string, unknown>;
+    originProviderKind?: string | null;
+    originProviderEventId?: string | null;
+    remoteProfileId?: string | null;
+    remoteListId?: string | null;
+}
+export interface NativeSyncOptions extends NativeCommunicationsOptions {
+    providerKind: string;
+    rail: (db: SqlExecutor) => NativeSyncRail;
+}
+export interface NativeCommunicationSyncStore extends CommunicationSyncStore {
+    registerWork(input: NativeSyncRegistration): Promise<{
+        id: string;
+    }>;
+    close(): Promise<void>;
+}
+export declare const nativeSyncEventType: (binding: string) => string;
+/** No sidecar claim/lease/drainer. Only runCommunicationSyncDispatch executes membership effects. */
+export declare function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv, options: NativeSyncOptions): NativeCommunicationSyncStore;
+```
+## dist/communications/postgresConsentEvaluator.d.ts
+
+```ts
+import type { PostgresDataGatewayEnv, PostgresDataGatewayOptions } from "../data/index.js";
+import type { CommunicationPurposeRegistry } from "./contracts/consent.js";
+import { type NativeConsentDecision, type NativeConsentInput } from "./nativeOperations.js";
+export interface NativeConsentOptions extends PostgresDataGatewayOptions {
+    registry?: CommunicationPurposeRegistry<string>;
+    /** Host-owned authoritative tester pause, read in the decision transaction. Missing means unpaused. */
+    testerPaused?: (db: import("../data/index.js").PgQueryExecutor, input: NativeConsentInput) => Promise<boolean>;
+}
+export interface NativeConsentEvaluator {
+    evaluate(input: NativeConsentInput): Promise<NativeConsentDecision>;
+    close(): Promise<void>;
+    readonly guarantees: {
+        readonly managedFrequencyCaps: false;
+        readonly legacyContactTouching: false;
+        readonly sendTimeFence: false;
+    };
+}
+/** Bounded P4 policy, authoritative native permission and durable decision. Evaluation never sends. */
+export declare function createPostgresConsentEvaluator(env: PostgresDataGatewayEnv, options?: NativeConsentOptions): NativeConsentEvaluator;
+```
+## dist/communications/postgresDeliveryReconciliation.d.ts
+
+```ts
+import type { PostgresDataGatewayEnv } from "../data/index.js";
+import type { NativeCommunicationsOptions, NativeDeliveryStore } from "./nativeOperations.js";
+export declare function createPostgresDeliveryReconciliationPort(env: PostgresDataGatewayEnv, options: NativeCommunicationsOptions): NativeDeliveryStore;
+```
+## dist/communications/postgresNotificationRecipients.d.ts
+
+```ts
+import type { PostgresDataGatewayEnv, PostgresDataGatewayOptions } from "../data/index.js";
+import type { NativeNotificationRecipient, NativeNotificationType } from "./nativeOperations.js";
+export interface NativeNotificationRecipientsOptions extends PostgresDataGatewayOptions {
+    operatorId: string;
+}
+export interface NativeNotificationRecipientsPort {
+    listNotificationRecipients(input: {
+        notification_type: NativeNotificationType;
+    }): Promise<{
+        recipients: NativeNotificationRecipient[];
+    }>;
+    createNotificationRecipient(input: {
+        email: string;
+        name: string | null;
+        notification_type: NativeNotificationType;
+        active: true;
+    }): Promise<{
+        created: true;
+        email: string;
+        notification_type: NativeNotificationType;
+    }>;
+    updateNotificationRecipient(input: {
+        recipientId: string;
+        active: boolean;
+    }): Promise<{
+        updated: true;
+        recipientId: string;
+    }>;
+    deleteNotificationRecipient(input: {
+        recipientId: string;
+    }): Promise<{
+        deleted: true;
+        recipientId: string;
+    }>;
+    close(): Promise<void>;
+}
+export declare function createPostgresNotificationRecipientsPort(env: PostgresDataGatewayEnv, options: NativeNotificationRecipientsOptions): NativeNotificationRecipientsPort;
+```
 ## dist/communications/postgresTransactionalDeliveryStore.d.ts
 
 ```ts
@@ -1720,6 +1940,12 @@ export declare const COMMUNICATIONS_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20260813120000_communications_control_plane.sql";
     readonly position: 20;
     readonly sha256: "dea5fe631f1329272989e1598f6f48aeb6ce67fa070ddeb0200f69f62fcd972a";
+    readonly url: URL;
+}, {
+    readonly id: "20261019200000_communications_native_operations";
+    readonly catalogPath: "db/platform/migrations/20261019200000_communications_native_operations.sql";
+    readonly position: 70;
+    readonly sha256: "1d28380f12324c3bcccaa5a6d38c22e72332c7992bbb1f90651774dfc5e24982";
     readonly url: URL;
 }];
 ```

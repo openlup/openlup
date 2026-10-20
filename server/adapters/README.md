@@ -112,3 +112,17 @@ ports enforce the same boundary. The Auth API uses the package envelope bridge
 to retain maintained transport admission; signature/render/control/send/evidence
 order is unchanged. See the [transport contract](../infra/email/README.md#contract)
 for alternate-sender composition and the trust boundary.
+
+
+Native communications adapters re-export the four factories through
+[`postgres/communicationsLifecycle.ts`](postgres/communicationsLifecycle.ts).
+Each capability uses the existing role-free transaction lane under explicit host
+owner authority and refuses unsafe effective browser/PUBLIC/column/inherited ACLs.
+Directory requests additionally need a verified active human communications
+operator checked in the transaction. Protocol reads and membership effects remain
+host-injected; no managed/vendor path is replaced. The
+[callable native composition](../runtime/communications/communicationsLifecycleBinding.ts)
+adds no process or route activation. [Real-PG proof](../../tests/postgres/communicationsNative.test.ts)
+covers durable effects, concurrency, token/ACL refusals and rollback; the
+[package guide](../../packages/platform/README.md#native-communications-operations-development-preview)
+defines the bounded consent guarantee and schema prerequisite.

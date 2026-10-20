@@ -153,6 +153,7 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+
 The opt-in direct OIDC settings registry declares issuer and separate customer
 and operator API audiences. Selecting them adds no browser provider or default
 login route. Invalid or overlapping audiences refuse composition; managed bundles
@@ -305,6 +306,29 @@ or declare complete compatibility evidence. Existing release context checks rema
 
 The outbox rail is a local experimental package candidate in the package catalogue. Its exact core peer, export snapshots and shipped baseline hash are separate from publication eligibility. Admission compares the complete observed set and selected adapter facts; unknown inventory or probe state cannot activate a candidate.
 
+
+### Native communications evidence
+
+Position 70 adds native fact storage without changing prior schema identities or
+managed contracts. A trusted network-acceptance registration is distinct from a
+captured receipt and from an observed delivery. Poll and admitted callback facts
+share an atomic writer; exact observation replay is harmless, conflicting replay
+refuses, terminal/suppression precedence is monotonic, and abandonment preserves
+unknown delivery truth. A bounce or complaint uses the stored recipient fingerprint.
+
+Newsletter work uses the existing outbox event identity, exact target namespace
+and claim token. Its sidecar has no independent claim/lease/drainer; settlement
+and rail acknowledgement are atomic and stale tokens do nothing. Only the existing
+sync dispatch engine executes injected membership effects. Hosts must keep that
+namespace out of a generic dispatcher. Registration does not grant consent and a
+sync acknowledgement is never a delivery observation.
+
+Native consent means registered P4 policy, authoritative native snapshot, durable
+decision and active source-bound admin recipient. Managed frequency caps and
+legacy contact-touching are excluded; evaluate is not a send-time fence. Missing
+or unsafe storage throws before an effect. The [B3 expectation table](plans/oss-m04-communications-triggers.md#b3-native-stores)
+names each changed public operation and its witnesses. Required-test registration
+adds the native PG and reference-binding suites while retaining every old selector.
 
 ## Communications import compatibility
 

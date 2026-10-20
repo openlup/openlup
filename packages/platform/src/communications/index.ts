@@ -39,3 +39,8 @@ export * from "./consentPurposeRegistry.js";
 export type * from "./contracts/consent.js";
 export type * from "./contracts/marketingAutomation.js";
 export * from "./newsletterWebhookProcessing.js";
+export * from "./nativeOperations.js";
+export * from "./postgresDeliveryReconciliation.js";
+export * from "./postgresCommunicationSync.js";
+export * from "./postgresNotificationRecipients.js";
+export * from "./postgresConsentEvaluator.js";
