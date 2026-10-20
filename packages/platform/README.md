@@ -23,8 +23,8 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
-| `./catalog` | Experimental neutral catalog schemas, draft use cases, read ports and projections |
-| `./catalog/contracts` | Dependency-free catalog DTOs, authority and canonicalization helpers |
+| `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
+| `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 
 ## Catalog
 
@@ -40,11 +40,35 @@ product-scoped document references; they do not interpret document payloads.
 GTIN/authority helpers, quantity/option helpers and the existing O draft JSON
 canonicalizer. It imports no Zod, Node runtime or server barrel. Runtime schemas
 use the server entry with jitless Zod; the reference browser keeps its sellable
-schemas locally. Neither entry installs SQL or activates publication/lifecycle
-writes. Rich application catalog interpretation remains reference-owned.
+schemas locally. Media manifest validation and `resolveProductMedia` are also
+browser exports: declared product/variant/locale associations resolve to supplied
+URLs with deterministic ordering and neutral fallback, without filename inference.
+The server entry adds bounded source-pack export/validation/restore/import;
+`BlobStoragePort` comes from the existing `@openlup/core/platform-runtime` entry.
+Import validates every resource before uploading immutable digest keys, deduplicates
+shared keys and never activates associations. No upload route is mounted.
+
+Read and draft behavior is supplied by the existing use cases and host ports.
+`publicationRead`, `publish` and `lifecycleWrite` remain explicitly unsupported
+in the neutral reference binding. Lifecycle DTOs and server validation/publication
+ports are types only, with an opaque publisher brand and no constructor or default
+binding. A missing authority is `unsupported`; an unavailable configured authority
+is `dependency_unavailable`, never an absent receipt. Successful readback requires
+real publication lineage; existing active rows cannot invent a head. History pages
+are bounded to 100 receipts with stable revision ordering and opaque cursors.
+Existing SKU `draft`/`active`/`archived` and draft receipt `open`/`abandoned` wire
+statuses remain unchanged. `withdrawn` may map from `archived` only where an
+authority establishes withdrawal; abandoning a draft does not withdraw a variant.
+Neither entry installs SQL. Rich application catalog interpretation remains
+reference-owned. The [M05 plan](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md)
+records the cut, witness dispositions and separate R3-lite round.
 The moved characterization suites are under `test/catalog/`; the required cold
 consumer classifies both entries without optional peers and checks installed
 canonicalization, authority identity, selection and unauthorized draft refusal.
+Three synthetic media conformance cases and one lifecycle type case complement
+those moved suites; the existing package boundary tests cover browser closure.
+The complete contracts entry measures 3,281 B minified+gzip against its 4,096 B
+budget (phase A: 1,289 B / 1,536 B); other entry and aggregate caps are unchanged.
 
 ## Scheduled jobs
 

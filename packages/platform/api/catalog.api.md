@@ -342,6 +342,171 @@ export { validateCatalogQuantity, canonicalCatalogOption } from "./productTypes.
 export type { CatalogQuantityDimension, CatalogQuantity, CatalogOptionValue, CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeDefinition, CatalogProductTypeRegistry } from "./productTypes.js";
 export { SELLABLE_CATALOG_CONTRACT_VERSION } from "./sellable.js";
 export type { SellableCatalogItem, SellableCatalogProfile, SellableCatalogListResponse } from "./sellable.js";
+export * from "./productMediaContracts.js";
+export { resolveProductMedia } from "./resolveProductMedia.js";
+export type { CatalogVariantState, CatalogHeadRef, CatalogLifecycleObservation, CatalogPublishCommand, CatalogPublicationReceipt, CatalogPublicationRefusal, CatalogPublicationReadResult, CatalogPublicationReceiptResult, CatalogHistoryResult } from "./lifecycle.js";
+```
+## dist/catalog/contracts/lifecycle.d.ts
+
+```ts
+/**
+ * Lifecycle observations are additive DTOs, not changes to existing wire status.
+ * SKU draft/active/archived and draft receipt open/abandoned remain unchanged.
+ * Map archived to withdrawn only where an authority establishes that meaning;
+ * abandoning a draft never implies withdrawing the active variant.
+ */
+export type CatalogVariantState = "draft" | "active" | "withdrawn";
+export interface CatalogHeadRef {
+    publicationId: string;
+    revision: number;
+    documentDigest: string;
+}
+export interface CatalogLifecycleObservation {
+    productId: string;
+    variantId: string;
+    sku: string;
+    state: CatalogVariantState;
+    variantRevision: number;
+    /** Null means known unpublished, never unknown publication lineage. */
+    publicationHead: CatalogHeadRef | null;
+    draftRef: {
+        draftId: string;
+        revision: number;
+    } | null;
+}
+export interface CatalogPublishCommand {
+    commandKey: string;
+    productId: string;
+    candidateRef: string;
+    candidateDigest: string;
+    expectedHead: CatalogHeadRef | null;
+    changes: readonly {
+        variantId: string;
+        expectedRevision: number;
+        state: "active" | "withdrawn";
+    }[];
+}
+export interface CatalogPublicationReceipt {
+    commandKey: string;
+    fingerprint: string;
+    actorId: string;
+    previousHead: CatalogHeadRef | null;
+    head: CatalogHeadRef;
+    changes: readonly CatalogLifecycleObservation[];
+}
+/** Named refusals contain no arbitrary provider diagnostics. */
+export interface CatalogPublicationRefusal {
+    outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
+    reason: "publisher_not_authorized" | "candidate_invalid" | "head_conflict" | "publication_authority_unavailable" | "publication_not_supported";
+}
+/** Success requires coherent authoritative document and lifecycle facts. */
+export type CatalogPublicationReadResult = {
+    outcome: "found";
+    head: CatalogHeadRef;
+    documentRef: string;
+    observations: readonly CatalogLifecycleObservation[];
+} | {
+    outcome: "unpublished";
+} | CatalogPublicationRefusal;
+/** Absence is distinct from an unavailable or unsupported authority. */
+export type CatalogPublicationReceiptResult = {
+    outcome: "found";
+    receipt: CatalogPublicationReceipt;
+} | {
+    outcome: "absent";
+} | CatalogPublicationRefusal;
+/**
+ * Authority-owned history, newest publication revision first with stable ordering.
+ * Limit is an integer from 1 through 100; receipts never exceed limit.
+ * nextCursor is opaque, and null only when no further page exists.
+ */
+export type CatalogHistoryResult = {
+    outcome: "page";
+    receipts: readonly CatalogPublicationReceipt[];
+    limit: number;
+    nextCursor: string | null;
+} | CatalogPublicationRefusal;
+```
+## dist/catalog/contracts/productMediaContracts.d.ts
+
+```ts
+/** Provider-free source metadata. Delivery URLs are supplied projections. */
+export type ProductMediaRole = "primary" | "view" | "illustration";
+export interface ProductMediaAsset {
+    assetRef: string;
+    source: string;
+    contentType: "image/jpeg" | "image/png" | "image/webp";
+    byteLength: number;
+    sha256: string;
+    artworkLocale: string | null;
+}
+export interface ProductMediaProduct {
+    productId: string;
+    variantIds: readonly string[];
+    primaryVariantId: string;
+}
+export interface ProductMediaAssociation {
+    itemId: string;
+    assetRef: string;
+    productId: string;
+    scope: "product" | "variant";
+    variantId?: string;
+    locale: string | null;
+    role: ProductMediaRole;
+    viewKey?: string;
+    order: number;
+    label: string;
+}
+export interface ProductMediaManifest {
+    schemaVersion: 1;
+    assets: readonly ProductMediaAsset[];
+    products: readonly ProductMediaProduct[];
+    associations: readonly ProductMediaAssociation[];
+}
+export interface ProductMediaRequest {
+    productId: string;
+    variantId: string;
+    locale: string;
+}
+export interface ResolvedProductMediaItem {
+    id: string;
+    assetRef: string;
+    src: string;
+    label: string;
+    role: ProductMediaRole;
+}
+export interface ResolvedProductMedia {
+    key: string;
+    revision: string;
+    items: readonly ResolvedProductMediaItem[];
+    primaryItemId: string | null;
+}
+export interface StorefrontProductMedia {
+    productId: string;
+    locale: string;
+    primaryVariantId: string;
+    collections: Readonly<Record<string, ResolvedProductMedia>>;
+}
+export declare const PRODUCT_MEDIA_LIMITS: Readonly<{
+    assets: 512;
+    products: 256;
+    variants: 1024;
+    associations: 8192;
+    imageBytes: 358400;
+    totalBytes: number;
+    manifestBytes: number;
+    resolvedItems: 32;
+}>;
+export type ProductMediaValidationCode = "invalid_schema" | "duplicate_identity" | "unsafe_path" | "undeclared_variant" | "missing_resource" | "conflicting_primary" | "collection_limit_exceeded" | "pack_limit_exceeded";
+export declare class ProductMediaValidationError extends Error {
+    readonly code: ProductMediaValidationCode;
+    readonly reference: string;
+    constructor(code: ProductMediaValidationCode, reference: string);
+}
+/** Checks contained relative resource bindings; the resource owner also checks symlinks. */
+export declare function validateProductMediaSourcePath(value: unknown): string;
+/** Structural authoring/pack validation. Signatures and digests require the source bytes. */
+export declare function validateProductMediaManifest(value: unknown): ProductMediaManifest;
 ```
 ## dist/catalog/contracts/productTypes.d.ts
 
@@ -400,6 +565,13 @@ export interface CatalogProductTypeRegistry {
 export declare function validateCatalogQuantity(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): boolean;
 /** Decimal spelling cannot make two equal option values distinct. No unit conversion is inferred. */
 export declare function canonicalCatalogOption(value: CatalogOptionValue): string;
+```
+## dist/catalog/contracts/resolveProductMedia.d.ts
+
+```ts
+import { type ProductMediaManifest, type ProductMediaRequest, type ResolvedProductMedia } from "./productMediaContracts.js";
+/** Resolve only declared variant/product material; no filename, SKU or provider inference. */
+export declare function resolveProductMedia(value: ProductMediaManifest, request: ProductMediaRequest, assetUrls: Readonly<Record<string, string>>): ResolvedProductMedia;
 ```
 ## dist/catalog/contracts/sellable.d.ts
 
@@ -1052,6 +1224,64 @@ export { createReferenceCatalogItemsHandler } from "./referenceCatalogHandler.js
 export { RESOLVED_SKU_PROJECTION_VERSION, resolvedSkuProjectionSchema, buildResolvedSkuProjection } from "./resolvedSkuProjection.js";
 export type { ResolvedSkuProjection, ResolvedSkuProjectionInput } from "./resolvedSkuProjection.js";
 export { sellableCatalogItemSchema, sellableCatalogProfileSchema, sellableCatalogListResponseSchema } from "./sellableSchemas.js";
+export { SOURCE_PACK_LIMITS, CatalogMediaSourcePackError, readCatalogMediaSourceManifest, validateCatalogMediaSourcePack, exportCatalogMediaSourcePack, restoreCatalogMediaSourcePack, importCatalogMediaSourcePack } from "./mediaSourcePack.js";
+export type { CatalogMediaSourcePack, CatalogMediaImportOutcome } from "./mediaSourcePack.js";
+export type { CatalogValidationPort, CatalogPublicationReadPort, CatalogPublicationPort, VerifiedCatalogPublisher, CatalogCapabilityDescriptor } from "./publicationPorts.js";
+```
+## dist/catalog/mediaSourcePack.d.ts
+
+```ts
+import type { BlobStoragePort } from "@openlup/core/platform-runtime";
+import { type ProductMediaManifest } from "./contracts/productMediaContracts.js";
+export declare const SOURCE_PACK_LIMITS: Readonly<{
+    assets: 512;
+    products: 256;
+    variants: 1024;
+    associations: 8192;
+    imageBytes: 358400;
+    totalBytes: number;
+    manifestBytes: number;
+    resolvedItems: 32;
+}>;
+export interface CatalogMediaSourcePack {
+    schemaVersion: "catalog.media-source-pack.v1";
+    manifest: ProductMediaManifest;
+}
+export declare class CatalogMediaSourcePackError extends Error {
+    readonly code: string;
+    readonly reference?: string | undefined;
+    constructor(code: string, reference?: string | undefined);
+}
+export declare function readCatalogMediaSourceManifest(path: string): Promise<unknown>;
+export declare function validateCatalogMediaSourcePack(root: string): Promise<{
+    pack: CatalogMediaSourcePack;
+    resources: Map<string, Buffer<ArrayBufferLike>>;
+}>;
+export declare function exportCatalogMediaSourcePack(options: {
+    manifest: unknown;
+    sourceRoot: string;
+    targetRoot: string;
+}): Promise<CatalogMediaSourcePack>;
+export declare function restoreCatalogMediaSourcePack(packRoot: string, targetRoot: string): Promise<CatalogMediaSourcePack>;
+export type CatalogMediaImportOutcome = {
+    status: "complete";
+    successfulKeys: string[];
+    assets: Array<{
+        assetRef: string;
+        key: string;
+        url: string;
+    }>;
+} | {
+    status: "validation_refusal";
+    code: string;
+    reference?: string;
+} | {
+    status: "dependency_unavailable" | "partial_upload";
+    successfulKeys: string[];
+    failedAssetRef: string;
+    failedKey: string;
+};
+export declare function importCatalogMediaSourcePack(root: string, storage: BlobStoragePort): Promise<CatalogMediaImportOutcome>;
 ```
 ## dist/catalog/productTypeSchemas.d.ts
 
@@ -1102,6 +1332,52 @@ export declare const catalogProductTypeRefSchema: z.ZodObject<{
 }, z.core.$strict>;
 /** Definitions are installed by composition, never supplied as executable draft data. */
 export declare function createCatalogProductTypeRegistry(definitions: readonly CatalogProductTypeDefinition[]): CatalogProductTypeRegistry;
+```
+## dist/catalog/publicationPorts.d.ts
+
+```ts
+import type { CatalogHeadRef, CatalogHistoryResult, CatalogPublicationReadResult, CatalogPublicationReceipt, CatalogPublicationReceiptResult, CatalogPublicationRefusal, CatalogPublishCommand } from "./contracts/lifecycle.js";
+declare const verifiedCatalogPublisher: unique symbol;
+/** Server authorization result. P1 exposes no constructor or actor-string conversion. */
+export interface VerifiedCatalogPublisher {
+    readonly [verifiedCatalogPublisher]: true;
+}
+export interface CatalogValidationPort {
+    validate(candidateRef: string): Promise<{
+        candidateDigest: string;
+        issues: readonly {
+            code: string;
+            path: string;
+        }[];
+    }>;
+}
+/** No default binding: missing authority is unsupported; configured outage is dependency_unavailable. */
+export interface CatalogPublicationReadPort {
+    current(productId: string): Promise<CatalogPublicationReadResult>;
+    readback(head: CatalogHeadRef): Promise<CatalogPublicationReadResult>;
+    receipt(scope: {
+        productId: string;
+        commandKey: string;
+    }): Promise<CatalogPublicationReceiptResult>;
+    /** Null starts a bounded history page; cursors retain the authority's stable ordering. */
+    history(productId: string, cursor: string | null): Promise<CatalogHistoryResult>;
+}
+/** Types only: proposal submission does not implement publication or lifecycle writes. */
+export interface CatalogPublicationPort {
+    publish(command: CatalogPublishCommand, actor: VerifiedCatalogPublisher): Promise<{
+        outcome: "committed" | "replayed";
+        receipt: CatalogPublicationReceipt;
+    } | CatalogPublicationRefusal>;
+}
+/** Describes a host's actual support; exporting ports supplies no capabilities. */
+export interface CatalogCapabilityDescriptor {
+    read: boolean;
+    draft: boolean;
+    publicationRead: boolean;
+    publish: boolean;
+    lifecycleWrite: boolean;
+}
+export {};
 ```
 ## dist/catalog/readPorts.d.ts
 

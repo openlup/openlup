@@ -1218,6 +1218,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/oss-m05-catalog-offers-pricing.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2366,7 +2370,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/lifecycle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/productMediaContracts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/productTypes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/resolveProductMedia.ts",
       "class": "public-output"
     },
     {
@@ -2398,7 +2414,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/mediaSourcePack.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/productTypeSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationPorts.ts",
       "class": "public-output"
     },
     {
@@ -3327,6 +3351,14 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogFoundationContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogLifecycleContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogMediaResolution.test.ts",
       "class": "public-output"
     },
     {

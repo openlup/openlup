@@ -6,3 +6,6 @@ export { validateCatalogQuantity, canonicalCatalogOption } from "./productTypes.
 export type { CatalogQuantityDimension, CatalogQuantity, CatalogOptionValue, CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeDefinition, CatalogProductTypeRegistry } from "./productTypes.js";
 export { SELLABLE_CATALOG_CONTRACT_VERSION } from "./sellable.js";
 export type { SellableCatalogItem, SellableCatalogProfile, SellableCatalogListResponse } from "./sellable.js";
+export * from "./productMediaContracts.js";
+export { resolveProductMedia } from "./resolveProductMedia.js";
+export type { CatalogVariantState, CatalogHeadRef, CatalogLifecycleObservation, CatalogPublishCommand, CatalogPublicationReceipt, CatalogPublicationRefusal, CatalogPublicationReadResult, CatalogPublicationReceiptResult, CatalogHistoryResult } from "./lifecycle.js";

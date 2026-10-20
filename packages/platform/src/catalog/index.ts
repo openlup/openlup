@@ -14,3 +14,6 @@ export { createReferenceCatalogItemsHandler } from "./referenceCatalogHandler.js
 export { RESOLVED_SKU_PROJECTION_VERSION, resolvedSkuProjectionSchema, buildResolvedSkuProjection } from "./resolvedSkuProjection.js";
 export type { ResolvedSkuProjection, ResolvedSkuProjectionInput } from "./resolvedSkuProjection.js";
 export { sellableCatalogItemSchema, sellableCatalogProfileSchema, sellableCatalogListResponseSchema } from "./sellableSchemas.js";
+export { SOURCE_PACK_LIMITS, CatalogMediaSourcePackError, readCatalogMediaSourceManifest, validateCatalogMediaSourcePack, exportCatalogMediaSourcePack, restoreCatalogMediaSourcePack, importCatalogMediaSourcePack } from "./mediaSourcePack.js";
+export type { CatalogMediaSourcePack, CatalogMediaImportOutcome } from "./mediaSourcePack.js";
+export type { CatalogValidationPort, CatalogPublicationReadPort, CatalogPublicationPort, VerifiedCatalogPublisher, CatalogCapabilityDescriptor } from "./publicationPorts.js";

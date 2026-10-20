@@ -6,6 +6,10 @@
   moving the existing public neutral foundation, product types, draft logic,
   read ports and projections unchanged. Reference paths delegate; browser
   sellable schemas and rich catalog interpretation remain application-owned.
+  Add unchanged provider-free media validation/resolution and bounded source-pack
+  transfer using the existing blob port. Add lifecycle/publication DTOs and ports
+  only; publication read, publish and lifecycle writes remain unsupported, with
+  no executor, upload route, activation, SQL or wire-status changes.
 
 - Add four native communications stores, explicit trusted network registration
   and evidence readback, and durable native consent decisions. Sync reuses the

@@ -160,7 +160,9 @@
         "test/catalog/catalogDraftHandler.test.ts",
         "test/catalog/catalogDraftValidation.test.ts",
         "test/catalog/resolvedSkuProjection.test.ts",
-        "test/catalog/referenceCatalogHandler.test.ts"
+        "test/catalog/referenceCatalogHandler.test.ts",
+        "test/catalog/catalogMediaResolution.test.ts",
+        "test/catalog/catalogLifecycleContracts.test.ts"
       ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"
@@ -173,7 +175,9 @@
         "test/packageBoundary.test.ts",
         "test/catalog/catalogFoundationContracts.test.ts",
         "test/catalog/catalogProductTypeContracts.test.ts",
-        "test/catalog/catalogDraftContracts.test.ts"
+        "test/catalog/catalogDraftContracts.test.ts",
+        "test/catalog/catalogMediaResolution.test.ts",
+        "test/catalog/catalogLifecycleContracts.test.ts"
       ],
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"
@@ -198,7 +202,7 @@
     "browserEntries": {
       "./communications/contracts": 11776,
       "./identity/contracts": 4800,
-      "./catalog/contracts": 1536
+      "./catalog/contracts": 4096
     }
   }
 }
