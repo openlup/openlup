@@ -381,12 +381,17 @@ authorizes Q1 and Q2. STEP 0 selects the existing quote-discount composition for
 the constant, avoiding an additional production path. The starter-offer comment
 describes arithmetic parity rather than the threshold location and stays unchanged.
 
-Final-diff ledger against `a2edd8ebd9d72dea5be22197750743e4d2f3d198`:
+Final-diff ledger, **FORK POINT `2347e83d`**
+(`2347e83defeb3a1ff86f5aff37751c373ee74b3a`):
 **12 production source paths / 12**, **12 production/tooling paths / 35**;
 **37 existing test/helper paths** (28 suites and 9 helpers), **0 new executed
-cases**. The post-P5 programme balance stays **5**. The publication catalogue and
-source-release contract were regenerated through their existing generators and
-are byte-unchanged; three API snapshots change comments only. Prose and API
+cases**. The post-P5 programme balance stays **5**, reserved for P7. The authored
+publication catalogue covers P6's real files; the platform's pending
+`m05-p6.md` change note needs no per-file catalogue row and passes
+the fragment validator and release-tooling checks. The source-release contract
+and platform CHANGELOG retain main's bytes; the contract is computed by checks
+and was not regenerated. Documentation navigation regeneration is byte-unchanged;
+three API snapshots change comments only. Prose, pending changelog fragments and API
 snapshots are excluded from the production/tooling count.
 
 The original seven source paths are pricing `commerceQuoteCatalogReadPort.ts`,
@@ -425,10 +430,14 @@ All original **425 expect call sites** across the original 35 changed test/helpe
 paths remain. The two reference semantic suites retain their 15 assertions,
 bringing the final changed-test total to **440 expect call sites** across 37 paths.
 Their only changes are the explicit threshold argument and its import. The
-original focused collection stays **1,248 cases** across 27 files. Including the
+original bounded focused selection recomputes to **193 cases** across 27 files.
+Against **FORK POINT `2347e83d`**, every changed suite collects: **180 cases across
+28 files**; the other nine changed test paths are imported helpers. Including the
 two reference semantic suites (7 cases), adapter suite (8), reference binding
 suite (1) and legacy-code outcome suite (6), final focused collection is
-**1,270 → 1,270 cases across 32 files**. All 1,265 non-database cases and 5 native
+**215 cases across 32 files**. These explicit-path counts correct the previously
+recorded 1,248/1,270 figures; unchanged case registrations and matcher sequences
+confirm zero new cases. All 210 non-database cases and 5 native
 PostgreSQL cases pass. No new case or mandatory full-suite execution is claimed;
 the host-load rule permits explicit focused paths only. Required local checks
 and their actual exits are retained in the implementation handoff; supervisor
@@ -458,6 +467,11 @@ continuation, initial collection failed because package build outputs were absen
 building the existing workspaces restored collection without source changes.
 Lesson: absent build outputs → build existing prerequisites before collection.
 The chosen constant location avoided a thirteenth production source path.
+Slot-check retro: cold packaging removes earlier package declarations, so the
+first subsequent API check refused the missing output; rebuilding the existing
+workspaces restored all API checks without source changes. Explicit collection
+also exposed inflated ledger counts. Lesson: cold pack → restore declarations
+before API checks; count collected JSON cases rather than inferred totals.
 
 ## P5
 
