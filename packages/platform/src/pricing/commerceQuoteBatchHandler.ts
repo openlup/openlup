@@ -1,3 +1,5 @@
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import { mapAcquisitionTermsFailure } from "./acquisitionQuoteBinding.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { BffResponder } from "../bff/index.js";
 import type { z } from "zod";
@@ -15,6 +17,7 @@ import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
 
 export interface CommerceQuoteBatchHandlerDeps<Request extends CreateQuoteRequest = CreateQuoteRequest, Response extends CreateQuoteResponse = CreateQuoteResponse> {
   responder: BffResponder;
+  acquisition?: { terms(quote: Response["quote"]): ResolvedAcquisitionTerms | undefined };
   createQuoteBatchRequestSchema: z.ZodType<{ quotes: Request[] }>;
   publicCreateQuoteBatchResponseSchema: z.ZodType<{ contractVersion: typeof COMMERCE_CONTRACT_VERSION; quotes: Response["quote"][] }>;
 
@@ -39,6 +42,7 @@ export interface CommerceQuoteBatchHandlerDeps<Request extends CreateQuoteReques
 export function createCommerceQuoteBatchHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({
   responder, createQuoteBatchRequestSchema, publicCreateQuoteBatchResponseSchema,
   quotePort,
+  acquisition,
   resolveCustomerEligibility,
   resolvePricingPolicy,
 }: CommerceQuoteBatchHandlerDeps<Request, Response>) {
@@ -84,6 +88,11 @@ export function createCommerceQuoteBatchHandler<Request extends CreateQuoteReque
         contractVersion: COMMERCE_CONTRACT_VERSION,
       });
     } catch (error) {
+      const acquisitionFailure = acquisition ? mapAcquisitionTermsFailure(error) : null;
+      if (acquisitionFailure) {
+        sendBffError(res, acquisitionFailure.code, "Acquisition terms unavailable", { details: acquisitionFailure.details });
+        return;
+      }
       if (error instanceof CommerceQuoteCatalogReadError) {
         sendBffError(res, "UPSTREAM_UNAVAILABLE", "Commerce catalog is unavailable", {
           details: { reason: "catalog_unavailable", refusalCode: error.code },

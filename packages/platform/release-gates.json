@@ -205,6 +205,7 @@
         "test/pricing/commerceOfferPricingHandler.test.ts",
         "test/pricing/commerceOfferPricingCache.test.ts",
         "test/pricing/offerPolicyReadiness.test.ts",
+        "test/pricing/acquisition.test.ts",
         "test/pricing/offerPricingContracts.test.ts"
       ],
       "entrypoint": "dist/pricing/index.d.ts",

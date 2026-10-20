@@ -452,6 +452,263 @@ export declare function verifyHmacSignature(input: {
  */
 export declare function timingSafeStringEqual(left: string, right: string): boolean;
 ```
+## dist/pricing/acquisitionFinancialPolicy.d.ts
+
+```ts
+import type { AcquisitionTermsMetadata } from "./contracts/acquisitionTerms.js";
+export type AcquisitionRowFacts = Readonly<{
+    id: string;
+    active: boolean;
+    regionCodes: readonly string[];
+    validFrom: string;
+    validTo: string | null;
+    mirrorOf: unknown;
+    metadataPresent: boolean;
+    metadata: unknown;
+}>;
+export type AcquisitionClassification = Readonly<{
+    baselineLegacy: boolean;
+    target: boolean;
+    canonicalRow: boolean;
+    unconfiguredLegacyEligible: boolean;
+}>;
+/** Required host policy. No financial predicates or schedules are inferred. */
+export interface AcquisitionFinancialPolicy<Row> {
+    facts(row: Row): AcquisitionRowFacts;
+    classify(row: Row): AcquisitionClassification;
+    validateMetadata(row: Row, terms: AcquisitionTermsMetadata): void;
+    pairMatches(legacy: Row, mirror: Row): boolean;
+    initialDiscountBps(row: Row, purpose: "resolved_target" | "filter_validation"): unknown;
+    unconfiguredTerms(legacy: Row, mirror: Row): AcquisitionTermsMetadata;
+}
+```
+## dist/pricing/acquisitionOfferPricing.d.ts
+
+```ts
+import { type CommerceOfferPricingDeps } from "./commerceOfferPricing.js";
+import { type AcquisitionOfferPricingResponse } from "./contracts/offer.js";
+import { ACQUISITION_TERMS_CAPABILITY, type AcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
+import type { CreateQuoteRequest } from "./contracts/quote.js";
+export declare function acquisitionProjectionFreshness(acquisitionTerms: AcquisitionTerms, observedAt: string, nextBoundaryAt?: string | null): {
+    acquisitionTerms: {
+        initialDiscountBps: number;
+        effectiveFrom: string;
+        effectiveTo: string | null;
+        schemaVersion: "subscription-acquisition.v1";
+        revision: string;
+        delivery2DiscountBps: number;
+    };
+    observedAt: string;
+    validUntil: string;
+};
+/** Explicit opt-in projection; the incumbent projector receives no new defaults. */
+export declare function projectAcquisitionOfferPricing<Item extends CommerceQuoteCatalogItem, ScopeV1 extends string, ScopeV2 extends string>(input: Omit<CommerceOfferPricingDeps<Item, ScopeV1, ScopeV2>, "requestFor"> & {
+    acquisitionTerms: AcquisitionTerms;
+    observedAt: string;
+    nextBoundaryAt?: string | null;
+    requestFor(product: Item, mode: "one_time" | "subscription", acquisition: {
+        acquisitionCapability: typeof ACQUISITION_TERMS_CAPABILITY;
+        atTime: string;
+    }): CreateQuoteRequest;
+}): Promise<AcquisitionOfferPricingResponse<ScopeV2>>;
+```
+## dist/pricing/acquisitionOfferPricingHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { z } from "zod";
+import { type AcquisitionOfferPricingResponse, type CommerceOfferPricingResponse } from "./contracts/offer.js";
+import type { AcquisitionCapability } from "./contracts/acquisitionTerms.js";
+import type { PricingPolicyRequest, PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+export declare const ACQUISITION_CAPABILITY_HEADER = "x-commerce-acquisition-capability";
+export interface AcquisitionOfferPricingHandlerDeps {
+    responder: BffResponder;
+    commerceOfferPricingResponseSchema: z.ZodType<AcquisitionOfferPricingResponse | CommerceOfferPricingResponse>;
+    incumbentHandler(req: HttpRequest, res: HttpResponse): Promise<void>;
+    readOfferPricing(pricingPolicy?: PricingPolicySnapshot, acquisitionCapability?: AcquisitionCapability): Promise<AcquisitionOfferPricingResponse | CommerceOfferPricingResponse>;
+    requirePricingPolicy?: boolean;
+    resolvePricingPolicy?(request: {
+        visitorId: string;
+        pricingPolicy: PricingPolicyRequest;
+    }): PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+}
+export declare function createAcquisitionOfferPricingHandler({ responder, commerceOfferPricingResponseSchema, incumbentHandler, readOfferPricing, resolvePricingPolicy, requirePricingPolicy, }: AcquisitionOfferPricingHandlerDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function readAcquisitionCapability(req: HttpRequest): AcquisitionCapability | undefined | null;
+```
+## dist/pricing/acquisitionOfferPricingSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import { COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION, type AcquisitionOfferPricingResponse, type CommerceOfferPricingResponse } from "./contracts/offer.js";
+export declare const ACQUISITION_PROJECTION_MAX_AGE_MS = 60000;
+export declare const acquisitionProjectionFreshnessShape: {
+    acquisitionTerms: z.ZodObject<{
+        initialDiscountBps: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+        effectiveTo: z.ZodNullable<z.ZodString>;
+        schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+        revision: z.ZodString;
+        delivery2DiscountBps: z.ZodNumber;
+    }, z.core.$strict>;
+    observedAt: z.ZodString;
+    validUntil: z.ZodString;
+};
+export declare const acquisitionProjectionFreshnessSchema: z.ZodObject<{
+    acquisitionTerms: z.ZodObject<{
+        initialDiscountBps: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+        effectiveTo: z.ZodNullable<z.ZodString>;
+        schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+        revision: z.ZodString;
+        delivery2DiscountBps: z.ZodNumber;
+    }, z.core.$strict>;
+    observedAt: z.ZodString;
+    validUntil: z.ZodString;
+}, z.core.$strict>;
+/** Validate against the host's existing v2 scope, product and settlement schemas. */
+export declare function createAcquisitionOfferPricingSchema<ScopeV2 extends string>(v2Schema: z.ZodType<Extract<CommerceOfferPricingResponse<string, ScopeV2>, {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION;
+}>>): z.ZodType<AcquisitionOfferPricingResponse<ScopeV2>>;
+```
+## dist/pricing/acquisitionQuoteBinding.d.ts
+
+```ts
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+/** Server-selected terms only. Absence contributes no property or token bytes. */
+export declare function acquisitionQuoteBinding(acquisitionTerms?: ResolvedAcquisitionTerms): {
+    acquisitionTerms?: ResolvedAcquisitionTerms;
+};
+export declare function mapAcquisitionTermsFailure(error: unknown): {
+    code: "CONFLICT" | "UPSTREAM_UNAVAILABLE";
+    details: {
+        reason: import("./acquisitionTerms.js").AcquisitionTermsRefusal;
+        refreshRequired: boolean;
+    };
+} | null;
+```
+## dist/pricing/acquisitionReadiness.d.ts
+
+```ts
+import { type AcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { AcquisitionFinancialPolicy } from "./acquisitionFinancialPolicy.js";
+import { OFFER_POLICY_V2_READINESS_CONTRACT } from "./offerPolicyReadiness.js";
+export declare const ACQUISITION_READINESS_CONTRACT = "commerce-acquisition-readiness.v1";
+export interface AcquisitionReadinessEvidence extends Omit<AcquisitionTerms, "schemaVersion"> {
+    contractVersion: typeof ACQUISITION_READINESS_CONTRACT;
+    kind: "legacy_pair" | "v2_standalone";
+    legacyPairCount: number;
+    standaloneCount: number;
+    nextBoundaryAt: string | null;
+}
+export interface AcquisitionOfferPolicyReadiness {
+    contractVersion: typeof OFFER_POLICY_V2_READINESS_CONTRACT;
+    ready: boolean;
+    checkedAt: string;
+    reasons: string[];
+    evidence?: {
+        acquisition: AcquisitionReadinessEvidence | null;
+    };
+}
+import type { OfferPolicyReadinessPort } from "./offerPolicyReadiness.js";
+export interface AcquisitionReadinessCache {
+    read(port: OfferPolicyReadinessPort): Promise<AcquisitionOfferPolicyReadiness>;
+    clear(): void;
+}
+export declare function createAcquisitionReadinessCache<Row>(input: {
+    policy: AcquisitionFinancialPolicy<Row>;
+    now?: () => number;
+    positiveTtlMs?: number;
+    negativeTtlMs?: number;
+}): AcquisitionReadinessCache;
+```
+## dist/pricing/acquisitionTerms.d.ts
+
+```ts
+import { type ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { AcquisitionFinancialPolicy } from "./acquisitionFinancialPolicy.js";
+export type AcquisitionTermsRefusal = "acquisition_terms_policy_unconfigured" | "acquisition_terms_invalid" | "acquisition_terms_ambiguous" | "acquisition_terms_not_effective" | "acquisition_terms_capability_required" | "acquisition_terms_v2_required";
+export declare class AcquisitionTermsError extends Error {
+    readonly reason: AcquisitionTermsRefusal;
+    constructor(reason: AcquisitionTermsRefusal);
+}
+export interface AcquisitionTermsSelection {
+    kind: "legacy_pair" | "v2_standalone" | "legacy_unconfigured";
+    terms: ResolvedAcquisitionTerms;
+    sourcePromotionId: string;
+    legacyPromotionId?: string;
+    nextBoundaryAt: string | null;
+}
+/** Selection never falls back from a configured but malformed or incomplete schedule. */
+export declare function selectAcquisitionTerms<Row>(rows: readonly Row[], atTime: string, regionCode: string, policy: AcquisitionFinancialPolicy<Row>): AcquisitionTermsSelection | null;
+/** Ordinary coupon validity and inactive rows remain owned by their evaluator. */
+export declare function filterAcquisitionPromotions<Row>(rows: readonly Row[], atTime: string, regionCode: string, policy: AcquisitionFinancialPolicy<Row>): Row[];
+export declare function assertAcquisitionTermsCapability(selection: AcquisitionTermsSelection | null, capability: unknown, promotionEngineVersion: unknown): void;
+```
+## dist/pricing/acquisitionTermsSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import { type AcquisitionTerms, type ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+export declare const acquisitionCapabilitySchema: z.ZodLiteral<"subscription-acquisition.v1">;
+/** Only these extra terms are stored; promotion benefit and validity remain authoritative. */
+export declare const acquisitionTermsMetadataSchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+    revision: z.ZodString;
+    delivery2DiscountBps: z.ZodNumber;
+}, z.core.$strict>;
+export declare const acquisitionTermsSchema: z.ZodObject<{
+    initialDiscountBps: z.ZodNumber;
+    effectiveFrom: z.ZodString;
+    effectiveTo: z.ZodNullable<z.ZodString>;
+    schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+    revision: z.ZodString;
+    delivery2DiscountBps: z.ZodNumber;
+}, z.core.$strict>;
+export declare const resolvedAcquisitionTermsSchema: z.ZodObject<{
+    sourcePromotionId: z.ZodString;
+    initialDiscountBps: z.ZodNumber;
+    effectiveFrom: z.ZodString;
+    effectiveTo: z.ZodNullable<z.ZodString>;
+    schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+    revision: z.ZodString;
+    delivery2DiscountBps: z.ZodNumber;
+}, z.core.$strict>;
+export declare const acquisitionTermsExpectationSchema: z.ZodObject<{
+    revision: z.ZodString;
+    delivery2DiscountBps: z.ZodNumber;
+}, z.core.$strict>;
+export declare function projectAcquisitionTerms(terms: ResolvedAcquisitionTerms): AcquisitionTerms;
+/** Compose only at an opted-in host boundary; preserve its existing refinements. */
+export declare function createAcquisitionQuoteSchemas<Request extends z.ZodObject, Context extends z.ZodObject, Quote extends z.ZodObject>(input: {
+    request: Request;
+    context: Context;
+    quote: Quote;
+}): {
+    request: z.ZodObject<{
+        [x: string]: any;
+        acquisitionCapability: z.ZodOptional<z.ZodLiteral<"subscription-acquisition.v1">>;
+    }, z.core.$strip>;
+    context: z.ZodObject<{
+        [x: string]: any;
+        acquisitionCapability: z.ZodOptional<z.ZodLiteral<"subscription-acquisition.v1">>;
+        atTime: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>;
+    quote: z.ZodObject<{
+        [x: string]: any;
+        acquisitionTerms: z.ZodOptional<z.ZodObject<{
+            sourcePromotionId: z.ZodString;
+            initialDiscountBps: z.ZodNumber;
+            effectiveFrom: z.ZodString;
+            effectiveTo: z.ZodNullable<z.ZodString>;
+            schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+            revision: z.ZodString;
+            delivery2DiscountBps: z.ZodNumber;
+        }, z.core.$strict>>;
+    }, z.core.$strip>;
+};
+```
 ## dist/pricing/catalogFactsProvenance.d.ts
 
 ```ts
@@ -683,6 +940,7 @@ export declare function mapPricingPolicyFailure(error: unknown): PricingPolicyFa
 ## dist/pricing/commerceQuoteBatchHandler.d.ts
 
 ```ts
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { BffResponder } from "../bff/index.js";
 import type { z } from "zod";
@@ -692,6 +950,9 @@ import { type CommerceQuotePort } from "./quotePorts.js";
 import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
 export interface CommerceQuoteBatchHandlerDeps<Request extends CreateQuoteRequest = CreateQuoteRequest, Response extends CreateQuoteResponse = CreateQuoteResponse> {
     responder: BffResponder;
+    acquisition?: {
+        terms(quote: Response["quote"]): ResolvedAcquisitionTerms | undefined;
+    };
     createQuoteBatchRequestSchema: z.ZodType<{
         quotes: Request[];
     }>;
@@ -715,7 +976,7 @@ export interface CommerceQuoteBatchHandlerDeps<Request extends CreateQuoteReques
  * is preserved (`quotes[i]` ⇔ the i-th request). A failure in any quote fails
  * the whole batch, mirroring the single-endpoint error mapping.
  */
-export declare function createCommerceQuoteBatchHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteBatchRequestSchema, publicCreateQuoteBatchResponseSchema, quotePort, resolveCustomerEligibility, resolvePricingPolicy, }: CommerceQuoteBatchHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createCommerceQuoteBatchHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteBatchRequestSchema, publicCreateQuoteBatchResponseSchema, quotePort, acquisition, resolveCustomerEligibility, resolvePricingPolicy, }: CommerceQuoteBatchHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
 ## dist/pricing/commerceQuoteCatalogReadPort.d.ts
 
@@ -751,6 +1012,7 @@ export declare class CommerceQuoteCatalogReadError extends Error {
 ## dist/pricing/commerceQuoteHandler.d.ts
 
 ```ts
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { BffResponder } from "../bff/index.js";
 import type { z } from "zod";
@@ -759,6 +1021,9 @@ import { type CommerceQuotePort } from "./quotePorts.js";
 import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
 export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = CreateQuoteRequest, Response extends CreateQuoteResponse = CreateQuoteResponse> {
     responder: BffResponder;
+    acquisition?: {
+        terms(quote: Response["quote"]): ResolvedAcquisitionTerms | undefined;
+    };
     createQuoteRequestSchema: z.ZodType<Request>;
     createQuoteResponseSchema: z.ZodType<Response>;
     publicCreateQuoteRequestSchema: z.ZodType<Request & {
@@ -777,7 +1042,7 @@ export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = C
     createPromotionAcceptance?: (request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"]) => string | null;
     honorPromotionAcceptance?: (token: string, request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"]) => boolean;
 }
-export declare function createCommerceQuoteHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteRequestSchema, publicCreateQuoteResponseSchema, quotePort, fallbackQuotePort, resolveCustomerEligibility, resolvePricingPolicy, createPromotionAcceptance, honorPromotionAcceptance, }: CommerceQuoteHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createCommerceQuoteHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteRequestSchema, publicCreateQuoteResponseSchema, quotePort, acquisition, fallbackQuotePort, resolveCustomerEligibility, resolvePricingPolicy, createPromotionAcceptance, honorPromotionAcceptance, }: CommerceQuoteHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
 ## dist/pricing/commerceQuoteSnapshotExpect.d.ts
 
@@ -791,6 +1056,42 @@ export interface QuoteSnapshotExpectMessages {
     catalogMismatchMessage: string;
 }
 export declare function createExpectedQuote<Request, Response>(quotePort: CommerceQuotePort<Request, Response>, request: Request, messages: QuoteSnapshotExpectMessages, createQuoteResponseSchema: z.ZodType<Response>): Promise<Response>;
+```
+## dist/pricing/contracts/acquisitionTerms.d.ts
+
+```ts
+/** Opt-in protocol identity; financial schedules belong to the injected policy. */
+export declare const ACQUISITION_TERMS_CAPABILITY: "subscription-acquisition.v1";
+export type AcquisitionCapability = typeof ACQUISITION_TERMS_CAPABILITY;
+export interface AcquisitionTermsMetadata {
+    schemaVersion: AcquisitionCapability;
+    revision: string;
+    delivery2DiscountBps: number;
+}
+export interface AcquisitionTerms extends AcquisitionTermsMetadata {
+    initialDiscountBps: number;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+}
+export interface ResolvedAcquisitionTerms extends AcquisitionTerms {
+    sourcePromotionId: string;
+}
+export interface AcquisitionTermsExpectation {
+    revision: string;
+    delivery2DiscountBps: number;
+}
+import type { CreateQuoteRequest, CommerceQuoteContext, CommerceQuote } from "./quote.js";
+/** Separate opt-in DTOs; incumbent request/response admission is unchanged. */
+export interface AcquisitionQuoteRequest extends CreateQuoteRequest {
+    acquisitionCapability?: AcquisitionCapability;
+}
+export interface AcquisitionQuoteContext extends CommerceQuoteContext {
+    acquisitionCapability?: AcquisitionCapability;
+    atTime?: string;
+}
+export interface AcquisitionQuote extends CommerceQuote {
+    acquisitionTerms?: ResolvedAcquisitionTerms;
+}
 ```
 ## dist/pricing/contracts/authority.d.ts
 
@@ -876,6 +1177,10 @@ export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSI
 export type { CatalogFactsProvenance } from "./provenance.js";
 export { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "./offer.js";
 export type { CommerceOfferPrice, CommerceProductOfferPricing, CommerceOfferPricingResponse } from "./offer.js";
+export { ACQUISITION_TERMS_CAPABILITY } from "./acquisitionTerms.js";
+export type { AcquisitionQuoteRequest, AcquisitionQuoteContext, AcquisitionQuote, AcquisitionCapability, AcquisitionTermsMetadata, AcquisitionTerms, ResolvedAcquisitionTerms, AcquisitionTermsExpectation } from "./acquisitionTerms.js";
+export { COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION } from "./offer.js";
+export type { AcquisitionOfferPricingResponse } from "./offer.js";
 ```
 ## dist/pricing/contracts/money.d.ts
 
@@ -952,6 +1257,16 @@ export type CommerceOfferPricingResponse<ScopeV1 extends string = string, ScopeV
         payable: CommerceMoney;
     };
     minimumProductPayable: CommerceMoney;
+};
+/** Complete opt-in v3 response; the incumbent v1/v2 union stays unchanged. */
+export declare const COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION: "commerce.offer-pricing.v3";
+export type AcquisitionOfferPricingResponse<ScopeV2 extends string = string> = Omit<Extract<CommerceOfferPricingResponse<string, ScopeV2>, {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION;
+}>, "contractVersion"> & {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION;
+    acquisitionTerms: import("./acquisitionTerms.js").AcquisitionTerms;
+    observedAt: string;
+    validUntil: string;
 };
 ```
 ## dist/pricing/contracts/offerPolicy.d.ts
@@ -1331,6 +1646,15 @@ export { createCommerceOfferPricingCache } from "./commerceOfferPricingCache.js"
 export type { CommerceOfferPricingCache } from "./commerceOfferPricingCache.js";
 export { OFFER_POLICY_V2_READINESS_CONTRACT, createOfferPolicyReadinessCache, readOfferPolicyV2Readiness, resetOfferPolicyReadinessCacheForTests } from "./offerPolicyReadiness.js";
 export type { OfferPolicyV2Readiness, OfferPolicyReadinessPort, OfferPolicyReadinessCache } from "./offerPolicyReadiness.js";
+export * from "./acquisitionFinancialPolicy.js";
+export * from "./acquisitionTermsSchemas.js";
+export * from "./acquisitionTerms.js";
+export * from "./quoteAcquisitionTerms.js";
+export * from "./acquisitionQuoteBinding.js";
+export * from "./acquisitionOfferPricingSchemas.js";
+export * from "./acquisitionOfferPricing.js";
+export * from "./acquisitionOfferPricingHandler.js";
+export * from "./acquisitionReadiness.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 
@@ -1764,6 +2088,12 @@ export declare function resolvePricingPolicy(input: {
     pricingPolicyToken: string;
 };
 export {};
+```
+## dist/pricing/quoteAcquisitionTerms.d.ts
+
+```ts
+import type { AcquisitionTermsExpectation, ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+export declare function acquisitionExpectationChanged(expected: AcquisitionTermsExpectation | undefined, actual: ResolvedAcquisitionTerms | undefined): boolean;
 ```
 ## dist/pricing/quoteCodeRejectionDetails.d.ts
 

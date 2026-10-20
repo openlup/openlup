@@ -131,6 +131,13 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The opt-in pricing acquisition suite adds synthetic schedule, policy refusal,
+v3 negotiation/freshness and boundary readiness evidence to the existing package
+smoke inventory. The retained reference consent witness covers explicit terms
+and fixed historical token bytes. Both run through existing discovery; no new
+runner or graph value dependency is introduced. The cold pricing consumer also
+checks the missing-policy refusal and separate promise comparison API.
+
 Pricing P2a moves the incumbent authority, subscription policy and token suites,
 and the pure error-mapping case, into platform `test/pricing/` discovery. Root
 and package discovery already include this directory; no duplicate required

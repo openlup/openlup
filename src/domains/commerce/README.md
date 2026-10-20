@@ -32,6 +32,17 @@ admission and industry wire scopes. Existing ordering, VAT equations, v1/v2 offe
 responses, errors and TTL rules are preserved; promotion implementation remains
 local.
 
+The experimental pricing acquisition API is available only through explicit
+host composition. The reference binds no acquisition configuration and retains
+its existing offer, quote and readiness lanes. The two acceptance helpers accept
+optional server-selected resolved terms: they bind the full object, including
+its source identity, in the whole money projection and existing totals section.
+Terms alone permit low-level token issuance and verification. Without that
+explicit input the projections omit the property and the signing envelope,
+section order, eligibility and historical token bytes are unchanged. This does
+not activate a route issuer or change checkout admission; acquisition-only
+mounted-route issuance remains pending composition evidence.
+
 ## Public surface (import cross-domain ONLY these)
 - UI/BFF clients: `commerceClient.ts`, `omsClient.ts`,
   `adminPromotionsClient.ts` (admin "Rabaty" editor),

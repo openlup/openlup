@@ -127,6 +127,50 @@ P2b changes no package cap. Pricing contracts
 measure **349 B** minified+gzip; only their browser-entry budget increases from
 **320 B** to **416 B**.
 
+## P2c — acquisition selection and promise consent
+
+Cut: additive acquisition DTOs, strict schemas, schedule selection/filtering,
+capability refusal, asymmetric promise comparison, offer v3 negotiation and
+freshness, boundary-aware readiness and explicit acceptance binding under the
+existing pricing entries. No package coordinate or graph value edge is added.
+The required `AcquisitionFinancialPolicy<Row>` supplies facts, classification,
+metadata validation, pair matching, initial rate and unconfigured terms. There
+is no default; absent policy has the named `acquisition_terms_policy_unconfigured`
+refusal before row/time evaluation. Financial values and predicates stay with
+the host; schedule calculations, refusal order and serialization are preserved.
+
+Activation is off in reference composition. Its original offer handler, shared
+readiness and request/context schemas remain in use. Quote/batch acquisition
+mapping requires explicit configuration. Acceptance adds the full resolved
+object only from explicit server input, in the whole money and existing totals
+section; absence omits the property and preserves token bytes. Unsupported
+acquisition requests refuse only through the opt-in API; the inactive endpoint
+continues ignoring their header.
+
+Tests: **15 new required cases**, leaving **39 of 100** programme cases.
+Synthetic fixtures cover schedules, required policy, capability/engine refusal,
+promise comparison and binding, real terms-only token consent, quote/batch
+refusal/fallback, negotiated v3/freshness, readiness boundaries and inactive
+transcripts including a fixed historical token generated from the predecessor.
+Existing pricing suites remain unchanged. The existing smoke inventory and
+cold consumer include the additive API and missing-policy refusal.
+
+Changed production/tooling source files against the P2b predecessor: **18**;
+including four JSON inventory, browser-import and release-gate companions: **22**,
+within the **35** ceiling. The module graph declaration is unchanged: pricing
+retains only type edges to HTTP/BFF and no cross-module value edge.
+
+Pack: **894 files / 876 code files / 549,299 packed B / 2,416,236 unpacked B /
+470,217 code gzip B**; root docs **33,580 gzip B / 5 files**. Pricing contracts
+measure **386/416 B** minified+gzip; no cap increase is needed.
+
+Pending: the existing acquisition-only route issuer remains unchanged; its
+mounted-route proof is still missing. Adopter composition, unchanged C1 witness
+reruns and behavior parity belong to adoption. Checkout admission, claims and
+finalization remain outside this cut. Native reviews and committed package
+gates belong to the supervisor's signed candidate; this local implementation
+makes no merge, release or activation claim.
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected

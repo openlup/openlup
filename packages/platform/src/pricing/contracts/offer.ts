@@ -30,3 +30,13 @@ export type CommerceOfferPricingResponse<ScopeV1 extends string = string, ScopeV
   shipping: { gross: CommerceMoney; discountGross: CommerceMoney; payable: CommerceMoney };
   minimumProductPayable: CommerceMoney;
 };
+
+/** Complete opt-in v3 response; the incumbent v1/v2 union stays unchanged. */
+export const COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION = "commerce.offer-pricing.v3" as const;
+export type AcquisitionOfferPricingResponse<ScopeV2 extends string = string> =
+  Omit<Extract<CommerceOfferPricingResponse<string, ScopeV2>, { contractVersion: typeof COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION }>, "contractVersion"> & {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION;
+    acquisitionTerms: import("./acquisitionTerms.js").AcquisitionTerms;
+    observedAt: string;
+    validUntil: string;
+  };

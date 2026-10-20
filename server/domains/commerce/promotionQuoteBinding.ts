@@ -1,3 +1,4 @@
+import { acquisitionQuoteBinding, type ResolvedAcquisitionTerms } from "@openlup/platform/pricing";
 import type {
   CommerceMoney,
   CommerceQuote,
@@ -48,6 +49,7 @@ export interface PromotionQuoteMoneyDiscount {
 }
 
 export interface PromotionQuoteMoneyProjection {
+  acquisitionTerms?: ResolvedAcquisitionTerms;
   currency: string;
   totalGross: CommerceMoney;
   netTotal: CommerceMoney;
@@ -83,8 +85,9 @@ export type PromotionQuoteMismatchField = (typeof PROMOTION_QUOTE_MISMATCH_FIELD
  * Discount order is preserved: the promotion engine emits its lanes
  * deterministically, so a reordering is a real evaluation difference.
  */
-export function projectPromotionQuoteMoney(quote: CommerceQuote): PromotionQuoteMoneyProjection {
+export function projectPromotionQuoteMoney(quote: CommerceQuote, acquisitionTerms?: ResolvedAcquisitionTerms): PromotionQuoteMoneyProjection {
   return {
+    ...acquisitionQuoteBinding(acquisitionTerms),
     currency: quote.currency,
     totalGross: quote.totalGross,
     netTotal: quote.netTotal,
@@ -121,8 +124,9 @@ export function projectPromotionQuoteMoney(quote: CommerceQuote): PromotionQuote
 /** Same projection, partitioned. The union of these five sections is the whole projection. */
 export function promotionQuoteMoneySections(
   quote: CommerceQuote,
+  acquisitionTerms?: ResolvedAcquisitionTerms,
 ): Record<PromotionQuoteMoneySection, unknown> {
-  const money = projectPromotionQuoteMoney(quote);
+  const money = projectPromotionQuoteMoney(quote, acquisitionTerms);
   return {
     lines: money.lines,
     discounts: money.discounts,
@@ -131,6 +135,7 @@ export function promotionQuoteMoneySections(
       shippingDiscountGross: money.shippingDiscountGross,
     },
     totals: {
+      ...acquisitionQuoteBinding(money.acquisitionTerms),
       totalGross: money.totalGross,
       netTotal: money.netTotal,
       taxTotal: money.taxTotal,
