@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalCatalogDraftJson, catalogDraftCommandSchema, catalogDraftGetQuerySchema,
   catalogDraftListQuerySchema, catalogDraftPageSchema, catalogDraftPayloadSchema, catalogDraftRecordSchema,
-} from "./catalogDraftContracts.js";
+} from "../../src/catalog/draftSchemas.js";
 
 const id = "10000000-0000-4000-8000-000000000001";
 const payload = { schemaVersion: 1, product: { id, type: { key: "example:article", version: 1 }, dimensions: [] }, skus: [] };

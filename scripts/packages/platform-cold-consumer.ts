@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "identity/contracts", "communications/contracts"] as const;
+export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "identity/contracts", "communications/contracts"] as const;
 // identity and communications are adapter entries: its PostgreSQL profile adapter declares the data entry's pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger", "identity", "communications"] as const;
@@ -505,6 +505,20 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
     assertConsumerIsolation(consumer, checkout);
     assertExportInventory(consumer);
     for (const entry of NON_ADAPTER_ENTRIES) consumerNode(consumer, `await import("@openlup/platform/${entry}");`);
+    consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as catalog from "@openlup/platform/catalog";
+import * as contracts from "@openlup/platform/catalog/contracts";
+assert.equal(catalog.CatalogSkuAuthorityError, contracts.CatalogSkuAuthorityError);
+assert.equal(catalog.canonicalCatalogDraftJson, contracts.canonicalCatalogDraftJson);
+assert.equal(contracts.canonicalCatalogDraftJson({z:2,a:1}), '{"a":1,"z":2}');
+assert.throws(() => contracts.canonicalCatalogDraftJson({value:NaN}), /draft_json_invalid/);
+assert.throws(() => contracts.requireCurrentCatalogDocumentAuthority("product", null, null), contracts.CatalogSkuAuthorityError);
+assert.deepEqual(catalog.parseCatalogActiveSkuSelection([" ITEM-1 "]), ["ITEM-1"]);
+assert.throws(() => catalog.parseCatalogActiveSkuSelection(["ITEM-1", " ITEM-1 "]), /catalog_active_sku_selection_invalid/);
+const handler = catalog.createCatalogDraftHandler({ store: {}, registry: {}, authorizeOperator: async () => null });
+assert.deepEqual(await handler.execute({}, {}), { outcome: "unauthorized", reason: "draft_operator_required" });
+`);
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.

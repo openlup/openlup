@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { canonicalCatalogDraftJson, type CatalogDraftRecord } from "../../../src/domains/catalog/catalogDraftContracts.js";
-import { CatalogDraftStoreError, type CatalogDraftStorePort } from "../../../src/domains/catalog/catalogDraftPorts.js";
-import { createCatalogProductTypeRegistry } from "../../../src/domains/catalog/catalogProductTypeContracts.js";
-import { createCatalogDraftHandler } from "./catalogDraftHandler.js";
+import { canonicalCatalogDraftJson, type CatalogDraftRecord } from "../../src/catalog/draftSchemas.js";
+import { CatalogDraftStoreError, type CatalogDraftStorePort } from "../../src/catalog/draftPorts.js";
+import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
+import { createCatalogDraftHandler } from "../../src/catalog/draftHandler.js";
 
 const draftId = "10000000-0000-4000-8000-000000000001";
 const productId = "20000000-0000-4000-8000-000000000001";

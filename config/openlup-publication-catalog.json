@@ -2174,6 +2174,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/catalog-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/catalog.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications-contracts.api.md",
       "class": "public-output"
     },
@@ -2339,6 +2347,78 @@
     },
     {
       "path": "packages/platform/src/blob/vercel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/activeSkuSelection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/draft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/foundation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/productTypes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/sellable.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftValidation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/foundationSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/productTypeSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/readPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/referenceCatalogHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/resolvedSkuProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/sellableSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/validation.ts",
       "class": "public-output"
     },
     {
@@ -3227,6 +3307,38 @@
     },
     {
       "path": "packages/platform/test/blob/vercel.transport.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogActiveSkuSelection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogDraftContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogDraftHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogDraftValidation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogFoundationContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogProductTypeContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/referenceCatalogHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/resolvedSkuProjection.test.ts",
       "class": "public-output"
     },
     {
@@ -9110,15 +9222,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/catalog/catalogDraftHandler.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/catalog/catalogDraftHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/catalog/catalogDraftValidation.test.ts",
       "class": "public-output"
     },
     {
@@ -9150,15 +9254,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/catalog/referenceCatalogHandler.test.ts",
+      "path": "server/domains/catalog/referenceCatalogBinding.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/domains/catalog/referenceCatalogHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/catalog/resolvedSkuProjection.test.ts",
       "class": "public-output"
     },
     {
@@ -14650,10 +14750,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/catalog/catalogActiveSkuSelection.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/catalog/catalogActiveSkuSelection.ts",
       "class": "public-output"
     },
@@ -14670,10 +14766,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/catalog/catalogDraftContracts.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/catalog/catalogDraftContracts.ts",
       "class": "public-output"
     },
@@ -14682,15 +14774,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/catalog/catalogFoundationContracts.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/catalog/catalogFoundationContracts.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/catalog/catalogProductTypeContracts.test.ts",
       "class": "public-output"
     },
     {

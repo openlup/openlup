@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
-import { createReferenceCatalogItemsHandler } from "./referenceCatalogHandler.js";
+import type { HttpRequest, HttpResponse } from "../../src/http/index.js";
+import { createReferenceCatalogItemsHandler as createHandler } from "../../src/catalog/referenceCatalogHandler.js";
+import { createBffResponder } from "../../src/bff/index.js";
+const createReferenceCatalogItemsHandler = ({ catalogPort }: { catalogPort: SellableCatalogPort }) =>
+  createHandler({ catalogPort, responder: createBffResponder() });
 import {
   SELLABLE_CATALOG_CONTRACT_VERSION,
   type SellableCatalogItem,
   type SellableCatalogProfile,
-} from "../../../src/domains/catalog/contracts.js";
-import type { SellableCatalogPort } from "../../../src/domains/catalog/ports.js";
+} from "../../src/catalog/contracts/index.js";
+import type { SellableCatalogPort } from "../../src/catalog/readPorts.js";
 
 const profile = {
   id: "reference-store-local",

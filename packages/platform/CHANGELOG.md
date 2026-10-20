@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add experimental `catalog` and dependency-free `catalog/contracts` entries by
+  moving the existing public neutral foundation, product types, draft logic,
+  read ports and projections unchanged. Reference paths delegate; browser
+  sellable schemas and rich catalog interpretation remain application-owned.
+
 - Add four native communications stores, explicit trusted network registration
   and evidence readback, and durable native consent decisions. Sync reuses the
   existing outbox rail; the reference binding is callable without activation.

@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its thirteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its fifteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -23,6 +23,28 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
+| `./catalog` | Experimental neutral catalog schemas, draft use cases, read ports and projections |
+| `./catalog/contracts` | Dependency-free catalog DTOs, authority and canonicalization helpers |
+
+## Catalog
+
+`./catalog` is an experimental capability for the existing neutral catalog
+foundation, installed product types, draft validation/use cases, active SKU
+selection, resolved SKU projection and sellable reference reads. Hosts supply
+the read/store ports, verified operator authorizer, product-type registry and
+BFF responder. Draft commands retain the original canonical bytes, receipt-first
+replay, actor binding and named refusals. Read projections carry opaque
+product-scoped document references; they do not interpret document payloads.
+
+`./catalog/contracts` carries dependency-free DTOs, the shared authority error,
+GTIN/authority helpers, quantity/option helpers and the existing O draft JSON
+canonicalizer. It imports no Zod, Node runtime or server barrel. Runtime schemas
+use the server entry with jitless Zod; the reference browser keeps its sellable
+schemas locally. Neither entry installs SQL or activates publication/lifecycle
+writes. Rich application catalog interpretation remains reference-owned.
+The moved characterization suites are under `test/catalog/`; the required cold
+consumer classifies both entries without optional peers and checks installed
+canonicalization, authority identity, selection and unauthorized draft refusal.
 
 ## Scheduled jobs
 

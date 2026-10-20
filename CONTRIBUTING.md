@@ -131,6 +131,15 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Catalog phase A relocates eight existing catalog suites into the platform
+package's `test/catalog/` discovery, preserving their assertions. Root discovery
+already includes that directory, so no duplicate selector or second invocation
+is added. The reference observed-responder binding has one local guard. Both
+catalog entries join the existing SDK-absent cold consumer and declaration
+compilation; its installed witness checks the unchanged canonicalizer, authority
+error identity, exact selection and unauthorized draft refusal. Local dirty-tree
+checks do not replace the supervisor's committed-candidate package proof.
+
 
 The installed communications consumer checks the exact contracts value inventory
 and renders a synthetic message with network access refused and optional peers
