@@ -290,7 +290,10 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/inventory/contracts.test.ts"
+        "test/inventory/contracts.test.ts",
+        "test/inventory/adminInventoryConformance.test.ts",
+        "test/inventory/inventoryAvailabilityCharacterization.test.ts",
+        "test/inventory/newPurchaseStockBoundary.test.ts"
       ],
       "entrypoint": "dist/inventory/index.d.ts",
       "snapshot": "api/inventory.api.md"
@@ -301,7 +304,8 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/inventory/contracts.test.ts"
+        "test/inventory/contracts.test.ts",
+        "test/inventory/newPurchaseStockBoundary.test.ts"
       ],
       "entrypoint": "dist/inventory/contracts/index.d.ts",
       "snapshot": "api/inventory-contracts.api.md"

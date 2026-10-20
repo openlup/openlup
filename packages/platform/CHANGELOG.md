@@ -8,6 +8,7 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Extract admin/native inventory reads and injected new-purchase stock projection.
 - Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
   through both existing communications entries. Local grants remain audience-scoped;
   only withdrawals allow account-wide scope. The push capability declares
