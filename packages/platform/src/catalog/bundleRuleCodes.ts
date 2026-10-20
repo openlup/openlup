@@ -8,9 +8,8 @@ import type { BundleAllocationFailureCode } from "@openlup/core/pricing";
  * contracts, the pure rule predicates (`bundleRules.ts`), the service-role write
  * routines (which RAISE them) and the over-the-wire error taxonomy.
  *
- * The catalog domain is the reference for this shape
- * (`src/domains/commerce/catalogRuleCodes.ts`); the lifecycle subset is expressed
- * through the generic kit in `src/lib/agent-domain/`, and the codes stay here as
+ * The catalog rules use this same shape; the lifecycle subset is expressed
+ * through the host lifecycle kit, and the codes stay here as
  * this domain's registry.
  */
 export const BUNDLE_RULE_CODES = [

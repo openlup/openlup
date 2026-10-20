@@ -149,9 +149,8 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 export const PLATFORM_MODULE_GRAPH = {
   promotions: { contracts: true, values: ["pricing"], types: ["data", "http", "bff"] },
   pricing: { contracts: true, values: [], types: ["bff", "http"] },
-  // Bundle application factories bind host schemas/admin kit; only handler/responder types cross modules.
-  // Native stores and the data type edge remain outside this application slice.
-  catalog: { contracts: true, values: [], types: ["bff", "http"] },
+  // Bundle factories bind host schemas/admin kit; the native read store uses only the data executor type.
+  catalog: { contracts: true, values: [], types: ["data", "bff", "http"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
   kernel: { values: [], types: [] },

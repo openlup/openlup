@@ -176,6 +176,7 @@ describe("package source boundary", () => {
       "catalog/index.ts", "catalog/contracts/index.ts",
       "catalog/adminBindings.ts", "catalog/bundleBindings.ts", "catalog/bundleRules.ts", "catalog/bundleRuleCodes.ts",
       "catalog/bundleAvailability.ts", "catalog/bundleAvailabilityService.ts", "catalog/bundleCatalogReadPort.ts",
+      "catalog/bundleCatalogStore.ts", "catalog/bundleCatalogQueries.ts", "catalog/sql.ts",
       "catalog/adminBundleWritePort.ts", "catalog/adminBundleHandler.ts", "catalog/adminBundleReadHandler.ts", "catalog/sellableBundleHandler.ts",
       "catalog/contracts/bundleAdmin.ts", "catalog/contracts/bundleRead.ts", "catalog/contracts/bundleAvailability.ts",
       "pricing/index.ts", "pricing/contracts/index.ts",
@@ -186,6 +187,9 @@ describe("package source boundary", () => {
       "communications/index.ts", "communications/contracts/index.ts", "http/webhookSignature.ts",
       "kernel/platformKernel.ts", "bff/dispatch.ts", "composition/composeBundle.ts", "composition/nodeHost.ts",
     ]));
+    const nativeStore = files.find(({ path }) => path === "catalog/bundleCatalogStore.ts")!.source;
+    expect(nativeStore).toContain('import type { PgQueryExecutor } from "../data/index.js"');
+    expect(specifiers(nativeStore)).not.toContain("pg");
   });
 
   it.each(files)("$path reads no environment variable", ({ source }) => {

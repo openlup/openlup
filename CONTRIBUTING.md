@@ -131,6 +131,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Bundle native read extraction adds five cases under the existing
+`tests/postgres/**` collector, using an owned disposable PostgreSQL container and
+the complete canonical manifest. No test selector or runner changes. Catalog's
+server entry now has a type-only data edge and adapter declaration classification;
+the cold consumer still imports and exercises the supplied executor with optional
+peers absent, while server declarations compile after selecting peers. Contracts
+remains non-adapter. The binding case uses the declared rolldown bundler, checks a
+positive platform-input control and parses a non-empty feed through the actual
+reference schema. Package smoke evidence lists package-owned paths only; root
+binding and database proof remain root-collected. These working-tree checks do
+not replace the supervisor's clean committed-candidate package gates.
+
 Bundle application/admin extraction reuses the existing platform catalog entries,
 module graph and test collectors. Only http/bff types cross module boundaries;
 reference schemas, shared admin kit/spec and RPC error subclass remain injected.

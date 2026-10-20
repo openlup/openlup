@@ -310,7 +310,7 @@ Seven suites relocate unchanged: 44 package cases and 18 root binding cases,
 62 total. Five new executed cases leave the programme balance at **22**.
 
 Changed production/tooling paths versus eeb549c: **30/35**, including JSON
-companions. Pack: **1,010 files / 990 code files / 649,889 packed B /
+companions. Pack measured before main's A1 merge: **1,010 files / 990 code files / 649,889 packed B /
 2,909,269 unpacked B / 561,429 code gzip B**; root docs **36,506 gzip B / 5
 files**. Catalog contracts remain **3,281/4,096 B** minified+gzip. All measurements
 are within existing caps; no released baseline or growth tripwire changes.
@@ -319,6 +319,26 @@ rules 20, availability 11, stock service 6, read port 1, feed 6; root admin muta
 6, admin read 12, W4 conformance 4, binding/browser closure 1. Generated source
 boundary iterations remain separate from the five programme cases.
 
+## P4b
+
+Five new executed real-PostgreSQL cases leave the programme balance at **17**.
+Fresh full-chain/repeat installation, SQL identity, native reads without data
+writes, canonical write refusal/rollback/dry-run/price history, sequential key
+recognition and explicit invoker grants characterize the incumbent native subset.
+All bundle parity rows remain PENDING; row 1 is now characterized, not closed.
+The existing binding case remains one case. Confirmed changed-test collection:
+PostgreSQL 5, binding 1, package boundary 1,030, cold-consumer tooling 37. Generated
+source-boundary iterations do not consume programme cases.
+
+Changed production/tooling paths versus e581e1aae980efcea06cb580a15357a45db360bf:
+**17/35**, including JSON companions; tests, API snapshots and prose excluded.
+Pack: **1,024 files / 1,002 code files / 667,279 packed B / 2,986,256 unpacked B /
+571,700 code gzip B**; root docs **37,278 gzip B / 5 files**. Browser entries:
+catalog contracts **3,281/4,096 B**, pricing contracts **386/416 B**, promotions
+contracts **20/32 B** minified+gzip. Existing aggregate caps and released baseline
+are unchanged. Local packed runtime/declaration diagnostics complement, and do
+not replace, the supervisor's committed-candidate package gates.
+
 ### Bundle parity pending ledger
 
 Each row remains PENDING, not N/A, and must be dispositioned before M05 S1,
@@ -326,7 +346,7 @@ together with D8 and P6. Package application proof closes none of these rows.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
-| Native database independent human-only actor-kind gate | PENDING: native database has no independent gate; handler gate only. |
+| Native database independent human-only actor-kind gate | PENDING: characterized in P4b; native database has no independent gate, handler gate only. |
 | Native history actor identity | PENDING: native actor fields are null versus managed audit identity. |
 | Native mounted admin/feed with actual stock | PENDING: P7 composition proof. |
 | Replay/concurrency beyond sequential replay | PENDING: characterize incumbent outcomes before claiming stronger guarantees. |
