@@ -347,28 +347,65 @@ boundary counts stay **580 / 285**. No allocation reset or time-based case waive
 Keep decisions below preserve distinct branches, boundaries and frozen witnesses.
 Against the original allocation, this runner-ledger projection leaves a
 **+629 case overrun** (and historical **+480 counted overrun**), covered by the
-finite exception below. Hosted marginal used seconds: pending: this PR's hosted run;
-the local proxy cannot establish that budget. C6 and cleanup DONE definitions
-remain unchanged.
+finite exception below. Hosted marginal used seconds are recorded below with
+the limits of a single observation; the local proxy cannot establish that budget.
+C6 and cleanup DONE definitions remain unchanged.
 
 Maintainer budget read (owner delegate), 2026-10-20:
 
 > M04 post-loop: KEEP. A finite exception caps M04's net runner growth at +729 (580 counted + 285 boundary − 10 from this PR, per the X2 ledger); every case is distinct coverage, so merging into loops would only game the count. Owner of the exception: Bart Roszkowski, via the M04 supervisor. Any further communications case growth needs a new budget read. Time stays inside X2 (+30 s); the hosted after-numbers from this PR's CI are recorded in the ledger.
 
-Real hosted after-values will replace the pending markers in a follow-up commit
-on this branch before merge.
-
-Comparable before: merge-group **39416299647**, main `8b4d4ab`, supplied Ubuntu
+Inventory baseline: merge-group **39416299647**, main `8b4d4ab`, supplied Ubuntu
 Node 24/npm 11.19.0 shard logs (attempt not identified in supplied files).
 Executed summaries: **3,421 + 3,771 + 4,181 + 3,282 = 14,655**, plus two skipped
-cases; 1,746 passed files and one skipped. Summed printed file time **547.713 s**.
-These are singleton observations, not multi-run medians. Final required-path
-median/p90: pending: this PR's hosted run / pending: this PR's hosted run.
-The ten removed registrations imply **14,645** after cases (net **−10**);
-this PR's hosted run will establish the measured after-count.
+cases; 1,746 passed files and one skipped. Summed printed file time **547.713 s**;
+`scripts/packages/eslint-import-map.test.ts`: **118 cases / 28.347 s**.
 
-Rows use the same hosted run/profile above; durations charge whole files, not
-marginal M04 costs. PR provenance denotes changed or newly selected files, not
+Comparable before: merge-group **39423345569**, main `039a0a4`; main moved from
+`8b4d4ab` through M05 P3a #230 after the inventory baseline. Executed summaries:
+**3,439 + 3,785 + 4,211 + 3,265 = 14,700**. After: #231 pull_request run
+**39425618719**, merge `fb28df2` (`13a6974` into `039a0a4`); its test content
+matches the final head, whose remaining changes only edit this ledger.
+Executed summaries: **3,439 + 3,785 + 4,211 + 3,255 = 14,690**, net **−10**, all
+in shard 4: eslint-import-map **118→108 cases / 35.605→36.484 s**. Both runs have
+two skipped cases, 1,751 passed files and one skipped file. Summed printed file
+time: **550.104→552.265 s** (net **+2.161 s**). These are single observations,
+not multi-run medians, and establish no hosted speedup.
+
+Final required-path per-file median / nearest-rank p90: **0.012 / 0.085 s** in
+the after run. Method matches the inventory baseline's **0.012 / 0.085 s**:
+sort the single printed duration of every executed file across all four shards,
+take the ordinary median and the value at 1-based rank `ceil(0.90 × N)`;
+`N = 1,751` after (p90 rank **1,576**), versus **1,746** at the inventory baseline.
+The comparable before distribution is **0.013 / 0.086 s**. These are distributions
+across files in one run, not per-file medians across repeated runs.
+
+Shard job wall times, in shard order 1–4, from `main2-jobs.tsv` / `after-jobs.tsv`
+(completion minus start, including setup): **79 / 128 / 156 / 178 s** before,
+**78 / 157 / 115 / 187 s** after; sums **541→537 s**, longest **178→187 s**.
+Receipts: supplied `logs/<run>-test-full-shard--<shard>-4-.log` for all three run
+IDs above, Ubuntu Node 24/npm 11.19.0; attempts are not identified in the supplied
+files. Whole-file printed times and job wall times measure different quantities.
+
+Hosted marginal used seconds: **29.178 s** is the sum of after-run whole-file
+times for the **38 test files created** by the nine M04 PRs #205, #207, #209,
+#211, #214, #218, #221, #223 and #224, counting each path once. Creation versus
+expansion is established from each PR merge's first-parent name-status diff;
+a created file later expanded by M04 remains in the created group. The **15
+pre-existing files expanded** by M04 total **62.529 s** in that run. Their marginal
+cost is not separable from a single hosted run: **62.529 s** is a conservative
+whole-file upper bound for that portion, not measured marginal time. Selected
+existing unchanged tests, snapshots and untimed install proof are excluded from
+these two sums. The created-file charge is **within +30 s by 0.822 s**; charging
+the expanded-file upper bound too gives **91.707 s**, **61.707 s above +30 s**.
+Thus the single-run created-file observation is within the allocation, but the
+full M04 marginal cost is not shown to be within it. Neither this observation
+nor the upper bound establishes the binding summed hosted file-median budget;
+the maintainer budget read above remains recorded without inventing medians.
+
+Rows retain the inventory-baseline run/profile (39416299647) above; durations
+charge whole files, not marginal M04 costs. PR provenance denotes changed or
+newly selected files, not
 ownership of every case. **T** is the existing `ci-test-scope.mjs` closure:
 `scripts/`, `tests/setup/`, `src/test/`, commerce-request cache, all root/dot paths
 and `packages/`; ESLint additionally includes `src/` and `server/`. Unknown
@@ -411,7 +448,7 @@ Loaded-local full file **118 / 9.13 s → 108 / 8.81 s**; selected clean probes
 | Policy validation, exact identity admission, no-effect refusal, provenance and local capture | `packages/platform/test/communications/emailEgress.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 19 cases; 0.012 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Verified-role effects, recipient/locale mapping and unadmitted transport refusal | `server/adapters/email/adminRoleNotificationPort.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 7 cases; 0.029 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Receipt/operator delivery order and unadmitted transport refusal | `server/adapters/email/publicIntakeEmailDeliveryPort.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 7 cases; 0.012 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
-| Invoice evidence-first refusal, PDF/key/fallback and transport uncertainty | `server/adapters/resend/accountingInvoiceDeliveryPort.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 10 cases; 0.025 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
+| Invoice evidence-first refusal, PDF/key/fallback and transport uncertainty | the managed mail adapter's `accountingInvoiceDeliveryPort.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 10 cases; 0.025 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Maintained policy admission, raw refusal and guarded sender provenance | `server/infra/email/emailEgressReference.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 8 cases; 0.049 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | W4 complete invoice/role/inquiry/opt-out message snapshots | `tests/platform/communicationsPublicW4.test.ts` | #209, #211, #218 | kept | per-PR→same; unchanged discovery | 14 cases; 0.031 s; shard 1/4 | Same file: every assertion retained | W4 | M04 communications / this PR |
 | W3 complete subscription-mail transcript and no subscription mutation | `tests/platform/mailEgressCallers.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 10 cases; 0.225 s; shard 1/4 | Same file: every assertion retained | W3/W5 | M04 communications / this PR |
@@ -424,8 +461,8 @@ Loaded-local full file **118 / 9.13 s → 108 / 8.81 s**; selected clean probes
 | Capability declarations/refusals, policy reasons, signatures, replay and effect boundaries | `packages/platform/test/communications/marketingConformance.test.ts` | #214 | kept | per-PR→same; unchanged discovery | 20 cases; 0.014 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | W5 selected job/store/finish/readback and W3 actual feedback effect allowlist | `server/domains/communications/effectsComposition.test.ts` | #214 | kept | per-PR→same; unchanged discovery | 14 cases; 0.012 s; shard 3/4 | Same file: every assertion retained | W3/W5 | M04 communications / this PR |
 | Method/token/purpose/durable replay/privacy and native unavailable-storage refusal | `api/unsubscribe.test.ts` | #218, #223 | kept | per-PR→same; unchanged discovery | 28 cases; 0.061 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
-| Exact PL/EN invoice/role/inquiry/opt-out defaults, replacement, escaping and no ambient effects | `packages/platform/test/communications/contentDefaults.test.ts` | #218 | kept | per-PR→same; unchanged discovery | 40 cases; 0.023 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
-| Actual PL/EN reference bindings, invoice evidence/PDF/key, opt-out protocol and absent previews | `tests/platform/communicationsB2Content.test.ts` | #218 | kept | per-PR→same; unchanged discovery | 12 cases; 0.025 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
+| Exact invoice/role/inquiry/opt-out defaults in both locales, replacement, escaping and no ambient effects | `packages/platform/test/communications/contentDefaults.test.ts` | #218 | kept | per-PR→same; unchanged discovery | 40 cases; 0.023 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
+| Actual reference bindings for both locales, invoice evidence/PDF/key, opt-out protocol and absent previews | `tests/platform/communicationsB2Content.test.ts` | #218 | kept | per-PR→same; unchanged discovery | 12 cases; 0.025 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Native polling fairness/abandonment and capture/config refusal before DB | `packages/platform/test/communications/nativeDelivery.test.ts` | #221 | kept | per-PR→same; unchanged discovery | 2 cases; 0.007 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Trusted operator identity and unavailable authoritative consent fail closed | `packages/platform/test/communications/nativeDirectoryConsent.test.ts` | #221 | kept | per-PR→same; unchanged discovery | 1 case; 0.010 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Target namespace, sole executor and invalid-registration refusal before DB | `packages/platform/test/communications/nativeSync.test.ts` | #221, #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.007 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
@@ -434,8 +471,8 @@ Loaded-local full file **118 / 9.13 s → 108 / 8.81 s**; selected clean probes
 | Real fresh/69→70 SQL, ACL/default ACL, atomic rollback, replay/lease races and admitted HTTP/clock/readback | `tests/postgres/communicationsNative.test.ts` | #221, #223 | kept | per-PR→same; unchanged discovery | 20 cases; 24.853 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Cron auth/flag/lease/finish and native missing-provider refusal before managed access | `api/_cron/communicationSyncDispatchJob.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 5 cases; 0.017 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Metric thresholds/readiness and native unavailable readback never healthy zero | `api/_cron/emailHealthWatchdogJob.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 20 cases; 0.023 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
-| Cron credential/env/lease gates and native missing-binding refusal | `api/cron/resend-delivery-reconciliation.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 7 cases; 0.010 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
-| Original raw signature bytes and native invalid-signature refusal before persistence | `api/resend-webhook.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.011 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
+| Cron credential/env/lease gates and native missing-binding refusal | the managed delivery-reconciliation cron test | #223 | kept | per-PR→same; unchanged discovery | 7 cases; 0.010 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
+| Original raw signature bytes and native invalid-signature refusal before persistence | the managed webhook route test | #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.011 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Unverified actor refused before storage; unavailable readback sanitized | `server/bff/admin/communications/native-evidence.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 1 case; 0.005 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Observed admin wrapper, bearer refusal and native verified-admin boundary | `server/bff/admin/communications/notification-recipients.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 3 cases; 0.063 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
 | Public mutation policy refuses before token read even with native selection | `server/bff/communications/preferences.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.233 s; shard 4/4 | Same file: every assertion retained | none released; keep | M04 communications / this PR |
@@ -474,9 +511,18 @@ has equivalent pre-merge proof. Generated per-source boundaries remain: each
 source can independently acquire an env, SDK or private import. Whole-message
 golden permutations protect distinct locale/copy/optional-field outputs.
 
+Repair checks: whitespace and public policy pass (**1 documentation obligation,
+0 unanswered**); UI neutrality passes. The ledger has zero hits in every UI
+neutrality category. Repository neutrality, both with the default base and explicit
+`039a0a416147449525f1a863faf7cbb5a370f469`, still refuses six commerce test paths
+(three `ui-6`, three `ui-5`), all outside this ledger-only repair's edit authority.
+That required check remains blocked; these results do not claim a green hosted run.
+
 Self-retro: repeated config setup → batch depth setup while retaining the complete
 ordered assertion body. Local whole-file time fell 0.32 s but selected probes rose
-0.12 s; use hosted receipts for timing disposition. No automatic successor.
+0.12 s; hosted singleton observations likewise cannot establish a speedup or
+the expanded-file marginal cost. Keep the inventory baseline separate from the
+comparable before/after pair. No automatic successor.
 
 ## P4 registry, effects and readback
 
