@@ -3,7 +3,7 @@ import type { PostgresDataGatewayEnv } from "../data/index.js";
 import type { CommunicationSyncStore } from "./communicationSyncWorker.js";
 import type { NewsletterSyncEvent, NewsletterSyncEventType, NewsletterMarketingPurpose } from "./contracts/newsletter.js";
 import type { NativeCommunicationsOptions } from "./nativeOperations.js";
-import { nativeEmail, nativeFingerprint, nativeInteger, nativeJson, nativeText, nativeTransactions } from "./postgresNativeOperations.js";
+import { nativeEmail, nativeFingerprint, nativeInteger, nativeJson, nativeStamp, nativeText, nativeTransactions } from "./postgresNativeOperations.js";
 
 /** Structural seam for the existing outbox store, scoped to this operation's transaction. */
 export interface NativeSyncRail {
@@ -23,17 +23,12 @@ export interface NativeSyncOptions extends NativeCommunicationsOptions {
 }
 export interface NativeCommunicationSyncStore extends CommunicationSyncStore {
   registerWork(input: NativeSyncRegistration): Promise<{ id: string }>;
+  registerPreference(input: {email:string;purpose:"tester_program"|NewsletterMarketingPurpose;state:"denied"|"suppressed"}): Promise<{updated:true;email:string;purpose:"tester_program"|NewsletterMarketingPurpose;state:"denied"|"suppressed";workId:string|null;alreadySuppressed:boolean}>;
   close(): Promise<void>;
 }
 export const nativeSyncEventType = (binding: string): string => `communication.native.sync.${nativeFingerprint(nativeText(binding))}`;
-/** No sidecar claim/lease/drainer. Only runCommunicationSyncDispatch executes membership effects. */
-export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv, options: NativeSyncOptions): NativeCommunicationSyncStore {
-  const binding = nativeText(options.binding), provider = nativeText(options.providerKind), eventType = nativeSyncEventType(binding);
-  const lane = nativeTransactions(env, options, ["public.communication_native_sync_state","public.outbox_events"]);
-  const checkProvider = (value: string) => { if (value !== provider) throw new Error("native_sync_binding_conflict"); };
-  return {
-    close: lane.close,
-    async registerWork(input) {
+function nativeSyncRegistration(options: Pick<NativeSyncOptions,"binding"|"providerKind">, input: NativeSyncRegistration): (db: SqlExecutor) => Promise<{id:string}> {
+  const binding=nativeText(options.binding),provider=nativeText(options.providerKind),eventType=nativeSyncEventType(binding);
       const email = nativeEmail(input.normalizedEmail), source = nativeText(input.sourceKey), contact = nativeText(input.contactId);
       if (!["subscribe","update","unsubscribe","suppress"].includes(input.eventType) || !["marketing_launch_offer","marketing_newsletter"].includes(input.purpose)) throw new Error("native_sync_event_invalid");
       const payload = nativeJson(input.payload ?? {});
@@ -41,7 +36,7 @@ export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv
       const fact = nativeFingerprint(JSON.stringify([provider,contact,email,input.eventType,input.purpose,payload,...refs]));
       // Reuse the rail's ordering barrier for successive preferences of one contact/target.
       const aggregate = nativeFingerprint(JSON.stringify([binding,provider,contact])).slice(0,32);
-      return lane.run(async db => {
+  return async db => {
         // One rail identity for each source event and exact target binding.
         await db.query(`INSERT INTO public.outbox_events (aggregate_type,aggregate_id,event_type,idempotency_key,payload)
           VALUES ('communication_native_sync',$4::uuid,$1,$2,$3::jsonb) ON CONFLICT (event_type,idempotency_key) DO NOTHING`, [eventType,source,payload,aggregate]);
@@ -52,6 +47,38 @@ export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv
         const state = (await db.query("SELECT command_fingerprint FROM public.communication_native_sync_state WHERE work_id=$1", [work.id])).rows[0];
         if (state?.command_fingerprint !== fact) throw new Error("native_sync_registration_conflict");
         return { id: nativeText(work.id) };
+  };
+}
+/** Trusted host transaction seam; registration validation remains shared with the standalone store. */
+export async function registerNativeSyncWorkInTransaction(db: SqlExecutor, options: Pick<NativeSyncOptions,"binding"|"providerKind">, input: NativeSyncRegistration): Promise<{id:string}> {
+  return nativeSyncRegistration(options,input)(db);
+}
+
+/** No sidecar claim/lease/drainer. Only runCommunicationSyncDispatch executes membership effects. */
+export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv, options: NativeSyncOptions): NativeCommunicationSyncStore {
+  const binding = nativeText(options.binding), provider = nativeText(options.providerKind), eventType = nativeSyncEventType(binding);
+  const lane = nativeTransactions(env, options, ["public.communication_native_sync_state","public.outbox_events","public.communication_recipient_consents"]);
+  const checkProvider = (value: string) => { if (value !== provider) throw new Error("native_sync_binding_conflict"); };
+  return {
+    close: lane.close,
+    async registerWork(input) {
+      const register=nativeSyncRegistration(options,input);
+      return lane.run(db => register(db as SqlExecutor));
+    },
+    registerPreference(input) {
+      const email=nativeEmail(input.email),fingerprint=nativeFingerprint(email),purpose=nativeText(input.purpose);
+      if (!["tester_program","marketing_launch_offer","marketing_newsletter"].includes(purpose) || !["denied","suppressed"].includes(input.state)) throw new Error("native_preference_invalid");
+      return lane.run(async db=>{
+        await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[JSON.stringify([fingerprint,purpose])]);
+        const old=(await db.query("SELECT state,updated_at FROM public.communication_recipient_consents WHERE recipient_fingerprint=$1 AND purpose=$2 FOR UPDATE",[fingerprint,purpose])).rows[0];
+        const row=old?.state===input.state?old:(await db.query(`INSERT INTO public.communication_recipient_consents (recipient_fingerprint,purpose,state)
+          VALUES ($1,$2,$3) ON CONFLICT (recipient_fingerprint,purpose) DO UPDATE SET state=excluded.state,updated_at=clock_timestamp() RETURNING state,updated_at`,[fingerprint,purpose,input.state])).rows[0]!;
+        let workId:string|null=null;
+        if(purpose!=="tester_program"){
+          const sourceKey=nativeFingerprint(JSON.stringify([fingerprint,purpose,input.state,nativeStamp(row.updated_at)]));
+          workId=(await registerNativeSyncWorkInTransaction(db as SqlExecutor,options,{sourceKey,contactId:fingerprint,normalizedEmail:email,eventType:input.state==="suppressed"?"suppress":"unsubscribe",purpose:purpose as NewsletterMarketingPurpose})).id;
+        }
+        return {updated:true as const,email,purpose:purpose as "tester_program"|NewsletterMarketingPurpose,state:input.state,workId,alreadySuppressed:old?.state===input.state};
       });
     },
     claimBatch(input) {

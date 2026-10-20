@@ -1,3 +1,4 @@
+import { NativeEvidencePanel } from './email-sends/NativeEvidencePanel';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
@@ -82,6 +83,8 @@ export default function EmailSendsPage() {
         <h1 className="font-display text-xl font-semibold tracking-tight md:text-2xl">Wysyłki maili</h1>
         <p className="mt-1 text-sm text-text-muted">{totalCount} łącznie</p>
       </div>
+
+      <NativeEvidencePanel accessToken={accessToken} />
 
       <EmailSendsStats stats={stats} />
 

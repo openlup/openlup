@@ -498,3 +498,8 @@ describe("unsubscribe route - default export", () => {
     expect(out.body()).toContain("Link nieprawidłowy lub wygasł");
   });
 });
+it("native signed opt-out refuses missing storage and preserves privacy headers and error presentation",async()=>{
+ const {default:handler}=await import("./unsubscribe.js");
+ vi.stubEnv("PLATFORM_BUNDLE","node-postgres");vi.stubEnv("DATABASE_URL","");vi.stubEnv("UNSUBSCRIBE_TOKEN_SECRET",TOKEN_SECRET);
+ try{const token=await buildUnsubscribeToken({email:"native@example.invalid",purpose:"marketing_newsletter"},TOKEN_SECRET);const out=capture();await handler({method:"GET",headers:{},query:{token,lang:"en"}} as never,out.res);expect(out.status()).toBe(500);expect(out.headers()["cache-control"]).toBe("no-store");expect(out.headers()["referrer-policy"]).toBe("no-referrer");}finally{vi.unstubAllEnvs();}
+});

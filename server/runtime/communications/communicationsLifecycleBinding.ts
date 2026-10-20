@@ -4,7 +4,7 @@ import {
   runDeliveryReconciliation, runCommunicationSyncDispatch,
   type NativeCommunicationsOptions, type NativeConsentOptions, type NativeSyncRegistration,
   type NativeConsentInput, type NativeNetworkTarget, type NewsletterSyncProviderPort,
-  type DeliveryStatusRead, type DeliveryPollObservation, type CommunicationSyncConfig,
+  type NativeDeliveryStore, type DeliveryStatusRead, type DeliveryPollObservation, type CommunicationSyncConfig,
 } from "@openlup/platform/communications";
 import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
 
@@ -27,6 +27,9 @@ export function createCommunicationsLifecycleBinding(
   const sync = () => createPostgresCommunicationSyncStore(database, { ...options,providerKind: options.provider.providerKind,rail: db => createPostgresOutboxStore(db) });
   return {
     registerNetworkTarget: (input: NativeNetworkTarget) => using(delivery(), store => store.registerNetworkTarget(input)),
+    findByMessageId: (id: string) => using(delivery(), store => store.findByMessageId(id)),
+    listDeliveryEvidence: (limit: number) => using(delivery(), store => store.listEvidence({limit})),
+    applyObservation: (input: Parameters<NativeDeliveryStore["applyObservation"]>[0]) => using(delivery(), store => store.applyObservation(input)),
     readDeliveryEvidence: (id: string) => using(delivery(), store => store.readEvidence(id)),
     reconcileDelivery: (input: { readEmail: (messageId: string) => Promise<DeliveryStatusRead>; observationFor: (read: DeliveryStatusRead) => DeliveryPollObservation | null; now: string; graceMinutes: number; limit: number }) =>
       using(delivery(), port => runDeliveryReconciliation({ ...input,port })),

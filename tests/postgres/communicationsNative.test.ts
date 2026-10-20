@@ -268,3 +268,74 @@ it("refuses poisoned default ACLs on an adverse reinstall, then restores the exa
  await upgrade.query(readFileSync(nativeFile,"utf8"));
  expect((await runner(upgrade).apply()).applied).toEqual([]);expect(await snapshot(upgrade)).toEqual(before);
 });
+it("C-compose reads scoped native targets and atomically suppresses permission with sole-rail work", async () => {
+ const { createPostgresCommunicationPreferencesPort } = await import("../../server/adapters/postgres/communicationPreferences.js");
+ const binding = "compose-preferences", port = delivery(binding);
+ const targetRow = await port.registerNetworkTarget(target("compose-readback"));
+ expect(await port.findByMessageId("network:compose-readback")).toEqual({id:targetRow.id});
+ expect(await delivery("foreign").findByMessageId("network:compose-readback")).toBeNull();
+ expect((await port.listEvidence({limit:10})).map(row=>row.id)).toContain(targetRow.id);
+ await expect(port.listEvidence({limit:101})).rejects.toThrow();
+ const prefs = keep(createPostgresCommunicationPreferencesPort(env(), { binding, providerKind:"synthetic" }));
+ const input = {email:"compose@example.invalid", purpose:"marketing_newsletter" as const};
+ expect(await prefs.updatePreference(input,"denied")).toMatchObject({updated:true,state:"denied"});
+ expect(await prefs.updatePreference(input,"denied")).toMatchObject({updated:true});
+ expect((await fresh.query("SELECT state FROM public.communication_recipient_consents WHERE recipient_fingerprint=$1 AND purpose=$2",[hash(input.email),input.purpose])).rows).toEqual([{state:"denied"}]);
+ expect((await fresh.query("SELECT count(*)::integer AS n FROM public.communication_native_sync_state WHERE binding=$1",[binding])).rows[0].n).toBe(1);
+ await fresh.query("ALTER TABLE public.communication_native_sync_state ADD CONSTRAINT synthetic_preference_refusal CHECK (binding <> 'compose-preferences') NOT VALID");
+ try {await expect(prefs.updatePreference({...input,email:"rollback-compose@example.invalid"},"suppressed")).rejects.toThrow();}
+ finally {await fresh.query("ALTER TABLE public.communication_native_sync_state DROP CONSTRAINT synthetic_preference_refusal");}
+ expect((await fresh.query("SELECT * FROM public.communication_recipient_consents WHERE recipient_fingerprint=$1",[hash("rollback-compose@example.invalid")])).rows).toEqual([]);
+ const selected=createCommunicationsLifecycleBinding({PLATFORM_BUNDLE:"node-postgres",DATABASE_URL:containers[0].connectionString},{binding,operatorId:A,provider});
+ expect((await selected.dispatchSync()).sent).toBe(1);
+ expect((await selected.readDeliveryEvidence(targetRow.id))?.observedState).toBeNull();
+});
+it("C-compose admits a real callback to scoped PG evidence and exposes unknown/readback through actual selected HTTP and clock",async()=>{
+ const {createHmac}=await import("node:crypto");
+ const {createServer}=await import("node:net");
+ const {createReferenceCommunications,admitReferenceCommunications}=await import("../../server/runtime/communications/referenceComposition.js");
+ const {communicationsReferenceMount}=await import("../../server/runtime/public-reference/communications.js");
+ const {startPublicReferenceServer}=await import("../../server/runtime/public-reference/serve.js");
+ const {createResendWebhookHandler}=await import("../../server/domains/communications/resendWebhookHandler.js");
+ const {createNativeWebhookPort}=await import("../../server/runtime/communications/nativeEvidenceBinding.js");
+ const {createNativeEvidenceHandler}=await import("../../server/bff/admin/communications/native-evidence.js");
+ const {runCommunicationSyncDispatchCron}=await import("../../api/_cron/communicationSyncDispatchJob.js");
+ const {runNativeDeliveryReconciliationJob}=await import("../../api/_cron/communicationDeliveryReconciliationJob.js");
+ const port=delivery("compose-http"),registered=await port.registerNetworkTarget(target("compose-http"));
+ const secret=`whsec_${Buffer.from("synthetic-callback").toString("base64")}`;
+ const domain=createResendWebhookHandler({webhookSecret:secret,environmentTagName:"environment",createPort:()=>createNativeWebhookPort(port),verifySignature:input=>input.signature===`v1,${createHmac("sha256",Buffer.from(secret.slice(6),"base64")).update(`${input.webhookId}.${input.timestamp}.${input.rawBody}`).digest("base64")}`});
+ const webhook=async(req:import("../../server/_lib/types/vercel.js").VercelRequest,res:import("../../server/_lib/types/vercel.js").VercelResponse)=>{let rawBody="";for await(const chunk of req as unknown as AsyncIterable<Buffer>)rawBody+=chunk.toString();const result=await domain({method:req.method,rawBody,headers:{webhookId:String(req.headers["svix-id"]),timestamp:String(req.headers["svix-timestamp"]),signature:String(req.headers["svix-signature"])}});res.status(result.status).json(result.body);};
+ const candidate={artifact:"synthetic",configuration:"compose-http",environment:"disposable",database:"synthetic",schema:"70"};let current=candidate,clockCalls=0,membershipCalls=0;
+ const env={PLATFORM_BUNDLE:"node-postgres",DATABASE_URL:containers[0].connectionString,COMMUNICATIONS_BINDING:"compose-http",APP_RELEASE_SHA:"synthetic",COMMUNICATIONS_SCHEMA_IDENTITY:"70",OPENLUP_REFERENCE_PROFILE:"communications",CRON_SECRET:"synthetic",COMMUNICATION_SYNC_DISPATCH_ENABLED:"true",COMMUNICATIONS_MEMBERSHIP_PROVIDER:"synthetic"};
+ const readback=createNativeEvidenceHandler({env,authorize:async req=>req.headers.authorization==="Bearer synthetic"?A:null});
+ await sync("compose-http").registerWork(work("compose-clock"));
+ const selectedProvider={...provider,sync:async()=>{membershipCalls++;return {status:"sent" as const};}};
+ const runtime=createReferenceCommunications({bundle:"node-postgres",migrationIdentity:"70",ports:{observations:port,membership:selectedProvider},routes:[{id:"/api/synthetic-observation",handle:webhook as never},{id:"/api/bff/admin/communications/native-evidence",handle:readback as never}],schedules:[{id:"synthetic-host-clock",cadenceSeconds:60,run:async()=>{clockCalls++;return runCommunicationSyncDispatchCron({method:"POST",headers:{authorization:"Bearer synthetic"}} as never,env,undefined,{provider:selectedProvider});}}]});
+ const admission=await admitReferenceCommunications({runtime,candidate,currentIdentity:()=>current,observed:{inventoryComplete:true,loadedPackages:[{name:"@openlup/core",version:"0.16.0",kind:"kernel"},{name:"@openlup/platform",version:"0.16.0",kind:"rail"}]},schemaProbe:{observe:async requirement=>({database:"synthetic",version:"70",objects:await Promise.all(requirement.objects.map(async object=>({object,present:object.kind==="table"?Boolean((await fresh.query("SELECT to_regclass($1) AS object",[object.name])).rows[0].object):object.kind==="column"?Boolean((await fresh.query("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 AND column_name=$2",[object.name.split(".")[1],object.name.split(".")[2]])).rows.length):false})))} )}});
+ expect(admission.report).toMatchObject({state:"ready"});
+ const reserve=createServer();await new Promise<void>(resolve=>reserve.listen(0,"127.0.0.1",resolve));const portNumber=(reserve.address() as {port:number}).port;await new Promise<void>((resolve,reject)=>reserve.close(error=>error?reject(error):resolve()));
+ let tick:(()=>Promise<unknown>)|undefined;
+ const origin=`http://127.0.0.1:${portNumber}`,server=await startPublicReferenceServer({env,port:portNumber,communications:communicationsReferenceMount(admission,origin,["/api/synthetic-observation"]),bindSchedule:(_id,_cadence,run)=>{tick=run;}});
+ try{
+  expect(tick).toBeTypeOf("function");expect(await tick!()).toMatchObject({status:200,body:{sent:1}});expect(clockCalls).toBe(1);expect(membershipCalls).toBe(1);
+  const endpoint=`${origin}/api/bff/admin/communications/native-evidence`;
+  const initial=await(await fetch(endpoint,{headers:{authorization:"Bearer synthetic"}})).json();expect(initial.data.sends.find((row:{id:string})=>row.id===registered.id).observedState).toBeNull();
+  const raw=JSON.stringify({type:"email.delivered",created_at:now,data:{email_id:"network:compose-http"}}),id="synthetic-callback",timestamp=String(Math.floor(Date.now()/1000));
+  const signature=createHmac("sha256",Buffer.from(secret.slice(6),"base64")).update(`${id}.${timestamp}.${raw}`).digest("base64");
+  expect((await fetch(`${origin}/api/synthetic-observation`,{method:"POST",headers:{"svix-id":id,"svix-timestamp":timestamp,"svix-signature":"invalid"},body:raw})).status).toBe(401);
+  for(let replay=0;replay<2;replay++)expect((await fetch(`${origin}/api/synthetic-observation`,{method:"POST",headers:{"svix-id":id,"svix-timestamp":timestamp,"svix-signature":`v1,${signature}`},body:raw})).status).toBe(200);
+  expect((await port.readEvidence(registered.id))?.observations).toHaveLength(1);
+  const read=await(await fetch(endpoint,{headers:{authorization:"Bearer synthetic"}})).json();expect(read.data.sends.find((row:{id:string})=>row.id===registered.id).observedState).toBe("delivered");
+  const lost=await port.registerNetworkTarget(target("compose-lost-callback"));
+  const failed=await runNativeDeliveryReconciliationJob(env,"synthetic-poll",async()=>({ok:false,httpStatus:401,lastEvent:null,recipientEmail:null,providerError:"synthetic_auth"}));
+  expect(failed.status).toBe(502);expect((await port.readEvidence(lost.id))?.observedState).toBeNull();
+  const reconciled=await runNativeDeliveryReconciliationJob(env,"synthetic-poll",async()=>({ok:true,httpStatus:200,lastEvent:"delivered",recipientEmail:email,providerError:null}));
+  expect(reconciled.status).toBe(200);expect((await port.readEvidence(lost.id))?.observedState).toBe("delivered");
+  expect((await fresh.query("SELECT status FROM public.platform_job_runs WHERE job_name='synthetic-poll' ORDER BY started_at")).rows.map(row=>row.status)).toEqual(["failed","success"]);
+  const {emailRouteUrl}=await import("../../src/domains/communications/email/links.js");
+  for(const key of ["configurator","customerDashboard","customerPaymentRecovery","checkoutRecovery","returnsGuide","terms"] as const)for(const locale of ["pl","en"] as const){
+   const destination=await fetch(emailRouteUrl(origin,key,locale));expect(destination.status).toBe(404);expect(await destination.text()).toContain("Not found");
+  }
+  current={...candidate,configuration:"changed"};expect((await fetch(endpoint,{headers:{authorization:"Bearer synthetic"}})).status).toBe(503);await expect(tick!()).rejects.toThrow("stale");
+ }finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
+});

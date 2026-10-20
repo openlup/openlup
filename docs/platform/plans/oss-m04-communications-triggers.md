@@ -802,3 +802,238 @@ assertion discriminates it. Reusing the existing conflict class removed duplicat
 error plumbing. Running the cheap SQL classifier and binding typecheck before
 PG/broad gates would have avoided early repair runs; shared-lane waits were also
 substantial. No process/control relaxation or successor work is proposed.
+
+
+## C-compose — selected communications composition
+
+Status: authorized implementation in progress; no completion or passing candidate
+claim. Coordinator rev 12 approves R1 selected bridges, R2 minimal admin evidence
+mount and strictly opt-in disposable browser profile, R3 additive installed
+substitute proof, R4 existing-canon projection and host-supplied schedules, and R5
+managed maintained network mail, capture and the four bounded B3 groups. No full
+native general sender, maintained cadence or public deployment activation. This
+run permits file edits/local verification only; commits, two fresh full native
+reviews, submission and S1 remain the supervisor's later steps.
+
+The supplied design enumerated CC01–CC18 (including the requested CC01–CC16).
+This is the full approved old → new ledger; rows are acceptance targets until
+execution evidence below establishes them. Under R5 the last row's absent
+destinations are owning-module open work and do not block M04.
+
+| ID | Old → target new | Preservation / discriminating witness |
+|---|---|---|
+| CC01 | Contribution factory exists but no reference caller → actual selected communications routes/handlers/jobs/schema/ports participate in admission. | Same installed factory/public entries; omitted callable or port refuses before listen/effect. |
+| CC02 | Bundle selection does not convert managed lifecycle entrypoints → explicit native branch selects B3 operations for their advertised surfaces. | Managed branch unchanged; direct cannot use ambient managed env as fallback. |
+| CC03 | B3 binding exposes seven callable methods/no activation → composed host can ingest admitted observation, query bounded evidence and invoke selected jobs. | Existing seven methods retain behavior; wrapper inventory expectation changes explicitly. No timer is added to store/binding. |
+| CC04 | Native evidence is read-by-send-id only → binding-scoped lookup by accepted message reference and bounded list/readback. | Foreign/missing ids give no unrelated evidence; conflict/replay/precision unchanged. |
+| CC05 | Vendor callback/poller default builds managed persistence → approved route bridge can select native persistence for supported observation states. | Signature/raw bytes/environment/time provenance, managed HTTP responses, three-404 semantics and frozen client unchanged. Requires R1. |
+| CC06 | Native acceptance must be manually registered by a host → selected host producer can register verified acceptance and correlate it to readback. | No registration for capture/drop/unknown; post-acceptance storage failure stays uncertain; no automatic repeat send. Does not create a native general sender. |
+| CC07 | Sync cron requires managed env/store → explicit native job uses B3 store plus selected membership port and existing job ledger. | Same worker; no second drainer; no-op default identified; real missing provider refuses rather than silently settling. Native sync transactions also require safe effective privileges on the existing consent authority. |
+| CC08 | Native sync work can be registered only manually → approved token preference mutation can register default-purpose membership work atomically when selected. | Deny persists without vendor; no remote authority/grant, no new purpose, stale claim cannot settle; same rail. |
+| CC09 | Recipients BFF is managed-only → selected native list/create/update/delete via verified admin and B3 port. | HTTP stays admin-only; store's human/operator/machine fences, unique conflict and unknown-id acknowledgment remain. |
+| CC10 | Token preference endpoint requires managed env → selected native signed-token denied/suppressed persistence with durable acknowledgment. | Token signature/purpose checks and response semantics preserved; malformed/missing storage fails closed. |
+| CC11 | One-click runtime client is managed-only → approved native signed-token persistence selection. | Existing managed legacy paths/output/security unchanged; native legacy tester parity not claimed without authoritative source. Requires R1. |
+| CC12 | Native consent callable is detached from host effect composition → host explicitly obtains durable allow/deny and exposes decision correlation. | Still no managed caps/touching/send-time fence; no new final send gate invented. Unavailable decision prevents effect. |
+| CC13 | Operator mail UI/BFF only sees managed send shape/control receipts → selected native evidence exposed as a distinct truthful section with correlation/guarantees. | Captured/accepted/settled/abandoned never shown delivered; no invented managed rows/open/click metrics. UI mount requires R2. |
+| CC14 | Watchdog reads only managed metrics/readiness → selected native capability/readback health and candidate/schema identity become inspectable. | Missing native store/provider/schema is unavailable/unknown, not healthy zero. Existing managed thresholds unchanged. |
+| CC15 | Canon has descriptive trigger metadata without composed callable coverage → bounded binding catalogue checks implemented handlers/schedules and excludes inert rows. | No planned/no-send/retired activation. Trigger-catalogue ruling R4 required. |
+| CC16 | No supplied communications schedules in admitted reference → approved host can bind actual selected schedules once and invoke existing jobs. | Public `crons:[]` and no default deployment activation preserved; cadence changes require a separate ruling. |
+| CC17 | Source-only/unit or inline-fixture substitute examples → actual installed exports plus composed reference/native stores support a synthetic alternate mail/membership provider and bad-adapter refusal. | New provider exists only in synthetic proof, no shipped vendor/default change; no live vendor proof claimed. Control extension R3. |
+| CC18 | Link strings alone → all 12 emitted Polish/English destinations are followed in the selected communications application and return real 404s. | Each destination stays explicitly open in its owning module under R5; no M04 closure, placeholder or generic-shell substitute. |
+
+
+### T07 destination matrix
+
+No row is claimed from a URL match or an HTTP shell. The reference communications
+profile does not add customer destinations or change emitted URLs. The table
+records every destination currently emitted by `email/links.ts` in both locales.
+Account EN exists in the separately selected identity/subscription application;
+it remains unclaimed by this selected communications application. All twelve
+`emailRouteUrl` links below were followed through the actual admitted HTTP host: each returned
+404 with a not-found response. No row is claimed closed.
+
+| Destination | Polish emitted path | EN emitted path | C-compose disposition | Owner |
+| --- | --- | --- | --- | --- |
+| Builder | `/skomponuj-pakiet` | `/build-your-box` | Open: followed 404; no selected real destination | M05/M19 |
+| Customer dashboard | `/konto` | `/account` | Open: both followed 404 in this selected profile | M07/M19 |
+| Payment repair | `/konto/platnosc/napraw` | `/account/payment/recover` | Open: followed 404; no selected repair action | M11–13/M19 |
+| Checkout completion | `/konto/dokoncz-platnosc` | `/account/complete-payment` | Open: followed 404; no selected completion action | M11–13/M19 |
+| Returns guide | `/zwroty` | `/returns` | Open: followed 404; no selected destination | M16/M19 |
+| Terms | `/regulamin` | `/terms` | Open: followed 404; no selected legal destination | M16/M19 |
+| Invoice account-orders action | `/konto?sekcja=orders` | `/account?sekcja=orders` | Open: query-bearing action unclaimed; underlying paths absent in this profile | M07/M11–13/M19 |
+| Role notification operator landing | `/admin` | `/admin` | Open: selected profile mounts only `/admin/communications`; role landing not followed/claimed | M19 |
+| Signed/legacy opt-out landing | host-selected `/api/unsubscribe` with token or legacy parameters | same selected endpoint plus locale | Open T07: handler exists, but no selected reference destination was followed for these emitted links | M19 |
+| Auth/inquiry/support/tracking/review action URLs supplied by a host | caller supplied | caller supplied | Open/unclaimed for the host's actual endpoints; pure rendering or a synthetic URL is no destination proof | M03/M05/M11–13/M16/M19 |
+
+These rows close only with real selected destination/action evidence in their
+owning modules. No placeholder, generic shell or redirect settles T07. The additional rendered/operator/host-supplied rows above are explicitly unclaimed;
+no selected destination or action is inferred from rendering or handler source.
+
+### C-compose X2 ledger
+
+Inherited totals stay **487 counted / 285 boundary / 715 runner additions /
+18.955237108 s**. The later coordinator ruling supersedes conservative whole-file
+recharge: each extended existing file is charged its measured after-minus-before
+three-run median delta under identical gate/harness/reporter/selection conditions;
+new files are charged whole. No inherited cost is subtracted or reset. Before
+medians from `cci/timing.json`: native PG **13.990977208 s**, cold-consumer
+**2.799827958 s**. After medians and all additional authored scenarios must be
+recorded before any completion claim. Cumulative time above **30 s** stops work
+and returns to the coordinator. Case overrun is acknowledged, not a timing waiver.
+
+Execution evidence (file-only candidate, 2026-10-20): three identical final
+primary selections passed 57/57 per run, three retained selections passed 73/73
+and three new-file selections passed 13/13. Real PG includes full fresh/69→70
+installation, retained B3 safety tests, atomic preference/work rollback, signed
+synthetic observation/replay, actual mounted native readback, actual supplied
+sync clock, leased failed/successful polling and all twelve T07 404 destinations.
+Native review cycles consumed: zero; committed source review remains the supervisor's step.
+
+| Extended primary file | Before median (s) | After median (s) | Measured delta (s) | Charged (s) |
+| --- | ---: | ---: | ---: | ---: |
+| `tests/postgres/communicationsNative.test.ts` | 13.990977208 | 12.985260708 | -1.005716500 | 0 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 2.799827958 | 2.571477500 | -0.228350458 | 0 |
+
+Negative deltas are conservatively charged zero: no inherited cost is removed.
+The other extended-file positive deltas plus whole new-file medians add
+**0.307163128 s**, for **19.262400236 s cumulative**, below 30 s. The exact three
+runs, hashes, all before/after file medians, failed attempts and separate broker
+waits are retained in the supervisor's task evidence. This is the existing local
+proxy, not hosted timing admission.
+
+C-compose adds **24 runner cases** and **69 additional authored inner outcomes**,
+conservatively charging **93 counted**. Inner outcomes: admission entry/staleness
+4, schema requirements/refusal 9, trigger refusals 4, native observation variants 5,
+preference selection 1, admin evidence refusal 1, host refusals 2, panel refresh 1,
+substitute/capture separation 3, native health variants 1, atomic preference/readback
+8, actual host/clock/poll/link/staleness transcript 21 and extended installed-consumer
+transcript 9. No new package production source file was added, so the existing
+per-package-source generated boundary census adds **0** iterations. Cumulative:
+**580 counted / 285 boundary / 739 runner additions**; counted overrun **480**
+against +100 remains acknowledged and subject to the inherited post-loop revisit.
+
+Passing local checks: focused ast-grep, lint (warnings only), full platform
+TypeScript debt check (zero errors), both neutrality gates (zero increases),
+changed-file gitleaks and the read-only working-file `assertMigrationBlocks`
+overlay against the approved base. The API generator changes only the
+communications snapshot, by 22 added declaration lines; Unreleased Migration
+explains custom-store obligations. No manifest, cap, browser entry or SQL changed.
+
+The normal policy/navigation command and package gates retain their real
+file-only refusals: catalogue inventory needs the newly authored files in Git's
+index, and package artifact/consumer admission requires a clean committed
+platform tree. Navigation was generated through the same exported generator over
+the complete candidate path inventory. Documentation's tests/tooling units retain
+exact no-impact trailers for the supervisor's own non-merge commit. A working-file
+overlay or generated file is not committed-source or package admission evidence.
+Remaining root-suite/build results and the stopped-run self-retro are recorded
+in the handoff; missing mandatory proof prevents delivery. No git write, review
+receipt, external mutation, S1, release or deployment occurs in this run.
+
+
+## S1 package-set preparation
+
+Status (2026-10-20): file-only implementation of the approved `0.17.0` set,
+based on `c8fd6bd194b189d436b2d66780792d5e7175b6d1`. Acceptance here is the eleven
+approved file edits and an honest verification/handoff record. A clean committed
+candidate, native admission and final public/private artifact witnesses remain
+required before S1 can be armed; file-only evidence does not satisfy them.
+
+Authority: the owner's delegate approved the stabilized S1 API/npm/budget read
+(revision 12): core, outbox and platform versions plus exact core peers and seven
+lock carriers; three release entries; platform adoption/trusted-transaction
+wording; derived source-release contract and this existing programme record.
+The current direct instruction authorizes local file edits and checks only,
+with no Git writes, submission, merge, publication, tag or release dispatch.
+It ends at the implementation report and proposed commit/PR text. No other
+programme delivery grant is exercised by this run.
+
+Smallest complete scope: the three package manifests and CHANGELOGs, core and
+root locks, platform README, derived source-release contract and this plan.
+Existing bump/derive/check machinery is sufficient. Preserve exports, runtime,
+SQL, snapshots, dependencies, workflows, OIDC/publish configuration, package
+inventory, UI status, caps and test selection. Generated navigation/catalogue/API
+bytes may change only if genuine derivation requires it, with investigation.
+No new mechanism or tests are justified by numeric carriers and release notes.
+S1 adds zero tests: inherited X2 remains **580 counted / 285 boundary / 739
+runner additions**, **19.262400236 s** cumulative, with the acknowledged +480
+case overrun and existing post-loop revisit; no budget resets or timing waiver.
+
+Option B is the binding baseline disposition. Keep the initial `0.16.0`
+release-gates records: core 161,371, outbox 38,718, platform 256,973 packed bytes.
+No `release-gates.json` edit or cap increase is authorized. The pre-S1 platform
+measurement is 414,808 packed bytes, **+61.4%** versus that baseline; the release
+entry explains growth from reviewed communications runtime, native stores/SQL,
+browser contracts and adoption/API documentation. Final note bytes require fresh
+measurement. The communications browser cap remains 11,776 bytes.
+
+Observed published `0.16.0` identities (fetched during the design on 2026-10-20;
+SHA512 verified against registry integrity, not an audit-signature witness):
+
+| Package | Packed bytes | Fetched SHA256 |
+| --- | ---: | --- |
+| `@openlup/core` | 161,232 | `48abf4ea8ddc446b8d6e2c610801e2cfcbe5575743bd5a61fbb8b8b50a2b36a3` |
+| `@openlup/outbox` | 38,673 | `1219a95952ae1dd8a7ceee80ad58b8ab5a9501527d5e20194b4c4db43d031ebd` |
+| `@openlup/platform` | 257,434 | `030756175d61279aab0ae7b26b27783e08467ec93673f5623d19d0b7fc436463` |
+
+Risk/proof plan: check exact manifest/lock-only deltas and derived bytes first,
+then policy/navigation, API, size and release checks, whole-set cold consumers
+including real PostgreSQL, lint/typecheck/neutrality/migration/security, scoped
+and complete root suites and the subscription build. Heavy commands use the
+existing resource broker. A dirty-tree refusal is retained, not bypassed or
+reported as artifact admission. Final gates use the exact clean reviewed head.
+
+Remaining witness boundary: before merge, the supervisor packs all three
+artifacts from the exact reviewed S1 head with the repository command, records
+each SHA512 and content listing, and stages the tarballs with `SHA256SUMS` in
+the coordinator's `m04-staging/s1-tarballs/`. The supervisor sends the path and
+head SHA to the designated lead. The lead runs minimal existing private bindings
+in an ignored scratch trial with no private source edits and returns PASS/FAIL.
+At C4, fetched published tarballs must be content-equivalent to those artifacts
+and npm audit signatures must pass. Arm S1 only after both required witnesses
+pass. This run creates no reviewed head or final staging/witness claim.
+
+
+S1 file-only verification outcome (2026-10-20): manifests, all three API checks,
+Core release check/pack, ast-grep, lint (zero errors; 33 existing warnings),
+zero-error full typecheck, inventory, both neutrality gates (base `c8fd6bd`, zero
+increases), read-only migration assertion and gitleaks 8.30.1 directory scans
+passed. `test:scoped` excluded no bounded tooling files and passed 1,738 files /
+14,418 tests (one file / two tests skipped by existing configuration), 191.798 s
+including the broker. The separately requested complete `npm test` passed the
+same counts, 199.790 s. Both reference builds and their two-page prerender checks
+passed; generated root/subscription outputs were removed. No tests were added.
+
+Final working-file packed sizes: core **161,493 B**, outbox **39,135 B**, platform
+**413,801 B**, all within unchanged caps. Platform code remains **349,386 /
+440,320 B**, docs **29,341 / 40,960 B**, unpacked **1,764,012 / 2,088,960 B**,
+files **684 / 800**; communications browser entry **8,210 / 11,776 B**. Final
+platform growth is **+61.0290%** against the retained initial baseline; the
+approved +61.4% reading above is the 414,808 B measurement before S1 note
+consolidation. Preliminary working-file tarballs have SHA256/SHA512 and exact
+content listings in the implementation handoff; they are not reviewed-head packs.
+
+Whole-set artifact/cold/required-package commands refused the uncommitted package
+files before installed consumers or Core coverage. Normal policy/navigation has
+three unanswered no-impact records (core, outbox rail and repository); exact
+fresh source-delta trailers and reasons are supplied for the supervisor's
+non-merge commit. Platform's README answers its owner obligation. Navigation,
+catalogue and all API snapshots remained byte-identical. The complete derived
+contract changes only the root/core lock digests; normal npm lock regeneration
+changed exactly the approved seven version/peer fields, with no dependency drift.
+Managed pgTAP refused before database startup: PATH supplies CLI 2.120.0, while
+this profile requires 2.98.2. No substitute or new install exception was used.
+
+The file-only run stops at the requested commit/report/PR-text handoff. No Git
+index/object/ref writes, native reviews or receipts, external writes, publication,
+tag, dispatch or S1 arming occurred. Native review cycles consumed: zero. The
+clean reviewed-head package/coverage/real-PG consumer gate, normal committed
+policy, pinned managed diagnostic and both required artifact witnesses remain
+pending; missing proof is not completion of programme acceptance.
+
+Self-retro: the two expressly requested root runs cost 391.588 s including
+broker time; the shared root lock correctly retained the complete selection.
+Reusing set bump, normal npm lock generation and existing measurement/derivation
+functions kept this preparation to eleven paths with no new mechanism or tests.
+Lesson: version preparation → existing set machinery and explicit proof limits.
+No useful further in-scope process change was found; no successor was opened.

@@ -1,3 +1,4 @@
+import { readProcessEnvironment } from "../server/_lib/observability/runtimeProvenance.js";
 import type { VercelRequest, VercelResponse } from "../server/_lib/types/vercel.js";
 import { readRawBody, WebhookBodyTooLargeError } from "../server/_lib/payment/webhookSignature.js";
 import {
@@ -13,6 +14,7 @@ import {
   EMAIL_ENVIRONMENT_TAG_NAME,
   resolveEmailEnvironmentTag,
 } from "#communications-egress-policy";
+import { createRuntimeNativeWebhookPort } from "../server/runtime/communications/nativeEvidenceBinding.js";
 import { verifyResendWebhookSignature } from "../server/infra/resend/resendWebhookVerifier.js";
 
 // The raw stream is the security boundary: Svix signs the original request
@@ -60,6 +62,8 @@ export function createResendWebhookRouteHandler(deps: ResendWebhookRouteDeps = {
 }
 
 function createRuntimePort(): ResendWebhookPort {
+  const selectedEnv=readProcessEnvironment();
+  if (selectedEnv.PLATFORM_BUNDLE === "node-postgres") return createRuntimeNativeWebhookPort(selectedEnv);
   const env = readSupabaseDataGatewayEnv();
   if (!env) throw new Error("resend_webhook_datastore_not_configured");
   return createSupabaseResendWebhookPort(createServiceClient(env) as ResendWebhookSupabaseClient);

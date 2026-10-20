@@ -133,3 +133,8 @@ describe("runCommunicationSyncDispatchCron DB boundary", () => {
     expect(calls.map((call) => call.name)).toEqual(["platform_claim_job_run"]);
   });
 });
+it("selected native sync refuses a missing provider before constructing any managed client",async()=>{
+ const {factory}=fakeGateway({});
+ const result=await runCommunicationSyncDispatchCron(req("POST","Bearer cron-secret"),{...BASE_ENV,PLATFORM_BUNDLE:"node-postgres"},factory);
+ expect(result).toEqual({status:503,body:{ok:false,error:"native_membership_provider_required"}});expect(factory).not.toHaveBeenCalled();
+});

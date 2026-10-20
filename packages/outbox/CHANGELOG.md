@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.17.0]
+
+- Publishable on the npm `latest` dist-tag as `0.17.0`, from tag
+  `openlup-outbox-v0.17.0`.
+
+- Republish with the exact `@openlup/core` `0.17.0` peer pin; APIs, runtime
+  behavior and shipped SQL are unchanged from `0.16.0`.
+
+Baseline evidence (2026-10-20): published `0.16.0` tarball 38,673 packed bytes,
+SHA256 `1219a95952ae1dd8a7ceee80ad58b8ab5a9501527d5e20194b4c4db43d031ebd`.
+The initial `0.16.0` release-gates baseline is retained under S1 option B.
+
 ## [0.16.0]
 
 - Publishable on the npm `latest` dist-tag as `0.16.0`, from tag

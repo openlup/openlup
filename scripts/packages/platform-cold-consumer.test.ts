@@ -208,20 +208,26 @@ function nativeCommunicationsFixture(mode: "correct" | "no-op" | "wrong-token" |
   const consumer=fixture();
   writeFileSync(join(consumer,"node_modules/@openlup/platform/index.js"), `
 const mode=${JSON.stringify(mode)};
-let observed=mode==="false-delivery"?"delivered":null,settled=false,recipient=null;
+let queued={},observed=mode==="false-delivery"?"delivered":null,settled=false,recipient=null;
 export const createPostgresDeliveryReconciliationPort=()=>({
- registerNetworkTarget:async input=>{if(input.evidence!=="network_accepted")throw Error("capture refused");return {id:"send"};},
+ registerNetworkTarget:async input=>{if(input.evidence!=="network_accepted")throw Error("capture refused");observed=mode==="false-delivery"?"delivered":null;return {id:"send"};},
  findFrozenSends:async()=>mode==="no-op"?[]:[{id:"send",messageId:"network:cold"}],
+ findByMessageId:async()=>({id:"send"}),listEvidence:async()=>[{id:"send"}],
  readEvidence:async()=>({observedState:observed}),applyPolledEvent:async()=>{observed="delivered";},close:async()=>{},
 });
 export const createPostgresCommunicationSyncStore=()=>({
- registerWork:async()=>({id:"work"}),claimBatch:async()=>settled&&mode!=="second-executor"?[]:[{id:"work",claimToken:"current"}],
+ registerWork:async input=>{queued=input;settled=false;return {id:"work"};},claimBatch:async()=>settled&&mode!=="second-executor"?[]:[{...queued,id:"work",claimToken:"current",payload:{},attemptCount:0}],
  markSent:async input=>{if(mode==="wrong-token")return true;if(settled||input.claimToken!=="current")return false;settled=true;return true;},close:async()=>{},
 });
 export const createPostgresNotificationRecipientsPort=()=>({
  createNotificationRecipient:async input=>{recipient={...input,id:"recipient"};},listNotificationRecipients:async()=>({recipients:recipient?[recipient]:[]}),
  updateNotificationRecipient:async input=>{recipient.active=input.active;},deleteNotificationRecipient:async()=>{recipient=null;},close:async()=>{},
 });
+const admitted=new WeakSet();
+export const guardEmailTransport=transport=>admitted.has(transport)?transport:{send:async()=>({outcome:{ok:false}})};
+export const createGuardedEmailTransport=input=>{const transport={send:async message=>{const context=await input.policy(message.to);const result=await input.send({...message,to:context.recipient},context);return {...result,outcome:{...result.outcome,egressMode:context.mode}};}};admitted.add(transport);return transport;};
+export const createInMemoryEmailTransport=()=>({send:async()=>({outcome:{ok:true}})});
+export const runCommunicationSyncDispatch=async({store,provider})=>{const events=await store.claimBatch({});for(const event of events){await provider.sync(event);await store.markSent({eventId:event.id,claimToken:event.claimToken,providerKind:provider.providerKind});}return {sent:events.length,checked:events.length};};
 export const createPostgresConsentEvaluator=()=>({evaluate:async()=>({allowed:false,decisionId:"decision"}),guarantees:{managedFrequencyCaps:false,legacyContactTouching:false,sendTimeFence:false},close:async()=>{}});
 `);
   return consumer;
@@ -231,4 +237,12 @@ it("admits a complete native operations transcript through the installed-consume
 });
 it.each(["no-op","wrong-token","false-delivery","second-executor"] as const)("turns the native operations witness red for %s",mode=>{
   expect(()=>proveNativeCommunicationsOperations(nativeCommunicationsFixture(mode),"postgresql://unused.invalid/synthetic")).toThrow();
+});
+it("requires native scoped lookup and bounded evidence rather than accepting an unrelated installed store",()=>{
+ const consumer=nativeCommunicationsFixture("correct");
+ const path=join(consumer,"node_modules/@openlup/platform/index.js");
+ writeFileSync(path,readFileSync(path,"utf8").replace("findByMessageId:async()=>({id:\"send\"}),", ""));
+ // This deliberately incompatible candidate has no composed lookup.
+ expect(()=>proveNativeCommunicationsOperations(consumer,"postgresql://unused.invalid/synthetic")).toThrow();
+ expect(readFileSync(path,"utf8")).not.toContain("findByMessageId");
 });

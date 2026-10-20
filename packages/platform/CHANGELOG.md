@@ -1,5 +1,11 @@
 # Changelog
 
+Notable changes to this public-source workspace package are recorded here.
+“Unreleased” means no npm version carries the change yet; immutable OpenLup
+source previews may already ship some changes, and their release notes say
+which. Declaration snapshots track candidate drift, not a stable API or
+SemVer promise.
+
 ## [Unreleased]
 
 - Add experimental `catalog` and dependency-free `catalog/contracts` entries by
@@ -11,173 +17,94 @@
   only; publication read, publish and lifecycle writes remain unsupported, with
   no executor, upload route, activation, SQL or wire-status changes.
 
-- Add four native communications stores, explicit trusted network registration
-  and evidence readback, and durable native consent decisions. Sync reuses the
-  existing outbox rail; the reference binding is callable without activation.
-  Append CREATE-only schema position 70 and its exact sparse SQL projection.
-  Native consent excludes managed frequency caps and legacy contact-touching;
-  evaluate is not a send-time fence. Existing exports and managed paths remain.
+Migration: existing consumers need no source or schema changes. The identity
+snapshot only reorders `inactive` in the emitted `customerLifecycleStageSchema`
+and `customerMeResponseSchema` enum declarations; members and runtime behavior
+are unchanged. Catalog adoption is opt-in through the new experimental entries.
 
-- Add neutral Polish/EN invoice, role, opt-out and generic inquiry default content
-  factories with optional whole-copy injection in `communications/contracts`.
-  Reference invoice/role rendering delegates to them; invoice construction may
-  explicitly select EN, while implicit Polish and existing role bytes are preserved.
-  Add Polish invoice/role previews and a pure inquiry binding without a new sender.
+## [0.17.0]
 
-Migration: B2 changes reference opt-out page copy in both locales, translates
-legacy/error outcomes for `lang=en`, corrects EN document language and escapes
-all display values. Hosts preserving legacy page bytes must retain their own
-presentation binding. Token verification, purpose scope, durable RPC and HTTP
-statuses/headers are unchanged. Invoice locale defaults to Polish and is opt-in at
-construction only; no persisted language or runtime activation is added. All
-four contracts exports are additive; existing content copy interfaces remain.
+- Publishable on the npm `latest` dist-tag as `0.17.0`, from tag
+  `openlup-platform-v0.17.0`.
 
-- Add an opt-in immutable consent-purpose registry with mandatory classification,
-  registry-bound policy/token/newsletter contracts and explicit host preference
-  persistence. Legacy defaults and managed purpose CHECKs remain unchanged;
-  registration grants no permission and creates no implicit synchronization.
-  Extract neutral newsletter event processing and preserve host effects/readback.
-  Add marketing automation ports and synthetic conformance without a runner,
-  provider activation, schema or package-graph change.
+- Add experimental `./communications` and browser-safe
+  `./communications/contracts`, plus generic capped raw-body, hex-HMAC and
+  constant-time comparison helpers in the existing `./http` entry. Compose neutral
+  transport/results/capture, rendering/content, independent Auth verification,
+  receipt/observation, polling/reconciliation, consent and membership sync engines.
+  Provider clients, protocol/key mapping, copy and activation remain host-owned.
+- Require explicit egress admission for supported injected network senders.
+  Guarded transports validate fresh host decisions, redirect sink sends and
+  suppress drops before network entry; provider names grant no admission.
+  Capture remains local acceptance. Preserve the maintained reference transport
+  through its trusted composition bridge and keep Auth/provider verification separate.
+- Add Polish/English invoice, role, opt-out and inquiry default-content factories
+  with whole-copy injection. Preserve implicit Polish invoice and existing role
+  expectations; EN invoice is construction-time opt-in. Reference opt-out page
+  copy, EN legacy/error text, document language and escaping change deliberately.
+  Pure inquiry rendering activates no sender. See the
+  [B1/B2 expectation inventory](../../docs/platform/plans/oss-m04-communications-triggers.md#b1-egress-boundary).
+- Add an opt-in immutable composition-time purpose registry with mandatory
+  classification and finite legacy defaults. Registration grants no consent,
+  provider activation or managed schema permission; custom-purpose persistence
+  stays with the host. Add neutral newsletter processing and marketing ports
+  without a runner or a new public purpose.
+- Add four bounded native store groups: delivery observation/readback, existing-rail
+  membership sync, operator notification recipients and durable consent decisions.
+  Append CREATE-only direct catalogue position 70,
+  `20261019200000_communications_native_operations.sql`, and its exact sparse
+  projection. Standard factory lanes refuse unsafe effective privileges.
+  Sync uses `public.outbox_events`; the sidecar is not another executor.
+- Compose selected native readback and atomic signed-token preferences with Core
+  readiness, explicit provider/binding identities and host-supplied clocks and
+  schedules. Add distinct opt-in operator evidence and installed substitute-provider
+  proof. Captured, network-accepted and membership-synced are not delivered.
+  Native consent excludes managed 16-hour / 2-day / 4-week caps and legacy
+  contact-touching, and is not a send-time fence. No default cadence, deployment
+  activation, full native general sender or UI package capability is added.
+  [T07 destinations](../../docs/platform/plans/oss-m04-communications-triggers.md#t07-destination-matrix)
+  remain explicitly open with their owning modules.
+- @openlup/platform size growth: added the reviewed neutral communications runtime and browser content contracts, bounded native stores and SQL projection, and their API/adoption documentation.
 
-Migration: P4 generalizes the existing purpose-bearing declarations with finite
-legacy defaults. Calls and type references that omit a purpose argument retain
-the same built-in purposes. Registry composition is opt-in: thread the same
-registered purpose union through newsletter events, provider/store/webhook ports,
-policy and token payloads, and pass the registry to dispatch, schema construction
-and preference-token verification. Registration grants no consent, provider
-activation or managed database support. Custom persistence remains host-owned;
-the managed permission/sync CHECKs and existing token signing bytes are unchanged.
-The legacy managed preference adapter still returns the same expanded three-value
-purpose union.
+Migration: `0.16.0` did not export communications. Upgrade the complete package
+set to `0.17.0` for the exact core peers, then explicitly select and bind the new
+experimental capability. Existing non-communications entries retain their contracts.
+The host retains renderer/copy, environment, origin, egress, provider protocol,
+credentials and schedule ownership. The generic HTTP helpers do not replace the
+independent Auth Standard Webhooks or provider-specific verification protocols.
 
-Before (existing imports from `@openlup/platform/communications` or its contracts
-entry; declarations shown with unrelated members omitted):
+Install the complete selected direct canonical catalogue through position 70
+before selecting native stores. `COMMUNICATIONS_MIGRATIONS` projects positions
+2, 9, 20 and 70; never reapply these sparse files over an existing canonical
+history or treat them as a standalone chain. Preserve managed/private lineage
+and custom-purpose persistence: registering a purpose does not expand managed
+CHECKs. Thread the same registered purpose union and registry through selected
+policy, token, newsletter and store bindings; omitted arguments retain finite
+legacy defaults and existing signing bytes.
 
-```ts
-interface NewsletterWebhookEvent { purpose: NewsletterMarketingPurpose | null }
-interface NewsletterSyncEvent { purpose: NewsletterMarketingPurpose }
-interface NewsletterSyncProviderPort {
-  sync(event: NewsletterSyncEvent): Promise<NewsletterSyncOutcome>;
-}
-type NormalizedNewsletterWebhookEvent = NewsletterWebhookEvent;
-interface NewsletterWebhookPort {
-  recordProviderEvent(input: NewsletterWebhookEvent & {
-    state: "unknown" | "granted" | "denied" | "suppressed" | null;
-    processingStatus: "received" | "ignored";
-  }): Promise<{ providerEventId: string; contactId: string | null; inserted: boolean }>;
-  // setPermissionFromProvider input.purpose: NewsletterMarketingPurpose
-}
-interface CommunicationSyncStore {
-  // claimBatch(input): Promise<NewsletterSyncEvent[]>
-}
-interface CommunicationPolicyInput { purpose: CommunicationPurpose }
-interface CommunicationPreferenceTokenPayload {
-  email: string;
-  purpose: "tester_program" | "marketing_launch_offer" | "marketing_newsletter";
-  expiresAt: number;
-}
-declare function evaluateCommunicationPolicy(input: CommunicationPolicyInput): CommunicationPolicyResult;
-declare function createCommunicationPreferenceToken(payload: CommunicationPreferenceTokenPayload, secret: string): string;
-declare function normalizeCanonicalNewsletterWebhookEvent(event: CanonicalNewsletterWebhookEvent): NewsletterWebhookEvent;
-// runCommunicationSyncDispatch / runCommunicationSyncDispatchForProviders:
-// store: CommunicationSyncStore; provider(s): NewsletterSyncProviderPort (or array)
-```
+`registerNativeSyncWorkInTransaction` is a trusted host transaction seam. Its
+caller-owned executor must already hold the lane's safe effective privileges;
+this function does not check those privileges. The caller owns the transaction
+and must commit or roll back permission, sidecar and existing-rail effects
+atomically. Use a safely admitted lane; the helper grants no provider or claim
+authority. Standard native sync factory transactions check
+`public.communication_native_sync_state`, `public.outbox_events` and
+`public.communication_recipient_consents`.
 
-After (the unchanged members and return types above are retained):
+Custom native stores must provide binding-scoped `findByMessageId`, bounded
+`listEvidence` (1–100) and atomic `registerPreference` as declared by the new
+surface. Supply explicit provider/binding identities and full catalogue admission.
+Hosts preserving older opt-out page bytes retain their own presentation binding;
+token purposes, verification and existing HTTP status/header semantics remain.
+See the [package composition guidance](README.md#communications-import).
 
-```ts
-interface NewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> {
-  purpose: Purpose | null;
-}
-interface NewsletterSyncEvent<Purpose extends string = NewsletterMarketingPurpose> {
-  purpose: Purpose;
-}
-interface NewsletterSyncProviderPort<Purpose extends string = NewsletterMarketingPurpose> {
-  sync(event: NewsletterSyncEvent<Purpose>): Promise<NewsletterSyncOutcome>;
-}
-type NormalizedNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose> = NewsletterWebhookEvent<Purpose>;
-interface NewsletterWebhookPort<Purpose extends string = NewsletterMarketingPurpose> {
-  recordProviderEvent(input: NewsletterWebhookEvent<Purpose> & {
-    state: "unknown" | "granted" | "denied" | "suppressed" | null;
-    processingStatus: "received" | "ignored";
-  }): Promise<{ providerEventId: string; contactId: string | null; inserted: boolean }>;
-  // setPermissionFromProvider input.purpose: Purpose
-}
-interface CommunicationSyncStore<Purpose extends string = NewsletterMarketingPurpose> {
-  // claimBatch(input): Promise<NewsletterSyncEvent<Purpose>[]>
-}
-interface CommunicationPolicyInput<Purpose extends string = CommunicationPurpose> {
-  purpose: Purpose;
-}
-type LegacyCommunicationPreferencePurpose = "tester_program" | "marketing_launch_offer" | "marketing_newsletter";
-interface CommunicationPreferenceTokenPayload<Purpose extends string = LegacyCommunicationPreferencePurpose> {
-  email: string;
-  purpose: Purpose;
-  expiresAt: number;
-}
-declare function evaluateCommunicationPolicy<Purpose extends string = CommunicationPurpose>(input: CommunicationPolicyInput<Purpose>, registry?: CommunicationPurposeRegistry<Purpose>): CommunicationPolicyResult;
-declare function createCommunicationPreferenceToken<Purpose extends string = LegacyCommunicationPreferencePurpose>(payload: CommunicationPreferenceTokenPayload<Purpose>, secret: string): string;
-declare function normalizeCanonicalNewsletterWebhookEvent<Purpose extends string = NewsletterMarketingPurpose>(event: Omit<CanonicalNewsletterWebhookEvent, "purpose"> & { purpose?: Purpose | null }): NewsletterWebhookEvent<Purpose>;
-// runCommunicationSyncDispatch / runCommunicationSyncDispatchForProviders now
-// carry Purpose extends string = NewsletterMarketingPurpose through their store
-// and provider(s), and accept registry?: CommunicationPurposeRegistry<Purpose>.
-// verifyCommunicationPreferenceToken retains its old three-argument overload;
-// the new fourth-argument registry overload returns the registered payload type.
-```
-
-No SQL forward, stock-store capability expansion or package-set version change is
-part of this migration. Existing legacy schemas and purpose-less webhook fallback
-remain finite and unchanged.
-
-- B1: require package egress admission before every supported injected mail send.
-  `createGuardedEmailTransport` validates a fresh explicit host policy, refuses
-  missing/unknown/malformed decisions, redirects sink sends and suppresses drops
-  before invoking the network sender. Provider names grant no admission.
-  Package capture remains local; the maintained policy-enforcing transport uses
-  an explicit composition bridge with unchanged wire behavior. Raw Auth closures
-  compose through `createAuthEmailTransport`. See the M04 plan for every changed
-  alternate-transport expectation; there is no schema or package graph change.
-
-- Move the existing pure email renderer, block builders and commerce/subscription
-  content assembly into communications/contracts. Host copy and helper bindings,
-  browser previews, Auth refusal and independent verifier policies are preserved.
-  The complete browser entry has an explicitly inventoried pure value surface;
-  its measured owner-read size limit and W4/parity evidence are in the M04 ledger.
-
-- Extract neutral admitted-observation and bounded polling orchestration through
-  existing `./communications`. Existing domain wrappers retain protocol mapping,
-  admission, evidence and persistence arguments. Keep lookup/apply/telemetry and
-  polling fairness/failure order; the database remains the single convergence
-  writer. No schema, dependency, manifest or route/schedule change.
-
-- Add experimental `./communications` and type-only `./communications/contracts`
-  entries by relocating the existing public implementation behind reference
-  bindings. Preserve current transport outcomes, signature policies, token
-  purposes, receipt replay and send/ledger order. Add generic webhook primitives
-  to the existing `./http` entry and three byte-identical canonical SQL projections.
-  Browser rendering/content, activation and deployment ownership stay with hosts.
-- Apply E2 payment-helper delegation with identical export names and declared
-  signatures, including `readRawBody`'s `VercelRequest` signature and function
-  identity. Keep the payment provider-specific verification local.
-- Keep maintained mail-provider clients, factories, callback protocol mapping, polling reads,
-  timeline and send-ledger adapters at their unchanged reference owners.
-  Required selection additions witness only retained package code; the current
-  [verification ledger](../../docs/platform/plans/oss-m04-communications-triggers.md#verification-ledger)
-  records counted cases, separate boundary iterations and the X2 time acceptance.
-  Existing package artifact caps remain binding.
-
-Migration: this opt-in import adds no schema forward or activation. Supply the
-existing reference renderer, egress/environment/control policy or equivalent host
-bindings when adopting the server factories. Apply the full selected canonical
-SQL prefix once; the three sparse projections must not be reapplied over an
-existing history. Package-set version preparation remains a separate step.
-
-Notable changes to this public-source workspace package are recorded here.
-“Unreleased” means no npm version carries the change yet; immutable OpenLup
-source previews may already ship some changes, and their release notes say
-which. Declaration snapshots track candidate drift, not a stable API or
-SemVer promise.
+Growth reading: +61.4% against the retained initial `0.16.0` baseline (256,973
+packed bytes), measured before S1 notes at 414,808 bytes; final S1 measurements
+are recorded in the programme evidence. No cap is changed. Baseline evidence
+(2026-10-20): the published `0.16.0` tarball is 257,434 packed bytes, SHA256
+`030756175d61279aab0ae7b26b27783e08467ec93673f5623d19d0b7fc436463`.
+S1 option B retains the initial release-gates baseline rather than replacing it
+with this observed registry identity.
 
 ## [0.16.0]
 

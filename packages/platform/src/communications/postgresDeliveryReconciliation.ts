@@ -70,6 +70,21 @@ export function createPostgresDeliveryReconciliationPort(env: PostgresDataGatewa
         return { abandoned: send.abandoned_at === null && result.abandoned_at !== null };
       });
     },
+    findByMessageId(messageId) {
+      const message = nativeText(messageId);
+      return lane.run(async db => {
+        const rows = (await db.query("SELECT id FROM public.communication_native_sends WHERE binding=$1 AND message_id=$2", [binding,message])).rows;
+        if (rows.length > 1) throw new Error("native_message_identity_ambiguous");
+        return rows.length ? {id:nativeText(rows[0].id)} : null;
+      });
+    },
+    async listEvidence(input) {
+      const limit = nativeInteger(input.limit,1,100);
+      const ids = await lane.run(async db => (await db.query("SELECT id FROM public.communication_native_sends WHERE binding=$1 ORDER BY accepted_at DESC,id DESC LIMIT $2", [binding,limit])).rows.map(row=>nativeText(row.id)));
+      const evidence = [];
+      for (const id of ids) { const row = await store.readEvidence(id); if (row) evidence.push(row); }
+      return evidence;
+    },
     readEvidence(id) {
       return lane.run(async db => {
         const row = (await db.query("SELECT * FROM public.communication_native_sends WHERE id=$1 AND binding=$2", [id,binding])).rows[0];
