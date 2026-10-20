@@ -6,7 +6,8 @@ import { consentCommand } from "./consentPush.js";
 // Retain the cause when a grant admission CAS throws before any journal bytes
 // survive. Shared host availability keeps it across adapter reconstruction;
 // a fresh host process still starts quarantined for explicit reconciliation.
-const grantQuarantines = new WeakMap<object, Map<string, string>>();
+type QuarantineCause = { kind: "grants"; grants: Map<string, string> } | { kind: "non-grant" };
+const quarantineCauses = new WeakMap<object, QuarantineCause>();
 const providerCooling = new WeakMap<object, number>();
 const REVISION = "2026-07-15";
 const ORIGIN = "https://a.klaviyo.com";
@@ -219,16 +220,25 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
   const availability = input.storage.availability;
   if (!availability || availability.account !== binding.account || availability.environment !== binding.environment ||
     !["busy", "quarantined"].every(k => { const d = Object.getOwnPropertyDescriptor(availability, k); return d?.writable && typeof d.value === "boolean"; })) throw new Error("Invalid account availability record");
-  if (!availability.quarantined) grantQuarantines.delete(availability);
+  if (!availability.quarantined) quarantineCauses.delete(availability);
   let quarantine = false;
-  let activeRequest: Request | undefined;
-  const closeAccount = () => {
+  const closeAccount = (grantCause?: Request) => {
+    const previous = quarantineCauses.get(availability);
+    if (!grantCause || previous?.kind === "non-grant" ||
+      (quarantine || availability.quarantined) && !previous) quarantineCauses.set(availability, { kind: "non-grant" });
+    else {
+      const grants = previous?.kind === "grants" ? previous.grants : new Map<string, string>();
+      grants.set(keyOf(grantCause), subjectKey(grantCause));
+      quarantineCauses.set(availability, { kind: "grants", grants });
+    }
     quarantine = true; availability.quarantined = true;
-    if (activeRequest?.operation === "consent.push" && activeRequest.payload.action === "grant") {
-      const grants = grantQuarantines.get(availability) ?? new Map<string, string>();
-      grants.set(keyOf(activeRequest), subjectKey(activeRequest)); grantQuarantines.set(availability, grants);
-    } else grantQuarantines.delete(availability);
   };
+  const isWithdrawal = (r: Request) => r.operation === "consent.push" && r.payload.action === "withdraw";
+  function availabilityQuarantined(r: Request): boolean {
+    // Exempt only unresolved grant fences; every non-grant admission predicate remains.
+    return (quarantine || availability.quarantined) &&
+      !(isWithdrawal(r) && quarantineCauses.get(availability)?.kind === "grants");
+  }
   const load = async () => {
     let raw: string | null;
     try { raw = await input.storage.get(accountKey); } catch { closeAccount(); throw new Error("storage"); }
@@ -238,41 +248,30 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
       return { raw, ledger };
     } catch { closeAccount(); throw new Error("journal"); }
   };
-  async function quarantineAccount(affectedKey?: string): Promise<void> {
-    closeAccount();
+  async function quarantineAccount(affectedKey?: string, grantCause?: Request): Promise<void> {
+    closeAccount(grantCause);
     // An error reply may follow a committed CAS. Write the existing quarantine bit
     // against the actual latest bytes, rather than trusting the failed writer's copy.
       try {
         const raw = await input.storage.get(accountKey), ledger = parseLedger(raw);
-        ledger.quarantined = true;
+        ledger.quarantined ||= !grantCause;
         const saved = affectedKey ? ledger.entries[affectedKey]?.result : undefined;
         if (affectedKey && saved && (saved.kind === "accepted" || saved.kind === "acknowledged" || saved.kind === "completed")) ledger.entries[affectedKey].result = result(ledger.entries[affectedKey].request, { ...saved, journal: "unknown" });
         await input.storage.compareAndSwap(accountKey, raw, canonical(ledger));
-      } catch { /* A retained slot/dispatch fence stays unavailable until host repair. */ }
+      } catch { closeAccount(); /* Recovery storage faults are non-grant causes. */ }
   }
-  async function persist(raw: string | null, ledger: Ledger, affectedKey?: string): Promise<"saved" | "conflict" | "uncertain"> {
+  async function persist(raw: string | null, ledger: Ledger, affectedKey?: string, grantCause?: Request): Promise<"saved" | "conflict" | "uncertain"> {
     try {
       const next = canonical(ledger);
       if (!await input.storage.compareAndSwap(accountKey, raw, next)) return "conflict";
-      if (await input.storage.get(accountKey) !== next) { await quarantineAccount(affectedKey); return "uncertain"; }
+      if (await input.storage.get(accountKey) !== next) { await quarantineAccount(affectedKey, grantCause); return "uncertain"; }
       return "saved";
-    } catch { await quarantineAccount(affectedKey); return "uncertain"; }
-  }
-  // Only this subject's uncertain entries constrain its withdrawal. Known grant
-  // quarantine is bypassable across subjects; unclassified host faults stay closed.
-  function bypassGrantFence(r: Request, ledger: Ledger): boolean {
-    if (r.operation !== "consent.push" || r.payload.action !== "withdraw") return false;
-    const uncertain = Object.entries(ledger.entries).filter(([key, e]) => key !== keyOf(r) && subjectKey(e.request) === subjectKey(r)).map(([, e]) => e).filter(e => e.phase !== "settled" ||
-      e.result?.kind === "unknown" || e.result && "journal" in e.result && e.result.journal === "unknown");
-    const causes = grantQuarantines.get(availability);
-    if ((quarantine || availability.quarantined) && !causes?.size) return false;
-    return (uncertain.length > 0 || !!causes?.size) &&
-      uncertain.every(e => e.request.operation === "consent.push" && e.request.payload.action === "grant");
+    } catch { await quarantineAccount(affectedKey, grantCause); return "uncertain"; }
   }
   async function releaseSlot(r?: Request): Promise<boolean> {
     try {
       const release = await load();
-      if ((quarantine || availability.quarantined) && (!r || !bypassGrantFence(r, release.ledger))) return false;
+      if (r ? availabilityQuarantined(r) : quarantine || availability.quarantined) return false;
       release.ledger.slot = false;
       if (await persist(release.raw, release.ledger) === "saved") return true;
     } catch { /* The durable slot stays held until host repair. */ }
@@ -321,11 +320,11 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     // Pace the remaining HTTP steps of this operation without retrying a mutation.
     // Provider cooldown and occupied/quarantined slots still return immediately.
     const delay = ledger.nextAt - now();
-    if (!quarantine && !availability.quarantined && !ledger.quarantined && !ledger.slot && ledger.coolingUntil <= now() && delay > 0 && delay < Math.min(timeoutMs, r.deadlineMs - now())) {
+    if (!availabilityQuarantined(r) && !ledger.quarantined && !ledger.slot && ledger.coolingUntil <= now() && delay > 0 && delay < Math.min(timeoutMs, r.deadlineMs - now())) {
       await new Promise<void>(resolve => setTimeout(resolve, delay));
       try { ({ raw, ledger } = await load()); } catch { closeAccount(); return { status: 0, failure: retry(r, "host") }; }
     }
-    if ((!bypassGrantFence(r, ledger) && (quarantine || availability.quarantined || ledger.quarantined || ledger.slot)) || ledger.coolingUntil > now() || ledger.nextAt > now()) return { status: 0, failure: retry(r, "cooling", Math.max(1, Math.ceil((Math.max(ledger.coolingUntil, ledger.nextAt) - now()) / 1000))) };
+    if ((availabilityQuarantined(r) || ledger.quarantined || ledger.slot) || ledger.coolingUntil > now() || ledger.nextAt > now()) return { status: 0, failure: retry(r, "cooling", Math.max(1, Math.ceil((Math.max(ledger.coolingUntil, ledger.nextAt) - now()) / 1000))) };
     if (mutation && (r.operation === "profile.sync" || r.operation === "consent.push" && r.payload.action === "grant") && ledger.tombstones.includes(subjectKey(r))) return { status: 0, failure: refused(r, "restricted") };
     if (mutation && r.operation === "consent.push" && r.payload.action === "grant" && Object.values(ledger.withdrawals).some(w => w.owner === subjectKey(r) && !w.resolved && overlaps(w.audience, r.audience))) return { status: 0, failure: refused(r, "restricted") };
     const before = guard(); if (before) return { status: 0, failure: refused(r, before) };
@@ -340,7 +339,7 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     try {
       if (remaining <= 0) return { status: 0, failure: refused(r, "deadline") };
       const recheck = guard(); if (recheck) return { status: 0, failure: refused(r, recheck) };
-      if (availability.quarantined && !bypassGrantFence(r, ledger) || !availability.busy) return { status: 0, failure: retry(r, "cooling") };
+      if (availabilityQuarantined(r) || !availability.busy) return { status: 0, failure: retry(r, "cooling") };
       let credential: ReturnType<Configuration["resolveCredential"]>;
       try { credential = input.resolveCredential(); } catch { return { status: 0, failure: retry(r, "host") }; }
       if (!credential || !equal(credential.binding, binding) || !text(credential.key) || /\s/.test(credential.key)) return { status: 0, failure: refused(r, "binding") };
@@ -432,10 +431,11 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
       return previous.phase === "admitted" ? result(r, { kind: "accepted", receipt: { operation: r.operation, request: previous.request }, journal: "confirmed", ...(r.operation === "consent.push" ? { reconcileRequired: true } : {}) }) : unknown(r, "dispatch_unresolved");
     }
     if (r.operation === "consent.push" && r.payload.action === "grant" && Object.values(ledger.withdrawals).some(w => !w.resolved && w.owner === owner && overlaps(w.audience, r.audience))) return refused(r, "restricted");
+    // Withdrawals omit only this subject's unresolved-grant fence.
     const pending = Object.values(ledger.entries).filter(e => subjectKey(e.request) === owner && e.phase !== "settled");
     const withdrawing = r.operation === "consent.push" && r.payload.action === "withdraw";
     if (r.operation !== "consent.read" && pending.some(e => !withdrawing || e.request.operation !== "consent.push" || e.request.payload.action !== "grant")) return unknown(r, "dispatch_unresolved");
-    if ((!bypassGrantFence(r, ledger) && (quarantine || availability.quarantined || ledger.quarantined)) || ledger.coolingUntil > now()) return retry(r, "cooling", Math.max(1, Math.ceil((ledger.coolingUntil - now()) / 1000)));
+    if ((availabilityQuarantined(r) || ledger.quarantined || ledger.slot) || ledger.coolingUntil > now()) return retry(r, "cooling", Math.max(1, Math.ceil((ledger.coolingUntil - now()) / 1000)));
     const proof = authority(r, latest); if (proof) return refused(r, proof);
     if (!ownsAvailability) return retry(r, "cooling");
     if (ledger.tombstones.includes(owner) && (r.operation === "profile.sync" || r.operation === "consent.push" && r.payload.action === "grant")) return refused(r, "restricted");
@@ -533,11 +533,13 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     let reconcileRequired = false;
     if (withdrawing) {
       const earlier = Object.entries(ledger.entries).filter(([, e]) => subjectKey(e.request) === owner && e.request.operation === "consent.push" && e.request.payload.action === "grant" && !e.grantSettled).map(([k]) => k);
-      for (const [grant, subject] of grantQuarantines.get(availability) ?? []) if (subject === owner && !earlier.includes(grant)) earlier.push(grant);
+      const causes = quarantineCauses.get(availability);
+      for (const [grant, subject] of causes?.kind === "grants" ? causes.grants : []) if (subject === owner && !earlier.includes(grant)) earlier.push(grant);
       reconcileRequired = earlier.length > 0;
       ledger.withdrawals[key] = { owner, audience: r.audience, earlier, resolved: false };
     }
-    const admitted = await persist(raw, ledger);
+    const grantCause = r.operation === "consent.push" && r.payload.action === "grant" ? r : undefined;
+    const admitted = await persist(raw, ledger, undefined, grantCause);
     if (admitted !== "saved") return admitted === "conflict" ? retry(r, "host") : unknown(r, "dispatch_unresolved");
     const command = r.operation === "consent.push" ? consentCommand(r, { id: target.id!, email: target.email }, listId[0]) : r.operation === "erasure.request" ? {
       method: "POST", path: "/api/data-privacy-deletion-jobs", expected: [202], body: { data: { type: "data-privacy-deletion-job", attributes: { profile: { data: { type: "profile", id: target.id, attributes: {} } } } } },
@@ -570,18 +572,20 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
       // failed projection/mapping check quarantines the account; it is never retried as a write.
       entry.phase = settled.kind === "unknown" ? "dispatched" : "settled";
       if (r.operation === "consent.push" && r.payload.action === "grant" && (settled.kind === "refused" || settled.kind === "retryable")) entry.grantSettled = true;
-      if (settled.kind === "acknowledged" && settled.journal === "unknown") final.ledger.quarantined = true;
+      if (r.operation === "profile.sync" && settled.kind === "acknowledged" && settled.journal === "unknown") final.ledger.quarantined = true;
       if (remoteId) { entry.remoteId = remoteId; final.ledger.mappings[owner] = remoteId; }
-      const releaseQuarantine = !final.ledger.quarantined && !quarantine;
-      final.ledger.quarantined = true;
-      if (await persist(final.raw, final.ledger, key) !== "saved") {
-        await quarantineAccount(key);
+      const releaseQuarantine = !final.ledger.quarantined && !availabilityQuarantined(r);
+      // A grant already has its durable per-subject dispatch fence. Only other
+      // operations need the non-grant quarantine bit during journal settlement.
+      final.ledger.quarantined ||= !grantCause;
+      if (await persist(final.raw, final.ledger, key, grantCause) !== "saved") {
+        await quarantineAccount(key, grantCause);
         return settled.kind === "acknowledged" ? result(r, { ...settled, journal: "unknown" }) : settled.kind === "refused" || settled.kind === "retryable" ? settled : unknown(r, "record_failed", receipt);
       }
       if (releaseQuarantine) {
         const recorded = canonical(final.ledger); final.ledger.quarantined = false;
-        if (await persist(recorded, final.ledger, key) !== "saved") {
-          await quarantineAccount(key);
+        if (await persist(recorded, final.ledger, key, grantCause) !== "saved") {
+          await quarantineAccount(key, grantCause);
           return settled.kind === "acknowledged" ? result(r, { ...settled, journal: "unknown" }) : settled;
         }
       }
@@ -598,10 +602,10 @@ export function createKlaviyoMarketingAdapter(input: Configuration): MarketingSy
     } catch { return result(fallback, { kind: "refused", reason: "invalid_request" }); }
     if (r.operation !== operation) return result(r, { kind: "refused", reason: "binding" });
     const ownsAvailability = !availability.busy;
-    if (ownsAvailability) { availability.busy = true; activeRequest = copy(r); }
+    if (ownsAvailability) availability.busy = true;
     try { return await execute(r, ownsAvailability); }
     catch { closeAccount(); return result({ ...fallback, subjectReference: r.subjectReference, requestId: r.requestId, generation: r.generation }, { kind: "unknown", reason: "record_failed" }); }
-    finally { if (ownsAvailability) { availability.busy = false; activeRequest = undefined; } }
+    finally { if (ownsAvailability) availability.busy = false; }
   }
   const scope = copy(input.legacy?.scope ?? { bindingId: binding.namespace, accountReference: binding.account, audienceReference: audience.kind === "audience" ? audience.reference : "account-wide" });
   function legacyRequest(claim: MarketingAutomationClaim): Request | undefined {

@@ -581,14 +581,15 @@ is introduced by this contract.
 
 Withdrawals dispatch immediately even when remote consent is unknown or an
 earlier grant is unsettled, subject to local authority, identity, safe scope and
-ordinary admission. Withdrawals bypass every per-subject fence or quarantine
-caused by this subject's unresolved grants (ambiguous acceptance, failed recording, unresolved
-dispatch or partial persistence), while preserving an earlier unresolved
-withdrawal's same-key replay fence and account-level provider cooling; cooling
-returns `retryable/cooling` with finite positive `afterSeconds` for the host to
-retry. Another subject's grant-caused uncertainty never holds this subject's withdrawal;
-durable non-grant account quarantine or storage faults still require host repair.
-An earlier grant never delays or drops withdrawal. A pending
+ordinary admission minus exactly the fence caused by this subject's unresolved
+grants (ambiguous acceptance, failed recording, unresolved dispatch or partial
+persistence). Another subject's grant-caused uncertainty never holds a withdrawal.
+Availability quarantine held exclusively by grant causes is exempt across subjects;
+any non-grant cause keeps it closed. Durable non-grant ledger quarantine, storage
+faults, the single in-flight slot, pacing and the withdrawal's same-key replay
+fence still apply. Account-level provider cooling returns `retryable/cooling`
+with finite positive `afterSeconds` for the host to retry. Non-grant quarantine
+requires explicit host repair. A pending
 or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
 withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.
 

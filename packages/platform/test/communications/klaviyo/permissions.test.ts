@@ -43,6 +43,52 @@ const multiSubject = async (factory: ReturnType<typeof planted>["factory"], labe
   expect(await f.rebuild().consentPush.push(withdraw({ subjectReference: "subject:A", requestId: "withdraw:A", authorizationReference: "authorization:consent:A",
     payload: { action: "withdraw", consentEvidenceReference: "withdraw:A" } })), `${label}/cross-subject grant-cause bypass`).toMatchObject({ kind: "acknowledged", reconcileRequired: false });
   expect(f.effects().length - count, `${label}/cross-subject grant-cause withdrawal effects`).toBe(1);
+  for (const fault of ["L-F1", "L-F2", "F3"] as const) {
+    const held = fixture(factory), subjectA = { ...held.state.subject, subjectReference: "subject:A", id: "owned_A", email: "other@example.invalid", externalReference: "local:A" };
+    const projection = { ...request("profile.sync").payload.projection, email: subjectA.email, externalReference: subjectA.externalReference };
+    held.config.subjectMapper = ref => ref === "subject:A" ? subjectA : ref === "subject:1" ? held.state.subject : undefined;
+    held.authorizations.set("authorization:profile:A", { ...held.authorizations.get("authorization:profile.sync")!, subjectReference: "subject:A" });
+    held.localEvidence.set("local-consent:A", { ...held.localEvidence.get("local-consent:1")!, subjectReference: "subject:A", projection });
+    held.authorizations.set("authorization:consent:A", { ...held.authorizations.get("authorization:consent.push")!, subjectReference: "subject:A" });
+    held.localEvidence.set("withdraw:A", { ...held.localEvidence.get("withdraw:1")!, subjectReference: "subject:A" });
+    if (fault === "L-F2") {
+      held.state.storageFault = phase => phase === "get" ? "throw" : undefined;
+      expect(await held.provider.consentPush.push(pushRequest()), `${label}/${fault} pre-admission grant read fault`).toMatchObject({ kind: "retryable", reason: "host" });
+      held.state.storageFault = undefined;
+    } else {
+      held.state.fault = (_url, init) => init.method === "POST" ? new Response(null, { status: 500 }) : undefined;
+      expect(await held.provider.consentPush.push(pushRequest()), `${label}/${fault} own uncertain grant`).toMatchObject({ kind: "unknown", reason: "acceptance_ambiguous" });
+    }
+    let patched = false;
+    held.state.fault = (url, init) => {
+      if (init.method === "PATCH") { patched = true; return new Response(null, { status: 204 }); }
+      if (init.method === "GET" && url.includes("/owned_A?")) return patched ? new Response(null, { status: 500 }) : Response.json({ data: { ...held.state.remote.data, id: subjectA.id,
+        attributes: { ...held.state.remote.data.attributes, email: subjectA.email, external_id: subjectA.externalReference } } });
+    };
+    if (fault === "L-F1") {
+      expect(await held.rebuild().profiles.sync(request("profile.sync", { subjectReference: "subject:A", authorizationReference: "authorization:profile:A",
+        payload: { projection, consentEvidenceReference: "local-consent:A" } })), `${label}/${fault} unrelated non-grant journal unknown`).toMatchObject({ kind: "acknowledged", journal: "unknown" });
+      expect(held.ledger().quarantined, `${label}/${fault} durable non-grant quarantine`).toBe(true);
+    }
+    if (fault === "F3") {
+      // Another process owns the durable HTTP slot, independently of local busy.
+      const [storageKey, raw] = [...held.values.entries()][0];
+      held.values.set(storageKey, JSON.stringify({ ...JSON.parse(raw), slot: true }));
+    }
+    const w = fault === "L-F2" ? withdraw({ subjectReference: "subject:A", requestId: "withdraw:A", authorizationReference: "authorization:consent:A",
+      payload: { action: "withdraw", consentEvidenceReference: "withdraw:A" } }) : withdraw();
+    const before = held.effects().length;
+    const answer = await held.rebuild().consentPush.push(w);
+    expect(answer, `${label}/${fault} ordinary admission holds withdrawal`).toMatchObject({ kind: "retryable", reason: "cooling" });
+    if (answer.kind === "retryable") expect(Number.isFinite(answer.afterSeconds) && answer.afterSeconds > 0, `${label}/${fault} finite admission delay`).toBe(true);
+    expect(held.effects().length - before, `${label}/${fault} zero new effects`).toBe(0);
+    if (fault === "L-F2") {
+      // Only explicit host repair reopens this non-grant availability quarantine.
+      held.storage.availability.quarantined = false;
+      expect(await held.rebuild().consentPush.push(w), `${label}/${fault} explicit host repair`).toMatchObject({ kind: "acknowledged", reconcileRequired: false });
+      expect(held.effects().length - before, `${label}/${fault} repaired effect`).toBe(1);
+    }
+  }
 };
 row("CP01", ["missing-ref", "substituted-authority", "remote-grant", "broadened-grant"], async (h, plant) => {
   if (plant === "missing-ref") {

@@ -24,7 +24,7 @@ marketing lifecycle semantics and the
 host composition. P2 owns the Klaviyo factory and private construction; P3 owns
 consumer composition. C-PR1b supplies the neutral consent-push contract; P2 owns
 its real-adapter implementation and evidence.
-P2 inherits immediate withdrawal despite this subject's grant-caused fences/quarantine, preserving same-key withdrawal fences and account-level cooling (`retryable/cooling` with finite `afterSeconds`).
+P2 inherits ordinary withdrawal admission minus this subject's unresolved grant fence. Another subject's grant uncertainty does not hold it; non-grant quarantine, storage faults, the in-flight slot, pacing, same-key withdrawal fences and provider cooling still apply (`retryable/cooling` with finite `afterSeconds`).
 Versioning, private adoption, production activation and account certification are
 separate outcomes. No default sender, callback, route, schedule or recovery send
 is installed by these surfaces.
@@ -247,21 +247,23 @@ list relationship. Jobs receive no historical-import flag, consent timestamp,
 SMS/push/tracking consent or local evidence reference. No flow, campaign,
 sender, import, suppression-management or account-sweep endpoint is called.
 
-A withdrawal bypasses per-subject fences and quarantine caused by this subject's
-earlier unsettled grants, including ambiguous acceptance, failed recording, unresolved
-dispatch and partial persistence. It still respects its own same-key replay fence
-and account-level provider cooling (`retryable/cooling` with finite `afterSeconds`),
-including observed cooldowns whose persistence failed. The shared availability
-identity retains that provider deadline across in-process adapter reconstruction.
-A private in-memory cause record on the shared availability identity also
-retains a failed grant admission when no grant journal bytes survived; its key
-keeps settlement unresolved until host reconciliation. It disappears on host
-restart, when availability starts closed for explicit reconciliation.
-Another subject's grant-caused uncertainty cannot hold this subject's withdrawal. Known
-grant-caused availability quarantine is bypassable by withdrawals across subjects;
-provider cooling still applies to everyone. Grant uncertainty does not reopen the
-account for other operations; durable non-grant account quarantine still requires explicit
-host repair. With this subject's earlier unsettled grant, withdrawal success carries
+A withdrawal follows ordinary admission minus exactly this subject's unresolved
+grant fence, including ambiguous acceptance, failed recording, unresolved dispatch
+and partial persistence. Another subject's grant-caused uncertainty cannot hold it.
+The shared availability cause record distinguishes grant-only quarantine from a
+sticky non-grant cause: only grant-only quarantine is exempt across subjects.
+Grant causes are recorded explicitly for the grant's own admission/journal CAS
+failure or lost write, never inferred from the active request. Storage reads before
+admission and faults outside those CAS steps are non-grant causes. Durable
+non-grant ledger quarantine, non-grant availability/in-process quarantine, the
+single in-flight slot, pacing and same-key withdrawal fences still apply and
+quarantine requires explicit host repair. Provider cooling also applies, returning
+`retryable/cooling` with finite `afterSeconds`, including observed cooldowns whose
+persistence failed; the shared availability identity retains that deadline across
+adapter reconstruction. The private grant cause keys retain missing admission
+writes for reconciliation. Host restart loses those keys and starts availability
+closed for explicit reconciliation. Grant uncertainty never reopens other operations.
+With this subject's earlier unsettled grant, withdrawal success carries
 `reconcileRequired:true`; failed withdrawal recording preserves acknowledgement
 with `journal:"unknown"`. Grants remain restricted during unconfirmed
 withdrawal. Pre-settlement or incomplete reads retain UNKNOWN. The host's
@@ -291,7 +293,7 @@ review, publication and activation remain separate gates.
 
 ## P3: explicit reference binding
 
-Approved scope: the ten implementation/documentation files plus the file-scoped
+Approved scope: the nine implementation/documentation files plus the file-scoped
 neutrality checker amendment; P2 base `d0b353a`. The binding composes P1 and the
 current P2 single factory (including `.newsletter` refusal), with lazy host-owned
 inputs, readiness admission and invocation-time identity guards. Native polling
