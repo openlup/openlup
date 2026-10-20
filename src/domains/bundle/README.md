@@ -14,6 +14,11 @@ admin kit, operation spec/flags, validators, responder and versions; BundleRpcEr
 stays reference-owned and is injected by constructor identity. Core bundle
 contracts/ports are unchanged. The package publishes DTO types without moving
 Zod into its browser contracts or making browser code reach the server entry.
+The native read store and unchanged SQL queries now also live in catalog; its
+reference paths are named compatibility exports. The injected executor introduces
+only a data type edge. SQL 16/19 are sparse canonical projections, not a standalone
+installation chain. Write/transaction/transport composition stays reference-owned,
+and native human-only activation still depends on the handler gate.
 
 - **Owns:** `Bundle`, `BundleLineRef`, `CompositionConstraint` and
   `CompositionRulesPort` contract types; the admin write and lifecycle request

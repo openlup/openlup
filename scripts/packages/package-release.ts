@@ -29,6 +29,7 @@ import { appendFileSync, readFileSync, realpathSync, writeFileSync } from "node:
 import { join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
+import { assertSourceReleaseSnapshot } from "../oss-source-release-contract.ts";
 import { annotatedTag, type GithubFetch } from "../source-preview-release.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_DISPATCH, SET_VERSION, parsePackageReleaseTag, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
 import { PACKAGES_MANIFEST_FILE, runPackagesCheck } from "./packages-check.ts";
@@ -125,15 +126,18 @@ function assertNoneAbove(name: string, version: string, held: readonly string[])
   }
 }
 
-function assertCleanTarget(root: string, target: string): void {
+/** The checkout is `target` (or, without one, its own HEAD) with no tracked changes; returns that commit. */
+function assertCleanTarget(root: string, target?: string): string {
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: root, encoding: "utf8" });
-  if (head !== target || dirty !== "") throw new Error("the checkout must be the target commit without tracked changes");
+  if ((target !== undefined && head !== target) || dirty !== "") throw new Error("the checkout must be the target commit without tracked changes");
+  return head;
 }
 
 /** The checkout is the clean target, and its package is publishable at exactly the requested version. */
 export function assertReleaseCandidate(root: string, input: PackageRelease): void {
   assertCleanTarget(root, input.target);
+  assertSourceReleaseSnapshot(root, input.target);
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
   if (config.packages.find(({ directory }) => directory === input.directory)?.publish !== true) throw new Error(`${input.directory} is not a publishable package in ${PACKAGES_CONFIG_PATH}`);
   const { version } = JSON.parse(readFileSync(join(root, input.directory, "package.json"), "utf8")) as { version?: unknown };
@@ -212,6 +216,7 @@ function publishablePackages(root: string): Array<{ directory: string; name: str
 /** The set's refusals that need no network: the clean target, every publishable package at the set version, and the patch-set check. */
 export function preflightSetRelease(root: string, set: SetRelease, manifestCheck: typeof checkSetManifests = checkSetManifests): string[] {
   assertCleanTarget(root, set.target);
+  assertSourceReleaseSnapshot(root, set.target);
   manifestCheck(root, set.version);
   const packages = publishablePackages(root);
   for (const { directory } of packages) assertPatchSetApiUnchanged(root, directory, set.version, set.target);
@@ -291,6 +296,7 @@ function packedTarball(packsDirectory: string, target: string, name: string, ver
  */
 export async function planRelease(root: string, packsDirectory: string, requested: PackageRelease | SetRelease, token?: string, fetcher: GithubFetch = fetch, log: (line: string) => void = console.log): Promise<string[]> {
   assertCleanTarget(root, requested.target);
+  assertSourceReleaseSnapshot(root, requested.target);
   const single = "tag" in requested;
   const names = single ? [requested.name] : publishablePackages(root).map(({ name }) => name);
   const full: string[] = [];
@@ -368,6 +374,9 @@ async function main(): Promise<void> {
   const phase = argv[2] ?? "";
   if (argv.length !== (phase === "plan" ? 4 : 3) || !PHASES.some((listed) => listed.split(" ")[0] === phase)) throw new Error(`expected one phase: ${PHASES.join(", ")}`);
   if (phase === "registry") {
+    if (!parsePackageReleaseTag(env.RELEASE_TAG ?? "")) throw new Error(`${env.RELEASE_TAG ?? ""} is not a package release tag`);
+    const target = assertCleanTarget(process.cwd());
+    assertSourceReleaseSnapshot(process.cwd(), target);
     await assertRegistryReady(env.RELEASE_TAG ?? "");
     console.log(`npm holds neither ${env.RELEASE_TAG} nor any later version`);
     return;

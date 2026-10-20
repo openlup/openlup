@@ -144,8 +144,9 @@ function createAdminBundleCloneDraftHandler(deps: AdminBundleHandlerDeps) {
 /**
  * Activate (publish) — HUMAN-ONLY. The mutation's gate is `activation`, so the
  * factory wires it to the activation flag and refuses a machine actor (403) from
- * `allowedActorKinds` before the write is ever reached; the write routine RAISEs
- * 42501 independently as the second layer.
+ * `allowedActorKinds` before the write is ever reached. The managed write routine
+ * also RAISEs 42501 as a second layer; the native routine has no independent
+ * actor-kind gate and relies on this handler gate.
  */
 function createAdminBundleActivateHandler(deps: AdminBundleHandlerDeps) {
   return buildBundleHandler<ActivateBundleRequest>(deps, "activate", (port, actorId, input) =>

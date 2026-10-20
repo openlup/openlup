@@ -197,7 +197,12 @@ handlers. Validators, their defaults/strictness and operation/MCP/flag authority
 remain at the reference boundary. Catalog contracts publish plain DTO types only.
 Existing composition order, stock unknowns, allocation and preview selection are
 preserved. No database gate, actor-history parity, mount or stronger replay claim
-follows from this application move; the bundle pending ledger owns those outcomes.
+follows from this move; the bundle pending ledger owns those outcomes. The native
+read store now has package ownership with unchanged queries and an injected data
+executor. Sparse SQL 16/19 projections preserve canonical identity and bytes;
+existing writer/transaction/transport ownership and native handler-only actor-kind
+protection are unchanged. Sequential key recognition is characterized, without a
+payload-bound or concurrency guarantee.
 
 Promotion admin DTOs and server schemas now have package ownership with named
 reference compatibility exports. The structural-slice inventory follows the
@@ -225,7 +230,6 @@ mutation/webhook admission, deployment routes or default clocks. Native diagnost
 are bounded installation observations, not managed-frequency or full-native-sender
 parity. A built shell does not establish an email destination or T07 action.
 
-
 The opt-in direct OIDC settings registry declares issuer and separate customer
 and operator API audiences. Selecting them adds no browser provider or default
 login route. Invalid or overlapping audiences refuse composition; managed bundles
@@ -238,8 +242,6 @@ persistent customer identifier, package API version or migration contract. The
 selected browser import inventory is independent of the public default build;
 server credentials do not become browser configuration.
 
-
-
 Identity privacy appends the direct receipt migration at position 69 while
 preserving the preceding manifest entries and SQL projection identities. Erasure
 requires this forward, explicit contributor registration and declared retention
@@ -250,14 +252,12 @@ grants; export exposes its narrower coverage. See
 [identity privacy](IDENTITY.md#identity-personal-data) and
 [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle).
 
-
 Direct human operator sessions introduce a distinct operator audience and a
 browser provider-selection setting. The direct catalogue appends the challenges
 forward with an immutable predecessor prefix. Its normalized-email uniqueness
 constraint refuses ambiguous identities; customer links and machine credentials
 are preserved. [Identity](IDENTITY.md#direct-human-login) owns the authentication
 codes, limits and compatibility requirements; no managed migration is added.
-
 
 The environment registry declares `IDENTITY_EMAIL_VERIFYING_PROVIDERS` as an
 optional server-only value with an empty default. Managed identity hosts parse
@@ -275,8 +275,6 @@ Managed revoked-row reinvitation refuses with `MANAGED_REINVITE_UNSUPPORTED`.
 [Identity](IDENTITY.md#operator-invitation-lifecycle) owns the DTOs and acceptance
 boundary; [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) owns
 the direct catalogue identity and the managed pending-lifecycle compatibility gap.
-
-
 
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement
@@ -305,7 +303,6 @@ for invitation eligibility and conflict checks.
 It does not authorize arbitrary runtime grants. Approval must precede the SQL
 feature's comparison base and introducing commit; registry installation alone
 does not change database permissions.
-
 
 Stable status, idempotency, and provider-extension commitments wait for the stable-framework requirements.
 Before then, changes must still preserve the contracts above and state their
@@ -375,7 +372,8 @@ inside their two declared source/test directories, their exact API reports and
 exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
 the platform manifest, release gates, package boundary test, publication
-catalogue, changelog, this page, the architecture page and the A1 ledger.
+catalogue, platform CHANGELOG and validated platform `changes/*.md` fragments,
+this page, the architecture page and the A1 ledger.
 The two snapshot filename tokens are additionally allowed only in the platform
 release-gates file and publication catalogue; the two relative adapter entry
 tokens are allowed only in the package boundary test. The undeclared-subpath
@@ -391,7 +389,6 @@ for execution and proof limits. These checks do not grant application privileges
 or declare complete compatibility evidence. Existing release context checks remain unchanged.
 
 The outbox rail is a local experimental package candidate in the package catalogue. Its exact core peer, export snapshots and shipped baseline hash are separate from publication eligibility. Admission compares the complete observed set and selected adapter facts; unknown inventory or probe state cannot activate a candidate.
-
 
 ### Native communications evidence
 
@@ -445,11 +442,11 @@ Browser-used renderer and preview values remain local. See the
 
 ## Neutral marketing sync
 
-The development-preview communications entries expose the same 14 type-only
+The development-preview communications entries expose the same 17 type-only
 marketing-sync declarations in
 [`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
-The three families have four operations: `profile.sync`, `consent.read`,
-`erasure.request` and `erasure.read`. Capabilities bind an account, environment,
+The four families have five operations: `profile.sync`, `consent.read`,
+`erasure.request`, `erasure.read` and additive `consent.push`. Capabilities bind an account, environment,
 namespace, mapping version and audience. Unsupported scope refuses honestly;
 verification remains pending until the applicable account evidence is admitted.
 This contract supplies no provider implementation or activation.
@@ -461,7 +458,8 @@ immutable effect evidence before dispatch and rechecks generation and tombstones
 after awaits. Profile sync changes owned scalar data only. Current-state consent
 readback has bounded coverage and source-bound negative facts; account-wide
 facts retain that scope and audience denials cannot become global. Remote
-subscribed state never grants local consent. Positive writes are deferred.
+subscribed state never grants local consent. The `NegativeFeedback` discriminant
+union is readonly, matching its other fields.
 
 Replay identity is `(binding, operation, subjectReference, requestId)` with all
 four binding coordinates. Generation is a separate stale fence. A current
@@ -480,3 +478,72 @@ Existing marketing ports and their observations and the existing
 `NewsletterSyncProviderPort` remain unchanged. A refusal-only newsletter bridge
 is planned in the later adapter PR. The [A1 ledger](plans/oss-a1-communications-adapters.md)
 records the offline synthetic proof and remaining delivery gates.
+
+### Consent push admission and reconciliation
+
+`ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort` reuse the frozen
+binding, subject, failure and capability types without widening the original
+provider. A grant is one local subject, purpose and configured audience with its
+local consent evidence reference. Withdrawal carries local withdrawal evidence;
+only explicit withdrawal of every purpose authorizes account-wide scope. Missing
+or blank evidence refuses `invalid_request`; foreign/provider-only/substituted
+evidence refuses `provenance`; revoked, superseded or wrong-direction local
+authority refuses `restricted`. Generation is checked before replay and after
+awaits. No remote state, membership or successful write grants local permission.
+
+The existing capability declaration is intersected with `consent.push` and its
+`grantEffect: "audience" | "account-wide"`. Both directions require support and
+owner TEST evidence; missing evidence remains `verification_pending`. No-trigger
+admission covers every declared effect, including other-audience profile-consent
+flows, segments and backfills for account-wide grant effects. Unaccounted armed
+flows, unsafe DOI mail, suppression-clearing subscribe or unknown suppression
+coverage refuse grants. Historical import is never an admission bypass.
+
+Klaviyo email's planned mapping declares account-wide grant effects, while local
+grants stay audience-scoped. Audience withdrawal must have trustworthy list-only
+effect proof, including changes before an asynchronous job acts; a pre-job
+membership snapshot alone is insufficient. Explicit all-purpose withdrawal uses
+global email unsubscribe. Mailchimp and Brevo declare audience grant effects;
+unsupported account-wide withdrawals refuse. Brevo list removal projects membership
+only, without claiming global consent. These are partial design mappings, not
+provider certification. No flow management, suppression editing or vendor factory
+is introduced by this contract.
+
+Withdrawals dispatch immediately even when remote consent is unknown or an
+earlier grant is unsettled, subject to local authority, identity, safe scope and
+ordinary admission. Withdrawals bypass every per-subject fence or quarantine
+caused by an unresolved grant (ambiguous acceptance, failed recording, unresolved
+dispatch or partial persistence), while preserving an earlier unresolved
+withdrawal's same-key replay fence and account-level provider cooling; cooling
+returns `retryable/cooling` with finite positive `afterSeconds` for the host to
+retry. An earlier grant never delays or drops withdrawal. A pending
+or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
+withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.
+
+Accepted means durable intent; acknowledged includes documented asynchronous
+acceptance. Neither completes or proves subscribed/unsubscribed state. Both success
+variants require boolean `reconcileRequired`. A dispatched withdrawal whose own
+recording fails reports accepted/acknowledged with `journal: "unknown"`, never
+confirmed persistence. If an earlier grant is unsettled or
+its settlement cannot be established, withdrawal returns `true`; replay retains
+that unresolved race and remote state counts as UNKNOWN regardless of journal
+confirmation or an early unsubscribed read. Only `consent.read` after all earlier
+grant jobs settle can resolve it. Pending, unknown or insufficient readback leaves
+it unresolved. If that fresh read says subscribed, the HOST reissues withdrawal
+through existing reconciliation with a new request ID. The adapter adds no job API,
+executor, callback or automatic retry. Even `reconcileRequired:false` proves no
+remote effect. Receipt evidence stays the original admitted request while the
+result echoes the current call; replay identity excludes generation and rejects
+changed audience, action or evidence with `invalid_request`.
+
+## Source release snapshots
+
+The source-release contract separates authored runtime, repository/release
+identity, database seam and signed typecheck compatibility from derived digest
+bindings. PR/main/merge-group policy and inventory checks run derivation against
+live inputs without requiring a fresh committed snapshot. Digests refresh only
+at release prep; source prepare and package preflight, protected prepare/plan and
+publication/resume compare canonical snapshot bytes against exact target Git
+objects. The authored publication catalogue keeps exact rows except for regular,
+non-executable, content-validated package `changes/*.md` fragments. Git binds all
+remaining source contents and modes. This is preview evidence, not stability.

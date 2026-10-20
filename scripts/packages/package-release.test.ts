@@ -1,3 +1,4 @@
+import { createSourceReleaseContract, deriveSourceReleaseContract } from "../oss-source-release-contract.ts";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +8,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GithubFetch } from "../source-preview-release.ts";
 import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
 import { RELEASE_APP, assertRegistryReady, assertReleaseCandidate, assertTagAbsent, assertVersionUnpublished, checkPackageDraft, packageReleaseInputs, preflightPackageRelease, preparePackageRelease, readPackument, verifyPackageRelease } from "./package-release.ts";
+
+
+/** Minimal committed source snapshot for release falsifiers; classification stays explicit. */
+function snapshotFixture(root: string, write: (path: string, bytes: string) => void): void {
+  for (const path of ["package.json", "package-lock.json", "packages/core/package-lock.json", "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts", "config/openlup-policy-registry.json"]) {
+    if (!existsSync(join(root, path))) write(path, "{}\n");
+  }
+  const zero = `sha256-${"0".repeat(64)}`;
+  write("config/openlup-source-release-contract.json", createSourceReleaseContract({ inventoryDigest: zero, classDigest: zero, packageDigest: zero, rootLockDigest: zero, coreLockDigest: zero, migrationManifestDigest: zero, databaseTypesDigest: zero, policyRegistryDigest: zero, publicationCatalogDigest: zero }).contents);
+  write("config/openlup-publication-catalog.json", "{}\n");
+  const paths = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
+  write("config/openlup-publication-catalog.json", JSON.stringify({ schemaVersion: 1, publicPaths: [...new Set(paths)].sort().map((path) => ({ path, class: "public-output" })), guardViability: [] }));
+  write("config/openlup-source-release-contract.json", deriveSourceReleaseContract((path) => existsSync(join(root, path)) ? readFileSync(join(root, path)) : undefined).contents);
+}
 
 const target = "a".repeat(40), tagObject = "c".repeat(40), api = "https://api.github.com/repos/openlup/openlup", registry = "https://registry.npmjs.org/@openlup%2fcore";
 const input = packageReleaseInputs("core", "0.11.0", target, "Reviewed release note.\n");
@@ -139,7 +154,7 @@ describe("the release candidate at the target commit", () => {
     const write = (path: string, contents: string) => { mkdirSync(dirname(join(repo, path)), { recursive: true }); writeFileSync(join(repo, path), contents); };
     write("config/openlup-packages.json", JSON.stringify({ schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish }], unreleased: [] }));
     write("packages/core/package.json", JSON.stringify(manifest(version, publish)));
-    git("init", "--quiet"); git("add", "--all"); git("commit", "--quiet", "-m", "fixture");
+    git("init", "--quiet"); snapshotFixture(repo, write); git("add", "--all"); git("commit", "--quiet", "-m", "fixture");
     const head = git("rev-parse", "HEAD");
     return { repo, out, head, write, input: packageReleaseInputs("core", "0.11.0", head, "note\n") };
   }

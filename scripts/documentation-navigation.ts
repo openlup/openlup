@@ -1,3 +1,4 @@
+import { isChangelogFragment } from "./packages/changelog-fragments.ts";
 import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { resolveDocumentationOwner, type DocumentationState } from "./documentation-routing.ts";
@@ -44,7 +45,7 @@ export function documentationSources(root: string, state: DocumentationState): D
     const bytes = readFileSync(join(root, path));
     const symbols = declaredSymbols(path, bytes.includes(0) ? "" : bytes.toString("utf8"));
     return {
-      id: `source:${path}`, path, class: classes.get(path) ?? "unregistered-candidate", role: sourceRole(path),
+      id: `source:${path}`, path, class: classes.get(path) ?? (isChangelogFragment(path) ? "public-output" : "unregistered-candidate"), role: sourceRole(path),
       owner: { unit: owner.unit, page: owner.doc, anchor: owner.anchor, purpose: owner.when },
       descriptionSource: "authored-owner", symbols,
       symbolSource: symbols.length > 0 ? "syntactic-export-declarations" : "none",

@@ -64,9 +64,14 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 The catalog extraction keeps the platform README as owner of its new package
 entries and moved witnesses, and the catalog domain README as owner of reference
-shims and retained browser schemas. Regenerate publication paths for moved tests
-and new package sources with the existing catalogue generator, then derive the
-source-release contract from that inventory. These projections describe the
+shims and retained browser schemas. Author the exact publication catalogue rows for moved tests
+and new package sources; there is no catalogue discovery generator. Validated
+regular non-executable `packages/{core,outbox,platform}/changes/*.md` fragments
+are the sole pattern admission without rows. Policy and inventory checks derive
+live source-release bindings, validate authored fields and structure, and report
+a stale committed snapshot without failure. Refresh that snapshot only in a
+reviewed release-preparation change with the source-release preparation CLI;
+release paths require strict equality against the target Git objects. These projections describe the
 unchanged source move; they establish no new installation or publication claim.
 
 OIDC selectors assign the explicit host composition, pinned disposable compose
@@ -262,6 +267,13 @@ the other gates and their execution scope. Documentation checks do not replace
 behavioral tests or installation evidence.
 
 ## Exporting
+
+Bundle source records use actual file-byte hashes and authored catalogue classes.
+The sole implicit class is `public-output` for validated package changelog
+fragments under the exact `packages/{core,outbox,platform}/changes/*.md` pattern.
+A stale committed source-release digest snapshot does not invalidate navigation:
+policy still runs derivation and validates its authored fields before export.
+Bundles hash the snapshot's actual bytes rather than trusting its digest fields.
 
 The documentation bundle carries the selected Markdown bytes, navigation,
 search information, source links and `llms` indexes from the same inputs. Its

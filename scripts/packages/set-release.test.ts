@@ -1,3 +1,4 @@
+import { createSourceReleaseContract, deriveSourceReleaseContract } from "../oss-source-release-contract.ts";
 // Seeded falsifiers for set releases: below 1.0 every publishable package ships at one set
 // version 0.N.P from one commit. Each control is a behaviour of a committed module, checked
 // against real Git fixtures and a recorded GitHub and npm API. Each planted defect edits that
@@ -28,6 +29,20 @@ const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "core
 const appTag = (cwd: string, name: string, version: string, commit: string, message = `OpenLup package @openlup/${name} ${version}.`) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "tag", "-a", "-m", message, `openlup-${name}-v${version}`, commit], { cwd, env: { ...inherited, ...identity, GIT_COMMITTER_NAME: "openlup-release[bot]", GIT_COMMITTER_EMAIL: "334697227+openlup-release[bot]@users.noreply.github.com" }, stdio: "ignore" });
 let scratch = "";
 
+
+/** Minimal committed source snapshot for release falsifiers; classification stays explicit. */
+function snapshotFixture(root: string, write: (path: string, bytes: string) => void): void {
+  for (const path of ["package.json", "package-lock.json", "packages/core/package-lock.json", "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts", "config/openlup-policy-registry.json"]) {
+    if (!existsSync(join(root, path))) write(path, "{}\n");
+  }
+  const zero = `sha256-${"0".repeat(64)}`;
+  write("config/openlup-source-release-contract.json", createSourceReleaseContract({ inventoryDigest: zero, classDigest: zero, packageDigest: zero, rootLockDigest: zero, coreLockDigest: zero, migrationManifestDigest: zero, databaseTypesDigest: zero, policyRegistryDigest: zero, publicationCatalogDigest: zero }).contents);
+  write("config/openlup-publication-catalog.json", "{}\n");
+  const paths = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
+  write("config/openlup-publication-catalog.json", JSON.stringify({ schemaVersion: 1, publicPaths: [...new Set(paths)].sort().map((path) => ({ path, class: "public-output" })), guardViability: [] }));
+  write("config/openlup-source-release-contract.json", deriveSourceReleaseContract((path) => existsSync(join(root, path)) ? readFileSync(join(root, path)) : undefined).contents);
+}
+
 // --- A repository with two publishable packages and one private package that pins core. ---
 const build = "node -e \"require('node:fs').mkdirSync('dist',{recursive:true});require('node:fs').writeFileSync('dist/a.js','export const a = 1;\\n')\"";
 const publishable = (name: string, version: string, extra: Record<string, unknown> = {}) => ({ name: `@openlup/${name}`, version, license: "Apache-2.0", files: ["dist/**"], publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: policy.PUBLIC_REPOSITORY_URL, directory: `packages/${name}` }, exports: { ".": "./dist/a.js" }, scripts: { build }, ...extra });
@@ -40,7 +55,7 @@ function fixture({ kitPublishable = true } = {}): Fixture & { a: string } {
   const root = realpathSync(mkdtempSync(join(scratch, "repository-")));
   const write = (path: string, contents: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); };
   const read = (path: string) => readFileSync(join(root, path), "utf8");
-  const commit = (message: string) => { git(root, "add", "--all"); git(root, "commit", "--quiet", "-m", message); return git(root, "rev-parse", "HEAD"); };
+  const commit = (message: string) => { snapshotFixture(root, write); git(root, "add", "--all"); git(root, "commit", "--quiet", "-m", message); return git(root, "rev-parse", "HEAD"); };
   write("config/openlup-packages.json", json({ schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish: true }, { name: "@openlup/kit", directory: "packages/kit", publish: kitPublishable }, { name: "@openlup/demo", directory: "packages/demo", publish: false }], unreleased: [] }));
   write("packages/core/package.json", json(publishable("core", "0.4.0")));
   const kit = { peerDependencies: { "@openlup/core": "0.4.0" } };
@@ -414,7 +429,7 @@ const DEFECTS: Defect[] = [
   { control: "the release plan: one package only from nothing; a set skips, resumes, and releases at least one", plant: "a tarball changed after packing", in: "release", from: ".digest(\"hex\") !== entry.sha256) throw", to: ".digest(\"hex\") === \"\") throw" },
   { control: "the set preflight checks the clean target, the set and every package's patch", plant: "only the first package's patch checked", in: "release", from: "for (const { directory } of packages) assertPatchSetApiUnchanged", to: "for (const { directory } of packages.slice(0, 1)) assertPatchSetApiUnchanged" },
   { control: "the set preflight checks the clean target, the set and every package's patch", plant: "no packages:check --release-set", in: "release", from: "  manifestCheck(root, set.version);\n", to: "" },
-  { control: "the set preflight checks the clean target, the set and every package's patch", plant: "a dirty checkout admitted", in: "release", from: "  assertCleanTarget(root, set.target);\n  manifestCheck(root, set.version);", to: "  manifestCheck(root, set.version);" },
+  { control: "the set preflight checks the clean target, the set and every package's patch", plant: "a dirty checkout admitted", in: "release", from: "  assertCleanTarget(root, set.target);\n  assertSourceReleaseSnapshot(root, set.target);", to: "  assertSourceReleaseSnapshot(root, set.target);" },
 ];
 
 let mutants = 0;

@@ -112,9 +112,27 @@ export function admit({ receipt, observed, now }) {
   return result(true, 'reviewed', 'reviewed');
 }
 const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?package(?:-lock)?\.json$/u, /^(?:db\/platform|supabase)\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];
-export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree, changedPaths = [], movedPaths = [] }) {
+const plainObject = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+export function exportAdditions(before, after) {
+  if (!plainObject(before) || !plainObject(after) || !plainObject(before.exports) || !plainObject(after.exports)) return null;
+  if ([...Object.keys(before.exports), ...Object.keys(after.exports)].some(key => !key.startsWith('.'))) return null;
+  const beforeKeys = Object.keys(before).filter(key => key !== 'exports');
+  const afterKeys = Object.keys(after).filter(key => key !== 'exports');
+  if (beforeKeys.length !== afterKeys.length || beforeKeys.some(key => !Object.hasOwn(after, key) || JSON.stringify(before[key]) !== JSON.stringify(after[key]))) return null;
+  if (Object.keys(before.exports).some(key => !Object.hasOwn(after.exports, key) || JSON.stringify(before.exports[key]) !== JSON.stringify(after.exports[key]))) return null;
+  return Object.keys(after.exports).filter(key => !Object.hasOwn(before.exports, key));
+}
+export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree, changedPaths = [], movedPaths = [], manifests = {} }) {
   if (!baseAncestor) return result(false, 'stale', 'reviewed base is not an ancestor of the queue base; merge main and re-review');
   if (reviewedTree === groupTree) return result(true, 'reviewed', 'unchanged tree');
-  if (predictedTree !== groupTree || movedPaths.some(path => changedPaths.includes(path) || TRUST_PATHS.some(pattern => pattern.test(path)))) return result(false, 'stale', 'group does not carry over; merge main and re-review');
-  return result(true, 'reviewed', 'disjoint base move');
+  const exempt = movedPaths.filter(path => {
+    if (!/^packages\/[\w.-]+\/package\.json$/u.test(path)) return false;
+    const { base, queueBase, head, group } = manifests[path] ?? {};
+    const mainAdded = exportAdditions(base, queueBase); const prAdded = exportAdditions(base, head);
+    const groupAdded = exportAdditions(base, group);
+    return mainAdded !== null && prAdded !== null && groupAdded !== null && !mainAdded.some(key => prAdded.includes(key)) &&
+      groupAdded.length === mainAdded.length + prAdded.length && [...mainAdded, ...prAdded].every(key => groupAdded.includes(key));
+  });
+  if (predictedTree !== groupTree || movedPaths.some(path => !exempt.includes(path) && (changedPaths.includes(path) || TRUST_PATHS.some(pattern => pattern.test(path))))) return result(false, 'stale', 'group does not carry over; merge main and re-review');
+  return result(true, 'reviewed', exempt.length ? 'disjoint base move with export additions' : 'disjoint base move');
 }

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { evaluatePlatformMigrationManifest, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
-import { execFileSync } from "node:child_process";
-import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog, publicPublicationCatalogDigests } from "./oss-publication-policy.ts";
+import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, effectivePublicCatalogPaths, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog } from "./oss-publication-policy.ts";
 import { PUBLIC_EXECUTION_ENTRYPOINTS, isDirectExecutionEntrypoint } from "./oss-publication-contract.ts";
 import { readPublicTypecheckCompatibility, type PublicTypecheckCompatibility } from "./oss-public-typecheck.ts";
 import { documentationGit } from "./documentation-routing.ts";
@@ -86,6 +85,15 @@ export function validateSourceReleaseContract(source: string): void {
   if (database?.path !== "src/integrations/supabase/types.ts" || database.binding !== "unbound" || database.replacement !== "adopter-generated-required") throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: database schema seam must remain explicitly unbound`);
   if (raw.compatibility !== undefined) readPublicTypecheckCompatibility(source);
   if (Object.hasOwn(raw, "sourceSeed")) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: sourceSeed is a retired downstream field and is refused`);
+  const exact = (value: unknown, keys: string[]) => object(value) && JSON.stringify(Object.keys(value).sort()) === JSON.stringify(keys.sort());
+  const shapes: Array<[unknown, string[]]> = [
+    [raw, ["schemaVersion", "runtime", "inventory", "packages", "platformMigrationManifest", "databaseSchema", "policy", "repository", "release", ...(raw.compatibility === undefined ? [] : ["compatibility"])]],
+    [runtime, ["node", "npm"]], [inventory, ["digest", "classDigest"]], [packages, ["manifestDigest", "rootLockDigest", "coreLockDigest"]],
+    [migration, ["path", "digest"]], [database, ["path", "binding", "replacement", "digest"]], [policy, ["registryDigest", "publicationCatalogDigest"]],
+    [release, ["posture", "stability", "evidenceClass"]], [repository, ["coordinate", "securityRoute", ...(release.evidenceClass === "activation-candidate" ? ["owner"] : [])]],
+  ];
+  if (migration?.path !== "config/platform-migration-manifest.json" || shapes.some(([value, keys]) => !exact(value, keys))) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: malformed contract structure`);
+
 }
 
 export function sourceReleaseContractChangedFields(before: unknown, after: unknown, prefix = ""): string[] {
@@ -103,11 +111,12 @@ export type SourceReleaseBlobReader = (path: string) => Buffer | string | undefi
  * Derives the source-release contract a tree describes. Every digest field comes from the tree's
  * own bytes: the inventory and class digests from the publication catalogue, the package digests
  * from `package.json` and the two lockfiles, and the remaining digests from the files they name.
- * Identity and `compatibility` come from the tree's current contract. The descendant release check
- * refuses a tree whose contract differs from this result; after a dependency or catalogue change,
- * write `contents` back to `config/openlup-source-release-contract.json`.
+ * Identity and `compatibility` come from the tree's current contract. PR checks run this derivation
+ * without requiring snapshot freshness. Refresh with source-release-preparation.ts at release prep
+ * only; source and package release checks require exact canonical snapshot equality. Pattern-admitted
+ * fragments join the authored rows when the caller supplies its inventory.
  */
-export function deriveSourceReleaseContract(readBlob: SourceReleaseBlobReader): { contents: string; digest: string } {
+export function deriveSourceReleaseContract(readBlob: SourceReleaseBlobReader, inventory?: readonly { path: string; mode: string }[]): { contents: string; digest: string } {
   const read = (path: string) => { const bytes = readBlob(path); if (bytes === undefined) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: derivation input is absent: ${path}`); return bytes; };
   const current = read(SOURCE_RELEASE_CONTRACT_PATH).toString();
   validateSourceReleaseContract(current);
@@ -115,7 +124,9 @@ export function deriveSourceReleaseContract(readBlob: SourceReleaseBlobReader): 
   const identity: SourceReleaseIdentity = release.evidenceClass === "activation-candidate"
     ? { evidenceClass: "activation-candidate", coordinate: repository.coordinate as string, securityRoute: repository.securityRoute as string, owner: { name: owner.name as string, email: owner.email as string } }
     : { evidenceClass: SOURCE_RELEASE_EVIDENCE_CLASS };
-  const catalog = read(PUBLICATION_CATALOG_PATH), catalogDigests = publicPublicationCatalogDigests(catalog.toString());
+  const catalog = read(PUBLICATION_CATALOG_PATH);
+  const rows = inventory ? effectivePublicCatalogPaths(catalog.toString(), inventory, readBlob) : parsePublicPublicationCatalog(catalog.toString()).publicPaths;
+  const catalogDigests = { inventoryDigest: digest(JSON.stringify(rows.map(({ path }) => path))), classDigest: digest(JSON.stringify(rows)) };
   return createSourceReleaseContract({
     inventoryDigest: catalogDigests.inventoryDigest,
     classDigest: catalogDigests.classDigest,
@@ -134,7 +145,7 @@ export function deriveSourceReleaseContract(readBlob: SourceReleaseBlobReader): 
 type GitInventoryEntry = { path: string; mode: "100644" | "100755"; gitBlobSha: string };
 const commitSha = (value: string) => /^[0-9a-f]{40}$/u.test(value);
 const GIT_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
-const gitBytes = (root: string, args: string[]) => execFileSync("git", args, { cwd: root, maxBuffer: GIT_OUTPUT_MAX_BYTES, stdio: ["ignore", "pipe", "pipe"] });
+const gitBytes = (root: string, args: string[]) => documentationGit(root, args, undefined, GIT_OUTPUT_MAX_BYTES);
 function gitInventory(root: string, revision: string): GitInventoryEntry[] {
   const rows = gitBytes(root, ["ls-tree", "-r", "-z", "--full-tree", revision]).toString().split("\0").filter(Boolean).map((line) => {
     const match = /^(100644|100755) blob ([0-9a-f]{40})\t(.+)$/u.exec(line);
@@ -143,6 +154,21 @@ function gitInventory(root: string, revision: string): GitInventoryEntry[] {
   });
   return rows.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
 }
+/** Strict snapshot proof at the exact release target; no working-tree or index reads. */
+export function assertSourceReleaseSnapshot(root: string, targetCommit: string): void {
+  if (!commitSha(targetCommit)) throw new Error("source snapshot requires a full commit SHA");
+  const entries = gitInventory(root, targetCommit);
+  const byPath = new Map(entries.map((entry) => [entry.path, entry]));
+  const read: SourceReleaseBlobReader = (path) => {
+    const entry = byPath.get(path);
+    return entry ? gitBytes(root, ["cat-file", "blob", entry.gitBlobSha]) : undefined;
+  };
+  const catalog = read(PUBLICATION_CATALOG_PATH);
+  if (!catalog || JSON.stringify(effectivePublicCatalogPaths(catalog.toString(), entries, read).map(({ path }) => path)) !== JSON.stringify(entries.map(({ path }) => path))) throw new Error("source snapshot publication catalogue differs from the Git inventory");
+  const derived = deriveSourceReleaseContract(read, entries);
+  if (derived.contents !== read(SOURCE_RELEASE_CONTRACT_PATH)?.toString()) throw new Error("source snapshot stale: committed contract must match its target byte-for-byte; run scripts/source-release-preparation.ts --write at release prep");
+}
+
 const SCHEMA_BEARING_PATHS = new Set<string>([MIGRATION_MANIFEST_PATH, DATABASE_TYPES_PATH, PUBLIC_POLICY_REGISTRY_PATH]);
 /** A path subject to the frozen-schema or append-only-forward release rules: it carries the platform database or policy schema. */
 const isSchemaBearingSourceReleasePath = (path: string): boolean => SCHEMA_BEARING_PATHS.has(path) || path.startsWith("db/platform/migrations/") || path.startsWith("supabase/migrations/") || (path.startsWith("db/bootstrap/") && path.toLowerCase().endsWith(".sql"));
@@ -278,7 +304,7 @@ export function assertDescendantSourceRelease(root: string, previousCommit: stri
   const requireTarget = (path: string) => { const bytes = readTarget(path); if (bytes === undefined) throw new Error(`descendant tree is missing ${path}`); return bytes; };
   assertPlatformSchemaForwards(root, previousCommit, targetCommit, old, target, readOld, readTarget);
   const catalog = parsePublicPublicationCatalog(requireTarget(PUBLICATION_CATALOG_PATH).toString());
-  if (JSON.stringify(catalog.publicPaths.map(({ path }) => path)) !== JSON.stringify(target.map(({ path }) => path))) throw new Error("descendant publication catalogue differs from the Git inventory");
+  if (JSON.stringify(effectivePublicCatalogPaths(requireTarget(PUBLICATION_CATALOG_PATH).toString(), target, readTarget).map(({ path }) => path)) !== JSON.stringify(target.map(({ path }) => path))) throw new Error("descendant publication catalogue differs from the Git inventory");
   const allowedEntrypoints = new Set<string>(PUBLIC_EXECUTION_ENTRYPOINTS);
   for (const entry of target) if (oldByPath.get(entry.path)?.gitBlobSha !== entry.gitBlobSha && !allowedEntrypoints.has(entry.path) && isDirectExecutionEntrypoint(entry.path, requireTarget(entry.path).toString())) throw new Error(`descendant release found an unregistered direct execution entrypoint: ${entry.path}`);
   const policy = parsePublicPolicyRegistry(requireTarget(PUBLIC_POLICY_REGISTRY_PATH).toString());
@@ -291,8 +317,8 @@ export function assertDescendantSourceRelease(root: string, previousCommit: stri
   }
   const contractRaw = requireTarget(SOURCE_RELEASE_CONTRACT_PATH).toString();
   validateSourceReleaseContract(contractRaw);
-  const derived = deriveSourceReleaseContract(readTarget);
-  if (derived.contents !== contractRaw) throw new Error(`descendant source contract does not describe its tree; regenerate it with the snippet in CONTRIBUTING.md. Fields that differ: ${sourceReleaseContractChangedFields(parse(contractRaw), parse(derived.contents)).join(", ") || "formatting"}`);
+  const derived = deriveSourceReleaseContract(readTarget, target);
+  if (derived.contents !== contractRaw) throw new Error(`descendant source contract does not describe its tree; run scripts/source-release-preparation.ts --write at release prep. Fields that differ: ${sourceReleaseContractChangedFields(parse(contractRaw), parse(derived.contents)).join(", ") || "formatting"}`);
   const previousContract = readOld(SOURCE_RELEASE_CONTRACT_PATH);
   if (previousContract === undefined) throw new Error(`previous release is missing ${SOURCE_RELEASE_CONTRACT_PATH}`);
   const fixed = sourceReleaseContractChangedFields(parse(previousContract.toString()), parse(contractRaw)).filter((field) => PREVIOUS_RELEASE_CONTRACT_FIELDS.some((name) => field === name || field.startsWith(`${name}.`)));

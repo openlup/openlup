@@ -27,7 +27,9 @@ database orchestration, schedulers, credentials, provider SDKs, and
 product-specific policy remain outside the package.
 
 Treat exported declarations as internal candidate surfaces. When a declaration
-change is intentional, update tests, record the reason in [CHANGELOG.md](CHANGELOG.md),
+change is intentional, update tests, record the reason in a `changes/<programme>-<slice>.md` fragment in the source
+repository (ordinary bullets, optional `###` headings and useful `Migration:`
+steps; no `#`/`##`, empty files or conflict markers),
 run `npm run api:update`, and review the snapshot diff. Do not infer a stable
 API, SemVer promise, independent release, or external adoption from that proof.
 
