@@ -22,6 +22,7 @@ SemVer promise.
   retain schemas, shared admin kit/spec/flags, stock/lifecycle helpers, responder,
   wire versions and RPC error identity. Catalog contracts add plain DTOs only;
   browser schemas stay local. Native stores and SQL remain outside this slice.
+- Add experimental shipping ports, injected-schema handlers and type-only contracts.
 
 Migration: existing reference imports remain named compatibility exports.
 Installed consumers bind the host dependencies explicitly. Bundle DTO additions

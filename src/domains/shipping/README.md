@@ -60,6 +60,23 @@ zero. Discounts are then summed in two independent lanes — shipping and
 everything else — and the quote validates them separately. Operators change the
 flat amount through `server/domains/commerce/adminShippingRateHandler.ts`.
 
+## Packaged delivery foundation
+
+`@openlup/platform/shipping` now owns the existing selection/search ports,
+handlers, summary and evidence resolver. Named compatibility shims preserve all
+reference imports. The handler shim injects the unchanged local Zod schemas and
+observed BFF responder, retaining allowlists, validation order, transforms and
+error envelopes. Browser schemas and vendor dictionaries, static menus, carrier
+transports and BFF factories remain here. The DTO-only `./shipping/contracts`
+entry carries opaque host strings rather than vendor/country policy.
+
+No inventory dependency, shipping-price change or activation is introduced.
+The four [W6 cases](../../../tests/platform/shipping/deliverySelectionBoundaryCharacterization.test.ts)
+retain the donor expectations against these actual reference factories, including
+empty dictionary → 502 and captured canonical/missing point evidence. Installed
+source parity and current store/adopter proof remain pending in the
+[M06 shipping record](../../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#shipping-lane-p3ap3c).
+
 ## How the delivery method resolves
 
 A separate composition root, `resolveDeliverySelectionPort`

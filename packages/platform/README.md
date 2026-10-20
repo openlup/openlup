@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its nineteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its twenty-four experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -30,6 +30,13 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
+| `./shipping` | Experimental delivery ports, injected-schema handlers, summary and evidence |
+| `./shipping/contracts` | Type-only delivery, pickup-point, summary and evidence DTOs |
+
+## Shipping
+
+Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
+No vendor code, inventory import, activation or parity claim.
 
 ## Promotions
 

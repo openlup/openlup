@@ -28,6 +28,7 @@ function fixture() {
 
 it("accepts ordinary confined packages and independently verifies absent peers", () => {
   const consumer = fixture(); assertConsumerIsolation(consumer, root); assertExportInventory(consumer);
+  expect(NON_ADAPTER_ENTRIES).toEqual(expect.arrayContaining(["shipping", "shipping/contracts"]));
 });
 it.each(OPTIONAL_PEERS)("refuses a physically installed optional peer: %s", peer => {
   const consumer = fixture(); mkdirSync(join(consumer, "node_modules", peer), { recursive: true });

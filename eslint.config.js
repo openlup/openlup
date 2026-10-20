@@ -147,6 +147,7 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // Optional `contracts: true` declares exactly one browser-safe sub-entry at
 // <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
+  shipping: { contracts: true, values: [], types: ["bff", "http"] },
   promotions: { contracts: true, values: ["pricing"], types: ["data", "http", "bff"] },
   pricing: { contracts: true, values: [], types: ["bff", "http"] },
   // Bundle application factories bind host schemas/admin kit; only handler/responder types cross modules.
