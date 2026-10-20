@@ -316,7 +316,9 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/shipping/deliveryConformance.test.ts"
+        "test/shipping/deliveryConformance.test.ts",
+        "test/shipping/addressConformance.test.ts",
+        "test/shipping/shippingRateConformance.test.ts"
       ],
       "entrypoint": "dist/shipping/index.d.ts",
       "snapshot": "api/shipping.api.md"
@@ -327,7 +329,9 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/shipping/deliveryConformance.test.ts"
+        "test/shipping/deliveryConformance.test.ts",
+        "test/shipping/addressConformance.test.ts",
+        "test/shipping/shippingRateConformance.test.ts"
       ],
       "entrypoint": "dist/shipping/contracts/index.d.ts",
       "snapshot": "api/shipping-contracts.api.md"
