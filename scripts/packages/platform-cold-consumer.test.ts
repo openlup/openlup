@@ -178,7 +178,8 @@ it("the source-checkout wrapper invokes the cold proof and preserves its refusal
 });
 
 it("classifies the browser identity entry separately from the mixed server adapter entry", () => {
-  expect(NON_ADAPTER_ENTRIES).toContain("catalog");
+  expect(ADAPTER_ENTRIES).toContain("catalog");
+  expect(NON_ADAPTER_ENTRIES).not.toContain("catalog");
   expect(NON_ADAPTER_ENTRIES).toContain("pricing");
   expect(NON_ADAPTER_ENTRIES).toContain("pricing/contracts");
   expect(NON_ADAPTER_ENTRIES).toContain("catalog/contracts");

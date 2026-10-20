@@ -15,17 +15,15 @@ import type {
 /**
  * The semantic write port for the admin/agent bundle surface.
  *
- * This file names the CAPABILITY, never the storage. Both shipped adapters
- * (`server/adapters/supabase/bundleAdminWriteStore.ts`,
- * `server/adapters/postgres/bundleAdminWriteStore.ts`) implement exactly this
- * interface and are proved against ONE shared scenario table, so a caller cannot
+ * This file names the CAPABILITY, never the storage. Both shipped write adapters
+ * implement exactly this interface and are proved against ONE shared scenario table, so a caller cannot
  * tell them apart and neither can a rule. No data-client type, table name or
  * routine name appears here; the domain layer opens no database handle of its own.
  *
  * Each method is one atomic operation on the security boundary: the boundary takes
- * the actor explicitly, re-derives the actor kind rather than trusting the caller,
- * writes its audit row in the same transaction, short-circuits a replayed
- * idempotency key, and rolls a dry run back after validating it.
+ * the actor explicitly; the managed chain re-derives actor kind, while native
+ * relies on the handler human-only gate. Each boundary writes its ledger row in the same transaction, short-circuits a replayed
+ * idempotency key, and validates a dry run without durable writes.
  */
 
 /** Shape every bundle write returns. */
@@ -90,15 +88,15 @@ export interface AdminBundleWritePort {
    */
   cloneDraft(actorId: string, input: CloneBundleDraftRequest): Promise<BundleWriteResult>;
   /**
-   * Publish (draft -> active). HUMAN-ONLY: the boundary RAISEs 42501
-   * (`publish_requires_human`) for machine actors. Raises P0001 when the bundle has
+   * Publish (draft -> active). HUMAN-ONLY: the managed chain raises 42501
+   * (`publish_requires_human`) for machine actors; native relies on the handler gate. Raises P0001 when the bundle has
    * no composition or no active target price.
    */
   activate(actorId: string, input: ActivateBundleRequest): Promise<BundleWriteResult>;
   /**
-   * Unpublish (active -> draft). HUMAN-ONLY, same 42501. Raises P0001
+   * Unpublish (active -> draft). HUMAN-ONLY: the managed chain uses the same
+   * 42501 refusal; native relies on the handler gate. Raises P0001
    * (`deactivate_requires_active`) when the bundle is not live.
    */
   deactivate(actorId: string, input: DeactivateBundleRequest): Promise<BundleWriteResult>;
 }
-

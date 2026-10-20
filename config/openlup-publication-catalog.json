@@ -2322,6 +2322,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260812140000_sellable_bundle_catalog.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260813120000_communications_control_plane.sql",
       "class": "public-output"
     },
@@ -2446,7 +2454,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/bundleCatalogQueries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/bundleCatalogReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleCatalogStore.ts",
       "class": "public-output"
     },
     {
@@ -2555,6 +2571,10 @@
     },
     {
       "path": "packages/platform/src/catalog/sellableSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/sql.ts",
       "class": "public-output"
     },
     {
@@ -21119,6 +21139,10 @@
     },
     {
       "path": "tests/postgres/adminMembershipAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/bundleNative.test.ts",
       "class": "public-output"
     },
     {

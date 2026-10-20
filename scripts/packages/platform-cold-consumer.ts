@@ -9,11 +9,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts", "inventory", "inventory/contracts", "shipping", "shipping/contracts"] as const;
-// identity, communications and promotions are adapter entries: their declarations reach data/pg types.
+export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts", "inventory", "inventory/contracts", "shipping", "shipping/contracts"] as const;
+// identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
-  "blob", "data", "migrations", "job-ledger", "identity", "communications", "promotions",
+  "blob", "data", "migrations", "job-ledger", "identity", "communications", "promotions", "catalog",
   "communications/resend",
 ] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
@@ -585,7 +585,16 @@ assert.deepEqual(catalog.parseCatalogActiveSkuSelection([" ITEM-1 "]), ["ITEM-1"
 assert.throws(() => catalog.parseCatalogActiveSkuSelection(["ITEM-1", " ITEM-1 "]), /catalog_active_sku_selection_invalid/);
 const handler = catalog.createCatalogDraftHandler({ store: {}, registry: {}, authorizeOperator: async () => null });
 assert.deepEqual(await handler.execute({}, {}), { outcome: "unauthorized", reason: "draft_operator_required" });
-// P4a adds application-only bundle exports; catalog stays a non-adapter until the native store moves.
+// Catalog imports without pg: the native read store uses only the supplied executor.
+const statements = [];
+const native = catalog.createPostgresBundleCatalogStore({ query: async (sql, values) => { statements.push([sql, values]); return { rows: [] }; } });
+assert.deepEqual(await native.listBundles({ status: "all", limit: 10, offset: 0 }), { bundles: [], total: 0 });
+assert.equal(await native.getBundle({ code: "absent" }), null);
+assert.deepEqual(await native.listActiveBundleCompositions(), []);
+assert.deepEqual(await native.listBundleHistory({ code: "absent", limit: 10, offset: 0 }), { events: [], total: 0 });
+assert.equal(statements.length, 6);
+assert.deepEqual(catalog.BUNDLE_MIGRATIONS.map(unit => unit.position), [16, 19]);
+await assert.rejects(() => catalog.createPostgresBundleCatalogStore({ query: async () => { throw Error("synthetic read failure"); } }).getBundle({ code: "absent" }), catalog.BundleCatalogReadError);
 const composition = { code: "fixed-set", title: "Fixed set", fulfillmentMode: "virtual", currency: "XXX", targetPriceMinor: 2001, mode: "one_time",
   components: [
     { sku: "UNIT-A", title: "Unit A", productSlug: "unit-a", variantId: "variant-a", quantity: 2, isAddon: false, sortOrder: 0, referenceUnitPriceMinor: 1000 },
