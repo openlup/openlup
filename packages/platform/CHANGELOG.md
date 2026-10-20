@@ -8,6 +8,12 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add 14 experimental provider-neutral marketing-sync types through the existing
+  communications and communications/contracts entries: profile sync, negative
+  consent readback and erasure request/status. Existing M04 providers remain
+  assignable. Positive consent writes are deferred; no adapter, callback,
+  activation or package subpath is added. Migration: none for existing callers.
+
 - Add experimental `./promotions` application, advisory read ports, preview,
   money binding, acceptance and passive telemetry with explicit host bindings;
   `./promotions/contracts` contains dependency-free preview DTOs. Core remains

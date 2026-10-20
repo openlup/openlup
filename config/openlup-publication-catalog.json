@@ -1222,6 +1222,10 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/plans/oss-a1-communications-adapters.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m04-communications-triggers.md",
       "class": "platform-documentation"
     },
@@ -2566,6 +2570,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/contracts/marketingSync.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/contracts/newsletter.ts",
       "class": "public-output"
     },
@@ -3674,11 +3682,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/helpers/marketingSyncConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/hookRawReader.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/communications/marketingConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/marketingSyncCompatibility.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/marketingSyncConformance.test.ts",
       "class": "public-output"
     },
     {
