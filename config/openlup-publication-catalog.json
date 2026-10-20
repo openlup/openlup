@@ -2426,6 +2426,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/contracts/inquiryContent.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/invoiceDocumentContent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/contracts/marketingAutomation.ts",
       "class": "public-output"
     },
@@ -2435,6 +2443,10 @@
     },
     {
       "path": "packages/platform/src/communications/contracts/newsletterWebhook.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/optOutContent.ts",
       "class": "public-output"
     },
     {
@@ -2479,6 +2491,10 @@
     },
     {
       "path": "packages/platform/src/communications/contracts/reviewRequest.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/contracts/roleNotificationContent.ts",
       "class": "public-output"
     },
     {
@@ -3223,6 +3239,10 @@
     },
     {
       "path": "packages/platform/test/communications/consentRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/contentDefaults.test.ts",
       "class": "public-output"
     },
     {
@@ -15870,6 +15890,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/communications/email/referenceContentBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/communications/email/render.ts",
       "class": "public-output"
     },
@@ -19058,6 +19082,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/admin/email-canon-preview/defaultContentRenderers.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/admin/email-canon-preview/index.ts",
       "class": "public-output"
     },
@@ -20247,6 +20275,10 @@
     },
     {
       "path": "tests/platform/checkoutRecoveryProviderConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/communicationsB2Content.test.ts",
       "class": "public-output"
     },
     {

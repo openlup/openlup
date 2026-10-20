@@ -82,21 +82,21 @@ describe("W4 current public communications", () => {
     expect(createPrivateLabelB2BInquiryPresenter({ EMAIL_ENVIRONMENT: "hidden_preview" }).present(input)).toEqual({ ok: false, error: "hidden_preview_origin_required" });
   });
 
-  it.each(["applied", "already_suppressed"] as const)("pins legacy unsubscribe Polish success/replay: %s", async status => {
+  it.each(["applied", "already_suppressed"] as const)("pins localized legacy unsubscribe success/replay: %s", async status => {
     const result = await unsubscribe(status);
     expect(result.status).toBe(200);
-    expect(result.body).toContain('<html lang="pl">');
-    expect(result.body).toContain(status === "applied" ? "Zapisalismy Twoja rezygnacje" : "Twoja rezygnacja z wiadomosci marketingowych i dla testerow jest juz zapisana.");
+    expect(result.body).toContain('<html lang="en">');
+    expect(result.body).toContain(status === "applied" ? "We&#39;ve recorded your opt-out from the selected messages." : "Your opt-out from the selected messages is already recorded.");
     expect(result.headers["Cache-Control"]).toBe("no-store");
     expect(result.headers["Referrer-Policy"]).toBe("no-referrer");
     expect(digest(result)).toMatchSnapshot();
   });
 
-  it("pins signed EN unsubscribe with its existing Polish document language", async () => {
+  it("pins signed EN unsubscribe with its selected document language", async () => {
     const token = await buildUnsubscribeToken({ email: "recipient@example.test", purpose: "marketing_newsletter" }, "synthetic-token-secret-0123456789");
     const result = await unsubscribe("applied", `/api/unsubscribe?lang=en&token=${encodeURIComponent(token)}`);
-    expect(result.body).toContain('<html lang="pl">');
-    expect(result.body).toContain("You're unsubscribed");
+    expect(result.body).toContain('<html lang="en">');
+    expect(result.body).toContain("You&#39;re unsubscribed");
     expect(digest(result)).toMatchSnapshot();
   });
 });

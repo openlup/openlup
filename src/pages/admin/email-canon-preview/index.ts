@@ -1,3 +1,4 @@
+import { DEFAULT_CONTENT_PREVIEW_RENDERERS } from "./defaultContentRenderers";
 import { COMMERCE_CANON_PREVIEW_RENDERERS } from "./commerceRenderers";
 import { SUBSCRIPTION_CANON_PREVIEW_RENDERERS } from "./subscriptionRenderers";
 import type { CanonPreviewRenderer } from "./shared";
@@ -8,6 +9,7 @@ import type { CanonPreviewRenderer } from "./shared";
  * admin opens a preview.
  */
 export const CANON_PREVIEW_RENDERERS: Record<string, CanonPreviewRenderer> = {
+  ...DEFAULT_CONTENT_PREVIEW_RENDERERS,
   ...COMMERCE_CANON_PREVIEW_RENDERERS,
   ...SUBSCRIPTION_CANON_PREVIEW_RENDERERS,
 };

@@ -405,6 +405,221 @@ subtotal and P4's unrounded measurements. X2 permits the recorded case overrun
 within the time limit; post-loop cleanup must revisit it. These measurements
 do not reset the allowance or replace the binding hosted median.
 
+## B2 neutral content and reference mapping
+
+Status: authorized file-only implementation, 2026-10-19; native signed-candidate
+review and delivery are pending. Base `0c62f937848fbe1e436ee1f82149a750edf44abf`.
+Finite outcome: four pure neutral Polish/EN factories in the existing contracts entry,
+invoice/role render delegation, localized escaped opt-out page, generic inquiry
+pure binding and two existing-slug previews. No new sender is activated.
+
+Authority: the coordinator approved R1 (invoice/role render delegation and optional
+construction-time invoice locale, default Polish), R2 (only page content/language and
+escaping; every security/effect behavior retained), R3 (four additive inventory
+names and bounded bilingual smoke), and generator-only catalogue/source-contract
+companions. This run permits file edits/checks and external handoff artifacts;
+no Git writes, commit, PR, merge or release. Two fresh full signed-candidate
+reviews remain necessary for material behavior/API and the R2/R3 paths. No review
+cycle or native receipt is claimed here. No manifest, cap, schema or graph change
+is permitted. Such a need stops implementation for coordinator decision.
+
+The production invoice composition still chooses implicit Polish; EN is reachable
+only through optional construction `locale: "en"`. Generic inquiry is presentation
+only with caller-supplied details, locale, brand, signoff and operator URL. The
+private-label presenter remains frozen. Smallest adequate structure: four ordinary
+factories and one reference binding; no persistent locale or sender framework.
+
+### B2 changed expectations and preservation
+
+| ID | Old → new | Boundary / preserved constraints |
+| --- | --- | --- |
+| B2-01 | Four reusable neutral default content factories absent → four public runtime exports from the existing contracts entry, with their parameter/copy/result types. | Additive API; no existing export removed/renamed, no new package/subpath or required existing copy field. Optional host copy replacement and explicit Polish/EN selection; no ambient locale/env/network. |
+| B2-02 | Invoice reference accepts only its implicit Polish rendering → optional explicit constructor EN, default still Polish. | New opt-in EN behavior needs R1. Missing locale does not choose EN or infer country. Existing delivery input/store schema unchanged. |
+| B2-03 | EN invoice/correction content absent → subjects `Invoice for order {orderRef}` / `Invoice correction for order {orderRef}`, corresponding EN preheader/heading/PDF explanation/Order + Invoice or Correction rows/account CTA/availability note. | Original Polish complete content/rendered bytes retained. Document number supplied from the existing nullish fallback, same correction discriminator, same PDF/key/audit/uncertainty. No fiscal/provider generation changes. |
+| B2-04 | Invoice CTA always Polish → Polish stays `/konto?sekcja=orders`; explicit EN gets `/account?sekcja=orders`. | Same resolved host, exact query key, no production-origin fallback or provider PDF URL. |
+| B2-05 | Role Polish/EN inline content usable only through frozen sender → same complete active/pending and role-specific outputs also available as neutral package defaults/reference mapping. | No intentional change to role subjects, heading/preheader/body/expiry/CTA/footer, membership assertions, recipients, control/key/ledger order. In particular pending must not say active; no the adopter bilingual copy imported. R1 delegates without rewriting it. |
+| B2-06 | Generic inquiry Polish/EN defaults absent; only legacy EN private-label source exists → fresh generic receipt and operator-notice builders in both languages plus pure reference mapping. | Polish receipt subject `Otrzymaliśmy Twoje zapytanie`; EN `We've received your inquiry`; Polish notice `Nowe zapytanie`; EN `New inquiry`. Receipt thanks sender and confirms receipt only; operator notice renders caller-supplied details and localized `Otwórz zapytanie` / `Open inquiry` CTA. No promised SLA, discovery call, sales offer, hidden default recipient or country rule. Existing legacy B2B outputs remain exactly bound and are not an old-output replacement. |
+| B2-07 | Signed EN opt-out body is EN but document says Polish → EN body and `<html lang="en">`; Polish document stays Polish. | Token bytes, endpoint/query shape and status unchanged. No change to common email renderer's `<html>` behavior. Needs R2. |
+| B2-08 | Legacy success/replay ignores lang=en → selected EN copy and document language for those outcomes. | Legacy input and its tester lookup, purposes, durable suppression and replay branch stay the same; translation is never a new suppression grant. Default/unknown lang remains Polish, matching exact current selector. |
+| B2-09 | Missing legacy data, not-found and catch errors always Polish → Polish/EN display by selected locale, including failure after RPC. | Same HTTP 400/404/500, same refusal and logging. Non-GET remains the existing 405 JSON, not a translated success/page. |
+| B2-10 | Public opt-out Polish bodies use ASCII and legacy tester-specific copy; token success mentions orders only → neutral, diacritic-correct Polish and equivalent EN selected-communications wording with explicit service-message exception. | The complete seven-outcome copy table below is the intended output change. No consent scope, persistence or delivery promise changes. |
+| B2-11 | Opt-out page interpolates supplied title/message/brand as HTML → display values escaped in both title/body positions. | Literal `<`, `>`, `&`, quotes in host display inputs render as text; do not add URL/network policy or change page CSS. Explicit security-relevant render delta for R2/two reviews, not an unrelated global renderer repair. |
+| B2-12 | Invoice/role canon previews unavailable/null → those two existing slug previews render neutral sample output through the same content binding. | Lazy Polish UI preview only; unknown/no-send/unimplemented slugs still unavailable. No real send, no new registry activation, no generic preview falsely claiming equivalence to private-label B2B. |
+| B2-13 | Exact contracts inventory contains existing P3 values → exact inventory additionally contains the four named B2 factories in both package conformance and installed consumer. | R3 required for control script; keep no-fetch/no-Node/optional-peer/type checks and measure the whole entry. No cap increase included. |
+
+Complete opt-out display table (support address is a supplied display value; no embedded real address):
+
+| Existing branch / HTTP | Polish title and message | EN title and message |
+| --- | --- | --- |
+| Invalid signed token / 400 | `Link nieprawidłowy lub wygasł` — `Nie udało się przetworzyć tej prośby. Skopiuj pełny link z wiadomości lub napisz na {supportEmail}.` | `Invalid or expired link` — `We couldn't process this request. Copy the full link from the email or email {supportEmail}.` |
+| Signed marketing success, applied or replay / 200 | `Wypisano` — `Nie będziesz już otrzymywać tych wiadomości marketingowych. Wiadomości potrzebne do obsługi konta, zamówień, płatności i subskrypcji mogą nadal przychodzić.` | `You're unsubscribed` — `You won't receive these marketing emails anymore. Messages needed to manage your account, orders, payments and subscriptions may still arrive.` |
+| Missing legacy id/email / 400 | `Brakuje danych` — `Nieprawidłowy link do wypisania.` | `Missing information` — `This unsubscribe link is incomplete.` |
+| Legacy contact absent / 404 | `Nie znaleziono` — `Nie znaleziono takiego zgłoszenia.` | `Not found` — `We couldn't find this request.` |
+| Legacy applied (and current non-tester replay branch) / 200 | `Wypisano` — `Zapisaliśmy Twoją rezygnację z wybranych wiadomości. Wiadomości potrzebne do obsługi konta, zamówień, płatności i subskrypcji mogą nadal przychodzić.` | `You're unsubscribed` — `We've recorded your opt-out from the selected messages. Messages needed to manage your account, orders, payments and subscriptions may still arrive.` |
+| Legacy already_suppressed with tester purpose / 200 | `Już wypisano` — `Twoja rezygnacja z wybranych wiadomości jest już zapisana. Wiadomości potrzebne do obsługi konta, zamówień, płatności i subskrypcji mogą nadal przychodzić.` | `Already unsubscribed` — `Your opt-out from the selected messages is already recorded. Messages needed to manage your account, orders, payments and subscriptions may still arrive.` |
+| Any handled lookup/RPC/unexpected failure / 500 | `Błąd` — `Coś poszło nie tak. Spróbuj ponownie później.` | `Error` — `Something went wrong. Try again later.` |
+
+No frozen private text becomes package copy. Invoice Polish/role bytes are public implementation facts independently retained, not imported private templates. New generic inquiry prose is fresh neutral authorship. New English invoice subjects/body and the opt-out table must be asserted in full (not merely “contains English”).
+
+
+Old opt-out display inventory (replaced by the complete table above):
+
+| Branch | Old Polish title / message | Old EN behavior |
+| --- | --- | --- |
+| Invalid signed token | `Link nieprawidlowy lub wygasl` / `Nie udalo sie przetworzyc tej prosby. Skopiuj pelny link z e-maila lub napisz na {supportEmail}.` | `Invalid or expired link` / `We couldn't process this request. Copy the full link from the email or email {supportEmail}.`; document language incorrectly Polish. |
+| Signed success/replay | `Wypisano` / `Nie bedziesz juz otrzymywac tych wiadomosci marketingowych. Maile o Twoich zamowieniach przyjda jak zwykle.` | `You're unsubscribed` / `You won't receive these marketing emails anymore. Emails about your orders still arrive as usual.`; document language incorrectly Polish. |
+| Missing legacy data | `Brakuje danych` / `Nieprawidlowy link do wypisania.` | Same Polish output despite `lang=en`. |
+| Legacy contact absent | `Nie znaleziono` / `Nie znaleziono takiego zgloszenia.` | Same Polish output despite `lang=en`. |
+| Legacy applied / non-tester replay | `Wypisano` / `Zapisalismy Twoja rezygnacje z wiadomosci marketingowych i dla testerow. Wiadomosci potrzebne do obslugi konta, zamowien, platnosci i subskrypcji moga nadal przychodzic.` | Same Polish output despite `lang=en`. |
+| Legacy tester replay | `Juz wypisany/a` / `Twoja rezygnacja z wiadomosci marketingowych i dla testerow jest juz zapisana. Wiadomosci potrzebne do obslugi konta, zamowien, platnosci i subskrypcji moga nadal przychodzic.` | Same Polish output despite `lang=en`. |
+| Handled failure | `Blad` / `Cos poszlo nie tak. Sprobuj ponownie pozniej.` | Same Polish output despite `lang=en`. |
+
+All seven page outcomes retain their layout/CSS and status. The title/message/brand
+are escaped in title and body positions: `&`, `<`, `>`, `"`, `'` become `&amp;`,
+`&lt;`, `&gt;`, `&quot;`, `&#39;`. Thus EN contractions (including `You're`,
+`won't`, `We've`, `couldn't`) change HTML bytes while displayed text follows the
+table. Safe Polish brand bytes stay identical. `htmlPage("Title", "Body")` retains its
+Polish layout/output; adversarial display values intentionally change to escaped text.
+Support is substituted as display text before escaping. No new support address.
+
+The new EN invoice/correction complete copy is: subjects `Invoice for order
+{orderRef}` / `Invoice correction for order {orderRef}`; preheaders `The document
+is attached and available in your account.` / `The correction is attached and
+available in your account.`; headings `Your invoice is ready` / `Your invoice
+correction is ready`; PDF paragraphs `Your invoice is attached as a PDF.` /
+`Your invoice correction is attached as a PDF.`; rows `Order` and `Invoice` /
+`Correction`; CTA `View documents in your account`; muted note `The document
+remains available in your account regardless of delivery of this message.`.
+
+Generic inquiry has no replaced sender. Its fresh Polish/EN receipt headings equal
+its subjects above; greetings are `Dziękujemy za kontakt, {displayName}.` /
+`Thank you for contacting us, {displayName}.`; body/preheader `Potwierdzamy
+otrzymanie Twojego zapytania.` / `We confirm receipt of your inquiry.`. Operator
+headings equal notice subjects; body/preheader `Otrzymano nowe zapytanie.` /
+`A new inquiry has been received.`; rows `Imię i nazwisko` / `Name` and `Kontakt`
+/ `Contact`, followed by caller-supplied details. Caller supplies signoff and
+operator URL. There is no response-time, discovery-call or sales-offer promise.
+
+Explicit byte-identical list:
+
+- Default Polish invoice and correction: subject, preheader, heading, PDF paragraph,
+  order/document labels and resolved values, CTA label and `/konto?sekcja=orders`,
+  availability note, selected brand/chrome, entire HTML/text, sender/recipient,
+  attachment filename/base64, idempotency key and evidence-first refusal. Both
+  original W4 whole-message digests and all existing adapter assertions remain.
+- All eight existing role combinations: Polish/EN × admin/distributor × active/pending;
+  complete subjects/preheaders/headings/status/body/expiry/verified-account clause,
+  CTA label and exact `${siteUrl}/admin` join (including trailing-slash behavior),
+  muted footer, brand/chrome and full HTML/text. All eight W4 digests unchanged.
+- Existing private-label EN inquiry confirmation/operator copy, private route,
+  recipient/reply target, country/CZ formatting and origin refusal: frozen source,
+  fixture and W4 digest unchanged. Generic content is not mapped onto these slugs.
+- All 32 existing commerce/subscription content families, marketing footer,
+  renderer/block output, signed-token bytes/URLs/expiry/old exp-less verification,
+  purpose allowlist and default selection: unchanged. Existing parity snapshots
+  and token assertions unchanged. Common email `<html>` remains unchanged.
+- Opt-out methods, query parsing and exact `lang=en` selector, token verification,
+  purpose selection, lookup/RPC inputs/durability/replay, logging, statuses, privacy
+  and presentation headers: unchanged. Non-GET stays byte-identical 405 JSON
+  `{ "error": "method not allowed" }` with `Allow: GET`. The legacy/signed web
+  display changes only as enumerated above; no whole Polish outcome is claimed equal.
+- Existing previews and unknown/no-send absence, Auth inactive-content refusal,
+  notification controls, guard insertion, transport outcome mapping, ledgers and
+  subscription state/timing: unchanged. Only the two named Polish previews are added.
+- C5 the adopter: preserve exact current locale/copy and exceptions: Polish invoices,
+  bilingual roles, private EN B2B, legacy Polish page, private routes/purposes/provider
+  mappings. No the adopter file or fixture is changed or adopted by this run.
+
+### B2 evidence and cumulative X2
+
+The unchanged nine-file witness baseline passed 146/146 before subject edits,
+including W4's fourteen cases. A first zero-test collection attempt failed because
+workspace builds were absent; building the existing packages resolved it.
+Only the three enumerated opt-out W4 snapshot entries change; both invoice,
+eight role and private-label inquiry digests remain byte-identical.
+B2 authors 40 package cases and 12 reference cases (52 counted cases); fixture
+scenarios inside cases are not claimed as exempt generated boundary iterations.
+The three identical final focused runs each passed 96 cases across the five
+new/changed test files; existing cases are reused, not counted again. The three
+boundary selections each passed exactly 12 new per-source iterations (four files
+× three existing boundary rules). Vitest truncates displayed parameter names;
+the final selection matches their unique prefixes and asserts the count, rather
+than accepting the initial zero-selected measurement attempt.
+
+B2 adds **52 counted cases** and **12 generated boundary iterations**, separately.
+The complete changed-file median sum is **0.474409668 s**; the selected boundary
+file median is **0.014540527 s**. Conservatively charging both adds
+**0.488950195 s** to the inherited **1.450163331 s**, giving **1.939113526 s**
+local cumulative proxy. The cumulative ledger is **400 counted cases**
+(**300 over +100**), **267 boundary iterations**, **667 runner additions**.
+Local nominal headroom is **28.060886474 s** against +30 s. This is summed local
+file-test time (including boundary work), not the binding hosted median/p90;
+hosted measurements remain pending. Broker waits and negative-plant repetitions
+are excluded; the longest observed final measurement admission wait was 51 s.
+X2 keeps the inherited case-overrun/post-loop-revisit condition; no allowance is
+reset, no witness retired and no hosted headroom is claimed.
+
+Twenty-one isolated negative plants each failed discriminating assertions and
+passed after restoration. They cover invoice locale, exact query, number fallback,
+kind, key, required evidence and PDF; pending-role truth; generic inquiry locale
+and absence of private sales promises; document/legacy locale; durable RPC
+refusal; signed purpose scope and old exp-less links; privacy headers; page
+escaping; preview mapping; contracts loader/environment and inventory; and
+private-label country preservation. No plant touched the task worktree subjects.
+W3 and all existing effect-order witnesses also ran in the complete suite.
+
+Local gate results at the materialized candidate:
+
+- Generators: API snapshot +114/-0 declaration lines; catalogue adds the eight
+  new paths using the existing generator, source-release contract changes only
+  inventory/class/catalogue digests. Navigation regeneration yields no additional
+  source-map bytes. No package, graph, schema, cap or identity-policy change.
+- Ast-grep and lint pass (lint retains 33 pre-existing warnings, zero errors).
+  Public typecheck passes with zero unresolved edges and zero diagnostics.
+  Both neutrality checks pass; whole-tree check uses the exact approved base
+  and reports zero increases. Changed-file gitleaks reports zero findings.
+- Production `assertMigrationBlocks` passes with committed base reads at the
+  exact base and a distinct symbolic `HEAD:` working-tree overlay. The first
+  same-SHA overlay was discarded because base equals HEAD and would read the
+  candidate on both sides; it is not completion evidence.
+- The supplemental working-tree tarball passes content and every existing pack/
+  browser cap: 393,984 packed bytes, 1,678,695 unpacked bytes, 665 files; code
+  class 330,821 packed bytes / 648 files, docs 28,006 packed bytes / 5 files.
+  The complete contracts entry is **8,210 B / 11,776 B**, leaving 3,566 B.
+  The other browser entry is 2,390 B / 4,800 B. No cap decision is needed.
+- Supplemental installed-artifact checks pass exact export inventory, isolated
+  optional-peer absence/refusal, all existing nonadapter imports, NodeNext and
+  Bundler declarations and the additive bilingual fetch-forbidden smoke. These
+  are materialized working-tree artifacts, not clean committed package admission
+  or PostgreSQL/ACL/replay proof. The latter remains a supervisor gate.
+- Complete `test:required`: **7,977 passed / 7,978**, one failed assertion.
+  Complete `npm test`: **14,355 passed / 14,358**, one failed assertion and two
+  existing opt-in database cases skipped. Both failures are the same package
+  content test rejecting new untracked source and its derived output, before
+  its size assertions. No test is removed, loosened or reported green.
+- Both subscription profile builds pass with relative `dist-subscription` and
+  `dist-subscription-ssr` output, then those two generated directories are removed.
+- Exact publication policy refuses the new untracked files; package packing
+  refuses uncommitted platform changes. The working-tree publication overlay
+  validates inventory and six substantive owner obligations; its remaining
+  browser owner obligation is prepared as the exact no-impact commit trailer
+  in the handoff. The omitted architecture-page edit was not authorized, so
+  that page remains unchanged. These refusals are retained, not bypassed.
+
+Remaining delivery boundary: a supervisor must include the scoped browser-owner
+trailer when committing, rerun the exact policy/package/required/full gates on
+the committed candidate, obtain the stabilized API/control/budget read and two
+fresh full native reviews, then complete signed-candidate verification within
+actual authority. No native review, receipt, counter, expiry, hosted result,
+commit, PR, merge, release or adopter change is claimed by this run.
+
+Self-retro: the initial test collection lacked built workspace artifacts; the
+corrected unchanged baseline passed before subject edits. Two local evidence
+pitfalls were corrected: same-SHA base/head overlays compare the wrong bytes,
+and Vitest truncates parameter names so a full-path selector can select zero.
+Use distinct base/candidate read identities and assert selected counts. Keeping
+generic inquiry pure avoided private-label and schema expansion. No successor
+or additional process is opened.
 
 ## B3 native stores
 
@@ -494,9 +709,9 @@ unavailable category before an effect.
 
 ### B3 execution and X2 ledger
 
-Inherited cumulative ledger before B2/B3: **348 counted cases**, **255 boundary
-iterations**, **603 runner additions**, **1.450163331 s** summed local file-median
-proxy. B2 additions are deliberately not guessed or incorporated. B3 adds **30 runner
+Inherited cumulative ledger after B2 on main `d6ee118`: **400 counted cases**,
+**267 boundary iterations**, **667 runner additions**, **1.939113526 s** summed
+local file-median proxy. B3 adds **30 runner
 cases** and **18 generated boundary iterations** (three existing source checks
 for each of six new production files). Its **57 authored subscenario executions**
 are additionally charged, rather than called exempt boundaries: HTTP failures 3,
@@ -505,9 +720,9 @@ capability/ACL variants 9, browser-role/table probes 24, operator states 3,
 additional policy outcomes 4, worker failure 1, capture separation 1, invalid
 directory inputs 2 and distinct microseconds 1. Thus B3's conservative counted
 charge is **87**, its actual runner increase is **48**, and the cumulative ledger
-before B2 is **435 counted / 273 boundary / 651 runner additions**. Counted and
+after B2 + B3 is **487 counted / 285 boundary / 715 runner additions**. Counted and
 runner totals differ because the 57 inner scenarios share runner cases. The
-recorded counted overrun is **335** against +100; this is not a new allowance.
+recorded cumulative counted overrun is **387** against +100; this is not a new allowance.
 
 Three identical passing selections ran on the stabilized implementation: 61
 native/contract/consumer-falsifier cases and the complete 682-case existing
@@ -529,11 +744,11 @@ not concealed as passing measurements.
 | `tests/postgres/communicationsNative.test.ts` | 11.417660750000 |
 
 B3 sums to **17.016123582 s**, and the inherited cumulative local proxy is
-**18.466286913 s**, leaving **11.533713087 s** of +30. There is **no measured local
+**18.955237108 s**, leaving **11.044762892 s** of +30. There is **no measured local
 proxy time overrun**. The installed native PostgreSQL proof separately took
 **2.239 s** including setup/cleanup in one passing execution; that is a disclosed
 subprocess wall time, not a three-run median. Even charging it again gives
-20.705286913 s. Hosted median admission remains binding and is not claimed here.
+21.194237108 s. Hosted median admission remains binding and is not claimed here.
 The wide required suite's accumulated test times were 595.82 s and 707.28 s in
 unpaired local executions under different machine load; they are not a paired
 8,275-case baseline comparison or a waiver of hosted timing.

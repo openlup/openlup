@@ -9,6 +9,20 @@
   Native consent excludes managed frequency caps and legacy contact-touching;
   evaluate is not a send-time fence. Existing exports and managed paths remain.
 
+- Add neutral Polish/EN invoice, role, opt-out and generic inquiry default content
+  factories with optional whole-copy injection in `communications/contracts`.
+  Reference invoice/role rendering delegates to them; invoice construction may
+  explicitly select EN, while implicit Polish and existing role bytes are preserved.
+  Add Polish invoice/role previews and a pure inquiry binding without a new sender.
+
+Migration: B2 changes reference opt-out page copy in both locales, translates
+legacy/error outcomes for `lang=en`, corrects EN document language and escapes
+all display values. Hosts preserving legacy page bytes must retain their own
+presentation binding. Token verification, purpose scope, durable RPC and HTTP
+statuses/headers are unchanged. Invoice locale defaults to Polish and is opt-in at
+construction only; no persisted language or runtime activation is added. All
+four contracts exports are additive; existing content copy interfaces remain.
+
 - Add an opt-in immutable consent-purpose registry with mandatory classification,
   registry-bound policy/token/newsletter contracts and explicit host preference
   persistence. Legacy defaults and managed purpose CHECKs remain unchanged;

@@ -45,6 +45,15 @@ a stable soft-account refusal without a new identity or contact link. Matching
 existing links remain replayable. See the [identity migration](../../docs/platform/IDENTITY.md#responsibility-and-composition)
 for explicit adopter policy injection and the trust boundary.
 
+M04 B2 delegates invoice and role content/rendering to the
+[reference binding](../../src/domains/communications/email/referenceContentBinding.ts).
+Invoice accepts optional construction locale (Polish default); EN uses the localized
+account route. Default invoice and all role bytes stay identical, including pending
+invitation wording. Send guards, processing evidence before invoice send, PDF/key,
+uncertainty mapping, notification controls and ledger ordering remain adapter-owned
+and unchanged. The private-label inquiry presenter is untouched; generic inquiry
+has only a pure presentation binding and no activated sender.
+
 ## Capability Map
 
 | Capability | Current adapters | Owns | First docs |

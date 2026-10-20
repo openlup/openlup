@@ -5,7 +5,7 @@
  * the `unsubscribe` Edge function — the same two request shapes (a signed
  * marketing token, and the legacy tester `id`+`email` link), the same
  * `communication_apply_unsubscribe` RPC contract with the same durability
- * preconditions, and the same rendered copy — and that Edge function was retired
+ * preconditions, and the original rendered copy — and that Edge function was retired
  * in source on 2026-08-30 with no redirect shim.
  *
  * Which host a delivered link points at is a per-environment configuration fact
@@ -17,6 +17,8 @@
  * Tokens minted from now on carry a signed 548-day `exp`; older tokens carry
  * none and stay verifiable, so this route must keep accepting both.
  *
+ * M04 B2 delegates only localized display and escaping to neutral content.
+ *
  * Privacy: the token rides in the query string, so the response suppresses the
  * referrer and forbids caching; the structured log records the outcome only,
  * never the address or the token.
@@ -26,6 +28,8 @@ import { createServiceRoleClient } from "../server/_lib/admin-domain/auth.js";
 import { verifyUnsubscribeToken } from "../src/domains/communications/unsubscribeToken.js";
 import type { CommunicationPurpose } from "../src/domains/communications/types.js";
 import { emailPresentation } from "#email-presentation";
+import type { Locale } from "@openlup/platform/communications/contracts";
+import { renderOptOutPage, renderReferenceOptOut } from "../src/domains/communications/email/referenceContentBinding.js";
 
 /** Purposes a recipient may switch off through an unsubscribe link. */
 const UNSUBSCRIBE_PURPOSES = new Set<CommunicationPurpose>([
@@ -34,33 +38,8 @@ const UNSUBSCRIBE_PURPOSES = new Set<CommunicationPurpose>([
   "marketing_newsletter",
 ]);
 
-// The Edge original hardcodes this deployment's brand and support address. Read
-// them from the presentation seam instead: the rendered bytes are identical for
-// this deployment, and the route stays publishable.
-const BRAND_NAME = emailPresentation.brand.email.copyBrandName;
-const SUPPORT_EMAIL = emailPresentation.brand.supportEmail;
-
-export function htmlPage(title: string, message: string): string {
-  return `<!DOCTYPE html>
-<html lang="pl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title} - ${BRAND_NAME}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #0a0a0f; color: #f0efe9; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-    .card { max-width: 400px; text-align: center; padding: 3rem 2rem; border: 1px solid rgba(240,239,233,0.08); border-radius: 1rem; background: rgba(30,30,40,0.5); }
-    h1 { color: #5de0c0; font-size: 1.5rem; margin-bottom: 0.5rem; }
-    p { color: rgba(240,239,233,0.6); line-height: 1.6; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>${title}</h1>
-    <p>${message}</p>
-  </div>
-</body>
-</html>`;
+export function htmlPage(title: string, message: string, locale: Locale = "pl"): string {
+  return renderOptOutPage(title, message, locale);
 }
 
 export type UnsubscribeClient = {
@@ -180,9 +159,10 @@ export function createUnsubscribeRouteHandler(deps: UnsubscribeRouteDeps) {
       return;
     }
 
+    let lang: Locale = "pl";
     try {
       const params = readSearchParams(req);
-      const lang = params.get("lang") === "en" ? "en" : "pl";
+      lang = params.get("lang") === "en" ? "en" : "pl";
 
       // Commerce/marketing path: a signed token carrying {email, purpose}. No
       // testers row required (commerce customers are not testers). The token is
@@ -198,12 +178,7 @@ export function createUnsubscribeRouteHandler(deps: UnsubscribeRouteDeps) {
           || !UNSUBSCRIBE_PURPOSES.has(payload.purpose as CommunicationPurpose)
         ) {
           logOutcome("token_rejected", { secretConfigured: Boolean(deps.tokenSecret) });
-          sendPage(res, 400, htmlPage(
-            lang === "en" ? "Invalid or expired link" : "Link nieprawidlowy lub wygasl",
-            lang === "en"
-              ? `We couldn't process this request. Copy the full link from the email or email ${SUPPORT_EMAIL}.`
-              : `Nie udalo sie przetworzyc tej prosby. Skopiuj pelny link z e-maila lub napisz na ${SUPPORT_EMAIL}.`,
-          ));
+          sendPage(res, 400, renderReferenceOptOut(lang, "invalid_link"));
           return;
         }
 
@@ -213,12 +188,7 @@ export function createUnsubscribeRouteHandler(deps: UnsubscribeRouteDeps) {
           metadata: { linkPurpose: payload.purpose, channel: "token" },
         });
         logOutcome("token_applied", { rpcStatus: result.status, purpose: payload.purpose });
-        sendPage(res, 200, htmlPage(
-          lang === "en" ? "You're unsubscribed" : "Wypisano",
-          lang === "en"
-            ? "You won't receive these marketing emails anymore. Emails about your orders still arrive as usual."
-            : "Nie bedziesz juz otrzymywac tych wiadomosci marketingowych. Maile o Twoich zamowieniach przyjda jak zwykle.",
-        ));
+        sendPage(res, 200, renderReferenceOptOut(lang, "marketing_applied"));
         return;
       }
 
@@ -228,7 +198,7 @@ export function createUnsubscribeRouteHandler(deps: UnsubscribeRouteDeps) {
 
       if (!testerId || !email) {
         logOutcome("missing_params");
-        sendPage(res, 400, htmlPage("Brakuje danych", "Nieprawidlowy link do wypisania."));
+        sendPage(res, 400, renderReferenceOptOut(lang, "missing_information"));
         return;
       }
 
@@ -244,7 +214,7 @@ export function createUnsubscribeRouteHandler(deps: UnsubscribeRouteDeps) {
 
       if (!tester) {
         logOutcome("tester_not_found");
-        sendPage(res, 404, htmlPage("Nie znaleziono", "Nie znaleziono takiego zgloszenia."));
+        sendPage(res, 404, renderReferenceOptOut(lang, "not_found"));
         return;
       }
 
@@ -263,20 +233,14 @@ export function createUnsubscribeRouteHandler(deps: UnsubscribeRouteDeps) {
       logOutcome("tester_applied", { rpcStatus: result.status, purposeCount: purposes.length });
 
       if (result.status === "already_suppressed" && shouldPauseLegacySequence) {
-        sendPage(res, 200, htmlPage(
-          "Juz wypisany/a",
-          "Twoja rezygnacja z wiadomosci marketingowych i dla testerow jest juz zapisana. Wiadomosci potrzebne do obslugi konta, zamowien, platnosci i subskrypcji moga nadal przychodzic.",
-        ));
+        sendPage(res, 200, renderReferenceOptOut(lang, "legacy_replay"));
         return;
       }
 
-      sendPage(res, 200, htmlPage(
-        "Wypisano",
-        "Zapisalismy Twoja rezygnacje z wiadomosci marketingowych i dla testerow. Wiadomosci potrzebne do obslugi konta, zamowien, platnosci i subskrypcji moga nadal przychodzic.",
-      ));
+      sendPage(res, 200, renderReferenceOptOut(lang, "legacy_applied"));
     } catch (error) {
       logOutcome("error", { reason: error instanceof Error ? error.message : "unknown" });
-      sendPage(res, 500, htmlPage("Blad", "Cos poszlo nie tak. Sprobuj ponownie pozniej."));
+      sendPage(res, 500, renderReferenceOptOut(lang, "error"));
     }
   };
 }

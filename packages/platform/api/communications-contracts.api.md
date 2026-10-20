@@ -757,6 +757,76 @@ export * from "./subscriptionRenewalUpcoming.js";
 export * from "./subscriptionResumed.js";
 export * from "./subscriptionWelcome.js";
 export * from "./subscriptionWinback.js";
+export * from "./invoiceDocumentContent.js";
+export * from "./roleNotificationContent.js";
+export * from "./inquiryContent.js";
+export * from "./optOutContent.js";
+```
+## dist/communications/contracts/inquiryContent.d.ts
+
+```ts
+import type { Locale } from "./email.js";
+import { type DataRow, type EmailBlock } from "./blocks.js";
+export interface InquiryVars {
+    displayName: string;
+    contact: string;
+    /** Host-resolved labels and values; omit optional rows rather than inventing them. */
+    details: DataRow[];
+    operatorUrl: string;
+}
+export interface InquiryCopy {
+    receiptSubject: string;
+    receiptGreeting: (name: string) => string;
+    receiptBody: string;
+    noticeSubject: string;
+    noticeBody: string;
+    nameLabel: string;
+    contactLabel: string;
+    cta: string;
+}
+/** Presentation only: no recipient, sender, response-time promise or country policy. */
+export declare function createInquiryContentFactory(copy?: Record<Locale, InquiryCopy>): {
+    inquiryReceiptEmailContent: (locale: Locale, vars: InquiryVars, signoff: string) => {
+        subject: string;
+        preheader: string;
+        blocks: EmailBlock[];
+    };
+    inquiryNoticeEmailContent: (locale: Locale, vars: InquiryVars, signoff: string) => {
+        subject: string;
+        preheader: string;
+        blocks: EmailBlock[];
+    };
+};
+```
+## dist/communications/contracts/invoiceDocumentContent.d.ts
+
+```ts
+import type { Locale } from "./email.js";
+import { type EmailBlock } from "./blocks.js";
+export interface InvoiceDocumentVars {
+    orderRef: string;
+    documentNumber: string;
+    kind: "invoice" | "correction";
+    accountDocumentsUrl: string;
+}
+export interface InvoiceDocumentCopy {
+    subject: (orderRef: string, correction: boolean) => string;
+    preheader: (correction: boolean) => string;
+    heading: (correction: boolean) => string;
+    attachment: (correction: boolean) => string;
+    orderLabel: string;
+    documentLabel: (correction: boolean) => string;
+    cta: string;
+    availability: string;
+}
+/** Pure defaults; hosts may replace the complete bilingual copy. */
+export declare function createInvoiceDocumentContentFactory(copy?: Record<Locale, InvoiceDocumentCopy>): {
+    invoiceDocumentEmailContent: (locale: Locale, vars: InvoiceDocumentVars) => {
+        subject: string;
+        preheader: string;
+        blocks: EmailBlock[];
+    };
+};
 ```
 ## dist/communications/contracts/marketingAutomation.d.ts
 
@@ -910,6 +980,21 @@ export interface NewsletterWebhookPort<Purpose extends string = NewsletterMarket
         metadata: Record<string, unknown>;
     }): Promise<void>;
 }
+```
+## dist/communications/contracts/optOutContent.d.ts
+
+```ts
+import type { Locale } from "./email.js";
+export type OptOutOutcome = "invalid_link" | "marketing_applied" | "missing_information" | "not_found" | "legacy_applied" | "legacy_replay" | "error";
+export interface OptOutContent {
+    title: string;
+    message: string;
+}
+export type OptOutCopy = Record<OptOutOutcome, Record<Locale, OptOutContent>>;
+/** Display only; the caller independently verifies and durably records opt-out. */
+export declare function createOptOutContentFactory(copy?: OptOutCopy): {
+    optOutContent: (locale: Locale, outcome: OptOutOutcome, supportEmail: string) => OptOutContent;
+};
 ```
 ## dist/communications/contracts/orderCanceled.d.ts
 
@@ -1277,6 +1362,35 @@ export declare function createReviewRequestContentFactory(input: {
     marketingUnsubscribeFooter: (locale: Locale, unsubscribeUrl: string) => EmailBlock[];
 }): {
     reviewRequestEmailContent: (locale: Locale, vars: ReviewRequestEmailVars, signoff: string) => ReviewRequestEmailContent;
+};
+```
+## dist/communications/contracts/roleNotificationContent.d.ts
+
+```ts
+import type { Locale } from "./email.js";
+import { type EmailBlock } from "./blocks.js";
+export interface RoleNotificationVars {
+    role: "admin" | "distributor";
+    operatorUrl: string;
+    /** Absent means active membership; present means a pending invitation. */
+    expiresAt?: string;
+}
+export interface RoleNotificationCopy {
+    subject: string;
+    heading: string;
+    status: string;
+    body: string;
+    button: string;
+    footer: string;
+}
+export type RoleNotificationCopyFactory = (role: RoleNotificationVars["role"], expiresAt?: string) => RoleNotificationCopy;
+/** Pure defaults with the same active/pending semantics in both locales. */
+export declare function createRoleNotificationContentFactory(copy?: Record<Locale, RoleNotificationCopyFactory>): {
+    roleNotificationEmailContent: (locale: Locale, vars: RoleNotificationVars) => {
+        subject: string;
+        preheader: string;
+        blocks: EmailBlock[];
+    };
 };
 ```
 ## dist/communications/contracts/shipmentDelivered.d.ts

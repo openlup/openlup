@@ -4,6 +4,18 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+M04 B2 exposes neutral Polish/EN invoice, role, inquiry and opt-out content through
+`@openlup/platform/communications/contracts`. Reference invoice locale is an
+optional construction choice with Polish default; the existing accounting runtime
+still omits it. Explicit EN changes only content and the account-documents URL.
+Role preserves existing output and selection. The public opt-out route uses the
+selected locale for all seven display outcomes, with escaped brand/support/text
+and correct document language; verification, durable suppression, HTTP statuses,
+privacy headers and logging remain unchanged. Generic inquiry is a pure
+presentation binding, not a new route/sender. Private-label inquiry and adopter
+legacy copy/locale exceptions remain owned by their current hosts. See the
+[B2 mapping ledger](plans/oss-m04-communications-triggers.md#b2-changed-expectations-and-preservation).
+
 The native [communications lifecycle binding](../../server/runtime/communications/communicationsLifecycleBinding.ts)
 is an explicit host-callable capability for `node-postgres` with `DATABASE_URL`.
 It registers real network references, reconciles injected neutral observations,
@@ -346,6 +358,7 @@ falsifiers; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) f
 execution. Second-runtime and deployed conformance remain separate adoption proof.
 
 ## Provider and host boundaries
+
 
 Communications server algorithms now delegate through the platform package. The
 reference bindings still own the maintained HTTP mail provider egress/environment selection, origin defaults,
