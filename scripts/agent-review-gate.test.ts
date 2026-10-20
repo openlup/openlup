@@ -106,6 +106,24 @@ describe('six real Git witnesses', () => {
       expect((await readdir(join(f.scratch, 'agent-review'))).some(name => /^session-.*\.json$/.test(name))).toBe(false);
     }
   });
+  it('carries over disjoint export additions to the same package manifest with real Git', async () => {
+    const f = await fixture(); const path = 'packages/p/package.json';
+    await mkdir(join(f.cwd, 'packages/p'), { recursive: true });
+    const manifest = { name: '@openlup/p', exports: { '.': './index.js', './middle': './middle.js', './last': './last.js' } };
+    const writeManifest = value => writeFile(join(f.cwd, path), `${JSON.stringify(value, null, 2)}\n`);
+    await writeManifest(manifest); f.git('add', path); f.git('commit', '-qm', 'base manifest');
+    const base = f.git('rev-parse', 'HEAD');
+    await writeManifest({ ...manifest, exports: { ...manifest.exports, './b': './b.js' } });
+    f.git('add', path); f.git('commit', '-qm', 'PR export addition');
+    const head = f.git('rev-parse', 'HEAD'); const tree = f.git('rev-parse', 'HEAD^{tree}');
+    f.git('checkout', '-q', '--detach', base);
+    await writeManifest({ ...manifest, exports: { './a': './a.js', ...manifest.exports } });
+    f.git('add', path); f.git('commit', '-qm', 'main export addition');
+    const queueBase = f.git('rev-parse', 'HEAD');
+    const groupTree = f.git('merge-tree', '--write-tree', queueBase, head);
+    const decision = await carryOverSourceReview(f.cwd, { base, head, tree, changedPaths: [path] }, { base: queueBase, tree: groupTree });
+    expect(decision).toEqual({ ok: true, code: 'reviewed', reason: 'disjoint base move with export additions' });
+  });
   it('hosted wait admits in one fake API poll and verify-command runs only its stub command', async () => {
     const f = await fixture(); const candidate = await captureSessionCandidate(f.cwd, undefined, { env: {} });
     const now = Date.now(); let session = prepareCandidate(null, { ...candidate, intent, authorSessionId: 'author' }, now);
