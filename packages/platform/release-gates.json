@@ -191,7 +191,10 @@
         "test/pricing/commercePriceAuthority.test.ts",
         "test/pricing/subscriptionPricePolicy.test.ts",
         "test/pricing/pricingPolicyToken.test.ts",
-        "test/pricing/commercePricingPolicyErrors.test.ts"
+        "test/pricing/commercePricingPolicyErrors.test.ts",
+        "test/pricing/quoteContracts.test.ts",
+        "test/pricing/catalogFactsProvenance.test.ts",
+        "test/pricing/commerceTaxProfileGuard.test.ts"
       ],
       "entrypoint": "dist/pricing/index.d.ts",
       "snapshot": "api/pricing.api.md"
@@ -202,7 +205,8 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/pricing/subscriptionPricePolicy.test.ts"
+        "test/pricing/subscriptionPricePolicy.test.ts",
+        "test/pricing/quoteContracts.test.ts"
       ],
       "entrypoint": "dist/pricing/contracts/index.d.ts",
       "snapshot": "api/pricing-contracts.api.md"

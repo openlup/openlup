@@ -22,10 +22,17 @@ by `@openlup/platform/pricing`; the reference server files retain named exports
 of the same classes and functions. `commercePricingPolicy.ts` still composes
 feature flags, the signing secret and readiness, including historical-token
 honoring and cutover refusals. `offerPolicyContracts.ts` imports package version
-constants and DTOs but retains the browser's local Zod schemas. Quote/offer
-schemas and handlers stay here, so this move changes neither wire validation nor
-HTTP status mapping. The pure error case moves to the package; composition tests
-and the browser/error binding guard stay beside the reference.
+constants and DTOs but retains the browser's local Zod schemas. The pricing package now also owns neutral money/tax/quote DTOs and generic quote
+ports, server quote/evidence validation, bounded quote catalog facts, provenance
+and the tax guard. The provenance/tax server paths and quote/catalog errors use
+named package exports. The legacy catalog bridge retains energy, species and
+allergen context locally; no rich catalog import enters the package. Browser
+quote, evidence and primitive validators remain here because the server entry
+must not enter the client bundle. Their existing currency/context rules and quote
+equations are compared with the injected package schema binding. Handlers, DB
+quote computation, snapshots, offer policy and readiness stay here, preserving
+HTTP behavior, flat shipping and promotion composition. Neutral quote/provenance/
+tax suites move to the package; rich catalog-adapter tests remain local.
 
 ## Public surface (import cross-domain ONLY these)
 - UI/BFF clients: `commerceClient.ts`, `omsClient.ts`,

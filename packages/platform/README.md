@@ -48,13 +48,26 @@ feature flags and readiness remain reference composition responsibilities.
 Reference paths use named exports of the same functions and error classes;
 the browser keeps its existing policy schema binding locally.
 
+The quote foundation also owns neutral money/tax/quote DTOs, promotion evidence
+and rejection details, bounded catalog facts, provenance creation/public stripping
+and the supported-tax-profile guard. `createCommerceQuoteSchemas` requires the
+host's currency, product-slug and context schemas; `createCommerceQuotePrimitives`
+requires currency validation. No settlement default or catalog policy is installed.
+The original line, currency, VAT, discount and shipping equations and v1/v2
+provenance refusals are preserved. Quote ports accept host request/response types.
+The reference keeps its rich browser request/context validation and catalog bridge;
+server compatibility paths export the same error classes and provenance/tax functions.
+The portable schema counterparts stay server-side; binding tests compare their
+results and diagnostics with browser validation.
+
 The package witnesses in `test/pricing/` move the incumbent authority, policy,
-token and pure error-mapping assertions. Reference composition tests remain in
-the application, with a binding guard for error identity and browser schemas.
-The existing cold consumer imports both pricing entries and compiles their
-installed declarations without optional provider peers. Quote computation,
-offer projections/handlers and acquisition selection/consent belong to later P2
-parts; P2a adds no store, SQL descriptor, migration, route or activation.
+token, error-mapping, quote-equation, provenance and tax-guard assertions.
+Reference composition and rich catalog-adapter tests remain in the application.
+The existing cold consumer imports both pricing entries, exercises quote validation
+and tax refusal, and compiles installed declarations without optional provider peers.
+DB quote computation, snapshots, handlers, offer projection, readiness and settings
+remain reference-owned in this part. No store, SQL descriptor, migration, route,
+acquisition selection or activation is added.
 
 ## Catalog
 

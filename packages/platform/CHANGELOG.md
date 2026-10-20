@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Move the existing neutral quote foundation into pricing: money/tax/quote contracts, injected server validation, provenance, bounded catalog facts and tax refusal. Preserve reference browser/context validation and existing quote equations; DB computation and offer behavior remain unchanged.
+
 - Add experimental `./pricing` and `./pricing/contracts` entries by moving the existing OpenLup authority, subscription policy, assignment token and refusal mapping unchanged. Named reference exports preserve identity; browser schemas and feature-flag/secret/readiness composition remain local. Quote, offer and acquisition behavior remains for later P2 parts.
 
 - Add experimental `catalog` and dependency-free `catalog/contracts` entries by

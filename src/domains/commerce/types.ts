@@ -1,7 +1,7 @@
-import type { CatalogProductSlug } from "../catalog/types.js";
+import type { CommerceQuote as NeutralCommerceQuote, CommerceCurrency, CommerceMoney, CartLineInput } from "@openlup/platform/pricing/contracts";
+export type { CommerceCurrency, CommerceTaxCountry, CommerceTaxCategory, CommerceTaxLegalBasis, CommerceMoney, CartLineInput, CommerceTaxProfile, CommerceTaxBreakdown, CommerceQuotePricingComponent, CommerceQuoteLine, CommercePromotionCustomerSemantic, CommerceQuoteDiscount, CommerceCodeRejectionReason, CommerceCodeRejection } from "@openlup/platform/pricing/contracts";
 import type { PaymentIntentStatus } from "../payment/types.js";
 import type { SubscriptionCycleStatus } from "../subscription/types.js";
-import type { CommerceCodeRejectionDetail } from "./quoteCodeRejectionDetails.js";
 export type { CommerceCodeRejectionDetail } from "./quoteCodeRejectionDetails.js";
 export {
   deriveOrderMoney,
@@ -17,7 +17,8 @@ export type {
   OrderMoneyIssueCode,
   OrderMoneyItemRow,
 } from "./orderMoney.js";
-export const COMMERCE_CONTRACT_VERSION = "commerce.v0";
+export { COMMERCE_CONTRACT_VERSION } from "@openlup/platform/pricing/contracts";
+import { COMMERCE_CONTRACT_VERSION } from "@openlup/platform/pricing/contracts";
 export { PLATFORM_ACCEPTED_CURRENCIES as COMMERCE_CURRENCIES } from "../../lib/currency/platformCurrency.js";
 export const CART_STATUSES = ["draft"] as const;
 export const CHECKOUT_STATUSES = ["not_configured", "created", "expired"] as const;
@@ -62,13 +63,6 @@ export const OMS_INVENTORY_STATUSES = [
   "consumed",
   "review_required",
 ] as const;
-export type CommerceCurrency = string;
-// The closed one-member vocabularies these three aliases came from are gone:
-// Stage 1 widened the aliases and nothing read the arrays again. See
-// src/lib/currency/fiscalProfile.ts, which now owns the facts they froze.
-export type CommerceTaxCountry = string;
-export type CommerceTaxCategory = string;
-export type CommerceTaxLegalBasis = string;
 export type CartStatus = (typeof CART_STATUSES)[number];
 export type CheckoutStatus = (typeof CHECKOUT_STATUSES)[number];
 export type OrderDraftStatus = (typeof ORDER_DRAFT_STATUSES)[number];
@@ -77,41 +71,6 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type OmsPaymentStatus = "not_started" | PaymentIntentStatus;
 export type OmsFulfillmentBlockReason = (typeof OMS_FULFILLMENT_BLOCK_REASONS)[number];
 export type OmsInventoryStatus = (typeof OMS_INVENTORY_STATUSES)[number];
-
-export interface CommerceMoney {
-  amountMinor: number;
-  currency: CommerceCurrency;
-}
-
-export interface CartLineInput {
-  sku: string;
-  quantity: number;
-  variantId?: string;
-  modeAtLine?: "one_time" | "subscription";
-  isAddon?: boolean;
-}
-
-export interface CommerceTaxProfile {
-  included: true;
-  country: CommerceTaxCountry;
-  category: CommerceTaxCategory;
-  vatRateBps: number;
-  legalBasis: CommerceTaxLegalBasis;
-}
-
-export interface CommerceTaxBreakdown extends CommerceTaxProfile {
-  netAmount: CommerceMoney;
-  vatAmount: CommerceMoney;
-  grossAmount: CommerceMoney;
-}
-
-export interface CommerceQuotePricingComponent {
-  scope: "line" | "order";
-  componentType: "base_unit" | "mode_discount" | "qty_tier" | "promo" | "loyalty" | "shipping" | "bundle";
-  amountMinor: number;
-  reasonCode: string;
-  reasonPayload: Record<string, unknown>;
-}
 
 export interface CommerceQuoteContext {
   mode: "one_time" | "subscription";
@@ -138,79 +97,8 @@ export interface CommerceQuoteContext {
   };
 }
 
-export interface CommerceQuoteLine {
-  sku: string;
-  productSlug: CatalogProductSlug;
-  quantity: number;
-  unitPriceGross: CommerceMoney;
-  lineSubtotalGross: CommerceMoney;
-  tax: CommerceTaxBreakdown;
-  pricingComponents?: CommerceQuotePricingComponent[];
-}
-
-export type CommercePromotionCustomerSemantic =
-  | "first_purchase_10"
-  | "first_subscription_50"
-  | "bundle_5";
-
-export interface CommerceQuoteDiscount {
-  promotionId: string;
-  code?: string | null;
-  label?: string;
-  appliesTo: "order_total" | "line" | "shipping";
-  amountOffMinor: number;
-  reasonCode: string;
-  /** Stable presentation identity for canonical offers; never inferred from an editable name. */
-  customerSemantic?: CommercePromotionCustomerSemantic;
-  promotionEngineVersion?: "promotion-engine.v2";
-  promotionCodeId?: string;
-  promotionCodeRevision?: number;
-  promotionDefinitionFingerprint?: string;
-  promotionCodeScopes?: Array<"one_time" | "subscription_initial">;
-  promotionMinimumReferenceMinor?: number;
-  promotionCodeValidTo?: string | null;
-  promotionBenefitKind?: "target_percentage" | "percentage" | "fixed_amount" | "free_shipping";
-  promotionBenefitValueBps?: number;
-  promotionBenefitValueMinor?: number;
-  floorApplied?: boolean;
-}
-
-/**
- * Why a customer-submitted promo code did not produce a discount, surfaced so the FE
- * can show a specific message instead of a generic "invalid". `better_price_exists` is
- * the one non-error reason (eligible but unused because an automatic offer is equally
- * good or better; the FE renders it neutrally); `scope_not_applicable` means the code
- * is real but does not apply to this order type. The last two are v2-engine-only reasons.
- */
-export type CommerceCodeRejectionReason =
-  | "not_recognized" | "already_used" | "not_eligible" | "expired"
-  | "better_price_exists" | "scope_not_applicable";
-
-export interface CommerceCodeRejection {
-  code: string;
-  reason: CommerceCodeRejectionReason;
-}
-
-export interface CommerceQuote {
-  currency: CommerceCurrency;
-  taxIncluded: true;
-  lines: CommerceQuoteLine[];
-  discounts: CommerceQuoteDiscount[];
-  pricingComponents?: CommerceQuotePricingComponent[];
+export interface CommerceQuote extends Omit<NeutralCommerceQuote, "context"> {
   context?: CommerceQuoteContext;
-  /** Submitted coupon codes that produced no discount, with the reason. Omitted when empty. */
-  codeRejections?: CommerceCodeRejection[];
-  /** UI-safe specifics for selected rejected codes. Omitted when no detail is available. */
-  codeRejectionDetails?: CommerceCodeRejectionDetail[];
-  subtotalGross: CommerceMoney;
-  discountTotalGross: CommerceMoney;
-  /** Gross shipping before any free-shipping promo. Optional; absent ⇒ shipping not priced (legacy/0). */
-  shippingGross?: CommerceMoney;
-  /** Gross shipping discount from a free-shipping promo (≤ shippingGross). Optional; absent ⇒ 0. */
-  shippingDiscountGross?: CommerceMoney;
-  totalGross: CommerceMoney;
-  netTotal: CommerceMoney;
-  taxTotal: CommerceMoney;
 }
 
 export interface CartDraft {

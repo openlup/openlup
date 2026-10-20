@@ -417,7 +417,7 @@
           "testFiles": [
             "server/domains/commerce/commerceQuoteCatalogReadPort.test.ts",
             "server/domains/commerce/commerceQuoteHandler.test.ts",
-            "server/domains/commerce/catalogFactsProvenance.test.ts",
+            "packages/platform/test/pricing/catalogFactsProvenance.test.ts",
             "server/domains/commerce/commerceOfferPricing.test.ts",
             "server/domains/commerce/commerceOfferPricingCache.test.ts",
             "server/domains/commerce/commerceOfferLayoutHandler.test.ts",

@@ -9,3 +9,14 @@ export { createPricingPolicyToken, verifyPricingPolicyToken, resolvePricingPolic
 export type { PricingPolicyTokenPayload } from "./pricingPolicyToken.js";
 export { CommercePricingPolicyUnavailableError, PRICING_POLICY_REQUEST_REASONS, CommercePricingPolicyRequestError, mapPricingPolicyFailure } from "./commercePricingPolicyErrors.js";
 export type { PricingPolicyRequestReason, SafePricingPolicyReason, PricingPolicyFailureMapping } from "./commercePricingPolicyErrors.js";
+export { CommerceQuoteError, CommerceQuoteSnapshotError } from "./quotePorts.js";
+export type { CreateQuoteOptions, CommerceQuotePort, CommerceQuoteSnapshotVerifierPort, CommerceQuoteErrorCode, CommerceQuoteSnapshotErrorCode } from "./quotePorts.js";
+export { createCommerceQuotePrimitives } from "./quotePrimitives.js";
+export { createCommerceQuoteSchemas, splitIncludedVat, quoteMoneyCurrenciesMatch } from "./quoteSchemas.js";
+export { quoteDiscountSchema, hasValidV2PromotionEvidence } from "./quotePromotionEvidence.js";
+export { quoteCodeRejectionDetailSchema } from "./quoteCodeRejectionDetails.js";
+export { catalogFactsProvenanceSchema, rejectCatalogFactsFromPublicQuote } from "./catalogFactsSchemas.js";
+export { createCatalogFactsProvenance, catalogFactsForQuoteLine, projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
+export { CommerceQuoteCatalogReadError } from "./commerceQuoteCatalogReadPort.js";
+export type { CommerceQuoteCatalogItem, CommerceQuoteCatalogReadPort, CommerceQuoteCatalogReadRefusalCode } from "./commerceQuoteCatalogReadPort.js";
+export { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";

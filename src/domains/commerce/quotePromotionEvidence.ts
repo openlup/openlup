@@ -1,3 +1,4 @@
+// Browser validation binding; the pricing server entry owns the portable counterpart.
 import { z } from "../../lib/validation/zod.js";
 
 interface QuotePromotionEvidence {

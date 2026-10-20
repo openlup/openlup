@@ -547,6 +547,18 @@ import assert from "node:assert/strict";
 import * as pricing from "@openlup/platform/pricing";
 import * as contracts from "@openlup/platform/pricing/contracts";
 assert.equal(pricing.OFFER_POLICY_V2, contracts.OFFER_POLICY_V2);
+assert.equal(contracts.COMMERCE_CONTRACT_VERSION, "commerce.v0");
+assert.equal("createCommerceQuoteSchemas" in contracts, false);
+assert.equal("catalogFactsProvenanceSchema" in contracts, false);
+assert.deepEqual(pricing.splitIncludedVat(12300, 2300), { netMinor: 10000, vatMinor: 2300 });
+const { z } = await import("zod");
+const schemas = pricing.createCommerceQuoteSchemas({ currencySchema: z.string().regex(/^[A-Z]{3}$/),
+  productSlugSchema: z.string().min(1), contextSchema: z.object({ mode: z.enum(["one_time", "subscription"]), promoCodes: z.array(z.string()) }) });
+assert(schemas.createQuoteRequestSchema.safeParse({ lines: [{ sku: "ITEM", quantity: 1 }] }).success);
+assert(!schemas.createQuoteRequestSchema.safeParse({ mode: "subscription", lines: [{ sku: "ITEM", quantity: 1 }] }).success);
+assert(!pricing.quoteDiscountSchema.safeParse({ promotionEngineVersion: "promotion-engine.v2" }).success);
+const profile = { included: true, country: "AA", category: "standard", vatRateBps: 2300, legalBasis: "Example" };
+assert.throws(() => pricing.assertSupportedCommerceTaxProfile(profile, []), error => error instanceof pricing.CommerceQuoteError && error.code === "UNSUPPORTED_TAX_PROFILE");
 assert.equal(pricing.deriveSubscriptionUnitPrice(1490, { discountBps: 1000, roundingQuantumMinor: 10, roundingRule: "FLOOR_TO_QUANTUM" }), 1340);
 assert.equal("createPricingPolicyToken" in contracts, false);
 assert.equal("subscriptionPricePolicyRevisionSchema" in contracts, false);

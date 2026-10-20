@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { CommerceTaxProfile } from "../../../src/domains/commerce/types.js";
-import { CommerceQuoteError } from "../../../src/domains/commerce/ports.js";
-import { assertSupportedCommerceTaxProfile } from "./commerceTaxProfileGuard.js";
+import type { CommerceTaxProfile } from "../../src/pricing/index.js";
+import { CommerceQuoteError } from "../../src/pricing/index.js";
+import { assertSupportedCommerceTaxProfile } from "../../src/pricing/index.js";
 
 const profile: CommerceTaxProfile = {
   included: true,
-  country: "PL",
+  country: "ZZ",
   category: "pet_food",
   vatRateBps: 800,
-  legalBasis: "PL VAT Annex 3 item 10c",
+  legalBasis: "Example VAT rule",
 };
 
 describe("commerce tax profile guard", () => {

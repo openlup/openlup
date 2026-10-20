@@ -77,6 +77,41 @@ separate.
 
 P2a measured: pending committed gates
 
+## P2b — quote foundation, part A
+
+Cut: neutral money/tax/quote DTOs and generic quote/options/verifier/error ports;
+server money/SKU/tax primitives and quote schemas with injected currency, product
+identifier and context validation; quote promotion evidence/rejection validation;
+v1/v2 catalog provenance creation and public stripping; bounded quote catalog
+facts/refusals; supported-tax-profile guard. The existing pricing entries remain
+the only exports, with no new inter-module value or type edge.
+
+Preserved OpenLup behavior: quote currency and line/total/VAT equations, both
+shipping/discount tax lanes, rich request/context admission, v1/v2 provenance
+refusals and public evidence stripping, exact tax-profile matching and diagnostic
+errors. Browser validators and rich catalog projection remain reference-owned.
+Flat shipping, DB quote computation/helpers, snapshot verification, handler batch
+ordering/error mapping, offer v1/v2, readiness TTLs and settings are unchanged.
+Promotion implementation, acquisition selection, memoization, price setup, UI and
+SQL remain outside this cut.
+
+Tests: **21 moved, 3 new** (two reference binding cases and one shipping/discount
+schema case), leaving **55 of 100** programme cases. Assertions in the three moved
+suites are unchanged; isolated package fixture setup supplies the same synthetic
+currency and retains the rich catalog fixture only in test types. The rich legacy
+catalog-adapter suite remains local. Root and package discovery execute the moved
+suites through the existing selectors; the cold-consumer pricing block is extended.
+
+Changed production files: **26**, including the existing cold-consumer script;
+**25** are package/reference production source. Ceiling: **35**.
+Working-tree pack: **828 files / 810 code files / 502,216 packed B /
+2,174,922 unpacked B / 426,165 code gzip B**. Root docs: **32,243 gzip B /
+5 files**. Current file and unpacked caps are exceeded; current packed/code-gzip
+and docs caps hold. All approved caps hold: **2,100 files / 2,000 code files /
+1,351,680 packed B / 5,734,400 unpacked B / 1,126,400 code gzip B**.
+The cap change belongs to its separate contribution. Pricing contracts measure
+**318 B** minified+gzip against the unchanged **320 B** browser budget.
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected
@@ -127,7 +162,8 @@ New contracts browser entry: **3,281 B** minified+gzip; budget **4,096 B**.
 Existing entry and aggregate caps are unchanged. Whole-package caps remain
 **800 files / 522,240 packed B / 2,088,960 unpacked B**; code gzip
 **440,320 B / 800 files**; root docs gzip **40,960 B / 10 files**.
-A later cap decision is pending for P2b onward; forecasts do not approve increases.
+The approved cumulative caps for P2b onward are recorded above; the current
+package caps remain unchanged until the separate cap contribution lands.
 
 Main alone, measured on `83a479e`: **684 files / 413,801 packed B /
 1,764,012 unpacked B / 349,386 code gzip B / 666 code files**.

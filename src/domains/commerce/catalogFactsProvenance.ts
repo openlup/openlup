@@ -1,8 +1,9 @@
+// Browser validation binding; the pricing server entry owns the portable counterpart.
 import { z } from "../../lib/validation/zod.js";
 
-export const CATALOG_FACTS_PROVENANCE_VERSION = "catalog_facts_v1" as const;
-export const CATALOG_FACTS_POLICY_PROVENANCE_VERSION = "catalog_facts_v2" as const;
-
+import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
+export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
+export type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 const catalogFactsFields = {
   skuId: z.string().uuid(),
   documentRevisionId: z.string().uuid(),
@@ -51,7 +52,7 @@ export const catalogFactsProvenanceSchema = z.union([
   catalogFactsV2ProvenanceSchema,
 ]);
 
-export type CatalogFactsProvenance = z.infer<typeof catalogFactsProvenanceSchema>;
+
 
 /** Reject server-only provenance at every HTTP response schema boundary. */
 export function rejectCatalogFactsFromPublicQuote(

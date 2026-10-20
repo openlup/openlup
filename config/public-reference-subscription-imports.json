@@ -33,6 +33,8 @@
     "packages/platform/dist/pricing/contracts/index.js",
     "packages/platform/dist/pricing/contracts/offerPolicy.js",
     "packages/platform/dist/pricing/contracts/policy.js",
+    "packages/platform/dist/pricing/contracts/provenance.js",
+    "packages/platform/dist/pricing/contracts/quote.js",
     "src/components/ui/dialog.tsx",
     "src/domains/auth/contracts.ts",
     "src/domains/auth/providerList.ts",
