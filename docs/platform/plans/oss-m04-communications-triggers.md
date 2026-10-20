@@ -335,6 +335,138 @@ Working-tree checks do not replace clean signed-candidate artifact admission or
 native review. SQL identity, type-only isolation, missing-peer refusal,
 NodeNext/Bundler declarations and real-PG receipt replay/conflict/ACL remain binding.
 
+### Test ledger
+
+PROC-28.8 file-only handoff (2026-10-20), after C6 GREEN; integrator owns
+commits, two cold reviews, receipt and final verification. No Git writes or
+selection changes here. Admission baseline remains **8,275 cases / 595.6 s**;
+allocation **+100 executed required cases / +30 s summed hosted file medians**.
+Inherited S1 X2: **580 counted / 285 boundary / 739 runner additions**,
+**19.262400236 s local proxy**. Batching below removes ten runner registrations
+with all assertions retained: runner delta **739→729**; authored-outcome and
+boundary counts stay **580 / 285**. No allocation reset or time-based case waiver.
+Keep decisions below preserve distinct branches, boundaries and frozen witnesses.
+This historical runner-ledger projection leaves a **+629 case overrun** (and historical +480 counted overrun)
+requires the normal maintainer budget read: Bart Roszkowski/M04 supervisor owns
+a finite exception cap and next review point before cleanup DONE; none granted
+here. Hosted marginal used seconds: **<HOSTED-AFTER>**; the local proxy cannot
+establish that budget. This handoff does not reopen C6 or claim cleanup DONE.
+
+Comparable before: merge-group **39416299647**, main `8b4d4ab`, supplied Ubuntu
+Node 24/npm 11.19.0 shard logs (attempt not identified in supplied files).
+Executed summaries: **3,421 + 3,771 + 4,181 + 3,282 = 14,655**, plus two skipped
+cases; 1,746 passed files and one skipped. Summed printed file time **547.713 s**.
+These are singleton observations, not multi-run medians. Final required-path
+median/p90: **<HOSTED-AFTER> / <HOSTED-AFTER>**. Expected after cases **14,645**
+(net **−10**), pending exact-candidate verification; no full suite run here.
+
+Rows use the same hosted run/profile above; durations charge whole files, not
+marginal M04 costs. PR provenance denotes changed or newly selected files, not
+ownership of every case. **T** is the existing `ci-test-scope.mjs` closure:
+`scripts/`, `tests/setup/`, `src/test/`, commerce-request cache, all root/dot paths
+and `packages/`; ESLint additionally includes `src/` and `server/`. Unknown
+impact selects. Every retained guard runs before merge on affected paths.
+W1–W5/C1 and both golden fixtures remain byte-unchanged; their M04 owner must
+release any refactor dependency and approve replacement proof before retirement.
+No such release is supplied. Review PR for all rows: this cleanup, **<REVIEW>**.
+
+**B1 assertion map:** old extension × depth cases → same extension case with
+inner depths `[0,1,10]`; every filename, source, matcher and ordering is unchanged.
+Fifteen config/ESLint constructions become five, not fewer input scenarios.
+Temporary production-config plants remove communications→data (**P1**) or admit
+communications→http values (**P2**): old 15/15 and retained 5/5 selected cases
+fail each plant; clean old 15/15 and retained 5/5 pass. All **1,876** ordered
+filename/source/diagnostic observations match (279 communications observations).
+Loaded-local full file **118 / 9.13 s → 108 / 8.81 s**; selected clean probes
+**2.65→2.77 s**, so no hosted performance claim. Evidence: supervisor handoff
+`report.md`, `probe-results.json`, `probe-*.log`, `trace-*-clean.jsonl`.
+
+| property | test/step | added by PR | added/kept/moved-tier/retired | old→new tier + path closure | hosted duration + run/attempt/profile | retained guard/equivalence receipt | open-refactor dependency | owner/review PR |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Browser-safe exact exports, peer-free declarations, escaping and footer order | `packages/platform/test/communications/contracts.test.ts` | #205, #211, #218 | kept | per-PR→same; unchanged discovery | 3 cases; 1.879 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Schema/capability declaration without route or timer activation | `packages/platform/test/communications/contribution.test.ts` | #205 | kept | per-PR→same; unchanged discovery | 1 cases; 0.007 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| W1 stream precedence, drained fallback and Auth-specific large-body behavior | `packages/platform/test/communications/hookRawReader.test.ts` | #205 | kept | per-PR→same; unchanged discovery | 3 cases; 0.023 s; shard 4/4 | Same file: every assertion retained | W1 | M04 communications / <REVIEW> |
+| All four canonical SQL bytes, digests and migration positions | `packages/platform/test/communications/sql.test.ts` | #205, #221 | kept | per-PR→same; unchanged discovery | 1 cases; 0.202 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| W2 result projection, explicit skip precedence and complete capture order | `packages/platform/test/communications/transportConformance.test.ts` | #205 | kept | per-PR→same; unchanged discovery | 6 cases; 0.008 s; shard 1/4 | Same file: every assertion retained | W2 | M04 communications / <REVIEW> |
+| W1 key dialect/rotation, raw signed bytes, inclusive replay and package separation | `packages/platform/test/communications/webhookDialects.test.ts` | #205 | kept | per-PR→same; unchanged discovery | 20 cases; 0.017 s; shard 2/4 | Same file: every assertion retained | W1 | M04 communications / <REVIEW> |
+| Generic stream/HMAC dialect, fallback, exact cap and oversized refusal | `packages/platform/test/http/webhookSignature.test.ts` | #205 | kept | per-PR→same; unchanged discovery | 4 cases; 0.024 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| 285 M04 iterations (95 sources × env/import/public-entry isolation); contracts and missing-peer declarations | `packages/platform/test/packageBoundary.test.ts` | #205, #207, #209, #211, #214, #218, #221 | kept | per-PR→same; unchanged discovery | 904 cases; 6.383 s; shard 3/4 | Same file: every assertion retained | none released; keep | Tooling / <REVIEW> |
+| Bare/shallow CLI event identity, source impact and migration/API refusal | `scripts/documentation-cli.test.ts` | #205 | kept | path-scoped→same; T | 2 cases; 3.672 s; shard 3/4 | Same file: every assertion retained | none released; keep | Tooling / <REVIEW> |
+| CI discovery and required aggregation; artifact/admission/ancestry/migration and cleanup refusals | `scripts/oss-published-tree-check.test.ts` | #205 | kept | per-PR→same; unchanged discovery | 65 cases; 11.600 s; shard 2/4 | Same file: every assertion retained | none released; keep | Tooling / <REVIEW> |
+| Real ESLint API/import and declared module value/type edges at every syntax/depth | `scripts/packages/eslint-import-map.test.ts` | #205 | kept; batched setup | path-scoped→same; T | 118 cases; 28.347 s; shard 4/4 | B1 map + P1/P2 plants; identical 1,876 input/output observations | none released; keep | Tooling / <REVIEW> |
+| Consumer isolation, absent peers/types and negative native-operation transcripts | `scripts/packages/platform-cold-consumer.test.ts` | #205, #221, #223 | kept | path-scoped→same; T | 37 cases; 6.335 s; shard 3/4 | Same file: every assertion retained | none released; keep | Tooling / <REVIEW> |
+| Observation lookup/apply/telemetry ordering; polling fairness/status/threshold and W3 effect transcripts | `packages/platform/test/communications/deliveryObservation.test.ts` | #207 | kept | per-PR→same; unchanged discovery | 32 cases; 0.017 s; shard 3/4 | Same file: every assertion retained | W3/W5 | M04 communications / <REVIEW> |
+| Observation lookup/apply/telemetry ordering; polling fairness/status/threshold and W3 effect transcripts | `server/domains/communications/deliveryObservation.test.ts` | #207 | kept | per-PR→same; unchanged discovery | 45 cases; 0.033 s; shard 1/4 | Same file: every assertion retained | W3/W5 | M04 communications / <REVIEW> |
+| Signed Auth control/render/send/persistence ordering and raw/blocked/capture/disabled outcomes | `packages/platform/test/communications/authEgress.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 4 cases; 0.015 s; shard 4/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Policy validation, exact identity admission, no-effect refusal, provenance and local capture | `packages/platform/test/communications/emailEgress.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 19 cases; 0.012 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Verified-role effects, recipient/locale mapping and unadmitted transport refusal | `server/adapters/email/adminRoleNotificationPort.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 7 cases; 0.029 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Receipt/operator delivery order and unadmitted transport refusal | `server/adapters/email/publicIntakeEmailDeliveryPort.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 7 cases; 0.012 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Invoice evidence-first refusal, PDF/key/fallback and transport uncertainty | `server/adapters/resend/accountingInvoiceDeliveryPort.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 10 cases; 0.025 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Maintained policy admission, raw refusal and guarded sender provenance | `server/infra/email/emailEgressReference.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 8 cases; 0.049 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| W4 complete invoice/role/inquiry/opt-out message snapshots | `tests/platform/communicationsPublicW4.test.ts` | #209, #211, #218 | kept | per-PR→same; unchanged discovery | 14 cases; 0.031 s; shard 1/4 | Same file: every assertion retained | W4 | M04 communications / <REVIEW> |
+| W3 complete subscription-mail transcript and no subscription mutation | `tests/platform/mailEgressCallers.test.ts` | #209 | kept | per-PR→same; unchanged discovery | 10 cases; 0.225 s; shard 1/4 | Same file: every assertion retained | W3/W5 | M04 communications / <REVIEW> |
+| W4 full-output golden bytes for template/block parity | `src/domains/communications/email/__snapshots__/templateParity.test.ts.snap` | #211 | kept fixture | per-PR→same; unchanged discovery | fixture: no separate execution | Unchanged snapshot owner test | W4 | M04 communications / <REVIEW> |
+| W4 pre-extraction content/render equality: 34 assemblers × 2 locales × 24 scenarios and blocks | `src/domains/communications/email/templateParity.test.ts` | #211 | kept | per-PR→same; unchanged discovery | 35 cases; 0.119 s; shard 1/4 | Same file: every assertion retained | W4 | M04 communications / <REVIEW> |
+| W4 full-output golden bytes for invoice/role/inquiry/opt-out | `tests/platform/__snapshots__/communicationsPublicW4.test.ts.snap` | #211, #218 | kept fixture | per-PR→same; unchanged discovery | fixture: no separate execution | Unchanged snapshot owner test | W4 | M04 communications / <REVIEW> |
+| C1 legacy consent/token/schema defaults before registration | `packages/platform/test/communications/consentDefaults.test.ts` | #214 | kept | per-PR→same; unchanged discovery | 1 cases; 0.007 s; shard 1/4 | Same file: every assertion retained | C1 | M04 communications / <REVIEW> |
+| C1-C12 declarations, immutable copies, built-in branch/permission and token refusals | `packages/platform/test/communications/consentRegistry.test.ts` | #214 | kept | per-PR→same; unchanged discovery | 23 cases; 0.021 s; shard 3/4 | Same file: every assertion retained | C1 | M04 communications / <REVIEW> |
+| W3 receipt/sync complete ordered failure, uncertainty, timeout and stale-token effects | `packages/platform/test/communications/effectsWitness.test.ts` | #214 | kept | per-PR→same; unchanged discovery | 13 cases; 0.014 s; shard 2/4 | Same file: every assertion retained | W3/W5 | M04 communications / <REVIEW> |
+| Capability declarations/refusals, policy reasons, signatures, replay and effect boundaries | `packages/platform/test/communications/marketingConformance.test.ts` | #214 | kept | per-PR→same; unchanged discovery | 20 cases; 0.014 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| W5 selected job/store/finish/readback and W3 actual feedback effect allowlist | `server/domains/communications/effectsComposition.test.ts` | #214 | kept | per-PR→same; unchanged discovery | 14 cases; 0.012 s; shard 3/4 | Same file: every assertion retained | W3/W5 | M04 communications / <REVIEW> |
+| Method/token/purpose/durable replay/privacy and native unavailable-storage refusal | `api/unsubscribe.test.ts` | #218, #223 | kept | per-PR→same; unchanged discovery | 28 cases; 0.061 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Exact PL/EN invoice/role/inquiry/opt-out defaults, replacement, escaping and no ambient effects | `packages/platform/test/communications/contentDefaults.test.ts` | #218 | kept | per-PR→same; unchanged discovery | 40 cases; 0.023 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Actual PL/EN reference bindings, invoice evidence/PDF/key, opt-out protocol and absent previews | `tests/platform/communicationsB2Content.test.ts` | #218 | kept | per-PR→same; unchanged discovery | 12 cases; 0.025 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Native polling fairness/abandonment and capture/config refusal before DB | `packages/platform/test/communications/nativeDelivery.test.ts` | #221 | kept | per-PR→same; unchanged discovery | 2 cases; 0.007 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Trusted operator identity and unavailable authoritative consent fail closed | `packages/platform/test/communications/nativeDirectoryConsent.test.ts` | #221 | kept | per-PR→same; unchanged discovery | 1 cases; 0.010 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Target namespace, sole executor and invalid-registration refusal before DB | `packages/platform/test/communications/nativeSync.test.ts` | #221, #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.007 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| All four native factories through the public server entry | `server/adapters/postgres/communicationsLifecycle.test.ts` | #221 | kept | per-PR→same; unchanged discovery | 1 cases; 0.005 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Native selection/config refusal and owned close without scheduler/fallback | `server/runtime/communications/communicationsLifecycleBinding.test.ts` | #221, #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.007 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Real fresh/69→70 SQL, ACL/default ACL, atomic rollback, replay/lease races and admitted HTTP/clock/readback | `tests/postgres/communicationsNative.test.ts` | #221, #223 | kept | per-PR→same; unchanged discovery | 20 cases; 24.853 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Cron auth/flag/lease/finish and native missing-provider refusal before managed access | `api/_cron/communicationSyncDispatchJob.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 5 cases; 0.017 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Metric thresholds/readiness and native unavailable readback never healthy zero | `api/_cron/emailHealthWatchdogJob.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 20 cases; 0.023 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Cron credential/env/lease gates and native missing-binding refusal | `api/cron/resend-delivery-reconciliation.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 7 cases; 0.010 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Original raw signature bytes and native invalid-signature refusal before persistence | `api/resend-webhook.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.011 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Unverified actor refused before storage; unavailable readback sanitized | `server/bff/admin/communications/native-evidence.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 1 cases; 0.005 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Observed admin wrapper, bearer refusal and native verified-admin boundary | `server/bff/admin/communications/notification-recipients.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 3 cases; 0.063 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Public mutation policy refuses before token read even with native selection | `server/bff/communications/preferences.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.233 s; shard 4/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Complete selected consent/rail/receipt/evidence schema requirements | `server/runtime/communications/communicationsSchema.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 1 cases; 0.005 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Admitted observation mapping never turns open/click/unknown into delivered | `server/runtime/communications/nativeEvidenceBinding.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 1 cases; 0.004 s; shard 1/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Complete native preference selection without managed fallback | `server/runtime/communications/preferenceBinding.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 1 cases; 0.005 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Exact callable/candidate identity and required port/schema/admission refusals | `server/runtime/communications/referenceComposition.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.029 s; shard 4/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Only implemented canon callables; host-supplied cadence only | `server/runtime/communications/triggerBindings.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 1 cases; 0.006 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Selected startup admission and ordinary public page/mutation inactivity | `server/runtime/public-reference/communications.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.058 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Mounted panel distinguishes acceptance/observation and preserves unavailable on retry | `src/pages/admin/email-sends/NativeEvidencePanel.test.tsx` | #223 | kept | per-PR→same; unchanged discovery | 1 cases; 0.208 s; shard 4/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Inert ordinary entry/default clocks; selected evidence requires session input | `src/public-reference/communications-main.test.tsx` | #223 | kept | per-PR→same; unchanged discovery | 2 cases; 0.164 s; shard 2/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Alternate admitted transports; capture/refusal never projected as network delivery | `tests/platform/communicationsCompose.test.ts` | #223 | kept | per-PR→same; unchanged discovery | 1 cases; 0.006 s; shard 3/4 | Same file: every assertion retained | none released; keep | M04 communications / <REVIEW> |
+| Capture synthetic receipt and delivery replay | `server/adapters/captured/transactionalDelivery.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 3 cases; 0.009 s; shard 1/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Managed sync claim/settle RPC bindings | `server/adapters/supabase/communications/communicationSync.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 5 cases; 0.012 s; shard 1/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Managed newsletter atomic webhook/replay binding | `server/adapters/supabase/communications/newsletterWebhookPort.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 13 cases; 0.018 s; shard 1/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Managed durable preference-token projection | `server/adapters/supabase/communications/publicPreferenceToken.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 1 cases; 0.003 s; shard 1/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Managed transactional receipt RPC binding | `server/adapters/supabase/transactionalDeliveryStore.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 4 cases; 0.009 s; shard 3/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Legacy integration signature bytes and refusal | `server/infra/communications/integrationEventSignature.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 2 cases; 0.005 s; shard 3/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Legacy notification control/skip precedence | `server/infra/email/emailNotificationControl.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 3 cases; 0.006 s; shard 4/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Legacy consent branch decisions | `src/domains/communications/consentPolicy.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 4 cases; 0.007 s; shard 2/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Legacy newsletter payload validation | `src/domains/communications/newsletterIntegrationContracts.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 3 cases; 0.007 s; shard 4/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Legacy shipment notification mapping | `src/domains/communications/shipmentNotifications.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 4 cases; 0.008 s; shard 1/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Legacy status projection | `src/domains/communications/status.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 7 cases; 0.008 s; shard 3/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Legacy receipt/effect replay and uncertainty | `src/domains/communications/transactionalDeliveryPort.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 9 cases; 0.007 s; shard 1/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Legacy token bytes, expiry and purpose boundaries | `src/domains/communications/unsubscribeToken.test.ts` | #205 | kept (selected existing) | per-PR→same; unchanged discovery | 11 cases; 0.020 s; shard 1/4 | Same file, unchanged C1 assertions | C1 | M04 communications / <REVIEW> |
+| Exact installed export/render isolation, optional-peer refusal, real SQL and alternate-provider transcript | `scripts/packages/platform-cold-consumer.ts` | #205, #211, #218, #221, #223 | kept | per-PR install-proof→same; exact artifacts | install-proof: untimed in supplied shard logs | Same installed-artifact proof; exact candidate/pack identities | C1/package | Platform packages / <REVIEW> |
+
+No tier moves implemented. Native PostgreSQL is a **proposed, needs PROC-27
+control decision** path-scoped candidate: closure must include communications
+engines/contracts, adapters/routes/runtime/UI, outbox/data/identity, both SQL
+chains/manifest, package sources/locks/builds and shared runners/helpers/config;
+unknown impact selects. Keep its real SQL/ACL/replay/concurrency/cleanup guard
+before affected PR and merge-group merges. No release-only/nightly retirement
+has equivalent pre-merge proof. Generated per-source boundaries remain: each
+source can independently acquire an env, SDK or private import. Whole-message
+golden permutations protect distinct locale/copy/optional-field outputs.
+
+Self-retro: repeated config setup → batch depth setup while retaining the complete
+ordered assertion body. Local whole-file time fell 0.32 s but selected probes rose
+0.12 s; use hosted receipts for timing disposition. No automatic successor.
+
 ## P4 registry, effects and readback
 
 One P4 candidate keeps the internal order: W3/W5 baseline witnesses and plants,
