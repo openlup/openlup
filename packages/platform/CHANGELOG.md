@@ -21,6 +21,23 @@ SemVer promise.
   union readonly, consistent with its other fields. Migration: callers must stop
   assigning feedback `kind` or `outcome`; existing providers remain assignable.
   No factory, activation, callback, retry or package subpath is added.
+- Move the unchanged executor-backed native bundle read store and queries into
+  catalog, retaining named reference compatibility exports. Add sparse canonical
+  SQL 16/19 descriptors and byte-identical projections, with no new migration.
+  The writer, pooled transaction binding and transport remain reference-owned.
+- Deliberately classify catalog server as an adapter: its declarations now reach
+  optional pg types through the injected data executor. Runtime import and supplied
+  executor reads still work with optional peers absent; catalog/contracts stays
+  non-adapter. Select the existing peers for server declaration compilation.
+
+Migration: the native store is additive; existing reference imports keep their
+names. Install the full canonical manifest, never the sparse projections. Native
+actor-kind enforcement remains handler-only. Comment corrections distinguish the
+managed chain's 42501 publish_requires_human refusal from that native boundary.
+The catalog declaration snapshot reorders existing count enum members; their
+values and runtime behavior are unchanged.
+- Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
+
 - Add experimental opt-in Node `communications/resend` with exactly three
   functions for guarded transport, authenticated webhook handling and GET-only
   delivery reconciliation.
@@ -33,6 +50,7 @@ SemVer promise.
   retain schemas, shared admin kit/spec/flags, stock/lifecycle helpers, responder,
   wire versions and RPC error identity. Catalog contracts add plain DTOs only;
   browser schemas stay local. Native stores and SQL remain outside this slice.
+- Add experimental shipping ports, injected-schema handlers and type-only contracts.
 
 Migration: existing reference imports remain named compatibility exports.
 Installed consumers bind the host dependencies explicitly. Bundle DTO additions

@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its nineteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its twenty-four experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -23,12 +23,20 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
+| `./inventory` | Experimental stock schemas/ports; forecast provider validation is required and injected. Browser DTOs: `./inventory/contracts`; reference browser validators stay local. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
+| `./shipping` | Experimental delivery ports, injected-schema handlers, summary and evidence |
+| `./shipping/contracts` | Type-only delivery, pickup-point, summary and evidence DTOs |
+
+## Shipping
+
+Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
+No vendor code, inventory import, activation or parity claim.
 
 ## Promotions
 
@@ -192,7 +200,13 @@ ports, batched stock derivation, nine mutations, four reads/price preview and th
 public sellable-feed factory. Named reference wrappers inject lifecycle and stock
 helpers, existing admin kit/spec/flags, validators, responder, wire versions and
 the reference-owned RPC error constructor. The read error has one package identity.
-No native store, SQL, mount or activation moves in this application slice.
+`createPostgresBundleCatalogStore` now accepts the data entry's injected
+`PgQueryExecutor`; it renders the incumbent list/detail/feed/history SELECTs
+without constructing a pool or switching roles. The writer, pooled transaction
+binding and transport adapters remain reference-owned. `BUNDLE_MIGRATIONS`
+projects canonical units 16 and 19 with their original paths, positions, hashes
+and byte-identical SQL. These sparse projections are not an installation chain:
+apply the complete canonical manifest. No new migration or activation is added.
 Preview target selection remains the existing first active matching-mode row.
 
 `./catalog/contracts` carries dependency-free DTOs, the shared authority error,
@@ -222,7 +236,7 @@ Neither entry installs SQL. Rich application catalog interpretation remains
 reference-owned. The [M05 plan](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md)
 records the cut, its exclusions and the witness ledger.
 The moved characterization suites are under `test/catalog/`; the required cold
-consumer classifies both entries without optional peers and checks installed
+consumer imports both entries without optional peers and checks installed
 canonicalization, authority identity, selection and unauthorized draft refusal.
 Three synthetic media conformance cases and one lifecycle type case complement
 those moved suites; the existing package boundary tests cover browser closure.
@@ -232,7 +246,15 @@ Installed callers inject validators into server factories. Five package suites
 retain 44 bundle cases; two root binding suites retain 18. Four neutral W4 cases
 and one binding/browser-closure case add five required cases. The cold consumer
 also checks bundle composition refusal, unknown stock and exact allocation;
-both catalog entries remain non-adapters without optional peers in P4a.
+catalog server is deliberately classified as an adapter because its declarations
+reach optional pg types through the executor. Its runtime still imports and reads
+through an injected executor with optional peers absent. Catalog contracts remains
+a non-adapter and compiles without peers. Server declarations compile after peer
+selection. Five real-PostgreSQL cases characterize full-chain replay, complete
+ordered reads with unchanged data, whole-set rollback/refusals/dry runs, price
+history, sequential key recognition and explicit invoker grants. Native routines
+have no independent human-only actor-kind gate; the handler supplies that gate.
+This does not close the bundle parity ledger.
 The complete contracts entry measures 3,281 B minified+gzip against its 4,096 B
 budget; other entry and aggregate caps are unchanged.
 

@@ -1,5 +1,5 @@
 import { expect, expectTypeOf, it, vi } from "vitest";
-import { build } from "esbuild";
+import { rolldown } from "rolldown";
 import * as catalog from "@openlup/platform/catalog";
 import type * as dto from "@openlup/platform/catalog/contracts";
 import * as writeSchemas from "../../../src/domains/bundle/adminBundleContracts.js";
@@ -99,7 +99,12 @@ it("binds the existing kit, spec, errors, versions and schemas while browser clo
   await handler({ method: "GET", query: { code: "fixed-set" }, headers: {} } as unknown as Parameters<typeof handler>[0], res);
   expect(res.status).toHaveBeenCalledWith(404);
   expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, error: expect.objectContaining({ code: "NOT_FOUND" }) }));
-  const service = { describeActiveBundles: async () => [], describeCompositions: async () => [] };
+  const feedBundle = {
+    code: "fixed-set", title: "Fixed set", fulfillmentMode: "virtual", currency: "XXX", targetPriceMinor: 2001, mode: "one_time",
+    components: [{ sku: "UNIT-A", title: "Unit A", productSlug: "unit-a", variantId: "variant-a", quantity: 2, isAddon: false, sortOrder: 0, referenceUnitPriceMinor: 1500 }],
+  };
+  const described = { composition: feedBundle, components: feedBundle.components.map(component => ({ ...component, sellableNow: null })), availability: { status: "unknown" as const, sellableNow: null, limitingSku: "UNIT-A", reasonCode: "BUNDLE_COMPONENT_STOCK_UNKNOWN" } };
+  const service = { describeActiveBundles: async () => [described], describeCompositions: async () => [described] };
   const schema = vi.spyOn(feedSchemas.sellableBundleListResponseSchema, "safeParse");
   const boundFeed = catalog.createSellableBundleHandlers({ responder: { sendBffError, sendBffSuccess, sendMethodNotAllowed }, sellableBundleListResponseSchema: feedSchemas.sellableBundleListResponseSchema, SELLABLE_BUNDLE_CONTRACT_VERSION: feedSchemas.SELLABLE_BUNDLE_CONTRACT_VERSION });
   try {
@@ -107,14 +112,19 @@ it("binds the existing kit, spec, errors, versions and schemas while browser clo
       await factory({ availabilityService: service, enabled: true })({ method: "GET" } as Parameters<typeof handler>[0], res);
     }
     expect(schema).toHaveBeenCalledTimes(2);
-    expect(schema).toHaveBeenLastCalledWith({ contractVersion: feedSchemas.SELLABLE_BUNDLE_CONTRACT_VERSION, bundles: [] });
+    expect(schema).toHaveBeenLastCalledWith({ contractVersion: feedSchemas.SELLABLE_BUNDLE_CONTRACT_VERSION, bundles: [catalog.toSellableBundle(feedBundle, described.availability)] });
+    expect(feedSchemas.sellableBundleListResponseSchema.parse((vi.mocked(res.json).mock.calls.at(-1)![0] as { data: unknown }).data).bundles).toHaveLength(1);
     expect(vi.mocked(res.json).mock.calls.at(-1)).toEqual(vi.mocked(res.json).mock.calls.at(-2));
   } finally { schema.mockRestore(); }
-  const browser = await build({ entryPoints: ["src/domains/bundle/adminBundleClient.ts", "src/domains/bundle/sellableBundleClient.ts"], bundle: true, platform: "browser", format: "esm", outdir: "/private/tmp/claude-501/m05-p4a/browser", write: false, metafile: true, minify: true });
-  const packageInputs = Object.keys(browser.metafile!.inputs).filter((path) => /packages\/platform\//.test(path));
-  expect(packageInputs.filter((path) => /\/catalog\//.test(path) && !/\/catalog\/contracts\//.test(path))).toEqual([]);
-  expect(packageInputs.some((path) => /\/(data|http|bff)\//.test(path))).toBe(false);
-  expect(Object.keys(browser.metafile!.inputs)).toEqual(expect.arrayContaining([
-    "src/domains/bundle/adminBundleContracts.ts", "src/domains/bundle/adminBundleLifecycleContracts.ts", "src/domains/bundle/adminBundleReadContracts.ts", "src/domains/bundle/sellableBundleContracts.ts",
-  ]));
+  const browser = await rolldown({ input: ["src/domains/bundle/adminBundleClient.ts", "src/domains/bundle/sellableBundleClient.ts"], platform: "browser" });
+  try {
+    const { output } = await browser.generate({ format: "es", dir: "browser-closure", minify: true });
+    const inputs = [...new Set(output.flatMap((chunk) => chunk.type === "chunk" ? Object.keys(chunk.modules) : []))].map((path) => path.replaceAll("\\", "/"));
+    const packageInputs = inputs.filter((path) => /(?:packages\/platform\/|@openlup\/platform\/)/.test(path));
+    expect(packageInputs.length).toBeGreaterThan(0);
+    expect(packageInputs.filter((path) => /\/catalog\//.test(path) && !/\/catalog\/contracts\//.test(path))).toEqual([]);
+    expect(packageInputs.some((path) => /\/(data|http|bff)\//.test(path))).toBe(false);
+    for (const name of ["adminBundleContracts", "adminBundleLifecycleContracts", "adminBundleReadContracts", "sellableBundleContracts"])
+      expect(inputs.some((path) => path.endsWith(`/src/domains/bundle/${name}.ts`))).toBe(true);
+  } finally { await browser.close(); }
 });

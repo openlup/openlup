@@ -1234,6 +1234,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m06-stock-reservations-delivery.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2230,6 +2234,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/inventory-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/inventory.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/job-ledger.api.md",
       "class": "public-output"
     },
@@ -2259,6 +2271,14 @@
     },
     {
       "path": "packages/platform/api/scheduler.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/shipping-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/shipping.api.md",
       "class": "public-output"
     },
     {
@@ -2299,6 +2319,14 @@
     },
     {
       "path": "packages/platform/sql/20260810204057_customer_identity_read.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812140000_sellable_bundle_catalog.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql",
       "class": "public-output"
     },
     {
@@ -2426,7 +2454,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/bundleCatalogQueries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/bundleCatalogReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleCatalogStore.ts",
       "class": "public-output"
     },
     {
@@ -2535,6 +2571,10 @@
     },
     {
       "path": "packages/platform/src/catalog/sellableSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/sql.ts",
       "class": "public-output"
     },
     {
@@ -3306,6 +3346,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/contracts/inventory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/schemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/job-ledger/index.ts",
       "class": "public-output"
     },
@@ -3663,6 +3723,42 @@
     },
     {
       "path": "packages/platform/src/scheduler/vercelScheduler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/delivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionSummary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/handlerSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/pickupPointSearchPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/readDeliverySelectionEvidence.ts",
       "class": "public-output"
     },
     {
@@ -4102,6 +4198,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/inventory/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/job-ledger/postgres.test.ts",
       "class": "public-output"
     },
@@ -4355,6 +4455,10 @@
     },
     {
       "path": "packages/platform/test/scheduler/vercelScheduler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/deliveryConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -21022,6 +21126,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/shipping/deliverySelectionBoundaryCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/watchdogExecution.test.ts",
       "class": "public-output"
     },
@@ -21031,6 +21139,10 @@
     },
     {
       "path": "tests/postgres/adminMembershipAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/bundleNative.test.ts",
       "class": "public-output"
     },
     {
