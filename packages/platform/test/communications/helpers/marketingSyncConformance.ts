@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import { expect, it } from "vitest";
 import ts from "typescript";
@@ -102,13 +102,13 @@ export function synthetic(plant?: Plant, scope: SyncAudience = audience) {
       unresolved = true;
       if (plant !== "lost-record") state.quarantined = true;
       const failed = result({ kind: "unknown", reason: "record_failed", receipt });
-      if (plant !== "lost-record") journal.set(key, { request: r, semantic, result: failed });
+      if (plant !== "lost-record") journal.set(key, { request: r, semantic, result: failed as SyncResult });
       return failed;
     }
     if (r.operation === "profile.sync" && plant !== "mapping") mapping.set(r.subjectReference, snapshot.target || "created:1");
     const outcome = result(state.mutation === "unknown" ? { kind: "unknown", reason: "acceptance_ambiguous", receipt } : { kind: plant === "ack-completed" ? "completed" : state.mutation, receipt, journal: "confirmed" });
     if (state.mutation === "unknown") unresolved = true;
-    journal.set(key, { request: r, semantic, result: outcome });
+    journal.set(key, { request: r, semantic, result: outcome as SyncResult });
     return outcome;
   }
   const dispatch = execute;
@@ -144,7 +144,7 @@ export function conformanceCase(id: string, plants: readonly Plant[], scenario: 
 
 export const neutralExports = ["SyncBinding", "SyncAudience", "ProfileProjection", "SyncRequest", "NegativeFeedback", "ConsentReadback", "SyncFailure", "SyncReceipt", "SyncResult", "SyncCapabilities", "ProfileSyncPort", "ConsentReadPort", "ErasurePort", "MarketingSyncProvider"].sort();
 export function publicSurface(planted = false) {
-  const path = resolve("packages/platform/src/communications/contracts/marketingSync.ts");
+  const path = fileURLToPath(new URL("../../../src/communications/contracts/marketingSync.ts", import.meta.url));
   const source = readFileSync(path, "utf8") + (planted ? "\nexport type ProfileRead = unknown;\n" : "");
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   return file.statements.filter(s => ts.canHaveModifiers(s) && ts.getModifiers(s)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword))

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { expect, it } from "vitest";
 import type { MarketingAutomationClaim, MarketingAutomationObservation, MarketingAutomationProviderPort } from "../../src/communications/contracts/marketingAutomation.js";
@@ -34,7 +34,7 @@ for (const [id, entry, snapshot] of [
   ["K03", "@openlup/platform/communications", "communications"],
   ["K04", "@openlup/platform/communications/contracts", "communications-contracts"],
 ] as const) it(`${id} published entry rejects all 28 forbidden states with positive controls`, () => {
-  const filename = resolve(`.context/scratch/${id}-virtual.mts`);
+  const filename = fileURLToPath(new URL(`./${id}-virtual.mts`, import.meta.url));
   const source = probes.replaceAll("'./proposal'", JSON.stringify(entry));
   const options: ts.CompilerOptions = { strict: true, exactOptionalPropertyTypes: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: [], lib: ["lib.es2022.d.ts", "lib.dom.d.ts"], skipLibCheck: false };
   function compile(text: string) {
@@ -53,7 +53,7 @@ for (const [id, entry, snapshot] of [
   const lines = [...new Set(rejected.map(d => d.file?.fileName === filename && d.start !== undefined ? d.file.getLineAndCharacterOfPosition(d.start).line + 1 : -1))].sort((a, b) => a - b);
   expect(lines).toEqual(expected);
   console.info(`${id}: strict/exactOptionalPropertyTypes PASS; 28/28 unmarked probes rejected; positive controls PASS`);
-  const api = readFileSync(resolve(`packages/platform/api/${snapshot}.api.md`), "utf8");
+  const api = readFileSync(new URL(`../../api/${snapshot}.api.md`, import.meta.url), "utf8");
   expect(api).toContain("## dist/communications/contracts/marketingSync.d.ts");
   for (const name of neutralExports) expect(api).toMatch(new RegExp(`export (?:type|interface) ${name}\\b`));
   expect(api).not.toContain("createKlaviyoMarketingAdapter");
