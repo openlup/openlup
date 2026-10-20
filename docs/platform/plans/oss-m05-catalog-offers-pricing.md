@@ -236,8 +236,8 @@ P6 must replace every non-neutral fixture value still present in the moved
 package tests (including a legacy policy constant and industry-specific fact
 fields and contact values carried over unchanged from the existing public
 tests) with neutral synthetic values, without weakening any
-assertion. M05 S1 requires this row closed, so no adopter policy constant
-remains anywhere in OpenLup.
+assertion. **SATISFIED in P6 for the moved package tests.** The reference
+classifier constant is unchanged and awaiting an owner decision.
 
 ## P3b — promotion admin and native read/sweep
 
@@ -330,7 +330,9 @@ The existing binding case remains one case. Confirmed changed-test collection:
 PostgreSQL 5, binding 1, package boundary 1,030 and cold-consumer tooling 37 (pre-merge counts). Generated
 source-boundary iterations do not consume programme cases.
 
-Changed production/tooling paths versus e581e1aae980efcea06cb580a15357a45db360bf:
+Historical P4a predecessor: `e581e1aae980efcea06cb580a15357a45db360bf`.
+Changed production/tooling paths from the P4b fork point after main carry-over,
+`020e6479cfc8e37810796cf3f67b52e5fa99bf12`, to the landed P4b tree:
 **18/35**, including JSON companions; tests, API snapshots and prose excluded.
 Pack measured before the main merge (A1 P1): **1,024 files / 1,002 code files / 667,279 packed B / 2,986,256 unpacked B /
 571,700 code gzip B**; root docs **37,278 gzip B / 5 files**. Browser entries:
@@ -350,6 +352,71 @@ together with D8 and P6. Package application proof closes none of these rows.
 | Native history actor identity | PENDING: native actor fields are null versus managed audit identity. |
 | Native mounted admin/feed with actual stock | PENDING: P7 composition proof. |
 | Replay/concurrency beyond sequential replay | PENDING: characterize incumbent outcomes before claiming stronger guarantees. |
+
+## P6 — bounded refactor and fixture neutralization
+
+The coordinator approved the seven-source-path cut. The outcome is corrected
+comments, delegation of duplicate VAT arithmetic to the existing helper, and
+neutral moved-test fixtures with all assertions retained. Both VAT exports,
+signatures and distinct function identities remain; API snapshot changes are
+comments only. No API, dependency, SQL, migration, functional or cap change is
+included. A behaviour change is never a refactor. C1 witnesses remain unchanged.
+
+Authority is local implementation and the requested focused checks; the
+supervisor owns commits, native candidate review and delivery. This task grants
+no merge, release, activation or adopter continuation. Reference classifiers,
+P5 functional paths and the concurrent inventory, shipping and communications
+work remain excluded. The reference classifier constant awaits its owner.
+
+Final-diff ledger against `a2edd8ebd9d72dea5be22197750743e4d2f3d198`:
+**7 production source paths / 12**, **7 production/tooling paths / 35**;
+**35 existing test/helper paths** (26 suites and 9 helpers), **0 new executed
+cases**. The post-P5 programme balance stays **5**. The publication catalogue and
+source-release contract were regenerated through their existing generators and
+are byte-unchanged; three API snapshots change comments only. Prose and API
+snapshots are excluded from the production/tooling count.
+
+The seven source paths are pricing `commerceQuoteCatalogReadPort.ts`,
+`commerceOfferPricing.ts` and `dbBackedCommerceQuoteHelpers.ts`; promotions
+`adminPromotionsDataPort.ts`; catalog `bundleRules.ts` and `bundleRuleCodes.ts`
+(all under `packages/platform/src/`); and `src/domains/bundle/bundleSpec.ts`.
+Tests comprise 4 catalog, 19 pricing and 10 promotions package paths, plus
+`tests/platform/catalog/bundleBindings.test.ts` and
+`tests/postgres/bundleNative.test.ts`. The feed fixture derives its reason code
+through the existing helper. The native read case deletes only its returned
+temporary tier-row IDs in `finally`, after its unchanged no-write assertions.
+
+Neutralization preserves lookup identities, cohort distinctions, validators,
+null/optional fields, refusal precedence and exact projections. The synthetic
+legacy percentage is 37.537: `floor(16,000 × 37.537 / 100) = 6,005`, and
+`16,000 − 6,005 = 19,990 / 2 = 9,995`. Coverage arithmetic stays 492 and 21.
+Synthetic GTINs retain their valid/invalid checksum distinction. Frozen token
+witnesses and the D8 and bundle parity PENDING rows are unchanged.
+
+The proof compares production tokens with comments removed, allows only the
+named VAT delegation, compares API declaration tokens, and checks each test's
+substitution map, assertion arguments, matcher sequence and collection count.
+All **425 expect call sites** across the 35 changed test/helper paths remain.
+Focused collection stays **1,248 cases** across 27 files including the unchanged
+package-boundary suite. No new case or mandatory full-suite execution is claimed;
+the host-load rule permits explicit focused paths only. Required local checks
+and their actual exits are retained in the implementation handoff; supervisor
+candidate gates remain outside this local delivery boundary.
+
+### Deferred P6 advisories
+
+- Discriminated-union authority ports: public API; coordinator/owner.
+- `customerSemantic` vocabulary: public contract; coordinator/owner.
+- Zod/jitless import order: pricing module owner; needs module-evaluation proof.
+- Acquisition delegation `Vary`: observable HTTP/cache behaviour; coordinator.
+- Direct Rolldown dependency: dependency owner.
+- Docker-free SQL tests, SELECT-only cold-consumer evidence and explicit
+  anon/authenticated assertions: native proof owner, P7/C5.
+
+Retro: an initial install omitted the cache setting and was rerun correctly.
+Diff inspection caught a residual fixture label and comment grammar before final
+checks. The simpler path was the existing named VAT wrapper and test-local
+substitutions; public-contract and new-proof advisories stay deferred.
 
 ## Witness ledger
 

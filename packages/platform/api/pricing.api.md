@@ -988,7 +988,7 @@ export interface CommerceQuoteCatalogItem {
     variantId: string;
     productSlug: string;
     netWeightG: number;
-    /** Strict D1 identifies the product primary SKU; offer pricing never chooses a secondary SKU. */
+    /** Identifies the product primary SKU for offer selection; secondary SKUs are excluded. */
     isPrimarySku?: boolean;
     isAddon: boolean;
     sellability: {
@@ -1476,9 +1476,9 @@ export interface StrictQuotePriceResolution {
     };
 }
 /**
- * Strict D1 quotes have one exact base anchor. Subscription money is either
- * derived by a validated policy, or is the authority's explicit pre-cutover
- * legacy observation; this layer never reaches back to the generic resolver.
+ * Strict authority quotes require one exact one-time base anchor. Subscription money is either
+ * derived by a validated policy or taken from the authority's explicit legacy
+ * subscription observation; this layer never calls the generic resolver.
  */
 export declare function resolveStrictQuotePrice(input: {
     commercePriceAuthorityPort: CommercePriceAuthorityPort;

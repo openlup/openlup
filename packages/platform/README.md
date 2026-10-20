@@ -258,6 +258,13 @@ This does not close the bundle parity ledger.
 The complete contracts entry measures 3,281 B minified+gzip against its 4,096 B
 budget; other entry and aggregate caps are unchanged.
 
+Moved catalog, pricing and promotion fixtures use synthetic identities, regions,
+currencies and host-defined context fields. Their assertions retain the original
+operators and case counts; reference production promotion classification keeps
+its existing policy pending an owner decision. Pricing VAT calculation retains
+both exported helpers and their signatures: `calculateIncludedVat` delegates to
+`splitIncludedVat` through a distinct named wrapper using the same arithmetic.
+
 ## Scheduled jobs
 
 A job is `{ id, schedule, lease?, run(context) }` with a UTC cron expression. Domains and packages contribute jobs to `createScheduledJobRegistry`, which refuses duplicate ids and ships empty. The Node host runs registry jobs on its own timers and calls `run` directly, with no HTTP request and no secret. `createScheduledJobHttpEntry` mounts the same job behind the cron guard for a hosted cron. A job that declares `lease` runs only after the injected job-lease port grants it; a lease held elsewhere skips the run, and a finish the port refuses fails the run. `scheduledJobsFromContribution` turns a contribution's cadence schedules into jobs and refuses a cadence that no cron expression matches exactly; a contribution run that reports a failed outcome fails the job.
@@ -383,7 +390,7 @@ phase redirects npm to an empty temporary cache.
 
 The composition declarations describe the injected Supabase factory structurally;
 they do not import the data entry or its PostgreSQL types. The cold proof still
-requires all six nonadapter entries (including `./identity/contracts`) to import in fresh processes and compile
+requires all declared non-adapter entries (including `./identity/contracts`) to import in fresh processes and compile
 in both resolution modes with all three optional peers absent.
 
 <!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->

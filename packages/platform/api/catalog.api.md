@@ -774,8 +774,10 @@ import type { BundleAllocationFailureCode } from "@openlup/core/pricing";
 /**
  * Bundle write rules — the named, enforced invariants of the agent-operable
  * bundle write path. These codes are the single vocabulary shared by the request
- * contracts, the pure rule predicates (`bundleRules.ts`), the service-role write
- * routines (which RAISE them) and the over-the-wire error taxonomy.
+ * contracts, the pure rule predicates (`bundleRules.ts`), managed write routines
+ * and the over-the-wire error taxonomy. Managed routines re-derive state rules;
+ * native actor-kind enforcement relies on the handler, not an independent
+ * database gate.
  *
  * The catalog rules use this same shape; the lifecycle subset is expressed
  * through the host lifecycle kit, and the codes stay here as
@@ -823,11 +825,10 @@ import { type BundleActorKind, type BundleRuleResult } from "./bundleRuleCodes.j
  * Only what is decidable from the request alone lives here. The state-dependent
  * rules (code uniqueness, component existence/sellability/currency, the target
  * price against real component prices, the activation preconditions, append-only
- * pricing, archive-not-delete) are authoritatively enforced by the service-role
- * write routines; this layer never duplicates their decision, it only fast-fails
- * the cases a confused or compromised caller can be refused on cheaply. The
- * routine re-derives everything and RAISEs regardless — defense in depth, not the
- * boundary.
+ * pricing, archive-not-delete) are re-derived by the managed write routines.
+ * This layer fast-fails request-checkable violations without replacing those
+ * state checks. Actor-kind enforcement is separate: managed publication routines
+ * independently check it, while native publication relies on the handler gate.
  */
 /** The composition shape the request-layer rules can reason about. */
 export interface BundleCompositionEntry {

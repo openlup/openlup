@@ -8,6 +8,9 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Correct pricing and bundle comments, delegate VAT arithmetic to the existing helper,
+  and neutralize moved test fixtures without changing assertions. No API change.
+
 - Move the unchanged executor-backed native bundle read store and queries into
   catalog, retaining named reference compatibility exports. Add sparse canonical
   SQL 16/19 descriptors and byte-identical projections, with no new migration.
@@ -23,6 +26,7 @@ actor-kind enforcement remains handler-only. Comment corrections distinguish the
 managed chain's 42501 publish_requires_human refusal from that native boundary.
 The catalog declaration snapshot reorders existing count enum members; their
 values and runtime behavior are unchanged.
+
 - Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
 
 - Add experimental opt-in Node `communications/resend` with exactly three

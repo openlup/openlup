@@ -5,8 +5,10 @@ import type { BundleAllocationFailureCode } from "@openlup/core/pricing";
 /**
  * Bundle write rules — the named, enforced invariants of the agent-operable
  * bundle write path. These codes are the single vocabulary shared by the request
- * contracts, the pure rule predicates (`bundleRules.ts`), the service-role write
- * routines (which RAISE them) and the over-the-wire error taxonomy.
+ * contracts, the pure rule predicates (`bundleRules.ts`), managed write routines
+ * and the over-the-wire error taxonomy. Managed routines re-derive state rules;
+ * native actor-kind enforcement relies on the handler, not an independent
+ * database gate.
  *
  * The catalog rules use this same shape; the lifecycle subset is expressed
  * through the host lifecycle kit, and the codes stay here as
