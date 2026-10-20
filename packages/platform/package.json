@@ -145,6 +145,16 @@
       "types": "./dist/promotions/contracts/index.d.ts",
       "import": "./dist/promotions/contracts/index.js",
       "default": "./dist/promotions/contracts/index.js"
+    },
+    "./inventory": {
+      "types": "./dist/inventory/index.d.ts",
+      "import": "./dist/inventory/index.js",
+      "default": "./dist/inventory/index.js"
+    },
+    "./inventory/contracts": {
+      "types": "./dist/inventory/contracts/index.d.ts",
+      "import": "./dist/inventory/contracts/index.js",
+      "default": "./dist/inventory/contracts/index.js"
     }
   },
   "repository": {

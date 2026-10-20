@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
+
 - Add 14 experimental provider-neutral marketing-sync types through the existing
   communications and communications/contracts entries: profile sync, negative
   consent readback and erasure request/status. Existing M04 providers remain

@@ -1234,6 +1234,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m06-stock-reservations-delivery.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2223,6 +2227,14 @@
     },
     {
       "path": "packages/platform/api/identity.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/inventory-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/inventory.api.md",
       "class": "public-output"
     },
     {
@@ -3242,6 +3254,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/contracts/inventory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/schemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/job-ledger/index.ts",
       "class": "public-output"
     },
@@ -4003,6 +4035,10 @@
     },
     {
       "path": "packages/platform/test/identity/sql.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/contracts.test.ts",
       "class": "public-output"
     },
     {
