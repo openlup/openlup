@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its fifteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its seventeen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -25,6 +25,36 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
+| `./pricing` | Experimental strict price authority, subscription policy schemas/math, assignment tokens and refusal mapping |
+| `./pricing/contracts` | Dependency-free authority/policy DTOs and version constants |
+
+## Pricing
+
+`./pricing` provides the existing OpenLup strict commerce price authority,
+subscription-price-policy schemas, canonical digest and integer math, signed
+pricing-policy assignment tokens and safe refusal mapping. Hosts inject exact
+price-list, base-entry, legacy-entry and policy-history reads. The authority
+validates the base before reading history and uses the observed base's
+`priceListId` for that lookup. History excludes legacy fallback even when no
+revision is currently effective. Digest, interval, ambiguity and amount-kind
+refusals retain their existing identities and precedence.
+
+`./pricing/contracts` contains dependency-free authority observations, policy
+DTOs and version constants; its only external type comes from the exact
+`@openlup/core/pricing` entry. Zod schemas, Web Crypto hashing and Node HMAC token
+operations stay in the server entry. Tokens retain assignment binding, the
+72-hour default compatibility window and rollback behavior. Secret selection,
+feature flags and readiness remain reference composition responsibilities.
+Reference paths use named exports of the same functions and error classes;
+the browser keeps its existing policy schema binding locally.
+
+The package witnesses in `test/pricing/` move the incumbent authority, policy,
+token and pure error-mapping assertions. Reference composition tests remain in
+the application, with a binding guard for error identity and browser schemas.
+The existing cold consumer imports both pricing entries and compiles their
+installed declarations without optional provider peers. Quote computation,
+offer projections/handlers and acquisition selection/consent belong to later P2
+parts; P2a adds no store, SQL descriptor, migration, route or activation.
 
 ## Catalog
 

@@ -7,7 +7,7 @@ Status: development-preview plan; no stable-framework, release or activation cla
 Contribute the neutral catalog, offer, price, promotion and bundle boundaries
 while preserving current observable behavior and frozen subscription obligations.
 Extraction witness identity: C1 `0e23c7ddb443e6c24d0a3fe2a0cf5c31fed00559`.
-P1 local implementation and verification only: the supervisor owns commits,
+P1/P2a local implementation and verification only: the supervisor owns commits,
 clean-candidate package proof, independent native review and any separately
 authorized submission. No release, adopter update, deployment or activation grant.
 
@@ -28,7 +28,8 @@ integration; the assigned P1 tree is not evidence of a completed release.
 | PR | Bounded scope and status |
 | --- | --- |
 | P1 | Neutral catalog/read/draft move, media contribution and lifecycle-ready types. Phase A committed at `1aafd77`; phase B local implementation, supervisor commit/review/artifact gates pending. |
-| P2 | Unchanged price/quote/offer authority, scheduled acquisition selection and consent, policy math and money contracts; reuse the existing core pricing engine. Pending. |
+| P2a | Unchanged existing OpenLup price authority, subscription policy, assignment tokens, safe errors and bounded DTOs. Local implementation; supervisor commit/review/artifact proof pending. |
+| P2b / P2c | Proposed remaining split: quote computation/schemas/tax/provenance, then handlers/offer/acquisition selection and consent. Pending coordinator extension; no added authority is inferred. |
 | P3 | Unchanged promotion application, code/claim contracts and selected native semantics; reuse core promotion engine. Pending. |
 | P4 | Unchanged fixed bundle composition, allocation, availability and admin boundary; selected native stores/descriptor where needed. Pending. |
 | P5 | Useful neutral browse/product/cart/builder/admin UI consuming explicit data/locale/media ports and lifecycle-ready DTOs; preserve existing fences. Pending. |
@@ -65,6 +66,42 @@ new graph edges and new dependencies are excluded. Native catalog stores and the
 descriptor belong to later P7/P4 work. No reference preview/proposal response,
 canonicalizer portability or SKU-pack refusal behavior changes in P1.
 
+## P2a boundary and task record
+
+Finite outcome: move only the existing public OpenLup price authority,
+subscription price policy, pricing-policy token, neutral policy-error/safe-reason
+block and bounded offer-policy contracts to `@openlup/platform/pricing` and its
+DTO-only `./pricing/contracts` entry. Implementation authority permits local
+file edits and verification only; the supervisor owns all Git writes, native
+review and separately authorized submission. No release/merge/dispatch, adopter,
+registry or staging action is part of this handoff. The stack base is P1 head
+`2ecf1da8f0bdf3e9f9a9d393743c333db2bd9da0` on the assigned P2 worktree.
+
+The smallest adequate cut separates DTOs from schemas and uses named reference
+exports. Package-local jitless Zod setup is the only additional implementation
+closure file; it preserves the existing validation runtime without importing a
+reference path or another module's private helper. The subscription browser inventory also admits exactly the three emitted pricing
+contracts runtime files reached by the retained browser schema binding. No new abstraction, peer,
+module edge or dependency is needed. Error classes remain single package-owned
+constructors; browser policy schemas remain local.
+
+Exclusions: quote computation/helpers/handlers, offer projection/handler/cache,
+readiness, settings, catalog provenance, tax guard, snapshot verifier,
+acquisition terms, shipping policy, read preparation, price setup, promotions,
+UI and adopter-only files. Core pricing types/allocation remain core re-exports.
+No SQL, store, descriptor or migration-manifest change is needed for injected
+read ports. The proposed P2a/P2b/P2c sequence requires the coordinator's extension
+for subsequent parts and a cumulative measured cap decision before they grow
+past current limits. Splitting PRs alone does not solve cumulative artifact size.
+
+Acceptance: preserve incumbent algorithms and assertions, keep contracts free of
+Zod/Node/global runtime dependencies, retain reference composition and class
+identity, register actual exports/graph/smoke evidence, regenerate API and source
+catalogues, and run the specified local lint/type/build/test/neutrality/size
+checks. The uncommitted tree cannot supply the supervisor's package gates.
+The execution evidence and remaining gates are recorded in the implementation
+handoff; no frozen-renewal or full W1/acquisition completion claim follows.
+
 ## Witness ledger
 
 Private C1 witnesses remain unchanged. A public package equivalent protects the
@@ -90,6 +127,9 @@ selected neutral subject; exporting types alone does not close a private witness
 | PROC-26/P1-03: proposal response publication metadata | O behavior preserved: no v2 candidate/head/post-state response addition; deferred. |
 | PROC-26/P1-04: SKU-pack refusal details | O behavior preserved: no new authorization/read-unavailable details; handler unchanged. |
 | PROC-26/P1-05: new neutral public API | Additive media functions and lifecycle/publication types/ports only; no mounted mutation. Membership and readback implementation deferred by the P1 cut. |
+| PROC-26/P2a-01: authority scheduling | O base-before-history reads preserved; no adopter concurrency optimization. A bad base prevents history work and its refusal retains precedence. |
+| PROC-26/P2a-02: history identity | O uses validated `base.priceListId`, including malformed-adapter observations; selected-list identity is not substituted. |
+| PROC-26/P2a-03: policy errors and tokens | O neutral error block, safe reasons, token binding/expiry and rollback behavior preserved; no acquisition additions, readiness or secret composition moved. |
 | PROC-26/P5-01: SSG media/details | O behavior preserved in P1; optional SSG contract/example-data additions deferred to P5. |
 
 Draft-handler boolean narrowing is type-only; O canonical output is preserved.
@@ -131,3 +171,63 @@ No Git writes or external mutations are part of this implementation handoff.
 
 Self-retro: retaining browser schemas and reusing the existing core blob port keeps
 the contracts boundary closed without a new edge, dependency or mapping layer.
+
+P2a case ledger: three complete incumbent suites plus the pure error-mapping
+case move with import-only assertion changes. Three new required cases protect
+base-before-history sequencing, observed-base history identity/raw errors, and
+the nontrivial reference error/browser-schema binding. No standalone offer-policy
+suite exists in the incumbent tree; existing quote/offer schema suites remain
+reference-owned and run through root discovery. Programme new-case balance is
+58 after P1's five and P2a's three; generated boundary iterations remain separate.
+
+P2a self-retro: keeping the browser schema binding local avoids importing server
+crypto into browser consumers; one shared binding case covers that seam and
+error identity. The initial install omitted the task cache setting and was rerun
+with the required cache before implementation; the first scoped run also exposed 12 tooling pack failures from the default
+cache. Subsequent test commands explicitly inherit the task-owned cache. Core resolver compatibility exports remain only at their existing reference
+path; the pricing entry exports only the moved authority and policy subjects.
+No process or out-of-scope repair was added.
+
+P2a browser budget: complete contracts runtime closure measured 249 B minified+gzip;
+new entry cap 320 B. All pre-existing entry and package caps remain unchanged.
+
+## P2a local verification handoff (2026-10-20)
+
+The uncommitted P1-stacked candidate changes 18 domain production files, or 20
+including the lint graph and cold-consumer tooling (ceiling 35). It moves 25
+incumbent cases and adds three required cases; no duplicate selector is added.
+The authority, token, policy digest/math and neutral error block retain their
+original implementation bytes after import/type separation. No existing API
+snapshot changes or declaration-order reorders occurred.
+
+Local results: ast-grep and lint pass (zero errors, 33 warnings); the public
+five-project typecheck has zero unresolved edges and consumer errors. Both
+reference builds prerender two pages, and API checks pass all 17 entries.
+The final brokered unfiltered run used four workers, waited 11 seconds for six
+CPU tokens/8192 MiB, and completed in 222.06 seconds: 14,501 passed, two skipped,
+one real-pack failure because the 12 new pricing sources are untracked (36
+source/derived-file refusals). This guard cannot pass before the supervisor's
+Git step. The preceding scoped run excluded no files and reported that same
+refusal plus five 10-second timeouts under contention; the full run cleared all
+five. An earlier scoped attempt had 12 default-cache pack failures. No test,
+timeout, selection, artifact or admission control was relaxed.
+
+Dry-run pack: 789 files / 479,671 packed B / 2,033,334 unpacked B; sorted code
+class 405,144 gzip B / 771 files; root docs 31,987 gzip B / five files. All caps
+remain unchanged. The contracts closure measures 249 B against its new 320 B
+cap. Eleven total package-file slots remain; later P2 parts still need the
+coordinator's split extension and cumulative budget decision.
+
+Policy/inventory CLI checks stop at the deleted original test path in the
+uncommitted tracked inventory. The separate materialized-candidate check passes
+all 5,162 catalogue paths and exact generated source-release bytes; documentation
+impact has six answered obligations. These local checks do not replace signed
+candidate package gates, native review, independent installed-artifact proof or
+hosted added-time evidence. The supervisor owns those remaining gates and any
+authorized delivery. No Git writes, release, registry/adopter/staging operation
+or external mutation was performed by this implementation task.
+
+Rethink lesson: default parallelism plus host contention can turn unrelated
+imports into deadline failures; broker admission and the existing per-run worker
+setting cleared them without changing deadlines. Keep build/typecheck phases
+serialized, and pass the task cache to child npm processes as well as installation.

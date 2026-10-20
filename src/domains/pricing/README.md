@@ -24,6 +24,19 @@ window. Enforces "subscription is cheapest per unit".
   digest tuple and integer-only subscription price derivation. It does not seed
   a policy row or activate a quote/runtime reader.
 
+## Strict current-price authority
+
+`commercePriceAuthority.ts` and the authority additions in `ports.ts` are named
+compatibility exports from [the pricing module](../../../packages/platform/README.md#pricing).
+Its exact current-money algorithm differs from the tier resolver below: it
+requires one active list and one gross base entry, validates the base before
+history, and queries history with that base's price-list identity. Legacy
+subscription observations are allowed only when history is empty. The existing
+policy schemas, canonical digest and rounding functions also live in that module;
+`types.ts` and `targetPriceAllocation.ts` continue to re-export core primitives.
+Moved witnesses live in `packages/platform/test/pricing/`; no adapter or runtime
+composition is moved by this extraction.
+
 ## How pricing resolves
 
 A caller passes **two** quantities, and the difference between them is the point
@@ -93,7 +106,8 @@ entry stays `not_configured` rather than displaying zero.
   `allocateBundleTargetPrice`. This is where resolution behaviour changes.
 - Shared/frontend: `src/domains/pricing/`. `ports.ts`, `types.ts` and
   `targetPriceAllocation.ts` are re-export shims over the engine and carry no
-  logic. `subscriptionPricePolicy.ts` is the one module still implemented here.
+  logic. The strict authority and subscription policy now also use named
+  compatibility exports from `@openlup/platform/pricing`.
 - Adapters: one per data capability a deployment bundle can declare, bound by
   adopter-owned composition; the extension boundary is in
   [Architecture and extension boundaries](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).

@@ -131,6 +131,15 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Pricing P2a moves the incumbent authority, subscription policy and token suites,
+and the pure error-mapping case, into platform `test/pricing/` discovery. Root
+and package discovery already include this directory; no duplicate required
+selector is added. The reference retains configuration/readiness composition
+coverage and one browser-schema/error-identity binding guard. Both pricing
+entries extend the existing optional-peer-free cold consumer and declaration
+compilation. Uncommitted local measurements leave the signed-candidate package
+gate and native review to the supervisor.
+
 Catalog phase A relocates eight existing catalog suites into the platform
 package's `test/catalog/` discovery, preserving their assertions. Root discovery
 already includes that directory, so no duplicate selector or second invocation

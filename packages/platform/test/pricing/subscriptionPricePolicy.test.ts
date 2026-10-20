@@ -9,7 +9,7 @@ import {
   digestSubscriptionPricePolicy,
   subscriptionPricePolicyCanonicalInputSchema,
   subscriptionPricePolicyRevisionSchema,
-} from "./subscriptionPricePolicy.js";
+} from "../../src/pricing/index.js";
 
 function policy() {
   return {

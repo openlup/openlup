@@ -15,6 +15,18 @@ one-time/subscription-initial checkout lives here.
   (`fulfillment`/`server/infra`), Supabase/provider adapters, or invoice issuing
   policy/provider execution (`accounting`).
 
+## Pricing policy package boundary
+
+The existing pricing-policy token and neutral error/safe-reason block are owned
+by `@openlup/platform/pricing`; the reference server files retain named exports
+of the same classes and functions. `commercePricingPolicy.ts` still composes
+feature flags, the signing secret and readiness, including historical-token
+honoring and cutover refusals. `offerPolicyContracts.ts` imports package version
+constants and DTOs but retains the browser's local Zod schemas. Quote/offer
+schemas and handlers stay here, so this move changes neither wire validation nor
+HTTP status mapping. The pure error case moves to the package; composition tests
+and the browser/error binding guard stay beside the reference.
+
 ## Public surface (import cross-domain ONLY these)
 - UI/BFF clients: `commerceClient.ts`, `omsClient.ts`,
   `adminPromotionsClient.ts` (admin "Rabaty" editor),

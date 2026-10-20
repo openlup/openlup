@@ -4,7 +4,7 @@ import {
   createPricingPolicyToken,
   resolvePricingPolicy,
   verifyPricingPolicyToken,
-} from "./pricingPolicyToken.js";
+} from "../../src/pricing/index.js";
 
 const secret = "pricing-policy-test-secret-32-bytes-minimum";
 
