@@ -8,6 +8,33 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
+  through both existing communications entries. Local grants remain audience-scoped;
+  only withdrawals allow account-wide scope. The push capability declares
+  `grantEffect`; accepted/acknowledged results require `reconcileRequired` and
+  never prove remote effect. Make the existing `NegativeFeedback` discriminant
+  union readonly, consistent with its other fields. Migration: callers must stop
+  assigning feedback `kind` or `outcome`; existing providers remain assignable.
+  No factory, activation, callback, retry or package subpath is added. Synthetic
+  conformance keeps accepted/acknowledged grants unsettled until settlement and
+  fresh readback. Withdrawals bypass grant-caused fences/quarantine while preserving
+  same-key withdrawal fences and account-level cooling, with honest recording
+  uncertainty and reconciliation.
+- Move the unchanged executor-backed native bundle read store and queries into
+  catalog, retaining named reference compatibility exports. Add sparse canonical
+  SQL 16/19 descriptors and byte-identical projections, with no new migration.
+  The writer, pooled transaction binding and transport remain reference-owned.
+- Deliberately classify catalog server as an adapter: its declarations now reach
+  optional pg types through the injected data executor. Runtime import and supplied
+  executor reads still work with optional peers absent; catalog/contracts stays
+  non-adapter. Select the existing peers for server declaration compilation.
+
+Migration: the native store is additive; existing reference imports keep their
+names. Install the full canonical manifest, never the sparse projections. Native
+actor-kind enforcement remains handler-only. Comment corrections distinguish the
+managed chain's 42501 publish_requires_human refusal from that native boundary.
+The catalog declaration snapshot reorders existing count enum members; their
+values and runtime behavior are unchanged.
 - Extract admin/native inventory reads and injected new-purchase stock projection.
 
 - Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
@@ -24,6 +51,7 @@ SemVer promise.
   retain schemas, shared admin kit/spec/flags, stock/lifecycle helpers, responder,
   wire versions and RPC error identity. Catalog contracts add plain DTOs only;
   browser schemas stay local. Native stores and SQL remain outside this slice.
+- Add experimental shipping ports, injected-schema handlers and type-only contracts.
 
 Migration: existing reference imports remain named compatibility exports.
 Installed consumers bind the host dependencies explicitly. Bundle DTO additions
@@ -35,7 +63,7 @@ Members and runtime behavior are unchanged. No SQL, data or activation migration
 - Add 14 experimental provider-neutral marketing-sync types through the existing
   communications and communications/contracts entries: profile sync, negative
   consent readback and erasure request/status. Existing M04 providers remain
-  assignable. Positive consent writes are deferred; no adapter, callback,
+  assignable. This initial contract excluded positive consent writes; no adapter, callback,
   activation or package subpath is added. Migration: none for existing callers.
 - Move promotion admin handlers/ports/DTOs/server schemas and native evaluator
   read/sweep into promotions, preserving reference kit/error/currency bindings.

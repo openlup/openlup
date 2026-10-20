@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { audience, binding, conformanceCase, neutralExports, publicSurface, request, synthetic, type Factory, type Harness, type Plant } from "./helpers/marketingSyncConformance.js";
+import { audience, binding, conformanceCase, neutralExports, publicSurface, request, synthetic, type Factory, type Harness, type Plant, consentPushSuite, syntheticPush } from "./helpers/marketingSyncConformance.js";
 
 // Reusable, provider-agnostic rows; later adapters inject their own offline factory/controls.
 function suite(factory: Factory) {
@@ -143,3 +143,5 @@ function suite(factory: Factory) {
   });
 }
 suite(synthetic);
+
+consentPushSuite(syntheticPush);

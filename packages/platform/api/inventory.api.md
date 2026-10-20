@@ -304,17 +304,15 @@ import type { ActivateBundleRequest, ArchiveBundleRequest, CloneBundleDraftReque
 /**
  * The semantic write port for the admin/agent bundle surface.
  *
- * This file names the CAPABILITY, never the storage. Both shipped adapters
- * (`server/adapters/supabase/bundleAdminWriteStore.ts`,
- * `server/adapters/postgres/bundleAdminWriteStore.ts`) implement exactly this
- * interface and are proved against ONE shared scenario table, so a caller cannot
+ * This file names the CAPABILITY, never the storage. Both shipped write adapters
+ * implement exactly this interface and are proved against ONE shared scenario table, so a caller cannot
  * tell them apart and neither can a rule. No data-client type, table name or
  * routine name appears here; the domain layer opens no database handle of its own.
  *
  * Each method is one atomic operation on the security boundary: the boundary takes
- * the actor explicitly, re-derives the actor kind rather than trusting the caller,
- * writes its audit row in the same transaction, short-circuits a replayed
- * idempotency key, and rolls a dry run back after validating it.
+ * the actor explicitly; the managed chain re-derives actor kind, while native
+ * relies on the handler human-only gate. Each boundary writes its ledger row in the same transaction, short-circuits a replayed
+ * idempotency key, and validates a dry run without durable writes.
  */
 /** Shape every bundle write returns. */
 export interface BundleWriteResult {
@@ -374,13 +372,14 @@ export interface AdminBundleWritePort {
      */
     cloneDraft(actorId: string, input: CloneBundleDraftRequest): Promise<BundleWriteResult>;
     /**
-     * Publish (draft -> active). HUMAN-ONLY: the boundary RAISEs 42501
-     * (`publish_requires_human`) for machine actors. Raises P0001 when the bundle has
+     * Publish (draft -> active). HUMAN-ONLY: the managed chain raises 42501
+     * (`publish_requires_human`) for machine actors; native relies on the handler gate. Raises P0001 when the bundle has
      * no composition or no active target price.
      */
     activate(actorId: string, input: ActivateBundleRequest): Promise<BundleWriteResult>;
     /**
-     * Unpublish (active -> draft). HUMAN-ONLY, same 42501. Raises P0001
+     * Unpublish (active -> draft). HUMAN-ONLY: the managed chain uses the same
+     * 42501 refusal; native relies on the handler gate. Raises P0001
      * (`deactivate_requires_active`) when the bundle is not live.
      */
     deactivate(actorId: string, input: DeactivateBundleRequest): Promise<BundleWriteResult>;
@@ -559,6 +558,38 @@ export interface BundleRuleBindings {
     offerAvailabilityReasonCode(status: BundleStockStatus): string;
 }
 ```
+## dist/catalog/bundleCatalogQueries.d.ts
+
+```ts
+/**
+ * The statements the direct-Postgres bundle read adapter renders.
+ *
+ * They live beside the adapter rather than inside it because they are the part a
+ * reader comes here to check — which relations are touched, which columns are
+ * asked for, and how a component's reference price is resolved — and reading them
+ * should not mean scrolling past the row marshalling that consumes them.
+ */
+export declare const SUMMARY_COLUMNS = "\n  b.id, b.code, b.title, b.status, b.fulfillment_mode, b.updated_at,\n  b.composition_constraint, b.metadata,\n  (SELECT count(*) FROM public.catalog_bundle_components c WHERE c.bundle_id = b.id)\n    AS component_count,\n  EXISTS (SELECT 1 FROM public.catalog_bundle_prices p WHERE p.bundle_id = b.id AND p.active)\n    AS has_active_target_price";
+export declare const LIST_FILTER = "\n  WHERE ($1::text = 'all' OR b.status = $1::text)\n    AND ($2::text IS NULL OR b.code ILIKE '%' || $2 || '%' OR b.title ILIKE '%' || $2 || '%')";
+export declare const LIST_SQL = "SELECT \n  b.id, b.code, b.title, b.status, b.fulfillment_mode, b.updated_at,\n  b.composition_constraint, b.metadata,\n  (SELECT count(*) FROM public.catalog_bundle_components c WHERE c.bundle_id = b.id)\n    AS component_count,\n  EXISTS (SELECT 1 FROM public.catalog_bundle_prices p WHERE p.bundle_id = b.id AND p.active)\n    AS has_active_target_price FROM public.catalog_bundles b \n  WHERE ($1::text = 'all' OR b.status = $1::text)\n    AND ($2::text IS NULL OR b.code ILIKE '%' || $2 || '%' OR b.title ILIKE '%' || $2 || '%')\n  ORDER BY b.code LIMIT $3 OFFSET $4";
+export declare const COUNT_SQL = "SELECT count(*) AS total FROM public.catalog_bundles b \n  WHERE ($1::text = 'all' OR b.status = $1::text)\n    AND ($2::text IS NULL OR b.code ILIKE '%' || $2 || '%' OR b.title ILIKE '%' || $2 || '%')";
+export declare const DETAIL_SQL = "SELECT \n  b.id, b.code, b.title, b.status, b.fulfillment_mode, b.updated_at,\n  b.composition_constraint, b.metadata,\n  (SELECT count(*) FROM public.catalog_bundle_components c WHERE c.bundle_id = b.id)\n    AS component_count,\n  EXISTS (SELECT 1 FROM public.catalog_bundle_prices p WHERE p.bundle_id = b.id AND p.active)\n    AS has_active_target_price FROM public.catalog_bundles b WHERE b.code = $1";
+/**
+ * The unit's reference price in ONE named list: the lowest tier that is active,
+ * newest window first. A unit the list prices nothing for resolves to NULL rather
+ * than dropping the component, so a caller sees an unpriced part instead of a
+ * shorter bill of materials.
+ */
+export declare const REFERENCE_PRICE = "(\n  SELECT pe.unit_price_minor FROM public.price_entries pe\n   WHERE pe.variant_id = s.id AND pe.price_list_id = %LIST% AND pe.active\n   ORDER BY pe.min_qty ASC, pe.valid_from DESC LIMIT 1)";
+export declare const COMPONENT_SQL: string;
+export declare const FEED_COMPONENT_SQL: string;
+export declare const PRICE_SQL = "\n  SELECT p.mode, p.target_price_minor, list.currency, p.amount_kind, p.active,\n         p.valid_from, p.valid_to\n    FROM public.catalog_bundle_prices p\n    JOIN public.price_lists AS list ON list.id = p.price_list_id\n   WHERE p.bundle_id = $1::uuid\n   ORDER BY p.valid_from DESC";
+export declare const OWN_LIST_SQL = "\n  SELECT list.id, list.currency\n    FROM public.catalog_bundle_prices p\n    JOIN public.price_lists AS list ON list.id = p.price_list_id\n   WHERE p.bundle_id = $1::uuid AND p.active AND ($2::text IS NULL OR p.mode = $2::text)\n   ORDER BY p.valid_from DESC LIMIT 1";
+export declare const CURRENCY_LIST_SQL = "\n  SELECT id, currency FROM public.price_lists\n   WHERE currency = $1::text AND status = 'active'\n   ORDER BY created_at DESC LIMIT 1";
+export declare const FEED_SQL = "\n  SELECT b.id, b.code, b.title, b.fulfillment_mode, p.mode, p.target_price_minor,\n         p.price_list_id, list.currency\n    FROM public.catalog_bundles b\n    JOIN public.catalog_bundle_prices p ON p.bundle_id = b.id AND p.active\n    JOIN public.price_lists AS list ON list.id = p.price_list_id\n   WHERE b.status = 'active' AND ($1::text IS NULL OR list.currency = $1::text)\n   ORDER BY b.code, p.valid_from DESC";
+export declare const HISTORY_SQL = "\n  SELECT id, bundle_code, action, before_state, after_state, created_at\n    FROM public.catalog_bundle_write_events\n   WHERE bundle_code = $1::text\n   ORDER BY created_at DESC LIMIT $2 OFFSET $3";
+export declare const HISTORY_COUNT_SQL = "\n  SELECT count(*) AS total FROM public.catalog_bundle_write_events WHERE bundle_code = $1::text";
+```
 ## dist/catalog/bundleCatalogReadPort.d.ts
 
 ```ts
@@ -567,8 +598,7 @@ export interface BundleRuleBindings {
  *
  * This file names the CAPABILITY, never the storage: no table, no routine, no
  * data-client type and no vendor appears here, and the domain layer opens no
- * database handle of its own. Both shipped adapters — the two
- * `bundleCatalogStore.ts` modules under `server/adapters/` — implement exactly this
+ * database handle of its own. Both shipped read adapters implement exactly this
  * interface and are proved against ONE shared scenario table, so a caller cannot
  * tell them apart. It is the same shape the write port
  * (`adminBundleWritePort.ts`) established in the previous wave.
@@ -591,8 +621,7 @@ export interface BundleRuleBindings {
  * Both adapters raise this rather than returning an empty page, because the two
  * outcomes are opposite: an empty catalogue is a fact a storefront may cache and
  * show, and a failed query is not. The class lives on the port so neither chain
- * owns the distinction — and so this file carries the executable line the changed-
- * runtime coverage lane requires of every `server/**` module.
+ * owns the distinction.
  */
 export declare class BundleCatalogReadError extends Error {
     constructor(message: string);
@@ -731,6 +760,13 @@ export interface BundleCatalogReadPort {
     listBundleHistory(input: BundleHistoryInput): Promise<BundleHistoryResult>;
 }
 ```
+## dist/catalog/bundleCatalogStore.d.ts
+
+```ts
+import type { BundleCatalogReadPort } from "./bundleCatalogReadPort.js";
+import type { PgQueryExecutor } from "../data/index.js";
+export declare function createPostgresBundleCatalogStore(executor: PgQueryExecutor): BundleCatalogReadPort;
+```
 ## dist/catalog/bundleRuleCodes.d.ts
 
 ```ts
@@ -741,9 +777,8 @@ import type { BundleAllocationFailureCode } from "@openlup/core/pricing";
  * contracts, the pure rule predicates (`bundleRules.ts`), the service-role write
  * routines (which RAISE them) and the over-the-wire error taxonomy.
  *
- * The catalog domain is the reference for this shape
- * (`src/domains/commerce/catalogRuleCodes.ts`); the lifecycle subset is expressed
- * through the generic kit in `src/lib/agent-domain/`, and the codes stay here as
+ * The catalog rules use this same shape; the lifecycle subset is expressed
+ * through the host lifecycle kit, and the codes stay here as
  * this domain's registry.
  */
 export declare const BUNDLE_RULE_CODES: readonly ["DRAFT_ONLY_FOR_MACHINE", "MIN_COMPONENTS", "ADDON_ONLY_COMPOSITION", "DUPLICATE_COMPONENT", "CODE_TAKEN", "COMPONENT_NOT_FOUND", "COMPONENT_NOT_SELLABLE", "COMPONENT_CURRENCY_MISMATCH", "TARGET_ABOVE_COMPONENT_SUM", "TARGET_BELOW_FLOOR", "PRICE_REQUIRED_TO_SELL", "COMPOSITION_REQUIRED_TO_SELL", "APPEND_ONLY_PRICE", "NO_HARD_DELETE", "RESTORE_REQUIRES_ARCHIVED", "DEACTIVATE_REQUIRES_ACTIVE", "FULFILLMENT_MODE_UNSUPPORTED", "CONSTRAINT_VALIDATION_FAILED", "CLONE_SOURCE_NOT_FOUND"];
@@ -1815,9 +1850,9 @@ export declare const catalogDraftPayloadSchema: z.ZodObject<{
             kind: z.ZodLiteral<"quantity">;
             value: z.ZodObject<{
                 dimension: z.ZodEnum<{
+                    count: "count";
                     mass: "mass";
                     volume: "volume";
-                    count: "count";
                 }>;
                 unscaled: z.ZodString;
                 scale: z.ZodNumber;
@@ -1829,9 +1864,9 @@ export declare const catalogDraftPayloadSchema: z.ZodObject<{
         }, z.core.$strict>], "kind">>;
         netContent: z.ZodOptional<z.ZodObject<{
             dimension: z.ZodEnum<{
+                count: "count";
                 mass: "mass";
                 volume: "volume";
-                count: "count";
             }>;
             unscaled: z.ZodString;
             scale: z.ZodNumber;
@@ -1850,9 +1885,9 @@ export declare const catalogDraftPayloadSchema: z.ZodObject<{
         assetRefs: z.ZodOptional<z.ZodArray<z.ZodString>>;
         grossMass: z.ZodOptional<z.ZodObject<{
             dimension: z.ZodEnum<{
+                count: "count";
                 mass: "mass";
                 volume: "volume";
-                count: "count";
             }>;
             unscaled: z.ZodString;
             scale: z.ZodNumber;
@@ -1905,9 +1940,9 @@ export declare const catalogDraftCommandSchema: z.ZodObject<{
                 kind: z.ZodLiteral<"quantity">;
                 value: z.ZodObject<{
                     dimension: z.ZodEnum<{
+                        count: "count";
                         mass: "mass";
                         volume: "volume";
-                        count: "count";
                     }>;
                     unscaled: z.ZodString;
                     scale: z.ZodNumber;
@@ -1919,9 +1954,9 @@ export declare const catalogDraftCommandSchema: z.ZodObject<{
             }, z.core.$strict>], "kind">>;
             netContent: z.ZodOptional<z.ZodObject<{
                 dimension: z.ZodEnum<{
+                    count: "count";
                     mass: "mass";
                     volume: "volume";
-                    count: "count";
                 }>;
                 unscaled: z.ZodString;
                 scale: z.ZodNumber;
@@ -1940,9 +1975,9 @@ export declare const catalogDraftCommandSchema: z.ZodObject<{
             assetRefs: z.ZodOptional<z.ZodArray<z.ZodString>>;
             grossMass: z.ZodOptional<z.ZodObject<{
                 dimension: z.ZodEnum<{
+                    count: "count";
                     mass: "mass";
                     volume: "volume";
-                    count: "count";
                 }>;
                 unscaled: z.ZodString;
                 scale: z.ZodNumber;
@@ -2020,9 +2055,9 @@ export declare const catalogDraftRecordSchema: z.ZodObject<{
                 kind: z.ZodLiteral<"quantity">;
                 value: z.ZodObject<{
                     dimension: z.ZodEnum<{
+                        count: "count";
                         mass: "mass";
                         volume: "volume";
-                        count: "count";
                     }>;
                     unscaled: z.ZodString;
                     scale: z.ZodNumber;
@@ -2034,9 +2069,9 @@ export declare const catalogDraftRecordSchema: z.ZodObject<{
             }, z.core.$strict>], "kind">>;
             netContent: z.ZodOptional<z.ZodObject<{
                 dimension: z.ZodEnum<{
+                    count: "count";
                     mass: "mass";
                     volume: "volume";
-                    count: "count";
                 }>;
                 unscaled: z.ZodString;
                 scale: z.ZodNumber;
@@ -2055,9 +2090,9 @@ export declare const catalogDraftRecordSchema: z.ZodObject<{
             assetRefs: z.ZodOptional<z.ZodArray<z.ZodString>>;
             grossMass: z.ZodOptional<z.ZodObject<{
                 dimension: z.ZodEnum<{
+                    count: "count";
                     mass: "mass";
                     volume: "volume";
-                    count: "count";
                 }>;
                 unscaled: z.ZodString;
                 scale: z.ZodNumber;
@@ -2144,9 +2179,9 @@ export declare const catalogDraftApplyResultSchema: z.ZodUnion<readonly [z.ZodOb
                     kind: z.ZodLiteral<"quantity">;
                     value: z.ZodObject<{
                         dimension: z.ZodEnum<{
+                            count: "count";
                             mass: "mass";
                             volume: "volume";
-                            count: "count";
                         }>;
                         unscaled: z.ZodString;
                         scale: z.ZodNumber;
@@ -2158,9 +2193,9 @@ export declare const catalogDraftApplyResultSchema: z.ZodUnion<readonly [z.ZodOb
                 }, z.core.$strict>], "kind">>;
                 netContent: z.ZodOptional<z.ZodObject<{
                     dimension: z.ZodEnum<{
+                        count: "count";
                         mass: "mass";
                         volume: "volume";
-                        count: "count";
                     }>;
                     unscaled: z.ZodString;
                     scale: z.ZodNumber;
@@ -2179,9 +2214,9 @@ export declare const catalogDraftApplyResultSchema: z.ZodUnion<readonly [z.ZodOb
                 assetRefs: z.ZodOptional<z.ZodArray<z.ZodString>>;
                 grossMass: z.ZodOptional<z.ZodObject<{
                     dimension: z.ZodEnum<{
+                        count: "count";
                         mass: "mass";
                         volume: "volume";
-                        count: "count";
                     }>;
                     unscaled: z.ZodString;
                     scale: z.ZodNumber;
@@ -2371,6 +2406,9 @@ export { createSellableBundleHandlers, toSellableBundle } from "./sellableBundle
 export type { SellableBundleHandlerDeps } from "./sellableBundleHandler.js";
 export type { BundleStockStatus, BundleStockRequestItem, BundleStockAvailability, BundleStockPort, BundleRuleBindings } from "./bundleBindings.js";
 export type { AuthorizeAdmin, AgentDomainQuerySpec, AgentDomainMutationSpec, BundleMutationKey, BundleQueryKey, BundleResponseSchema, BundleAdminBindings } from "./adminBindings.js";
+export { createPostgresBundleCatalogStore } from "./bundleCatalogStore.js";
+export { BUNDLE_MIGRATIONS } from "./sql.js";
+export { SUMMARY_COLUMNS, LIST_FILTER, LIST_SQL, COUNT_SQL, DETAIL_SQL, REFERENCE_PRICE, COMPONENT_SQL, FEED_COMPONENT_SQL, PRICE_SQL, OWN_LIST_SQL, CURRENCY_LIST_SQL, FEED_SQL, HISTORY_SQL, HISTORY_COUNT_SQL } from "./bundleCatalogQueries.js";
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 
@@ -2437,15 +2475,15 @@ export type { CatalogQuantity, CatalogOptionValue, CatalogDraftIssue, CatalogPro
 export declare const catalogNamespacedKeySchema: z.ZodString;
 export declare const catalogDimensionKeySchema: z.ZodString;
 export declare const catalogQuantityDimensionSchema: z.ZodEnum<{
+    count: "count";
     mass: "mass";
     volume: "volume";
-    count: "count";
 }>;
 export declare const catalogQuantitySchema: z.ZodObject<{
     dimension: z.ZodEnum<{
+        count: "count";
         mass: "mass";
         volume: "volume";
-        count: "count";
     }>;
     unscaled: z.ZodString;
     scale: z.ZodNumber;
@@ -2458,9 +2496,9 @@ export declare const catalogOptionValueSchema: z.ZodDiscriminatedUnion<[z.ZodObj
     kind: z.ZodLiteral<"quantity">;
     value: z.ZodObject<{
         dimension: z.ZodEnum<{
+            count: "count";
             mass: "mass";
             volume: "volume";
-            count: "count";
         }>;
         unscaled: z.ZodString;
         scale: z.ZodNumber;
@@ -2693,7 +2731,7 @@ import type { ActiveBundleComposition } from "./bundleCatalogReadPort.js";
 import type { BundleAvailabilityService } from "./bundleAvailabilityService.js";
 /**
  * The public sellable-bundle feed handler, shaped after the reference catalog
- * handler (`server/domains/catalog/referenceCatalogHandler.ts`): GET-only, one
+ * handler: GET-only, one
  * port call, validate the body before sending, and never serve an unvalidated
  * shape.
  *
@@ -2781,11 +2819,324 @@ export declare const sellableCatalogListResponseSchema: z.ZodObject<{
     }, z.core.$strict>>;
 }, z.core.$strict>;
 ```
+## dist/catalog/sql.d.ts
+
+```ts
+/** Sparse projections of canonical units, never an install chain. */
+export declare const BUNDLE_MIGRATIONS: readonly [{
+    readonly id: "20260812140000_sellable_bundle_catalog";
+    readonly catalogPath: "db/platform/migrations/20260812140000_sellable_bundle_catalog.sql";
+    readonly position: 16;
+    readonly sha256: "62fbf0910a3a7a2ee47e2d798933fe0a5a273fd1242cae7cc78ff237ba39e394";
+    readonly url: URL;
+}, {
+    readonly id: "20260812210000_bundle_operator_write_boundary";
+    readonly catalogPath: "db/platform/migrations/20260812210000_bundle_operator_write_boundary.sql";
+    readonly position: 19;
+    readonly sha256: "d0ec6674d7eedf4cd3ce0d8ccd7345ebe2f93da635316a68a6bd178ec55b2679";
+    readonly url: URL;
+}];
+```
 ## dist/catalog/validation.d.ts
 
 ```ts
 import { z } from "zod";
 export { z };
+```
+## dist/data/binding.d.ts
+
+```ts
+import { type PostgresDataGatewayEnv } from "./postgresGateway.js";
+import type { DataGatewayPort } from "@openlup/core/platform-runtime";
+import type { SupabaseCreateClient } from "./supabaseClientFactory.js";
+type Env = Record<string, string | undefined>;
+type ActorClaims = {
+    sub?: string;
+    role?: string;
+} | null;
+/** Actor-only data access for one request. */
+export type ActorOnlyDataPort = {
+    asActor: <T>(claims: ActorClaims, work: (gateway: unknown) => Promise<T>) => Promise<T>;
+};
+export interface DataPortBindingOptions {
+    /** Replaces the bindings' supabase-js `createClient` for this call (tests). */
+    createClientImpl?: SupabaseCreateClient;
+    resolveAccessToken?: (claims: ActorClaims) => string | null;
+}
+export interface DataBindingDependencies {
+    /** The supabase-js `createClient` used by every supabase gateway these bindings build. */
+    createSupabaseClient: SupabaseCreateClient;
+    /** Builds the direct-PostgreSQL gateway; defaults to `createPostgresDataGateway`. */
+    createPostgresGateway?: (env: PostgresDataGatewayEnv) => DataGatewayPort;
+}
+export interface DataBindings {
+    /** Resolve the DataGatewayPort for a bundle's declared data capability kind. */
+    bindDataPort(dataKind: string, env: Env, requestOptions?: DataPortBindingOptions): DataGatewayPort | null;
+    /** Bind one request to actor-only data access. */
+    bindRequestActorDataPort(accessToken: string, env: Env, requestOptions?: DataPortBindingOptions): ActorOnlyDataPort | null;
+    /** Resolve and bind the active bundle's data gateway, cached per bundle and data configuration. */
+    bindBundleDataPort(env: Env): DataGatewayPort | null;
+}
+/** Create one set of data bindings; the bundle data port cache belongs to this set. */
+export declare function createDataBindings(deps: DataBindingDependencies): DataBindings;
+export {};
+```
+## dist/data/index.d.ts
+
+```ts
+export { createPostgresDataGateway, createPostgresGatewayTypeOverrides, createPostgresRoleFreeTransactionLane, postgresTimestampTzToRfc3339, resolvePostgresDataGatewayEnv, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions, type PostgresRoleFreeTransactionLane, } from "./postgresGateway.js";
+export { PgGatewayClient, PgQueryBuilder, type PgQueryExecutor, type PgShimError, type PgShimResult, } from "./queryBuilder.js";
+export { createActorClient, createServiceClient, readSupabaseActorDataGatewayEnv, readSupabaseDataGatewayEnv, type SupabaseCreateClient, type SupabaseDataGatewayEnv, } from "./supabaseClientFactory.js";
+export { createSupabaseDataGateway, type SupabaseDataGatewayOptions } from "./supabaseGateway.js";
+export { createDataBindings, type ActorOnlyDataPort, type DataBindingDependencies, type DataBindings, type DataPortBindingOptions, } from "./binding.js";
+```
+## dist/data/postgresGateway.d.ts
+
+```ts
+import type { Pool } from "pg";
+import type { DataGatewayPort } from "@openlup/core/platform-runtime";
+export interface PostgresDataGatewayEnv {
+    /** Postgres connection string (DATABASE_URL). Empty until a node-postgres deploy supplies it. */
+    connectionString: string;
+}
+export interface PostgresDataGatewayOptions {
+    /** Injection seam: tests pass a stub pool; production lazily builds a real pg.Pool from env. */
+    poolFactory?: (env: PostgresDataGatewayEnv) => Pool | Promise<Pool>;
+}
+/** Convert node-postgres timestamptz text to lossless RFC 3339. */
+export declare function postgresTimestampTzToRfc3339(value: string): string;
+/** Keep PostgREST-compatible, lossless timestamp strings at the gateway edge. */
+export declare function createPostgresGatewayTypeOverrides(TypeOverridesCtor: typeof import("pg").TypeOverrides): import("pg").TypeOverrides;
+/**
+ * Capability-local, role-free transaction lane.
+ *
+ * The platform manifest intentionally creates no service role. This is not an
+ * alternate DataGatewayPort access mode: a deployment hands one lane to exactly
+ * one adapter that calls its own rail RPCs, and names that lane after the
+ * capability, because the name is the access rule. Its lifecycle reuses the same
+ * pooled BEGIN/callback/COMMIT|ROLLBACK/release implementation as the public
+ * gateway below, but it never changes the connection role.
+ */
+export interface PostgresRoleFreeTransactionLane {
+    run<T>(work: (gateway: unknown) => Promise<T>): Promise<T>;
+    close(): Promise<void>;
+}
+/**
+ * Build a node-postgres-backed DataGatewayPort. Pure: NO pool/connection is created until a port
+ * method runs work (lazy, like the supabase adapter), so the slot binds even before DATABASE_URL is
+ * present (keeps composeBundle({}) non-null). The pool is created once and reused across calls.
+ */
+export declare function createPostgresDataGateway(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): DataGatewayPort;
+/**
+ * Build one role-free, per-operation lane. Do not use this for generic service
+ * work: DataGatewayPort.asService remains the mandatory service_role boundary.
+ * Only a named owner-authority capability of the deployment may hold a lane.
+ */
+export declare function createPostgresRoleFreeTransactionLane(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresRoleFreeTransactionLane;
+/** Resolve the gateway env from process env (DATABASE_URL), mirroring the supabase binding shape. */
+export declare function resolvePostgresDataGatewayEnv(env: Record<string, string | undefined>): PostgresDataGatewayEnv;
+```
+## dist/data/queryBuilder.d.ts
+
+```ts
+import type { PoolClient } from "pg";
+import { type PgQueryExecutor, type PgShimError, type PgShimResult } from "./queryBuilderSql.js";
+export type { PgQueryExecutor, PgShimError, PgShimResult };
+/**
+ * Builder over one pg client. Chainable + awaitable (PromiseLike). Every value flows through a param
+ * accumulator, so the rendered SQL contains only $N placeholders for values.
+ */
+export declare class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimResult<T>> {
+    private readonly client;
+    private state;
+    constructor(client: PgQueryExecutor, table: string);
+    select(columns: string, options?: {
+        count?: string;
+        head?: boolean;
+    }): this;
+    insert(values: Record<string, unknown> | Array<Record<string, unknown>>): this;
+    update(values: Record<string, unknown>): this;
+    eq(column: string, value: unknown): this;
+    gt(column: string, value: unknown): this;
+    gte(column: string, value: unknown): this;
+    lte(column: string, value: unknown): this;
+    in(column: string, values: unknown[]): this;
+    is(column: string, value: unknown): this;
+    ilike(column: string, value: string): this;
+    order(column: string, options?: {
+        ascending?: boolean;
+    }): this;
+    limit(count: number): this;
+    range(from: number, to: number): Promise<PgShimResult<T>>;
+    maybeSingle(): Promise<PgShimResult<T>>;
+    single(): Promise<PgShimResult<T>>;
+    then<R1 = PgShimResult<T>, R2 = never>(onfulfilled?: ((value: PgShimResult<T>) => R1 | PromiseLike<R1>) | null, onrejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null): Promise<R1 | R2>;
+    private run;
+    private runExactCount;
+    private shape;
+    private compile;
+    private compileSelect;
+    private compileInsert;
+    private compileUpdate;
+    private renderWhere;
+    private renderOrder;
+    private renderLimitOffset;
+}
+/** supabase-js-style client over one acquired pg client: `.from(t)` + `.rpc(fn, args)`. */
+export declare class PgGatewayClient {
+    private readonly client;
+    constructor(client: PgQueryExecutor);
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+    from<T = Record<string, unknown>>(table: string): PgQueryBuilder<T>;
+    rpc(functionName: string, args?: Record<string, unknown>): Promise<PgShimResult>;
+}
+export type { PoolClient };
+```
+## dist/data/queryBuilderSql.d.ts
+
+```ts
+/** PostgREST-shaped error the consumers narrow on (`.code`, `.message`, `.details`, `.hint`). */
+export interface PgShimError {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+}
+export interface PgShimResult<T = unknown> {
+    data: T;
+    error: PgShimError | null;
+    count?: number | null;
+}
+/** Minimal query surface we need from a pg client (Pool acquires a PoolClient per request). */
+export interface PgQueryExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export type Filter = {
+    kind: "eq" | "gte" | "lte" | "gt";
+    column: string;
+    value: unknown;
+} | {
+    kind: "in";
+    column: string;
+    values: unknown[];
+} | {
+    kind: "ilike";
+    column: string;
+    value: string;
+} | {
+    kind: "is";
+    column: string;
+    value: unknown;
+};
+export interface OrderBy {
+    column: string;
+    ascending: boolean;
+}
+export declare function quoteIdent(raw: string): string;
+export declare function renderColumns(columns: string): string;
+export declare function renderFilter(filter: Filter, params: ParamAccumulator): string;
+/**
+ * PostgREST `count=exact` rendered as a SEPARATE aggregate over the same FROM/WHERE — deliberately
+ * NOT a `COUNT(*) OVER()` folded into the row query. PostgREST's exact count ignores limit/offset,
+ * and a window function emits no row at all for an empty page, so an offset past the end would
+ * report 0 instead of the true total. Keeping it separate also leaves the row projection
+ * byte-identical: there is no synthetic column to strip before cardinality shaping.
+ */
+export declare function renderCountQuery(table: string, filters: readonly Filter[], params: ParamAccumulator): string;
+/**
+ * PostgREST refuses an out-of-bounds page instead of answering an empty one -- but ONLY when it
+ * knows the total, i.e. when an exact count was requested; without one it answers 200 and `[]`,
+ * which is what this shim already did. The boundary is strict: offset === total is a legal empty
+ * page, offset === total + 1 is not. Measured against PostgREST 14.10 before this was written,
+ * including the `details` sentence, which carries the two numbers a caller pages on.
+ */
+export declare function rangeNotSatisfiable(offset: number | null, total: number | null): PgShimError | null;
+/**
+ * INSERT ... VALUES ... RETURNING, with the column list taken from the FIRST row and every later
+ * row required to carry the same key set. Deriving the columns from row 0 alone and binding the
+ * rest positionally is how a batch used to lose a column silently: an extra key vanished, a missing
+ * one bound NULL over a DEFAULT. PostgREST answers PGRST102 "All object keys must match" to exactly
+ * this payload -- and keeps answering it under `Prefer: missing=default`, measured -- so the shim
+ * refuses too. Refusal, not union: parity is the point, and this builder exposes no Prefer header
+ * through which a caller could ask for anything else.
+ */
+export declare function renderInsertStatement(table: string, rows: readonly Record<string, unknown>[], projection: string, params: ParamAccumulator): string;
+export declare function unwrapRpcRows(rows: Record<string, unknown>[], functionName: string): unknown;
+/** Accumulates values and hands back $1,$2,… placeholders — the single injection-safety chokepoint. */
+export declare class ParamAccumulator {
+    readonly values: unknown[];
+    add(value: unknown): string;
+}
+export declare function joinParts(parts: string[]): string;
+export declare function toShimError(error: unknown): PgShimError;
+```
+## dist/data/supabaseClientFactory.d.ts
+
+```ts
+/** Structural shape of the supabase-js `createClient` we depend on (injection seam for tests). */
+export type SupabaseCreateClient = (url: string, key: string, options?: {
+    auth?: {
+        persistSession?: boolean;
+        autoRefreshToken?: boolean;
+    };
+    global?: {
+        headers?: Record<string, string>;
+    };
+}) => unknown;
+export interface SupabaseDataGatewayEnv {
+    /** Project URL (SUPABASE_URL / VITE_SUPABASE_URL). */
+    url: string;
+    /** Anon/publishable key — used for actor (RLS-bound) clients. */
+    anonKey: string;
+    /** Service-role key — used for elevated (RLS-bypassing) clients. */
+    serviceRoleKey: string;
+}
+/** Read the gateway env using the same precedence the inline sites use today. */
+export declare function readSupabaseDataGatewayEnv(env: Record<string, string | undefined>): SupabaseDataGatewayEnv | null;
+/** Read env for actor-only gateway consumers. Does not require the elevated service-role key. */
+export declare function readSupabaseActorDataGatewayEnv(env: Record<string, string | undefined>): SupabaseDataGatewayEnv | null;
+/**
+ * Build an elevated (service-role) supabase client — byte-identical to the inline
+ * `createClient(env.url, env.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })`
+ * shape the BFF handlers use today.
+ */
+export declare function createServiceClient(env: SupabaseDataGatewayEnv, factory: SupabaseCreateClient): unknown;
+/**
+ * Build an actor (RLS-bound) supabase client — anon key + the actor's Bearer access token, matching
+ * the inline `createAdminAuthClient` / `createCustomerClient` shape. When no token is supplied the
+ * global Authorization header is omitted (identical to the inline `accessToken ? {...} : {}`).
+ */
+export declare function createActorClient(env: SupabaseDataGatewayEnv, accessToken: string | null, factory: SupabaseCreateClient): unknown;
+```
+## dist/data/supabaseGateway.d.ts
+
+```ts
+import type { DataGatewayPort } from "@openlup/core/platform-runtime";
+import { type SupabaseCreateClient, type SupabaseDataGatewayEnv } from "./supabaseClientFactory.js";
+type ActorClaims = {
+    sub?: string;
+    role?: string;
+} | null;
+export interface SupabaseDataGatewayOptions {
+    /** The supabase-js `createClient` (tests pass a stub). */
+    createClientImpl: SupabaseCreateClient;
+    /**
+     * Resolve an actor's Bearer access token from their claims. The port contract carries only
+     * `{ sub, role }`, but RLS needs the raw JWT; call sites that have the request token bind it here.
+     * Returns null → anon (RLS-bound but unauthenticated) client.
+     */
+    resolveAccessToken?: (claims: ActorClaims) => string | null;
+}
+/**
+ * Build a supabase-backed DataGatewayPort from resolved env. Pure: no client is created until a
+ * port method runs work (matches the per-request creation the inline sites do today).
+ */
+export declare function createSupabaseDataGateway(env: SupabaseDataGatewayEnv, options: SupabaseDataGatewayOptions): DataGatewayPort;
+export {};
 ```
 ## dist/http/deadline.d.ts
 
