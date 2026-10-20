@@ -117,13 +117,13 @@ The overflow above 35 consists entirely of mechanical splits, package destinatio
 named compatibility bindings, barrels and graph/consumer tooling; no behavior
 change is included.
 
-Working-tree pack: **864 files / 846 code files / 533,073 packed B /
-2,336,564 unpacked B / 455,320 code gzip B**. Current caps are **800 files /
-800 code files / 522,240 packed B / 2,088,960 unpacked B / 440,320 code gzip B**;
-all five are exceeded. All approved caps hold: **2,100 files / 2,000 code files /
-1,351,680 packed B / 5,734,400 unpacked B / 1,126,400 code gzip B**.
+Pack with P2b: **864 files / 846 code files / 533,073 packed B /
+2,336,564 unpacked B / 455,320 code gzip B**, within the raised caps of
+**2,100 files / 2,000 code files / 1,351,680 packed B / 5,734,400 unpacked B /
+1,126,400 code gzip B** (the earlier caps of 800 files / 800 code files /
+522,240 / 2,088,960 / 440,320 B would not hold it).
 Root docs: **32,856 gzip B / 5 files**, within **40,960 B / 10 files**.
-The separate cap contribution owns the package cap changes. Pricing contracts
+P2b changes no package cap. Pricing contracts
 measure **349 B** minified+gzip; only their browser-entry budget increases from
 **320 B** to **416 B**.
 
@@ -174,12 +174,14 @@ success states, publish change states and opaque authorization; no runtime capab
 
 Whole-P1 changed production-source ceiling: **35**; actual cut: **34**.
 New contracts browser entry: **3,281 B** minified+gzip; budget **4,096 B**.
-Existing entry and aggregate caps are unchanged. Whole-package caps remain
+P1 and P2a changed no existing entry or aggregate cap. They landed under
 **800 files / 522,240 packed B / 2,088,960 unpacked B**; code gzip
 **440,320 B / 800 files**; root docs gzip **40,960 B / 10 files**.
-The approved cumulative caps for P2b onward are recorded above; the current
-package caps remain unchanged until the separate cap contribution lands.
+On 2026-10-20 the maintainer approved new whole-package caps for the rest of
+M05, applied in a separate caps change before P2b: **2,100 files / 1,320 KiB
+packed / 5,600 KiB unpacked**; code gzip **1,100 KiB / 2,000 files**. Root docs,
+browser-entry and baseline values and the growth tripwire are unchanged.
 
 Main alone, measured on `83a479e`: **684 files / 413,801 packed B /
 1,764,012 unpacked B / 349,386 code gzip B / 666 code files**.
-P1 measured: pending committed gates
+P1 measured: **753 files / 462,244 packed B / 1,974,943 unpacked B**.
