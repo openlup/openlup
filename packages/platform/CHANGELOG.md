@@ -8,10 +8,19 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
+  through both existing communications entries. Local grants remain audience-scoped;
+  only withdrawals allow account-wide scope. The push capability declares
+  `grantEffect`; accepted/acknowledged results require `reconcileRequired` and
+  never prove remote effect. Make the existing `NegativeFeedback` discriminant
+  union readonly, consistent with its other fields. Migration: callers must stop
+  assigning feedback `kind` or `outcome`; existing providers remain assignable.
+  No factory, activation, callback, retry or package subpath is added.
+
 - Add 14 experimental provider-neutral marketing-sync types through the existing
   communications and communications/contracts entries: profile sync, negative
   consent readback and erasure request/status. Existing M04 providers remain
-  assignable. Positive consent writes are deferred; no adapter, callback,
+  assignable. This initial contract excluded positive consent writes; no adapter, callback,
   activation or package subpath is added. Migration: none for existing callers.
 - Move promotion admin handlers/ports/DTOs/server schemas and native evaluator
   read/sweep into promotions, preserving reference kit/error/currency bindings.

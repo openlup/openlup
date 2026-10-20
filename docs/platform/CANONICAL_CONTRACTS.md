@@ -385,11 +385,11 @@ Browser-used renderer and preview values remain local. See the
 
 ## Neutral marketing sync
 
-The development-preview communications entries expose the same 14 type-only
+The development-preview communications entries expose the same 17 type-only
 marketing-sync declarations in
 [`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
-The three families have four operations: `profile.sync`, `consent.read`,
-`erasure.request` and `erasure.read`. Capabilities bind an account, environment,
+The four families have five operations: `profile.sync`, `consent.read`,
+`erasure.request`, `erasure.read` and additive `consent.push`. Capabilities bind an account, environment,
 namespace, mapping version and audience. Unsupported scope refuses honestly;
 verification remains pending until the applicable account evidence is admitted.
 This contract supplies no provider implementation or activation.
@@ -401,7 +401,8 @@ immutable effect evidence before dispatch and rechecks generation and tombstones
 after awaits. Profile sync changes owned scalar data only. Current-state consent
 readback has bounded coverage and source-bound negative facts; account-wide
 facts retain that scope and audience denials cannot become global. Remote
-subscribed state never grants local consent. Positive writes are deferred.
+subscribed state never grants local consent. The `NegativeFeedback` discriminant
+union is readonly, matching its other fields.
 
 Replay identity is `(binding, operation, subjectReference, requestId)` with all
 four binding coordinates. Generation is a separate stale fence. A current
@@ -420,3 +421,54 @@ Existing marketing ports and their observations and the existing
 `NewsletterSyncProviderPort` remain unchanged. A refusal-only newsletter bridge
 is planned in the later adapter PR. The [A1 ledger](plans/oss-a1-communications-adapters.md)
 records the offline synthetic proof and remaining delivery gates.
+
+
+### Consent push admission and reconciliation
+
+`ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort` reuse the frozen
+binding, subject, failure and capability types without widening the original
+provider. A grant is one local subject, purpose and configured audience with its
+local consent evidence reference. Withdrawal carries local withdrawal evidence;
+only explicit withdrawal of every purpose authorizes account-wide scope. Missing
+or blank evidence refuses `invalid_request`; foreign/provider-only/substituted
+evidence refuses `provenance`; revoked, superseded or wrong-direction local
+authority refuses `restricted`. Generation is checked before replay and after
+awaits. No remote state, membership or successful write grants local permission.
+
+The existing capability declaration is intersected with `consent.push` and its
+`grantEffect: "audience" | "account-wide"`. Both directions require support and
+owner TEST evidence; missing evidence remains `verification_pending`. No-trigger
+admission covers every declared effect, including other-audience profile-consent
+flows, segments and backfills for account-wide grant effects. Unaccounted armed
+flows, unsafe DOI mail, suppression-clearing subscribe or unknown suppression
+coverage refuse grants. Historical import is never an admission bypass.
+
+Klaviyo email's planned mapping declares account-wide grant effects, while local
+grants stay audience-scoped. Audience withdrawal must have trustworthy list-only
+effect proof, including changes before an asynchronous job acts; a pre-job
+membership snapshot alone is insufficient. Explicit all-purpose withdrawal uses
+global email unsubscribe. Mailchimp and Brevo declare audience grant effects;
+unsupported account-wide withdrawals refuse. Brevo list removal projects membership
+only, without claiming global consent. These are partial design mappings, not
+provider certification. No flow management, suppression editing or vendor factory
+is introduced by this contract.
+
+Withdrawals dispatch immediately even when remote consent is unknown or an
+earlier grant is unsettled, subject to local authority, identity, safe scope and
+ordinary admission. An earlier grant never delays or drops withdrawal. A pending
+or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
+withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.
+
+Accepted means durable intent; acknowledged includes documented asynchronous
+acceptance. Neither completes or proves subscribed/unsubscribed state. Both success
+variants require boolean `reconcileRequired`. If an earlier grant is unsettled or
+its settlement cannot be established, withdrawal returns `true`; replay retains
+that unresolved race and remote state counts as UNKNOWN regardless of journal
+confirmation or an early unsubscribed read. Only `consent.read` after all earlier
+grant jobs settle can resolve it. Pending, unknown or insufficient readback leaves
+it unresolved. If that fresh read says subscribed, the HOST reissues withdrawal
+through existing reconciliation with a new request ID. The adapter adds no job API,
+executor, callback or automatic retry. Even `reconcileRequired:false` proves no
+remote effect. Receipt evidence stays the original admitted request while the
+result echoes the current call; replay identity excludes generation and rejects
+changed audience, action or evidence with `invalid_request`.
