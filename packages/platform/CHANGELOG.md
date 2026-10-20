@@ -17,6 +17,10 @@ SemVer promise.
   historical import, suppression edits or automatic mutation retry is added.
   Migration: opt in through the new subpath and supply its private host wiring;
   existing neutral providers and communications entries remain unchanged.
+- Repair synthetic consent-push conformance: withdrawals bypass grant-caused
+  fences/quarantine while preserving same-key withdrawal fences and account-level
+  cooling; document honest recording uncertainty and reconciliation. Public types
+  remain unchanged by this repair.
 
 - Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
   through both existing communications entries. Local grants remain audience-scoped;

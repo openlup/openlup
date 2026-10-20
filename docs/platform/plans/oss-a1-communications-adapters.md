@@ -24,6 +24,7 @@ marketing lifecycle semantics and the
 host composition. P2 owns the Klaviyo factory and private construction; P3 owns
 consumer composition. C-PR1b supplies the neutral consent-push contract; P2 owns
 its real-adapter implementation and evidence.
+P2 inherits immediate withdrawal despite grant-caused fences/quarantine, preserving same-key withdrawal fences and account-level cooling (`retryable/cooling` with finite `afterSeconds`).
 Versioning, private adoption, production activation and account certification are
 separate outcomes. No default sender, callback, route, schedule or recovery send
 is installed by these surfaces.
@@ -45,7 +46,7 @@ surface, scope, negative feedback, receipt substitution, closed outcomes,
 replay/persistence, fresh read authority and cooldown/quarantine. K01–K04 check
 both built entries with strict exact-optional compilation: positive controls
 compile and the original 28 unmarked forbidden-state probes per entry are
-rejected. C-PR1b expands that inventory to 46 per entry.
+rejected. C-PR1b expands that inventory to 47 per entry.
 The 21 invariant plants are exercised inside their named cases, with baseline
 and restored witnesses; they add no registrations. Fixture and API paths resolve
 from the owning test module, so the tests work from either package or repository
@@ -76,6 +77,21 @@ module, preserve contracts isolation and reject undeclared nested entries. The
 undeclared fixture uses a neutral placeholder for a deliberately absent nested
 entry; it needs no vocabulary exception. Existing neutral transport, observation, webhook-dialect and egress
 conformance witnesses remain required.
+
+P1A-F1 closure, 2026-10-20: local repair of candidate `29250d0` only, with no
+Git writes, network, submission or release authority. Webhook observations now
+retain raw provider types, matching the donor and poller; the event inventory
+only admits supported types. R05, R08 and the installed-consumer proof pin those
+names, and R14 folds parity for all five polled states into its existing case.
+The short-name plant failed at `R14 delivered: webhook/poll eventType parity`
+and was reverted. Three exports and 32 P1 cases (including three generated)
+remain unchanged. Root focused tests passed 1,048 cases, package focused tests
+1,009, and the package script also passed all 2,793 cases. Lint passed with 33
+warnings outside this delta; ast-grep and API checks passed. Neutrality reported
+zero increases; policy/inventory requires a refreshed tooling no-impact trailer
+for the consumer-proof change, to be supplied by the committing supervisor.
+Retro: the first root run exposed the stale installed-consumer expectation;
+trace protocol names through consumer proofs as well as unit fixtures.
 
 ## Test ledger
 
@@ -159,7 +175,7 @@ reconciliation. Synthetic evidence does not certify real provider behavior or
 account capabilities.
 
 K03/K04 include strict exact-optional consent-push probes without adding cases.
-Both built entries reject 46 unmarked forbidden-state probes each, with positive
+Both built entries reject 47 unmarked forbidden-state probes each, with positive
 controls. The original 21 invariant plants and 52 consent-push plant cycles stay
 inside the twenty contract cases. Fixture and virtual compiler paths resolve
 from their owning test modules for root and package-local execution.
