@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CommercePromoDataPort, PromotionRedemptionCount } from "./promoDataPort.js";
+import type { CommercePromoDataPort, PromotionRedemptionCount } from "../../src/promotions/promoDataPort.js";
 
 describe("CommercePromoDataPort contract", () => {
   it("keeps first-order device eligibility optional at the data-port boundary", async () => {

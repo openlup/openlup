@@ -131,6 +131,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The promotion application move reuses root/package discovery for the retained
+suites in platform `test/promotions/`; its managed RPC-name assertion remains at
+the reference transport boundary. The preview suite still checks the reference
+create-schema refusal alongside package preview behavior. Neutral synthetic
+fixtures replace default currency/country and legal-basis text without changing
+assertions. Four W3 application transcripts, one callback terms case and one
+reference host-binding case add six required cases. The existing fixed-token
+consent witness remains local. Both promotions entries extend the existing cold
+consumer import/declaration proof and its application-to-acceptance transcript;
+no runner, optional peer or database obligation is added in this slice.
+
 The opt-in pricing acquisition suite adds synthetic schedule, policy refusal,
 v3 negotiation/freshness and boundary readiness evidence to the existing package
 smoke inventory. The retained reference consent witness covers explicit terms

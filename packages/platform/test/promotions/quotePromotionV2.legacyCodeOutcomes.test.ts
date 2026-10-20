@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { PromotionRow } from "../../../src/domains/promo/types.js";
-import type { CommercePromoDataPort } from "./promoDataPort.js";
-import { evaluateAutomaticPromotionV2 } from "./quotePromotionV2.js";
+import type { PromotionRow } from "@openlup/core/promo";
+import type { CommercePromoDataPort } from "../../src/promotions/promoDataPort.js";
+import { evaluateAutomaticPromotionV2 } from "./bindingsFixtures.js";
 
 const NOW = "2026-09-03T10:00:00.000Z";
 

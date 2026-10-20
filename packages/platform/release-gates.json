@@ -223,6 +223,41 @@
       ],
       "entrypoint": "dist/pricing/contracts/index.d.ts",
       "snapshot": "api/pricing-contracts.api.md"
+    },
+    "./promotions": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/promotions/applicationConformance.test.ts",
+        "test/promotions/acceptanceCallbacks.test.ts",
+        "test/promotions/quotePromotionV2.test.ts",
+        "test/promotions/quotePromotionV2.legacyCodeOutcomes.test.ts",
+        "test/promotions/quoteAutomaticPromotions.test.ts",
+        "test/promotions/quotePromoDiscounts.test.ts",
+        "test/promotions/quotePromotionCodeAdjustments.test.ts",
+        "test/promotions/promotionBenefitDefinition.test.ts",
+        "test/promotions/promoDataPort.test.ts",
+        "test/promotions/promotionCodeQuotePort.test.ts",
+        "test/promotions/promotionCodePreview.test.ts",
+        "test/promotions/promotionQuoteBinding.test.ts",
+        "test/promotions/promotionQuoteAcceptance.test.ts"
+      ],
+      "entrypoint": "dist/promotions/index.d.ts",
+      "snapshot": "api/promotions.api.md"
+    },
+    "./promotions/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/promotions/applicationConformance.test.ts",
+        "test/promotions/promotionCodePreview.test.ts"
+      ],
+      "entrypoint": "dist/promotions/contracts/index.d.ts",
+      "snapshot": "api/promotions-contracts.api.md"
     }
   },
   "pack": {
@@ -245,7 +280,8 @@
       "./communications/contracts": 11776,
       "./identity/contracts": 4800,
       "./catalog/contracts": 4096,
-      "./pricing/contracts": 416
+      "./pricing/contracts": 416,
+      "./promotions/contracts": 32
     }
   }
 }

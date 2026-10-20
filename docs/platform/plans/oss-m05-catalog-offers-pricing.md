@@ -13,7 +13,7 @@ deployment and activation require separate authorization.
 ## PR graph and scope
 
 The complete M04 stack, including C-compose and S1, precedes M05 implementation.
-P1 → P2a → P2b → P2c → P3 → P4 → P5 → P6 → P7 → S1.
+P1 → P2a → P2b → P2c → P3a → P3b → P4 → P5 → P6 → P7 → S1.
 P2 is split into three parts; checkout, claims and finalize stay with the checkout module.
 
 | PR | Bounded scope |
@@ -22,7 +22,8 @@ P2 is split into three parts; checkout, claims and finalize stay with the checko
 | P2a | Existing authority, policy and token logic; preserve behaviour and reuse the existing core pricing engine. |
 | P2b | Existing quote, offer, handlers and readiness; preserve behaviour. |
 | P2c | Additive acquisition-terms selection and promise-consent API; required injected financial policy, no default policy, reference activation off. |
-| P3 | Unchanged promotion application, code/claim contracts and selected native semantics; reuse core promotion engine. |
+| P3a | Unchanged promotion application/acceptance with explicit host bindings; additive resolved-terms callback argument; ≤35 production/tooling paths. |
+| P3b | Admin, existing native read/sweep store and SQL 47/48 descriptor; no new migration; ≤35 production/tooling paths. |
 | P4 | Unchanged fixed bundle composition, allocation, availability and admin boundary; selected native stores/descriptor where needed. |
 | P5 | Neutral browse/product/cart/builder/admin UI consuming explicit data/locale/media ports and lifecycle-ready DTOs; preserve existing fences. |
 | P6 | Bounded refactoring after unchanged imports and preserved witnesses; no new functional scope. |
@@ -171,6 +172,58 @@ finalization remain outside this cut. Native reviews and committed package
 gates belong to the supervisor's signed candidate; this local implementation
 makes no merge, release or activation claim.
 
+## P3a — promotion application and acceptance
+
+The delegate approved splitting the former P3 into P3a/P3b, each at most 35
+production/tooling paths (replacing the former 25-path ceiling). P3a moves the
+four application files, benefit definition, two advisory read ports, preview,
+money binding, acceptance and telemetry. Named reference bindings preserve floor
+resolution timing, customer classification, eligibility facts, request projection,
+recorder behavior, outputs and refusals. Core remains the evaluator. Managed RPC
+names/transport, admin, native stores/SQL and claim writers remain outside P3a.
+No activation, checkout/finalize, timer or communications trigger is added.
+
+The deliberate additive public-contract change passes server-resolved acquisition
+terms to both issue and honor callbacks. Absent configuration omits terms; the
+fixed historical token witness protects byte identity. Low-level terms support
+does not establish acquisition-only mounted acceptance.
+
+Tests: four synthetic W3 conformance cases, one terms-to-callback composition case
+and one reference-binding case: **6 new required cases**, leaving **33 of 100**
+programme cases from the pre-P3a balance of 39. Existing subject assertions move
+with default currency → `XXX`, default country → `ZZ`, and the local VAT
+legal-basis text → `Example VAT rule`; other fixtures stay distinct.
+The managed RPC-name and mixed create-schema/preview cases stay reference-owned;
+checkout-heavy cross-surface and
+quote integration suites remain reference-owned. The acceptance unit fixture
+uses only synthetic request and money values rather than checkout orchestration.
+
+Changed production/tooling paths against the P2c predecessor: **32/35**, including
+JSON companions. Both promotions entries are non-adapters; only promotions has
+a pricing value edge, through its server entry. The contracts entry has no imports.
+
+Pack: **933 files / 915 code files / 582,993 packed B / 2,573,175 unpacked B /
+501,214 code gzip B**; root docs **35,073 gzip B / 5 files**, all within the
+existing aggregate caps. Promotions contracts measure **20 B** minified+gzip
+with a **32 B** budget; pricing contracts remain **386/416 B**. No aggregate cap,
+released baseline or growth-tripwire policy changes.
+
+### D8 pending outcome ledger
+
+Each row is **pending, not N/A, not claimed; must be dispositioned before M05 S1**.
+Disposition requires later implementation/proof or one bounded scope packet to
+the delegate; any reduction of admitted acceptance requires the owner's decision.
+
+| Outcome | Status and remaining proof |
+| --- | --- |
+| Native advisory v2 promo-code candidates and rejection details | Pending capability/parity; the managed resolver is not a native implementation. |
+| Native mounted quote issue/honor/fallback | Pending composition proof on the native mount. |
+| Acquisition-only mounted acceptance | Pending composition proof; low-level token tests do not close it. |
+| Full native/managed eligibility matrix | Pending explicit outcome matrix, including paid-order classification and native device evidence differences. |
+
+Existing native lifecycle/read real-PostgreSQL proof belongs to P3b, with the
+canonical installation route and no managed-schema import or new claim writer.
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected
@@ -180,7 +233,7 @@ neutral subject; exporting types alone does not close a witness.
 | --- | --- | --- |
 | W1 | 7; strict price authority, quote/offer and acquisition promise/refusal boundaries | Deferred to P2a–P2c; source witness unchanged. |
 | W2 | 5; frozen subscription money, retry bytes, acquisition consent and explicit edits | Deferred to P2a–P2c/adoption; source witness unchanged. |
-| W3 | 4; promotion adjustment/acceptance, floors and advisory versus durable claim | Deferred to P3; source witness unchanged. |
+| W3 | 4; promotion adjustment/acceptance, floors and advisory versus durable claim | Four neutral package conformance transcripts in P3a; source witness unchanged. |
 | W4 | 4; captured bundle composition/readback, allocation, stock and human activation | Deferred to P4; source witness unchanged. |
 | W5 | 5; exact document/head/membership join, stale/mixed heads and legacy versus outage | Subjects not moved; no synthetic readback claim; source witness unchanged. |
 | W6 | 4; quote-to-draft transfer/reload/navigation and fresh-consent refusal | Deferred to P5; source witness unchanged. |

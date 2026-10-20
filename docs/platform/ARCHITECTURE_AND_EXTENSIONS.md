@@ -370,6 +370,15 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+The experimental promotions application module has one value edge to pricing,
+through `pricing/index.js`, for the existing acquisition binding and protocol
+constant; its quote/evidence types use the same entry. Pricing has no promotions
+edge: its host still injects application callbacks. Promotions preview contracts
+have no imports, including no dependency on pricing contracts. Reference wrappers
+retain financial floors, customer semantics, eligibility interpretation, request
+projection and telemetry composition. Core remains the sole promotion evaluator;
+managed transport, native persistence and claim writes are outside this slice.
+
 The foundation boundary work starts from its existing directories and entries:
 `http`, `bff`, `scheduler`, `blob`, `data`, `migrations`, `job-ledger`, `kernel`
 and `composition`. Retain the corresponding public subpaths. Helper directories

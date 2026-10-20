@@ -158,8 +158,8 @@ The subscription reference's closed browser import inventory includes exactly
 `provenance.js` and `offer.js` from the emitted
 platform package. Its retained browser policy schemas consume those version
 constants through the package entry; schema validation and wire pairing remain
-unchanged. The quote, provenance and offer modules carry only existing
-wire-version constants; money/evidence DTOs erase at build time. The inventory admits no pricing server entry, token crypto, readiness
+unchanged. The quote and provenance modules retain their wire-version constants; the offer
+module also exposes the additive v3 constant. Money/evidence DTOs erase at build time. The inventory admits no pricing server entry, token crypto, readiness
 or secret configuration. [The pricing package](../../packages/platform/README.md#pricing)
 owns the extracted authority and DTOs. Acquisition DTOs and protocol identities
 are additive; their schemas, required host financial policy, selector and

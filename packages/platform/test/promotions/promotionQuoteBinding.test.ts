@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { CommerceQuote } from "../../../src/domains/commerce/types.js";
+import type { CommerceQuote } from "../../src/pricing/index.js";
 import {
   PROMOTION_QUOTE_MISMATCH_FIELDS,
   PROMOTION_QUOTE_MONEY_SECTIONS,
   projectPromotionQuoteMoney,
   promotionQuoteMoneySections,
   stableJson,
-} from "./promotionQuoteBinding.js";
+} from "../../src/promotions/promotionQuoteBinding.js";
 
 /**
  * `XTS` is the ISO 4217 code reserved for testing, which this repo uses so a

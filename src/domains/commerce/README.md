@@ -29,8 +29,8 @@ bind settlement defaults, flat shipping through `getShippingFlatMinor`, promotio
 application, rich context/reconstruction, roster/request/unit/floor/scope policy and
 the observed BFF responder. Browser validators retain the existing request/context
 admission and industry wire scopes. Existing ordering, VAT equations, v1/v2 offer
-responses, errors and TTL rules are preserved; promotion implementation remains
-local.
+responses, errors and TTL rules are preserved. Promotion application and acceptance
+now live in `@openlup/platform/promotions`; named server wrappers retain local policy.
 
 The experimental pricing acquisition API is available only through explicit
 host composition. The reference binds no acquisition configuration and retains
@@ -42,6 +42,20 @@ explicit input the projections omit the property and the signing envelope,
 section order, eligibility and historical token bytes are unchanged. This does
 not activate a route issuer or change checkout admission; acquisition-only
 mounted-route issuance remains pending composition evidence.
+
+## Promotion application package boundary
+
+The experimental [promotions module](../../../packages/platform/README.md#promotions)
+owns quote application, benefit interpretation, read ports, preview, money binding,
+acceptance and passive recording. Reference wrappers retain the module-load floor,
+customer classifier, email/contact eligibility precedence, request projection and
+sanitized recorder. The existing core promotion evaluator remains the authority.
+Read-only quotes and advisory code resolution never reserve capacity; managed RPC
+transport, admin and durable claim writers retain their existing owners.
+The pricing handler supplies resolved acquisition terms to both acceptance callbacks
+as a final optional argument. No reference acquisition configuration is added, and
+the fixed historical token witness still protects absent-terms bytes. Native and
+acquisition-only mounted acceptance remain pending composition evidence.
 
 ## Public surface (import cross-domain ONLY these)
 - UI/BFF clients: `commerceClient.ts`, `omsClient.ts`,

@@ -45,11 +45,13 @@ export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = C
   createPromotionAcceptance?: (
     request: Request,
     quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"],
+    acquisitionTerms?: ResolvedAcquisitionTerms,
   ) => string | null;
   honorPromotionAcceptance?: (
     token: string,
     request: Request,
     quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"],
+    acquisitionTerms?: ResolvedAcquisitionTerms,
   ) => boolean;
 }
 
@@ -107,13 +109,14 @@ export function createCommerceQuoteHandler<Request extends CreateQuoteRequest, R
       }
       let quote = canonicalQuote.data;
       stage = "promotion_acceptance";
+      const acquisitionTerms = acquisition?.terms(quote.quote);
       const honoredToken = promotionAcceptanceToken && honorPromotionAcceptance?.(
-        promotionAcceptanceToken, request.data, quote.quote,
+        promotionAcceptanceToken, request.data, quote.quote, acquisitionTerms,
       ) ? promotionAcceptanceToken : undefined;
-      const issuedToken = honoredToken ?? createPromotionAcceptance?.(request.data, quote.quote) ?? undefined;
+      const issuedToken = honoredToken ?? createPromotionAcceptance?.(request.data, quote.quote, acquisitionTerms) ?? undefined;
       const containsV2Promotion = quote.quote.discounts.some((discount) =>
         discount.promotionEngineVersion === "promotion-engine.v2");
-      if ((containsV2Promotion || acquisition?.terms(quote.quote)) && !issuedToken) {
+      if ((containsV2Promotion || acquisitionTerms) && !issuedToken) {
         stage = "promotion_fallback";
         const fallback = fallbackQuotePort
           ? createQuoteResponseSchema.safeParse(await fallbackQuotePort.createQuote(request.data, {

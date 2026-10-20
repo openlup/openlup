@@ -6,6 +6,15 @@ Status: source-of-truth
 readiness, quote/order draft orchestration, OMS mutations/read models, outbox
 handlers, payment-status composition, and provider-neutral runtime ports.
 
+The promotion application, preview, read-port and acceptance files are named
+compatibility bindings to `@openlup/platform/promotions`. They preserve startup
+floor resolution, local customer classification, eligibility interpretation,
+request projection and sanitized passive recording. Pricing consumes the bound
+applications through callbacks, retaining its existing read schedule and failures.
+Managed transport, admin and durable claim/order execution remain reference-owned.
+The additive opt-in acceptance callback argument carries server-resolved terms;
+reference activation stays off and absent-terms token bytes are unchanged.
+
 ## Owns
 
 - Checkout runtime orchestration and idempotency rules.
@@ -151,7 +160,8 @@ and mutations retain their frozen policy.
   in-flight recovery state. Do not widen generic checkout compensation across
   that boundary.
 - The promotion acceptance token binds **money, not presentation**.
-  `promotionQuoteBinding.ts` owns the one canonical projection both surfaces
+  The named `promotionQuoteBinding.ts` shim delegates to the promotions package,
+  which owns the one canonical projection both surfaces
   hash — currency, the five totals, shipping and its discount, per-line
   sku/quantity/unit and line gross plus the VAT rate and split, and per-discount
   amount and identity (`promotionId`, `appliesTo`, `promotionCodeId`,

@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { CommerceQuoteDiscount } from "../../../src/domains/commerce/types.js";
+import type { CommerceQuoteDiscount } from "../../src/pricing/index.js";
 import type {
   PromotionCodeQuotePort,
   ResolvedPromotionCodeCandidate,
-} from "./promotionCodeQuotePort.js";
+} from "../../src/promotions/promotionCodeQuotePort.js";
 import {
   applyPromotionCodesV2,
   mapEngineRejectionReason,
-} from "./quotePromotionCodeAdjustments.js";
-import type { PromotionCodeRejectionReason } from "../../../src/domains/promo/ports.js";
+} from "./bindingsFixtures.js";
+import type { PromotionCodeRejectionReason } from "@openlup/core/promo";
 
 const CODE_ID = "11111111-1111-4111-8111-111111111111";
 const PROMOTION_ID = "22222222-2222-4222-8222-222222222222";
@@ -209,7 +209,7 @@ describe("checkout promotion-code adjustments", () => {
     expect(result.codeRejectionDetails.map(({ code }) => code)).toEqual(["OLD", "SECOND", "FIRST"]);
   });
 
-  it("caps the product at PLN 1 while allowing shipping to reach zero", async () => {
+  it("caps the product at XXX 1 while allowing shipping to reach zero", async () => {
     const port = resolver(
       productCandidate({ valueBps: 9_999 }),
       shippingCandidate(),

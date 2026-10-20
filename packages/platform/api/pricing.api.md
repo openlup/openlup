@@ -1039,8 +1039,8 @@ export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = C
         source: "anonymous" | "resolved_client";
     }>;
     resolvePricingPolicy?: (request: Request) => PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
-    createPromotionAcceptance?: (request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"]) => string | null;
-    honorPromotionAcceptance?: (token: string, request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"]) => boolean;
+    createPromotionAcceptance?: (request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"], acquisitionTerms?: ResolvedAcquisitionTerms) => string | null;
+    honorPromotionAcceptance?: (token: string, request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"], acquisitionTerms?: ResolvedAcquisitionTerms) => boolean;
 }
 export declare function createCommerceQuoteHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteRequestSchema, publicCreateQuoteResponseSchema, quotePort, acquisition, fallbackQuotePort, resolveCustomerEligibility, resolvePricingPolicy, createPromotionAcceptance, honorPromotionAcceptance, }: CommerceQuoteHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
