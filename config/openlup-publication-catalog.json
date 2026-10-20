@@ -21202,10 +21202,6 @@
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/inventoryManaged.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "tests/postgres/inventoryNative.test.ts",
       "class": "public-output"
     },

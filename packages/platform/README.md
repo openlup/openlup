@@ -23,13 +23,17 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
-| `./inventory` | Experimental stock schemas/ports; forecast provider validation is required and injected. Browser DTOs: `./inventory/contracts`; reference browser validators stay local. |
+| `./inventory` | Experimental stock schemas/ports and SQL projections; forecast provider validation is required and injected. Browser DTOs: `./inventory/contracts`; reference browser validators stay local. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
+
+## Inventory
+
+`INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 
 ## Promotions
 
@@ -967,5 +971,3 @@ Core readiness, explicit provider ports and host-supplied schedules. Native
 readback and signed-token bridges do not promise managed frequency caps, legacy
 tester-source parity, a send-time fence or a full native network sender. The
 opt-in browser profile adds no npm entry or UI package export.
-
-`INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).

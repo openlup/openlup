@@ -13,7 +13,7 @@ type Due = Parameters<typeof chargeSubscriptionCycleOffSession>[1];
 type Admission = { waiting: boolean; caseId: string; bypass: boolean; order: {
   cycleId: string; orderRef: string; orderUuid: string; paymentRef: string; replayed: boolean;
 } | null };
-function createStockWaitStore(client: { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { code: string; message: string } | null }> }) {
+function createAdmissionTranscriptStore(client: { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { code: string; message: string } | null }> }) {
   return { async admit(request: CycleInput, due: Due, at: string): Promise<Admission> {
     const response = await client.rpc("fixture_admission_transcript", { request, due, at });
     if (response.error) throw Object.assign(new Error("transcript admission refused"), {
@@ -28,7 +28,7 @@ function createStockWaitStore(client: { rpc: (name: string, args: Record<string,
       order: row ? { cycleId: row.cycleId, orderRef: row.orderId, orderUuid: row.orderId.replace(/^order_/, ""), paymentRef: row.paymentId, replayed: row.replayed } : null };
   } };
 }
-function createStockWaitRenewalPorts(input: { store: {
+function createAdmissionTranscriptPorts(input: { store: {
   listCandidates: () => Promise<Due[]>;
   read: () => Promise<{ snapshots: Awaited<ReturnType<ChargeDeps["persistence"]["buildCycleSnapshots"]>> }>;
   admit: (request: CycleInput, due: Due, at: string) => Promise<Admission>;
@@ -69,15 +69,15 @@ function setup(refusal?: "shortage" | "stale" | "busy") {
     ? { data: null, error: { code: "55P03", message: "inventory_admission_busy" } }
     : { data: refusal === "stale" ? { error: "stock_wait_check_failed" }
       : { waiting: true, caseId: "case-a" }, error: null });
-  const realStore = createStockWaitStore({ rpc });
+  const transcript = createAdmissionTranscriptStore({ rpc });
   const store = { listNormalCandidates: vi.fn(async () => [due]),
     listCandidates: vi.fn(async () => [{ ...due, stockWaitRecovery: binding }]),
     read: vi.fn(async () => ({ case: {}, binding, snapshots })),
-    admit: vi.fn(realStore.admit),
+    admit: vi.fn(transcript.admit),
     markResumed: vi.fn(), findCase: vi.fn() };
   const original = { buildCycleSnapshots: vi.fn(), createCycleOrder: vi.fn(), preflightReservation: vi.fn(),
     readMandateRecurringModel: vi.fn(), noteRowOutcome: vi.fn() };
-  const ports = createStockWaitRenewalPorts({ store: store as never, persistence: original as never, now: () => AT });
+  const ports = createAdmissionTranscriptPorts({ store: store as never, persistence: original as never, now: () => AT });
   const execute = vi.fn(async () => ({ providerAttemptId: "attempt", providerSessionId: null, attemptStatus: "succeeded",
     nextActionKind: null, requestPayload: {}, responsePayload: {} }));
   const createIntent = vi.fn(async () => ({ paymentIntentId: "payment-a", replayed: true }));

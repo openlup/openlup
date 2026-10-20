@@ -11,7 +11,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const AT = "2026-10-20T12:00:00.000Z", LATER = "2026-10-20T12:02:00.000Z";
+const AT = "2026-10-20T12:00:00.000Z";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const units: { file: string; sha256: string }[] = [manifest.baseline, ...manifest.forward];
 let container: PostgresContainer | undefined, pool: Pool;
@@ -29,19 +29,19 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await pool?.end(); await container?.remove(); });
 
-async function fixture(quantity = 2, available = 10) {
+async function fixture(quantity = 2, available = 10, at = AT) {
   const client = randomUUID(), subscription = randomUUID(), skuId = randomUUID(), source = randomUUID(), sku = `SKU-${skuId}`;
   await pool.query("INSERT INTO public.clients(id,email) VALUES ($1,$2)", [client, `${client}@example.invalid`]);
-  await pool.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES ($1,$2,28,$3)", [subscription, client, AT]);
+  await pool.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES ($1,$2,28,$3)", [subscription, client, at]);
   await pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES ($1,$2,'Fixture')", [skuId, sku]);
   await pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES ($1,$1,$2,'Fixture')", [skuId, sku]);
   await pool.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
-    VALUES ($1,$2,$3,$3,0,'sellable',$4,$5,'fixture',$1,$6)`, [source, sku, available, "2026-10-20T11:00:00Z", "2026-10-21T12:00:00Z", "a".repeat(64)]);
-  const snapshot = { contractVersion: "platform.subscription.renewal.v1", subscriptionId: subscription, scheduledAt: AT, cycleNumber: 2, currency: "XXX", stockSourceKey: source, totalAmountMinor: 200, lines: [{ sku, quantity }] };
-  const identity = (await pool.query("SELECT public.subscription_renewal_identity($1,$2) AS key", [subscription, AT])).rows[0].key;
-  const claim = async (at = AT, db: Pool | PoolClient = pool) => (await db.query("SELECT public.subscription_claim_due_renewal($1,$2,$3,'fixture',300,$4) AS result", [identity, "b".repeat(64), snapshot, at])).rows[0].result;
+    VALUES ($1,$2,$3,$3,0,'sellable',$4,$5,'fixture',$1,$6)`, [source, sku, available, new Date(Date.parse(at) - 3_600_000).toISOString(), "2026-10-21T12:00:00Z", "a".repeat(64)]);
+  const snapshot = { contractVersion: "platform.subscription.renewal.v1", subscriptionId: subscription, scheduledAt: at, cycleNumber: 2, currency: "XXX", stockSourceKey: source, totalAmountMinor: 200, lines: [{ sku, quantity }] };
+  const identity = (await pool.query("SELECT public.subscription_renewal_identity($1,$2) AS key", [subscription, at])).rows[0].key;
+  const claim = async (claimedAt = at, db: Pool | PoolClient = pool) => (await db.query("SELECT public.subscription_claim_due_renewal($1,$2,$3,'fixture',300,$4) AS result", [identity, "b".repeat(64), snapshot, claimedAt])).rows[0].result;
   const operation = await claim();
-  const input = { operationId: operation.operationId, claimToken: operation.claimToken, now: AT, holdSeconds: 60 };
+  const input = { operationId: operation.operationId, claimToken: operation.claimToken, now: at, holdSeconds: 60 };
   return { subscription, skuId, source, sku, snapshot, identity, claim, operation, input };
 }
 async function durable(subscription: string) {
@@ -66,22 +66,22 @@ it("installs the full catalogue, binds projections 27/33 and replays the canonic
   expect((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows).toEqual(history);
 });
 it("upgrades the exact complete prefix before unit 33 without rewriting installed history", async () => {
-  const owned: PostgresContainer[] = [], databases: Pool[] = [];
+  let resource: PostgresContainer | undefined, upgrade: Pool | undefined;
   const root = mkdtempSync(join(tmpdir(), "inventory-prefix-"));
   try {
-    // Roles are cluster-global: each immutable baseline needs its own cluster.
-    for (const name of ["probe", "upgrade"]) {
-      const resource = await runPostgresContainer({ name: `inventory-native-${name}-${process.pid}`, password: "synthetic-conformance" });
-      owned.push(resource);
-      if (!await waitForPostgresTcpReady(resource.connectionString)) throw new Error("Inventory prefix PostgreSQL unavailable");
-      databases.push(new Pool({ connectionString: resource.connectionString }));
-    }
-    const [probe, upgrade] = databases;
-    // Compute the predecessor inventory from its complete immutable catalogue, never sparse assets.
-    for (const unit of units.slice(0, 33)) await probe.query(readFileSync(unit.file, "utf8"));
-    const db = await probe.connect();
+    // The full-install cluster owns global roles. This clean prefix cluster is
+    // separate, but its raw inventory probe can roll back roles and schema before
+    // the real runner installs the same immutable prefix, avoiding a third boot.
+    resource = await runPostgresContainer({ name: `inventory-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
+    if (!await waitForPostgresTcpReady(resource.connectionString)) throw new Error("Inventory prefix PostgreSQL unavailable");
+    upgrade = new Pool({ connectionString: resource.connectionString });
+    const db = await upgrade.connect();
     let payload: string;
-    try { payload = selectedCatalogProjectionPayload(await readSelectedCatalogProjection(db)); } finally { db.release(); }
+    try {
+      await db.query("BEGIN");
+      for (const unit of units.slice(0, 33)) await db.query(readFileSync(unit.file, "utf8"));
+      payload = selectedCatalogProjectionPayload(await readSelectedCatalogProjection(db));
+    } finally { await db.query("ROLLBACK"); db.release(); }
     const prefix = { ...manifest, forward: manifest.forward.slice(0, 32), objectInventorySha256: createHash("sha256").update(payload).digest("hex") };
     for (const unit of units.slice(0, 33)) { const path = join(root, unit.file); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, readFileSync(unit.file)); }
     mkdirSync(join(root, "config")); writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(prefix));
@@ -92,7 +92,7 @@ it("upgrades the exact complete prefix before unit 33 without rewriting installe
     expect((await upgrade.query("SELECT * FROM public.platform_schema_migrations WHERE position<33 ORDER BY position")).rows).toEqual(before);
     expect((await runner(upgrade).status()).pending).toEqual([]);
     expect(await runner(upgrade).apply()).toEqual({ applied: [] });
-  } finally { for (const db of databases) await db.end(); for (const resource of owned) await resource.remove(); rmSync(root, { recursive: true, force: true }); }
+  } finally { await upgrade?.end(); await resource?.remove(); rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 it("projects fresh/stale/missing stock, held/committed/expired rows and aggregate demand while refusing adjustment", async () => {
   const f = await fixture();
@@ -128,7 +128,10 @@ it("reserves and releases once, preserving frozen snapshots, active subscription
   expect(await durable(f.subscription)).toEqual(before);
 });
 it("expires only eligible holds, skips a locked operation and preserves committed reservations", async () => {
-  const f = await fixture(), committed = await fixture();
+  // Only this case creates holds before the other cases' AT. The global expiry
+  // count therefore cannot include their rows, regardless of execution order.
+  const at = "2026-10-19T12:00:00.000Z", later = "2026-10-19T12:02:00.000Z";
+  const f = await fixture(2, 10, at), committed = await fixture(2, 10, at);
   const before = await durable(f.subscription);
   await reserve().reserve(f.input);
   const keep = await reserve().reserve(committed.input);
@@ -136,10 +139,10 @@ it("expires only eligible holds, skips a locked operation and preserves committe
   const db = await pool.connect();
   try {
     await db.query("BEGIN"); await db.query("SELECT 1 FROM public.subscription_renewal_operations WHERE id=$1 FOR UPDATE", [f.input.operationId]);
-    expect(await reserve().expireReservations({ now: LATER, limit: 100 })).toBe(0);
+    expect(await reserve().expireReservations({ now: later, limit: 100 })).toBe(0);
   } finally { await db.query("ROLLBACK"); db.release(); }
-  expect(await reserve().expireReservations({ now: LATER })).toBe(1);
-  expect(await reserve().expireReservations({ now: LATER })).toBe(0);
+  expect(await reserve().expireReservations({ now: later })).toBe(1);
+  expect(await reserve().expireReservations({ now: later })).toBe(0);
   expect((await pool.query("SELECT status FROM public.fulfillment_inventory_reservations WHERE id=$1", [keep.reservationId])).rows).toEqual([{ status: "committed" }]);
   expect(await durable(f.subscription)).toEqual(before);
 });

@@ -304,7 +304,6 @@
         "test/inventory/subscriptionForecastCalculation.test.ts",
         "../../tests/platform/inventory/inventoryForecastReadbackCharacterization.test.ts",
         "../../tests/postgres/inventoryNative.test.ts",
-        "../../tests/postgres/inventoryManaged.test.ts",
         "../../tests/platform/inventory/reservationMaintenanceCharacterization.test.ts",
         "../../tests/platform/inventory/subscriptionStockContinuityCharacterization.test.ts",
         "../../tests/platform/inventory/reservationMaintenanceConformance.test.ts",
