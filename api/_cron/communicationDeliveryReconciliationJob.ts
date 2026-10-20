@@ -1,12 +1,13 @@
 import { createPostgresDeliveryReconciliationPort, type NativeObservationKind } from "@openlup/platform/communications";
-import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@openlup/platform/data";
+import type { PgQueryExecutor } from "@openlup/platform/data";
+import { createPostgresPlatformJobTransactionLane } from "../../server/adapters/postgres/dataGateway.js";
 import { createPostgresPlatformJobRunLedger } from "../../server/adapters/postgres/platformJobRunLedger.js";
 import { runResendDeliveryReconciliation, type ResendEmailStatusRead } from "../../server/domains/communications/resendDeliveryReconciliationWorker.js";
 const kinds:Record<string,NativeObservationKind>={"email.sent":"sent","email.delivery_delayed":"delayed","email.delivered":"delivered","email.bounced":"bounced","email.complained":"complained","email.failed":"failed"};
 /** Existing job ledger only. No timer, independent lock or new queue. */
 export async function runNativeCommunicationJob(env:Record<string,string|undefined>,name:string,leaseSeconds:number,work:()=>Promise<{checked:number;updated?:number;reconciled?:number;failures:number;[key:string]:unknown}>) {
  const connectionString=env.DATABASE_URL?.trim();if(!connectionString||!env.COMMUNICATIONS_BINDING?.trim())return {status:503,body:{ok:false,error:"native_communications_binding_required"}};
- const lane=createPostgresRoleFreeTransactionLane({connectionString});
+ const lane=createPostgresPlatformJobTransactionLane({connectionString});
  const invocation={triggerKind:"scheduler" as const,invocationSource:"node-reference"};
  try{
   const lease=await lane.run(db=>createPostgresPlatformJobRunLedger(db as PgQueryExecutor,env).claimJobRun(name,invocation,leaseSeconds));

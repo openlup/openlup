@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type PostgresDataGatewayOptions } from "@openlup/platform/data";
+import type { PgQueryExecutor, PostgresDataGatewayOptions } from "@openlup/platform/data";
 import { createPostgresDeliveryReconciliationPort, type NativeDeliveryStore, type NativeObservationKind } from "@openlup/platform/communications";
+import { createPostgresCommunicationsControlPlaneTransactionLane } from "../../adapters/postgres/dataGateway.js";
 import type { ResendWebhookPort } from "../../domains/communications/resendWebhookHandler.js";
 const eventKinds:Record<string,NativeObservationKind>={"email.sent":"sent","email.delivery_delayed":"delayed","email.delivered":"delivered","email.bounced":"bounced","email.complained":"complained","email.failed":"failed"};
 /** Called only after the existing route's raw-body signature and environment admission. */
@@ -21,7 +22,7 @@ export function createRuntimeNativeWebhookPort(env:Record<string,string|undefine
 export function createNativeEvidenceBinding(env:Record<string,string|undefined>,options:PostgresDataGatewayOptions & {operatorId:string}) {
  const connectionString=env.DATABASE_URL?.trim(),binding=env.COMMUNICATIONS_BINDING?.trim();
  if(env.PLATFORM_BUNDLE!=="node-postgres"||!connectionString||!binding||!options.operatorId)throw new Error("native_evidence_binding_required");
- const lane=createPostgresRoleFreeTransactionLane({connectionString},options);
+ const lane=createPostgresCommunicationsControlPlaneTransactionLane({connectionString},options);
  const delivery=createPostgresDeliveryReconciliationPort({connectionString},{...options,binding});
  return {close:async()=>{await Promise.all([lane.close(),delivery.close()]);},async read(){
   return lane.run(async gateway=>{
