@@ -11,3 +11,7 @@ export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSI
 export type { CatalogFactsProvenance } from "./provenance.js";
 export { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "./offer.js";
 export type { CommerceOfferPrice, CommerceProductOfferPricing, CommerceOfferPricingResponse } from "./offer.js";
+export { ACQUISITION_TERMS_CAPABILITY } from "./acquisitionTerms.js";
+export type { AcquisitionQuoteRequest, AcquisitionQuoteContext, AcquisitionQuote, AcquisitionCapability, AcquisitionTermsMetadata, AcquisitionTerms, ResolvedAcquisitionTerms, AcquisitionTermsExpectation } from "./acquisitionTerms.js";
+export { COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION } from "./offer.js";
+export type { AcquisitionOfferPricingResponse } from "./offer.js";

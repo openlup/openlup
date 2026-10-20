@@ -1,3 +1,5 @@
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import { mapAcquisitionTermsFailure } from "./acquisitionQuoteBinding.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { BffResponder } from "../bff/index.js";
 import type { z } from "zod";
@@ -26,6 +28,7 @@ function commerceQuoteFailureDetails(stage: CommerceQuoteFailureStage) {
 
 export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = CreateQuoteRequest, Response extends CreateQuoteResponse = CreateQuoteResponse> {
   responder: BffResponder;
+  acquisition?: { terms(quote: Response["quote"]): ResolvedAcquisitionTerms | undefined };
   createQuoteRequestSchema: z.ZodType<Request>;
   createQuoteResponseSchema: z.ZodType<Response>;
   publicCreateQuoteRequestSchema: z.ZodType<Request & { promotionAcceptanceToken?: string }>;
@@ -53,6 +56,7 @@ export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = C
 export function createCommerceQuoteHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({
   responder, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteRequestSchema, publicCreateQuoteResponseSchema,
   quotePort,
+  acquisition,
   fallbackQuotePort,
   resolveCustomerEligibility,
   resolvePricingPolicy,
@@ -109,7 +113,7 @@ export function createCommerceQuoteHandler<Request extends CreateQuoteRequest, R
       const issuedToken = honoredToken ?? createPromotionAcceptance?.(request.data, quote.quote) ?? undefined;
       const containsV2Promotion = quote.quote.discounts.some((discount) =>
         discount.promotionEngineVersion === "promotion-engine.v2");
-      if (containsV2Promotion && !issuedToken) {
+      if ((containsV2Promotion || acquisition?.terms(quote.quote)) && !issuedToken) {
         stage = "promotion_fallback";
         const fallback = fallbackQuotePort
           ? createQuoteResponseSchema.safeParse(await fallbackQuotePort.createQuote(request.data, {
@@ -117,7 +121,7 @@ export function createCommerceQuoteHandler<Request extends CreateQuoteRequest, R
               ...(pricingPolicy ? { pricingPolicy } : {}),
             }))
           : null;
-        if (!fallback?.success || fallback.data.quote.discounts.some((discount) =>
+        if (!fallback?.success || acquisition?.terms(fallback.data.quote) || fallback.data.quote.discounts.some((discount) =>
           discount.promotionEngineVersion === "promotion-engine.v2")) {
           sendBffError(res, "CONFLICT", "Promotion quote must be refreshed", {
             details: { feature: "quote", reason: "promotion_acceptance_refresh_required" },
@@ -139,6 +143,11 @@ export function createCommerceQuoteHandler<Request extends CreateQuoteRequest, R
         contractVersion: COMMERCE_CONTRACT_VERSION,
       });
     } catch (error) {
+      const acquisitionFailure = acquisition ? mapAcquisitionTermsFailure(error) : null;
+      if (acquisitionFailure) {
+        sendBffError(res, acquisitionFailure.code, "Acquisition terms unavailable", { details: acquisitionFailure.details });
+        return;
+      }
       if (error instanceof CommerceQuoteCatalogReadError) {
         sendBffError(res, "UPSTREAM_UNAVAILABLE", "Commerce catalog is unavailable", {
           details: { reason: "catalog_unavailable", refusalCode: error.code },

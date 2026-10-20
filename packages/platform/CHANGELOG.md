@@ -8,6 +8,10 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add an experimental opt-in acquisition selection, offer v3 and promise-consent
+  API with required host financial policy and no default. Reference activation
+  remains off. Migration: none for existing callers.
+
 - Move the existing quote computation, snapshot comparison, quote/batch handlers,
   v1/v2 offer projection/handler/cache and readiness into the pricing module.
   Reference bindings retain flat shipping, promotion application and rich policy.

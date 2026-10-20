@@ -547,6 +547,14 @@ import assert from "node:assert/strict";
 import * as pricing from "@openlup/platform/pricing";
 import * as contracts from "@openlup/platform/pricing/contracts";
 assert.equal(pricing.OFFER_POLICY_V2, contracts.OFFER_POLICY_V2);
+assert.equal(contracts.ACQUISITION_TERMS_CAPABILITY, "subscription-acquisition.v1");
+assert.equal(contracts.COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION, "commerce.offer-pricing.v3");
+assert.equal("selectAcquisitionTerms" in contracts, false);
+assert.throws(() => pricing.selectAcquisitionTerms([], "2026-10-01T00:00:00Z", "ZZ", undefined),
+  error => error instanceof pricing.AcquisitionTermsError && error.reason === "acquisition_terms_policy_unconfigured");
+assert.equal(pricing.acquisitionExpectationChanged(undefined, undefined), false);
+assert.equal(pricing.acquisitionExpectationChanged({ revision: "example-a", delivery2DiscountBps: 1700 }, undefined), true);
+assert.deepEqual(pricing.acquisitionQuoteBinding(), {});
 assert.equal(contracts.COMMERCE_CONTRACT_VERSION, "commerce.v0");
 assert.equal("createCommerceQuoteSchemas" in contracts, false);
 assert.equal("catalogFactsProvenanceSchema" in contracts, false);

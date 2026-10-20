@@ -1,3 +1,4 @@
+import type { ResolvedAcquisitionTerms } from "@openlup/platform/pricing";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { CreateQuoteRequest } from "../../../src/domains/commerce/contracts.js";
@@ -51,6 +52,7 @@ export type PromotionAcceptanceDiagnostic = {
 export function issuePromotionQuoteAcceptance(input: {
   request: CreateQuoteRequest;
   quote: CommerceQuote;
+  acquisitionTerms?: ResolvedAcquisitionTerms;
   keyring: PromotionAcceptanceKeyring;
   now?: Date;
 }): string | null {
@@ -60,11 +62,12 @@ export function issuePromotionQuoteAcceptance(input: {
 export function issuePromotionQuoteAcceptanceWithOutcome(input: {
   request: CreateQuoteRequest;
   quote: CommerceQuote;
+  acquisitionTerms?: ResolvedAcquisitionTerms;
   keyring: PromotionAcceptanceKeyring;
   now?: Date;
 }): { token: string | null; diagnostic: PromotionAcceptanceDiagnostic } {
   const evidence = v2Discounts(input.quote);
-  if (evidence.length === 0) return {
+  if (evidence.length === 0 && !input.acquisitionTerms) return {
     token: null,
     diagnostic: rejected("no_v2_adjustment"),
   };
@@ -85,8 +88,8 @@ export function issuePromotionQuoteAcceptanceWithOutcome(input: {
     engine: "promotion-engine.v2",
     requestBinding: requestBinding(input.request, input.keyring.current),
     codeBinding: codeBinding(input.request.promoCodes, input.keyring.current),
-    quoteBinding: quoteBinding(input.quote, input.keyring.current),
-    sectionBindings: sectionBindings(input.quote, input.keyring.current),
+    quoteBinding: quoteBinding(input.quote, input.keyring.current, input.acquisitionTerms),
+    sectionBindings: sectionBindings(input.quote, input.keyring.current, input.acquisitionTerms),
     totalMinor: input.quote.totalGross.amountMinor,
     currency: input.quote.totalGross.currency,
   });
@@ -106,6 +109,7 @@ export function verifyPromotionQuoteAcceptance(input: {
   token: string;
   request: CreateQuoteRequest;
   quote: CommerceQuote;
+  acquisitionTerms?: ResolvedAcquisitionTerms;
   expectedTotal: { amountMinor: number; currency: string };
   keyring: PromotionAcceptanceKeyring;
   now?: Date;
@@ -117,6 +121,7 @@ export function verifyPromotionQuoteAcceptanceWithOutcome(input: {
   token: string;
   request: CreateQuoteRequest;
   quote: CommerceQuote;
+  acquisitionTerms?: ResolvedAcquisitionTerms;
   expectedTotal: { amountMinor: number; currency: string };
   keyring: PromotionAcceptanceKeyring;
   now?: Date;
@@ -131,8 +136,8 @@ export function verifyPromotionQuoteAcceptanceWithOutcome(input: {
   if (payload.codeBinding !== codeBinding(input.request.promoCodes, secret)) {
     return { accepted: false, reason: "code_mismatch", ...base };
   }
-  if (payload.quoteBinding !== quoteBinding(input.quote, secret)) {
-    const mismatchField = namedMismatchField(payload.sectionBindings, input.quote, secret);
+  if (payload.quoteBinding !== quoteBinding(input.quote, secret, input.acquisitionTerms)) {
+    const mismatchField = namedMismatchField(payload.sectionBindings, input.quote, secret, input.acquisitionTerms);
     return { accepted: false, reason: "quote_mismatch", mismatchField, ...base };
   }
   if (payload.totalMinor !== input.expectedTotal.amountMinor) {
@@ -141,7 +146,7 @@ export function verifyPromotionQuoteAcceptanceWithOutcome(input: {
   if (payload.currency !== input.expectedTotal.currency) {
     return { accepted: false, reason: "currency_mismatch", ...base };
   }
-  if (v2Discounts(input.quote).length === 0) {
+  if (v2Discounts(input.quote).length === 0 && !input.acquisitionTerms) {
     return { accepted: false, reason: "no_v2_adjustment_in_quote", ...base };
   }
   return { accepted: true, reason: "accepted", ...base };
@@ -241,15 +246,16 @@ function codeBinding(codes: readonly string[], secret: string): string {
   return hmac(secret, stableJson([...new Set(codes.map((code) => code.trim().toUpperCase()))].sort()));
 }
 
-function quoteBinding(quote: CommerceQuote, secret: string): string {
-  return hmac(secret, stableJson(projectPromotionQuoteMoney(quote)));
+function quoteBinding(quote: CommerceQuote, secret: string, acquisitionTerms?: ResolvedAcquisitionTerms): string {
+  return hmac(secret, stableJson(projectPromotionQuoteMoney(quote, acquisitionTerms)));
 }
 
 function sectionBindings(
   quote: CommerceQuote,
   secret: string,
+  acquisitionTerms?: ResolvedAcquisitionTerms,
 ): Record<PromotionQuoteMoneySectionKey, string> {
-  const sections = promotionQuoteMoneySections(quote);
+  const sections = promotionQuoteMoneySections(quote, acquisitionTerms);
   return Object.fromEntries(PROMOTION_QUOTE_MONEY_SECTIONS
     .map((section) => [section, hmac(secret, stableJson(sections[section]))])) as Record<
       PromotionQuoteMoneySectionKey, string>;
@@ -263,9 +269,10 @@ function namedMismatchField(
   issued: Record<PromotionQuoteMoneySectionKey, string> | undefined,
   quote: CommerceQuote,
   secret: string,
+  acquisitionTerms?: ResolvedAcquisitionTerms,
 ): PromotionQuoteMismatchField {
   if (!issued) return "other";
-  const verified = sectionBindings(quote, secret);
+  const verified = sectionBindings(quote, secret, acquisitionTerms);
   return PROMOTION_QUOTE_MONEY_SECTIONS
     .find((section) => issued[section] !== verified[section]) ?? "other";
 }

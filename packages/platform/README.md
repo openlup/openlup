@@ -76,8 +76,34 @@ wire-scope policy. It retains v1/v2 responses, partial degradation only for a
 missing configured price, and the first successfully priced representative.
 The offer cache bounds success freshness from load start and retains its separate
 failure TTL; readiness keeps its 60-second positive and 5-second negative caps.
-No acquisition selection, threshold shipping, promotion implementation, store,
-SQL descriptor, migration, route or activation is added.
+The additive experimental acquisition API is off by default. `selectAcquisitionTerms`
+and `filterAcquisitionPromotions` require an `AcquisitionFinancialPolicy<Row>`:
+row facts, classification, metadata validation, pair matching, initial rate and
+unconfigured terms all come from the host. Omission refuses with
+`acquisition_terms_policy_unconfigured`, even with no rows; no financial policy
+or schedule is bundled. Selection preserves row identity, validates the whole
+tagged schedule and uses half-open windows with the next future boundary.
+
+`createAcquisitionQuoteSchemas` composes separate capability/context/resolved-terms
+schemas with the host's validators. `projectAcquisitionOfferPricing` pins the
+observation time and capability for every representative request; its v3 output
+contains public terms and expires by the next boundary or 60 seconds.
+`createAcquisitionOfferPricingSchema` retains the injected v2 settlement and scope
+rules. The opt-in handler delegates absent acquisition headers to an incumbent
+handler; negotiated responses require v3, paired v2 policy and private no-store
+headers. The incumbent handler continues ignoring acquisition headers.
+`createAcquisitionReadinessCache` requires an explicit policy configuration,
+validates acquisition evidence, clamps positive cache expiry and rereads once
+after crossing a boundary. The existing shared readiness cache remains unchanged.
+
+Promise comparison is independent of money. Explicit server-selected resolved
+terms can join the existing acceptance money projection and totals section;
+absence contributes no property. Quote/batch refusal mapping and unsigned-terms
+fallback checks require explicit acquisition configuration. Reference composition
+supplies none: existing schemas, headers, reads, error details and token bytes
+are preserved. Checkout admission, claims, finalization, threshold shipping,
+promotion implementation, stores, SQL, routes and activation remain outside
+this API.
 
 The package witnesses in `test/pricing/` move the incumbent authority, policy,
 token, quote, snapshot, handler, offer, cache and readiness assertions. Currency

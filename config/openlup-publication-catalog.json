@@ -3254,6 +3254,38 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/acquisitionFinancialPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/acquisitionOfferPricing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/acquisitionOfferPricingHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/acquisitionOfferPricingSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/acquisitionQuoteBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/acquisitionReadiness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/acquisitionTerms.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/acquisitionTermsSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/catalogFactsProvenance.ts",
       "class": "public-output"
     },
@@ -3295,6 +3327,10 @@
     },
     {
       "path": "packages/platform/src/pricing/commerceQuoteSnapshotExpect.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/contracts/acquisitionTerms.ts",
       "class": "public-output"
     },
     {
@@ -3367,6 +3403,10 @@
     },
     {
       "path": "packages/platform/src/pricing/pricingPolicyToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/quoteAcquisitionTerms.ts",
       "class": "public-output"
     },
     {
@@ -3863,6 +3903,14 @@
     },
     {
       "path": "packages/platform/test/packageBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/acquisition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/acquisitionFixtures.ts",
       "class": "public-output"
     },
     {
@@ -9663,6 +9711,14 @@
     },
     {
       "path": "server/domains/commerce/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/acquisitionConsent.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/acquisitionConsent.testFixtures.ts",
       "class": "public-output"
     },
     {
