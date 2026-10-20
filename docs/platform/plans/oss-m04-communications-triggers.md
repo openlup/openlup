@@ -929,3 +929,111 @@ overlay or generated file is not committed-source or package admission evidence.
 Remaining root-suite/build results and the stopped-run self-retro are recorded
 in the handoff; missing mandatory proof prevents delivery. No git write, review
 receipt, external mutation, S1, release or deployment occurs in this run.
+
+
+## S1 package-set preparation
+
+Status (2026-10-20): file-only implementation of the approved `0.17.0` set,
+based on `c8fd6bd194b189d436b2d66780792d5e7175b6d1`. Acceptance here is the eleven
+approved file edits and an honest verification/handoff record. A clean committed
+candidate, native admission and final public/private artifact witnesses remain
+required before S1 can be armed; file-only evidence does not satisfy them.
+
+Authority: the owner's delegate approved the stabilized S1 API/npm/budget read
+(revision 12): core, outbox and platform versions plus exact core peers and seven
+lock carriers; three release entries; platform adoption/trusted-transaction
+wording; derived source-release contract and this existing programme record.
+The current direct instruction authorizes local file edits and checks only,
+with no Git writes, submission, merge, publication, tag or release dispatch.
+It ends at the implementation report and proposed commit/PR text. No other
+programme delivery grant is exercised by this run.
+
+Smallest complete scope: the three package manifests and CHANGELOGs, core and
+root locks, platform README, derived source-release contract and this plan.
+Existing bump/derive/check machinery is sufficient. Preserve exports, runtime,
+SQL, snapshots, dependencies, workflows, OIDC/publish configuration, package
+inventory, UI status, caps and test selection. Generated navigation/catalogue/API
+bytes may change only if genuine derivation requires it, with investigation.
+No new mechanism or tests are justified by numeric carriers and release notes.
+S1 adds zero tests: inherited X2 remains **580 counted / 285 boundary / 739
+runner additions**, **19.262400236 s** cumulative, with the acknowledged +480
+case overrun and existing post-loop revisit; no budget resets or timing waiver.
+
+Option B is the binding baseline disposition. Keep the initial `0.16.0`
+release-gates records: core 161,371, outbox 38,718, platform 256,973 packed bytes.
+No `release-gates.json` edit or cap increase is authorized. The pre-S1 platform
+measurement is 414,808 packed bytes, **+61.4%** versus that baseline; the release
+entry explains growth from reviewed communications runtime, native stores/SQL,
+browser contracts and adoption/API documentation. Final note bytes require fresh
+measurement. The communications browser cap remains 11,776 bytes.
+
+Observed published `0.16.0` identities (fetched during the design on 2026-10-20;
+SHA512 verified against registry integrity, not an audit-signature witness):
+
+| Package | Packed bytes | Fetched SHA256 |
+| --- | ---: | --- |
+| `@openlup/core` | 161,232 | `48abf4ea8ddc446b8d6e2c610801e2cfcbe5575743bd5a61fbb8b8b50a2b36a3` |
+| `@openlup/outbox` | 38,673 | `1219a95952ae1dd8a7ceee80ad58b8ab5a9501527d5e20194b4c4db43d031ebd` |
+| `@openlup/platform` | 257,434 | `030756175d61279aab0ae7b26b27783e08467ec93673f5623d19d0b7fc436463` |
+
+Risk/proof plan: check exact manifest/lock-only deltas and derived bytes first,
+then policy/navigation, API, size and release checks, whole-set cold consumers
+including real PostgreSQL, lint/typecheck/neutrality/migration/security, scoped
+and complete root suites and the subscription build. Heavy commands use the
+existing resource broker. A dirty-tree refusal is retained, not bypassed or
+reported as artifact admission. Final gates use the exact clean reviewed head.
+
+Remaining witness boundary: before merge, the supervisor packs all three
+artifacts from the exact reviewed S1 head with the repository command, records
+each SHA512 and content listing, and stages the tarballs with `SHA256SUMS` in
+the coordinator's `m04-staging/s1-tarballs/`. The supervisor sends the path and
+head SHA to the designated lead. The lead runs minimal existing private bindings
+in an ignored scratch trial with no private source edits and returns PASS/FAIL.
+At C4, fetched published tarballs must be content-equivalent to those artifacts
+and npm audit signatures must pass. Arm S1 only after both required witnesses
+pass. This run creates no reviewed head or final staging/witness claim.
+
+
+S1 file-only verification outcome (2026-10-20): manifests, all three API checks,
+Core release check/pack, ast-grep, lint (zero errors; 33 existing warnings),
+zero-error full typecheck, inventory, both neutrality gates (base `c8fd6bd`, zero
+increases), read-only migration assertion and gitleaks 8.30.1 directory scans
+passed. `test:scoped` excluded no bounded tooling files and passed 1,738 files /
+14,418 tests (one file / two tests skipped by existing configuration), 191.798 s
+including the broker. The separately requested complete `npm test` passed the
+same counts, 199.790 s. Both reference builds and their two-page prerender checks
+passed; generated root/subscription outputs were removed. No tests were added.
+
+Final working-file packed sizes: core **161,493 B**, outbox **39,135 B**, platform
+**413,801 B**, all within unchanged caps. Platform code remains **349,386 /
+440,320 B**, docs **29,341 / 40,960 B**, unpacked **1,764,012 / 2,088,960 B**,
+files **684 / 800**; communications browser entry **8,210 / 11,776 B**. Final
+platform growth is **+61.0290%** against the retained initial baseline; the
+approved +61.4% reading above is the 414,808 B measurement before S1 note
+consolidation. Preliminary working-file tarballs have SHA256/SHA512 and exact
+content listings in the implementation handoff; they are not reviewed-head packs.
+
+Whole-set artifact/cold/required-package commands refused the uncommitted package
+files before installed consumers or Core coverage. Normal policy/navigation has
+three unanswered no-impact records (core, outbox rail and repository); exact
+fresh source-delta trailers and reasons are supplied for the supervisor's
+non-merge commit. Platform's README answers its owner obligation. Navigation,
+catalogue and all API snapshots remained byte-identical. The complete derived
+contract changes only the root/core lock digests; normal npm lock regeneration
+changed exactly the approved seven version/peer fields, with no dependency drift.
+Managed pgTAP refused before database startup: PATH supplies CLI 2.120.0, while
+this profile requires 2.98.2. No substitute or new install exception was used.
+
+The file-only run stops at the requested commit/report/PR-text handoff. No Git
+index/object/ref writes, native reviews or receipts, external writes, publication,
+tag, dispatch or S1 arming occurred. Native review cycles consumed: zero. The
+clean reviewed-head package/coverage/real-PG consumer gate, normal committed
+policy, pinned managed diagnostic and both required artifact witnesses remain
+pending; missing proof is not completion of programme acceptance.
+
+Self-retro: the two expressly requested root runs cost 391.588 s including
+broker time; the shared root lock correctly retained the complete selection.
+Reusing set bump, normal npm lock generation and existing measurement/derivation
+functions kept this preparation to eleven paths with no new mechanism or tests.
+Lesson: version preparation → existing set machinery and explicit proof limits.
+No useful further in-scope process change was found; no successor was opened.
