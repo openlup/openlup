@@ -174,6 +174,10 @@ describe("package source boundary", () => {
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
       "catalog/index.ts", "catalog/contracts/index.ts",
+      "catalog/adminBindings.ts", "catalog/bundleBindings.ts", "catalog/bundleRules.ts", "catalog/bundleRuleCodes.ts",
+      "catalog/bundleAvailability.ts", "catalog/bundleAvailabilityService.ts", "catalog/bundleCatalogReadPort.ts",
+      "catalog/adminBundleWritePort.ts", "catalog/adminBundleHandler.ts", "catalog/adminBundleReadHandler.ts", "catalog/sellableBundleHandler.ts",
+      "catalog/contracts/bundleAdmin.ts", "catalog/contracts/bundleRead.ts", "catalog/contracts/bundleAvailability.ts",
       "pricing/index.ts", "pricing/contracts/index.ts",
       "promotions/index.ts", "promotions/contracts/index.ts",
       "promotions/adminBindings.ts", "promotions/adminPromotionsHandler.ts", "promotions/adminPromotionCodesHandler.ts",

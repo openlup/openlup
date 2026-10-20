@@ -6,8 +6,8 @@ import {
   DEFAULT_BUNDLE_LOW_STOCK_THRESHOLD,
   deriveBundleAvailability,
   type BundleAvailabilityComponent,
-} from "./availability.js";
-import { offerAvailabilityStatusFor } from "../commerce/ports.js";
+} from "./bundleTestBindings.js";
+import { offerAvailabilityStatusFor } from "./bundleTestBindings.js";
 
 /**
  * Vocabulary-neutral fixtures throughout: neutral sku slugs, no vendor names, no

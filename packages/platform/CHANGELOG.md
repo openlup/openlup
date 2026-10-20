@@ -8,6 +8,19 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Move unchanged fixed-bundle rules, availability, semantic ports and admin/feed
+  application handlers into the existing catalog server entry. Reference bindings
+  retain schemas, shared admin kit/spec/flags, stock/lifecycle helpers, responder,
+  wire versions and RPC error identity. Catalog contracts add plain DTOs only;
+  browser schemas stay local. Native stores and SQL remain outside this slice.
+
+Migration: existing reference imports remain named compatibility exports.
+Installed consumers bind the host dependencies explicitly. Bundle DTO additions
+are additive. Generated pricing/promotions snapshots reorder the existing bundle
+component enum member; communications snapshots reorder update/email_change; promotions also reorders
+the existing all member in status/scope enums.
+Members and runtime behavior are unchanged. No SQL, data or activation migration is introduced.
+
 - Move promotion admin handlers/ports/DTOs/server schemas and native evaluator
   read/sweep into promotions, preserving reference kit/error/currency bindings.
   Project unchanged canonical SQL units 47/48 with descriptor hashes and positions;
