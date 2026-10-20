@@ -15,28 +15,28 @@ const DOCUMENT_ID = "33333333-3333-4333-8333-333333333333";
 function envelope() {
   return {
     contractVersion: "catalog.foundation.v1" as const,
-    product: { id: PRODUCT_ID, slug: "formula-a", primarySkuId: SKU_ID },
+    product: { id: PRODUCT_ID, slug: "item-alpha", primarySkuId: SKU_ID },
     sku: {
       id: SKU_ID,
       productId: PRODUCT_ID,
-      code: "FORMULA-A-400",
+      code: "ITEM-ALPHA-400",
       netContent: { unscaled: 400, scale: 0, unit: "GRAM" },
       sellability: { status: "active" as const, oneTime: true, subscription: true },
       isAddon: false,
-      assetRef: "asset:formula-a:400",
+      assetRef: "asset:item-alpha:400",
     },
     documentRevision: {
       id: DOCUMENT_ID,
       productId: PRODUCT_ID,
       revisionNo: 1,
       schemaId: "application:document/v1",
-      documentRef: "document:formula-a/v1",
+      documentRef: "document:item-alpha/v1",
       sourceRef: "proposal:source/v1",
       digest: "a".repeat(64),
     },
     identifiers: [{
       issuer: "gs1",
-      normalizedValue: "5908121193005",
+      normalizedValue: "0001234567895",
       kind: "gtin" as const,
       packKind: "unit" as const,
       packQuantity: 1,
@@ -50,7 +50,7 @@ describe("NeutralSkuEnvelopeV1", () => {
     const first = neutralSkuEnvelopeV1Schema.parse(envelope());
     const second = neutralSkuEnvelopeV1Schema.parse({
       ...envelope(),
-      sku: { ...envelope().sku, id: "44444444-4444-4444-8444-444444444444", code: "FORMULA-A-800", netContent: { unscaled: 800, scale: 0, unit: "GRAM" } },
+      sku: { ...envelope().sku, id: "44444444-4444-4444-8444-444444444444", code: "ITEM-ALPHA-800", netContent: { unscaled: 800, scale: 0, unit: "GRAM" } },
     });
 
     expect(first.documentRevision.id).toBe(second.documentRevision.id);
@@ -62,7 +62,7 @@ describe("NeutralSkuEnvelopeV1", () => {
     ["cross-product revision", { documentRevision: { ...envelope().documentRevision, productId: "55555555-5555-4555-8555-555555555555" } }],
     ["SKU document override", { sku: { ...envelope().sku, documentRevisionId: DOCUMENT_ID } }],
     ["raw document payload", { documentPayload: { arbitrary: "payload" } }],
-    ["invalid primary GTIN checksum", { identifiers: [{ ...envelope().identifiers[0], normalizedValue: "5908121193000" }] }],
+    ["invalid primary GTIN checksum", { identifiers: [{ ...envelope().identifiers[0], normalizedValue: "0001234567896" }] }],
   ])("refuses %s", (_label, patch) => {
     const value = envelope();
     const candidate = { ...value, ...patch };
@@ -97,13 +97,13 @@ describe("NeutralSkuEnvelopeV1", () => {
   it.each([
     "12345670",
     "012345678905",
-    "5901234123457",
+    "0001234567895",
     "10012345678902",
   ])("accepts valid GS1 GTIN checksums: %s", (gtin) => {
     expect(isValidGtin(gtin)).toBe(true);
   });
 
-  it.each(["12345671", "012345678904", "5901234123450", "1234567A"])("rejects invalid GTIN checksums or lengths: %s", (gtin) => {
+  it.each(["12345671", "012345678904", "0001234567896", "1234567A"])("rejects invalid GTIN checksums or lengths: %s", (gtin) => {
     expect(isValidGtin(gtin)).toBe(false);
   });
 
@@ -114,19 +114,19 @@ describe("NeutralSkuEnvelopeV1", () => {
       { ...envelope().identifiers[0], issuer: "another-gs1" },
     ])).toThrow("catalog_sku_identifier_authority_ambiguous");
     expect(() => assertPrimaryUnitGtinAuthority([
-      { ...envelope().identifiers[0], normalizedValue: "5901234123450" },
+      { ...envelope().identifiers[0], normalizedValue: "0001234567896" },
     ])).toThrow("catalog_sku_identifier_authority_invalid");
     expect(() => requireCurrentCatalogDocumentAuthority(PRODUCT_ID, null, null)).toThrow("catalog_sku_authority_current_document_absent");
     expect(() => requireCurrentCatalogDocumentAuthority(PRODUCT_ID, DOCUMENT_ID, null)).toThrow("catalog_sku_authority_current_document_invalid");
   });
 
   it("accepts only the exact SKU-code and primary-product-slug selector union", () => {
-    expect(catalogSkuEnvelopeSelectorSchema.parse({ kind: "sku_code", skuCode: "FORMULA-A-400" }))
-      .toEqual({ kind: "sku_code", skuCode: "FORMULA-A-400" });
-    expect(catalogSkuEnvelopeSelectorSchema.parse({ kind: "primary_product_slug", productSlug: "formula-a" }))
-      .toEqual({ kind: "primary_product_slug", productSlug: "formula-a" });
+    expect(catalogSkuEnvelopeSelectorSchema.parse({ kind: "sku_code", skuCode: "ITEM-ALPHA-400" }))
+      .toEqual({ kind: "sku_code", skuCode: "ITEM-ALPHA-400" });
+    expect(catalogSkuEnvelopeSelectorSchema.parse({ kind: "primary_product_slug", productSlug: "item-alpha" }))
+      .toEqual({ kind: "primary_product_slug", productSlug: "item-alpha" });
     expect(catalogSkuEnvelopeSelectorSchema.safeParse({ kind: "sku_id", skuId: SKU_ID }).success).toBe(false);
-    expect(catalogSkuEnvelopeSelectorSchema.safeParse({ kind: "sku_code", skuCode: "FORMULA A" }).success).toBe(false);
-    expect(catalogSkuEnvelopeSelectorSchema.safeParse({ kind: "primary_product_slug", productSlug: "formula-a", skuCode: "FORMULA-A-400" }).success).toBe(false);
+    expect(catalogSkuEnvelopeSelectorSchema.safeParse({ kind: "sku_code", skuCode: "ITEM ALPHA" }).success).toBe(false);
+    expect(catalogSkuEnvelopeSelectorSchema.safeParse({ kind: "primary_product_slug", productSlug: "item-alpha", skuCode: "ITEM-ALPHA-400" }).success).toBe(false);
   });
 });

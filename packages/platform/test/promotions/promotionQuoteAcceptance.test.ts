@@ -108,7 +108,7 @@ describe("promotion quote acceptance", () => {
     verify(token, request, quote, NOW);
     const payload = Buffer.from(token.split(".")[0]!, "base64url").toString("utf8");
     expect(payload).not.toContain("SAVE80");
-    expect(payload).not.toContain("anna@example.com");
+    expect(payload).not.toContain("subject-a@example.com");
     expect(payload).not.toContain(OLD_SECRET);
     expect(JSON.stringify([...info.mock.calls, ...warn.mock.calls, ...error.mock.calls])).not.toContain(token);
   });

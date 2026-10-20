@@ -15,16 +15,16 @@ import type { SellableCatalogPort } from "../../src/catalog/readPorts.js";
 const profile = {
   id: "reference-store-local",
   brand: "Reference Store",
-  country: "US",
-  currency: "USD",
-  locale: "en-US",
+  country: "ZZ",
+  currency: "XXX",
+  locale: "qaa-QM",
   timezone: "Etc/UTC",
 } satisfies SellableCatalogProfile;
 
 const items = [{
   sku: "reference.standard",
   title: "Reference Standard",
-  unitPrice: { amountMinor: 2_500, currency: "USD" },
+  unitPrice: { amountMinor: 2_500, currency: "XXX" },
   permittedPurchaseModes: ["one_time", "subscription"],
 }] satisfies SellableCatalogItem[];
 

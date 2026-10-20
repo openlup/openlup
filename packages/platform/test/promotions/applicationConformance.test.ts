@@ -33,10 +33,10 @@ async function run(candidates = [code()], rows: PromotionRow[] = []) {
   const port = createDbBackedCommerceQuotePort({ now: () => time, currency: "XXX", regionCode: "ZZ", taxProfile: tax, supportedTaxProfiles: [tax],
     isStrictD1Quote: true, hasPromotionCodePort: true,
     quoteCatalogReadPort: { listQuoteCatalogItems: async () => [{ skuId: "11111111-1111-4111-8111-111111111111", skuCode: "ITEM", variantId: "variant", productSlug: "item",
-      netWeightG: 400, energyPer100g: null, isAddon: false, sellability: { oneTime: true, subscription: true },
+      netWeightG: 400, usagePer100Units: null, isAddon: false, sellability: { oneTime: true, subscription: true },
       documentRevision: { id: "22222222-2222-4222-8222-222222222222", digest: "a".repeat(64) } }] },
     commercePriceAuthorityPort: { resolvePrice: async () => ({ kind: "one_time", base, unitPriceMinor: 10000 }) },
-    lineContext: () => ({}), quoteContext: () => () => ({ mode: "one_time", cadenceDays: null, feedingCoverageDays: null }),
+    lineContext: () => ({}), quoteContext: () => () => ({ mode: "one_time", cadenceDays: null, usageCoverageDays: null }),
     resolveAutomaticQuotePromotions: input => resolveAutomaticQuotePromotions({ ...input, promoDataPort: reads }),
     applyPromotionCodesV2: input => applyPromotionCodesV2({ ...input, port: advisory }),
   });

@@ -37,15 +37,15 @@ function validQuote(): CommerceQuote {
     taxIncluded: true,
     lines: [
       {
-        sku: "OPENLUP-DOG-LAMB-CAN-400G",
-        productSlug: "lamb",
+        sku: "ITEM-ALPHA-400",
+        productSlug: "item-alpha",
         quantity: 1,
         unitPriceGross: money(1490, "XXX"),
         lineSubtotalGross: money(1490, "XXX"),
         tax: {
           included: true,
           country: "ZZ",
-          category: "pet_food",
+          category: "example_category",
           vatRateBps: 800,
           legalBasis: "Example VAT rule",
           netAmount: money(1380, "XXX"),
@@ -71,19 +71,19 @@ describe("quote money currency backstop", () => {
 
   it("rejects a line money in a foreign currency", () => {
     const quote = validQuote();
-    quote.lines[0].unitPriceGross = money(1490, "EUR");
+    quote.lines[0].unitPriceGross = money(1490, "XTS");
     expect(quoteMoneyCurrenciesMatch(quote)).toBe(false);
   });
 
   it("rejects a tax-breakdown money in a foreign currency", () => {
     const quote = validQuote();
-    quote.lines[0].tax.netAmount = money(1380, "EUR");
+    quote.lines[0].tax.netAmount = money(1380, "XTS");
     expect(quoteMoneyCurrenciesMatch(quote)).toBe(false);
   });
 
   it("rejects an order-total money in a foreign currency", () => {
     const quote = validQuote();
-    quote.taxTotal = money(110, "EUR");
+    quote.taxTotal = money(110, "XTS");
     expect(quoteMoneyCurrenciesMatch(quote)).toBe(false);
   });
 
@@ -171,13 +171,13 @@ describe("quote money currency backstop", () => {
       lines: [
         {
           sku: "EXAMPLE-SKU-ALPHA",
-          productSlug: "lamb",
+          productSlug: "item-alpha",
           quantity: 1,
           unitPriceGross: money(12300, "XXX"),
           lineSubtotalGross: money(12300, "XXX"),
           tax: {
             included: true,
-            country: "DE",
+            country: "QZ",
             category: "standard",
             vatRateBps: 2300,
             legalBasis: "Example VAT rule",
@@ -203,13 +203,13 @@ describe("quote money currency backstop", () => {
     const quote = validQuote();
     quote.lines.push({
       sku: "EXAMPLE-SKU-ALPHA",
-      productSlug: "lamb",
+      productSlug: "item-alpha",
       quantity: 1,
       unitPriceGross: money(12300, "XXX"),
       lineSubtotalGross: money(12300, "XXX"),
       tax: {
         included: true,
-        country: "DE",
+        country: "QZ",
         category: "standard",
         vatRateBps: 2300,
         legalBasis: "Example VAT rule",
@@ -275,6 +275,6 @@ it("preserves both shipping and discount tax lanes and their currency backstop",
   };
   expect(commerceQuoteSchema.safeParse(quote).success).toBe(true);
   expect(commerceQuoteSchema.safeParse({ ...quote, shippingDiscountGross: money(55, "XXX") }).success).toBe(false);
-  expect(quoteMoneyCurrenciesMatch({ ...quote, shippingGross: money(108, "EUR") })).toBe(false);
-  expect(quoteMoneyCurrenciesMatch({ ...quote, shippingDiscountGross: money(54, "EUR") })).toBe(false);
+  expect(quoteMoneyCurrenciesMatch({ ...quote, shippingGross: money(108, "XTS") })).toBe(false);
+  expect(quoteMoneyCurrenciesMatch({ ...quote, shippingDiscountGross: money(54, "XTS") })).toBe(false);
 });

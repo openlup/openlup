@@ -10,10 +10,10 @@ import { COMMERCE_MIN_AUTO_ORDER_UNITS } from "./offerFixtures.js";
 import { projectCommerceOfferPricing } from "./offerFixtures.js";
 
 const product = {
-  skuCode: "opaque:lamb.v1",
-  variantId: "variant-lamb",
-  productSlug: "lamb",
-  species: "dog",
+  skuCode: "opaque:item-alpha.v1",
+  variantId: "variant-item-alpha",
+  productSlug: "item-alpha",
+  segment: "segment_a",
   isPrimarySku: true,
   isAddon: false,
   sellability: { oneTime: true, subscription: true },
@@ -76,7 +76,7 @@ describe("projectCommerceOfferPricing", () => {
       }),
     });
 
-    expect(response.scope).toBe("dog_products_only_excludes_shipping");
+    expect(response.scope).toBe("example_products_only_excludes_shipping");
     expect(response.products[0]).toMatchObject({
       unitCount: COMMERCE_MIN_AUTO_ORDER_UNITS,
       subscriptionInitial: {
@@ -103,26 +103,26 @@ describe("projectCommerceOfferPricing", () => {
       .toMatchObject({ cadenceDays: 14 });
   });
 
-  it("keeps dog homepage minima isolated from published cat products and add-ons", async () => {
+  it("keeps included-cohort minima isolated from excluded-cohort products and add-ons", async () => {
     const promotedCalls: CreateQuoteRequest[] = [];
     const recurringCalls: CreateQuoteRequest[] = [];
-    const cat = {
+    const excluded = {
       ...product,
-      productSlug: "cat-chicken",
-      species: "cat",
-      skuCode: "opaque:cat-chicken.v1",
-      variantId: "variant-cat-chicken",
+      productSlug: "item-beta",
+      segment: "segment_b",
+      skuCode: "opaque:item-beta.v1",
+      variantId: "variant-item-beta",
     } as const;
     const addon = {
       ...product,
-      productSlug: "dog-topper",
-      skuCode: "opaque:dog-topper.v1",
-      variantId: "variant-dog-topper",
+      productSlug: "item-addon",
+      skuCode: "opaque:item-addon.v1",
+      variantId: "variant-item-addon",
       isAddon: true,
     } as const;
 
     const response = await projectCommerceOfferPricing({
-      quoteCatalogReadPort: { listQuoteCatalogItems: vi.fn().mockResolvedValue([cat, addon, product]) },
+      quoteCatalogReadPort: { listQuoteCatalogItems: vi.fn().mockResolvedValue([excluded, addon, product]) },
       quoteWithPromotions: quotePort({
         oneTimeSubtotal: 20_860,
         subscriptionSubtotal: 18_760,
@@ -137,9 +137,9 @@ describe("projectCommerceOfferPricing", () => {
       }),
     });
 
-    expect(response.products.map((entry) => entry.productSlug)).toEqual(["lamb"]);
-    expect(response.minimum.oneTime.productSlug).toBe("lamb");
-    expect(response.minimum.subscription.productSlug).toBe("lamb");
+    expect(response.products.map((entry) => entry.productSlug)).toEqual(["item-alpha"]);
+    expect(response.minimum.oneTime.productSlug).toBe("item-alpha");
+    expect(response.minimum.subscription.productSlug).toBe("item-alpha");
     expect(promotedCalls).toHaveLength(2);
     expect(recurringCalls).toHaveLength(1);
   });
@@ -170,8 +170,8 @@ describe("projectCommerceOfferPricing", () => {
         quoteWithoutPromotions: refusing("recurring"),
       });
 
-      expect(response.products.map((entry) => entry.productSlug)).toEqual(["lamb"]);
-      expect(response.minimum.oneTime.productSlug).toBe("lamb");
+      expect(response.products.map((entry) => entry.productSlug)).toEqual(["item-alpha"]);
+      expect(response.minimum.oneTime.productSlug).toBe("item-alpha");
       // A silent exclusion would move the customer-facing "from" figure invisibly.
       expect(info.mock.calls.map(([line]) => JSON.parse(String(line)))).toEqual([{
         event: "commerce_offer_pricing_product_excluded",
@@ -217,9 +217,9 @@ describe("projectCommerceOfferPricing", () => {
         },
       });
 
-      expect(response.products.map((entry) => entry.productSlug)).toEqual(["lamb"]);
+      expect(response.products.map((entry) => entry.productSlug)).toEqual(["item-alpha"]);
       // Every representative call went to the surviving product, never to `cheap`.
-      expect(promotedCalls.every((call) => call.lines[0]!.sku === "opaque:lamb.v1")).toBe(true);
+      expect(promotedCalls.every((call) => call.lines[0]!.sku === "opaque:item-alpha.v1")).toBe(true);
     } finally {
       info.mockRestore();
     }

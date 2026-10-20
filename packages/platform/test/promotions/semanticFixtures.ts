@@ -63,7 +63,7 @@ function isFirstSubscription50(
       promotion.benefit_value_bps === 5_000;
   }
   return promotion.discount_type === "percentage" &&
-    Math.abs(promotion.discount_value - 44.404) < 0.000_001;
+    Math.abs(promotion.discount_value - 37.537) < 0.000_001;
 }
 
 function hasOnlyEligibility(

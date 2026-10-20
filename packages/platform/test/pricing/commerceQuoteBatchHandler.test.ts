@@ -14,7 +14,7 @@ import {
 } from "../../src/pricing/index.js";
 import type { CreateQuoteResponse } from "./quoteSchemaFixtures.js";
 
-const LINE = { sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 };
+const LINE = { sku: "ITEM-ALPHA-400", quantity: 1 };
 
 describe("commerce quote batch BFF handler", () => {
   it("prices every quote in one envelope, preserving request order", async () => {
@@ -205,15 +205,15 @@ function quote() {
     taxIncluded: true,
     lines: [
       {
-        sku: "OPENLUP-DOG-LAMB-CAN-400G",
-        productSlug: "lamb",
+        sku: "ITEM-ALPHA-400",
+        productSlug: "item-alpha",
         quantity: 1,
         unitPriceGross: { amountMinor: 1490, currency: "XXX" },
         lineSubtotalGross: { amountMinor: 1490, currency: "XXX" },
         tax: {
           included: true,
           country: "ZZ",
-          category: "pet_food",
+          category: "example_category",
           vatRateBps: 800,
           legalBasis: "Example VAT rule",
           netAmount: { amountMinor: 1380, currency: "XXX" },
