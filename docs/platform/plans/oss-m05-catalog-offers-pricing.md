@@ -377,12 +377,14 @@ reservation and shipping-handler exclusions remain intact; no communications
 integration is introduced. Existing D8, bundle parity and P6 obligations stay open
 as recorded below and above.
 
-Merged HEAD `8aa75ec8fc40a11011fdf8e68cd20bd7eaf4b102`, diff versus fork point
-`b47f5f3b1180aa9c6cdff3f3244f0f6675c2b010`:
+Diff against fork point `090f37f8`
+(`090f37f82e2941fd883ab5ab6e8a586bb76922a8`):
 **20/35 production/tooling paths**, comprising 19 reference source paths and one
 publication catalogue JSON companion. The 30 changed paths also include five
 test files and five prose files, excluded from this path count. The committed
 source-release contract matches main and is not part of the P5 delta.
+Review repair `40020ff8` makes the builder consent line state the exact
+second-delivery promise.
 **12 new executed cases** consume the coordinator's supplied post-extraction
 planning balance **17 → 5**. P5 leaves **5** for P7; the planned P7 allocation
 consumes **5 → 0**. The allocation is currency 2 (both normal/fallback
@@ -395,46 +397,51 @@ Collection on the final source: subscribe entry model **8**, promotion binding
 DOM **2**. All are in existing include globs: Node `src/**/*.{test,spec}.ts` and
 `tests/platform/**/*.{test,spec}.ts`, DOM `src/**/*.{test,spec}.tsx`; the builder
 Node path explicitly selects the DOM environment for actual persistence. The
-slot-time focused selection passed **21 files / 153 cases** (19 files / 134
+second-main-merge focused selection passed **21 files / 153 cases** (19 files / 134
 cases, plus two direct promotion handler suites / 19 cases), with two workers.
 All five changed test files were explicitly listed: **5 files / 19 cases**,
 including the three new files / seven cases. Existing
 client, document panel, bundle helper, quote/cache, draft, subscribe journey,
 product FAQ/support, reference-store and public-entry SSR guards remain intact.
+The overlapping catalogue/documentation consumers also pass **11 files / 646
+cases**; these existing cases do not consume the new-case allocation.
 
-At merged HEAD `8aa75ec8`, the existing browser measurement helper reports
+At fork point `090f37f8` plus P5, the existing browser measurement helper reports
 **22,007 B** for the promotion
-client, **20,610 B** for the code client and **43,459 B** for the opt-in reference
+client, **20,610 B** for the code client and **43,473 B** for the opt-in reference
 routes (minified+gzip, including their runtime closures). Replacing only the two
 schema inputs with their baseline versions makes browser bundling refuse Node
 built-ins; a comparable baseline browser-byte total is therefore unavailable.
 These are application measurements, not package-entry limits. No package or
 browser budget change is requested.
 
-Cold platform pack at merged HEAD `8aa75ec8`: **1,134 files / 1,110 code files /
-734,526 packed B / 3,320,052 unpacked B / 621,446 code gzip B**; root docs
-**38,785 gzip B / 5 files**. All three package artifacts pass existing caps and
+Cold platform pack at fork point `090f37f8` plus P5: **1,140 files / 1,116 code files /
+761,916 packed B / 3,436,956 unpacked B / 647,945 code gzip B**; root docs
+**38,848 gzip B / 5 files**. All three package artifacts pass existing caps and
 content checks; no package file, cap or baseline changes in P5.
 
-Slot-time structural scan, lint, all five typecheck projects (including tests),
+Second-main-merge structural scan, lint, all five typecheck projects (including tests),
 static and subscription builds, focused tests, collection and P5-scoped diff
 whitespace checks pass. Lint reports zero errors and 33 warnings. Cold packing,
 all three API snapshot checks and all three installed consumers pass, including
 disposable PostgreSQL proofs. Core smoke types, documentation and release checks
-also pass. Broad tests and coverage were excluded by the slot-time grant; the
+also pass. Broad tests and coverage remain excluded by the focused-check grant; the
 aggregate package runner was not invoked because it includes coverage. These
-focused results do not claim that aggregate gate. Two default-cache attempts
-failed on a local write restriction; reruns using a task-owned cache passed.
+focused results do not claim that aggregate gate. This run used the task-owned
+cache from the start, with two Vitest workers; no check required a retry.
 
 The publication catalogue covers all 30 P5 paths with no missing or stale rows;
-policy and inventory pass across 5,392 public paths. Navigation regeneration
-produces no delta, and all four documentation impact obligations are answered.
+policy and inventory pass across 5,404 public paths (5,402 authored rows and two
+pattern-admitted fragments). Catalogue serialization produces identical bytes,
+with every main row preserved and no duplicate, missing or stale row. Both P5's
+reference-UI paragraphs and main's A1 additions remain coherent. Navigation
+regeneration produces no delta, and all four documentation impact obligations are answered.
 The source-release snapshot remains unchanged under the current release flow;
 checks validate computed bindings and report its stale aggregate snapshot as
 expected. P5 changes no package changelog or fragment. Root neutrality reports
-zero increases against the fork point; UI neutrality also passes. All five
-commits, including the merge, carry DCO sign-off. Task-created untracked build
-directories were removed. The only repository edit from this slot-time pass is
+zero increases against fork point `090f37f8`; UI neutrality also passes. All eight
+commits in `090f37f8..HEAD`, including both merges, carry DCO sign-off. Task-created untracked build
+directories were removed. The only repository edit from this second-main-merge pass is
 this ledger; commits, native candidate review and delivery remain supervisor
 obligations.
 
@@ -443,8 +450,9 @@ assumptions before handoff. Use rendered composition cards and FAQ/supplement
 facts to test the supplied-details seam; keep the finite case allocation rather
 than adding a second harness or new runner. Slot-time lesson: a default cache
 write restriction caused two failed attempts; a task-owned cache preserved the
-existing checks without a repository or host configuration change. No successor
-work is opened.
+existing checks without a repository or host configuration change. Second-merge
+lesson: reusing that cache and the existing catalogue serializer avoided retries
+and an unnecessary generator or merge repair. No successor work is opened.
 
 ## Witness ledger
 
