@@ -48,13 +48,13 @@ export async function carryOverSourceReview(cwd, candidate, group, runGit = git)
     try { predictedTree = (await runGit(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predictedTree = null; }
     movedPaths = (await runGit(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
     for (const path of movedPaths.filter(path => /^packages\/[\w.-]+\/package\.json$/u.test(path))) {
-      const [base, queueBase, head] = await Promise.all([candidate.base, group.base, candidate.head].map(async sha => {
+      const [base, queueBase, head, merged] = await Promise.all([candidate.base, group.base, candidate.head, group.tree].map(async sha => {
         try {
           const blob = await runGit(cwd, 'show', `${sha}:${path}`);
           return Buffer.byteLength(blob, 'utf8') <= 1024 * 1024 ? JSON.parse(blob) : undefined;
         } catch { return undefined; }
       }));
-      manifests[path] = { base, queueBase, head };
+      manifests[path] = { base, queueBase, head, group: merged };
     }
   }
   return carryOver({ reviewedTree: candidate.tree, groupTree: group.tree, baseAncestor, predictedTree, changedPaths: candidate.changedPaths, movedPaths, manifests });

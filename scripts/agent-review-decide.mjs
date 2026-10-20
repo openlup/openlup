@@ -1,6 +1,5 @@
 // Native supervisor process evidence, not a signature or remote attestation.
 import { createHash } from 'node:crypto';
-import { isDeepStrictEqual } from 'node:util';
 
 export const RECEIPT_MARKER = '<!-- openlup-native-review-receipt v2 -->';
 const SHA = /^[a-f0-9]{40}$/u;
@@ -116,10 +115,11 @@ const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/docu
 const plainObject = value => value !== null && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 export function exportAdditions(before, after) {
   if (!plainObject(before) || !plainObject(after) || !plainObject(before.exports) || !plainObject(after.exports)) return null;
+  if ([...Object.keys(before.exports), ...Object.keys(after.exports)].some(key => !key.startsWith('.'))) return null;
   const beforeKeys = Object.keys(before).filter(key => key !== 'exports');
   const afterKeys = Object.keys(after).filter(key => key !== 'exports');
-  if (beforeKeys.length !== afterKeys.length || beforeKeys.some(key => !Object.hasOwn(after, key) || !isDeepStrictEqual(before[key], after[key]))) return null;
-  if (Object.keys(before.exports).some(key => !Object.hasOwn(after.exports, key) || !isDeepStrictEqual(before.exports[key], after.exports[key]))) return null;
+  if (beforeKeys.length !== afterKeys.length || beforeKeys.some(key => !Object.hasOwn(after, key) || JSON.stringify(before[key]) !== JSON.stringify(after[key]))) return null;
+  if (Object.keys(before.exports).some(key => !Object.hasOwn(after.exports, key) || JSON.stringify(before.exports[key]) !== JSON.stringify(after.exports[key]))) return null;
   return Object.keys(after.exports).filter(key => !Object.hasOwn(before.exports, key));
 }
 export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree, changedPaths = [], movedPaths = [], manifests = {} }) {
@@ -127,9 +127,11 @@ export function carryOver({ reviewedTree, groupTree, baseAncestor, predictedTree
   if (reviewedTree === groupTree) return result(true, 'reviewed', 'unchanged tree');
   const exempt = movedPaths.filter(path => {
     if (!/^packages\/[\w.-]+\/package\.json$/u.test(path)) return false;
-    const { base, queueBase, head } = manifests[path] ?? {};
+    const { base, queueBase, head, group } = manifests[path] ?? {};
     const mainAdded = exportAdditions(base, queueBase); const prAdded = exportAdditions(base, head);
-    return mainAdded !== null && prAdded !== null && !mainAdded.some(key => prAdded.includes(key));
+    const groupAdded = exportAdditions(base, group);
+    return mainAdded !== null && prAdded !== null && groupAdded !== null && !mainAdded.some(key => prAdded.includes(key)) &&
+      groupAdded.length === mainAdded.length + prAdded.length && [...mainAdded, ...prAdded].every(key => groupAdded.includes(key));
   });
   if (predictedTree !== groupTree || movedPaths.some(path => !exempt.includes(path) && (changedPaths.includes(path) || TRUST_PATHS.some(pattern => pattern.test(path))))) return result(false, 'stale', 'group does not carry over; merge main and re-review');
   return result(true, 'reviewed', exempt.length ? 'disjoint base move with export additions' : 'disjoint base move');

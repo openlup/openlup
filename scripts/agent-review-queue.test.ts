@@ -11,6 +11,7 @@ const manifestPath = 'packages/p/package.json';
 const manifest = { name: '@openlup/p', version: '0.1.0', exports: { '.': './index.js' } };
 const queueManifest = { ...manifest, exports: { ...manifest.exports, './a': './a.js' } };
 const headManifest = { ...manifest, exports: { ...manifest.exports, './b': './b.js' } };
+const groupManifest = { ...manifest, exports: { ...queueManifest.exports, ...headManifest.exports } };
 
 describe('pure export additions', () => {
   it.each([
@@ -18,7 +19,13 @@ describe('pure export additions', () => {
     ['unchanged', manifest, manifest, []],
     ['nested conditions and reordered object keys',
       { dependencies: { a: '1', b: '2' }, exports: { '.': { import: { types: './index.d.ts', default: './index.js' }, require: './index.cjs' } } },
-      { exports: { './a': './a.js', '.': { require: './index.cjs', import: { default: './index.js', types: './index.d.ts' } } }, dependencies: { b: '2', a: '1' } }, ['./a']],
+      { exports: { './a': './a.js', '.': { require: './index.cjs', import: { default: './index.js', types: './index.d.ts' } } }, dependencies: { b: '2', a: '1' } }, null],
+    ['reordered nested conditions',
+      { exports: { '.': { import: { types: './index.d.ts', default: './index.js' } } } },
+      { exports: { '.': { import: { default: './index.js', types: './index.d.ts' } }, './a': './a.js' } }, null],
+    ['reordered other top-level value',
+      { ...manifest, dependencies: { a: '1', b: '2' } },
+      { ...queueManifest, dependencies: { b: '2', a: '1' } }, null],
     ['changed nested target', { exports: { '.': { import: './index.js' } } }, { exports: { '.': { import: './other.js' } } }, null],
     ['removed export', manifest, { ...manifest, exports: {} }, null],
     ['added top-level key', manifest, { ...queueManifest, dependencies: { a: '1' } }, null],
@@ -30,6 +37,8 @@ describe('pure export additions', () => {
     ['missing exports', {}, { exports: {} }, null],
     ['array exports', { exports: [] }, { exports: {} }, null],
     ['null exports', { exports: null }, { exports: {} }, null],
+    ['condition-sugar exports', { exports: { import: './index.js' } }, { exports: { import: './index.js', require: './index.cjs' } }, null],
+    ['condition-sugar key added', manifest, { ...queueManifest, exports: { ...queueManifest.exports, default: './index.js' } }, null],
     ['missing object', undefined, manifest, null],
     ['null object', manifest, null, null],
     ['array object', [], manifest, null],
@@ -79,11 +88,17 @@ describe('hosted review decisions', () => {
   ])('refuses protected base move %s', path => {
     expect(carryOver({ ...facts, movedPaths: [path] }).ok).toBe(false);
   });
-  const manifests = { [manifestPath]: { base: manifest, queueBase: queueManifest, head: headManifest } };
+  const manifests = { [manifestPath]: { base: manifest, queueBase: queueManifest, head: headManifest, group: groupManifest } };
   it.each([
     ['disjoint export additions', {}, {}, true],
     ['protected path without PR overlap', {}, { changedPaths: [] }, true],
     ['main modifies existing export', { queueBase: { ...queueManifest, exports: { ...queueManifest.exports, '.': './other.js' } } }, {}, false],
+    ['main reorders conditions of an existing export', {
+      base: { ...manifest, exports: { '.': { types: './index.d.ts', default: './index.js' } } },
+      head: { ...headManifest, exports: { ...headManifest.exports, '.': { types: './index.d.ts', default: './index.js' } } },
+      queueBase: { ...queueManifest, exports: { ...queueManifest.exports, '.': { default: './index.js', types: './index.d.ts' } } },
+      group: { ...groupManifest, exports: { ...groupManifest.exports, '.': { types: './index.d.ts', default: './index.js' } } },
+    }, {}, false],
     ['main removes export', { queueBase: { ...manifest, exports: { './a': './a.js' } } }, {}, false],
     ['main adds dependency', { queueBase: { ...queueManifest, dependencies: { a: '1' } } }, {}, false],
     ['main bumps version', { queueBase: { ...queueManifest, version: '0.2.0' } }, {}, false],
@@ -92,6 +107,10 @@ describe('hosted review decisions', () => {
     ['missing base', { base: undefined }, {}, false],
     ['missing queue base', { queueBase: undefined }, {}, false],
     ['unparseable head', { head: undefined }, {}, false],
+    ['missing group manifest', { group: undefined }, {}, false],
+    ['group manifest missing main addition', { group: headManifest }, {}, false],
+    ['group manifest missing PR addition', { group: queueManifest }, {}, false],
+    ['group manifest with extra key', { group: { ...groupManifest, exports: { ...groupManifest.exports, './extra': './extra.js' } } }, {}, false],
     ['missing manifests', {}, { manifests: undefined }, false],
     ['missing manifest entry', {}, { manifests: {} }, false],
     ['root manifest', {}, { movedPaths: ['package.json'], manifests: { 'package.json': manifests[manifestPath] } }, false],
@@ -213,10 +232,9 @@ describe('carry-over manifest adapter', () => {
   const group = { base: 'e'.repeat(40), tree: 'f'.repeat(40) };
   it.each([
     ['valid', undefined, 'valid'],
-    ['at 1 MiB', candidate.base, 'limit'],
-    ...[candidate.base, group.base, candidate.head].flatMap(sha => ['missing', 'invalid', 'oversized'].map(failure => [failure, sha, failure])),
+    ...[candidate.base, group.base, candidate.head, group.tree].flatMap(sha => ['limit', 'missing', 'invalid', 'oversized'].map(failure => [failure, sha, failure])),
   ])('%s blob at %s', async (_name, failingSha, failure) => {
-    const values = { [candidate.base]: manifest, [group.base]: queueManifest, [candidate.head]: headManifest };
+    const values = { [candidate.base]: manifest, [group.base]: queueManifest, [candidate.head]: headManifest, [group.tree]: groupManifest };
     const runGit = vi.fn(async (_cwd, command, ...args) => {
       if (command === 'merge-base') return '';
       if (command === 'merge-tree') return group.tree;
@@ -237,6 +255,7 @@ describe('carry-over manifest adapter', () => {
       ['/fixture', 'show', `${candidate.base}:${manifestPath}`],
       ['/fixture', 'show', `${group.base}:${manifestPath}`],
       ['/fixture', 'show', `${candidate.head}:${manifestPath}`],
+      ['/fixture', 'show', `${group.tree}:${manifestPath}`],
     ]);
   });
   it.each(['package.json', 'package-lock.json', 'packages/x/package-lock.json'])('does not read blobs for %s', async path => {

@@ -599,8 +599,10 @@ A source review carries over to a merge group when either:
   `supabase/migrations/` and the platform migration manifest). Other check
   configuration is not on this list; the group's mechanical checks run with it.
   A moved `packages/<name>/package.json` does not block carry-over when main's
-  and the change's edits to it only add new, disjoint `exports` keys and leave
-  every other key unchanged; root manifests and lockfiles still block.
+  and the change's edits to it only add new, disjoint subpath `exports` keys,
+  preserve existing values with order-sensitive comparison, and leave every
+  other key unchanged. The merged manifest must preserve those values and contain
+  exactly both additions; root manifests and lockfiles still block.
 
 Then the source receipt admits the group without another receipt or live session.
 The six mechanical checks on the group tree cover behavioural interaction.
@@ -1474,8 +1476,10 @@ other or touch the same shared files:
   base and the head. The canonical carry-over rule applies: unchanged tree or
   exact disjoint application relative to the reviewed predecessor.
   A moved `packages/<name>/package.json` does not block carry-over when main's
-  and the change's edits to it only add new, disjoint `exports` keys and leave
-  every other key unchanged; root manifests and lockfiles still block.
+  and the change's edits to it only add new, disjoint subpath `exports` keys,
+  preserve existing values with order-sensitive comparison, and leave every
+  other key unchanged. The merged manifest must preserve those values and contain
+  exactly both additions; root manifests and lockfiles still block.
   Other base changes are rejected: merge `main` and re-review.
 - If another change on `main` conflicts with it, merge `main` into it once (do
   not rebase), regenerate its shared records and get a fresh full review, as
