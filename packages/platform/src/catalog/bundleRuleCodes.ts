@@ -14,8 +14,9 @@ import type { BundleAllocationFailureCode } from "@openlup/core/pricing";
  */
 export const BUNDLE_RULE_CODES = [
   // Machine (agent) actors compose, price and archive drafts, but may NOT
-  // activate or deactivate. Enforced by the handler (allowedActorKinds) AND
-  // re-derived + RAISEd inside the activate/deactivate routines.
+  // activate or deactivate. Enforced by the handler (allowedActorKinds); the
+  // managed activate/deactivate routines also re-derive and RAISE it, while the
+  // native routines rely on the handler gate.
   "DRAFT_ONLY_FOR_MACHINE",
   // A bundle with no components is not a bill of materials. Request-decidable on
   // the whole-set composition replace.
