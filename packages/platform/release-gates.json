@@ -267,6 +267,28 @@
       ],
       "entrypoint": "dist/promotions/contracts/index.d.ts",
       "snapshot": "api/promotions-contracts.api.md"
+    },
+    "./shipping": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/shipping/deliveryConformance.test.ts"
+      ],
+      "entrypoint": "dist/shipping/index.d.ts",
+      "snapshot": "api/shipping.api.md"
+    },
+    "./shipping/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/shipping/deliveryConformance.test.ts"
+      ],
+      "entrypoint": "dist/shipping/contracts/index.d.ts",
+      "snapshot": "api/shipping-contracts.api.md"
     }
   },
   "pack": {
@@ -290,7 +312,8 @@
       "./identity/contracts": 4800,
       "./catalog/contracts": 4096,
       "./pricing/contracts": 416,
-      "./promotions/contracts": 32
+      "./promotions/contracts": 32,
+      "./shipping/contracts": 32
     }
   }
 }

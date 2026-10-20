@@ -173,6 +173,7 @@ describe("package source boundary", () => {
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
+      "shipping/index.ts", "shipping/contracts/index.ts",
       "catalog/index.ts", "catalog/contracts/index.ts",
       "pricing/index.ts", "pricing/contracts/index.ts",
       "promotions/index.ts", "promotions/contracts/index.ts",
@@ -182,6 +183,11 @@ describe("package source boundary", () => {
       "communications/index.ts", "communications/contracts/index.ts", "http/webhookSignature.ts",
       "kernel/platformKernel.ts", "bff/dispatch.ts", "composition/composeBundle.ts", "composition/nodeHost.ts",
     ]));
+    // Shipping lane: audit every source, including contracts and type-only loads.
+    for (const { path, source } of files.filter(({ path }) => path.startsWith("shipping/"))) {
+      expect(specifiers(source).filter((specifier) => /(?:^|\/)inventory(?:\/|$)/u.test(specifier)), path).toEqual([]);
+    }
+
   });
 
   it.each(files)("$path reads no environment variable", ({ source }) => {

@@ -1234,6 +1234,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m06-stock-reservations-delivery.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2255,6 +2259,14 @@
     },
     {
       "path": "packages/platform/api/scheduler.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/shipping-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/shipping.api.md",
       "class": "public-output"
     },
     {
@@ -3602,6 +3614,42 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/contracts/delivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionSummary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/handlerSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/pickupPointSearchPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/readDeliverySelectionEvidence.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
@@ -4259,6 +4307,10 @@
     },
     {
       "path": "packages/platform/test/scheduler/vercelScheduler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/deliveryConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -20935,6 +20987,10 @@
     },
     {
       "path": "tests/platform/promotions/adminPromotionsHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/shipping/deliverySelectionBoundaryCharacterization.test.ts",
       "class": "public-output"
     },
     {

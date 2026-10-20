@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental shipping ports, injected-schema handlers and type-only contracts.
+
 - Add 14 experimental provider-neutral marketing-sync types through the existing
   communications and communications/contracts entries: profile sync, negative
   consent readback and erasure request/status. Existing M04 providers remain
