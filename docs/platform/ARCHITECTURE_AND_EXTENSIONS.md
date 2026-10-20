@@ -36,9 +36,15 @@ factory, provider SDK, environment reader, host callback, configuration registry
 or package subpath. The private subject mapper, durable admission/journal,
 account leases and provider payload translation belong inside the selected
 adapter's construction and infrastructure boundary. P2 owns that construction.
-The public families expose profile sync, consent readback and erasure; discovery,
+The four public families expose profile sync, consent readback, erasure and
+local-authority consent push; discovery,
 profile reads, history, events and membership remain outside the public surface.
-Positive consent writes are deferred pending an owner decision. The
+Consent push is additive: existing providers remain valid. Its grants carry one
+local purpose/audience evidence reference; account-wide scope is withdrawal-only.
+The push capability declares audience or account-wide grant effects, with no-trigger
+admission covering that entire effect. Withdrawals dispatch immediately, grants
+refuse during pending withdrawals, and only the host reconciles unsettled-grant
+races after a fresh post-settlement consent read. No push result proves effect. The
 [canonical lifecycle](CANONICAL_CONTRACTS.md#neutral-marketing-sync) owns replay,
 negative-only feedback and evidence-bound completion. No default composition
 changes and no existing M04 implementation gains new obligations.
