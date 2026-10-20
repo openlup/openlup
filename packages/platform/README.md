@@ -37,7 +37,7 @@ replay, actor binding and named refusals. Read projections carry opaque
 product-scoped document references; they do not interpret document payloads.
 
 `./catalog/contracts` carries dependency-free DTOs, the shared authority error,
-GTIN/authority helpers, quantity/option helpers and the existing O draft JSON
+GTIN/authority helpers, quantity/option helpers and the existing draft JSON
 canonicalizer. It imports no Zod, Node runtime or server barrel. Runtime schemas
 use the server entry with jitless Zod; the reference browser keeps its sellable
 schemas locally. Media manifest validation and `resolveProductMedia` are also
@@ -61,14 +61,14 @@ statuses remain unchanged. `withdrawn` may map from `archived` only where an
 authority establishes withdrawal; abandoning a draft does not withdraw a variant.
 Neither entry installs SQL. Rich application catalog interpretation remains
 reference-owned. The [M05 plan](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md)
-records the cut, witness dispositions and separate R3-lite round.
+records the cut, its exclusions and the witness ledger.
 The moved characterization suites are under `test/catalog/`; the required cold
 consumer classifies both entries without optional peers and checks installed
 canonicalization, authority identity, selection and unauthorized draft refusal.
 Three synthetic media conformance cases and one lifecycle type case complement
 those moved suites; the existing package boundary tests cover browser closure.
 The complete contracts entry measures 3,281 B minified+gzip against its 4,096 B
-budget (phase A: 1,289 B / 1,536 B); other entry and aggregate caps are unchanged.
+budget; other entry and aggregate caps are unchanged.
 
 ## Scheduled jobs
 

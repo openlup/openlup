@@ -131,7 +131,7 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-Catalog phase A relocates eight existing catalog suites into the platform
+The M05 catalog module relocates eight existing catalog suites into the platform
 package's `test/catalog/` discovery, preserving their assertions. Root discovery
 already includes that directory, so no duplicate selector or second invocation
 is added. The reference observed-responder binding has one local guard. Both
