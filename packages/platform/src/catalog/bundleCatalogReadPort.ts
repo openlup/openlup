@@ -3,8 +3,7 @@
  *
  * This file names the CAPABILITY, never the storage: no table, no routine, no
  * data-client type and no vendor appears here, and the domain layer opens no
- * database handle of its own. Both shipped adapters — the two
- * `bundleCatalogStore.ts` modules under `server/adapters/` — implement exactly this
+ * database handle of its own. Both shipped read adapters implement exactly this
  * interface and are proved against ONE shared scenario table, so a caller cannot
  * tell them apart. It is the same shape the write port
  * (`adminBundleWritePort.ts`) established in the previous wave.
@@ -28,8 +27,7 @@
  * Both adapters raise this rather than returning an empty page, because the two
  * outcomes are opposite: an empty catalogue is a fact a storefront may cache and
  * show, and a failed query is not. The class lives on the port so neither chain
- * owns the distinction — and so this file carries the executable line the changed-
- * runtime coverage lane requires of every `server/**` module.
+ * owns the distinction.
  */
 export class BundleCatalogReadError extends Error {
   constructor(message: string) {

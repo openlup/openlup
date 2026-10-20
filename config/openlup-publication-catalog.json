@@ -2274,6 +2274,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/shipping-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/package.json",
       "class": "public-output"
     },
@@ -2311,6 +2319,14 @@
     },
     {
       "path": "packages/platform/sql/20260810204057_customer_identity_read.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812140000_sellable_bundle_catalog.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql",
       "class": "public-output"
     },
     {
@@ -2446,7 +2462,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/bundleCatalogQueries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/bundleCatalogReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/bundleCatalogStore.ts",
       "class": "public-output"
     },
     {
@@ -2555,6 +2579,10 @@
     },
     {
       "path": "packages/platform/src/catalog/sellableSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/sql.ts",
       "class": "public-output"
     },
     {
@@ -3750,6 +3778,82 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/addressCanonLookupHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressCanonical.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/adminShippingRateHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/address.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/delivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/shippingRate.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerAddressesHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerSelfServiceAddressModels.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/deliverySelectionSummary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/handlerSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/pickupPointSearchPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/readDeliverySelectionEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/shippingRatePorts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
@@ -4466,6 +4570,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/shipping/addressConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/deliveryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/shippingRateConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/tsconfig.build.json",
       "class": "public-output"
     },
@@ -4986,6 +5102,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/changelog-fragments.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/changelog-fragments.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/eslint-import-map.test.ts",
       "class": "public-output"
     },
@@ -5227,6 +5351,14 @@
     },
     {
       "path": "scripts/source-preview-release.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/source-release-preparation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/source-release-preparation.ts",
       "class": "public-output"
     },
     {
@@ -14606,6 +14738,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/admin/BundleStockCard.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/admin/BundleStockCard.tsx",
       "class": "public-output"
     },
@@ -15039,6 +15175,30 @@
     },
     {
       "path": "src/components/seoUtils.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/DeliveryMethodCard.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/DeliveryMethodCard.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/PickupPointPicker.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/PickupPointPicker.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/ShippingFieldsCard.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/deliverySelectionCheckoutCharacterization.test.tsx",
       "class": "public-output"
     },
     {
@@ -17779,6 +17939,14 @@
     },
     {
       "path": "src/domains/shipping/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/shipping/useDeliverySelection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/shipping/usePickupPointSearch.ts",
       "class": "public-output"
     },
     {
@@ -21158,6 +21326,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/shipping/deliverySelectionBoundaryCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/watchdogExecution.test.ts",
       "class": "public-output"
     },
@@ -21167,6 +21343,10 @@
     },
     {
       "path": "tests/postgres/adminMembershipAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/bundleNative.test.ts",
       "class": "public-output"
     },
     {

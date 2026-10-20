@@ -171,11 +171,7 @@
         "test/catalog/bundleAvailability.test.ts",
         "test/catalog/bundleAvailabilityService.test.ts",
         "test/catalog/bundleCatalogReadPort.test.ts",
-        "test/catalog/sellableBundleHandler.test.ts",
-        "../../tests/platform/catalog/adminBundleHandler.test.ts",
-        "../../tests/platform/catalog/adminBundleReadHandler.test.ts",
-        "../../tests/platform/catalog/bundleCompositionConformance.test.ts",
-        "../../tests/platform/catalog/bundleBindings.test.ts"
+        "test/catalog/sellableBundleHandler.test.ts"
       ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"
@@ -190,8 +186,7 @@
         "test/catalog/catalogProductTypeContracts.test.ts",
         "test/catalog/catalogDraftContracts.test.ts",
         "test/catalog/catalogMediaResolution.test.ts",
-        "test/catalog/catalogLifecycleContracts.test.ts",
-        "../../tests/platform/catalog/bundleBindings.test.ts"
+        "test/catalog/catalogLifecycleContracts.test.ts"
       ],
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"
@@ -325,6 +320,32 @@
       ],
       "entrypoint": "dist/inventory/contracts/index.d.ts",
       "snapshot": "api/inventory-contracts.api.md"
+    },
+    "./shipping": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/shipping/deliveryConformance.test.ts",
+        "test/shipping/addressConformance.test.ts",
+        "test/shipping/shippingRateConformance.test.ts"
+      ],
+      "entrypoint": "dist/shipping/index.d.ts",
+      "snapshot": "api/shipping.api.md"
+    },
+    "./shipping/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/shipping/deliveryConformance.test.ts",
+        "test/shipping/addressConformance.test.ts",
+        "test/shipping/shippingRateConformance.test.ts"
+      ],
+      "entrypoint": "dist/shipping/contracts/index.d.ts",
+      "snapshot": "api/shipping-contracts.api.md"
     }
   },
   "pack": {
@@ -349,7 +370,8 @@
       "./catalog/contracts": 4096,
       "./pricing/contracts": 416,
       "./promotions/contracts": 32,
-      "./inventory/contracts": 32
+      "./inventory/contracts": 32,
+      "./shipping/contracts": 32
     }
   }
 }

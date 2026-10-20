@@ -65,6 +65,18 @@ separates native observed-stock operations from managed lot-based inventory,
 refusals and outstanding real-host proof. Subscription/payment/delivery writers
 remain at their incumbent boundaries; these projections install no schedule.
 
+Catalog's `BUNDLE_MIGRATIONS` projects canonical bundle units 16 and 19 with exact
+catalogPath, position, SHA-256 and artifact URL. The package SQL bytes are identical
+to the canonical files; this is projection only, with no new migration, manifest
+row or baseline change. Unit 30 belongs to channel lines and is not included.
+Install the full canonical chain, not these two files alone. The moved native
+store performs reads only; existing canonical write routines remain in place.
+Five real-PostgreSQL cases characterize fresh/repeat application, complete reads,
+whole-set rollback and refusals, dry runs, close-and-append prices, sequential key
+recognition and denied versus explicitly granted invoker access. They establish
+only the incumbent native subset: the database still has no independent human-only
+actor-kind gate, and no concurrent replay or mounted parity is claimed.
+
 Promotions publishes sparse, byte-identical projections of canonical units 47 and
 48: promotion claim lifecycle and its constraint-validation forward. The module's
 `PROMOTIONS_MIGRATIONS` descriptor retains each canonical catalogPath, position,

@@ -1,12 +1,52 @@
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, RECEIPT_MARKER } from './agent-review-decide.mjs';
-import { parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { admit, carryOver, exportAdditions, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { carryOverSourceReview, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 
 const time = 1000;
 const receipt = { pr: 12, base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), risk: 'routine', reviewers: ['reviewer'], verdict: 'PASS', expires: time + 86400000, sessionDigest: 'd'.repeat(64) };
 const observed = { ...receipt, baseValid: true, changedPaths: ['source.txt'] };
 const body = (value = receipt) => `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 const comment = (patch = {}) => ({ id: 1, body: body(), author_association: 'OWNER', user: { login: 'review-owner', type: 'User' }, created_at: '2026-10-19T00:00:00Z', ...patch });
+const manifestPath = 'packages/p/package.json';
+const manifest = { name: '@openlup/p', version: '0.1.0', exports: { '.': './index.js' } };
+const queueManifest = { ...manifest, exports: { ...manifest.exports, './a': './a.js' } };
+const headManifest = { ...manifest, exports: { ...manifest.exports, './b': './b.js' } };
+const groupManifest = { ...manifest, exports: { ...queueManifest.exports, ...headManifest.exports } };
+
+describe('pure export additions', () => {
+  it.each([
+    ['new key', manifest, queueManifest, ['./a']],
+    ['unchanged', manifest, manifest, []],
+    ['nested conditions and reordered object keys',
+      { dependencies: { a: '1', b: '2' }, exports: { '.': { import: { types: './index.d.ts', default: './index.js' }, require: './index.cjs' } } },
+      { exports: { './a': './a.js', '.': { require: './index.cjs', import: { default: './index.js', types: './index.d.ts' } } }, dependencies: { b: '2', a: '1' } }, null],
+    ['reordered nested conditions',
+      { exports: { '.': { import: { types: './index.d.ts', default: './index.js' } } } },
+      { exports: { '.': { import: { default: './index.js', types: './index.d.ts' } }, './a': './a.js' } }, null],
+    ['reordered other top-level value',
+      { ...manifest, dependencies: { a: '1', b: '2' } },
+      { ...queueManifest, dependencies: { b: '2', a: '1' } }, null],
+    ['changed nested target', { exports: { '.': { import: './index.js' } } }, { exports: { '.': { import: './other.js' } } }, null],
+    ['removed export', manifest, { ...manifest, exports: {} }, null],
+    ['added top-level key', manifest, { ...queueManifest, dependencies: { a: '1' } }, null],
+    ['removed top-level key', manifest, { exports: manifest.exports }, null],
+    ['replaced top-level key', { name: 'p', exports: {} }, { version: '1', exports: {} }, null],
+    ['changed top-level value', manifest, { ...queueManifest, version: '0.2.0' }, null],
+    ['string-valued exports before', { exports: './index.js' }, manifest, null],
+    ['string-valued exports after', manifest, { exports: './index.js' }, null],
+    ['missing exports', {}, { exports: {} }, null],
+    ['array exports', { exports: [] }, { exports: {} }, null],
+    ['null exports', { exports: null }, { exports: {} }, null],
+    ['condition-sugar exports', { exports: { import: './index.js' } }, { exports: { import: './index.js', require: './index.cjs' } }, null],
+    ['condition-sugar key added', manifest, { ...queueManifest, exports: { ...queueManifest.exports, default: './index.js' } }, null],
+    ['missing object', undefined, manifest, null],
+    ['null object', manifest, null, null],
+    ['array object', [], manifest, null],
+    ['non-plain object', new Date(0), manifest, null],
+  ])('%s', (_name, before, after, expected) => {
+    expect(exportAdditions(before, after)).toEqual(expected);
+  });
+});
 
 describe('hosted review decisions', () => {
   it.each([
@@ -47,6 +87,44 @@ describe('hosted review decisions', () => {
     'supabase/migrations/0001_extra.sql', 'db/platform/migrations/0001_extra.sql', 'config/platform-migration-manifest.json',
   ])('refuses protected base move %s', path => {
     expect(carryOver({ ...facts, movedPaths: [path] }).ok).toBe(false);
+  });
+  const manifests = { [manifestPath]: { base: manifest, queueBase: queueManifest, head: headManifest, group: groupManifest } };
+  it.each([
+    ['disjoint export additions', {}, {}, true],
+    ['protected path without PR overlap', {}, { changedPaths: [] }, true],
+    ['main modifies existing export', { queueBase: { ...queueManifest, exports: { ...queueManifest.exports, '.': './other.js' } } }, {}, false],
+    ['main reorders conditions of an existing export', {
+      base: { ...manifest, exports: { '.': { types: './index.d.ts', default: './index.js' } } },
+      head: { ...headManifest, exports: { ...headManifest.exports, '.': { types: './index.d.ts', default: './index.js' } } },
+      queueBase: { ...queueManifest, exports: { ...queueManifest.exports, '.': { default: './index.js', types: './index.d.ts' } } },
+      group: { ...groupManifest, exports: { ...groupManifest.exports, '.': { types: './index.d.ts', default: './index.js' } } },
+    }, {}, false],
+    ['main removes export', { queueBase: { ...manifest, exports: { './a': './a.js' } } }, {}, false],
+    ['main adds dependency', { queueBase: { ...queueManifest, dependencies: { a: '1' } } }, {}, false],
+    ['main bumps version', { queueBase: { ...queueManifest, version: '0.2.0' } }, {}, false],
+    ['overlapping added key', { head: queueManifest }, {}, false],
+    ['PR touches non-export key', { head: { ...headManifest, version: '0.2.0' } }, {}, false],
+    ['missing base', { base: undefined }, {}, false],
+    ['missing queue base', { queueBase: undefined }, {}, false],
+    ['unparseable head', { head: undefined }, {}, false],
+    ['missing group manifest', { group: undefined }, {}, false],
+    ['group manifest missing main addition', { group: headManifest }, {}, false],
+    ['group manifest missing PR addition', { group: queueManifest }, {}, false],
+    ['group manifest with extra key', { group: { ...groupManifest, exports: { ...groupManifest.exports, './extra': './extra.js' } } }, {}, false],
+    ['missing manifests', {}, { manifests: undefined }, false],
+    ['missing manifest entry', {}, { manifests: {} }, false],
+    ['root manifest', {}, { movedPaths: ['package.json'], manifests: { 'package.json': manifests[manifestPath] } }, false],
+    ['package lockfile', {}, { movedPaths: ['packages/x/package-lock.json'], manifests: { 'packages/x/package-lock.json': manifests[manifestPath] } }, false],
+    ['root lockfile', {}, { movedPaths: ['package-lock.json'], manifests: { 'package-lock.json': manifests[manifestPath] } }, false],
+    ['wrong predicted tree', {}, { predictedTree: 'f'.repeat(40) }, false],
+    ['unlanded base', {}, { baseAncestor: false }, false],
+    ['another overlapping path', {}, { movedPaths: [manifestPath, 'source.txt'], changedPaths: [manifestPath, 'source.txt'] }, false],
+    ['another protected path', {}, { movedPaths: [manifestPath, '.github/workflows/extra.yml'] }, false],
+  ])('export carry-over: %s', (_name, manifestPatch, patch, ok) => {
+    const decision = carryOver({ ...facts, movedPaths: [manifestPath], changedPaths: [manifestPath], manifests: { [manifestPath]: { ...manifests[manifestPath], ...manifestPatch } }, ...patch });
+    expect(decision.code).toBe(ok ? 'reviewed' : 'stale');
+    expect(decision.ok).toBe(ok);
+    if (ok) expect(decision.reason).toBe('disjoint base move with export additions');
   });
   it.each(['not JSON', `${RECEIPT_MARKER}\n{}`, `prefix\n${body()}`, `${RECEIPT_MARKER}\n\`\`\`json\n{\n\`\`\``])('ignores malformed receipt %s', value => {
     expect(parseReceipt(value)).toBeNull();
@@ -146,5 +224,43 @@ describe('hosted review decisions', () => {
       // A real 'read' answer is cached; a failed lookup is retried on every poll, never trusted.
       if (permission === 'read') expect(lookups).toBe(1); else expect(lookups).toBeGreaterThanOrEqual(3);
     } finally { log.mockRestore(); }
+  });
+});
+
+describe('carry-over manifest adapter', () => {
+  const candidate = { base: receipt.base, head: receipt.head, tree: receipt.tree, changedPaths: [manifestPath] };
+  const group = { base: 'e'.repeat(40), tree: 'f'.repeat(40) };
+  it.each([
+    ['valid', undefined, 'valid'],
+    ...[candidate.base, group.base, candidate.head, group.tree].flatMap(sha => ['limit', 'missing', 'invalid', 'oversized'].map(failure => [failure, sha, failure])),
+  ])('%s blob at %s', async (_name, failingSha, failure) => {
+    const values = { [candidate.base]: manifest, [group.base]: queueManifest, [candidate.head]: headManifest, [group.tree]: groupManifest };
+    const runGit = vi.fn(async (_cwd, command, ...args) => {
+      if (command === 'merge-base') return '';
+      if (command === 'merge-tree') return group.tree;
+      if (command === 'diff') return `${manifestPath}\0`;
+      const sha = args[0].split(':')[0]; const json = JSON.stringify(values[sha]);
+      if (sha !== failingSha) return json;
+      if (failure === 'missing') throw new Error('missing blob');
+      if (failure === 'invalid') return '{';
+      if (failure === 'oversized') {
+        if (sha === candidate.base) return json.padEnd(1024 * 1024 + 1, ' ');
+        return JSON.stringify({ ...values[sha], exports: { ...values[sha].exports, [sha === group.base ? './a' : './b']: 'é'.repeat(524288) } });
+      }
+      return json.padEnd(1024 * 1024, ' ');
+    });
+    const decision = await carryOverSourceReview('/fixture', candidate, group, runGit);
+    expect(decision.code).toBe(['valid', 'limit'].includes(failure) ? 'reviewed' : 'stale');
+    expect(runGit.mock.calls.filter(([, command]) => command === 'show')).toEqual([
+      ['/fixture', 'show', `${candidate.base}:${manifestPath}`],
+      ['/fixture', 'show', `${group.base}:${manifestPath}`],
+      ['/fixture', 'show', `${candidate.head}:${manifestPath}`],
+      ['/fixture', 'show', `${group.tree}:${manifestPath}`],
+    ]);
+  });
+  it.each(['package.json', 'package-lock.json', 'packages/x/package-lock.json'])('does not read blobs for %s', async path => {
+    const runGit = vi.fn(async (_cwd, command) => command === 'diff' ? `${path}\0` : command === 'merge-tree' ? group.tree : '');
+    expect((await carryOverSourceReview('/fixture', candidate, group, runGit)).code).toBe('stale');
+    expect(runGit.mock.calls.some(([, command]) => command === 'show')).toBe(false);
   });
 });

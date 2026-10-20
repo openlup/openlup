@@ -1,3 +1,4 @@
+import { createSourceReleaseContract } from "./oss-source-release-contract.ts";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -60,6 +61,9 @@ function seed(root: string): string {
   write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));
   write(root, "config/openlup-policy-registry.json", JSON.stringify({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "entrypoint", owners: ["README.md"] }] }));
   write(root, "docs/platform/SOURCE_MAP.md", renderDocumentationSourceMap(readDocumentationState(root)));
+  const zero = `sha256-${"0".repeat(64)}`;
+  write(root, "config/openlup-source-release-contract.json", createSourceReleaseContract({ inventoryDigest: zero, classDigest: zero, packageDigest: zero, rootLockDigest: zero, coreLockDigest: zero, migrationManifestDigest: zero, databaseTypesDigest: zero, policyRegistryDigest: zero, publicationCatalogDigest: zero }).contents);
+  for (const path of ["package-lock.json", "packages/core/package-lock.json", "src/integrations/supabase/types.ts"]) write(root, path, "{}\n");
   write(root, "config/openlup-publication-catalog.json", "{}");
   git(root, ["add", "."]);
   const paths = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean).sort();

@@ -1,5 +1,26 @@
-import type { BundleStockPort, BundleStockRequestItem, BundleStockAvailability } from "../catalog/index.js";
 import type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./contracts/newPurchaseStock.js";
+
+type BundleStockStatus = "available" | "low_stock" | "out_of_stock" | "unknown";
+interface BundleStockRequestItem {
+  sku: string;
+  productSlug: string;
+  variantId: string;
+  requestedQuantity: number;
+  checkoutMode: "one_time" | "subscription";
+}
+interface BundleStockAvailability {
+  sku: string;
+  productSlug: string;
+  variantId: string;
+  status: BundleStockStatus;
+  visibleInConfigurator: boolean;
+  sellableNow: number | null;
+  reasonCode: string;
+  source: string;
+}
+interface BundleStockPort {
+  getAvailability(input: { items: readonly BundleStockRequestItem[] }): Promise<BundleStockAvailability[]>;
+}
 
 /** Normalized host read. Transport, missing-function recognition and fallback stay with the host. */
 export interface NewPurchaseStockReadPort {

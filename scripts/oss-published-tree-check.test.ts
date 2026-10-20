@@ -573,7 +573,12 @@ describe("the public-only inventory check", () => {
       expect(mismatched.join("\n")).toContain("SHA-256 mismatch");
       writeFileSync(join(root, baselinePath), baseline);
       writeFileSync(join(root, "package.json"), `${manifest}\n`);
-      expect(publicInventoryVerdict(root, () => undefined)).toBe(false);
+      const stale: string[] = [];
+      expect(publicInventoryVerdict(root, (line) => stale.push(line))).toBe(true);
+      expect(stale.join("\n")).toContain("committed snapshot stale (refreshed at release prep)");
+      writeFileSync(join(root, "package-lock.json"), "broken input is still hashed\n");
+      writeFileSync(join(root, "config/openlup-publication-catalog.json"), "broken JSON");
+      expect(() => publicInventoryVerdict(root, () => undefined)).toThrow();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -746,7 +751,11 @@ describe("the public-only policy check", () => {
         activePaths: ["README.md"],
         contracts: [{ id: "entrypoint", owners: ["README.md"] }],
       }));
-      const policyPaths = [...new Set(["README.md", "config/openlup-policy-registry.json", "config/openlup-publication-catalog.json", "docs/platform/README.md", "docs/platform/AGENT_GUIDE.md", "docs/platform/adopter-kit/dependabot.template.yml", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS])].sort();
+      const zero = `sha256-${"0".repeat(64)}`;
+      writeFileSync(join(root, "config/openlup-source-release-contract.json"), createSourceReleaseContract({ inventoryDigest: zero, classDigest: zero, packageDigest: zero, rootLockDigest: zero, coreLockDigest: zero, migrationManifestDigest: zero, databaseTypesDigest: zero, policyRegistryDigest: zero, publicationCatalogDigest: zero }).contents);
+      const snapshotInputs = ["package-lock.json", "packages/core/package-lock.json", "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts"];
+      for (const path of snapshotInputs) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), "{}\n"); }
+      const policyPaths = [...new Set([...snapshotInputs, "config/openlup-source-release-contract.json", "README.md", "config/openlup-policy-registry.json", "config/openlup-publication-catalog.json", "docs/platform/README.md", "docs/platform/AGENT_GUIDE.md", "docs/platform/adopter-kit/dependabot.template.yml", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS])].sort();
       writeFileSync(join(root, "config", "openlup-publication-catalog.json"), createPublicPublicationCatalog(policyPaths.map((path) => ({ path, class: "public-output" })), [{
           id: "example-withheld",
           status: "withheld",

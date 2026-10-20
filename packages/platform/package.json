@@ -160,6 +160,16 @@
       "types": "./dist/inventory/contracts/index.d.ts",
       "import": "./dist/inventory/contracts/index.js",
       "default": "./dist/inventory/contracts/index.js"
+    },
+    "./shipping": {
+      "types": "./dist/shipping/index.d.ts",
+      "import": "./dist/shipping/index.js",
+      "default": "./dist/shipping/index.js"
+    },
+    "./shipping/contracts": {
+      "types": "./dist/shipping/contracts/index.d.ts",
+      "import": "./dist/shipping/contracts/index.js",
+      "default": "./dist/shipping/contracts/index.js"
     }
   },
   "repository": {

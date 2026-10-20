@@ -1,6 +1,7 @@
+import { isChangelogFragment } from "./packages/changelog-fragments.ts";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -339,8 +340,8 @@ function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer
   const commit = (message: string, { regenerate = true, classes = {}, omitFromCatalog = [] }: Seal = {}) => {
     run(["add", "--all"]);
     const paths = [...new Set([...run(["ls-files"]).split("\n").filter(Boolean), CATALOG])].filter((path) => !omitFromCatalog.includes(path)).sort();
-    writeFileSync(join(repo, CATALOG), createPublicPublicationCatalog(paths.map((path) => ({ path, class: classes[path] ?? "public-output" })), []).contents);
-    if (regenerate) writeFileSync(join(repo, CONTRACT), deriveSourceReleaseContract(read).contents);
+    writeFileSync(join(repo, CATALOG), createPublicPublicationCatalog(paths.filter((path) => !isChangelogFragment(path)).map((path) => ({ path, class: classes[path] ?? "public-output" })), []).contents);
+    if (regenerate) writeFileSync(join(repo, CONTRACT), deriveSourceReleaseContract(read, paths.map((path) => ({ path, mode: lstatSync(join(repo, path)).mode & 0o111 ? "100755" : "100644" }))).contents);
     run(["add", "--all"]); run(["commit", "--quiet", "--allow-empty", "-m", `${message}\n\nSigned-off-by: ${OWNER.name} <${OWNER.email}>`]);
     return run(["rev-parse", "HEAD"]);
   };
@@ -964,6 +965,7 @@ describe("descendant source release check", () => {
   it.each([
     ["an added path", { "src/synthetic/added.ts": "export const added = 1;\n" }],
     ["a deleted path", { "docs/guide.md": null }],
+    ["a pattern-admitted fragment with a fresh contract", { "packages/platform/changes/carry-one.md": "- Pending source notes.\n" }],
     ["a package change with a regenerated contract", { "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3, packages: { "": { name: "synthetic-root" } } }) }],
     ["a changed public file", { "README.md": "changed public readme\n" }],
     ["a valid compatibility change", editContract((contract) => { contract.compatibility = compatibility(2); })],
@@ -974,7 +976,7 @@ describe("descendant source release check", () => {
   });
 
   it.each([
-    ["a package change with a stale contract", { "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3, packages: {} }) }, { regenerate: false }, /does not describe its tree; regenerate it with the snippet in CONTRIBUTING\.md.*packages\.rootLockDigest/u],
+    ["a package change with a stale contract", { "package-lock.json": json({ name: "synthetic-root", lockfileVersion: 3, packages: {} }) }, { regenerate: false }, /does not describe its tree; run scripts\/source-release-preparation\.ts --write at release prep.*packages\.rootLockDigest/u],
     ["a stale class digest", {}, { regenerate: false, classes: { "docs/guide.md": "platform-documentation" } }, /does not describe its tree.*inventory\.classDigest/u],
     ["a changed fixed contract field", editContract((contract) => { contract.repository.owner.name = "Second Owner"; }), {}, /previous release's repository\.owner\.name/u],
     ["a migration manifest change", { "config/platform-migration-manifest.json": json({ synthetic: "changed" }) }, {}, /platform migration manifest/u],

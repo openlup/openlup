@@ -74,7 +74,7 @@ const coldProofLines = Object.fromEntries(Object.entries({
 ]));
 function allowedAdapterWords(path, contents) {
   if (adapterPaths.test(path) || adapterReports.has(path) || path === adapterLedger) return [...contents.matchAll(adapterWord)].length;
-  if (adapterSubpathFiles.has(path)) {
+  if (adapterSubpathFiles.has(path) || /^packages\/platform\/changes\/[^/]+\.md$/.test(path)) {
     const tokens = [...contents.matchAll(adapterSubpath)];
     if (adapterReportFiles.has(path)) tokens.push(...contents.matchAll(adapterReportToken));
     if (path === "packages/platform/test/packageBoundary.test.ts") tokens.push(...contents.matchAll(adapterRelativeEntry));

@@ -220,8 +220,16 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    separate preparation or an explicitly approved bounded implementation-and-set-bump
    contribution. It sets
    every publishable package and every exact internal pin on one, and opens each
-   changelog's version section below a fresh Unreleased heading. A version bump
-   by itself publishes nothing. Useful migration notes may move from Unreleased
+   changelog's version section below a fresh Unreleased heading. It assembles the
+   legacy body first, then validated package fragments in byte order of path,
+   and deletes only consumed fragments after successful planning and writes;
+   historical sections stay byte-identical. Add notable-change notes under
+   `packages/<package>/changes/`, with no per-file catalogue rows. A version bump
+   by itself publishes nothing. Refresh the source contract's digests at release
+   prep only with `node --experimental-strip-types scripts/source-release-preparation.ts --write`
+   and verify with `--check`; ordinary PR/main/group policy and inventory checks
+   compute live bindings and allow a stale committed snapshot while still
+   validating structure, authored fields and derivation. Useful migration notes may move from Unreleased
    to the unique candidate-version section only for a real coherent new set;
    unchanged-version historical notes cannot cover an API change. Recheck the
    registry version before dispatch; a conflict requires a reviewed repair.
@@ -231,7 +239,8 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
 3. With explicit authority, dispatch `publish-package.yml` from main with package
    `all`, the set version, the exact SHA and reviewed note bytes. Its unprivileged
    preflight refuses while any package release or publication is in flight, checks
-   ancestry, contexts, the set version of every publishable package and, for a
+   ancestry, contexts, a byte-identical fresh source snapshot at the exact Git
+   target, the set version of every publishable package and, for a
    patch set, each unchanged API snapshot. It cold-packs every package through
    the shared inventory-based prerequisite route and scans every tarball, then
    decides each package by its tag, release and npm state, before protected
@@ -265,6 +274,12 @@ version. Dispatching the set again resumes it: it skips a package npm holds with
 the same tarball and reviewed notes, leaves a package whose release exists with
 those notes but npm lacks the
 version to that rerun, releases the rest, and stops on any other state. No step deploys production or changes an adopter's dependency pin.
+
+Release snapshot freshness is checked again in protected package prepare/plan
+and tag publication, including rerun/resume, without rewriting the target.
+A source change to a bound input after preparation refuses until refreshed in a
+reviewed preparation change; other source bytes and modes remain Git-bound.
+The source-preview descendant check retains its strict snapshot equality.
 
 ### Verify the published npm artifact
 
