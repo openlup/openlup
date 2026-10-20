@@ -23,11 +23,103 @@ export declare function createPostgresAdminInventoryPort(executor: PgQueryExecut
 }, now?: () => string): InventoryReadPort & InventoryMutationPort;
 export {};
 ```
+## dist/inventory/contracts/forecast.d.ts
+
+```ts
+export interface InventoryProviderStockLine {
+    skuId: string;
+    sku: string;
+    forSaleQuantity: number;
+    lastSyncedAt: string;
+    staleAfter: string;
+}
+export interface InventoryHardReservationLine {
+    skuId: string;
+    quantity: number;
+}
+/** Structural inputs for dated subscription stock coverage; validation belongs to the caller. */
+export interface SubscriptionForecastProviderStockLine {
+    skuId: string;
+    sku: string;
+    forSaleQuantity: number;
+    lastSyncedAt: string;
+    staleAfter: string;
+}
+export interface SubscriptionForecastHardReservationLine {
+    skuId: string;
+    quantity: number;
+}
+export interface SubscriptionForecastStockLine {
+    skuId: string;
+    sku: string;
+    fulfillable: boolean;
+    locationStatus: string;
+    safetyStock: number;
+}
+export interface SubscriptionForecastDemandLine {
+    skuId: string;
+    sku: string;
+    quantity: number;
+    dueAt: string;
+    status: string;
+}
+export interface SubscriptionForecastSupplyLine {
+    skuId: string;
+    quantity: number;
+    expectedAt: string;
+    status: string;
+}
+export interface SubscriptionForecastCalculationInput {
+    generatedAt: string;
+    horizonDays: number;
+    protectionDays: number;
+    providerCurrent: SubscriptionForecastProviderStockLine[];
+    openHardReservations: SubscriptionForecastHardReservationLine[];
+    stock: SubscriptionForecastStockLine[];
+    demand: SubscriptionForecastDemandLine[];
+    supply: SubscriptionForecastSupplyLine[];
+}
+export interface SubscriptionForecastCounts {
+    activeSubscriptionCount: number;
+    excludedSubscriptionCount: number;
+}
+export interface SubscriptionForecastSku {
+    skuId: string;
+    sku: string;
+    providerCurrentForSale: number | null;
+    providerStockLastSyncedAt: string | null;
+    providerStockStaleAfter: string | null;
+    stockStatus: "missing" | "stale" | "fresh";
+    openHardReservations: number;
+    safetyStock: number;
+    sellableNow: number;
+    activeSubscriptionDemand30: number;
+    activeSubscriptionDemand45: number;
+    activeSubscriptionDemand60: number;
+    plannedSupply: number;
+    coverageDays: number | null;
+    shortageDate: string | null;
+    horizonMissingQty: number;
+    protectionMissingQty: number;
+    missingQty: number;
+    recommendedProductionQty: number;
+}
+export interface SubscriptionForecastTotals extends SubscriptionForecastCounts {
+    missingProviderStockSkuCount: number;
+    staleProviderStockSkuCount: number;
+    horizonShortageSkuCount: number;
+    protectionShortageSkuCount: number;
+    shortageSkuCount: number;
+    recommendedProductionQty: number;
+}
+```
 ## dist/inventory/contracts/index.d.ts
 
 ```ts
 export type { InventoryReservationStatus, AdminInventoryStockRequest, AdminInventoryReservationsRequest, AdminInventoryStockAdjustmentRequest, AdminInventorySubscriptionForecastRequest, InventoryStockListResponse, InventoryReservationsListResponse, InventoryStockAdjustmentResponse, InventorySubscriptionForecastResponse, InventorySubscriptionForecastSku, InventoryForecastDemandLine, InventoryForecastSupplyLine, InventoryForecastResponse, } from "./inventory.js";
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
+export type { ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
+export type { InventoryProviderStockLine, InventoryHardReservationLine, SubscriptionForecastCalculationInput, SubscriptionForecastCounts, SubscriptionForecastSku, SubscriptionForecastTotals } from "./forecast.js";
 ```
 ## dist/inventory/contracts/inventory.d.ts
 
@@ -214,6 +306,56 @@ export interface NewPurchaseStockAvailabilityOptions {
     horizonDays?: number;
 }
 ```
+## dist/inventory/contracts/reservation.d.ts
+
+```ts
+export interface ReservationPolicyInput {
+    reservationKind: string;
+    paymentTargetKind: "one_time_order" | "subscription_cycle" | string;
+    orderMode: "one_time" | "subscription_cycle" | string;
+    now: Date;
+    checkoutTtlMinutes?: number | null;
+}
+export interface ReservationPolicy {
+    expiresAt: string | null;
+    ttlMinutes: number | null;
+}
+export interface AutomaticRenewalReservationResult {
+    reserved: boolean;
+    replayed: boolean;
+    reservationId: string | null;
+    status: "held" | "committed" | "consumed" | "released" | "expired" | "refused";
+    reason: string | null;
+}
+```
+## dist/inventory/forecast.d.ts
+
+```ts
+import { z } from "zod";
+import { type InventoryStockLine } from "@openlup/core/inventory";
+import type { InventoryForecastDemandLine, InventoryForecastResponse, InventoryForecastSupplyLine, InventorySubscriptionForecastResponse } from "./contracts/index.js";
+import type { InventoryProviderStockLine, InventoryHardReservationLine } from "./contracts/forecast.js";
+export declare function forecastSubscriptionInventoryShortages(input: {
+    demand: InventoryForecastDemandLine[];
+    supply: InventoryForecastSupplyLine[];
+    stock: InventoryStockLine[];
+}): InventoryForecastResponse;
+export declare function buildSubscriptionInventoryForecast(input: {
+    generatedAt: string;
+    horizonDays: number;
+    protectionDays: number;
+    providerCurrent: InventoryProviderStockLine[];
+    openHardReservations: InventoryHardReservationLine[];
+    stock: InventoryStockLine[];
+    demand: InventoryForecastDemandLine[];
+    supply: InventoryForecastSupplyLine[];
+    activeSubscriptionCount: number;
+    excludedSubscriptionCount: number;
+}, config: {
+    stockMasterProvider: string;
+    providerSchema: z.ZodType<string>;
+}): InventorySubscriptionForecastResponse;
+```
 ## dist/inventory/index.d.ts
 
 ```ts
@@ -225,6 +367,11 @@ export { createPostgresAdminInventoryPort } from "./adminInventory.js";
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./contracts/newPurchaseStock.js";
 export type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
 export { createNewPurchaseStockAvailabilityPort } from "./newPurchaseStockAvailability.js";
+export { MIN_CHECKOUT_RESERVATION_TTL_MINUTES, MAX_CHECKOUT_RESERVATION_TTL_MINUTES, DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES, reservationPolicyFor, normalizedTtlMinutes } from "./reservationPolicy.js";
+export { createPostgresRenewalReservationPort, type AutomaticRenewalInventoryPort } from "./renewalReservation.js";
+export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForecast } from "./forecast.js";
+export { calculateSubscriptionForecastSkus, calculateSubscriptionForecastTotals } from "./subscriptionForecastCalculation.js";
+export { INVENTORY_MIGRATIONS } from "./sql.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -358,6 +505,47 @@ export declare class InventoryConflictError extends Error {
     readonly details: Record<string, unknown>;
     constructor(message?: string, details?: Record<string, unknown>);
 }
+```
+## dist/inventory/renewalReservation.d.ts
+
+```ts
+import type { AutomaticRenewalReservationResult } from "./contracts/reservation.js";
+interface PgQueryExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export interface AutomaticRenewalInventoryPort {
+    reserve(input: {
+        operationId: string;
+        claimToken: string;
+        holdSeconds?: number;
+        now: string;
+    }): Promise<AutomaticRenewalReservationResult>;
+    releaseReservation(input: {
+        operationId: string;
+        claimToken: string;
+        reason: string;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    expireReservations(input: {
+        now: string;
+        limit?: number;
+    }): Promise<number>;
+}
+/** ATP/reservation adapter; it can reserve only through the fenced public renewal function. */
+export declare function createPostgresRenewalReservationPort(executor: PgQueryExecutor): AutomaticRenewalInventoryPort;
+export {};
+```
+## dist/inventory/reservationPolicy.d.ts
+
+```ts
+import type { ReservationPolicyInput, ReservationPolicy } from "./contracts/reservation.js";
+export declare const MIN_CHECKOUT_RESERVATION_TTL_MINUTES: number;
+export declare const MAX_CHECKOUT_RESERVATION_TTL_MINUTES: number;
+export declare const DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES: number;
+export declare function reservationPolicyFor(input: ReservationPolicyInput): ReservationPolicy;
+export declare function normalizedTtlMinutes(value: number | null | undefined): number;
 ```
 ## dist/inventory/schemas.d.ts
 
@@ -499,4 +687,30 @@ export declare function createInventorySubscriptionForecastResponseSchema(provid
         recommendedProductionQty: z.ZodNumber;
     }, z.core.$strict>;
 }, z.core.$strict>;
+```
+## dist/inventory/sql.d.ts
+
+```ts
+/** Sparse projections of canonical units, never an install chain. */
+export declare const INVENTORY_MIGRATIONS: readonly [{
+    readonly id: "20260814000000_fulfillment_stock_evidence";
+    readonly catalogPath: "db/platform/migrations/20260814000000_fulfillment_stock_evidence.sql";
+    readonly position: 27;
+    readonly sha256: "df20c2491cb0196b4e28d19e7578c95bfa5c87b8f89fb0b6284c0e0695a3cc1d";
+    readonly url: URL;
+}, {
+    readonly id: "20260815120000_automatic_subscription_renewal";
+    readonly catalogPath: "db/platform/migrations/20260815120000_automatic_subscription_renewal.sql";
+    readonly position: 33;
+    readonly sha256: "edef131f4f483a009e0bb6728a071ab78b6c9ac2aa8047aa7107646a11baec73";
+    readonly url: URL;
+}];
+```
+## dist/inventory/subscriptionForecastCalculation.d.ts
+
+```ts
+import type { SubscriptionForecastCalculationInput, SubscriptionForecastCounts, SubscriptionForecastSku, SubscriptionForecastTotals } from "./contracts/forecast.js";
+export declare function calculateSubscriptionForecastSkus(input: SubscriptionForecastCalculationInput): SubscriptionForecastSku[];
+/** Kept separate so native envelopes can read their metadata before count getters. */
+export declare function calculateSubscriptionForecastTotals(input: SubscriptionForecastCounts, skus: SubscriptionForecastSku[]): SubscriptionForecastTotals;
 ```

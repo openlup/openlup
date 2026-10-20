@@ -2338,7 +2338,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260814000000_fulfillment_stock_evidence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260814090000_customer_selfservice_recovery.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260815120000_automatic_subscription_renewal.sql",
       "class": "public-output"
     },
     {
@@ -3362,6 +3370,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/forecast.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/contracts/index.ts",
       "class": "public-output"
     },
@@ -3371,6 +3383,14 @@
     },
     {
       "path": "packages/platform/src/inventory/contracts/newPurchaseStock.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/contracts/reservation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/forecast.ts",
       "class": "public-output"
     },
     {
@@ -3390,7 +3410,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/renewalReservation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/reservationPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/subscriptionForecastCalculation.ts",
       "class": "public-output"
     },
     {
@@ -4303,6 +4339,14 @@
     },
     {
       "path": "packages/platform/test/inventory/newPurchaseStockBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/reservationPolicyConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/subscriptionForecastCalculation.test.ts",
       "class": "public-output"
     },
     {
@@ -21278,7 +21322,31 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/inventory/inventoryForecastReadbackCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/inventory/inventoryOperatorBoundaryCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/inventoryReservationLifecycleCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/reservationMaintenanceCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/reservationMaintenanceConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/stockWaitConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/subscriptionStockContinuityCharacterization.test.ts",
       "class": "public-output"
     },
     {
@@ -21355,6 +21423,10 @@
     },
     {
       "path": "tests/postgres/identityStatePreservation.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/inventoryNative.test.ts",
       "class": "public-output"
     },
     {
