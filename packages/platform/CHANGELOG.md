@@ -8,6 +8,14 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental opt-in Node `communications/resend` with exactly three
+  functions for guarded transport, authenticated webhook handling and GET-only
+  delivery reconciliation.
+  Hosts supply policy, environment selection and neutral persistence ports;
+  injectable fetch adds no SDK/dependency. Neutral entries and the maintained
+  reference adapter are unchanged. Protocol-only evidence; account verification
+  remains pending. No default sender, route, schedule or recovery send.
+
 - Add experimental `./promotions` application, advisory read ports, preview,
   money binding, acceptance and passive telemetry with explicit host bindings;
   `./promotions/contracts` contains dependency-free preview DTOs. Core remains

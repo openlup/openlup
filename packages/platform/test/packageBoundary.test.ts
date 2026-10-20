@@ -118,12 +118,17 @@ function sourceImportAllowed(file: string, specifier: string, graph: ModuleGraph
     || (specifier === "@aws-sdk/client-s3" && file === "blob/s3Client.ts");
 }
 
-function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Record<string, unknown>, hasFile: (path: string) => boolean): void {
+function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Record<string, unknown>, hasFile: (path: string) => boolean, nestedEntries: string[] = []): void {
   expect(Object.keys(graph).sort()).toEqual([...modules].sort());
   const entries = modules.flatMap((module) => {
     expect(graph[module]!.contracts === undefined || graph[module]!.contracts === true, `${module} contracts declaration`).toBe(true);
     return [module, ...(graph[module]!.contracts === true ? [`${module}/contracts`] : [])];
   });
+  for (const entry of nestedEntries) {
+    expect(modules.includes(entry.split("/")[0]!), `${entry} belongs to an existing module`).toBe(true);
+    expect(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(entry), `${entry} is an exact nested entry`).toBe(true);
+    entries.push(entry);
+  }
   expect(Object.keys(exports).sort()).toEqual(entries.map((entry) => `./${entry}`).sort());
   for (const entry of entries) {
     expect(hasFile(`${entry}/index.ts`), `${entry}/index.ts`).toBe(true);
@@ -131,6 +136,28 @@ function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Rec
       types: `./dist/${entry}/index.d.ts`, import: `./dist/${entry}/index.js`, default: `./dist/${entry}/index.js`,
     });
   }
+}
+
+const platformExports = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")).exports as Record<string, unknown>;
+const moduleDirectories = readdirSync(SOURCE_ROOT, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+
+function relativeImportAllowed(path: string, specifier: string): boolean {
+  const ownModule = path.split("/")[0]!;
+  if (path.split("/")[1] === "contracts") return contractsImportAllowed(path, specifier, graph);
+  const sameModule = /^\.\/[^/]+$/.test(specifier);
+  const ownContracts = graph[ownModule]!.contracts === true && contractsImportAllowed(path, specifier, graph);
+  const crossModule = /^\.\.\/([^/]+)\/(.+)$/.exec(specifier);
+  if (sameModule || ownContracts || (posix.dirname(path) === ownModule && crossModule !== null && crossModule[1] !== ownModule && crossModule[2] === "index.js")) return true;
+  if (!/^(?:\.\/)?(?:\.\.\/)*(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\.js$/.test(specifier) || !specifier.startsWith(".")) return false;
+  const target = posix.normalize(posix.join(posix.dirname(path), specifier));
+  const targetModule = target.split("/")[0]!;
+  if (!moduleDirectories.includes(targetModule)) return false;
+  const declared = (entry: string) => Object.hasOwn(platformExports, `./${entry}`) && moduleDirectories.includes(entry.split("/")[0]!);
+  // Nested callers may use their own module's implementation, while imports
+  // into a nested public entry require that exact manifest declaration.
+  const callerEntry = path.split("/").slice(0, 2).join("/");
+  if (ownModule === targetModule && declared(callerEntry) && posix.dirname(target) === ownModule) return true;
+  return target.endsWith("/index.js") && declared(target.slice(0, -"/index.js".length));
 }
 
 const files = sources(SOURCE_ROOT).map((path) => ({
@@ -200,23 +227,13 @@ describe("package source boundary", () => {
     const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
       exports: Record<string, unknown>;
     };
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)));
+    // P2 adds communications/klaviyo here together with its actual export.
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["communications/resend"]);
   });
 
   it.each(files)("$path reaches another module only through that module's public entry", ({ path, source }) => {
-    const ownModule = path.split("/")[0];
     for (const specifier of specifiers(source).filter((value) => value.startsWith("."))) {
-      if (path.split("/")[1] === "contracts") {
-        expect(contractsImportAllowed(path, specifier, graph), `${path} imports ${specifier}`).toBe(true);
-        continue;
-      }
-      const crossModule = /^\.\.\/([^/]+)\/(.+)$/.exec(specifier);
-      const sameModule = /^\.\/[^/]+$/.test(specifier);
-      const ownContracts = graph[ownModule!]!.contracts === true
-        && contractsImportAllowed(path, specifier, graph);
-      const allowed = sameModule || ownContracts
-        || (crossModule !== null && crossModule[1] !== ownModule && crossModule[2] === "index.js");
-      expect(allowed, `${path} imports ${specifier}`).toBe(true);
+      expect(relativeImportAllowed(path, specifier), `${path} imports ${specifier}`).toBe(true);
     }
   });
 
@@ -230,6 +247,11 @@ describe("package source boundary", () => {
     const exports = { "./example": entry("example"), "./example/contracts": entry("example/contracts") };
     const hasFile = (path: string) => ["example/index.ts", "example/contracts/index.ts"].includes(path);
     expect(() => assertModuleExports(["example"], moduleGraph, exports, hasFile)).not.toThrow();
+    expect(relativeImportAllowed("communications/index.ts", "./resend/index.js")).toBe(true);
+    expect(relativeImportAllowed("communications/index.ts", "./undeclared/index.js")).toBe(false);
+    expect(relativeImportAllowed("communications/resend/index.ts", "../undeclared/index.js")).toBe(false);
+    expect(relativeImportAllowed("communications/index.ts", "../absent/vendor/index.js")).toBe(false);
+    expect(() => assertModuleExports(["example"], moduleGraph, exports, hasFile, ["absent/adapter"])).toThrow();
     const undeclared: ModuleGraph = { example: {} };
     expect(() => assertModuleExports(["example"], undeclared, { "./example": entry("example") }, hasFile)).not.toThrow();
     for (const invalid of [

@@ -258,6 +258,17 @@
       ],
       "entrypoint": "dist/promotions/contracts/index.d.ts",
       "snapshot": "api/promotions-contracts.api.md"
+    },
+    "./communications/resend": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/communications/resend/egress.test.ts",
+        "test/communications/resend/protocol.test.ts"
+      ],
+      "entrypoint": "dist/communications/resend/index.d.ts",
+      "snapshot": "api/communications-resend.api.md"
     }
   },
   "pack": {

@@ -12,7 +12,10 @@ import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions", "promotions/contracts", "identity/contracts", "communications/contracts"] as const;
 // identity and communications are adapter entries: its PostgreSQL profile adapter declares the data entry's pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
-export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger", "identity", "communications"] as const;
+export const ADAPTER_ENTRIES = [
+  "blob", "data", "migrations", "job-ledger", "identity", "communications",
+  "communications/resend",
+] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -254,6 +257,47 @@ process.exit(0);
 }
 
 /** Runs from the installed artifact with optional peers physically absent. */
+/** Same installed-artifact harness; no vendor SDK, ambient fetch or provider access. */
+export function proveResendConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
+globalThis.fetch = () => { throw Error("ambient network forbidden"); };
+const adapter = await import("@openlup/platform/communications/resend");
+assert.deepEqual(Object.keys(adapter).sort(), ["createResendTransport", "createResendWebhookHandler", "runResendDeliveryReconciliation"], "I02 exact three-export surface");
+for (const value of Object.values(adapter)) assert.equal(typeof value, "function");
+for (const entry of ["communications", "communications/contracts"]) {
+ const neutral = await import("@openlup/platform/" + entry);
+ for (const name of Object.keys(adapter)) assert(!Object.hasOwn(neutral, name), "vendor leaked to neutral entry");
+}
+const message = {from:"sender@example.invalid",to:"reader@example.invalid",subject:"Synthetic",html:"<p>Notice</p>"};
+const calls = [];
+const fetch = async (url, options) => { calls.push({url,options}); return Response.json({id:"cold-message",last_event:"delivered",to:[message.to]}); };
+for (const mode of ["blocked","drop"]) {
+ const sender = adapter.createResendTransport({environmentTagName:"host_env",fetch,policy:()=>({mode,reason:"synthetic_policy"})});
+ const result = await sender.send(message);
+ assert.equal(calls.length,0,"I02 blocked/drop zero POST"); assert.equal(result.outcome.ok,mode === "drop","I02 blocked/drop exact outcome");
+}
+const sender = adapter.createResendTransport({environmentTagName:"host_env",fetch,policy:to=>({mode:"sandbox_sink",reason:"synthetic_sink",intendedRecipient:to,recipient:"sink@example.invalid",credential:"synthetic-selected",environmentTag:"non_production"})});
+assert.equal((await sender.send(message)).outcome.resendId,"cold-message");
+assert.equal(calls.length,1); assert.equal(calls[0].options.method,"POST");
+assert.equal(calls[0].options.headers.Authorization,"Bearer synthetic-selected");
+assert.equal(calls[0].options.headers["X-Original-Recipient"],message.to);
+assert.deepEqual(JSON.parse(calls[0].options.body).to,["sink@example.invalid"]);
+assert.deepEqual(JSON.parse(calls[0].options.body).tags,[{name:"host_env",value:"non_production"}]);
+const writes = [];
+const handler = adapter.createResendWebhookHandler({environmentTagName:"host_env",webhookSecret:"synthetic-hook",now:()=>1000,port:{findSend:async()=>({id:"send"}),applyObservation:async row=>writes.push(row),recordAttempt:async()=>{}}});
+const rawBody = '{ "type":"email.delivered", "data":{"email_id":"cold-message"} }';
+const signature = createHmac("sha256","synthetic-hook").update("hook.1000."+rawBody).digest("base64");
+assert.equal((await handler({rawBody,headers:{webhookId:"hook",timestamp:"1000",signature:"v1,"+signature}})).status,200);
+assert.equal(writes.length,1); assert.equal(writes[0].eventType,"delivered");
+assert.equal((await handler({rawBody,headers:{}})).status,401);
+const result = await adapter.runResendDeliveryReconciliation({apiKey:"synthetic-read",fetch,now:new Date(1000000).toISOString(),graceMinutes:45,limit:1,port:{findFrozenSends:async()=>[{id:"send",messageId:"cold-message"}],applyPolledEvent:async row=>writes.push(row),recordPollAttempt:async()=>{},recordSendNotFound:async()=>{throw Error("unexpected abandonment");}}});
+assert.equal(result.reconciled,1); assert.equal(writes.length,2); assert.equal(writes[1].eventType,"email.delivered");
+assert.deepEqual(calls.map(call=>call.options.method),["POST","GET"]);
+`);
+}
+
 export function proveCommunicationsConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
@@ -618,6 +662,8 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);
+    proveResendConsumer(consumer);
+    compileConsumer(consumer, ["communications/resend"], compiler);
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);
