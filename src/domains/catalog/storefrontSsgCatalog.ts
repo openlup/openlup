@@ -57,8 +57,18 @@ export interface StorefrontSsgProductDetails {
   faq: readonly StorefrontSsgFaq[];
 }
 
+/** Resolved presentation assets supplied by the snapshot owner. */
+export interface StorefrontSsgMedia {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+}
+
 export interface StorefrontSsgProduct {
   item: StorefrontSsgSummaryItem;
+  media?: readonly StorefrontSsgMedia[];
+  details?: StorefrontSsgProductDetails;
   primarySku: StorefrontSsgPrimarySku;
   /** Localized public destination for this item; not an application RouteKey. */
   routePath: string;

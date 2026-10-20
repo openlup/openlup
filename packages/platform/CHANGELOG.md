@@ -8,9 +8,23 @@ SemVer promise.
 
 ## [Unreleased]
 
-- Correct pricing and bundle comments, delegate VAT arithmetic to the existing helper,
-  and neutralize moved test fixtures without changing assertions. No API change.
+- Import the flat-rate shipping handler with required host schemas and retain reference selection, pickup and stock UI mechanics.
 
+- Add address lookup, authenticated address-book handlers and row helpers to shipping with required host validation and canonicalization.
+
+- Extract admin/native inventory reads and injected new-purchase stock projection.
+- Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
+  through both existing communications entries. Local grants remain audience-scoped;
+  only withdrawals allow account-wide scope. The push capability declares
+  `grantEffect`; accepted/acknowledged results require `reconcileRequired` and
+  never prove remote effect. Make the existing `NegativeFeedback` discriminant
+  union readonly, consistent with its other fields. Migration: callers must stop
+  assigning feedback `kind` or `outcome`; existing providers remain assignable.
+  No factory, activation, callback, retry or package subpath is added. Synthetic
+  conformance keeps accepted/acknowledged grants unsettled until settlement and
+  fresh readback. Withdrawals bypass grant-caused fences/quarantine while preserving
+  same-key withdrawal fences and account-level cooling, with honest recording
+  uncertainty and reconciliation.
 - Move the unchanged executor-backed native bundle read store and queries into
   catalog, retaining named reference compatibility exports. Add sparse canonical
   SQL 16/19 descriptors and byte-identical projections, with no new migration.
@@ -26,7 +40,6 @@ actor-kind enforcement remains handler-only. Comment corrections distinguish the
 managed chain's 42501 publish_requires_human refusal from that native boundary.
 The catalog declaration snapshot reorders existing count enum members; their
 values and runtime behavior are unchanged.
-
 - Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
 
 - Add experimental opt-in Node `communications/resend` with exactly three
@@ -53,7 +66,7 @@ Members and runtime behavior are unchanged. No SQL, data or activation migration
 - Add 14 experimental provider-neutral marketing-sync types through the existing
   communications and communications/contracts entries: profile sync, negative
   consent readback and erasure request/status. Existing M04 providers remain
-  assignable. Positive consent writes are deferred; no adapter, callback,
+  assignable. This initial contract excluded positive consent writes; no adapter, callback,
   activation or package subpath is added. Migration: none for existing callers.
 - Move promotion admin handlers/ports/DTOs/server schemas and native evaluator
   read/sweep into promotions, preserving reference kit/error/currency bindings.

@@ -11,18 +11,21 @@
  * entry in the root `package-lock.json`, where they exist; every exact internal
  * pin on a bumped package (`dependencies`, `peerDependencies`,
  * `optionalDependencies`) in a released package's manifest and lockfile entries;
- * and, for a publishable package, its CHANGELOG: the Unreleased entries move
+ * and, for a publishable package, its CHANGELOG: legacy Unreleased then sorted fragments move
  * under a new `## [<version>]` heading that opens with the "Publishable" line,
  * below a fresh empty Unreleased heading. Every other byte stays, and each
  * rewritten JSON file must parse to its original with only those fields
- * changed. Nothing is written unless every file passes. The package release
+ * changed. Nothing is written unless every file passes; consumed fragments are deleted
+ * only after all planned writes succeed. The package release
  * workflow refuses a version that differs from the package's manifest.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
+
+import { readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
 
 type Json = Record<string, unknown>;
 type Edit = { path: readonly string[]; from: string; to: string };
@@ -57,12 +60,16 @@ export function setVersionFields(file: string, text: string, fields: readonly st
 }
 
 /** `text` with the Unreleased entries under a new `## [<version>]` heading that opens with the "Publishable" line. */
-export function addReleaseSection(file: string, text: string, version: string, tag: string): string {
+export function addReleaseSection(file: string, text: string, version: string, tag: string, fragments: readonly ChangelogFragment[] = []): string {
   const unreleased = UNRELEASED.exec(text);
-  if (!unreleased) throw new Error(`${file}: has no "## [Unreleased]" heading followed by a blank line`);
+  if (!unreleased || [...text.matchAll(/^## \[Unreleased\]/gmu)].length !== 1) throw new Error(`${file}: has no "## [Unreleased]" heading followed by a blank line`);
   if (text.includes(`\n## [${version}]`)) throw new Error(`${file}: already has a ${version} section`);
   const end = unreleased.index + unreleased[0].length;
-  return `${text.slice(0, end)}## [${version}]\n\n- Publishable on the npm \`latest\` dist-tag as \`${version}\`, from tag\n  \`${tag}\`.\n\n${text.slice(end)}`;
+  const next = /^## /mu.exec(text.slice(end));
+  const history = next ? end + next.index : text.length;
+  const legacy = text.slice(end, history);
+  const notes = fragments.length === 0 ? legacy : [legacy, ...fragments.map(({ contents }) => contents)].filter((body) => body.trim()).map((body) => `${body.trimEnd()}\n\n`).join("");
+  return `${text.slice(0, end)}## [${version}]\n\n- Publishable on the npm \`latest\` dist-tag as \`${version}\`, from tag\n  \`${tag}\`.\n\n${notes}${text.slice(history)}`;
 }
 
 /** Every exact pin on a bumped package in the dependency fields of `node`, at `base`. */
@@ -70,7 +77,8 @@ const pins = (node: unknown, base: readonly string[], bumped: ReadonlySet<string
   PIN_FIELDS.flatMap((field) => Object.keys((at(node, [field]) ?? {}) as Json).filter((name) => bumped.has(name)).map((name) => ({ path: [...base, field, name], from, to })));
 
 /** The rewritten files that bring `entries` from `from` to `version`, with every internal pin on them. */
-function bumpFiles(root: string, config: PackagesConfig, entries: readonly PackageEntry[], from: string, version: string): Array<[string, string]> {
+function bumpFiles(root: string, config: PackagesConfig, entries: readonly PackageEntry[], from: string, version: string): { writes: Array<[string, string]>; consumed: string[] } {
+  const consumed: string[] = [];
   const read = (file: string) => readFileSync(join(root, file), "utf8");
   const bumped = new Set(entries.map(({ name }) => name));
   const rootLock = JSON.parse(read("package-lock.json")) as Json;
@@ -91,17 +99,20 @@ function bumpFiles(root: string, config: PackagesConfig, entries: readonly Packa
     }
     if (own && entry.publish) {
       const changelog = `${entry.directory}/CHANGELOG.md`;
-      writes.push([changelog, addReleaseSection(changelog, read(changelog), version, `openlup-${entry.directory.slice("packages/".length)}-v${version}`)]);
+      const fragments = readChangelogFragments(root, entry.directory);
+      writes.push([changelog, addReleaseSection(changelog, read(changelog), version, `openlup-${entry.directory.slice("packages/".length)}-v${version}`, fragments)]);
+      consumed.push(...fragments.map(({ path }) => path));
     }
   }
   if (rootLockEdits.length > 0) writes.push(["package-lock.json", setStringFields("package-lock.json", read("package-lock.json"), rootLockEdits)]);
-  return writes;
+  return { writes, consumed };
 }
 
 const manifestVersion = (root: string, entry: PackageEntry): unknown => (JSON.parse(readFileSync(join(root, entry.directory, "package.json"), "utf8")) as Json).version;
-const writeAll = (root: string, writes: Array<[string, string]>): string[] => {
+const writeAll = (root: string, { writes, consumed }: { writes: Array<[string, string]>; consumed: string[] }): string[] => {
   for (const [file, text] of writes) writeFileSync(join(root, file), text);
-  return writes.map(([file]) => file);
+  for (const file of consumed) unlinkSync(join(root, file));
+  return [...writes.map(([file]) => file), ...consumed];
 };
 
 /** Sets `packages/<name>` to `version` and returns the rewritten files. */

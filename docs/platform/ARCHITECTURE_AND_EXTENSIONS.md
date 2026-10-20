@@ -30,15 +30,48 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The opt-in reference catalog routes consume explicit per-locale snapshots with
+resolved media, detail facts and links. Their browser graph uses contracts
+entries and local validators; promotion clients and dialogs no longer enter the
+promotions server barrel. The subscription entry formats minor money with the
+currency exponent in normal and fallback paths and refuses an unknown exponent.
+No implicit catalog route is added to the shipped static or subscription profile.
+
+The reference selected-basket builder maps the neutral acquisition quote's
+top-level terms into a separate persisted expectation. It reuses the existing
+SSR-safe draft codec and pricing-policy admission predicate, keeping amount,
+currency, signed token, policy and second-delivery promise bound independently.
+Reloaded totals alone cannot authorize navigation: the selected fresh signed
+quote and explicit matching terms consent are required. An accepted basket edit
+clears both expectation and terms while retaining customer facts. The reference
+transport/storage scope leaves incumbent endpoints, caches and draft keys intact.
+Read-only lifecycle observations do not grant publication or withdrawal authority.
+
+The shipping server entry owns address lookup and authenticated address-book
+handlers and row helpers. Reference bindings retain geographic, source and tax
+validation, conflict identity and the canonical country default; hosts supply
+these explicitly. Address persistence remains behind the existing ports.
+The same entry owns flat-rate administration with required host schemas,
+authorization resolver and responder; its reference binding preserves amount
+validation and error mapping. Selection, manual address entry and text pickup
+search remain reference UI, without npm exports or a vendor map loader.
+Bundle stock renders the catalog availability answer without deriving inventory.
+
 Neutral marketing sync lives in the existing communications contracts subtree
 and is re-exported as types by both communications entries. It adds no runtime
 factory, provider SDK, environment reader, host callback, configuration registry
 or package subpath. The private subject mapper, durable admission/journal,
 account leases and provider payload translation belong inside the selected
 adapter's construction and infrastructure boundary. P2 owns that construction.
-The public families expose profile sync, consent readback and erasure; discovery,
+The four public families expose profile sync, consent readback, erasure and
+local-authority consent push; discovery,
 profile reads, history, events and membership remain outside the public surface.
-Positive consent writes are deferred pending an owner decision. The
+Consent push is additive: existing providers remain valid. Its grants carry one
+local purpose/audience evidence reference; account-wide scope is withdrawal-only.
+The push capability declares audience or account-wide grant effects, with no-trigger
+admission covering that entire effect. Withdrawals dispatch immediately, grants
+refuse during pending withdrawals, and only the host reconciles unsettled-grant
+races after a fresh post-settlement consent read. No push result proves effect. The
 [canonical lifecycle](CANONICAL_CONTRACTS.md#neutral-marketing-sync) owns replay,
 negative-only feedback and evidence-bound completion. No default composition
 changes and no existing M04 implementation gains new obligations.
@@ -354,6 +387,19 @@ See [the protocol contract](CANONICAL_CONTRACTS.md#opt-in-node-protocol-adapter)
 and [A1 ledger](plans/oss-a1-communications-adapters.md); importing this subpath
 installs no route, schedule or sender binding.
 
+The opt-in Node `communications/klaviyo` subpath uses the same platform
+release and maintenance owner. Its single factory implements the existing
+neutral marketing-sync and consent-push contracts without an SDK, new package
+or dependency. Provider payloads, revision, credentials and remote mappings
+stay inside that subpath; root and browser entries retain type-only neutral
+contracts. A host supplies current local authority and atomic account storage;
+no lifecycle callback registry, default binding or background executor is added.
+An unresolved journal or cooldown requires host reconciliation. Account-specific
+capabilities remain pending until TEST evidence establishes safe effects;
+[the canonical adapter boundary](CANONICAL_CONTRACTS.md#opt-in-singleton-marketing-adapter)
+and [A1 evidence](plans/oss-a1-communications-adapters.md#p2-opt-in-singleton-marketing-adapter)
+describe the remaining limits.
+
 ### Package kinds and dependency direction
 
 Today each package declares one `kind` in `release-gates.json` and the readiness
@@ -394,6 +440,10 @@ validators. Separating artifact identity from module responsibility requires
 its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
+
+Inventory remains a non-adapter entry with no catalog import; its bundle-stock shapes are declared structurally. Admin handlers bind host response writers, and native reads require the provider value and validator. The new-purchase projection takes normalized reads, host defaults, fallback, observation and availability calculation; transports and cycle writers retain their owners.
+
+Reservation policy has an unchanged server counterpart; the reference keeps browser-safe local values and forwards DTO types only. The native renewal reservation factory takes a structural executor and preserves its fenced reserve/release/expiry SQL, defaults, errors and readback. Its inventory-only port does not own subscription cycle, anchor, due or attempt writing.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
 entry. Its cross-module edges are type-only data/http/bff inputs: the native read

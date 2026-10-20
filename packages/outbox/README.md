@@ -117,3 +117,7 @@ baseline, with explanations in the new set's changelog section and release body.
 for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
 Artifact checks require a clean package directory; `--manifest-only` supplies no
 artifact evidence.
+
+Source contributors record notable changes in package changelog fragments;
+release preparation assembles the shipped CHANGELOG. Follow the
+[public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
