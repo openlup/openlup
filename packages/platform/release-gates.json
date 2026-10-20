@@ -288,6 +288,18 @@
       ],
       "entrypoint": "dist/communications/resend/index.d.ts",
       "snapshot": "api/communications-resend.api.md"
+    },
+    "./communications/klaviyo": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/communications/klaviyo/portConformance.test.ts",
+        "test/communications/klaviyo/protocol.test.ts",
+        "test/communications/klaviyo/permissions.test.ts"
+      ],
+      "entrypoint": "dist/communications/klaviyo/index.d.ts",
+      "snapshot": "api/communications-klaviyo.api.md"
     }
   },
   "pack": {

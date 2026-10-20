@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -269,10 +269,27 @@ function resendFixture(mode: "correct" | "extra-export" | "raw-bypass") {
   }
   return consumer;
 }
+function marketingFixture(mode: "correct" | "extra-export" | "unverified") {
+  const consumer = fixture(), packageRoot = join(consumer, "node_modules/@openlup/platform");
+  const metadata = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  metadata.exports["./communications/klaviyo"] = "./communications/klaviyo/index.js";
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify(metadata));
+  const entry = Object.entries(metadata.exports).find(([, value]) => typeof value === "string")![0].slice(2);
+  cpSync(join(root, "packages/platform/dist", entry), join(packageRoot, entry), { recursive: true });
+  const path = join(packageRoot, entry, "index.js");
+  if (mode === "extra-export") writeFileSync(path, readFileSync(path, "utf8") + "\nexport const unexpected = true;\n");
+  if (mode === "unverified") writeFileSync(path, readFileSync(path, "utf8").replace('state: "verification_pending"', 'state: "supported"'));
+  return consumer;
+}
 it("proves the installed Resend surface with no SDK/optional peers and only injected IO", () => {
   const consumer = resendFixture("correct"); assertConsumerIsolation(consumer, root); proveResendConsumer(consumer);
+  const marketing = marketingFixture("correct"); assertConsumerIsolation(marketing, root); proveMarketingSyncConsumer(marketing);
 });
 it("refuses extra exports and raw bypass in the installed Resend adapter", () => {
+  for (const mode of ["extra-export", "unverified"] as const) {
+    expect(() => proveMarketingSyncConsumer(marketingFixture(mode)), `P2 installed ${mode}`)
+      .toThrow(mode === "extra-export" ? /P2 installed exact one-export surface/ : /P2 installed pending account evidence/);
+  }
   for (const mode of ["extra-export", "raw-bypass"] as const) {
     expect(() => proveResendConsumer(resendFixture(mode)), `I02 ${mode}: named invariant assertion`)
       .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 exact three-export surface/s);

@@ -81,6 +81,45 @@ reader or reference binding is installed. Fetch is injectable; no SDK or new
 dependency is required. [A1 evidence and limits](plans/oss-a1-communications-adapters.md)
 are protocol-only; account verification remains pending.
 
+### Opt-in singleton marketing adapter
+
+`communications/klaviyo` exposes one Node factory implementing the neutral
+profile, negative-consent, erasure and consent-push ports, plus the existing
+marketing bridge and refusal-only newsletter port. Construction supplies private
+host identity/authority registries, a credential resolver and atomic account
+storage; fetch and clock are injectable. Nothing installs a route or worker.
+
+Account-dependent operations remain `verification_pending` until owner TEST
+readback binds scopes, mappings and operation-specific no-trigger evidence.
+Deletion read is unsupported; audience-only deletion cannot become account-wide.
+Profile writes change owned fields only and verify the private projection.
+Negative readback preserves each fact's scope; scoped remote consent is unknown,
+missing sources mean partial coverage, and remote subscribed never grants locally.
+
+The push capability declares account-wide grant effects while each local grant
+remains audience-scoped. Grant admission must account for all profile-consent
+flows, segments, backfills and DOI, and prove suppression cannot be cleared at
+effect time. List-only withdrawal requires proven-safe scope; explicit all-purpose
+withdrawal is separate. Every request encodes one subject. Asynchronous job
+acknowledgement proves acceptance only, with no import flag or job-control API.
+
+An earlier unsettled grant never delays withdrawal. Its receipt/result retains
+`reconcileRequired`, grants stay restricted during unconfirmed withdrawal, and
+only fresh complete readback after authenticated settlement of all earlier grants
+can resolve the race. The host reissues a withdrawal with a new requestId when
+that read shows subscribed. Replay, generation fences, cooling, mapping writes
+and quarantine share the host's atomic journal; uncertain mutation dispatch is
+never automatically retried. Result recording retains durable quarantine until
+the stored bytes are verified, then releases the account slot. An uncertain
+recording or release preserves completed facts with an unknown journal and
+quarantines the account for repair. The private storage seam also supplies one
+shared mutable availability record per account/environment, independent of
+storage failures. It holds admission through result release and remains closed
+on uncertainty. A host restart begins quarantined; only explicit host journal
+reconciliation and adapter reconstruction restore admission. Default pacing waits within the deadline so
+preflight reads cannot starve the mutation. See the [A1 ledger](plans/oss-a1-communications-adapters.md#p2-opt-in-singleton-marketing-adapter)
+for construction requirements, offline evidence and remaining account gates.
+
 ## Subscription lifecycle
 
 The subscription status matrix has one meaning and several spellings. The

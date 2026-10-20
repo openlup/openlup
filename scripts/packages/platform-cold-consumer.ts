@@ -15,6 +15,7 @@ export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "compo
 export const ADAPTER_ENTRIES = [
   "blob", "data", "migrations", "job-ledger", "identity", "communications", "promotions",
   "communications/resend",
+  "communications/klaviyo",
 ] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -295,6 +296,34 @@ assert.equal((await handler({rawBody,headers:{}})).status,401);
 const result = await adapter.runResendDeliveryReconciliation({apiKey:"synthetic-read",fetch,now:new Date(1000000).toISOString(),graceMinutes:45,limit:1,port:{findFrozenSends:async()=>[{id:"send",messageId:"cold-message"}],applyPolledEvent:async row=>writes.push(row),recordPollAttempt:async()=>{},recordSendNotFound:async()=>{throw Error("unexpected abandonment");}}});
 assert.equal(result.reconciled,1); assert.equal(writes.length,2); assert.equal(writes[1].eventType,"email.delivered");
 assert.deepEqual(calls.map(call=>call.options.method),["POST","GET"]);
+`);
+}
+
+/** Singleton marketing proof from installed bytes, with local-only credentials and injected I/O. */
+export function proveMarketingSyncConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+globalThis.fetch = () => { throw Error("ambient network forbidden"); };
+const adapter = await import("@openlup/platform/communications/klaviyo");
+assert.equal(Object.keys(adapter).length,1,"P2 installed exact one-export surface");
+const factory = Object.values(adapter)[0]; assert.equal(typeof factory,"function");
+const binding={account:"synthetic",environment:"test",namespace:"host",mappingVersion:"1"},audience={kind:"account-wide"};
+const subject={binding,subjectReference:"opaque:1",generation:1,erased:false,id:"profile_1",email:"reader@example.invalid",externalReference:"local:1",ownedFields:[],ownedProperties:[]};
+const values=new Map(),calls=[];
+const storage={availability:{account:binding.account,environment:binding.environment,busy:false,quarantined:false},get:async k=>values.get(k)??null,compareAndSwap:async(k,expected,next)=>{if((values.get(k)??null)!==expected)return false;values.set(k,next);return true;}};
+const auth={binding,audience,subjectReference:"opaque:1",operation:"consent.read",expiresAtMs:10000};
+let clock=10;
+const config={binding,audience,subjectMapper:ref=>ref==="opaque:1"?subject:undefined,resolveCredential:()=>({binding,key:"synthetic-key"}),authorizations:new Map([["authorization:1",auth]]),localEvidence:new Map(),storage,now:()=>clock,rateIntervalMs:1,fetch:async(url,options)=>{calls.push({url,options});clock+=2;return Response.json({data:{type:"profile",id:"profile_1",attributes:{email:subject.email,external_id:subject.externalReference,subscriptions:{email:{marketing:{consent:"SUBSCRIBED",can_receive_email_marketing:true,suppression:[],list_suppressions:[]}}}}}});}};
+const request={binding,audience,subjectReference:"opaque:1",requestId:"read:1",generation:1,deadlineMs:10000,authorizationReference:"authorization:1",operation:"consent.read",payload:{}};
+const pending=factory(config);
+assert.equal(pending.capabilities.operations["consent.read"].state,"verification_pending","P2 installed pending account evidence");
+assert.equal((await pending.consent.read(request)).reason,"verification_pending");assert.equal(calls.length,0,"P2 unverified zero IO");
+assert.deepEqual(Object.values(pending.newsletter.capabilities),Array(9).fill(false));assert.equal((await pending.newsletter.sync({})).status,"skipped");
+config.verification={binding,audience,evidenceReference:"offline:synthetic",revision:"2026-07-15",operations:["consent.read"],scopes:["profiles:read"],noTrigger:{profile:false,accountWideGrant:false,doi:false},safeCreate:false,safeListRemoval:false,suppressionSafeAtEffect:false,negativeSourcesComplete:true,listMappings:{}};
+const verified=factory(config),result=await verified.consent.read(request);
+assert.equal(result.kind,"completed","P2 installed injected positive control");assert.equal(result.value.remoteConsent,"subscribed");assert(!Object.hasOwn(result.value,"localConsent"));
+assert.equal(calls.length,1);assert.equal(calls[0].options.method,"GET");assert.equal(calls[0].options.redirect,"manual");
+assert.equal(verified.consentPush.capabilities.operations["consent.push"].grantEffect,"account-wide");
 `);
 }
 
@@ -693,7 +722,9 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);
     proveResendConsumer(consumer);
+    proveMarketingSyncConsumer(consumer);
     compileConsumer(consumer, ["communications/resend"], compiler);
+    compileConsumer(consumer, ["communications/klaviyo"], compiler);
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);

@@ -10,10 +10,11 @@ or release.
 
 A1 extends the existing platform communications module. C-PR1 merged in #233
 with the neutral marketing-sync boundary; P1 merged in #235 with the opt-in
-Resend adapter. C-PR1b is this change: additive consent-push types and synthetic
+Resend adapter. C-PR1b in the predecessor supplies additive consent-push types and synthetic
 conformance through the existing communications entries. The neutral
 communications and communications/contracts entries export the marketing-sync
-types; the vendor factory is available only from `communications/resend`.
+types; vendor factories are available only from `communications/resend` and
+`communications/klaviyo`.
 The maintained reference adapters, newsletter port, private persistence witnesses
 and browser-entry limits retain their roles.
 
@@ -89,7 +90,7 @@ or a hosted time fit.
 | C-PR1 | 16 | S01–S12 shared conformance and K01–K04 compatibility; two test files |
 | P1 | 32 | 12 egress + 15 protocol + 2 additive cold-consumer + 3 generated package-boundary cases |
 | C-PR1b | 4 | Synthetic CP01–CP04; compile probes fold into K03/K04 |
-| P2 | at most 34 | Original 26 plus 8 real-adapter consent-push cases: CP01–CP04 and KP01–KP04 |
+| P2 | 34 | S01–S12 + H01–H08 + six generated boundaries = 26; CP01–CP04 + KP01–KP04 = 8 |
 | P3 | 8 | Consumer composition allocation |
 | V1 private witnesses | 6 | Separate private evidence allocation |
 | Cumulative ceiling | 100 | +30 s hosted duration ceiling unchanged; final median/p90 remain unmeasured here |
@@ -174,3 +175,78 @@ polled states, and the installed-consumer proof pins those names too.
 Targeting each plant variant inside its existing row preserves the case budget
 while making every safety condition independently falsifiable. A condition shared
 by race and ordinary paths needs controls on both paths.
+
+## P2: opt-in singleton marketing adapter
+
+The Node-only [Klaviyo entry](../../../packages/platform/src/communications/klaviyo/index.ts)
+exports exactly `createKlaviyoMarketingAdapter`. Its return intersects
+`MarketingSyncProvider`, `MarketingAutomationProviderPort`, `consentPush` and a
+refusal-only newsletter bridge. There are no exported construction types,
+constants, raw clients or public job controls. The internal revision is
+`2026-07-15`; donor endpoint/header observations were read locally, without
+importing donor behavior or contacting the provider.
+
+The host supplies a current opaque-subject mapper, local authorization/consent
+registries, an in-memory credential resolver and atomic compare-and-swap storage
+shared by all instances and namespaces for an account/environment. That storage
+is durable in an installation; tests use an isolated in-memory implementation.
+Its private `availability` record is shared by reference across every adapter for
+the account/environment. It is a plain mutable record, independent of failing
+CAS writes; `busy` holds admission for the entire operation, including result
+release, and uncertainty sets sticky `quarantined`. Host startup initializes it
+quarantined until explicit journal reconciliation; ordinary healthy storage
+recovery never reopens it. Host repair reconciles stored facts/fences before
+clearing the record and reconstructing adapters. This is private construction
+plumbing, with no new neutral callback, operation, executor or exported type.
+An uncertain storage reply retains a dispatch fence; lost cooldown/release
+persistence closes account availability and requires host repair. Verified mappings
+and outcomes commit together under durable quarantine until exact stored bytes
+are verified, then the account slot is released. A consent read holds its slot
+through observation recording. Uncertain recording or release preserves completed
+facts with an unknown journal and quarantines the account across reconstruction.
+Internal pacing waits
+are bounded by the request deadline and perform no mutation retry. Reconstructing an adapter over the same journal
+preserves replay, cooldown and tombstones; a new generation never creates a new
+replay identity. The host serializes current registry changes with its mapper;
+no request carries a remote identity or host callback.
+
+Without the owner's dated TEST readback, profile sync, consent read and consent
+push remain `verification_pending`; account-wide deletion requests also remain
+pending and audience-scoped deletion is unsupported. Deletion read is always
+unsupported. The readback must bind the revision, audience, key scopes, list and
+negative-source mappings, safe creation/removal, suppression behavior and
+operation-specific no-trigger evidence. Offline synthetic receipts exercise
+positive paths and cannot enable an installation by themselves.
+
+Klaviyo email declares `grantEffect:"account-wide"`. Local grants still name
+one audience and purpose. Missing account-wide flow/segment/backfill or DOI
+accounting, suppression present/unknown, or inability to prove suppression cannot
+be cleared at effect time refuses the grant. List withdrawal uses a proven-safe
+singleton relationship DELETE; it never falls back to a global unsubscribe.
+An explicit all-purpose withdrawal uses a singleton unsubscribe job without a
+list relationship. Jobs receive no historical-import flag, consent timestamp,
+SMS/push/tracking consent or local evidence reference. No flow, campaign,
+sender, import, suppression-management or account-sweep endpoint is called.
+
+A withdrawal proceeds despite an earlier unsettled grant. Its success carries
+`reconcileRequired:true`, and grants remain restricted during unconfirmed
+withdrawal. Pre-settlement or incomplete reads retain UNKNOWN. The host's
+existing reconciliation supplies authenticated, binding/subject/request-bound
+provider settlement facts; only a fresh complete read taken after every earlier
+grant settles can resolve the race. Subscribed readback tells the host to issue
+a new withdrawal requestId; the adapter installs no retry executor. Acknowledged
+never means subscribed, unsubscribed, delivered or erased. Scoped consent stays
+unknown; account-wide negative observations retain their actual scope, and
+remote SUBSCRIBED never grants local consent.
+
+The P2 executed inventory is 28 explicit adapter cases plus six generated source
+boundary cases: **34 total**. S01–S12 use C-PR1's provider-agnostic
+`conformanceCase` baseline/plant/restored runner against injected provider HTTP;
+H01–H08 fold all original protocol obligations into labeled sequential
+subassertions. CP01–CP04 and KP01–KP04 are the eight consent-push cases. The two
+existing cold-consumer cases also exercise the new installed-byte proof without
+new registrations. Fixtures resolve through `import.meta.url`. Default pacing is tested with fast HTTP and a real advancing clock. Source plants are
+transpiled into isolated temporary modules and removed afterwards; tracked
+production files are never planted. Local timings and check receipts live in
+the task evidence. Hosted median/p90, owner TEST evidence, committed native
+review, publication and activation remain separate gates.

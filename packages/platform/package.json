@@ -150,6 +150,11 @@
       "types": "./dist/communications/resend/index.d.ts",
       "import": "./dist/communications/resend/index.js",
       "default": "./dist/communications/resend/index.js"
+    },
+    "./communications/klaviyo": {
+      "types": "./dist/communications/klaviyo/index.d.ts",
+      "import": "./dist/communications/klaviyo/index.js",
+      "default": "./dist/communications/klaviyo/index.js"
     }
   },
   "repository": {

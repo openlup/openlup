@@ -8,6 +8,16 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental opt-in Node `communications/klaviyo` with one marketing-sync
+  factory, singleton profile projection, negative-only consent readback, deletion
+  acknowledgement and authoritative consent push. Host identity/authority and
+  atomic account storage fence replay, generation, cooling and ambiguous effects.
+  Account-dependent capabilities remain verification pending; deletion status is
+  unsupported and newsletter sync refuses. No SDK, default binding, flow control,
+  historical import, suppression edits or automatic mutation retry is added.
+  Migration: opt in through the new subpath and supply its private host wiring;
+  existing neutral providers and communications entries remain unchanged.
+
 - Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
   through both existing communications entries. Local grants remain audience-scoped;
   only withdrawals allow account-wide scope. The push capability declares

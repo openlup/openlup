@@ -2202,6 +2202,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-klaviyo.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications-resend.api.md",
       "class": "public-output"
     },
@@ -2831,6 +2835,14 @@
     },
     {
       "path": "packages/platform/src/communications/integrationEventSignature.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/klaviyo/consentPush.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/klaviyo/index.ts",
       "class": "public-output"
     },
     {
@@ -3827,6 +3839,26 @@
     },
     {
       "path": "packages/platform/test/communications/hookRawReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/harness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/permissions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/portConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/profile.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/protocol.test.ts",
       "class": "public-output"
     },
     {
