@@ -382,3 +382,41 @@ headers/tags and sink/drop handling. Token purpose sets, receipt conflicts,
 three-404 reconciliation abandonment and send/ledger ordering remain unchanged.
 Browser-used renderer and preview values remain local. See the
 [communications owner](../../src/domains/communications/README.md#packaged-server-algorithms).
+
+## Neutral marketing sync
+
+The development-preview communications entries expose the same 14 type-only
+marketing-sync declarations in
+[`marketingSync.ts`](../../packages/platform/src/communications/contracts/marketingSync.ts).
+The three families have four operations: `profile.sync`, `consent.read`,
+`erasure.request` and `erasure.read`. Capabilities bind an account, environment,
+namespace, mapping version and audience. Unsupported scope refuses honestly;
+verification remains pending until the applicable account evidence is admitted.
+This contract supplies no provider implementation or activation.
+
+The private construction mapper resolves opaque subjects and owned targets.
+Brands supplement schema, binding, audience, subject, case and journal checks;
+a cast or deserialized receipt grants no authority. Admission saves validated,
+immutable effect evidence before dispatch and rechecks generation and tombstones
+after awaits. Profile sync changes owned scalar data only. Current-state consent
+readback has bounded coverage and source-bound negative facts; account-wide
+facts retain that scope and audience denials cannot become global. Remote
+subscribed state never grants local consent. Positive writes are deferred.
+
+Replay identity is `(binding, operation, subjectReference, requestId)` with all
+four binding coordinates. Generation is a separate stale fence. A current
+new-generation call with the same effect replays without dispatch; its wrapper
+echoes the call and its receipt retains the original request. Changed effect
+fields under that key refuse `invalid_request`. Unresolved admission or partial
+persistence fences new keys too. Cooling is durable and a failed cooldown write
+quarantines dispatch; public retry delays are finite positive seconds.
+
+Each operation has a closed result union. Mutation accepted means admitted
+intent; acknowledged means provider acceptance. Neither means erasure completed.
+Only fresh, authorized `erasure.read` with authenticated provider-read evidence
+can complete the original bounded deletion. Ordinary 404, empty search, elapsed
+time and receipt replay cannot. Completion never removes the subject tombstone.
+Existing marketing ports and their observations and the existing
+`NewsletterSyncProviderPort` remain unchanged. A refusal-only newsletter bridge
+is planned in the later adapter PR. The [A1 ledger](plans/oss-a1-communications-adapters.md)
+records the offline synthetic proof and remaining delivery gates.
