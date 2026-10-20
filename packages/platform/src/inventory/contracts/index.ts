@@ -14,3 +14,4 @@ export type {
   InventoryForecastResponse,
 } from "./inventory.js";
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
+export type { ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";

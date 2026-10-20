@@ -3101,6 +3101,7 @@ export {};
 ```ts
 export type { InventoryReservationStatus, AdminInventoryStockRequest, AdminInventoryReservationsRequest, AdminInventoryStockAdjustmentRequest, AdminInventorySubscriptionForecastRequest, InventoryStockListResponse, InventoryReservationsListResponse, InventoryStockAdjustmentResponse, InventorySubscriptionForecastResponse, InventorySubscriptionForecastSku, InventoryForecastDemandLine, InventoryForecastSupplyLine, InventoryForecastResponse, } from "./inventory.js";
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
+export type { ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
 ```
 ## dist/inventory/contracts/inventory.d.ts
 
@@ -3287,6 +3288,28 @@ export interface NewPurchaseStockAvailabilityOptions {
     horizonDays?: number;
 }
 ```
+## dist/inventory/contracts/reservation.d.ts
+
+```ts
+export interface ReservationPolicyInput {
+    reservationKind: string;
+    paymentTargetKind: "one_time_order" | "subscription_cycle" | string;
+    orderMode: "one_time" | "subscription_cycle" | string;
+    now: Date;
+    checkoutTtlMinutes?: number | null;
+}
+export interface ReservationPolicy {
+    expiresAt: string | null;
+    ttlMinutes: number | null;
+}
+export interface AutomaticRenewalReservationResult {
+    reserved: boolean;
+    replayed: boolean;
+    reservationId: string | null;
+    status: "held" | "committed" | "consumed" | "released" | "expired" | "refused";
+    reason: string | null;
+}
+```
 ## dist/inventory/index.d.ts
 
 ```ts
@@ -3298,6 +3321,8 @@ export { createPostgresAdminInventoryPort } from "./adminInventory.js";
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./contracts/newPurchaseStock.js";
 export type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
 export { createNewPurchaseStockAvailabilityPort } from "./newPurchaseStockAvailability.js";
+export { MIN_CHECKOUT_RESERVATION_TTL_MINUTES, MAX_CHECKOUT_RESERVATION_TTL_MINUTES, DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES, reservationPolicyFor, normalizedTtlMinutes } from "./reservationPolicy.js";
+export { createPostgresRenewalReservationPort, type AutomaticRenewalInventoryPort } from "./renewalReservation.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -3409,6 +3434,47 @@ export declare class InventoryConflictError extends Error {
     readonly details: Record<string, unknown>;
     constructor(message?: string, details?: Record<string, unknown>);
 }
+```
+## dist/inventory/renewalReservation.d.ts
+
+```ts
+import type { AutomaticRenewalReservationResult } from "./contracts/reservation.js";
+interface PgQueryExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export interface AutomaticRenewalInventoryPort {
+    reserve(input: {
+        operationId: string;
+        claimToken: string;
+        holdSeconds?: number;
+        now: string;
+    }): Promise<AutomaticRenewalReservationResult>;
+    releaseReservation(input: {
+        operationId: string;
+        claimToken: string;
+        reason: string;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    expireReservations(input: {
+        now: string;
+        limit?: number;
+    }): Promise<number>;
+}
+/** ATP/reservation adapter; it can reserve only through the fenced public renewal function. */
+export declare function createPostgresRenewalReservationPort(executor: PgQueryExecutor): AutomaticRenewalInventoryPort;
+export {};
+```
+## dist/inventory/reservationPolicy.d.ts
+
+```ts
+import type { ReservationPolicyInput, ReservationPolicy } from "./contracts/reservation.js";
+export declare const MIN_CHECKOUT_RESERVATION_TTL_MINUTES: number;
+export declare const MAX_CHECKOUT_RESERVATION_TTL_MINUTES: number;
+export declare const DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES: number;
+export declare function reservationPolicyFor(input: ReservationPolicyInput): ReservationPolicy;
+export declare function normalizedTtlMinutes(value: number | null | undefined): number;
 ```
 ## dist/inventory/schemas.d.ts
 

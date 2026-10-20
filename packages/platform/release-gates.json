@@ -298,7 +298,9 @@
         "test/inventory/contracts.test.ts",
         "test/inventory/adminInventoryConformance.test.ts",
         "test/inventory/inventoryAvailabilityCharacterization.test.ts",
-        "test/inventory/newPurchaseStockBoundary.test.ts"
+        "test/inventory/newPurchaseStockBoundary.test.ts",
+        "test/inventory/reservationPolicyConformance.test.ts",
+        "../../tests/platform/inventory/inventoryReservationLifecycleCharacterization.test.ts"
       ],
       "entrypoint": "dist/inventory/index.d.ts",
       "snapshot": "api/inventory.api.md"
@@ -310,7 +312,8 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/inventory/contracts.test.ts",
-        "test/inventory/newPurchaseStockBoundary.test.ts"
+        "test/inventory/newPurchaseStockBoundary.test.ts",
+        "test/inventory/reservationPolicyConformance.test.ts"
       ],
       "entrypoint": "dist/inventory/contracts/index.d.ts",
       "snapshot": "api/inventory-contracts.api.md"

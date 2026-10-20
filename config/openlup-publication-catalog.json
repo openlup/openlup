@@ -3334,6 +3334,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/reservation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/index.ts",
       "class": "public-output"
     },
@@ -3347,6 +3351,14 @@
     },
     {
       "path": "packages/platform/src/inventory/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/renewalReservation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/reservationPolicy.ts",
       "class": "public-output"
     },
     {
@@ -4163,6 +4175,10 @@
     },
     {
       "path": "packages/platform/test/inventory/newPurchaseStockBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/reservationPolicyConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -21067,6 +21083,10 @@
     },
     {
       "path": "tests/platform/inventory/inventoryOperatorBoundaryCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/inventoryReservationLifecycleCharacterization.test.ts",
       "class": "public-output"
     },
     {
