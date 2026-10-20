@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
-import { afterEach, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -299,8 +299,9 @@ it("refuses extra exports and raw bypass in the installed Resend adapter", () =>
   }
 });
 
-function packedA1Fixture() {
-  const consumer = scratch();
+let packedA1Consumer: string;
+const packedA1Originals: [string, Buffer][] = [];
+function packedA1Fixture(consumer: string) {
   writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
   for (const name of ["core", "platform"]) {
     const output = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", consumer], { cwd: join(root, "packages", name), encoding: "utf8", env: { ...isolatedConsumerEnv(), npm_config_cache: join(consumer, "cache") } }));
@@ -311,8 +312,20 @@ function packedA1Fixture() {
   installA1HostBinding(consumer);
   return consumer;
 }
+beforeAll(() => {
+  packedA1Consumer = mkdtempSync(join(tmpdir(), "platform-consumer-falsifier-"));
+  packedA1Fixture(packedA1Consumer);
+  for (const path of ["node_modules/@openlup/platform/package.json", "server/runtime/communications/a1ReferenceBinding.js"]) {
+    const fullPath = join(packedA1Consumer, path); packedA1Originals.push([fullPath, readFileSync(fullPath)]);
+  }
+}, 60_000);
+afterAll(() => { if (packedA1Consumer) rmSync(packedA1Consumer, { recursive: true, force: true }); });
+function pristinePackedA1Fixture() {
+  for (const [path, source] of packedA1Originals) writeFileSync(path, source);
+  return packedA1Consumer;
+}
 it("P3 case 7: actual host binding resolves packed subpaths with no SDK, peers or checkout fallback", () => {
-  const consumer = packedA1Fixture(); assertConsumerIsolation(consumer, root);
+  const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
   proveA1ReferenceBindingConsumer(consumer, "imports");
   const metadataPath = join(consumer, "node_modules/@openlup/platform/package.json");
   const metadataSource = readFileSync(metadataPath, "utf8");
@@ -331,7 +344,7 @@ it("P3 case 7: actual host binding resolves packed subpaths with no SDK, peers o
   proveA1ReferenceBindingConsumer(consumer, "imports");
 });
 it("P3 case 8: exact callable selection leaves no default work and uses one existing executor", () => {
-  const consumer = packedA1Fixture(); assertConsumerIsolation(consumer, root);
+  const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
   proveA1ReferenceBindingConsumer(consumer, "selection");
   const path = join(consumer, "server/runtime/communications/a1ReferenceBinding.js"), source = readFileSync(path, "utf8");
   for (const [before, after, diagnostic] of [
