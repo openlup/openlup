@@ -31,6 +31,12 @@ the observed BFF responder. Browser validators retain the existing request/conte
 admission and industry wire scopes. Existing ordering, VAT equations, v1/v2 offer
 responses, errors and TTL rules are preserved. Promotion application and acceptance
 now live in `@openlup/platform/promotions`; named server wrappers retain local policy.
+The module also owns promotion admin handlers, ports, dependency-free DTOs, server
+schemas and the native read/sweep store. Wrappers pass the existing admin kit,
+error constructor, response/preview helpers and currency validator by reference.
+Human write authorization, required audit, system-managed read-only rows and
+status-only mirrors keep their prior behavior. Shipping, catalog-price and
+subscription-band schemas, managed adapters and claim writing retain their owners.
 
 The experimental pricing acquisition API is available only through explicit
 host composition. The reference binds no acquisition configuration and retains

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AdminPromotionCodesDataPort } from "./adminPromotionCodesDataPort.js";
+import type { AdminPromotionCodesDataPort } from "../../src/promotions/adminPromotionCodesDataPort.js";
 
 describe("admin promotion-codes data port contract", () => {
   it("keeps definition lifecycle and optimistic revision in the frozen boundary", async () => {

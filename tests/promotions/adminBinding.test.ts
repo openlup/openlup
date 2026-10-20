@@ -1,0 +1,31 @@
+import { expect, expectTypeOf, it, vi } from "vitest";
+import { createAdminPromotionCodesHandlers, type PromotionCodeCreateRequest, type PromotionCodeBenefit, type AdminPromotion, createAdminPromotionSchemas } from "@openlup/platform/promotions";
+import type { PromotionCodeCreateRequest as DtoCreate, PromotionCodeBenefit as DtoBenefit, AdminPromotion as DtoPromotion } from "@openlup/platform/promotions/contracts";
+import { bindings, DomainRpcError } from "./adminFixtures.js";
+import { createAdminMutationHandler } from "../../server/_lib/admin-domain/handlers.js";
+import { promotionCodeCreateRequestSchema as referenceCreate } from "../../src/domains/commerce/adminPromotionCodesContracts.js";
+import { promotionCodeCreateRequestSchema } from "@openlup/platform/promotions";
+import { platformCurrencySchema } from "../../src/lib/currency/platformCurrency.js";
+import type { z } from "zod";
+import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
+
+it("binds the real human gate, host error identity and preview delegation; DTO outputs match schemas", async () => {
+  expectTypeOf<PromotionCodeCreateRequest>().toEqualTypeOf<DtoCreate>();
+  expectTypeOf<PromotionCodeBenefit>().toMatchTypeOf<DtoBenefit>();
+  expectTypeOf<DtoBenefit>().toMatchTypeOf<PromotionCodeBenefit>();
+  expectTypeOf<AdminPromotion>().toEqualTypeOf<DtoPromotion>();
+  const schemas = createAdminPromotionSchemas({ currencySchema: platformCurrencySchema });
+  expectTypeOf<z.infer<typeof schemas.adminPromotionSchema>>().toEqualTypeOf<DtoPromotion>();
+  expect(referenceCreate).toBe(promotionCodeCreateRequestSchema);
+  expect(bindings.DomainRpcError).toBe(DomainRpcError);
+  const kit = vi.fn(createAdminMutationHandler), preview = vi.fn(bindings.previewPromotionCode);
+  const handlers = createAdminPromotionCodesHandlers({ ...bindings, createAdminMutationHandler: kit, previewPromotionCode: preview });
+  const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn() } as unknown as HttpResponse;
+  const deps = { dataPort: { create: vi.fn() } as never, previewSecret: "synthetic-preview-key-000000000000000000", authorizeAdmin: async () => ({ ok: true as const, userId: "operator", role: "admin" as const, isMachineActor: true }) };
+  await handlers.createAdminPromotionCodeCreateHandler(deps)({ method: "POST", body: {} } as HttpRequest, res);
+  expect(kit).toHaveBeenCalledOnce(); expect(res.status).toHaveBeenCalledWith(403);
+  const input = { benefits: [{ lane: "product", kind: "target_percentage", valueBps: 2000 }], scopes: ["one_time"], promotionEngineVersion: "promotion-engine.v2", minimumReferenceMinor: 0, context: { referenceProductMinor: 10000, oneTimeProductMinor: 10000, subscriptionProductMinor: 9000, shippingMinor: 500 } };
+  await handlers.createAdminPromotionCodePreviewHandler({ ...deps, authorizeAdmin: async () => ({ ok: true, userId: "operator", role: "admin", isMachineActor: false }) })({ method: "POST", body: input } as HttpRequest, res);
+  expect(preview).toHaveBeenCalledWith(input, deps.previewSecret);
+  expect(res.status).toHaveBeenLastCalledWith(200);
+});

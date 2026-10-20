@@ -40,6 +40,10 @@ pure package.
   `@openlup/platform/promotions`. Its reference wrappers inject settlement floor,
   customer semantics, eligibility facts, request hashing and passive recording;
   evaluation still delegates to core. Quote reads never claim capacity.
+- Admin and native store: `@openlup/platform/promotions` owns the moved handlers,
+  admin DTOs/server schemas, executor-backed read/sweep and sparse SQL 47/48
+  descriptor. Reference wrappers bind the existing kit/error constructor; managed
+  adapters and claim writing stay at their existing owners.
 - Runtime transition sources: the two registered forward migrations named
   above plus the `promotion*` modules under `server/domains/commerce/`.
   Historical `supabase/migrations/*promotion*` files are not that forward

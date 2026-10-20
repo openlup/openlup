@@ -8,6 +8,12 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Move promotion admin handlers/ports/DTOs/server schemas and native evaluator
+  read/sweep into promotions, preserving reference kit/error/currency bindings.
+  Project unchanged canonical SQL units 47/48 with descriptor hashes and positions;
+  no migration or claim writer. Prove the existing native lifecycle/read subset
+  on real PostgreSQL; native code and mounted parity outcomes remain pending.
+
 - Add experimental `./promotions` application, advisory read ports, preview,
   money binding, acceptance and passive telemetry with explicit host bindings;
   `./promotions/contracts` contains dependency-free preview DTOs. Core remains

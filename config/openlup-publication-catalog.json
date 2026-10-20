@@ -2302,6 +2302,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260817180000_promotion_claim_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260817180100_promotion_claim_lifecycle_validation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260901143000_admin_membership_authority_foundation.sql",
       "class": "public-output"
     },
@@ -3450,6 +3458,34 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/promotions/adminBindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/adminPromotionCodesContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/adminPromotionCodesDataPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/adminPromotionCodesHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/adminPromotionsContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/adminPromotionsDataPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/adminPromotionsHandler.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/promotions/contracts/index.ts",
       "class": "public-output"
     },
@@ -3467,6 +3503,14 @@
     },
     {
       "path": "packages/platform/src/promotions/promotionBenefitDefinition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionClaimSweepPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionClaims.ts",
       "class": "public-output"
     },
     {
@@ -3499,6 +3543,14 @@
     },
     {
       "path": "packages/platform/src/promotions/quotePromotionV2.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/validation.ts",
       "class": "public-output"
     },
     {
@@ -4082,6 +4134,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/promotions/adminPromotionCodesContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/adminPromotionCodesDataPort.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/promotions/applicationConformance.test.ts",
       "class": "public-output"
     },
@@ -4095,6 +4155,14 @@
     },
     {
       "path": "packages/platform/test/promotions/promotionBenefitDefinition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promotionClaimSweepPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promotionClaims.test.ts",
       "class": "public-output"
     },
     {
@@ -6171,10 +6239,6 @@
     },
     {
       "path": "server/adapters/postgres/pricingResolver.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/promotionClaims.test.ts",
       "class": "public-output"
     },
     {
@@ -9898,10 +9962,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/adminPromotionCodesDataPort.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/adminPromotionCodesDataPort.ts",
       "class": "public-output"
     },
@@ -9923,10 +9983,6 @@
     },
     {
       "path": "server/domains/commerce/adminPromotionsDataPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/adminPromotionsHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -10967,10 +11023,6 @@
     },
     {
       "path": "server/domains/commerce/promotionBindings.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/promotionClaimSweepPort.test.ts",
       "class": "public-output"
     },
     {
@@ -15503,10 +15555,6 @@
     },
     {
       "path": "src/domains/commerce/adminPromotionCodesClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/adminPromotionCodesContracts.test.ts",
       "class": "public-output"
     },
     {
@@ -20934,6 +20982,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/runIdentityEnvelopeConformance.mjs",
       "class": "public-output"
     },
@@ -20975,6 +21027,22 @@
     },
     {
       "path": "tests/preview/ssg-hydration.spec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/promotions/adminBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/promotions/adminFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/promotions/adminPromotionCodesHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/promotions/adminPromotionsHandler.test.ts",
       "class": "public-output"
     },
     {

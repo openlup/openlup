@@ -76,7 +76,7 @@ Tests: **25 moved, 3 new**. After C1's 34, P1's 5 and P2a's 3 new cases,
 the programme balance is **58 of 100**; generated boundary iterations remain
 separate.
 
-P2a measured: pending committed gates
+P2a measured: **789 files / 480,886 packed B / 2,038,883 unpacked B / 406,639 code gzip B**.
 
 ## P2b — quote and offer layer
 
@@ -210,19 +210,59 @@ released baseline or growth-tripwire policy changes.
 
 ### D8 pending outcome ledger
 
-Each row is **pending, not N/A, not claimed; must be dispositioned before M05 S1**.
+Each row is **PENDING, not N/A, not claimed; must be dispositioned before M05 S1**.
 Disposition requires later implementation/proof or one bounded scope packet to
 the delegate; any reduction of admitted acceptance requires the owner's decision.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
-| Native advisory v2 promo-code candidates and rejection details | Pending capability/parity; the managed resolver is not a native implementation. |
-| Native mounted quote issue/honor/fallback | Pending composition proof on the native mount. |
-| Acquisition-only mounted acceptance | Pending composition proof; low-level token tests do not close it. |
-| Full native/managed eligibility matrix | Pending explicit outcome matrix, including paid-order classification and native device evidence differences. |
+| Native advisory v2 promo-code candidates and rejection details | PENDING capability/parity; the managed resolver is not a native implementation. |
+| Native mounted quote issue/honor/fallback | PENDING composition proof on the native mount. |
+| Acquisition-only mounted acceptance | PENDING composition proof; low-level token tests do not close it. |
+| Full native/managed eligibility matrix | PENDING explicit outcome matrix, including paid-order classification and native device evidence differences. |
 
-Existing native lifecycle/read real-PostgreSQL proof belongs to P3b, with the
-canonical installation route and no managed-schema import or new claim writer.
+Existing native lifecycle/read is proven in P3b on real PostgreSQL using the
+complete canonical installation chain. This proves the incumbent read/sweep and
+selected lifecycle subset, with no managed-schema import or new claim writer;
+it does not close any of the four PENDING rows above.
+
+### P6 acceptance obligation
+
+P6 must replace every non-neutral fixture value still present in the moved
+package tests (including a legacy policy constant, locale-specific contact
+values and industry-specific fact fields carried over unchanged from the
+existing public tests) with neutral synthetic values, without weakening any
+assertion. M05 S1 requires this row closed, so no adopter policy constant
+remains anywhere in OpenLup.
+
+## P3b — promotion admin and native read/sweep
+
+The unchanged move includes two admin handlers, two ports and promotion-owned
+DTOs/server schemas, with named reference compatibility exports. Reference
+wrappers inject the existing shared admin kit/error constructor, response writers,
+preview helpers and currency validator. Adjacent shipping/catalog-price/band
+schemas and managed adapters retain their owners. Human-only mutation gates,
+required audit, activation proof, revision-aware replay delegation and mirror
+fences preserve existing behavior.
+
+The existing native store and sweep port use an injected data executor. Their
+data edge is type-only; no client construction or runtime data dependency is
+needed. The promotions server entry is classified as an adapter because its
+declarations reach optional pg types; contracts remain dependency-free and
+non-adapter. Canonical units 47/48 are byte-identical sparse projections with
+catalogPath/position/sha256/url descriptors. There is no migration, manifest or
+baseline change, claim writer or reservation addition.
+
+Six new executed cases (five real-PG and one admin-binding case) consume six of
+the prior 33 programme cases, leaving **27 of 100**. Existing subject suites move
+with assertions retained; the global-environment case stays reference-owned.
+Synthetic region `ZZ` replaces the default-country fixture in the moved admin
+list suite. Real-PG evidence covers fresh full-chain application,
+projection identity/validated constraints and repeat runner application; read-only
+active definitions/counts/device evidence; paid/released transitions; bounded
+sweep/replay with receipt/outbox fences and unchanged money; lock/settlement
+skips; denied-role and explicit invoker read grants. Atomic writer concurrency,
+prior-prefix upgrade and the four D8 outcomes are not claimed by this subset.
 
 ## Witness ledger
 

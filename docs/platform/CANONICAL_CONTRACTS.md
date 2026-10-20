@@ -153,6 +153,13 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+Promotion admin DTOs and server schemas now have package ownership with named
+reference compatibility exports. The structural-slice inventory follows the
+moved native-store and admin tests; this is a source-location update, not a
+new runtime capability. Reference wrappers preserve the shared admin kit/error
+identity, currency validator and managed adapter fences. Sparse SQL 47/48
+projections retain canonical bytes and positions without changing installation.
+
 The subscription reference's closed browser import inventory includes exactly
 `pricing/contracts/index.js`, `acquisitionTerms.js`, `offerPolicy.js`, `policy.js`, `quote.js`,
 `provenance.js` and `offer.js` from the emitted

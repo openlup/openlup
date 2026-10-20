@@ -122,7 +122,7 @@
             "server/adapters/supabase/checkoutRecoveryOperations.test.ts",
             "server/adapters/managed/commerce/inventoryReservationPort.test.ts",
             "server/adapters/supabase/promotionClaims.test.ts",
-            "server/adapters/postgres/promotionClaims.test.ts",
+            "packages/platform/test/promotions/promotionClaims.test.ts",
             "server/adapters/supabase/commerce/savedPaymentMethodResolver.test.ts"
           ],
           "publicContracts": [
@@ -350,7 +350,7 @@
             "server/domains/commerce/adminCatalogDocumentHandler.test.ts",
             "server/domains/commerce/adminCatalogHandler.test.ts",
             "server/domains/commerce/adminCatalogReadHandler.test.ts",
-            "server/domains/commerce/adminPromotionsHandler.test.ts",
+            "tests/promotions/adminPromotionsHandler.test.ts",
             "server/domains/commerce/adminPromotionSemantic.test.ts",
             "server/adapters/supabase/adminCatalog.test.ts",
             "server/adapters/supabase/adminPromotions.test.ts"

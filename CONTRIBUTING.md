@@ -131,7 +131,21 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-The promotion application move reuses root/package discovery for the retained
+Promotion admin/native extraction keeps the existing checks and runner selection.
+The module graph admits type-only data/http/bff edges for executor and admin
+bindings; no runtime data edge is needed. The server entry's declarations reach
+optional pg types, so cold consumers classify it as an adapter, import it without
+pg using an injected executor, and compile it after peer selection. Contracts
+remain a non-adapter and compile in both modes without peers. Native-store query
+doubles and contract/port suites move under the package. Handler subject cases move to
+`tests/promotions` because they bind the actual shared reference admin kit. The
+one global-environment composition case stays at its original reference path;
+copying that kit into package tests would create another authorization authority.
+The dedicated `tests/postgres/promotionsNative.test.ts` installs the full canonical
+chain and proves only incumbent native read/lifecycle/sweep/grant behavior; it
+neither imports managed schema nor claims pending code/mounted parity outcomes.
+
+The earlier P3a promotion application move reuses root/package discovery for the retained
 suites in platform `test/promotions/`; its managed RPC-name assertion remains at
 the reference transport boundary. The preview suite still checks the reference
 create-schema refusal alongside package preview behavior. Neutral synthetic
@@ -140,7 +154,7 @@ assertions. Four W3 application transcripts, one callback terms case and one
 reference host-binding case add six required cases. The existing fixed-token
 consent witness remains local. Both promotions entries extend the existing cold
 consumer import/declaration proof and its application-to-acceptance transcript;
-no runner, optional peer or database obligation is added in this slice.
+no runner, optional peer or database obligation was added in that application slice.
 
 The opt-in pricing acquisition suite adds synthetic schedule, policy refusal,
 v3 negotiation/freshness and boundary readiness evidence to the existing package
