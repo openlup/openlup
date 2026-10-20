@@ -9,11 +9,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions", "promotions/contracts", "identity/contracts", "communications/contracts"] as const;
-// identity and communications are adapter entries: its PostgreSQL profile adapter declares the data entry's pg types.
+export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts"] as const;
+// identity, communications and promotions are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
-  "blob", "data", "migrations", "job-ledger", "identity", "communications",
+  "blob", "data", "migrations", "job-ledger", "identity", "communications", "promotions",
   "communications/resend",
 ] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
@@ -632,6 +632,14 @@ import assert from "node:assert/strict";
 import * as promotions from "@openlup/platform/promotions";
 import * as contracts from "@openlup/platform/promotions/contracts";
 assert.deepEqual(Object.keys(contracts), []);
+// Promotions imports without pg: its store uses only the host executor. The selected
+// data gateway retains the existing named missing-pg refusal (proveAdapterRefusals).
+assert.equal(typeof promotions.createPostgresCommercePromoDataPort, "function");
+let sqlCalls = 0;
+const executor = { query: async sql => { sqlCalls++; assert(sql.includes("active_definitions")); return { rows: [{ result: [] }] }; } };
+assert.deepEqual(await promotions.createPostgresCommercePromoDataPort(executor).listActivePromotions(), []);
+assert.equal(sqlCalls, 1);
+assert.deepEqual(promotions.PROMOTIONS_MIGRATIONS.map(unit => unit.position), [47, 48]);
 const { applyPromotionCodesV2 } = promotions.createQuotePromotionCodeAdjustments({ minimumProductPayableMinor: 100 });
 let reads = 0;
 const input = { clientId: null, mode: "one_time", promoCodes: ["save"], referenceProductMinor: 10000,

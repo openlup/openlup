@@ -203,6 +203,9 @@ describe("package source boundary", () => {
       "catalog/index.ts", "catalog/contracts/index.ts",
       "pricing/index.ts", "pricing/contracts/index.ts",
       "promotions/index.ts", "promotions/contracts/index.ts",
+      "promotions/adminBindings.ts", "promotions/adminPromotionsHandler.ts", "promotions/adminPromotionCodesHandler.ts",
+      "promotions/adminPromotionsContracts.ts", "promotions/adminPromotionCodesContracts.ts",
+      "promotions/promotionClaims.ts", "promotions/promotionClaimSweepPort.ts", "promotions/sql.ts",
       "communications/index.ts", "communications/contracts/index.ts", "http/webhookSignature.ts",
       "kernel/platformKernel.ts", "bff/dispatch.ts", "composition/composeBundle.ts", "composition/nodeHost.ts",
     ]));

@@ -44,3 +44,4 @@ export * from "./postgresDeliveryReconciliation.js";
 export * from "./postgresCommunicationSync.js";
 export * from "./postgresNotificationRecipients.js";
 export * from "./postgresConsentEvaluator.js";
+export type * from "./contracts/marketingSync.js";

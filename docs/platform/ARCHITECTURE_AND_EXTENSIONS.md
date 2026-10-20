@@ -30,6 +30,19 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Neutral marketing sync lives in the existing communications contracts subtree
+and is re-exported as types by both communications entries. It adds no runtime
+factory, provider SDK, environment reader, host callback, configuration registry
+or package subpath. The private subject mapper, durable admission/journal,
+account leases and provider payload translation belong inside the selected
+adapter's construction and infrastructure boundary. P2 owns that construction.
+The public families expose profile sync, consent readback and erasure; discovery,
+profile reads, history, events and membership remain outside the public surface.
+Positive consent writes are deferred pending an owner decision. The
+[canonical lifecycle](CANONICAL_CONTRACTS.md#neutral-marketing-sync) owns replay,
+negative-only feedback and evidence-bound completion. No default composition
+changes and no existing M04 implementation gains new obligations.
+
 C-compose keeps communications admission in the reference host and uses Core's
 existing readiness checker. The selected callable identities become the
 communications contribution's route/schedule bindings; stale artifact,
@@ -382,14 +395,17 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
-The experimental promotions application module has one value edge to pricing,
-through `pricing/index.js`, for the existing acquisition binding and protocol
-constant; its quote/evidence types use the same entry. Pricing has no promotions
-edge: its host still injects application callbacks. Promotions preview contracts
-have no imports, including no dependency on pricing contracts. Reference wrappers
-retain financial floors, customer semantics, eligibility interpretation, request
-projection and telemetry composition. Core remains the sole promotion evaluator;
-managed transport, native persistence and claim writes are outside this slice.
+The experimental promotions module has one value edge to pricing through
+`pricing/index.js`, for acquisition binding and the protocol constant. Type-only
+edges to data, http and bff describe the injected executor and shared admin-kit
+interface. The native store does not construct a client, so it needs no data
+value edge. Its declarations reach optional pg types through data; cold consumer
+classification therefore treats the server entry as an adapter. Contracts remain
+dependency-free and non-adapter. Reference wrappers retain financial floors,
+customer semantics, eligibility interpretation, request projection, telemetry,
+currency validation and the existing shared admin kit/error constructor by
+identity. Neither the kit nor managed adapters move into promotions. Core remains
+the sole evaluator; claim writing and mounted acceptance retain their owners.
 
 The foundation boundary work starts from its existing directories and entries:
 `http`, `bff`, `scheduler`, `blob`, `data`, `migrations`, `job-ledger`, `kernel`

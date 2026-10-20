@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createPostgresCommercePromoDataPort,
   createPostgresPromotionClaimSweepPort,
-} from "./promotionClaims.js";
+} from "../../src/promotions/promotionClaims.js";
 
 describe("Postgres promotion claim adapters", () => {
   it("maps neutral evaluator evidence through parameterized public routines", async () => {

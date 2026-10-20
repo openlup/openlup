@@ -57,6 +57,17 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
+Promotions publishes sparse, byte-identical projections of canonical units 47 and
+48: promotion claim lifecycle and its constraint-validation forward. The module's
+`PROMOTIONS_MIGRATIONS` descriptor retains each canonical catalogPath, position,
+SHA-256 and artifact URL. This move adds no migration, baseline change or manifest
+row. Install the full canonical catalogue rather than the sparse projections.
+The native executor-backed store owns only evaluator reads and bounded sweep;
+claim reservation/writing remains at its existing boundary. Real PostgreSQL proof
+checks fresh canonical application/replay, read-only evidence, paid/released
+transitions, sweep replay/fences and unauthorized versus explicitly granted reads.
+It does not establish native code resolution or native/managed eligibility parity.
+
 Direct OIDC principals fit the existing UUID `clients.principal_id`; the
 versioned issuer/subject hash adds no table, forward, catalogue position or ledger
 change. The direct account-link capability uses normal reconciliation and

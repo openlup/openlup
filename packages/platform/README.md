@@ -27,8 +27,8 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
-| `./promotions` | Experimental promotion application, advisory read ports, preview, money projection, acceptance and passive telemetry |
-| `./promotions/contracts` | Dependency-free preview request, benefit and response DTOs |
+| `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
+| `./promotions/contracts` | Dependency-free preview and admin DTOs |
 
 ## Promotions
 
@@ -54,22 +54,44 @@ This opt-in signature addition does not activate acquisition-only mounted issuan
 `recordPromotionAcceptanceOutcome` requires a recorder and swallows recorder
 failure. The reference wrapper retains its existing sanitized operational recorder.
 Reference wrappers also retain startup floor resolution, customer classification,
-email/contact precedence and the rich request projection. Managed RPC names and
-transport, admin handlers, native stores, claim writers and checkout remain with
-their existing owners. Quote reads never reserve capacity. Promotions imports
-pricing only through its server entry; pricing receives application callbacks and
-has no import back to promotions. Both promotions entries are non-adapters and
-compile without optional provider peers; contracts import no other module.
+email/contact precedence and the rich request projection. Quote reads never reserve
+capacity. Pricing receives application callbacks and has no import back to promotions.
 
-The [promotion suites](test/promotions/) retain existing assertions with synthetic
-currency/country fixtures. Four application conformance transcripts protect code
-evidence, acceptance, floor/tax equations, legacy rank/stack/mirrors, rejection
-outcomes and no-claim behavior. The installed consumer extends the existing cold
-proof with application-to-token success, changed-money refusal and dependency
-failure, alongside all-entry imports and both declaration resolution modes.
-Native lifecycle/read PostgreSQL proof is deferred to the admin/native slice;
-[the module ledger](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#p3a--promotion-application-and-acceptance)
-records pending native and mounted outcomes.
+`createAdminPromotionsHandlers` and `createAdminPromotionCodesHandlers` receive
+the relevant members of `PromotionAdminBindings`: existing host admin-kit factories, authorization
+resolver, response writers, exact RPC-error constructor/mapper and bound preview
+helpers. The package does not copy or relocate that kit. The reference wrappers
+bind these same objects, preserving human-only writes, required audit, signed
+activation previews, validity-window checks and revision-aware replay delegation.
+`createAdminPromotionSchemas` also requires the host currency schema. Its list
+DTOs preserve system-managed read-only rows and valid status-only mirror handles;
+the managed adapter retains the underlying write fences. Adjacent shipping,
+catalog-price and subscription-band schemas and managed adapters remain reference-owned.
+
+`createPostgresCommercePromoDataPort` and `createPostgresPromotionClaimSweepPort`
+use an injected `PgQueryExecutor` from `./data`. They retain four evaluator reads
+and bounded stale-claim sweep; they add no claim writer or reservation path.
+`PROMOTIONS_MIGRATIONS` identifies the byte-identical projections of canonical
+units 47/48 with paths, positions and hashes. These sparse units are not an
+installation chain: use the complete canonical catalogue. No migration or
+manifest identity changes in this move.
+
+The server entry is classified as an adapter because its executor declaration
+reaches the data entry and optional pg types. It imports at runtime without pg
+and works with an injected executor; selecting the data gateway retains its
+named missing-pg refusal. Its declarations compile after peer selection. The
+contracts entry remains a non-adapter, imports no other module and compiles
+without optional peers in NodeNext and Bundler modes.
+
+The [promotion suites](test/promotions/) retain existing assertions. The
+[real PostgreSQL witness](../../tests/postgres/promotionsNative.test.ts) installs
+the full canonical chain, checks projection hashes and validated constraints,
+and proves reads without durable writes, paid/released lifecycle, bounded
+sweep, receipt/outbox fences, replay, lock/settlement skips and explicit invoker
+grants. This is existing native lifecycle/read evidence only. Native code
+candidates, mounted issue/honor, acquisition-only mounted acceptance and the
+full native/managed eligibility matrix remain pending in the
+[module ledger](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#d8-pending-outcome-ledger).
 
 ## Pricing
 

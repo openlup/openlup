@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   promotionCodeCreateRequestSchema,
   promotionCodePreviewRequestSchema,
-} from "./adminPromotionCodesContracts.js";
+} from "../../src/promotions/adminPromotionCodesContracts.js";
 
 describe("admin promotion code contracts", () => {
   it("rejects 100 percent and duplicate-lane benefit definitions", () => {

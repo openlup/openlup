@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
+import type { VercelRequest, VercelResponse } from "../../../server/_lib/types/vercel.js";
 import type { AdminPromotion } from "../../../src/domains/commerce/adminPromotionsContracts.js";
-import type { AdminPromotionsDataPort } from "./adminPromotionsDataPort.js";
+import type { AdminPromotionsDataPort } from "@openlup/platform/promotions";
 import {
   createAdminPromotionUpdateHandler,
   createAdminPromotionsListHandler,
-} from "./adminPromotionsHandler.js";
-import { DomainRpcError } from "../../_lib/admin-domain/rpcErrors.js";
+} from "./adminFixtures.js";
+import { DomainRpcError } from "../../../server/_lib/admin-domain/rpcErrors.js";
 
 describe("admin promotions handlers", () => {
   it("returns the promotion list through the shared envelope", async () => {
@@ -124,7 +124,7 @@ describe("admin promotions handlers", () => {
 function promotion(): AdminPromotion {
   return {
     id: "p1",
-    code: "WELCOME10",
+    code: "EXAMPLE10",
     name: "Welcome 10%",
     triggerType: "coupon_code",
     discountType: "percentage",
@@ -138,7 +138,7 @@ function promotion(): AdminPromotion {
     validFrom: "2026-06-01T00:00:00+00:00",
     validTo: null,
     status: "active",
-    regionAvailability: ["PL"],
+    regionAvailability: ["ZZ"],
     redemptionLimitGlobal: null,
     redemptionLimitPerCustomer: null,
   };

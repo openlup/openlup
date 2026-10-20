@@ -135,7 +135,9 @@
         "test/packageBoundary.test.ts",
         "test/communications/sql.test.ts",
         "test/communications/contribution.test.ts",
-        "test/communications/transportConformance.test.ts"
+        "test/communications/transportConformance.test.ts",
+        "test/communications/marketingSyncConformance.test.ts",
+        "test/communications/marketingSyncCompatibility.test.ts"
       ],
       "entrypoint": "dist/communications/index.d.ts",
       "snapshot": "api/communications.api.md"
@@ -146,7 +148,9 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/communications/contracts.test.ts"
+        "test/communications/contracts.test.ts",
+        "test/communications/marketingSyncConformance.test.ts",
+        "test/communications/marketingSyncCompatibility.test.ts"
       ],
       "entrypoint": "dist/communications/contracts/index.d.ts",
       "snapshot": "api/communications-contracts.api.md"
@@ -242,7 +246,11 @@
         "test/promotions/promotionCodeQuotePort.test.ts",
         "test/promotions/promotionCodePreview.test.ts",
         "test/promotions/promotionQuoteBinding.test.ts",
-        "test/promotions/promotionQuoteAcceptance.test.ts"
+        "test/promotions/promotionQuoteAcceptance.test.ts",
+        "test/promotions/adminPromotionCodesDataPort.test.ts",
+        "test/promotions/adminPromotionCodesContracts.test.ts",
+        "test/promotions/promotionClaimSweepPort.test.ts",
+        "test/promotions/promotionClaims.test.ts"
       ],
       "entrypoint": "dist/promotions/index.d.ts",
       "snapshot": "api/promotions.api.md"
@@ -254,7 +262,8 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/promotions/applicationConformance.test.ts",
-        "test/promotions/promotionCodePreview.test.ts"
+        "test/promotions/promotionCodePreview.test.ts",
+        "test/promotions/adminPromotionCodesContracts.test.ts"
       ],
       "entrypoint": "dist/promotions/contracts/index.d.ts",
       "snapshot": "api/promotions-contracts.api.md"
