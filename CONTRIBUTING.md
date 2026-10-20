@@ -131,6 +131,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Reference catalog UI conformance remains in the existing Node/DOM discovery.
+`referenceBuilderConformance.test.ts` uses the real persisted-state codec and a
+save/reset/reload transcript to protect selected quantity/mode, signed quote
+transfer, navigation refusal and fresh consent after edits. The catalog SSR case
+checks supplied media/details and legacy fallback; the page DOM cases protect
+locale deep-link hydration and authority-only lifecycle/refusal rendering.
+Promotion binding tests compare local/server schema semantics and bundle the
+actual browser clients/dialogs with positive schema-input controls. Collect
+changed files explicitly before running their focused paths; these witnesses
+add no runner, profile mount or package activation.
+
 Bundle application/admin extraction reuses the existing platform catalog entries,
 module graph and test collectors. Only http/bff types cross module boundaries;
 reference schemas, shared admin kit/spec and RPC error subclass remain injected.

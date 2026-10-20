@@ -30,6 +30,23 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The opt-in reference catalog routes consume explicit per-locale snapshots with
+resolved media, detail facts and links. Their browser graph uses contracts
+entries and local validators; promotion clients and dialogs no longer enter the
+promotions server barrel. The subscription entry formats minor money with the
+currency exponent in normal and fallback paths and refuses an unknown exponent.
+No implicit catalog route is added to the shipped static or subscription profile.
+
+The reference selected-basket builder maps the neutral acquisition quote's
+top-level terms into a separate persisted expectation. It reuses the existing
+SSR-safe draft codec and pricing-policy admission predicate, keeping amount,
+currency, signed token, policy and second-delivery promise bound independently.
+Reloaded totals alone cannot authorize navigation: the selected fresh signed
+quote and explicit matching terms consent are required. An accepted basket edit
+clears both expectation and terms while retaining customer facts. The reference
+transport/storage scope leaves incumbent endpoints, caches and draft keys intact.
+Read-only lifecycle observations do not grant publication or withdrawal authority.
+
 Neutral marketing sync lives in the existing communications contracts subtree
 and is re-exported as types by both communications entries. It adds no runtime
 factory, provider SDK, environment reader, host callback, configuration registry

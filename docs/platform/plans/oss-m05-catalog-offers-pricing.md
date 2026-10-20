@@ -331,6 +331,75 @@ together with D8 and P6. Package application proof closes none of these rows.
 | Native mounted admin/feed with actual stock | PENDING: P7 composition proof. |
 | Replay/concurrency beyond sequential replay | PENDING: characterize incumbent outcomes before claiming stronger guarantees. |
 
+## P5
+
+The approved reference-only cut repairs browser promotion schemas and applies
+Decision B's exponent-aware subscribe display, including fallback and refusal to
+guess. Local schemas preserve current package semantics; package server exports,
+DTOs, shipping and band behavior remain unchanged.
+
+Explicit locale/data/media/lifecycle inputs feed additive catalog, product and
+selected-basket pages through testable reference routes. The shipped public root
+is not mounted here; that composition remains P7. The builder maps neutral
+acquisition terms into a separate persisted consent expectation, with fresh
+selected-quote navigation and consent invalidation on basket edits. Existing
+admin pages accept optional read/lifecycle bindings without changing default
+transports, gates or mutations. Optional SSG details/media preserve legacy detail
+lookup and gallery behavior. The W6 source witness remains unchanged outside
+this tree; the neutral reference transcript exercises production save/reload and
+navigation paths without activating incumbent endpoints or caches.
+
+Task authority: implementation and focused local verification only, in the
+assigned task worktree. The supervisor owns commits, native candidate review and
+delivery. No Git writes, release, external mutation or adopter change is included.
+The separate in-flight extraction is not a dependency. The agreed stock-card,
+reservation and shipping-handler exclusions remain intact; no communications
+integration is introduced. Existing D8, bundle parity and P6 obligations stay open
+as recorded below and above.
+
+Final diff versus `34eaffb3a734fec44b481323aac169e078e3d67c`:
+**21/35 production/tooling paths**, comprising 19 reference source paths and two
+generated JSON companions. Tests and prose are excluded from this path count.
+**12 new executed cases** consume the coordinator's supplied post-extraction
+planning balance **17 → 5**; this is not a claim that the separate extraction
+has landed in this checkout. The allocation is currency 2 (both normal/fallback
+tables in one case, exponent refusal in one), promotion parity/browser closure 3,
+W6 4 and SSR/locale/lifecycle 3. The existing D8, bundle parity and P6 rows are
+unchanged.
+
+Collection on the final source: subscribe entry model **8**, promotion binding
+**4**, reference builder conformance **4**, reference SSR **1**, reference page
+DOM **2**. All are in existing include globs: Node `src/**/*.{test,spec}.ts` and
+`tests/platform/**/*.{test,spec}.ts`, DOM `src/**/*.{test,spec}.tsx`; the builder
+Node path explicitly selects the DOM environment for actual persistence. The
+full focused selection collected and passed **19 files / 122 cases**. Existing
+client, document panel, bundle helper, quote/cache, draft, subscribe journey,
+product FAQ/support, reference-store and public-entry SSR guards remain intact.
+
+The existing browser measurement helper reports **22,007 B** for the promotion
+client, **20,610 B** for the code client and **43,459 B** for the opt-in reference
+routes (minified+gzip, including their runtime closures). Replacing only the two
+schema inputs with their baseline versions makes browser bundling refuse Node
+built-ins; a comparable baseline browser-byte total is therefore unavailable.
+These are application measurements, not package-entry limits. No package or
+browser budget change is requested.
+
+Working-tree pretest, structural scan, lint, typecheck, static and subscription
+builds, focused tests, collection and diff whitespace checks pass. Lint retains
+existing warnings. Build outputs were removed. Root neutrality has zero increases
+against the assigned base; its default moving-main comparison also reports an
+unrelated shipping-evidence difference. The publication catalogue and source
+contract were regenerated with their existing generators. The materialized
+candidate passes inventory, contract, navigation and all four documentation
+impact obligations. The index-based policy command refuses the new untracked
+paths until the supervisor stages them, as this implementation grant forbids Git
+writes; committed-candidate policy/native review remain supervisor obligations.
+
+Self-retro: checking actual legacy renderer fields caught incorrect new fixture
+assumptions before handoff. Use rendered composition cards and FAQ/supplement
+facts to test the supplied-details seam; keep the finite case allocation rather
+than adding a second harness or new runner. No successor work is opened.
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected

@@ -1,3 +1,5 @@
+import { CatalogLifecycleObservation } from "@/components/admin/CatalogLifecycleObservation";
+import type { CatalogPublicationReadResult } from "@openlup/platform/catalog/contracts";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -49,7 +51,11 @@ type BundleStatusFilter = ListBundlesRequest["status"];
 
 const STATUS_FILTERS: BundleStatusFilter[] = ["all", "draft", "active", "archived"];
 
-export default function BundlesPage() {
+export default function BundlesPage({ reference }: { reference?: {
+  lifecycle?: CatalogPublicationReadResult;
+  list?: typeof listBundles;
+  detail?: typeof getBundle;
+} } = {}) {
   const { t } = useTranslation("admin");
   const { session, role } = useAuth();
   const accessToken = session?.access_token;
@@ -67,14 +73,14 @@ export default function BundlesPage() {
     // and `offset` carry server-side defaults, so they are required in its parsed
     // shape, and naming them keeps the page honest that it shows one page.
     queryFn: () =>
-      listBundles(accessToken as string, { status: statusFilter, limit: 100, offset: 0 }),
+      (reference?.list ?? listBundles)(accessToken as string, { status: statusFilter, limit: 100, offset: 0 }),
   });
 
   const detail = useQuery({
     queryKey: bundleDetailKey(selected ?? ""),
     enabled: Boolean(accessToken) && selected !== null,
     retry: false,
-    queryFn: () => getBundle(accessToken as string, { code: selected as string }),
+    queryFn: () => (reference?.detail ?? getBundle)(accessToken as string, { code: selected as string }),
   });
 
   function invalidate() {
@@ -176,6 +182,7 @@ export default function BundlesPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
+      {reference?.lifecycle && <CatalogLifecycleObservation result={reference.lifecycle} />}
       <header>
         <h1 className="font-display text-[24px] font-bold text-teal-dark">
           {t("admin:adminBundles.title")}

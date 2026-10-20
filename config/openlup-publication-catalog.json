@@ -14090,6 +14090,22 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/composer/referenceBuilderConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceBuilderDraft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceBuilderModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceQuoteConsent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/composer/useEffectiveConfiguratorPackage.ts",
       "class": "public-output"
     },
@@ -14543,6 +14559,10 @@
     },
     {
       "path": "src/components/admin/CatalogDocumentPanel.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/CatalogLifecycleObservation.tsx",
       "class": "public-output"
     },
     {
@@ -15463,6 +15483,10 @@
     },
     {
       "path": "src/domains/catalog/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/catalog/referenceCatalogUi.ts",
       "class": "public-output"
     },
     {
@@ -19162,6 +19186,22 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/ReferenceBuilderPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceCatalogPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceCatalogUi.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceProductPage.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/ReferenceStorePage.test.tsx",
       "class": "public-output"
     },
@@ -20051,6 +20091,10 @@
     },
     {
       "path": "src/routes/AppRuntimeEffects.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/routes/ReferenceCatalogRoutes.tsx",
       "class": "public-output"
     },
     {
@@ -21007,6 +21051,10 @@
     },
     {
       "path": "tests/platform/catalog/bundleCompositionConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/catalog/referenceUi.test.ts",
       "class": "public-output"
     },
     {

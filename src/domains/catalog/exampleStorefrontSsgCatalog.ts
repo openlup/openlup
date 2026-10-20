@@ -91,6 +91,7 @@ function localeProducts(locale: StorefrontSsgLocale): Record<Slug, StorefrontSsg
     result[slug] = {
     item: exampleItem(slug, copy.name, images[slug], slug === "example-original" ? "#287f78" : "#765486"),
     primarySku: examplePrimarySku(slug),
+    media: [{ src: images[slug], alt: copy.name }],
     routePath: copy.routePath,
     shortName: copy.shortName,
     presentation: presentationBySlug[slug],
