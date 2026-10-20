@@ -137,8 +137,12 @@ only fresh complete readback after authenticated settlement of all earlier grant
 can resolve the race. The host reissues a withdrawal with a new requestId when
 that read shows subscribed. Replay, generation fences, cooling, mapping writes
 and quarantine share the host's atomic journal; uncertain mutation dispatch is
-never automatically retried. Result recording retains durable quarantine until
-the stored bytes are verified, then releases the account slot. An uncertain
+never automatically retried. Non-grant results are recorded under durable
+quarantine until the stored bytes are verified; a grant's result relies on its
+durable per-subject dispatch fence and its recorded grant cause instead of
+setting the account bit. A withdrawal under grant-only availability quarantine
+also releases its settlement bit after verification. For mutations, transfer's
+`finally` releases the account slot before result recording. An uncertain
 recording or release preserves completed facts with an unknown journal and
 quarantines the account for repair. The private storage seam also supplies one
 shared mutable availability record per account/environment, independent of
