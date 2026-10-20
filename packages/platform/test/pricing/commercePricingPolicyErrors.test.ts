@@ -3,7 +3,7 @@ import { CommercePricingPolicyRequestError, PRICING_POLICY_REQUEST_REASONS, mapP
 
 describe("commerce pricing policy errors", () => {
   // ⛔ The second way a caller-side refusal can go dark, and it is not the
-  // monitor's end. `policy_reason` is what the Axiom monitors key on, and
+  // monitor's end. `policy_reason` is what the monitors key on, and
   // safePricingPolicyReason() collapses anything outside the safe set to
   // "other". A reason that is thrown but never added to SAFE_PRICING_POLICY_REASONS
   // is logged as "other", matches no monitor's filter, and produces exactly the

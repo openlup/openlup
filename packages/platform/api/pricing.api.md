@@ -47,12 +47,12 @@ export declare class CommercePricingPolicyUnavailableError extends Error {
 }
 /**
  * Every reason a caller-side refusal can carry. ⛔ Each one answers `400`, which
- * puts it outside every 5xx monitor, so each one owes a dedicated Axiom monitor
- * of its own - the deployment's observability test reads this tuple and
- * fails when a reason has none. Adding a member here without adding a monitor is
- * the exact regression this tuple exists to make impossible: `#3275` reclassified
- * `v2_capability_required` from `503` to `400` and silently took the only alert
- * on a site-wide unpriceable-quote outage with it.
+ * puts it outside every 5xx monitor, so each one owes a dedicated monitor of its
+ * own; a host's observability check can read this tuple and fail when a reason
+ * has none. Adding a member here without adding a monitor is the regression this
+ * tuple exists to prevent: reclassifying `v2_capability_required` from `503` to
+ * `400` once silently removed the only alert on a site-wide unpriceable-quote
+ * outage.
  */
 export declare const PRICING_POLICY_REQUEST_REASONS: readonly ["v2_capability_required", "v2_visitor_id_required"];
 export type PricingPolicyRequestReason = (typeof PRICING_POLICY_REQUEST_REASONS)[number];
