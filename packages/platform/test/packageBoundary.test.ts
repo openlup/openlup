@@ -212,6 +212,7 @@ describe("package source boundary", () => {
       "promotions/promotionClaims.ts", "promotions/promotionClaimSweepPort.ts", "promotions/sql.ts",
       "communications/index.ts", "communications/contracts/index.ts", "http/webhookSignature.ts",
       "kernel/platformKernel.ts", "bff/dispatch.ts", "composition/composeBundle.ts", "composition/nodeHost.ts",
+      "inventory/index.ts", "inventory/contracts/index.ts", "inventory/schemas.ts", "inventory/ports.ts",
     ]));
   });
 

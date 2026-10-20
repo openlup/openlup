@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts"] as const;
+export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts", "inventory", "inventory/contracts"] as const;
 // identity, communications and promotions are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [

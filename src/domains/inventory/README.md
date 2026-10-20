@@ -10,7 +10,7 @@ Hidden stock/ATP/reservation control plane: stock ledger, available-to-promise, 
 ## Public surface (import cross-domain ONLY these)
 - `inventoryClient.ts` — hidden admin inventory BFF client.
 - `contracts.ts` — stock / ATP / reservation / subscription forecast contracts.
-- `ports.ts` — reservation + read ports.
+- `ports.ts` — named compatibility exports of `@openlup/platform/inventory` read/mutation ports and errors.
 - `atp.ts` — re-export shim over the core available-to-promise kernel.
 - `forecast.ts` — the pure demand-forecast helper, still local to this domain.
 
@@ -23,6 +23,10 @@ Hidden stock/ATP/reservation control plane: stock ledger, available-to-promise, 
   ports, client, and the ATP shim)
 - Server domain: `server/domains/inventory/inventoryHandlers.ts`
 - Managed persistence adapter: `server/adapters/managed/inventory/inventoryPort.ts`
+
+## Package boundary
+
+`@openlup/platform/inventory/contracts` owns explicit inventory DTOs with no runtime imports. The server entry owns stock/reservation/request schemas and read/mutation ports; its forecast response schema requires an injected stock-master provider validator, with no default. Browser validators remain local here and keep their exact wire constraints. The reference forecast response type remains derived from its local validator to retain its exact provider type. Future server composition must inject that same exact validator. ATP contracts and arithmetic remain in Core.
 
 ## ATP region configuration
 
