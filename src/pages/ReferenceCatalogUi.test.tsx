@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { hydrateRoot } from "react-dom/client";
 import { MemoryRouter, StaticRouter } from "react-router-dom";
@@ -33,6 +33,19 @@ it("hydrates a locale product deep link and follows its supplied builder link", 
   const builder = render(<MemoryRouter initialEntries={[localized.builderPath]}><ReferenceCatalogRoutes input={input} /></MemoryRouter>);
   expect(screen.getByRole("heading", { name: "Selection" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled(); builder.unmount();
+  const money = { amountMinor: 1000, currency: "XXX" };
+  for (const [delivery2DiscountBps, displayed] of [[1000, "10\u00a0%"], [1250, "12,5\u00a0%"], [1251, "12,51\u00a0%"]] as const) {
+    const quotedBuilder = render(<MemoryRouter initialEntries={[localized.builderPath]}><ReferenceCatalogRoutes input={{ ...input, builder: {
+      draftKey: `display-precision-${delivery2DiscountBps}`, continue: () => {},
+      quote: async () => ({
+        currency: "XXX", taxIncluded: true, lines: [], discounts: [], subtotalGross: money, discountTotalGross: { ...money, amountMinor: 0 }, totalGross: money, netTotal: money, taxTotal: { ...money, amountMinor: 0 },
+        acquisitionTerms: { schemaVersion: "subscription-acquisition.v1", revision: "terms-a", delivery2DiscountBps, initialDiscountBps: 2500, effectiveFrom: "2026-01-01T00:00:00Z", effectiveTo: null, sourcePromotionId: "source-a" },
+      }),
+    } }} /></MemoryRouter>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Quote" })); });
+    expect(quotedBuilder.container.querySelector("output")?.textContent).toContain(`Second delivery discount: ${displayed}`);
+    quotedBuilder.unmount();
+  }
 });
 
 it("shows authority-only lifecycle states and keeps unsupported, outage, unpublished and refusal distinct", () => {
