@@ -299,6 +299,15 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+C-compose adds no SQL or manifest entry. Its direct schema requirement names the
+full position-70 prerequisite, consent authority, existing outbox/receipt/control
+objects and all five native tables/used columns. The host independently observes
+the full installed ledger; object presence alone never substitutes for it.
+Native preference persistence uses the existing consent row plus the existing
+sync registration inside one owner-authority transaction. Repeated preferences
+reuse work for the current permission revision and binding; state transitions
+produce a new ordered event. Runtime effective-privilege refusals remain required.
+
 Native communications appends
 [`20261019200000_communications_native_operations.sql`](../../db/platform/migrations/20261019200000_communications_native_operations.sql)
 at position 70. Its five CREATE-only tables store network targets, immutable

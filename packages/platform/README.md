@@ -727,3 +727,20 @@ on success/failure and supplies no network/provider default. Existing managed
 HTTP cron/UI routes retain their existing composition. See the
 [B3 expectation inventory](../../docs/platform/plans/oss-m04-communications-triggers.md#b3-native-stores)
 and [real-PG witnesses](../../tests/postgres/communicationsNative.test.ts).
+
+C-compose extends the native delivery store with binding-scoped `findByMessageId`
+and bounded `listEvidence({limit})` (1–100). Existing observation/replay and polling
+methods retain their behavior. `registerPreference` on the native sync store
+commits an authoritative denied/suppressed permission and default-purpose sync
+work together; tester permission adds no marketing work. The trusted
+`registerNativeSyncWorkInTransaction` helper contains the same registration SQL
+used by `registerWork`; standalone input validation still precedes database entry.
+Sync transactions include the existing consent authority in their safe-effective-
+privilege prerequisite. Callers own the transaction and may not independently
+commit sidecar/rail effects. It grants no claim token or provider authority.
+
+Reference composition remains outside the package: actual installed factories,
+Core readiness, explicit provider ports and host-supplied schedules. Native
+readback and signed-token bridges do not promise managed frequency caps, legacy
+tester-source parity, a send-time fence or a full native network sender. The
+opt-in browser profile adds no npm entry or UI package export.

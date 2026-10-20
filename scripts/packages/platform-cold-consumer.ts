@@ -345,7 +345,7 @@ try {
 export function proveNativeCommunicationsOperations(consumer: string, connectionString: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { createPostgresDeliveryReconciliationPort,createPostgresCommunicationSyncStore,createPostgresNotificationRecipientsPort,createPostgresConsentEvaluator } from "@openlup/platform/communications";
+import { createPostgresDeliveryReconciliationPort,createPostgresCommunicationSyncStore,createPostgresNotificationRecipientsPort,createPostgresConsentEvaluator,createGuardedEmailTransport,guardEmailTransport,createInMemoryEmailTransport,runCommunicationSyncDispatch } from "@openlup/platform/communications";
 const env={connectionString:process.argv[2]},binding="cold-native";
 const rail=db=>({
   claimBatch: async input=>(await db.query("SELECT * FROM public.outbox_claim_batch($1,$2,$3,$4,$5)",[input.eventTypes,input.knownEventTypes,input.batchSize,input.visibilitySeconds,input.maxAttempts])).rows,
@@ -360,6 +360,8 @@ try {
   assert.equal(typeof registered.id,"string");
   assert.equal((await delivery.findFrozenSends({now:"2026-10-19T12:00:00Z",graceMinutes:10,limit:10}))[0]?.id,registered.id,"no-op store must refuse proof");
   assert.equal((await delivery.readEvidence(registered.id)).observedState,null,"acceptance is not delivery");
+  assert.deepEqual(await delivery.findByMessageId(target.messageId),{id:registered.id},"selected message lookup must reach stored evidence");
+  assert.equal((await delivery.listEvidence({limit:10})).some(row=>row.id===registered.id),true,"bounded evidence must include the actual target");
   await assert.rejects(()=>delivery.registerNetworkTarget({...target,sourceKey:"capture",messageId:"captured:1",evidence:"capture"}));
   await delivery.applyPolledEvent({sendId:registered.id,messageId:target.messageId,eventType:"delivered",eventAt:"2026-10-19T12:00:00Z",recipientEmail:target.recipientEmail});
   assert.equal((await delivery.readEvidence(registered.id)).observedState,"delivered");
@@ -380,6 +382,27 @@ try {
   const decision=await consent.evaluate({email:target.recipientEmail,purpose:"marketing_newsletter"});
   assert.equal(decision.allowed,false);assert.equal(typeof decision.decisionId,"string");
   assert.deepEqual(consent.guarantees,{managedFrequencyCaps:false,legacyContactTouching:false,sendTimeFence:false});
+  const message={from:"sender@example.invalid",to:"intended@example.invalid",subject:"Synthetic",html:"<p>Synthetic</p>"};
+  let effects=0;
+  const raw={providerKind:"synthetic-raw",send:async()=>{effects++;throw Error("raw adapter must refuse before effect");}};
+  assert.equal((await guardEmailTransport(raw).send(message)).outcome.ok,false);assert.equal(effects,0);
+  for(const providerKind of ["synthetic-a","synthetic-b"]){
+    const transport=createGuardedEmailTransport({providerKind,policy:intendedRecipient=>({mode:"sandbox_sink",reason:"synthetic_sink",intendedRecipient,recipient:"sink@example.invalid",credential:"synthetic",environmentTag:"non_production"}),send:async(selected,context)=>{
+      assert.equal(selected.to,"sink@example.invalid");assert.equal(context.intendedRecipient,message.to);assert.equal(context.environmentTag,"non_production");effects++;
+      return {outcome:{ok:true,resendId:"network:"+providerKind,httpStatus:202,providerError:null,aborted:false},providerResponse:{accepted:true}};
+    }});
+    const result=await guardEmailTransport(transport).send(message);
+    assert.equal(result.outcome.ok,true);assert.equal(result.outcome.egressMode,"sandbox_sink");
+    const acceptance=await delivery.registerNetworkTarget({...target,sourceKey:providerKind,messageId:result.outcome.resendId});
+    assert.equal((await delivery.readEvidence(acceptance.id)).observedState,null);
+  }
+  await createInMemoryEmailTransport().send(message);assert.equal(effects,2,"capture must not call the network sender");
+  let membershipEffects=0;
+  const selectedProvider={providerKind:"synthetic",capabilities:{subscribe:true,unsubscribe:true,suppress:true,unsuppress:false,doubleOptIn:false,emailChange:false,listMembership:false,webhookIdempotency:false,retryAfter:false},sync:async event=>{assert.equal(event.normalizedEmail,target.recipientEmail);membershipEffects++;return {status:"sent"};}};
+  await sync.registerWork({sourceKey:"cold:substitute",contactId:"synthetic-substitute",normalizedEmail:target.recipientEmail,eventType:"unsubscribe",purpose:"marketing_newsletter"});
+  assert.equal((await runCommunicationSyncDispatch({store:sync,provider:selectedProvider})).sent,1);
+  assert.equal((await runCommunicationSyncDispatch({store:sync,provider:selectedProvider})).checked,0);
+  assert.equal(membershipEffects,1);assert.equal((await consent.evaluate({email:target.recipientEmail,purpose:"marketing_newsletter"})).allowed,false,"provider settlement must not grant permission");
 } finally {await Promise.all([delivery.close(),sync.close(),consent.close(),directory.close()]);}
 `, [connectionString]);
 }

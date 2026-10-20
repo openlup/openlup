@@ -150,3 +150,8 @@ describe("resend-delivery-reconciliation cron", () => {
     expect(result.body).toMatchObject({ ok: true, skipped: true, reason: "lease_active" });
   });
 });
+it("selected native poll refuses missing native binding without managed fallback",async()=>{
+ const {factory}=fakeGateway(()=>({data:{},error:null}));
+ const result=await runResendDeliveryReconciliationCron(authedReq(),{...FULL_ENV,PLATFORM_BUNDLE:"node-postgres"},factory as never);
+ expect(result.status).toBe(503);expect(result.body.error).toBe("native_communications_binding_required");expect(factory).not.toHaveBeenCalled();
+});

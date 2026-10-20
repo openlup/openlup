@@ -12,5 +12,5 @@ it("closes a failed native operation and exposes no scheduler", async () => {
   const binding = createCommunicationsLifecycleBinding({ PLATFORM_BUNDLE: "node-postgres",DATABASE_URL: "injected" }, { binding: "synthetic",provider,operatorId: "verified-host",poolFactory: () => pool as never });
   await expect(binding.readDeliveryEvidence("synthetic")).rejects.toThrow("synthetic query refused");
   expect({ releases,closes }).toEqual({ releases: 1,closes: 1 });
-  expect(Object.keys(binding)).toEqual(["registerNetworkTarget","readDeliveryEvidence","reconcileDelivery","registerSyncWork","dispatchSync","withRecipients","evaluateConsent"]);
+  expect(Object.keys(binding)).toEqual(["registerNetworkTarget","findByMessageId","listDeliveryEvidence","applyObservation","readDeliveryEvidence","reconcileDelivery","registerSyncWork","dispatchSync","withRecipients","evaluateConsent"]);
 });

@@ -1,3 +1,4 @@
+import type { CommunicationsReferenceMount } from "./communications.js";
 import { readCustomerRouteEnv } from "../../bff/customers/shared.js";
 import { enforceDeploymentRoutePolicy } from "#deployment-route-policy";
 import { createReferenceBffDispatcher } from "../bffDispatch.js";
@@ -44,6 +45,7 @@ export type PublicReferenceServerOptions = {
   root?: string;
   distDir?: string;
   env?: NodeJS.ProcessEnv;
+  communications?: CommunicationsReferenceMount;
   identity?: ReferenceIdentityAdmission & { profile?: IdentityReferenceProfile; authOrigin?: string };
 };
 
@@ -121,7 +123,9 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
   const current = runtime(options);
   if (identityRuntime && identityRuntime.bundle !== (current.env.PLATFORM_BUNDLE ?? "node-supabase")) throw new Error("Identity candidate bundle does not match the reference host");
   const profileName = current.env.OPENLUP_REFERENCE_PROFILE;
-  if (profileName && !["subscription", "identity"].includes(profileName)) throw new Error("Unknown public reference profile");
+  if (profileName && !["subscription", "identity", "communications"].includes(profileName)) throw new Error("Unknown public reference profile");
+  const communications=profileName==="communications"?options.communications:undefined;
+  if(profileName==="communications"&&!communications)throw new Error("Communications reference requires startup admission");
   const identity = profileName === "identity" ? options.identity : undefined;
   if (profileName === "identity" && !identity?.profile) throw new Error("Identity reference requires composed routes and admission");
   if (identity && (identity.profile!.bundle !== current.env.PLATFORM_BUNDLE || identity.profile!.origin !== identityLocalOrigin(current.env.APP_BASE_URL ?? ""))) throw new Error("Identity composition does not match selected installation");
@@ -131,6 +135,25 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
   return createServer((request, res) => {
     const pathname = requestPath(request);
     if (!pathname) return response(res, 404, "Not found\n", { "content-type": "text/plain; charset=utf-8" });
+    if(communications&&(pathname.startsWith("/api/")||pathname===communications.page)) {
+      try{communications.admission.assertCurrent();}catch{return response(res,503,"Communications admission stale\n");}
+      if(request.headers.host!==new URL(communications.origin).host)return response(res,403,"Reference host mismatch\n");
+      const csp="default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; connect-src 'self'";
+      for(const [key,value] of Object.entries(SECURITY_HEADERS))res.setHeader(key,value);
+      res.setHeader("content-security-policy",csp);
+      if(pathname===communications.page){
+        if(!["GET","HEAD"].includes(request.method??""))return response(res,405,"Method not allowed\n");
+        const file=resolve(current.dist,"index.html");
+        if(!existsSync(file))return response(res,503,"Build the communications reference first\n");
+        const document=readFileSync(file,"utf8");
+        if(!document.includes('data-openlup-profile="communications"'))return response(res,503,"Build the communications reference first\n");
+        return response(res,200,document,{"content-type":"text/html; charset=utf-8","content-security-policy":csp},request.method==="HEAD");
+      }
+      if(!communications.admission.runtime.routes.some(route=>route.id===pathname))return response(res,404,"Not found\n");
+      if(request.headers.origin&&request.headers.origin!==communications.origin)return response(res,403,"Reference origin mismatch\n");
+      void adaptRequest(request,pathname,communications.rawStreamRoutes.includes(pathname),32768).then(req=>communications.admission.route(pathname,req,decorateResponse(res))).catch(()=>{if(!res.headersSent)response(res,503,"Communications unavailable\n");else res.destroy();});
+      return;
+    }
     if (identity && pathname.startsWith("/api/")) {
       const route = identityRuntime?.routes.find(entry => entry.route === pathname);
       const method = IDENTITY_ROUTES.get(pathname);
@@ -197,6 +220,7 @@ function createServerForCandidate(options: PublicReferenceServerOptions, identit
 }
 
 export function createPublicReferenceServer(options: PublicReferenceServerOptions = {}) {
+  if ((options.env ?? runtimeEnvironment).OPENLUP_REFERENCE_PROFILE === "communications") throw new Error("Communications profile requires startup admission");
   if ((options.env ?? runtimeEnvironment).OPENLUP_REFERENCE_PROFILE === "identity") throw new Error("Identity profile requires startup admission");
   return createServerForCandidate(options);
 }
@@ -208,6 +232,17 @@ export async function startPublicReferenceServer(options: PublicReferenceServerO
   port?: number;
   host?: string;
 } = {}) {
+  const communicationsSelected=(options.env??runtimeEnvironment).OPENLUP_REFERENCE_PROFILE==="communications";
+  if(communicationsSelected&&!options.communications)throw new Error("Communications reference requires startup admission");
+  if(options.communications){
+    if(!communicationsSelected||options.identity||options.outbox)throw new Error("Compose selected modules in one communications admission before listener");
+    options.communications.admission.assertCurrent();
+    if(options.communications.admission.runtime.bundle!==((options.env??runtimeEnvironment).PLATFORM_BUNDLE??"node-supabase"))throw new Error("Communications bundle mismatch");
+    if(options.host&&!["127.0.0.1","localhost","::1"].includes(options.host))throw new Error("Communications listener must be loopback");
+    const port=Number(new URL(options.communications.origin).port||"80");
+    if(options.port!==undefined&&options.port!==port)throw new Error("Communications listener must match origin");
+    if(options.communications.admission.runtime.schedules.length&&!options.bindSchedule)throw new Error("Communications schedule binding required before listener");
+  }
   if (options.outbox && (!options.outbox.admitted || !options.bindSchedule)) throw new Error("Public reference outbox candidate refused before listener");
   if ((options.env ?? runtimeEnvironment).OPENLUP_REFERENCE_PROFILE === "identity") {
     if (!options.identity?.profile) throw new Error("Identity reference composition required before listener");
@@ -236,10 +271,16 @@ export async function startPublicReferenceServer(options: PublicReferenceServerO
   const server = createServerForCandidate(options, options.identity?.runtime);
   const listen = () => new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(options.port ?? (options.identity?.profile ? Number(new URL(options.identity.profile!.origin).port || "80") : 8080), options.host ?? "127.0.0.1", () => { server.off("error", reject); resolve(); });
+    server.listen(options.port ?? (options.communications ? Number(new URL(options.communications.origin).port || "80") : options.identity?.profile ? Number(new URL(options.identity.profile!.origin).port || "80") : 8080), options.host ?? "127.0.0.1", () => { server.off("error", reject); resolve(); });
   });
   if (options.outbox?.admitted) await options.outbox.start({ listen, bind: options.bindSchedule! });
-  else await listen();
+  else {
+    if(options.communications){
+      const admission=options.communications.admission;admission.assertCurrent();
+      for(const schedule of admission.runtime.schedules)options.bindSchedule!(schedule.id,schedule.cadenceSeconds,()=>admission.run(schedule.id));
+    }
+    await listen();
+  }
   return server;
 }
 

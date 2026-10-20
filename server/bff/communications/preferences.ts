@@ -1,3 +1,5 @@
+import { readProcessEnvironment } from "../../_lib/observability/runtimeProvenance.js";
+import { resolveCommunicationPreferenceBinding } from "../../runtime/communications/preferenceBinding.js";
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
@@ -6,6 +8,15 @@ import { createSupabasePublicCommunicationPreferencesGateway } from "../../adapt
 
 async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method !== "POST") return sendMethodNotAllowed(res, ["POST"]);
+  const runtimeEnv=readProcessEnvironment();
+  if (runtimeEnv.PLATFORM_BUNDLE === "node-postgres") {
+    const payload = verifyCommunicationPreferenceToken(isRecord(req.body) && typeof req.body.token === "string" ? req.body.token : "", runtimeEnv.COMMUNICATION_PREFERENCES_TOKEN_SECRET ?? "");
+    if (!payload) return sendBffError(res,"BAD_REQUEST","Invalid or expired communication preference token");
+    try { const port=resolveCommunicationPreferenceBinding(runtimeEnv); const state=isRecord(req.body)&&req.body.state==="denied"?"denied":"suppressed";
+      sendBffSuccess(res,await port.updatePreference(payload,state));
+    } catch {sendBffError(res,"UPSTREAM_UNAVAILABLE","Communication preference write failed");}
+    return;
+  }
   const env = readEnv();
   if (!env) {
     sendBffError(res, "UPSTREAM_UNAVAILABLE", "Communication preferences are not configured");

@@ -1,3 +1,4 @@
+import { readProcessEnvironment } from "../server/_lib/observability/runtimeProvenance.js";
 /**
  * Public one-click unsubscribe, served by the application runtime.
  *
@@ -24,6 +25,7 @@
  * never the address or the token.
  */
 import type { VercelRequest, VercelResponse } from "../server/_lib/types/vercel.js";
+import { resolveCommunicationPreferenceBinding } from "../server/runtime/communications/preferenceBinding.js";
 import { createServiceRoleClient } from "../server/_lib/admin-domain/auth.js";
 import { verifyUnsubscribeToken } from "../src/domains/communications/unsubscribeToken.js";
 import type { CommunicationPurpose } from "../src/domains/communications/types.js";
@@ -246,6 +248,8 @@ export function createUnsubscribeRouteHandler(deps: UnsubscribeRouteDeps) {
 }
 
 function createRuntimeClient(): UnsubscribeClient {
+  const env=readProcessEnvironment();
+  if (env.PLATFORM_BUNDLE === "node-postgres") return resolveCommunicationPreferenceBinding(env).unsubscribeClient();
   const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) throw new Error("unsubscribe_datastore_not_configured");

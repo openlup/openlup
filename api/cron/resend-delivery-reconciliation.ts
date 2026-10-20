@@ -9,6 +9,7 @@ import { getResendEmail } from "../../server/infra/resend/resendEmailClient.js";
 import { resolveResendApiKey } from "../../server/infra/resend/resendApiKey.js";
 import { createSupabaseResendDeliveryReconciliationPort } from "../../server/adapters/supabase/communications/resendDeliveryReconciliation.js";
 import type { DataGatewayPort } from "../../src/domains/platform-runtime/ports.js";
+import { runNativeDeliveryReconciliationJob } from "../_cron/communicationDeliveryReconciliationJob.js";
 import { claimJobRun, finishJobRun } from "../_cron/platformJobRunner.js";
 
 export const config = { maxDuration: 60 };
@@ -66,6 +67,8 @@ export async function runResendDeliveryReconciliationCron(
   if (!apiKey) {
     return { status: 503, body: { ok: false, error: "resend_api_key_required" } };
   }
+
+  if (env.PLATFORM_BUNDLE === "node-postgres") return runNativeDeliveryReconciliationJob(env, JOB_NAME, resendId => getResendEmail({apiKey,resendId}));
 
   const gatewayEnv = readSupabaseDataGatewayEnv(env);
   if (!gatewayEnv) {

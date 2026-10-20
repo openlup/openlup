@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+- Compose selected native observation lookup/readback and atomic signed-token
+  refusal with existing-rail membership work. Add reference host admission,
+  supplied-clock bindings and distinct opt-in native operator evidence.
+
+Migration: Before C-compose, NativeDeliveryStore exposed only read-by-id and
+NativeCommunicationSyncStore exposed only standalone work registration. Custom
+implementations now provide `findByMessageId`, bounded `listEvidence`, and
+`registerPreference`; the provided PostgreSQL factories implement them. Native
+signed-token hosts supply explicit binding/provider identities and full catalogue
+admission; no default clock or native general sender is installed. Existing
+managed handlers and native observation/claim-token behavior remain unchanged.
+Native sync transactions now also require safe effective privileges on the
+existing consent table; invalid standalone work still refuses before database entry.
+
 - Add four native communications stores, explicit trusted network registration
   and evidence readback, and durable native consent decisions. Sync reuses the
   existing outbox rail; the reference binding is callable without activation.

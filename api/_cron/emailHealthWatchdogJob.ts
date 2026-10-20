@@ -116,6 +116,7 @@ export async function runEmailHealthWatchdogCron(
   env: Env = process.env,
   gatewayFactory: GatewayFactory = createSupabaseDataGateway,
   now: () => number = () => Date.now(),
+  nativeHealth?: () => Promise<Record<string,unknown>>,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   if (req.method !== "GET" && req.method !== "POST") {
     return { status: 405, body: { ok: false, error: "method_not_allowed" } };
@@ -125,6 +126,11 @@ export async function runEmailHealthWatchdogCron(
   }
   if (bearerToken(req) !== env.CRON_SECRET) {
     return { status: 401, body: { ok: false, error: "unauthorized" } };
+  }
+  if (env.PLATFORM_BUNDLE === "node-postgres") {
+    if(env.COMMERCE_EMAIL_HEALTH_WATCHDOG_ENABLED!=="true")return {status:200,body:{ok:true,skipped:true,reason:"email_health_watchdog_disabled"}};
+    if(!nativeHealth)return {status:503,body:{ok:false,error:"native_health_binding_required"}};
+    try{return {status:200,body:{ok:true,native:await nativeHealth()}};}catch{return {status:503,body:{ok:false,error:"native_health_unavailable"}};}
   }
   const runtimeReadiness = projectEmailRuntimeReadiness(env);
   const activeCustomerEmailFlows = activeCustomerEmailFlowFlags(env, {

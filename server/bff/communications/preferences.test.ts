@@ -28,3 +28,7 @@ function createResponse() {
   res.end.mockReturnValue(res);
   return res;
 }
+it("native bundle selection cannot bypass the ordinary public mutation policy",async()=>{
+ vi.stubEnv("PLATFORM_BUNDLE","node-postgres");
+ try{const {default:handler}=await import("./preferences.js");const res=createResponse();const touched=vi.fn();const req={method:"POST",headers:{},query:{}};Object.defineProperty(req,"body",{get:touched});await handler(req as never,res as never);expect(res.status).toHaveBeenCalledWith(503);expect(touched).not.toHaveBeenCalled();}finally{vi.unstubAllEnvs();}
+});
