@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -248,4 +248,34 @@ it("requires native scoped lookup and bounded evidence rather than accepting an 
  // This deliberately incompatible candidate has no composed lookup.
  expect(()=>proveNativeCommunicationsOperations(consumer,"postgresql://unused.invalid/synthetic")).toThrow();
  expect(readFileSync(path,"utf8")).not.toContain("findByMessageId");
+});
+
+function resendFixture(mode: "correct" | "extra-export" | "raw-bypass") {
+  const consumer = fixture(), packageRoot = join(consumer, "node_modules/@openlup/platform");
+  const metadata = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  metadata.exports["./communications/resend"] = "./communications/resend/index.js";
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify(metadata));
+  mkdirSync(join(packageRoot, "communications/resend"), { recursive: true });
+  for (const path of ["resend/index.js", "emailTransport.js", "emailEgress.js", "emailObservation.js", "deliveryReconciliation.js"]) {
+    copyFileSync(join(root, "packages/platform/dist/communications", path), join(packageRoot, "communications", path));
+  }
+  const path = join(packageRoot, "communications/resend/index.js");
+  if (mode === "extra-export") writeFileSync(path, readFileSync(path, "utf8") + "\nexport const unexpected = true;\n");
+  if (mode === "raw-bypass") {
+    const source = readFileSync(path, "utf8");
+    const changed = source.replace("return createGuardedEmailTransport({", "return ({").replace("policy: input.policy,", "")
+      .replace("send: (message, context) => postResendEmail(message, context,",
+        'send: message => postResendEmail(message, { mode: "sandbox_direct", reason: "synthetic_bypass", recipient: message.to, intendedRecipient: message.to, credential: "synthetic-bypass", environmentTag: "non_production" },');
+    expect(changed).not.toBe(source); writeFileSync(path, changed);
+  }
+  return consumer;
+}
+it("proves the installed Resend surface with no SDK/optional peers and only injected IO", () => {
+  const consumer = resendFixture("correct"); assertConsumerIsolation(consumer, root); proveResendConsumer(consumer);
+});
+it("refuses extra exports and raw bypass in the installed Resend adapter", () => {
+  for (const mode of ["extra-export", "raw-bypass"] as const) {
+    expect(() => proveResendConsumer(resendFixture(mode)), `I02 ${mode}: named invariant assertion`)
+      .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 exact three-export surface/s);
+  }
 });

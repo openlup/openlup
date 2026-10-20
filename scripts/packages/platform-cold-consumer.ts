@@ -12,7 +12,10 @@ import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 export const NON_ADAPTER_ENTRIES = ["shipping", "shipping/contracts", "http", "bff", "scheduler", "kernel", "composition", "catalog", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts"] as const;
 // identity, communications and promotions are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
-export const ADAPTER_ENTRIES = ["blob", "data", "migrations", "job-ledger", "identity", "communications", "promotions"] as const;
+export const ADAPTER_ENTRIES = [
+  "blob", "data", "migrations", "job-ledger", "identity", "communications", "promotions",
+  "communications/resend",
+] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -254,6 +257,47 @@ process.exit(0);
 }
 
 /** Runs from the installed artifact with optional peers physically absent. */
+/** Same installed-artifact harness; no vendor SDK, ambient fetch or provider access. */
+export function proveResendConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
+globalThis.fetch = () => { throw Error("ambient network forbidden"); };
+const adapter = await import("@openlup/platform/communications/resend");
+assert.deepEqual(Object.keys(adapter).sort(), ["createResendTransport", "createResendWebhookHandler", "runResendDeliveryReconciliation"], "I02 exact three-export surface");
+for (const value of Object.values(adapter)) assert.equal(typeof value, "function");
+for (const entry of ["communications", "communications/contracts"]) {
+ const neutral = await import("@openlup/platform/" + entry);
+ for (const name of Object.keys(adapter)) assert(!Object.hasOwn(neutral, name), "vendor leaked to neutral entry");
+}
+const message = {from:"sender@example.invalid",to:"reader@example.invalid",subject:"Synthetic",html:"<p>Notice</p>"};
+const calls = [];
+const fetch = async (url, options) => { calls.push({url,options}); return Response.json({id:"cold-message",last_event:"delivered",to:[message.to]}); };
+for (const mode of ["blocked","drop"]) {
+ const sender = adapter.createResendTransport({environmentTagName:"host_env",fetch,policy:()=>({mode,reason:"synthetic_policy"})});
+ const result = await sender.send(message);
+ assert.equal(calls.length,0,"I02 blocked/drop zero POST"); assert.equal(result.outcome.ok,mode === "drop","I02 blocked/drop exact outcome");
+}
+const sender = adapter.createResendTransport({environmentTagName:"host_env",fetch,policy:to=>({mode:"sandbox_sink",reason:"synthetic_sink",intendedRecipient:to,recipient:"sink@example.invalid",credential:"synthetic-selected",environmentTag:"non_production"})});
+assert.equal((await sender.send(message)).outcome.resendId,"cold-message");
+assert.equal(calls.length,1); assert.equal(calls[0].options.method,"POST");
+assert.equal(calls[0].options.headers.Authorization,"Bearer synthetic-selected");
+assert.equal(calls[0].options.headers["X-Original-Recipient"],message.to);
+assert.deepEqual(JSON.parse(calls[0].options.body).to,["sink@example.invalid"]);
+assert.deepEqual(JSON.parse(calls[0].options.body).tags,[{name:"host_env",value:"non_production"}]);
+const writes = [];
+const handler = adapter.createResendWebhookHandler({environmentTagName:"host_env",webhookSecret:"synthetic-hook",now:()=>1000,port:{findSend:async()=>({id:"send"}),applyObservation:async row=>writes.push(row),recordAttempt:async()=>{}}});
+const rawBody = '{ "type":"email.delivered", "data":{"email_id":"cold-message"} }';
+const signature = createHmac("sha256","synthetic-hook").update("hook.1000."+rawBody).digest("base64");
+assert.equal((await handler({rawBody,headers:{webhookId:"hook",timestamp:"1000",signature:"v1,"+signature}})).status,200);
+assert.equal(writes.length,1); assert.equal(writes[0].eventType,"email.delivered");
+assert.equal((await handler({rawBody,headers:{}})).status,401);
+const result = await adapter.runResendDeliveryReconciliation({apiKey:"synthetic-read",fetch,now:new Date(1000000).toISOString(),graceMinutes:45,limit:1,port:{findFrozenSends:async()=>[{id:"send",messageId:"cold-message"}],applyPolledEvent:async row=>writes.push(row),recordPollAttempt:async()=>{},recordSendNotFound:async()=>{throw Error("unexpected abandonment");}}});
+assert.equal(result.reconciled,1); assert.equal(writes.length,2); assert.equal(writes[1].eventType,"email.delivered");
+assert.deepEqual(calls.map(call=>call.options.method),["POST","GET"]);
+`);
+}
+
 export function proveCommunicationsConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
@@ -541,6 +585,28 @@ assert.deepEqual(catalog.parseCatalogActiveSkuSelection([" ITEM-1 "]), ["ITEM-1"
 assert.throws(() => catalog.parseCatalogActiveSkuSelection(["ITEM-1", " ITEM-1 "]), /catalog_active_sku_selection_invalid/);
 const handler = catalog.createCatalogDraftHandler({ store: {}, registry: {}, authorizeOperator: async () => null });
 assert.deepEqual(await handler.execute({}, {}), { outcome: "unauthorized", reason: "draft_operator_required" });
+// P4a adds application-only bundle exports; catalog stays a non-adapter until the native store moves.
+const composition = { code: "fixed-set", title: "Fixed set", fulfillmentMode: "virtual", currency: "XXX", targetPriceMinor: 2001, mode: "one_time",
+  components: [
+    { sku: "UNIT-A", title: "Unit A", productSlug: "unit-a", variantId: "variant-a", quantity: 2, isAddon: false, sortOrder: 0, referenceUnitPriceMinor: 1000 },
+    { sku: "UNIT-B", title: "Unit B", productSlug: "unit-b", variantId: "variant-b", quantity: 1, isAddon: true, sortOrder: 1, referenceUnitPriceMinor: 500 },
+  ] };
+assert.deepEqual(catalog.evaluateBundleComposition(composition.components), { ok: true, violations: [] });
+assert.deepEqual(catalog.evaluateBundleComposition([composition.components[0], composition.components[0]]), { ok: false, violations: ["DUPLICATE_COMPONENT"] });
+const { deriveBundleAvailability } = catalog.createBundleAvailability({
+  offerAvailabilityStatusFor: (value, threshold) => value === null ? "unknown" : value <= 0 ? "out_of_stock" : value <= threshold ? "low_stock" : "available",
+  offerAvailabilityReasonCode: status => status,
+});
+const { createBundleAvailabilityService } = catalog.createBundleAvailabilityServices({ deriveBundleAvailability });
+const rows = await createBundleAvailabilityService({ bundleCatalogReadPort: { listActiveBundleCompositions: async () => [composition] }, offerAvailabilityPort: catalog.createUnknownOfferAvailabilityPort() }).describeActiveBundles();
+assert.equal(rows[0].availability.sellableNow, null);
+const bundle = catalog.toSellableBundle(rows[0].composition, rows[0].availability);
+assert.deepEqual(bundle.components.map(line => line.lineSubtotalMinor), [801, 800, 400]);
+assert.equal(bundle.components.reduce((sum, line) => sum + line.lineSubtotalMinor, 0), 2001);
+for (const line of bundle.components) assert.equal(line.effectiveUnitPriceMinor * line.quantity, line.lineSubtotalMinor);
+assert.equal("createBundleAvailability" in contracts, false);
+assert.equal("createAdminBundleHandlers" in contracts, false);
+
 `);
     consumerNode(consumer, `
 import assert from "node:assert/strict";
@@ -639,6 +705,8 @@ for (const name of ["createDeliveryOptionsHandler", "createPickupPointSearchHand
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);
+    proveResendConsumer(consumer);
+    compileConsumer(consumer, ["communications/resend"], compiler);
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);

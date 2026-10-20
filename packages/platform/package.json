@@ -146,6 +146,11 @@
       "import": "./dist/promotions/contracts/index.js",
       "default": "./dist/promotions/contracts/index.js"
     },
+    "./communications/resend": {
+      "types": "./dist/communications/resend/index.d.ts",
+      "import": "./dist/communications/resend/index.js",
+      "default": "./dist/communications/resend/index.js"
+    },
     "./shipping": {
       "types": "./dist/shipping/index.d.ts",
       "import": "./dist/shipping/index.js",

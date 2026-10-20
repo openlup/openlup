@@ -166,7 +166,16 @@
         "test/catalog/resolvedSkuProjection.test.ts",
         "test/catalog/referenceCatalogHandler.test.ts",
         "test/catalog/catalogMediaResolution.test.ts",
-        "test/catalog/catalogLifecycleContracts.test.ts"
+        "test/catalog/catalogLifecycleContracts.test.ts",
+        "test/catalog/bundleRules.test.ts",
+        "test/catalog/bundleAvailability.test.ts",
+        "test/catalog/bundleAvailabilityService.test.ts",
+        "test/catalog/bundleCatalogReadPort.test.ts",
+        "test/catalog/sellableBundleHandler.test.ts",
+        "../../tests/platform/catalog/adminBundleHandler.test.ts",
+        "../../tests/platform/catalog/adminBundleReadHandler.test.ts",
+        "../../tests/platform/catalog/bundleCompositionConformance.test.ts",
+        "../../tests/platform/catalog/bundleBindings.test.ts"
       ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"
@@ -181,7 +190,8 @@
         "test/catalog/catalogProductTypeContracts.test.ts",
         "test/catalog/catalogDraftContracts.test.ts",
         "test/catalog/catalogMediaResolution.test.ts",
-        "test/catalog/catalogLifecycleContracts.test.ts"
+        "test/catalog/catalogLifecycleContracts.test.ts",
+        "../../tests/platform/catalog/bundleBindings.test.ts"
       ],
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"
@@ -267,6 +277,17 @@
       ],
       "entrypoint": "dist/promotions/contracts/index.d.ts",
       "snapshot": "api/promotions-contracts.api.md"
+    },
+    "./communications/resend": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/communications/resend/egress.test.ts",
+        "test/communications/resend/protocol.test.ts"
+      ],
+      "entrypoint": "dist/communications/resend/index.d.ts",
+      "snapshot": "api/communications-resend.api.md"
     },
     "./shipping": {
       "role": "capability",

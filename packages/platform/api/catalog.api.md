@@ -166,6 +166,1128 @@ export declare function rewriteBffRouterRequestUrl(req: HttpRequest): void;
 /** Shares exact-code parsing with detail reads; omission alone keeps discovery broad. */
 export declare function parseCatalogActiveSkuSelection(value: unknown): readonly string[] | undefined;
 ```
+## dist/catalog/adminBindings.d.ts
+
+```ts
+import type { ZodType } from "zod";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+/** Structural inputs to the reference admin kit. Authorization and parsing stay with the host. */
+export type AuthorizeAdmin = () => Promise<{
+    ok: true;
+    userId: string;
+    role: "admin" | "distributor";
+    isMachineActor: boolean;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    message: string;
+    identityCode?: string;
+}>;
+export interface AgentDomainQuerySpec<T> {
+    readonly key: string;
+    readonly requestSchema: ZodType<T, unknown>;
+    readonly gate: "read";
+    readonly allowedActorKinds: readonly ("human" | "machine")[];
+}
+export interface AgentDomainMutationSpec<T> extends Omit<AgentDomainQuerySpec<T>, "gate"> {
+    readonly gate: "mutation" | "activation";
+    readonly lifecycleMarkers: readonly ("LIFECYCLE_ACTIVATE" | "LIFECYCLE_DEACTIVATE" | "HARD_DELETE")[];
+}
+export type BundleMutationKey = "create" | "update" | "setComposition" | "setTargetPrice" | "archive" | "restore" | "cloneDraft" | "activate" | "deactivate";
+export type BundleQueryKey = "list" | "get" | "history" | "previewPrice";
+export interface BundleResponseSchema {
+    safeParse(value: unknown): {
+        success: boolean;
+        data?: unknown;
+    };
+}
+type Handler = (req: HttpRequest, res: HttpResponse) => Promise<void>;
+interface CommonOptions<T> {
+    authorizeAdmin: AuthorizeAdmin;
+    flagName?: string;
+    enabled?: boolean;
+    toResponse(value: T): Record<string, unknown>;
+    disabledMessage?: string;
+    invalidRequestMessage: string;
+    failureMessage: string;
+}
+export interface BundleAdminBindings {
+    bundleSpec: {
+        readonly mutations: Readonly<Record<string, AgentDomainMutationSpec<unknown>>>;
+        readonly queries?: Readonly<Record<string, AgentDomainQuerySpec<unknown>>>;
+        readonly mutationFlag: `${string}_MUTATIONS_ENABLED`;
+        readonly activationFlag: `${string}_ACTIVATION_ENABLED`;
+        readonly readFlag?: `${string}_READ_ENABLED`;
+    };
+    COMMERCE_CONTRACT_VERSION: "commerce.v0";
+    /** Passed by identity: instanceof and shared SQLSTATE mapping retain their owner. */
+    BundleRpcError: new (sqlstate: string | undefined, message: string) => Error & {
+        sqlstate: string | undefined;
+        pgMessage: string;
+    };
+    createAdminMutationHandler<Request, Result>(options: CommonOptions<Result> & {
+        mutation: AgentDomainMutationSpec<Request>;
+        invoke(actorId: string, request: Request): Promise<Result>;
+    }): Handler;
+    createAdminParameterizedReadHandler<Request, Result>(options: CommonOptions<Result> & {
+        query: AgentDomainQuerySpec<Request>;
+        load(actorId: string, request: Request): Promise<Result>;
+        responseSchema: BundleResponseSchema;
+        invalidResponseMessage: string;
+    }): Handler;
+    bundleHistoryResponseSchema: BundleResponseSchema;
+    getBundleResponseSchema: BundleResponseSchema;
+    listBundlesResponseSchema: BundleResponseSchema;
+    previewBundlePriceResponseSchema: BundleResponseSchema;
+}
+export {};
+```
+## dist/catalog/adminBundleHandler.d.ts
+
+```ts
+import type { BundleAdminBindings, AuthorizeAdmin } from "./adminBindings.js";
+import type { CompositionRulesPort } from "@openlup/core/bundle";
+import type { AdminBundleWritePort } from "./adminBundleWritePort.js";
+export interface AdminBundleHandlerDeps {
+    writePort: AdminBundleWritePort;
+    authorizeAdmin: AuthorizeAdmin;
+    mutationsEnabled: boolean;
+    activationEnabled: boolean;
+    /**
+     * The adopter's composition rules. Supplied only where a composition constraint
+     * can be attached; when absent, a non-empty envelope is stored unvalidated, which
+     * is what "the platform never interprets it" means.
+     */
+    compositionRules?: CompositionRulesPort;
+}
+export declare function createAdminBundleHandlers({ bundleSpec, BundleRpcError, COMMERCE_CONTRACT_VERSION, createAdminMutationHandler }: Pick<BundleAdminBindings, "bundleSpec" | "BundleRpcError" | "COMMERCE_CONTRACT_VERSION" | "createAdminMutationHandler">): {
+    createAdminBundleCreateDraftHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleUpdateDraftHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleSetCompositionHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleSetTargetPriceHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleArchiveHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleRestoreHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleCloneDraftHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleActivateHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleDeactivateHandler: (deps: AdminBundleHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+};
+```
+## dist/catalog/adminBundleReadHandler.d.ts
+
+```ts
+import type { BundleAdminBindings, AuthorizeAdmin } from "./adminBindings.js";
+import type { BundleAvailabilityService } from "./bundleAvailabilityService.js";
+import type { BundleCatalogReadPort } from "./bundleCatalogReadPort.js";
+export interface AdminBundleReadHandlerDeps {
+    readPort: BundleCatalogReadPort;
+    authorizeAdmin: AuthorizeAdmin;
+    readsEnabled: boolean;
+    /**
+     * Derived stock for the detail response. OPTIONAL, and absence is reported as a null
+     * `availability` rather than as an omitted field or a zero: a deployment with no stock rail has
+     * not counted anything, and saying so is different from saying nothing can ship.
+     */
+    availabilityService?: BundleAvailabilityService;
+}
+export declare function createAdminBundleReadHandlers({ bundleSpec, BundleRpcError, COMMERCE_CONTRACT_VERSION, createAdminParameterizedReadHandler, bundleHistoryResponseSchema, getBundleResponseSchema, listBundlesResponseSchema, previewBundlePriceResponseSchema }: Pick<BundleAdminBindings, "bundleSpec" | "BundleRpcError" | "COMMERCE_CONTRACT_VERSION" | "createAdminParameterizedReadHandler" | "bundleHistoryResponseSchema" | "getBundleResponseSchema" | "listBundlesResponseSchema" | "previewBundlePriceResponseSchema">): {
+    createAdminBundleListHandler: (deps: AdminBundleReadHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleGetHandler: (deps: AdminBundleReadHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundleHistoryHandler: (deps: AdminBundleReadHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+    createAdminBundlePreviewPriceHandler: (deps: AdminBundleReadHandlerDeps) => (req: import("../http/types.js").HttpRequest, res: import("../http/types.js").HttpResponse) => Promise<void>;
+};
+```
+## dist/catalog/adminBundleWritePort.d.ts
+
+```ts
+import type { CreateBundleDraftRequest, SetBundleCompositionRequest, SetBundleTargetPriceRequest, UpdateBundleDraftRequest } from "./contracts/bundleAdmin.js";
+import type { ActivateBundleRequest, ArchiveBundleRequest, CloneBundleDraftRequest, DeactivateBundleRequest, RestoreBundleRequest } from "./contracts/bundleAdmin.js";
+/**
+ * The semantic write port for the admin/agent bundle surface.
+ *
+ * This file names the CAPABILITY, never the storage. Both shipped adapters
+ * (`server/adapters/supabase/bundleAdminWriteStore.ts`,
+ * `server/adapters/postgres/bundleAdminWriteStore.ts`) implement exactly this
+ * interface and are proved against ONE shared scenario table, so a caller cannot
+ * tell them apart and neither can a rule. No data-client type, table name or
+ * routine name appears here; the domain layer opens no database handle of its own.
+ *
+ * Each method is one atomic operation on the security boundary: the boundary takes
+ * the actor explicitly, re-derives the actor kind rather than trusting the caller,
+ * writes its audit row in the same transaction, short-circuits a replayed
+ * idempotency key, and rolls a dry run back after validating it.
+ */
+/** Shape every bundle write returns. */
+export interface BundleWriteResult {
+    idempotent: boolean;
+    dryRun: boolean;
+    code?: string;
+    bundleId?: string;
+    componentCount?: number;
+}
+/** The opaque rules envelope a bundle carries, as the boundary hands it back. */
+export interface BundleCompositionConstraintEnvelope {
+    kind: string;
+    version: number;
+    data: Record<string, unknown>;
+}
+export interface AdminBundleWritePort {
+    /**
+     * Read the bundle's stored composition constraint. This is a WRITE-path read: the
+     * whole-set replace must be validated against the envelope the bundle already
+     * carries before anything is written, and the adopter's `CompositionRulesPort` is
+     * the only thing that can decide it. Returns `null` for an unconstrained bundle.
+     * Raises P0002 when the bundle does not exist.
+     */
+    loadCompositionConstraint(code: string): Promise<BundleCompositionConstraintEnvelope | null>;
+    /** Create or edit a DRAFT bundle from a full structural payload. */
+    upsertDraft(actorId: string, input: CreateBundleDraftRequest): Promise<BundleWriteResult>;
+    /**
+     * Partial structural edit of a DRAFT bundle. The upsert is full-payload, so this
+     * reads the current bundle, overlays the supplied fields and replays the merged
+     * payload through the same boundary. Raises NOT_FOUND (P0002) when the bundle
+     * does not exist.
+     */
+    updateDraft(actorId: string, input: UpdateBundleDraftRequest): Promise<BundleWriteResult>;
+    /**
+     * Replace the bill of materials as a WHOLE SET, atomically. Raises P0002 when the
+     * bundle or a named unit is missing, and P0001 when a unit is not sellable on its
+     * own or is priced in another currency.
+     */
+    setComposition(actorId: string, input: SetBundleCompositionRequest): Promise<BundleWriteResult>;
+    /**
+     * Append a new active target price and close the previous one. Never mutates an
+     * existing row. Raises P0001 when the target sits above the sum of the parts or
+     * below the floor every component must clear.
+     */
+    setTargetPrice(actorId: string, input: SetBundleTargetPriceRequest): Promise<BundleWriteResult>;
+    /** Remove a bundle from sale (status flip, never a hard delete). P0002 when missing. */
+    archive(actorId: string, input: ArchiveBundleRequest): Promise<BundleWriteResult>;
+    /**
+     * Restore an archived bundle to draft. Raises P0002 when missing and P0001
+     * (`restore_requires_archived`) when the bundle is not archived.
+     */
+    restore(actorId: string, input: RestoreBundleRequest): Promise<BundleWriteResult>;
+    /**
+     * Clone any bundle into a NEW draft under a new code, including its composition.
+     * Raises P0002 (`clone_source_not_found`) when the source is missing and P0001
+     * when the target code is already taken.
+     */
+    cloneDraft(actorId: string, input: CloneBundleDraftRequest): Promise<BundleWriteResult>;
+    /**
+     * Publish (draft -> active). HUMAN-ONLY: the boundary RAISEs 42501
+     * (`publish_requires_human`) for machine actors. Raises P0001 when the bundle has
+     * no composition or no active target price.
+     */
+    activate(actorId: string, input: ActivateBundleRequest): Promise<BundleWriteResult>;
+    /**
+     * Unpublish (active -> draft). HUMAN-ONLY, same 42501. Raises P0001
+     * (`deactivate_requires_active`) when the bundle is not live.
+     */
+    deactivate(actorId: string, input: DeactivateBundleRequest): Promise<BundleWriteResult>;
+}
+```
+## dist/catalog/bundleAvailability.d.ts
+
+```ts
+import type { BundleRuleBindings, BundleStockStatus as CommerceOfferAvailabilityStatus } from "./bundleBindings.js";
+/**
+ * Derived stock for a composed bundle — the pure kernel that folds many component
+ * stock figures into ONE answer about the bundle.
+ *
+ * A bundle is only as sellable as its scarcest counted part: with a bill of
+ * materials of `quantity` units per component, the number of whole bundles that
+ * can ship is `min(floor(component.sellableNow / component.quantity))`. That
+ * component is named (`limitingSku`) so an operator learns WHICH part is the
+ * constraint instead of only that there is one.
+ *
+ * FAIL TO UNKNOWN, NEVER GUESS. If any counted component's stock is itself
+ * unknown, the bundle's stock is unknown — not the minimum of the parts that did
+ * answer. Treating a missing figure as unlimited oversells; treating it as zero
+ * hides a sellable bundle. Both are decisions this module refuses to make, so it
+ * reports `unknown` and names the component whose figure is missing.
+ *
+ * The status ladder and the reason-code vocabulary are IMPORTED from the commerce
+ * domain's PUBLIC port seam rather than restated, so a bundle and a single unit
+ * can never disagree about what `low_stock` means.
+ *
+ * Pure: integer arithmetic, no clock, no randomness, no I/O.
+ */
+/**
+ * Threshold below which a bundle reads as `low_stock`. Deliberately far under the
+ * single-unit default: a bundle consumes several units per sale, so the same raw
+ * stock represents far fewer bundles and a unit-scale threshold would report
+ * nearly every bundle as low.
+ */
+export declare const DEFAULT_BUNDLE_LOW_STOCK_THRESHOLD = 3;
+/** A counted component answered with no figure at all. */
+export declare const BUNDLE_COMPONENT_STOCK_UNKNOWN = "component_stock_unknown";
+/** Nothing was counted — no non-add-on component to derive an answer from. */
+export declare const BUNDLE_COMPOSITION_EMPTY = "bundle_composition_empty";
+export interface BundleAvailabilityComponent {
+    sku: string;
+    /** Units of this component consumed by ONE bundle; always positive. */
+    quantity: number;
+    isAddon: boolean;
+    /** Sellable units of the component, or `null` when the figure is unknown. */
+    sellableNow: number | null;
+}
+export interface BundleAvailability {
+    /** Whole bundles that can ship now, or `null` when any counted part is unknown. */
+    sellableNow: number | null;
+    status: CommerceOfferAvailabilityStatus;
+    reasonCode: string;
+    /** The component that decided the answer; `null` only when nothing was counted. */
+    limitingSku: string | null;
+}
+export interface DeriveBundleAvailabilityInput {
+    components: readonly BundleAvailabilityComponent[];
+    lowStockThreshold?: number;
+    /**
+     * Add-ons are excluded by default: an add-on is priced into the bundle but
+     * optional in composition, so its stock must not make the bundle unsellable.
+     * An operator who sells the add-on as mandatory opts in here.
+     */
+    includeAddonsInStock?: boolean;
+}
+export declare function createBundleAvailability({ offerAvailabilityReasonCode, offerAvailabilityStatusFor }: Pick<BundleRuleBindings, "offerAvailabilityReasonCode" | "offerAvailabilityStatusFor">): {
+    deriveBundleAvailability: (input: DeriveBundleAvailabilityInput) => BundleAvailability;
+};
+```
+## dist/catalog/bundleAvailabilityService.d.ts
+
+```ts
+import type { BundleAvailability, BundleAvailabilityComponent } from "./bundleAvailability.js";
+import type { BundleStockPort as CommerceOfferAvailabilityPort } from "./bundleBindings.js";
+import type { ActiveBundleComposition, BundleCatalogReadPort } from "./bundleCatalogReadPort.js";
+/**
+ * Derived bundle stock, composed from the two ports that already know the halves:
+ * the bundle read port knows the bill of materials, the EXISTING commerce offer
+ * availability port knows what a unit's stock is. Nothing here re-derives stock and
+ * nothing here opens a database handle.
+ *
+ * ONE BATCHED CALL, ALWAYS. Every component of every bundle in the request is
+ * asked for in a single `getAvailability`, deduplicated by sku, because the
+ * underlying port answers a set in three queries — asking per bundle would turn a
+ * catalogue listing into a query storm and would let two bundles sharing a unit
+ * disagree about its stock inside one response.
+ *
+ * A sku the availability port does not answer for is a MISSING figure, not zero:
+ * it is folded in as `sellableNow: null`, so the pure kernel reports the bundle as
+ * unknown and names the component rather than quietly overselling or hiding it.
+ */
+export interface BundleAvailabilityServiceDeps {
+    bundleCatalogReadPort: BundleCatalogReadPort;
+    offerAvailabilityPort: CommerceOfferAvailabilityPort;
+    /** Threshold handed to the pure kernel; its own default applies when omitted. */
+    lowStockThreshold?: number;
+    includeAddonsInStock?: boolean;
+}
+export interface BundleAvailabilityRow {
+    composition: ActiveBundleComposition;
+    availability: BundleAvailability;
+    /**
+     * The EXACT rows the kernel was given, carried out again rather than recomputed.
+     *
+     * The bundle-level answer names one limiting component; an operator staring at a bundle that
+     * cannot ship needs to know how far off every OTHER component is too, so they can tell "order one
+     * more of this" from "this bundle is months away". These rows are the only place that figure
+     * exists — the kernel folds them into a single number and the sellable feed's components carry
+     * price, never stock. Returning them costs nothing here and is the alternative to a second stock
+     * derivation somewhere that can disagree with this one.
+     */
+    components: readonly BundleAvailabilityComponent[];
+}
+export interface BundleAvailabilityService {
+    /** Fold stock into a set of compositions the caller already holds. */
+    describeCompositions(compositions: readonly ActiveBundleComposition[]): Promise<BundleAvailabilityRow[]>;
+    /** Read the live sellable set and fold stock into it. */
+    describeActiveBundles(input?: {
+        currency?: string;
+    }): Promise<BundleAvailabilityRow[]>;
+}
+export declare function createBundleAvailabilityServices({ deriveBundleAvailability }: {
+    deriveBundleAvailability: (input: import("./bundleAvailability.js").DeriveBundleAvailabilityInput) => BundleAvailability;
+}): {
+    createBundleAvailabilityService: (deps: BundleAvailabilityServiceDeps) => BundleAvailabilityService;
+};
+/**
+ * The port to use where no stock source is bound at all.
+ *
+ * It answers every item with `sellableNow: null`, which the kernel reads as
+ * unknown — so a deployment without an inventory rail publishes bundles whose
+ * price is exact and whose stock is honestly unstated. The alternative, omitting
+ * the availability block, would have made "we do not know" indistinguishable from
+ * "we did not ask", and the alternative to THAT — defaulting to available —
+ * oversells on a deployment that never counted anything.
+ */
+export declare function createUnknownOfferAvailabilityPort(): CommerceOfferAvailabilityPort;
+```
+## dist/catalog/bundleBindings.d.ts
+
+```ts
+import type { BundleActorKind } from "./bundleRuleCodes.js";
+/** The host's normalized stock seam; no inventory implementation is owned here. */
+export type BundleStockStatus = "available" | "low_stock" | "out_of_stock" | "unknown";
+export interface BundleStockRequestItem {
+    sku: string;
+    productSlug: string;
+    variantId: string;
+    requestedQuantity: number;
+    checkoutMode: "one_time" | "subscription";
+}
+export interface BundleStockAvailability {
+    sku: string;
+    productSlug: string;
+    variantId: string;
+    status: BundleStockStatus;
+    visibleInConfigurator: boolean;
+    sellableNow: number | null;
+    reasonCode: string;
+    source: string;
+}
+export interface BundleStockPort {
+    getAvailability(input: {
+        items: readonly BundleStockRequestItem[];
+    }): Promise<BundleStockAvailability[]>;
+}
+export interface BundleRuleBindings {
+    assertActivateNotMachineActor(input: {
+        operation: string;
+        actorKind: BundleActorKind;
+    }): "DRAFT_ONLY_FOR_MACHINE" | null;
+    offerAvailabilityStatusFor(sellableNow: number | null, lowStockThreshold?: number): BundleStockStatus;
+    offerAvailabilityReasonCode(status: BundleStockStatus): string;
+}
+```
+## dist/catalog/bundleCatalogReadPort.d.ts
+
+```ts
+/**
+ * The semantic READ port for bundles.
+ *
+ * This file names the CAPABILITY, never the storage: no table, no routine, no
+ * data-client type and no vendor appears here, and the domain layer opens no
+ * database handle of its own. Both shipped adapters — the two
+ * `bundleCatalogStore.ts` modules under `server/adapters/` — implement exactly this
+ * interface and are proved against ONE shared scenario table, so a caller cannot
+ * tell them apart. It is the same shape the write port
+ * (`adminBundleWritePort.ts`) established in the previous wave.
+ *
+ * Reads are plain SELECTs rather than security-definer routines: the write
+ * boundary is where authority lives, and a read that re-implemented it would be a
+ * second place for the same rules to be written down. The admin surface reads the
+ * whole lifecycle (draft, active, archived); the sellable feed asks a separate
+ * question and gets only what is live.
+ *
+ * COMPONENT PRICES ARE RESOLVED, NOT STORED. A bundle stores one target price for
+ * the whole set; a component's REFERENCE unit price is whatever the selected
+ * price list says today. The adapters therefore join the catalogue and the price
+ * list themselves, and hand back a resolved figure (or `null` when the list
+ * prices nothing for that unit) so the allocator upstream never re-reads storage.
+ */
+/**
+ * A read that FAILED, as opposed to a read that found nothing.
+ *
+ * Both adapters raise this rather than returning an empty page, because the two
+ * outcomes are opposite: an empty catalogue is a fact a storefront may cache and
+ * show, and a failed query is not. The class lives on the port so neither chain
+ * owns the distinction — and so this file carries the executable line the changed-
+ * runtime coverage lane requires of every `server/**` module.
+ */
+export declare class BundleCatalogReadError extends Error {
+    constructor(message: string);
+}
+/** Which lifecycle rows an admin list asks for. `all` is the admin default. */
+export type BundleListStatusFilter = "draft" | "active" | "archived" | "all";
+export interface ListBundlesInput {
+    status: BundleListStatusFilter;
+    /** Free-text match over code and title; absent means no narrowing. */
+    query?: string;
+    limit: number;
+    offset: number;
+}
+export interface BundleSummary {
+    code: string;
+    title: string;
+    status: string;
+    fulfillmentMode: string;
+    componentCount: number;
+    hasActiveTargetPrice: boolean;
+    updatedAt: string;
+}
+export interface ListBundlesResult {
+    bundles: BundleSummary[];
+    total: number;
+}
+/**
+ * One line of the bill of materials, already joined to the catalogue.
+ *
+ * `productSlug` and `variantId` are carried because the availability port
+ * addresses stock by all three coordinates; a caller that had only the sku would
+ * have to re-open the catalogue to ask about stock, which is exactly the
+ * round-trip this DTO exists to remove.
+ */
+export interface BundleComponentRow {
+    sku: string;
+    title: string | null;
+    productSlug: string;
+    variantId: string;
+    quantity: number;
+    isAddon: boolean;
+    sortOrder: number;
+    /** Resolved from the selected price list; `null` when it prices no such unit. */
+    referenceUnitPriceMinor: number | null;
+}
+export interface BundleTargetPriceRow {
+    mode: string;
+    targetPriceMinor: number;
+    currency: string;
+    amountKind: string;
+    active: boolean;
+    validFrom: string;
+    validTo: string | null;
+}
+export interface BundleDetail extends BundleSummary {
+    /** The opaque `{kind, version, data}` envelope; `null` for an unconstrained bundle. */
+    compositionConstraint: {
+        kind: string;
+        version: number;
+        data: Record<string, unknown>;
+    } | null;
+    metadata: Record<string, unknown>;
+    components: BundleComponentRow[];
+    prices: BundleTargetPriceRow[];
+    /** The currency whose list resolved `referenceUnitPriceMinor`; `null` if none did. */
+    resolvedCurrency: string | null;
+    /**
+     * The price list those reference figures came from. Carried because a price
+     * preview has to name the list it priced against — an amount without the list
+     * that gave it meaning is not reproducible.
+     */
+    resolvedPriceListId: string | null;
+}
+export interface GetBundleInput {
+    code: string;
+    /**
+     * Price the components against THIS currency's active list. Omitted means "the
+     * list this bundle's own active target price is written into", which is the
+     * only currency an operator has actually chosen for it.
+     */
+    currency?: string;
+    /** Narrow the target price whose list is selected; omitted means any mode. */
+    mode?: string;
+}
+/**
+ * One live, sellable bundle: active status, an active target price, and its
+ * components priced in that price's own currency. This is the feed's row, and it
+ * is deliberately a different question from `getBundle` — the storefront must
+ * never be able to see a draft by asking the read port nicely.
+ */
+export interface ActiveBundleComposition {
+    code: string;
+    title: string;
+    fulfillmentMode: string;
+    currency: string;
+    targetPriceMinor: number;
+    mode: string;
+    components: BundleComponentRow[];
+}
+export interface BundleHistoryEvent {
+    id: string;
+    action: string;
+    actorKind: string | null;
+    actorEmail: string | null;
+    entityId: string | null;
+    oldValue: unknown;
+    newValue: unknown;
+    occurredAt: string;
+}
+export interface BundleHistoryInput {
+    code: string;
+    limit: number;
+    offset: number;
+}
+export interface BundleHistoryResult {
+    events: BundleHistoryEvent[];
+    total: number;
+}
+export interface BundleCatalogReadPort {
+    /** Admin list across the whole lifecycle, newest-agnostic and code-ordered. */
+    listBundles(input: ListBundlesInput): Promise<ListBundlesResult>;
+    /** Full admin detail, or `null` when no bundle carries that code. */
+    getBundle(input: GetBundleInput): Promise<BundleDetail | null>;
+    /**
+     * Every bundle a storefront may sell right now. Never returns a draft or an
+     * archived bundle, and never a bundle without an active target price.
+     */
+    listActiveBundleCompositions(input?: {
+        currency?: string;
+    }): Promise<ActiveBundleComposition[]>;
+    /**
+     * The operator trail for one bundle. The two chains answer from different
+     * ledgers — a managed audit table and the platform's neutral write-event
+     * relation — which is why this is a port method rather than a shared query.
+     */
+    listBundleHistory(input: BundleHistoryInput): Promise<BundleHistoryResult>;
+}
+```
+## dist/catalog/bundleRuleCodes.d.ts
+
+```ts
+import type { BundleAllocationFailureCode } from "@openlup/core/pricing";
+/**
+ * Bundle write rules — the named, enforced invariants of the agent-operable
+ * bundle write path. These codes are the single vocabulary shared by the request
+ * contracts, the pure rule predicates (`bundleRules.ts`), the service-role write
+ * routines (which RAISE them) and the over-the-wire error taxonomy.
+ *
+ * The catalog domain is the reference for this shape
+ * (`src/domains/commerce/catalogRuleCodes.ts`); the lifecycle subset is expressed
+ * through the generic kit in `src/lib/agent-domain/`, and the codes stay here as
+ * this domain's registry.
+ */
+export declare const BUNDLE_RULE_CODES: readonly ["DRAFT_ONLY_FOR_MACHINE", "MIN_COMPONENTS", "ADDON_ONLY_COMPOSITION", "DUPLICATE_COMPONENT", "CODE_TAKEN", "COMPONENT_NOT_FOUND", "COMPONENT_NOT_SELLABLE", "COMPONENT_CURRENCY_MISMATCH", "TARGET_ABOVE_COMPONENT_SUM", "TARGET_BELOW_FLOOR", "PRICE_REQUIRED_TO_SELL", "COMPOSITION_REQUIRED_TO_SELL", "APPEND_ONLY_PRICE", "NO_HARD_DELETE", "RESTORE_REQUIRES_ARCHIVED", "DEACTIVATE_REQUIRES_ACTIVE", "FULFILLMENT_MODE_UNSUPPORTED", "CONSTRAINT_VALIDATION_FAILED", "CLONE_SOURCE_NOT_FOUND"];
+export type BundleRuleCode = (typeof BUNDLE_RULE_CODES)[number];
+/**
+ * The two target-price codes are NOT re-derived here — they are the kernel
+ * allocator's own failure vocabulary, projected onto this domain's registry.
+ *
+ * Declared as an exhaustive `Record` over `BundleAllocationFailureCode` on
+ * purpose: when `@openlup/core/pricing` learns a new failure code, this object
+ * stops compiling until the domain decides which rule it is. `REFERENCE_TOTAL_ZERO`
+ * means the composition weighed nothing, which is the same condition
+ * `MIN_COMPONENTS` names from the request side.
+ */
+export declare const BUNDLE_ALLOCATION_RULE_CODE: Record<BundleAllocationFailureCode, BundleRuleCode>;
+/**
+ * Which rules are decidable from the request alone (pure, pre-flight) and which
+ * are state-dependent and authoritatively enforced by the write routine. This
+ * documents intent and keeps the handler honest about what it can decide before
+ * the write. `CONSTRAINT_VALIDATION_FAILED` is `port`: it is decided by the
+ * injected `CompositionRulesPort`, which is neither the request nor the database.
+ */
+export declare const BUNDLE_RULE_ENFORCEMENT: Record<BundleRuleCode, "request" | "port" | "rpc">;
+export type BundleActorKind = "human" | "machine";
+export type BundleWriteOperation = "create_draft" | "update_draft" | "set_composition" | "set_target_price" | "archive" | "restore" | "clone_draft" | "activate" | "deactivate";
+/** The domain's rule result, projected from the generic kit `RuleResult`. */
+export type BundleRuleResult = {
+    ok: boolean;
+    violations: BundleRuleCode[];
+};
+```
+## dist/catalog/bundleRules.d.ts
+
+```ts
+import type { BundleComponentInput } from "@openlup/core/pricing";
+import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
+import type { BundleRuleBindings } from "./bundleBindings.js";
+import { type BundleActorKind, type BundleRuleResult } from "./bundleRuleCodes.js";
+/**
+ * Pure, request-checkable bundle write rules.
+ *
+ * Only what is decidable from the request alone lives here. The state-dependent
+ * rules (code uniqueness, component existence/sellability/currency, the target
+ * price against real component prices, the activation preconditions, append-only
+ * pricing, archive-not-delete) are authoritatively enforced by the service-role
+ * write routines; this layer never duplicates their decision, it only fast-fails
+ * the cases a confused or compromised caller can be refused on cheaply. The
+ * routine re-derives everything and RAISEs regardless — defense in depth, not the
+ * boundary.
+ */
+/** The composition shape the request-layer rules can reason about. */
+export interface BundleCompositionEntry {
+    readonly sku: string;
+    readonly quantity: number;
+    readonly isAddon: boolean;
+}
+/** The only fulfillment mode with a runtime. The column admits more; this does not. */
+export declare const SUPPORTED_BUNDLE_FULFILLMENT_MODES: readonly ["virtual"];
+export type SupportedBundleFulfillmentMode = (typeof SUPPORTED_BUNDLE_FULFILLMENT_MODES)[number];
+/**
+ * The lifecycle/actor gate every operation passes. Machine actors are confined to
+ * drafts: they may compose, price, archive, restore and clone, but neither
+ * activate nor deactivate.
+ */
+export declare function createBundleWriteRules({ assertActivateNotMachineActor }: Pick<BundleRuleBindings, "assertActivateNotMachineActor">): {
+    evaluateBundleWriteRules: (input: {
+        operation: string;
+        actorKind: BundleActorKind;
+    }) => BundleRuleResult;
+};
+/**
+ * Whole-set composition rules, decidable from the replacement set alone: it must
+ * carry at least one entry, at least one entry that is not an add-on, and no unit
+ * twice (multiplicity is the quantity, never a repeated row).
+ */
+export declare function evaluateBundleComposition(components: readonly BundleCompositionEntry[]): BundleRuleResult;
+/** The runtime refusal of every fulfillment mode the stored column admits but no code honours. */
+export declare function evaluateBundleFulfillmentMode(mode: string): BundleRuleResult;
+/**
+ * Project the kernel allocator's decision onto this domain's rule vocabulary.
+ *
+ * The allocator (`@openlup/core/pricing`) owns the arithmetic and the two
+ * refusals a target price can earn; this maps its failure code through the
+ * exhaustive `BUNDLE_ALLOCATION_RULE_CODE` table so the codes cannot drift apart.
+ * It is pure: the caller supplies the component reference prices it already holds.
+ * The authority for a committed write remains the write routine, which holds the
+ * live prices.
+ */
+export declare function evaluateBundleTargetPrice(input: {
+    components: readonly BundleComponentInput[];
+    targetPriceMinor: number;
+    minimumUnitPayableMinor?: number;
+}): BundleRuleResult;
+/** An empty envelope means "unconstrained"; there is nothing for the port to decide. */
+export declare function isEmptyCompositionConstraint(constraint: CompositionConstraint | null | undefined): boolean;
+/**
+ * Delegate a non-empty composition constraint to the injected rules port. The
+ * platform stores the envelope and never interprets it, so this domain does not
+ * either: it asks the adopter's port and reports the refusal under one code.
+ */
+export declare function evaluateBundleCompositionConstraint(port: CompositionRulesPort | undefined, input: {
+    readonly components: readonly BundleCompositionEntry[];
+    readonly constraint: CompositionConstraint | null | undefined;
+}): Promise<BundleRuleResult>;
+```
+## dist/catalog/contracts/bundleAdmin.d.ts
+
+```ts
+/** Plain bundle transport DTOs. The host owns parsing, defaults and wire-version values. */
+export type CreateBundleDraftRequest = {
+    bundle: {
+        code: string;
+        title: string;
+        fulfillmentMode: "virtual" | "kitted";
+        compositionConstraint?: {
+            kind: string;
+            version: number;
+            data: Record<string, unknown>;
+        } | undefined;
+        metadata?: Record<string, unknown> | undefined;
+    };
+    mode: "commit" | "dry_run";
+    idempotencyKey?: string | undefined;
+};
+export type CreateBundleDraftResponse = {
+    code: string;
+    bundleId: string;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+export type UpdateBundleDraftRequest = {
+    code: string;
+    updates: {
+        title?: string | undefined;
+        fulfillmentMode?: "virtual" | "kitted" | undefined;
+        compositionConstraint?: {
+            kind: string;
+            version: number;
+            data: Record<string, unknown>;
+        } | undefined;
+        metadata?: Record<string, unknown> | undefined;
+    };
+    mode: "commit" | "dry_run";
+    idempotencyKey?: string | undefined;
+};
+export type UpdateBundleDraftResponse = {
+    code: string;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+export type BundleComponent = {
+    sku: string;
+    quantity: number;
+    isAddon: boolean;
+    sortOrder: number;
+};
+export type SetBundleCompositionRequest = {
+    code: string;
+    components: {
+        sku: string;
+        quantity: number;
+        isAddon: boolean;
+        sortOrder: number;
+    }[];
+    mode: "commit" | "dry_run";
+    idempotencyKey?: string | undefined;
+};
+export type SetBundleCompositionResponse = {
+    code: string;
+    componentCount: number;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+export type SetBundleTargetPriceRequest = {
+    code: string;
+    price: {
+        mode: "any" | "one_time" | "subscription";
+        targetPriceMinor: number;
+        currency: string;
+        amountKind: "gross" | "net";
+    };
+    mode: "commit" | "dry_run";
+    idempotencyKey?: string | undefined;
+};
+export type SetBundleTargetPriceResponse = {
+    code: string;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+export type ArchiveBundleRequest = {
+    code: string;
+    mode: "commit" | "dry_run";
+    idempotencyKey?: string | undefined;
+};
+export type ArchiveBundleResponse = {
+    code: string;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+export type RestoreBundleRequest = {
+    code: string;
+    mode: "commit" | "dry_run";
+    idempotencyKey?: string | undefined;
+};
+export type RestoreBundleResponse = {
+    code: string;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+export type CloneBundleDraftRequest = {
+    sourceCode: string;
+    code: string;
+    mode: "commit" | "dry_run";
+    title?: string | undefined;
+    idempotencyKey?: string | undefined;
+};
+export type CloneBundleDraftResponse = {
+    code: string;
+    bundleId: string;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+export type ActivateBundleRequest = {
+    code: string;
+    mode: "commit" | "dry_run";
+    idempotencyKey?: string | undefined;
+};
+export type ActivateBundleResponse = {
+    code: string;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+export type DeactivateBundleRequest = {
+    code: string;
+    mode: "commit" | "dry_run";
+    idempotencyKey?: string | undefined;
+};
+export type DeactivateBundleResponse = {
+    code: string;
+    contractVersion: "commerce.v0";
+    dryRun: boolean;
+    idempotent: boolean;
+};
+```
+## dist/catalog/contracts/bundleAvailability.d.ts
+
+```ts
+/** Plain bundle transport DTOs. The host owns parsing, defaults and wire-version values. */
+export type SellableBundle = {
+    code: string;
+    title: string;
+    fulfillmentMode: string;
+    price: {
+        amountMinor: number;
+        currency: string;
+    };
+    components: {
+        sku: string;
+        quantity: number;
+        effectiveUnitPriceMinor: number;
+        lineSubtotalMinor: number;
+        discountBps: number;
+    }[];
+    availability: {
+        status: "unknown" | "available" | "low_stock" | "out_of_stock";
+        sellableNow: number | null;
+        limitingSku: string | null;
+        reasonCode: string;
+    };
+};
+export type SellableBundleComponent = {
+    sku: string;
+    quantity: number;
+    effectiveUnitPriceMinor: number;
+    lineSubtotalMinor: number;
+    discountBps: number;
+};
+export type SellableBundleAvailability = {
+    status: "unknown" | "available" | "low_stock" | "out_of_stock";
+    sellableNow: number | null;
+    limitingSku: string | null;
+    reasonCode: string;
+};
+export type SellableBundleListResponse = {
+    contractVersion: "catalog.sellable-bundle.v1";
+    bundles: {
+        code: string;
+        title: string;
+        fulfillmentMode: string;
+        price: {
+            amountMinor: number;
+            currency: string;
+        };
+        components: {
+            sku: string;
+            quantity: number;
+            effectiveUnitPriceMinor: number;
+            lineSubtotalMinor: number;
+            discountBps: number;
+        }[];
+        availability: {
+            status: "unknown" | "available" | "low_stock" | "out_of_stock";
+            sellableNow: number | null;
+            limitingSku: string | null;
+            reasonCode: string;
+        };
+    }[];
+};
+```
+## dist/catalog/contracts/bundleRead.d.ts
+
+```ts
+/** Plain bundle transport DTOs. The host owns parsing, defaults and wire-version values. */
+export type ListBundlesRequest = {
+    limit: number;
+    offset: number;
+    status: "draft" | "active" | "archived" | "all";
+    query?: string | undefined;
+};
+export type ListBundlesResponse = {
+    bundles: {
+        code: string;
+        title: string;
+        status: string;
+        fulfillmentMode: string;
+        componentCount: number;
+        hasActiveTargetPrice: boolean;
+        updatedAt: string;
+    }[];
+    total: number;
+    contractVersion: "commerce.v0";
+};
+export type BundleSummaryView = {
+    code: string;
+    title: string;
+    status: string;
+    fulfillmentMode: string;
+    componentCount: number;
+    hasActiveTargetPrice: boolean;
+    updatedAt: string;
+};
+export type GetBundleRequest = {
+    code: string;
+    currency?: string | undefined;
+    mode?: "any" | "one_time" | "subscription" | undefined;
+};
+export type GetBundleResponse = {
+    bundle: {
+        code: string;
+        title: string;
+        status: string;
+        fulfillmentMode: string;
+        componentCount: number;
+        hasActiveTargetPrice: boolean;
+        updatedAt: string;
+        compositionConstraint: {
+            kind: string;
+            version: number;
+            data: Record<string, unknown>;
+        } | null;
+        metadata: Record<string, unknown>;
+        components: {
+            sku: string;
+            title: string | null;
+            productSlug: string;
+            quantity: number;
+            isAddon: boolean;
+            sortOrder: number;
+            referenceUnitPriceMinor: number | null;
+        }[];
+        prices: {
+            mode: string;
+            targetPriceMinor: number;
+            currency: string;
+            amountKind: string;
+            active: boolean;
+            validFrom: string;
+            validTo: string | null;
+        }[];
+        resolvedCurrency: string | null;
+        availability: {
+            sellableNow: number | null;
+            status: string;
+            reasonCode: string;
+            limitingSku: string | null;
+            components: {
+                sku: string;
+                quantity: number;
+                isAddon: boolean;
+                sellableNow: number | null;
+            }[];
+        } | null;
+    };
+    contractVersion: "commerce.v0";
+};
+export type BundleDetailView = {
+    code: string;
+    title: string;
+    status: string;
+    fulfillmentMode: string;
+    componentCount: number;
+    hasActiveTargetPrice: boolean;
+    updatedAt: string;
+    compositionConstraint: {
+        kind: string;
+        version: number;
+        data: Record<string, unknown>;
+    } | null;
+    metadata: Record<string, unknown>;
+    components: {
+        sku: string;
+        title: string | null;
+        productSlug: string;
+        quantity: number;
+        isAddon: boolean;
+        sortOrder: number;
+        referenceUnitPriceMinor: number | null;
+    }[];
+    prices: {
+        mode: string;
+        targetPriceMinor: number;
+        currency: string;
+        amountKind: string;
+        active: boolean;
+        validFrom: string;
+        validTo: string | null;
+    }[];
+    resolvedCurrency: string | null;
+    availability: {
+        sellableNow: number | null;
+        status: string;
+        reasonCode: string;
+        limitingSku: string | null;
+        components: {
+            sku: string;
+            quantity: number;
+            isAddon: boolean;
+            sellableNow: number | null;
+        }[];
+    } | null;
+};
+export type BundleAvailabilityView = {
+    sellableNow: number | null;
+    status: string;
+    reasonCode: string;
+    limitingSku: string | null;
+    components: {
+        sku: string;
+        quantity: number;
+        isAddon: boolean;
+        sellableNow: number | null;
+    }[];
+};
+export type BundleHistoryRequest = {
+    limit: number;
+    offset: number;
+    code: string;
+};
+export type BundleHistoryResponse = {
+    events: {
+        id: string;
+        action: string;
+        actorKind: string | null;
+        actorEmail: string | null;
+        entityId: string | null;
+        oldValue: unknown;
+        newValue: unknown;
+        occurredAt: string;
+    }[];
+    total: number;
+    contractVersion: "commerce.v0";
+};
+export type PreviewBundlePriceRequest = {
+    code: string;
+    currency?: string | undefined;
+    mode?: "any" | "one_time" | "subscription" | undefined;
+    targetPriceMinor?: number | undefined;
+};
+export type PreviewBundlePriceResponse = {
+    preview: {
+        bundleCode: string;
+        priceListId: string;
+        mode: string;
+        currency: string;
+        referenceTotalMinor: number;
+        targetPriceMinor: number;
+        discountTotalMinor: number;
+        discountBps: number;
+        floorApplied: boolean;
+        componentTargets: {
+            sku: string;
+            quantity: number;
+            referenceUnitPriceMinor: number;
+            referenceSubtotalMinor: number;
+            targetSubtotalMinor: number;
+            discountAllocatedMinor: number;
+            discountBps: number;
+            hasSplitPricing: boolean;
+        }[];
+        allocatedLines: {
+            sku: string;
+            quantity: number;
+            effectiveUnitPriceMinor: number;
+            lineSubtotalMinor: number;
+        }[];
+    };
+    contractVersion: "commerce.v0";
+};
+export type BundlePricePreview = {
+    bundleCode: string;
+    priceListId: string;
+    mode: string;
+    currency: string;
+    referenceTotalMinor: number;
+    targetPriceMinor: number;
+    discountTotalMinor: number;
+    discountBps: number;
+    floorApplied: boolean;
+    componentTargets: {
+        sku: string;
+        quantity: number;
+        referenceUnitPriceMinor: number;
+        referenceSubtotalMinor: number;
+        targetSubtotalMinor: number;
+        discountAllocatedMinor: number;
+        discountBps: number;
+        hasSplitPricing: boolean;
+    }[];
+    allocatedLines: {
+        sku: string;
+        quantity: number;
+        effectiveUnitPriceMinor: number;
+        lineSubtotalMinor: number;
+    }[];
+};
+```
 ## dist/catalog/contracts/draft.d.ts
 
 ```ts
@@ -345,6 +1467,9 @@ export type { SellableCatalogItem, SellableCatalogProfile, SellableCatalogListRe
 export * from "./productMediaContracts.js";
 export { resolveProductMedia } from "./resolveProductMedia.js";
 export type { CatalogVariantState, CatalogHeadRef, CatalogLifecycleObservation, CatalogPublishCommand, CatalogPublicationReceipt, CatalogPublicationRefusal, CatalogPublicationReadResult, CatalogPublicationReceiptResult, CatalogHistoryResult } from "./lifecycle.js";
+export type { CreateBundleDraftRequest, CreateBundleDraftResponse, UpdateBundleDraftRequest, UpdateBundleDraftResponse, BundleComponent, SetBundleCompositionRequest, SetBundleCompositionResponse, SetBundleTargetPriceRequest, SetBundleTargetPriceResponse, ArchiveBundleRequest, ArchiveBundleResponse, RestoreBundleRequest, RestoreBundleResponse, CloneBundleDraftRequest, CloneBundleDraftResponse, ActivateBundleRequest, ActivateBundleResponse, DeactivateBundleRequest, DeactivateBundleResponse } from "./bundleAdmin.js";
+export type { ListBundlesRequest, ListBundlesResponse, BundleSummaryView, GetBundleRequest, GetBundleResponse, BundleDetailView, BundleAvailabilityView, BundleHistoryRequest, BundleHistoryResponse, PreviewBundlePriceRequest, PreviewBundlePriceResponse, BundlePricePreview } from "./bundleRead.js";
+export type { SellableBundle, SellableBundleComponent, SellableBundleAvailability, SellableBundleListResponse } from "./bundleAvailability.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -1227,6 +2352,25 @@ export { sellableCatalogItemSchema, sellableCatalogProfileSchema, sellableCatalo
 export { SOURCE_PACK_LIMITS, CatalogMediaSourcePackError, readCatalogMediaSourceManifest, validateCatalogMediaSourcePack, exportCatalogMediaSourcePack, restoreCatalogMediaSourcePack, importCatalogMediaSourcePack } from "./mediaSourcePack.js";
 export type { CatalogMediaSourcePack, CatalogMediaImportOutcome } from "./mediaSourcePack.js";
 export type { CatalogValidationPort, CatalogPublicationReadPort, CatalogPublicationPort, VerifiedCatalogPublisher, CatalogCapabilityDescriptor } from "./publicationPorts.js";
+export { SUPPORTED_BUNDLE_FULFILLMENT_MODES, createBundleWriteRules, evaluateBundleComposition, evaluateBundleFulfillmentMode, evaluateBundleTargetPrice, isEmptyCompositionConstraint, evaluateBundleCompositionConstraint } from "./bundleRules.js";
+export type { BundleCompositionEntry, SupportedBundleFulfillmentMode } from "./bundleRules.js";
+export { BUNDLE_RULE_CODES, BUNDLE_ALLOCATION_RULE_CODE, BUNDLE_RULE_ENFORCEMENT } from "./bundleRuleCodes.js";
+export type { BundleRuleCode, BundleActorKind, BundleWriteOperation, BundleRuleResult } from "./bundleRuleCodes.js";
+export { DEFAULT_BUNDLE_LOW_STOCK_THRESHOLD, BUNDLE_COMPONENT_STOCK_UNKNOWN, BUNDLE_COMPOSITION_EMPTY, createBundleAvailability } from "./bundleAvailability.js";
+export type { BundleAvailabilityComponent, BundleAvailability, DeriveBundleAvailabilityInput } from "./bundleAvailability.js";
+export { BundleCatalogReadError } from "./bundleCatalogReadPort.js";
+export type { BundleListStatusFilter, ListBundlesInput, BundleSummary, ListBundlesResult, BundleComponentRow, BundleTargetPriceRow, BundleDetail, GetBundleInput, ActiveBundleComposition, BundleHistoryEvent, BundleHistoryInput, BundleHistoryResult, BundleCatalogReadPort } from "./bundleCatalogReadPort.js";
+export { createBundleAvailabilityServices, createUnknownOfferAvailabilityPort } from "./bundleAvailabilityService.js";
+export type { BundleAvailabilityServiceDeps, BundleAvailabilityRow, BundleAvailabilityService } from "./bundleAvailabilityService.js";
+export type { BundleWriteResult, BundleCompositionConstraintEnvelope, AdminBundleWritePort } from "./adminBundleWritePort.js";
+export { createAdminBundleHandlers } from "./adminBundleHandler.js";
+export type { AdminBundleHandlerDeps } from "./adminBundleHandler.js";
+export { createAdminBundleReadHandlers } from "./adminBundleReadHandler.js";
+export type { AdminBundleReadHandlerDeps } from "./adminBundleReadHandler.js";
+export { createSellableBundleHandlers, toSellableBundle } from "./sellableBundleHandler.js";
+export type { SellableBundleHandlerDeps } from "./sellableBundleHandler.js";
+export type { BundleStockStatus, BundleStockRequestItem, BundleStockAvailability, BundleStockPort, BundleRuleBindings } from "./bundleBindings.js";
+export type { AuthorizeAdmin, AgentDomainQuerySpec, AgentDomainMutationSpec, BundleMutationKey, BundleQueryKey, BundleResponseSchema, BundleAdminBindings } from "./adminBindings.js";
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 
@@ -1536,6 +2680,56 @@ export interface ResolvedSkuProjectionInput {
     pricing: ResolvedSkuProjection["pricing"];
 }
 export declare function buildResolvedSkuProjection(input: ResolvedSkuProjectionInput): ResolvedSkuProjection;
+```
+## dist/catalog/sellableBundleHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { BundleResponseSchema } from "./adminBindings.js";
+import type { SellableBundle } from "./contracts/bundleAvailability.js";
+import type { BundleAvailability } from "./bundleAvailability.js";
+import type { ActiveBundleComposition } from "./bundleCatalogReadPort.js";
+import type { BundleAvailabilityService } from "./bundleAvailabilityService.js";
+/**
+ * The public sellable-bundle feed handler, shaped after the reference catalog
+ * handler (`server/domains/catalog/referenceCatalogHandler.ts`): GET-only, one
+ * port call, validate the body before sending, and never serve an unvalidated
+ * shape.
+ *
+ * It composes rather than computes twice: the availability service already folds
+ * one batched stock answer into the live compositions, and the pricing kernel
+ * turns the stored target price into per-component money. This module only decides
+ * what a storefront is allowed to see.
+ *
+ * A bundle whose money cannot be derived is DROPPED from the feed, not published
+ * with a guessed figure. Three cases reach that door — an unpriced component, an
+ * empty composition, and a target price the kernel refuses — and all three mean
+ * the same thing to a storefront: this is not sellable today. Publishing it with a
+ * partial price would put a number on a shelf that no order line could reproduce.
+ */
+export interface SellableBundleHandlerDeps {
+    availabilityService: BundleAvailabilityService;
+    /** Narrow the feed to one currency; omitted means every currency an operator priced. */
+    currency?: string;
+    enabled: boolean;
+}
+export declare function createSellableBundleHandlers({ responder, sellableBundleListResponseSchema, SELLABLE_BUNDLE_CONTRACT_VERSION }: {
+    responder: BffResponder;
+    sellableBundleListResponseSchema: BundleResponseSchema;
+    SELLABLE_BUNDLE_CONTRACT_VERSION: "catalog.sellable-bundle.v1";
+}): {
+    createSellableBundleHandler: (deps: SellableBundleHandlerDeps) => (req: HttpRequest, res: HttpResponse) => Promise<void>;
+};
+/**
+ * Derive the row a storefront sees, or `null` when the money cannot be stated.
+ *
+ * The allocator emits TWO lines for a quantity whose subtotal does not divide
+ * evenly, which is exactly why the feed carries lines rather than a unit price per
+ * component: `unitPrice x quantity === lineSubtotal` holds on every line, and the
+ * lines sum to the bundle's price with no remainder.
+ */
+export declare function toSellableBundle(composition: ActiveBundleComposition, availability: BundleAvailability): SellableBundle | null;
 ```
 ## dist/catalog/sellableSchemas.d.ts
 
