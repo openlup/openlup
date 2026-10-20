@@ -641,7 +641,16 @@ Caps give approximately twice the measured headroom, rounded to clean values.
 | --- | --- | --- | --- | --- | --- | --- |
 | `@openlup/core` | 132,250 / 198 | 270 / 400 | 161,371 / 209 | 320 / 420 | 48 / 20 | 1,360 |
 | `@openlup/outbox` | 20,930 / 33 | 42 / 70 | 38,718 / 41 | 80 / 90 | 26 / 12 | 260 |
-| `@openlup/platform` | 215,464 / 381 | 430 / 800 | 256,973 / 395 | 510 / 800 | 40 / 10 | 2,040 |
+| `@openlup/platform` | 215,464 / 381 | 1,100 / 2,000 | 256,973 / 395 | 1,320 / 2,100 | 40 / 10 | 5,600 |
+
+The `@openlup/platform` code, tarball, file and unpacked caps were raised on
+2026-10-20 with the maintainer's read of the M05 budget packet. They give about
+twice the projected end-of-M05 size: the measured catalog and first pricing
+parts (789 files, 771 code files, 480,886 tarball bytes,
+2,038,883 unpacked bytes, 406,639 compressed code bytes) plus the remaining
+M05 estimates (about 1,007 files, 981 code files, 669 KB tarball, 2.85 MB
+unpacked, 557 KB compressed code). The docs, browser-entry and baseline
+values and the growth tripwire are unchanged.
 
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
