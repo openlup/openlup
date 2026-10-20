@@ -49,7 +49,7 @@ That is what lets a fixed-size box assembled from several variants reach the
 whole-box tier instead of each line matching its own, smaller tier. The quote
 computes the eligible quantity per pricing mode and excludes add-on lines
 (`eligibleQtyForMode` in
-`server/domains/commerce/dbBackedCommerceQuoteHelpers.ts`).
+`packages/platform/src/pricing/dbBackedCommerceQuoteHelpers.ts`).
 
 Resolution order, identical in both adapters:
 
@@ -64,7 +64,7 @@ Resolution order, identical in both adapters:
    requested mode.
 5. Still nothing → `null`. Callers must refuse rather than quote zero; the quote
    raises `PRICE_NOT_CONFIGURED`
-   (`server/domains/commerce/dbBackedCommerceQuotePort.ts`).
+   (`packages/platform/src/pricing/dbBackedCommerceQuotePort.ts`).
 
 Amounts carry an explicit `gross`/`net` kind. A quote converts once to gross and
 splits tax back out of it as `net = round(gross * 10000 / (10000 + vatRateBps))`;
