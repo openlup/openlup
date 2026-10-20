@@ -8,6 +8,11 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Repair synthetic consent-push conformance: withdrawals bypass grant-caused
+  fences/quarantine while preserving same-key withdrawal fences and account-level
+  cooling; document honest recording uncertainty and reconciliation. Public types
+  remain unchanged by this repair.
+
 - Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
   through both existing communications entries. Local grants remain audience-scoped;
   only withdrawals allow account-wide scope. The push capability declares

@@ -184,6 +184,7 @@ export function syntheticPush(plant?: PushPlant) {
   const effects: { action: "grant" | "withdraw"; audience: SyncAudience; requestId: string; evidence: string }[] = [];
   const journal = new Map<string, { semantic: string; result: ConsentPushResult }>();
   let fenced = false, race = false, fencedKey = "";
+  const withdrawalFences = new Set<string>();
   const overlaps = (a: SyncAudience, b: SyncAudience) => a.kind === "account-wide" || b.kind === "account-wide" || equal(a, b);
   async function push(input: ConsentPushRequest): Promise<ConsentPushResult> {
     const r = structuredClone(input);
@@ -208,8 +209,9 @@ export function syntheticPush(plant?: PushPlant) {
     const prior = journal.get(key);
     if (prior) return prior.semantic === semantic ? result({ ...prior.result, ...echo,
       ...((prior.result.kind === "accepted" || prior.result.kind === "acknowledged") ? { reconcileRequired: plant === "hide-race-replay" && race ? false : prior.result.reconcileRequired || race } : {}) }) : refuse("invalid_request");
-    if (fenced && !(plant === "lost-intent:same-key" && key === fencedKey) && !(plant === "lost-intent:new-key" && key !== fencedKey)) return result({ kind: "unknown", reason: "dispatch_unresolved" });
-    if (state.quarantined || state.coolingUntil > state.now) return result({ kind: "retryable", reason: "cooling", afterSeconds: Math.max(1, Math.ceil((state.coolingUntil - state.now) / 1000)) });
+    const blocked = r.payload.action === "withdraw" ? withdrawalFences.has(key) || (plant === "delay-withdrawal" && fenced) : fenced;
+    if (blocked && !(plant === "lost-intent:same-key" && key === fencedKey) && !(plant === "lost-intent:new-key" && key !== fencedKey)) return result({ kind: "unknown", reason: "dispatch_unresolved" });
+    if ((r.payload.action === "grant" && state.quarantined) || state.coolingUntil > state.now) return result({ kind: "retryable", reason: "cooling", afterSeconds: Math.max(1, Math.ceil((state.coolingUntil - state.now) / 1000)) });
     const evidence = r.payload.consentEvidenceReference;
     const expected = r.payload.action === "grant" ? "grant:1" : "withdraw:1";
     if (evidence?.trim() && !["grant:1", "withdraw:1"].includes(evidence) && plant !== `authority:${evidence}`) return refuse("provenance");
@@ -227,7 +229,8 @@ export function syntheticPush(plant?: PushPlant) {
     if (r.payload.action === "grant") {
       if (state.erased) return refuse("restricted");
       if (state.pendingWithdrawal && overlaps(state.pendingWithdrawal, r.audience) && plant !== `pending-withdrawal:${state.pendingWithdrawal.kind}`) return refuse("restricted");
-      if (state.armed && plant !== `flow:${state.armed}`) return refuse("restricted");
+      const armedEffect = state.armed && (capability.grantEffect === "account-wide" || !state.armed.startsWith("other:"));
+      if (armedEffect && plant !== `flow:${state.armed}`) return refuse("restricted");
       const suppressionVariant = !state.suppressionCovered ? "coverage-unknown" : !suppressionAtRead && state.suppression ? "appears-before-effect" : state.suppression;
       if ((state.suppression || !state.suppressionCovered) && plant !== `suppression-clear:${suppressionVariant}`) return refuse("restricted");
     } else {
@@ -236,7 +239,11 @@ export function syntheticPush(plant?: PushPlant) {
       if (plant === "delay-withdrawal" && state.earlierGrants !== 0) return result({ kind: "unknown", reason: "dispatch_unresolved" });
       if (!state.safeListOnly && r.audience.kind === "audience" && plant !== "global-widening") return refuse("restricted");
     }
-    if (state.lostIntent) { fenced = true; fencedKey = key; return result({ kind: "unknown", reason: "dispatch_unresolved" }); }
+    if (state.lostIntent) {
+      if (r.payload.action === "grant") { fenced = true; fencedKey = key; state.earlierGrants = null; }
+      else { withdrawalFences.add(key); state.pendingWithdrawal = r.audience; }
+      return result({ kind: "unknown", reason: "dispatch_unresolved" });
+    }
     const receipt = { operation: "consent.push", request: r } as Extract<ConsentPushResult, { kind: "accepted" | "acknowledged" }>["receipt"];
     effects.push({ action: r.payload.action, audience: plant === "global-widening" && !state.safeListOnly ? { kind: "account-wide" } : r.audience,
       requestId: r.requestId, evidence });
@@ -244,13 +251,16 @@ export function syntheticPush(plant?: PushPlant) {
       state.pendingWithdrawal = r.audience;
       race ||= state.earlierGrants !== 0;
     }
-    const outcome = result(state.recordFails ? { kind: "unknown", reason: "record_failed", receipt } : state.mutation === "unknown" ?
+    const outcome = result(state.recordFails && r.payload.action === "grant" ? { kind: "unknown", reason: "record_failed", receipt } : state.mutation === "unknown" ?
       { kind: "unknown", reason: "acceptance_ambiguous", receipt } : {
         kind: plant === "push-completed" ? "completed" : state.mutation, receipt,
-        journal: state.journalFails ? "unknown" : "confirmed", reconcileRequired: race && !(plant === "hide-race" && state.mutation === "acknowledged"),
+        journal: state.recordFails || state.journalFails ? "unknown" : "confirmed", reconcileRequired: race && !(plant === "hide-race" && state.mutation === "acknowledged"),
       });
-    if (state.recordFails || state.mutation === "unknown") fenced = true;
-    if (state.recordFails) state.quarantined = true;
+    if (state.recordFails || state.journalFails || state.mutation === "unknown") {
+      if (r.payload.action === "grant") { fenced = true; fencedKey = key; state.earlierGrants = null; }
+      else withdrawalFences.add(key);
+    }
+    if (r.payload.action === "grant" && (state.recordFails || state.journalFails)) state.quarantined = true;
     journal.set(key, { semantic, result: outcome });
     return outcome;
   }
@@ -329,6 +339,15 @@ export function consentPushSuite(factory: PushFactory) {
       expect(await h.port.push(pushRequest()), `${label}/verified no-trigger safe positive`).toMatchObject({ kind: "acknowledged", reconcileRequired: false });
       expect(h.effects, `${label}/safe singleton grant`).toHaveLength(1);
     }
+    for (const grantEffect of ["audience", "account-wide"] as const) {
+      for (const armed of flowVariants.filter(value => value.startsWith("other:"))) {
+        const h = fresh(); h.state.armed = armed;
+        Reflect.set(h.port.capabilities.operations["consent.push"], "grantEffect", grantEffect);
+        expect(await h.port.push(pushRequest()), `${label}/${armed}/${grantEffect} effect-scoped admission`).toMatchObject(
+          grantEffect === "audience" ? { kind: "acknowledged", reconcileRequired: false } : { kind: "refused", reason: "restricted" });
+        expect(h.effects, `${label}/${armed}/${grantEffect} effect-scoped dispatch`).toHaveLength(grantEffect === "audience" ? 1 : 0);
+      }
+    }
     for (const state of ["unsupported", "verification_pending", "absent"] as const) {
       const h = fresh();
       if (state === "absent") Reflect.deleteProperty(h.port.capabilities.operations, "consent.push");
@@ -403,6 +422,61 @@ export function consentPushSuite(factory: PushFactory) {
   row("CP04", ["hide-race", "hide-race-replay", "early-read", "insufficient-read:partial", "insufficient-read:unsupported", "insufficient-read-no-grant:partial", "insufficient-read-no-grant:unsupported", "pending-withdrawal:audience", "pending-withdrawal:account-wide",
     "skip-unknown", "withdraw-as-grant", "global-widening", "old-grant-start", "delay-withdrawal"], async (fresh, label) => {
     const withdrawal = pushRequest({ requestId: "withdraw:1", payload: { action: "withdraw", consentEvidenceReference: "withdraw:1" } });
+    // Pinned CB2-F1: grant uncertainty never queues a withdrawal behind the grant.
+    for (const fault of ["acceptance_ambiguous", "record_failed", "dispatch_unresolved", "partial-persistence"] as const) {
+      for (const mutation of ["accepted", "acknowledged"] as const) {
+        const h = fresh();
+        h.state.mutation = fault === "acceptance_ambiguous" ? "unknown" : mutation;
+        h.state.recordFails = fault === "record_failed";
+        h.state.lostIntent = fault === "dispatch_unresolved";
+        h.state.journalFails = fault === "partial-persistence";
+        expect(await h.port.push(pushRequest()), `${label}/${fault} grant uncertainty`).toMatchObject(
+          fault === "partial-persistence" ? { kind: mutation, journal: "unknown" } : { kind: "unknown", reason: fault });
+        h.state.mutation = mutation; h.state.lostIntent = false;
+        // Leave persistence faults active: withdrawal must acknowledge honestly even then.
+        const result = await h.port.push(withdrawal);
+        expect(result, `${label}/${fault} withdrawal bypasses grant fence`).toMatchObject({
+          kind: mutation, reconcileRequired: true, journal: fault === "record_failed" || fault === "partial-persistence" ? "unknown" : "confirmed",
+        });
+        const actions = fault === "dispatch_unresolved" ? ["withdraw"] : ["grant", "withdraw"];
+        expect(h.effects.map(effect => effect.action), `${label}/${fault} immediate withdrawal`).toEqual(actions);
+        expect(await h.port.push(withdrawal), `${label}/${fault} withdrawal replay`).toEqual(result);
+        expect(h.effects.map(effect => effect.action), `${label}/${fault} no duplicate withdrawal`).toEqual(actions);
+      }
+    }
+    for (const fault of ["lostIntent", "recordFails", "journalFails", "ambiguous"] as const) {
+      const h = fresh();
+      if (fault === "ambiguous") h.state.mutation = "unknown";
+      else h.state[fault] = true;
+      const result = await h.port.push(withdrawal);
+      expect(result, `${label}/${fault} withdrawal uncertainty`).toMatchObject(
+        fault === "lostIntent" ? { kind: "unknown", reason: "dispatch_unresolved" } : fault === "ambiguous" ? { kind: "unknown", reason: "acceptance_ambiguous" } : { kind: "acknowledged", journal: "unknown" });
+      h.state.lostIntent = false; h.state.recordFails = false; h.state.journalFails = false; h.state.mutation = "acknowledged";
+      const count = fault === "lostIntent" ? 0 : 1;
+      expect(h.effects, `${label}/${fault} withdrawal dispatch count`).toHaveLength(count);
+      expect(await h.port.push(withdrawal), `${label}/${fault} unresolved withdrawal same-key fence`).toEqual(result);
+      expect(h.effects, `${label}/${fault} withdrawal never double dispatches`).toHaveLength(count);
+      expect(await h.port.push(pushRequest({ requestId: "after-unresolved-withdrawal:grant" })), `${label}/${fault} unresolved withdrawal still blocks grants`).toMatchObject({ kind: "refused", reason: "restricted" });
+      expect(h.effects, `${label}/${fault} unresolved withdrawal zero grant effect`).toHaveLength(count);
+      expect(await h.port.push({ ...withdrawal, requestId: "withdraw:2" }), `${label}/${fault} new withdrawal key can dispatch`).toMatchObject({ kind: "acknowledged" });
+      expect(h.effects, `${label}/${fault} new withdrawal effect`).toHaveLength(count + 1);
+    }
+    const cooling = fresh(); cooling.state.mutation = "unknown";
+    await cooling.port.push(pushRequest());
+    cooling.state.mutation = "acknowledged"; cooling.state.coolingUntil = 1511;
+    const cooled = await cooling.port.push(withdrawal);
+    expect(cooled, `${label}/withdrawal respects account cooling despite grant ambiguity`).toMatchObject({ kind: "retryable", reason: "cooling", afterSeconds: 2 });
+    if (cooled.kind === "retryable") expect(Number.isFinite(cooled.afterSeconds), `${label}/finite withdrawal retry delay`).toBe(true);
+    expect(cooling.effects.map(effect => effect.action), `${label}/account cooling zero withdrawal effect`).toEqual(["grant"]);
+    cooling.state.now = 1511;
+    expect(await cooling.port.push({ ...withdrawal, deadlineMs: 2000 }), `${label}/host retries withdrawal after account cooling`).toMatchObject({ kind: "acknowledged", reconcileRequired: true });
+    expect(cooling.effects.map(effect => effect.action), `${label}/withdrawal after cooling`).toEqual(["grant", "withdraw"]);
+    const unsettled = fresh(); unsettled.state.earlierGrants = null;
+    expect(await unsettled.port.push(withdrawal), `${label}/null grant settlement starts unresolved race`).toMatchObject({ kind: "acknowledged", reconcileRequired: true });
+    unsettled.state.remote = "unsubscribed";
+    expect(unsettled.read(), `${label}/null grant settlement cannot confirm early read`).toMatchObject({ value: { remoteConsent: "unknown" }, reconcileRequired: true });
+    unsettled.state.earlierGrants = 0;
+    expect(unsettled.read(), `${label}/known settlement and fresh read close null race`).toMatchObject({ value: { remoteConsent: "unsubscribed" }, reconcileRequired: false });
     for (const mutation of ["accepted", "acknowledged"] as const) {
       const h = fresh(); h.state.mutation = mutation;
       // An earlier accepted grant is NOT assumed cancelled by the withdrawal.

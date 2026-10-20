@@ -515,13 +515,20 @@ is introduced by this contract.
 
 Withdrawals dispatch immediately even when remote consent is unknown or an
 earlier grant is unsettled, subject to local authority, identity, safe scope and
-ordinary admission. An earlier grant never delays or drops withdrawal. A pending
+ordinary admission. Withdrawals bypass every per-subject fence or quarantine
+caused by an unresolved grant (ambiguous acceptance, failed recording, unresolved
+dispatch or partial persistence), while preserving an earlier unresolved
+withdrawal's same-key replay fence and account-level provider cooling; cooling
+returns `retryable/cooling` with finite positive `afterSeconds` for the host to
+retry. An earlier grant never delays or drops withdrawal. A pending
 or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
 withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.
 
 Accepted means durable intent; acknowledged includes documented asynchronous
 acceptance. Neither completes or proves subscribed/unsubscribed state. Both success
-variants require boolean `reconcileRequired`. If an earlier grant is unsettled or
+variants require boolean `reconcileRequired`. A dispatched withdrawal whose own
+recording fails reports accepted/acknowledged with `journal: "unknown"`, never
+confirmed persistence. If an earlier grant is unsettled or
 its settlement cannot be established, withdrawal returns `true`; replay retains
 that unresolved race and remote state counts as UNKNOWN regardless of journal
 confirmation or an early unsubscribed read. Only `consent.read` after all earlier
