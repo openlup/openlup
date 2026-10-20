@@ -290,7 +290,7 @@ const handler = adapter.createResendWebhookHandler({environmentTagName:"host_env
 const rawBody = '{ "type":"email.delivered", "data":{"email_id":"cold-message"} }';
 const signature = createHmac("sha256","synthetic-hook").update("hook.1000."+rawBody).digest("base64");
 assert.equal((await handler({rawBody,headers:{webhookId:"hook",timestamp:"1000",signature:"v1,"+signature}})).status,200);
-assert.equal(writes.length,1); assert.equal(writes[0].eventType,"delivered");
+assert.equal(writes.length,1); assert.equal(writes[0].eventType,"email.delivered");
 assert.equal((await handler({rawBody,headers:{}})).status,401);
 const result = await adapter.runResendDeliveryReconciliation({apiKey:"synthetic-read",fetch,now:new Date(1000000).toISOString(),graceMinutes:45,limit:1,port:{findFrozenSends:async()=>[{id:"send",messageId:"cold-message"}],applyPolledEvent:async row=>writes.push(row),recordPollAttempt:async()=>{},recordSendNotFound:async()=>{throw Error("unexpected abandonment");}}});
 assert.equal(result.reconciled,1); assert.equal(writes.length,2); assert.equal(writes[1].eventType,"email.delivered");

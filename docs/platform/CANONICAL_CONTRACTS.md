@@ -67,6 +67,10 @@ Explicit foreign environment tags stop before lookup or convergence; the
 receiver defaults to non-production. Admitted events use `processEmailObservation`:
 lookup/apply errors retry with 500, while attempt telemetry cannot overturn
 success. Unsupported or missing-ID events are ignored. Event metadata is opaque.
+Webhook and poll observations retain the raw `email.*` provider event type;
+the webhook event inventory is an admission gate only.
+The webhook returns a fixed 500 body on processing failure and only an HTTP
+disposition for unsupported, missing-ID or foreign events.
 
 Reconciliation delegates to `runDeliveryReconciliation`, with internal GET reads
 of host-selected existing IDs. Only failed 404 reads contribute to the existing

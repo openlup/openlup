@@ -61,7 +61,7 @@ it("R05 W2 authenticates original whitespace and UTF-8 bytes before decoding", a
   expect((await h.handle(request)).status).toBe(200);
   expect((await h.handle({ ...request, rawBody: Buffer.from(JSON.stringify(payload)) })).status).toBe(401);
   expect(h.port.findSend).toHaveBeenCalledTimes(1);
-  expect(h.port.applyObservation).toHaveBeenCalledWith({ sendId: "send-1", messageId: "message-1", eventType: "delivered", eventAt: at,
+  expect(h.port.applyObservation).toHaveBeenCalledWith({ sendId: "send-1", messageId: "message-1", eventType: "email.delivered", eventAt: at,
     metadata: { providerEventId: "hook-1", eventMetadata: data, link: data.click.link, source: "resend-webhook", eventTimeSource: "provider_created_at" } });
 });
 it("R06 W2 invalid JSON is rejected by authentication first; authenticated parse failures retry", async () => {
@@ -84,12 +84,12 @@ it("R07 W2 explicit foreign tags never reach convergence, default receiver is no
     expect(h.port.applyObservation).toHaveBeenCalledTimes(1);
   }
 });
-it("R08 W2 event mapping and replay feed the accepted observation port", async () => {
+it("R08 W2 admitted raw event types and replay feed the accepted observation port", async () => {
   const h = hook();
-  for (const [type, eventType] of Object.entries({ sent: "sent", delivered: "delivered", delivery_delayed: "delivery_delayed", opened: "open", clicked: "click", bounced: "bounce", complained: "complaint", failed: "failed", suppressed: "suppressed", scheduled: "scheduled" })) {
-    const request = signed(JSON.stringify({ ...payload, type: `email.${type}` }));
+  for (const eventType of ["email.sent", "email.delivered", "email.delivery_delayed", "email.opened", "email.clicked", "email.bounced", "email.complained", "email.failed", "email.suppressed", "email.scheduled"]) {
+    const request = signed(JSON.stringify({ ...payload, type: eventType }));
     await h.handle(request); await h.handle(request);
-    expect(h.port.applyObservation).toHaveBeenLastCalledWith(expect.objectContaining({ eventType }));
+    expect(h.port.applyObservation, `R08 raw provider type ${eventType}`).toHaveBeenLastCalledWith(expect.objectContaining({ eventType }));
   }
   expect(h.port.applyObservation).toHaveBeenCalledTimes(20);
 });
@@ -171,14 +171,21 @@ it("R13 W2 only 404 abandons; auth/network/outage and malformed success never re
   }
 });
 it("R14 W2 webhook and poll share one host convergence writer without send authority", async () => {
-  const writer = vi.fn(async (_event: unknown) => {});
+  const writer = vi.fn(async (_event: { eventType: string }) => {});
   const h = hook(); h.port.applyObservation.mockImplementation(writer);
   const p = polling(); p.port.applyPolledEvent.mockImplementation(writer);
-  await h.handle(signed()); await p.run();
-  expect(writer.mock.calls.map(([event]) => event)).toEqual([
-    expect.objectContaining({ sendId: "send-1", messageId: "message-1", eventType: "delivered" }),
-    expect.objectContaining({ sendId: "send-1", messageId: "message/1", eventType: "email.delivered" }),
-  ]);
+  for (const last_event of ["delivered", "delivery_delayed", "bounced", "complained", "failed"]) {
+    writer.mockClear();
+    p.fetcher.mockImplementation(async () => Response.json({ last_event, to: ["reader@example.invalid"] }));
+    await h.handle(signed(JSON.stringify({ ...payload, type: `email.${last_event}` }))); await p.run();
+    expect(writer, `R14 ${last_event}: both paths reach convergence`).toHaveBeenCalledTimes(2);
+    const [webhook, poll] = writer.mock.calls.map(([event]) => event);
+    expect(webhook.eventType, `R14 ${last_event}: webhook/poll eventType parity`).toBe(poll.eventType);
+    expect([webhook, poll], `R14 ${last_event}: raw provider types`).toEqual([
+      expect.objectContaining({ sendId: "send-1", messageId: "message-1", eventType: `email.${last_event}` }),
+      expect.objectContaining({ sendId: "send-1", messageId: "message/1", eventType: `email.${last_event}` }),
+    ]);
+  }
   expect(p.fetcher.mock.calls.every(([, options]) => options!.method === "GET")).toBe(true);
 });
 it("R15 W2 event time fallback retains provider, signed timestamp, then receipt clock", async () => {

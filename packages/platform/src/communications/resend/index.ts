@@ -262,8 +262,7 @@ export function createResendWebhookHandler(input: {
       const payload: unknown = JSON.parse(typeof request.rawBody === "string" ? request.rawBody : Buffer.from(request.rawBody).toString("utf8"));
       const type = isRecord(payload) ? payload.type : null;
       const data = isRecord(payload) ? payload.data : null;
-      const eventType = typeof type === "string" ? eventKinds.get(type) : undefined;
-      if (!eventType) return { status: 200, body: { ignored: true } };
+      if (typeof type !== "string" || !eventKinds.has(type)) return { status: 200, body: { ignored: true } };
       const messageId = isRecord(data) && typeof data.email_id === "string" ? data.email_id : null;
       if (!messageId) return { status: 200, body: { ignored: true, reason: "missing_email_id" } };
       const tag = readEnvironmentTag(data, input.environmentTagName);
@@ -274,7 +273,7 @@ export function createResendWebhookHandler(input: {
         port: input.port, messageId,
         observation: () => {
           const time = resolveEventTime(isRecord(payload) ? payload.created_at : null, request.headers.timestamp, input.receivedAt?.() ?? new Date());
-          return { eventType, eventAt: time.eventAt, metadata: {
+          return { eventType: type, eventAt: time.eventAt, metadata: {
             providerEventId: request.headers.webhookId ?? null, eventMetadata: data ?? {},
             link: isRecord(data) && isRecord(data.click) && typeof data.click.link === "string" ? data.click.link : null,
             source: "resend-webhook", eventTimeSource: time.source,

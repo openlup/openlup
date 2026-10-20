@@ -125,3 +125,18 @@ entries remove the old flat-path assumption without weakening exact export or
 contracts boundaries. Reusing the egress guard and neutral engines avoids a
 second convergence mechanism. Grouping related inputs preserves invariant
 assertions without adding runtime abstractions or relaxing the test budget.
+
+P1A-F1 closure, 2026-10-20: local repair of candidate `29250d0` only, with no
+Git writes, network, submission or release authority. Webhook observations now
+retain raw provider types, matching the donor and poller; the event inventory
+only admits supported types. R05, R08 and the installed-consumer proof pin those
+names, and R14 folds parity for all five polled states into its existing case.
+The short-name plant failed at `R14 delivered: webhook/poll eventType parity`
+and was reverted. Three exports and 32 P1 cases (including three generated)
+remain unchanged. Root focused tests passed 1,048 cases, package focused tests
+1,009, and the package script also passed all 2,793 cases. Lint passed with 33
+warnings outside this delta; ast-grep and API checks passed. Neutrality reported
+zero increases; policy/inventory requires a refreshed tooling no-impact trailer
+for the consumer-proof change, to be supplied by the committing supervisor.
+Retro: the first root run exposed the stale installed-consumer expectation;
+trace protocol names through consumer proofs as well as unit fixtures.
