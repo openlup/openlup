@@ -137,10 +137,9 @@ and package discovery already include this directory; no duplicate required
 selector is added. The reference retains configuration/readiness composition
 coverage and one browser-schema/error-identity binding guard. Both pricing
 entries extend the existing optional-peer-free cold consumer and declaration
-compilation. Uncommitted local measurements leave the signed-candidate package
-gate and native review to the supervisor.
+compilation.
 
-Catalog phase A relocates eight existing catalog suites into the platform
+The M05 catalog module relocates eight existing catalog suites into the platform
 package's `test/catalog/` discovery, preserving their assertions. Root discovery
 already includes that directory, so no duplicate selector or second invocation
 is added. The reference observed-responder binding has one local guard. Both
