@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { VercelRequest, VercelResponse } from "../../server/_lib/types/vercel.js";
-import { DomainRpcError } from "../../server/_lib/admin-domain/rpcErrors.js";
+import type { VercelRequest, VercelResponse } from "../../../server/_lib/types/vercel.js";
+import { DomainRpcError } from "../../../server/_lib/admin-domain/rpcErrors.js";
 import type { AdminPromotionCodesDataPort } from "@openlup/platform/promotions";
 import {
   createAdminPromotionCodeCreateHandler,
@@ -11,7 +11,7 @@ import {
   type AdminPromotionCodesHandlerDeps,
 } from "./adminFixtures.js";
 import { previewPromotionCode } from "./adminFixtures.js";
-import { createSupabaseAdminPromotionCodesDataPort } from "../../server/adapters/supabase/adminPromotionCodes.js";
+import { createSupabaseAdminPromotionCodesDataPort } from "../../../server/adapters/supabase/adminPromotionCodes.js";
 
 const secret = "handler-test-promotion-preview-secret-32-bytes";
 const context = {

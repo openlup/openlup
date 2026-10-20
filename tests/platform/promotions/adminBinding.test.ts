@@ -2,10 +2,10 @@ import { expect, expectTypeOf, it, vi } from "vitest";
 import { createAdminPromotionCodesHandlers, type PromotionCodeCreateRequest, type PromotionCodeBenefit, type AdminPromotion, createAdminPromotionSchemas } from "@openlup/platform/promotions";
 import type { PromotionCodeCreateRequest as DtoCreate, PromotionCodeBenefit as DtoBenefit, AdminPromotion as DtoPromotion } from "@openlup/platform/promotions/contracts";
 import { bindings, DomainRpcError } from "./adminFixtures.js";
-import { createAdminMutationHandler } from "../../server/_lib/admin-domain/handlers.js";
-import { promotionCodeCreateRequestSchema as referenceCreate } from "../../src/domains/commerce/adminPromotionCodesContracts.js";
+import { createAdminMutationHandler } from "../../../server/_lib/admin-domain/handlers.js";
+import { promotionCodeCreateRequestSchema as referenceCreate } from "../../../src/domains/commerce/adminPromotionCodesContracts.js";
 import { promotionCodeCreateRequestSchema } from "@openlup/platform/promotions";
-import { platformCurrencySchema } from "../../src/lib/currency/platformCurrency.js";
+import { platformCurrencySchema } from "../../../src/lib/currency/platformCurrency.js";
 import type { z } from "zod";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
 

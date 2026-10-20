@@ -138,7 +138,7 @@ optional pg types, so cold consumers classify it as an adapter, import it withou
 pg using an injected executor, and compile it after peer selection. Contracts
 remain a non-adapter and compile in both modes without peers. Native-store query
 doubles and contract/port suites move under the package. Handler subject cases move to
-`tests/promotions` because they bind the actual shared reference admin kit. The
+`tests/platform/promotions` because they bind the actual shared reference admin kit. The
 one global-environment composition case stays at its original reference path;
 copying that kit into package tests would create another authorization authority.
 The dedicated `tests/postgres/promotionsNative.test.ts` installs the full canonical

@@ -9,7 +9,6 @@ import {
   createAdminPromotionCodeUpdateHandler,
   type AdminPromotionCodesHandlerDeps,
 } from "./adminPromotionCodesHandler.js";
-import { previewPromotionCode } from "./promotionCodePreview.js";
 
 const secret = "handler-test-promotion-preview-secret-32-bytes";
 const context = {

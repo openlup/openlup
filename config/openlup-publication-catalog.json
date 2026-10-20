@@ -20902,6 +20902,22 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/promotions/adminBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/promotions/adminFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/promotions/adminPromotionCodesHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/promotions/adminPromotionsHandler.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/watchdogExecution.test.ts",
       "class": "public-output"
     },
@@ -21027,22 +21043,6 @@
     },
     {
       "path": "tests/preview/ssg-hydration.spec.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/promotions/adminBinding.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/promotions/adminFixtures.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/promotions/adminPromotionCodesHandler.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/promotions/adminPromotionsHandler.test.ts",
       "class": "public-output"
     },
     {

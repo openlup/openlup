@@ -199,8 +199,9 @@ quote integration suites remain reference-owned. The acceptance unit fixture
 uses only synthetic request and money values rather than checkout orchestration.
 
 Changed production/tooling paths against the P2c predecessor: **32/35**, including
-JSON companions. Both promotions entries are non-adapters; only promotions has
-a pricing value edge, through its server entry. The contracts entry has no imports.
+JSON companions. Both promotions entries were non-adapters at P3a (P3b
+reclassifies the server entry; see below); only promotions has a pricing value
+edge, through its server entry. The contracts entry has no imports.
 
 Pack: **933 files / 915 code files / 582,993 packed B / 2,573,175 unpacked B /
 501,214 code gzip B**; root docs **35,073 gzip B / 5 files**, all within the
@@ -229,9 +230,9 @@ it does not close any of the four PENDING rows above.
 ### P6 acceptance obligation
 
 P6 must replace every non-neutral fixture value still present in the moved
-package tests (including a legacy policy constant, locale-specific contact
-values and industry-specific fact fields carried over unchanged from the
-existing public tests) with neutral synthetic values, without weakening any
+package tests (including a legacy policy constant and industry-specific fact
+fields and contact values carried over unchanged from the existing public
+tests) with neutral synthetic values, without weakening any
 assertion. M05 S1 requires this row closed, so no adopter policy constant
 remains anywhere in OpenLup.
 
@@ -257,12 +258,21 @@ Six new executed cases (five real-PG and one admin-binding case) consume six of
 the prior 33 programme cases, leaving **27 of 100**. Existing subject suites move
 with assertions retained; the global-environment case stays reference-owned.
 Synthetic region `ZZ` replaces the default-country fixture in the moved admin
-list suite. Real-PG evidence covers fresh full-chain application,
+list suite, and synthetic code `EXAMPLE10` replaces a brand-style code in the
+moved admin suite. The moved handler suites run from `tests/platform/promotions`. Real-PG evidence covers fresh full-chain application,
 projection identity/validated constraints and repeat runner application; read-only
 active definitions/counts/device evidence; paid/released transitions; bounded
 sweep/replay with receipt/outbox fences and unchanged money; lock/settlement
 skips; denied-role and explicit invoker read grants. Atomic writer concurrency,
 prior-prefix upgrade and the four D8 outcomes are not claimed by this subset.
+
+Changed production/tooling paths against the P3a predecessor: **29/35**, including
+JSON companions. Pack: **968 files / 948 code files / 612,089 packed B /
+2,738,249 unpacked B / 522,847 code gzip B**; root docs **35,737 gzip B / 5
+files**, all within the aggregate caps. Advisory for P5: the reference admin
+browser clients reach the admin schemas through the promotions server entry via
+the reference contract re-exports; no admin bundle is built in this tree, so an
+admin browser bundle needs a browser-safe schema home first.
 
 ## Witness ledger
 

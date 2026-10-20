@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { VercelRequest, VercelResponse } from "../../server/_lib/types/vercel.js";
-import type { AdminPromotion } from "../../src/domains/commerce/adminPromotionsContracts.js";
+import type { VercelRequest, VercelResponse } from "../../../server/_lib/types/vercel.js";
+import type { AdminPromotion } from "../../../src/domains/commerce/adminPromotionsContracts.js";
 import type { AdminPromotionsDataPort } from "@openlup/platform/promotions";
 import {
   createAdminPromotionUpdateHandler,
   createAdminPromotionsListHandler,
 } from "./adminFixtures.js";
-import { DomainRpcError } from "../../server/_lib/admin-domain/rpcErrors.js";
+import { DomainRpcError } from "../../../server/_lib/admin-domain/rpcErrors.js";
 
 describe("admin promotions handlers", () => {
   it("returns the promotion list through the shared envelope", async () => {
