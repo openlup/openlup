@@ -635,13 +635,24 @@ One KiB is 1,024 bytes. The existing **compressed code** measure concatenates
 gzips them; it is packed content, not unpacked source bytes or the whole tarball.
 Root documentation/metadata forms the separately compressed docs class. Tarball
 bytes are npm's compressed `.tgz` size; aggregate files include SQL and metadata.
-Caps give approximately twice the measured headroom, rounded to clean values.
+Caps give approximately twice the measured headroom, rounded to clean values;
+the platform row's raised caps use the projection in the note below the table.
 
 | Package | Compressed code bytes / files | Code cap KiB / files | Tarball bytes / total files | Tarball cap KiB / files | Docs cap KiB / files | Unpacked cap KiB |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@openlup/core` | 132,250 / 198 | 270 / 400 | 161,371 / 209 | 320 / 420 | 48 / 20 | 1,360 |
 | `@openlup/outbox` | 20,930 / 33 | 42 / 70 | 38,718 / 41 | 80 / 90 | 26 / 12 | 260 |
-| `@openlup/platform` | 215,464 / 381 | 430 / 800 | 256,973 / 395 | 510 / 800 | 40 / 10 | 2,040 |
+| `@openlup/platform` | 215,464 / 381 | 1,100 / 2,000 | 256,973 / 395 | 1,320 / 2,100 | 40 / 10 | 5,600 |
+
+The `@openlup/platform` code, tarball, file and unpacked caps were raised on
+2026-10-20 with the maintainer's read of the M05 budget packet. Each is about
+twice the projected size of the whole package at the end of M05: about 1,007
+files, 981 code files, 669 KB tarball, 2.85 MB unpacked and 557 KB compressed
+code. That projection is the package measured after the catalog and first
+pricing parts (789 files, 771 code files, 480,886 tarball bytes, 2,038,883
+unpacked bytes, 406,639 compressed code bytes) plus the estimated growth of the
+remaining M05 parts. The docs, browser-entry and baseline values and the growth
+tripwire are unchanged.
 
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
