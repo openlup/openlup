@@ -3694,6 +3694,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/adminShippingRateHandler.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/contracts/address.ts",
       "class": "public-output"
     },
@@ -3703,6 +3707,10 @@
     },
     {
       "path": "packages/platform/src/shipping/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/shippingRate.ts",
       "class": "public-output"
     },
     {
@@ -3739,6 +3747,10 @@
     },
     {
       "path": "packages/platform/src/shipping/readDeliverySelectionEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/shippingRatePorts.ts",
       "class": "public-output"
     },
     {
@@ -4439,6 +4451,10 @@
     },
     {
       "path": "packages/platform/test/shipping/deliveryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/shippingRateConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -14582,6 +14598,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/admin/BundleStockCard.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/admin/BundleStockCard.tsx",
       "class": "public-output"
     },
@@ -15015,6 +15035,30 @@
     },
     {
       "path": "src/components/seoUtils.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/DeliveryMethodCard.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/DeliveryMethodCard.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/PickupPointPicker.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/PickupPointPicker.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/ShippingFieldsCard.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/deliverySelectionCheckoutCharacterization.test.tsx",
       "class": "public-output"
     },
     {
@@ -17755,6 +17799,14 @@
     },
     {
       "path": "src/domains/shipping/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/shipping/useDeliverySelection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/shipping/usePickupPointSearch.ts",
       "class": "public-output"
     },
     {

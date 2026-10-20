@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Import the flat-rate shipping handler with required host schemas and retain reference selection, pickup and stock UI mechanics.
+
 - Add address lookup, authenticated address-book handlers and row helpers to shipping with required host validation and canonicalization.
 
 - Add experimental opt-in Node `communications/resend` with exactly three

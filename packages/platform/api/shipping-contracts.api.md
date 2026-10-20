@@ -273,4 +273,20 @@ export interface DeliverySelectionEvidence {
 ```ts
 export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryService, PickupPoint, DeliveryOption, DeliveryOptionsResponse, PickupPointValidationRequest, PickupPointValidationResponse, PickupPointSearchRequest, PickupPointSearchResult, PickupPointSearchResponse, } from "./delivery.js";
 export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
+export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
+```
+## dist/shipping/contracts/shippingRate.d.ts
+
+```ts
+/** Browser DTOs for the incumbent flat-rate administration API. */
+export interface AdminShippingRateResponse {
+    contractVersion: "commerce.v0";
+    shippingFlatMinor: number;
+}
+export interface AdminSetShippingRateRequest {
+    shippingFlatMinor: number;
+}
+export interface AdminSetShippingRateResponse extends AdminShippingRateResponse {
+    updated: true;
+}
 ```

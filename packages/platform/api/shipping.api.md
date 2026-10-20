@@ -546,6 +546,14 @@ export interface CustomerAddressSchemas {
 }
 export {};
 ```
+## dist/shipping/adminShippingRateHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { AdminShippingRateHandlerDeps, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+export declare function createAdminShippingRateHandler({ dataPort, authorizeAdmin, resolveAdmin, }: AdminShippingRateHandlerDeps, schemas: ShippingRateHandlerSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
 ## dist/shipping/contracts/address.d.ts
 
 ```ts
@@ -813,6 +821,22 @@ export interface DeliverySelectionEvidence {
 ```ts
 export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryService, PickupPoint, DeliveryOption, DeliveryOptionsResponse, PickupPointValidationRequest, PickupPointValidationResponse, PickupPointSearchRequest, PickupPointSearchResult, PickupPointSearchResponse, } from "./delivery.js";
 export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
+export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
+```
+## dist/shipping/contracts/shippingRate.d.ts
+
+```ts
+/** Browser DTOs for the incumbent flat-rate administration API. */
+export interface AdminShippingRateResponse {
+    contractVersion: "commerce.v0";
+    shippingFlatMinor: number;
+}
+export interface AdminSetShippingRateRequest {
+    shippingFlatMinor: number;
+}
+export interface AdminSetShippingRateResponse extends AdminShippingRateResponse {
+    updated: true;
+}
 ```
 ## dist/shipping/customerAddressesHandler.d.ts
 
@@ -928,6 +952,9 @@ export { createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandle
 export { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
 export { canonicalAddressKey } from "./addressCanonical.js";
 export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, addressRow, findCanonicalAddressId, clearDefaultAddress } from "./customerSelfServiceAddressModels.js";
+export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
+export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
+export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 
@@ -942,4 +969,60 @@ export interface PickupPointSearchPort {
 ```ts
 import type { DeliverySelectionEvidence, DeliverySelectionSources } from "./contracts/delivery.js";
 export declare function resolveDeliverySelectionEvidence(sources: DeliverySelectionSources): DeliverySelectionEvidence;
+```
+## dist/shipping/shippingRatePorts.d.ts
+
+```ts
+import type { HttpResponse } from "../http/index.js";
+import type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
+/** Only the incumbent flat-rate reads, writes and best-effort audit. */
+export interface ShippingRateDataPort {
+    getShippingFlatMinor(): Promise<number>;
+    setShippingFlatMinor(minor: number): Promise<void>;
+    recordPromotionAudit(entry: {
+        actorId: string;
+        actorEmail: string | null;
+        action: "shipping_rate_change";
+        promotionId: string;
+        newValue: Record<string, unknown>;
+    }): Promise<void>;
+}
+type Authorization = {
+    ok: true;
+    userId: string;
+    role: "admin" | "distributor";
+    isMachineActor: boolean;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    message: string;
+    identityCode?: string;
+};
+export interface AdminShippingRateHandlerDeps {
+    dataPort: ShippingRateDataPort;
+    authorizeAdmin: () => Promise<Authorization>;
+    /** The host retains its authorization/error response context. */
+    resolveAdmin: (authorizeAdmin: () => Promise<Authorization>, res: HttpResponse) => Promise<{
+        userId: string;
+    } | null>;
+}
+type Schema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+/** Required host validation; there is no default amount policy. */
+export interface ShippingRateHandlerSchemas {
+    contractVersion: AdminShippingRateResponse["contractVersion"];
+    adminShippingRateResponseSchema: Schema<AdminShippingRateResponse>;
+    adminSetShippingRateRequestSchema: Schema<AdminSetShippingRateRequest>;
+    adminSetShippingRateResponseSchema: Schema<AdminSetShippingRateResponse>;
+}
+export {};
 ```

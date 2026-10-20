@@ -91,3 +91,27 @@ Neutralization ledger: required schemas retain host source/geography/postal/tax 
 Test ledger: 5 new root 25.83 ms + package-local 7.33 ms; 3 frozen W7 6.08 ms, 39.24 ms total (<1.8 s allocation); lane budget 14/5.3 s. Focused 1,549/103 files and package-local 2,935/161 PASS. Consumer shorthand = `packages/platform/test/shipping/addressConformance.test.ts`.
 Collection proof: `vitest list --filesOnly --project=node` selects both new paths; package-local `vitest list --filesOnly test/shipping/addressConformance.test.ts` selects that path. Lint (33 warnings), typecheck, API, size, both neutrality checks (0 increases), collection and diff PASS; policy PASS against the P3a stack base. Root-doc gzip 37,153→37,196 B (+43), pack 676,402 B; browser 20≤32 B. Four scoped no-impact records answer the owner obligations in the commit.
 Self-retro: repeated frozen literals → read the same values from reference contracts; this preserved W7 byte-equivalent fixtures/assertions without baseline changes. Existing ports plus injected canonicalizer avoid a new writer; reference dependency interfaces retain their original narrowed types. No incumbent behaviour delta.
+
+### P3c
+Outcome: unchanged O flat-rate handler body behind required injection; selected V dictionary restore/selection, manual address and list-first pickup mechanics in reference src. O card bodies retained; catalog availability import stays outside inventory.
+Authority/delivery: user assignment on P3b 164f02b; local edits/checks only, no Git writes or network writes. Supervisor retains committed review/delivery; no new grant. M05 BundleStockCard unchanged on local origin/main since 46e9c22.
+Excludes private configurator, account prefill, map/geolocation loaders, transports, policy editor, new busy handling, migrations and activation. Acceptance: exact 27 paths, 10 consumed exports, 6 new + 4 frozen W8 cases, focused gates and neutrality without baseline increases.
+Smallest alternative/risk: move the incumbent body with structural picks and injected schemas/resolver/responder; select only useful UI mechanics. Proof targets validation/refusal/audit order, fresh evidence, fallback and server-owned unknown stock.
+Neutralization ledger: required ShippingRateHandlerSchemas has no default; DTOs carry no market policy. W8 reads identical country/provider fixture values from reference contracts after ratchet refusal; expectations remain frozen and never compare output with itself. Search uses the existing free-text request contract instead of a country-specific locator classifier.
+| Subpath | Symbol | Consumer |
+| --- | --- | --- |
+| `./shipping` | `createAdminShippingRateHandler` | `server/domains/commerce/adminShippingRateHandler.ts` |
+| `./shipping` | `AdminShippingRateHandlerDeps` | `server/domains/commerce/adminShippingRateHandler.ts` |
+| `./shipping` | `ShippingRateDataPort` | `server/domains/commerce/adminShippingRateHandler.ts` |
+| `./shipping` | `ShippingRateHandlerSchemas` | `server/domains/commerce/adminShippingRateHandler.ts` |
+| `./shipping` | `AdminShippingRateResponse` | `shippingRateConformance.test.ts` |
+| `./shipping` | `AdminSetShippingRateRequest` | `shippingRateConformance.test.ts` |
+| `./shipping` | `AdminSetShippingRateResponse` | `shippingRateConformance.test.ts` |
+| `./shipping/contracts` | `AdminShippingRateResponse` | `src/components/admin/ShippingRateCard.tsx` |
+| `./shipping/contracts` | `AdminSetShippingRateRequest` | `src/components/admin/ShippingRateCard.tsx` |
+| `./shipping/contracts` | `AdminSetShippingRateResponse` | `src/components/admin/ShippingRateCard.tsx` |
+Test ledger: root 3 conformance 6.90 ms + DeliveryMethodCard 71.68 ms + PickupPointPicker 1123.14 ms + BundleStockCard 17.78 ms = 6 new / 1219.50 ms; W8 4 / 220.09 ms. Package-local new 3 / 3.26 ms; P3c new-case invocation time 1222.76 ms <2.3 s. Lane = 14 new (3+5+6), unchanged. Focused root 87/18 files, 5.92 s wall; package-local shipping 11/3 files, 0.448 s wall, all PASS.
+Collection: root `vitest list --filesOnly --project=dom` names all four new TSX tests; root `--project=node` and package-local node each name `shippingRateConformance.test.ts`. No runner/config change; no full/scoped/required-package/resource gate ran. No pre-existing ShippingRateCard suite exists in this checkout.
+Evidence: ast-grep, lint (33 warnings), typecheck (zero edges/errors), focused tests, API update/check, size/browser, both neutrality checks (0 increases), collection and diff checks PASS. Root docs 37,196→37,241 gzip B (+45), pack 678,465 B / 3,043,437 unpacked B / 1,073 files; code 586,208 gzip B / 1,053 files; shipping contracts 20≤32 B. No caps/baselines raised.
+Policy/navigation: `--policy --docs-update` regenerated identical navigation, then refused unindexed new files under the Git-write prohibition. Direct candidate impact against 164f02b reports architecture updated and domain-commerce/domain-shipping/platform-substrate trailers outstanding; supervisor must stage/commit and rerun policy. Exact closure and unchanged-body comparisons are recorded in the handoff.
+Self-retro: strict package availability DTOs broke the existing caller's inferred optionality → retain the incumbent reference catalog schema import. Two new response assertions assumed metadata absent from the incumbent → assert the actual frozen flat-rate envelope. Both repairs stayed inside the closure; private dependencies needed no new runtime abstraction.

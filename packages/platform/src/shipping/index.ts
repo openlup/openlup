@@ -18,3 +18,6 @@ export { createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandle
 export { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
 export { canonicalAddressKey } from "./addressCanonical.js";
 export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, addressRow, findCanonicalAddressId, clearDefaultAddress } from "./customerSelfServiceAddressModels.js";
+export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
+export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
+export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
