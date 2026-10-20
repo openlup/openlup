@@ -586,8 +586,8 @@ caused by this subject's unresolved grants (ambiguous acceptance, failed recordi
 dispatch or partial persistence), while preserving an earlier unresolved
 withdrawal's same-key replay fence and account-level provider cooling; cooling
 returns `retryable/cooling` with finite positive `afterSeconds` for the host to
-retry. Another subject's uncertain entry never holds this subject's withdrawal;
-unclassified account availability or storage faults still require host repair.
+retry. Another subject's grant-caused uncertainty never holds this subject's withdrawal;
+durable non-grant account quarantine or storage faults still require host repair.
 An earlier grant never delays or drops withdrawal. A pending
 or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
 withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.

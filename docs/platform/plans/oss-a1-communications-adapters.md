@@ -257,11 +257,11 @@ A private in-memory cause record on the shared availability identity also
 retains a failed grant admission when no grant journal bytes survived; its key
 keeps settlement unresolved until host reconciliation. It disappears on host
 restart, when availability starts closed for explicit reconciliation.
-Another subject's uncertain entry cannot hold this subject's withdrawal. Known
+Another subject's grant-caused uncertainty cannot hold this subject's withdrawal. Known
 grant-caused availability quarantine is bypassable by withdrawals across subjects;
 provider cooling still applies to everyone. Grant uncertainty does not reopen the
-account for other operations; unclassified host quarantine still requires explicit
-host repair. Its success carries
+account for other operations; durable non-grant account quarantine still requires explicit
+host repair. With this subject's earlier unsettled grant, withdrawal success carries
 `reconcileRequired:true`; failed withdrawal recording preserves acknowledgement
 with `journal:"unknown"`. Grants remain restricted during unconfirmed
 withdrawal. Pre-settlement or incomplete reads retain UNKNOWN. The host's
