@@ -126,10 +126,12 @@ function assertNoneAbove(name: string, version: string, held: readonly string[])
   }
 }
 
-function assertCleanTarget(root: string, target: string): void {
+/** The checkout is `target` (or, without one, its own HEAD) with no tracked changes; returns that commit. */
+function assertCleanTarget(root: string, target?: string): string {
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: root, encoding: "utf8" });
-  if (head !== target || dirty !== "") throw new Error("the checkout must be the target commit without tracked changes");
+  if ((target !== undefined && head !== target) || dirty !== "") throw new Error("the checkout must be the target commit without tracked changes");
+  return head;
 }
 
 /** The checkout is the clean target, and its package is publishable at exactly the requested version. */
@@ -373,8 +375,7 @@ async function main(): Promise<void> {
   if (argv.length !== (phase === "plan" ? 4 : 3) || !PHASES.some((listed) => listed.split(" ")[0] === phase)) throw new Error(`expected one phase: ${PHASES.join(", ")}`);
   if (phase === "registry") {
     if (!parsePackageReleaseTag(env.RELEASE_TAG ?? "")) throw new Error(`${env.RELEASE_TAG ?? ""} is not a package release tag`);
-    const target = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-    assertCleanTarget(process.cwd(), target);
+    const target = assertCleanTarget(process.cwd());
     assertSourceReleaseSnapshot(process.cwd(), target);
     await assertRegistryReady(env.RELEASE_TAG ?? "");
     console.log(`npm holds neither ${env.RELEASE_TAG} nor any later version`);
