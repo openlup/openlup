@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its thirteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its fifteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -23,6 +23,52 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
+| `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
+| `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
+
+## Catalog
+
+`./catalog` is an experimental capability for the existing neutral catalog
+foundation, installed product types, draft validation/use cases, active SKU
+selection, resolved SKU projection and sellable reference reads. Hosts supply
+the read/store ports, verified operator authorizer, product-type registry and
+BFF responder. Draft commands retain the original canonical bytes, receipt-first
+replay, actor binding and named refusals. Read projections carry opaque
+product-scoped document references; they do not interpret document payloads.
+
+`./catalog/contracts` carries dependency-free DTOs, the shared authority error,
+GTIN/authority helpers, quantity/option helpers and the existing draft JSON
+canonicalizer. It imports no Zod, Node runtime or server barrel. Runtime schemas
+use the server entry with jitless Zod; the reference browser keeps its sellable
+schemas locally. Media manifest validation and `resolveProductMedia` are also
+browser exports: declared product/variant/locale associations resolve to supplied
+URLs with deterministic ordering and neutral fallback, without filename inference.
+The server entry adds bounded source-pack export/validation/restore/import;
+`BlobStoragePort` comes from the existing `@openlup/core/platform-runtime` entry.
+Import validates every resource before uploading immutable digest keys, deduplicates
+shared keys and never activates associations. No upload route is mounted.
+
+Read and draft behavior is supplied by the existing use cases and host ports.
+`publicationRead`, `publish` and `lifecycleWrite` remain explicitly unsupported
+in the neutral reference binding. Lifecycle DTOs and server validation/publication
+ports are types only, with an opaque publisher brand and no constructor or default
+binding. A missing authority is `unsupported`; an unavailable configured authority
+is `dependency_unavailable`, never an absent receipt. Successful readback requires
+real publication lineage; existing active rows cannot invent a head. History pages
+are bounded to 100 receipts with stable revision ordering and opaque cursors.
+Existing SKU `draft`/`active`/`archived` and draft receipt `open`/`abandoned` wire
+statuses remain unchanged. `withdrawn` may map from `archived` only where an
+authority establishes withdrawal; abandoning a draft does not withdraw a variant.
+Neither entry installs SQL. Rich application catalog interpretation remains
+reference-owned. The [M05 plan](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md)
+records the cut, its exclusions and the witness ledger.
+The moved characterization suites are under `test/catalog/`; the required cold
+consumer classifies both entries without optional peers and checks installed
+canonicalization, authority identity, selection and unauthorized draft refusal.
+Three synthetic media conformance cases and one lifecycle type case complement
+those moved suites; the existing package boundary tests cover browser closure.
+The complete contracts entry measures 3,281 B minified+gzip against its 4,096 B
+budget; other entry and aggregate caps are unchanged.
 
 ## Scheduled jobs
 

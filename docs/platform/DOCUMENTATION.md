@@ -62,6 +62,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The catalog extraction keeps the platform README as owner of its new package
+entries and moved witnesses, and the catalog domain README as owner of reference
+shims and retained browser schemas. Regenerate publication paths for moved tests
+and new package sources with the existing catalogue generator, then derive the
+source-release contract from that inventory. These projections describe the
+unchanged source move; they establish no new installation or publication claim.
+
 OIDC selectors assign the explicit host composition, pinned disposable compose
 and real-issuer conformance modules to the identity guide. Package/API owners
 retain exported-contract explanations, architecture retains readiness and actor

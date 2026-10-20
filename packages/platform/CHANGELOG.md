@@ -8,6 +8,20 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental `catalog` and dependency-free `catalog/contracts` entries by
+  moving the existing public neutral foundation, product types, draft logic,
+  read ports and projections unchanged. Reference paths delegate; browser
+  sellable schemas and rich catalog interpretation remain application-owned.
+  Add unchanged provider-free media validation/resolution and bounded source-pack
+  transfer using the existing blob port. Add lifecycle/publication DTOs and ports
+  only; publication read, publish and lifecycle writes remain unsupported, with
+  no executor, upload route, activation, SQL or wire-status changes.
+
+Migration: existing consumers need no source or schema changes. The identity
+snapshot only reorders `inactive` in the emitted `customerLifecycleStageSchema`
+and `customerMeResponseSchema` enum declarations; members and runtime behavior
+are unchanged. Catalog adoption is opt-in through the new experimental entries.
+
 ## [0.17.0]
 
 - Publishable on the npm `latest` dist-tag as `0.17.0`, from tag

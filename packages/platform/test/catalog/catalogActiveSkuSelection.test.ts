@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCatalogActiveSkuSelection } from "./catalogActiveSkuSelection.js";
+import { parseCatalogActiveSkuSelection } from "../../src/catalog/activeSkuSelection.js";
 
 describe("active SKU selection", () => {
   it("preserves omission and parses exact codes using the existing selector normalization", () => {

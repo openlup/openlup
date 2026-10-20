@@ -150,6 +150,37 @@
       ],
       "entrypoint": "dist/communications/contracts/index.d.ts",
       "snapshot": "api/communications-contracts.api.md"
+    },
+    "./catalog": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/catalog/catalogDraftHandler.test.ts",
+        "test/catalog/catalogDraftValidation.test.ts",
+        "test/catalog/resolvedSkuProjection.test.ts",
+        "test/catalog/referenceCatalogHandler.test.ts",
+        "test/catalog/catalogMediaResolution.test.ts",
+        "test/catalog/catalogLifecycleContracts.test.ts"
+      ],
+      "entrypoint": "dist/catalog/index.d.ts",
+      "snapshot": "api/catalog.api.md"
+    },
+    "./catalog/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/catalog/catalogFoundationContracts.test.ts",
+        "test/catalog/catalogProductTypeContracts.test.ts",
+        "test/catalog/catalogDraftContracts.test.ts",
+        "test/catalog/catalogMediaResolution.test.ts",
+        "test/catalog/catalogLifecycleContracts.test.ts"
+      ],
+      "entrypoint": "dist/catalog/contracts/index.d.ts",
+      "snapshot": "api/catalog-contracts.api.md"
     }
   },
   "pack": {
@@ -170,7 +201,8 @@
     },
     "browserEntries": {
       "./communications/contracts": 11776,
-      "./identity/contracts": 4800
+      "./identity/contracts": 4800,
+      "./catalog/contracts": 4096
     }
   }
 }

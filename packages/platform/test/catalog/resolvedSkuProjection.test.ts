@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildResolvedSkuProjection, resolvedSkuProjectionSchema } from "./resolvedSkuProjection.js";
+import { buildResolvedSkuProjection, resolvedSkuProjectionSchema } from "../../src/catalog/resolvedSkuProjection.js";
 
 function input() {
   return {

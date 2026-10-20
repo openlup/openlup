@@ -173,6 +173,7 @@ describe("package source boundary", () => {
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
+      "catalog/index.ts", "catalog/contracts/index.ts",
       "communications/index.ts", "communications/contracts/index.ts", "http/webhookSignature.ts",
       "kernel/platformKernel.ts", "bff/dispatch.ts", "composition/composeBundle.ts", "composition/nodeHost.ts",
     ]));

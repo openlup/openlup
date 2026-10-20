@@ -21,6 +21,26 @@ The separate default-off storefront-product readback is DB-only behind
 - `staticProductAdapter.ts` — reference/fixture adapter; it is not a mounted
   customer-runtime fallback.
 
+## Packaged neutral catalog boundary
+
+The neutral foundation, installed product types, drafts, active SKU selection,
+resolved projection and reference list handler now delegate to
+`@openlup/platform/catalog`. Their old paths are named compatibility shims;
+authority and draft store errors retain the package class identity. Neutral
+sellable/envelope read interfaces are type re-exports from the package, while
+rich `CatalogReadPort`, application schemas and rich errors remain here.
+
+The browser still uses the local sellable Zod schemas in `contracts.ts` and
+imports their DTOs as types from `@openlup/platform/catalog/contracts`. Its
+existing wire-version constant stays with those local schemas, keeping the
+subscription profile runtime import closure unchanged. Other
+selected schemas have server consumers only and are exposed through the server
+entry. The reference handler injects this application's observed BFF responder,
+so request-reference metadata and cache behavior stay intact. Existing suites
+move to `packages/platform/test/catalog/`; the local binding guard checks that
+observed response context survives composition. No SQL, publication capability,
+admin-document behavior or rich document interpretation changes in this move.
+
 ## Isolated product drafts
 
 `catalogDraftContracts.ts`, `catalogProductTypeContracts.ts` and

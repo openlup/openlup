@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { catalogDraftPayloadSchema, type CatalogDraftPayload } from "../../../src/domains/catalog/catalogDraftContracts.js";
-import { createCatalogProductTypeRegistry, type CatalogQuantity } from "../../../src/domains/catalog/catalogProductTypeContracts.js";
-import { validateCatalogDraft } from "./catalogDraftValidation.js";
+import { catalogDraftPayloadSchema, type CatalogDraftPayload } from "../../src/catalog/draftSchemas.js";
+import { createCatalogProductTypeRegistry, type CatalogQuantity } from "../../src/catalog/productTypeSchemas.js";
+import { validateCatalogDraft } from "../../src/catalog/draftValidation.js";
 
 const productId = "10000000-0000-4000-8000-000000000001";
 const skuId = "20000000-0000-4000-8000-000000000001";

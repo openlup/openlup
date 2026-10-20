@@ -115,6 +115,16 @@
       "types": "./dist/communications/contracts/index.d.ts",
       "import": "./dist/communications/contracts/index.js",
       "default": "./dist/communications/contracts/index.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog/index.d.ts",
+      "import": "./dist/catalog/index.js",
+      "default": "./dist/catalog/index.js"
+    },
+    "./catalog/contracts": {
+      "types": "./dist/catalog/contracts/index.d.ts",
+      "import": "./dist/catalog/contracts/index.js",
+      "default": "./dist/catalog/contracts/index.js"
     }
   },
   "repository": {

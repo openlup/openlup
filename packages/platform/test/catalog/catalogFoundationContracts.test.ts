@@ -6,7 +6,7 @@ import {
   isValidGtin,
   neutralSkuEnvelopeV1Schema,
   requireCurrentCatalogDocumentAuthority,
-} from "./catalogFoundationContracts.js";
+} from "../../src/catalog/foundationSchemas.js";
 
 const PRODUCT_ID = "11111111-1111-4111-8111-111111111111";
 const SKU_ID = "22222222-2222-4222-8222-222222222222";

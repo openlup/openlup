@@ -47,9 +47,7 @@ export const sellableCatalogListResponseSchema = z.object({
   items: z.array(sellableCatalogItemSchema).min(1),
 }).strict();
 
-export type SellableCatalogItem = z.infer<typeof sellableCatalogItemSchema>;
-export type SellableCatalogProfile = z.infer<typeof sellableCatalogProfileSchema>;
-export type SellableCatalogListResponse = z.infer<typeof sellableCatalogListResponseSchema>;
+export type { SellableCatalogItem, SellableCatalogProfile, SellableCatalogListResponse } from "@openlup/platform/catalog/contracts";
 
 // Slugs are an OPEN value space, validated by format (slugFormat.ts), never a
 // closed enum — so admin/agent-added products and real DB rows validate.

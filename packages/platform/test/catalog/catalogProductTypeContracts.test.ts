@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalCatalogOption, catalogQuantitySchema, createCatalogProductTypeRegistry,
   validateCatalogQuantity, type CatalogProductTypeDefinition,
-} from "./catalogProductTypeContracts.js";
+} from "../../src/catalog/productTypeSchemas.js";
 
 const definition: CatalogProductTypeDefinition = {
   key: "example:article", version: 1, units: [
