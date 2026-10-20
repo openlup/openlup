@@ -15,6 +15,19 @@ SemVer promise.
   injectable fetch adds no SDK/dependency. Neutral entries and the maintained
   reference adapter are unchanged. Protocol-only evidence; account verification
   remains pending. No default sender, route, schedule or recovery send.
+- Move unchanged fixed-bundle rules, availability, semantic ports and admin/feed
+  application handlers into the existing catalog server entry. Reference bindings
+  retain schemas, shared admin kit/spec/flags, stock/lifecycle helpers, responder,
+  wire versions and RPC error identity. Catalog contracts add plain DTOs only;
+  browser schemas stay local. Native stores and SQL remain outside this slice.
+
+Migration: existing reference imports remain named compatibility exports.
+Installed consumers bind the host dependencies explicitly. Bundle DTO additions
+are additive. Generated pricing/promotions snapshots reorder the existing bundle
+component enum member; communications snapshots reorder update/email_change; promotions also reorders
+the existing all member in status/scope enums.
+Members and runtime behavior are unchanged. No SQL, data or activation migration is introduced.
+
 - Add 14 experimental provider-neutral marketing-sync types through the existing
   communications and communications/contracts entries: profile sync, negative
   consent readback and erasure request/status. Existing M04 providers remain

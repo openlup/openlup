@@ -190,6 +190,15 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+Bundle application/admin now has package ownership in the existing catalog server
+entry with named reference compatibility bindings. Read-error identity is shared
+through its shim; the RPC subclass stays reference-owned and is injected into
+handlers. Validators, their defaults/strictness and operation/MCP/flag authority
+remain at the reference boundary. Catalog contracts publish plain DTO types only.
+Existing composition order, stock unknowns, allocation and preview selection are
+preserved. No database gate, actor-history parity, mount or stronger replay claim
+follows from this application move; the bundle pending ledger owns those outcomes.
+
 Promotion admin DTOs and server schemas now have package ownership with named
 reference compatibility exports. The structural-slice inventory follows the
 moved native-store and admin tests; this is a source-location update, not a

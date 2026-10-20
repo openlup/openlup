@@ -2255,13 +2255,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             line: "line";
         }>;
         componentType: z.ZodEnum<{
+            bundle: "bundle";
             base_unit: "base_unit";
             mode_discount: "mode_discount";
             qty_tier: "qty_tier";
             promo: "promo";
             loyalty: "loyalty";
             shipping: "shipping";
-            bundle: "bundle";
         }>;
         amountMinor: z.ZodNumber;
         reasonCode: z.ZodString;
@@ -2333,13 +2333,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 line: "line";
             }>;
             componentType: z.ZodEnum<{
+                bundle: "bundle";
                 base_unit: "base_unit";
                 mode_discount: "mode_discount";
                 qty_tier: "qty_tier";
                 promo: "promo";
                 loyalty: "loyalty";
                 shipping: "shipping";
-                bundle: "bundle";
             }>;
             amountMinor: z.ZodNumber;
             reasonCode: z.ZodString;
@@ -2428,13 +2428,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     line: "line";
                 }>;
                 componentType: z.ZodEnum<{
+                    bundle: "bundle";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
                     shipping: "shipping";
-                    bundle: "bundle";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -2544,13 +2544,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 line: "line";
             }>;
             componentType: z.ZodEnum<{
+                bundle: "bundle";
                 base_unit: "base_unit";
                 mode_discount: "mode_discount";
                 qty_tier: "qty_tier";
                 promo: "promo";
                 loyalty: "loyalty";
                 shipping: "shipping";
-                bundle: "bundle";
             }>;
             amountMinor: z.ZodNumber;
             reasonCode: z.ZodString;
@@ -2628,13 +2628,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                         line: "line";
                     }>;
                     componentType: z.ZodEnum<{
+                        bundle: "bundle";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
                         shipping: "shipping";
-                        bundle: "bundle";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -2744,13 +2744,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     line: "line";
                 }>;
                 componentType: z.ZodEnum<{
+                    bundle: "bundle";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
                     shipping: "shipping";
-                    bundle: "bundle";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -2829,13 +2829,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                         line: "line";
                     }>;
                     componentType: z.ZodEnum<{
+                        bundle: "bundle";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
                         shipping: "shipping";
-                        bundle: "bundle";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -2945,13 +2945,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     line: "line";
                 }>;
                 componentType: z.ZodEnum<{
+                    bundle: "bundle";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
                     shipping: "shipping";
-                    bundle: "bundle";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3031,13 +3031,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                         line: "line";
                     }>;
                     componentType: z.ZodEnum<{
+                        bundle: "bundle";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
                         shipping: "shipping";
-                        bundle: "bundle";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -3147,13 +3147,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     line: "line";
                 }>;
                 componentType: z.ZodEnum<{
+                    bundle: "bundle";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
                     shipping: "shipping";
-                    bundle: "bundle";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3232,13 +3232,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                         line: "line";
                     }>;
                     componentType: z.ZodEnum<{
+                        bundle: "bundle";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
                         shipping: "shipping";
-                        bundle: "bundle";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -3348,13 +3348,13 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     line: "line";
                 }>;
                 componentType: z.ZodEnum<{
+                    bundle: "bundle";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
                     shipping: "shipping";
-                    bundle: "bundle";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;

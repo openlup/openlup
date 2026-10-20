@@ -585,6 +585,28 @@ assert.deepEqual(catalog.parseCatalogActiveSkuSelection([" ITEM-1 "]), ["ITEM-1"
 assert.throws(() => catalog.parseCatalogActiveSkuSelection(["ITEM-1", " ITEM-1 "]), /catalog_active_sku_selection_invalid/);
 const handler = catalog.createCatalogDraftHandler({ store: {}, registry: {}, authorizeOperator: async () => null });
 assert.deepEqual(await handler.execute({}, {}), { outcome: "unauthorized", reason: "draft_operator_required" });
+// P4a adds application-only bundle exports; catalog stays a non-adapter until the native store moves.
+const composition = { code: "fixed-set", title: "Fixed set", fulfillmentMode: "virtual", currency: "XXX", targetPriceMinor: 2001, mode: "one_time",
+  components: [
+    { sku: "UNIT-A", title: "Unit A", productSlug: "unit-a", variantId: "variant-a", quantity: 2, isAddon: false, sortOrder: 0, referenceUnitPriceMinor: 1000 },
+    { sku: "UNIT-B", title: "Unit B", productSlug: "unit-b", variantId: "variant-b", quantity: 1, isAddon: true, sortOrder: 1, referenceUnitPriceMinor: 500 },
+  ] };
+assert.deepEqual(catalog.evaluateBundleComposition(composition.components), { ok: true, violations: [] });
+assert.deepEqual(catalog.evaluateBundleComposition([composition.components[0], composition.components[0]]), { ok: false, violations: ["DUPLICATE_COMPONENT"] });
+const { deriveBundleAvailability } = catalog.createBundleAvailability({
+  offerAvailabilityStatusFor: (value, threshold) => value === null ? "unknown" : value <= 0 ? "out_of_stock" : value <= threshold ? "low_stock" : "available",
+  offerAvailabilityReasonCode: status => status,
+});
+const { createBundleAvailabilityService } = catalog.createBundleAvailabilityServices({ deriveBundleAvailability });
+const rows = await createBundleAvailabilityService({ bundleCatalogReadPort: { listActiveBundleCompositions: async () => [composition] }, offerAvailabilityPort: catalog.createUnknownOfferAvailabilityPort() }).describeActiveBundles();
+assert.equal(rows[0].availability.sellableNow, null);
+const bundle = catalog.toSellableBundle(rows[0].composition, rows[0].availability);
+assert.deepEqual(bundle.components.map(line => line.lineSubtotalMinor), [801, 800, 400]);
+assert.equal(bundle.components.reduce((sum, line) => sum + line.lineSubtotalMinor, 0), 2001);
+for (const line of bundle.components) assert.equal(line.effectiveUnitPriceMinor * line.quantity, line.lineSubtotalMinor);
+assert.equal("createBundleAvailability" in contracts, false);
+assert.equal("createAdminBundleHandlers" in contracts, false);
+
 `);
     consumerNode(consumer, `
 import assert from "node:assert/strict";

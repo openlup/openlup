@@ -395,6 +395,15 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+Catalog now also owns fixed-bundle application/admin factories at its existing
+entry. Its only cross-module edges remain type-only http/bff handler/responder
+inputs; there is no data, pricing or promotions edge. Reference wrappers bind
+existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
+versions and the RPC error constructor. Browser-reached schemas retain their
+reference owner and never re-export the server entry; catalog contracts expose
+plain bundle DTO types. No native store moves in this slice, so catalog remains
+non-adapter and neither entry requires optional provider peers.
+
 The experimental promotions module has one value edge to pricing through
 `pricing/index.js`, for acquisition binding and the protocol constant. Type-only
 edges to data, http and bff describe the injected executor and shared admin-kit

@@ -9,13 +9,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import type { AdminBundleWritePort } from "./adminBundleWritePort.js";
+import type { AdminBundleWritePort } from "../../../server/domains/bundle/adminBundleWritePort.js";
 import {
   createAdminBundleActivateHandler,
   createAdminBundleCreateDraftHandler,
   createAdminBundleSetCompositionHandler,
   type AdminBundleHandlerDeps,
-} from "./adminBundleHandler.js";
+} from "../../../server/domains/bundle/adminBundleHandler.js";
 
 // Request/response types are DERIVED from the handler the factory returns rather
 // than imported from the hosting SDK: the thing under test is the handler's own

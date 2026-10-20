@@ -131,6 +131,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Bundle application/admin extraction reuses the existing platform catalog entries,
+module graph and test collectors. Only http/bff types cross module boundaries;
+reference schemas, shared admin kit/spec and RPC error subclass remain injected.
+The five package bundle suites retain 44 cases and two root binding suites retain
+18. Four neutral composition/stock/allocation/refusal/authority cases plus one
+DTO/schema and browser-closure binding case add five executed cases. No Vitest
+configuration or required selector changes. Catalog remains a non-adapter in this
+slice; its cold-consumer transcript adds composition refusal, honest unknown
+stock and exact per-line allocation without optional peers. Native store/SQL proof
+is separate. Uncommitted relocated files still require the supervisor's committed
+inventory/package checks; local candidate ownership checks do not replace them.
+
 Promotion admin/native extraction keeps the existing checks and runner selection.
 The module graph admits type-only data/http/bff edges for executor and admin
 bindings; no runtime data edge is needed. The server entry's declarations reach
