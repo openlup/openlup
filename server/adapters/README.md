@@ -25,6 +25,13 @@ write-routine rollback/replay and grants, without mounted or actor-kind parity.
 - Simulator/noop implementations used by hidden preview and local tests.
 - Mapping from provider responses back to domain-neutral result objects.
 
+The reference promotion admin adapter supplies the legacy first-subscription
+percentage from the existing quote-discount composition to both semantic row
+mapping and the pre-update technical-row check. Neither classifier chooses a
+default. Reusing the same named reference value preserves the adapter's
+system-managed read-only refusal, mirror ownership checks and currency mapping;
+no database predicate, query or audit behavior changes.
+
 ## Does Not Own
 
 - Provider HTTP clients, env parsing, signatures, and low-level payload

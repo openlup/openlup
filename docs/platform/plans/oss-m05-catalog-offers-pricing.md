@@ -214,30 +214,37 @@ released baseline or growth-tripwire policy changes.
 
 ### D8 pending outcome ledger
 
-Each row is **PENDING, not N/A, not claimed; must be dispositioned before M05 S1**.
-Disposition requires later implementation/proof or one bounded scope packet to
-the delegate; any reduction of admitted acceptance requires the owner's decision.
+The owner accepted D8-1 through D8-4 as native-backend capability gaps on
+2026-10-20: "zgadzam sie na rekomendacje". These dispositions claim no parity.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
-| Native advisory v2 promo-code candidates and rejection details | PENDING capability/parity; the managed resolver is not a native implementation. |
-| Native mounted quote issue/honor/fallback | PENDING composition proof on the native mount. |
-| Acquisition-only mounted acceptance | PENDING composition proof; low-level token tests do not close it. |
-| Full native/managed eligibility matrix | PENDING explicit outcome matrix, including paid-order classification and native device evidence differences. |
+| D8-1: Native advisory v2 promo-code candidates and rejection details | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native v2 advisory code resolution remains unimplemented; no native/managed parity claim. |
+| D8-2: Native mounted quote issue/honor/fallback | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native mounted v2 code issue/honor/fallback remains pending on native advisory code resolution; incumbent native quote behaviour preserved. |
+| D8-3: Acquisition-only mounted acceptance | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Low-level terms binding proven; acquisition-only mounted issuance/honor remains unimplemented and reference activation remains off. |
+| D8-4: Full native/managed eligibility matrix | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Incumbent eligibility differences recorded; full equivalence not claimed. |
 
 Existing native lifecycle/read is proven in P3b on real PostgreSQL using the
 complete canonical installation chain. This proves the incumbent read/sweep and
 selected lifecycle subset, with no managed-schema import or new claim writer;
-it does not close any of the four PENDING rows above.
+it does not supply the missing capabilities recorded in the four accepted gaps above.
 
 ### P6 acceptance obligation
 
-P6 must replace every non-neutral fixture value still present in the moved
-package tests (including a legacy policy constant and industry-specific fact
-fields and contact values carried over unchanged from the existing public
-tests) with neutral synthetic values, without weakening any
-assertion. **SATISFIED in P6 for the moved package tests.** The reference
-classifier constant is unchanged and awaiting an owner decision.
+No adopter policy constant remains in OpenLup application code; the reference
+composition supplies the adopter's values. The immutable managed baseline schema
+(legacy-offer v2 mirror backfill and mirror-closing trigger predicates) and its
+pgTAP tests retain the incumbent value; removing it requires a forward migration
+that changes managed schema behaviour, recorded as an M05 follow-up needing an
+owner decision.
+
+The moved package tests are neutralized without weakening assertions, including
+legacy policy fixtures, fact fields and contact values. **SATISFIED in P6 for the
+moved package tests.** Q1 is behavior-preserving: both reference classifiers
+require the host's threshold without a default. The quote-discount composition
+owns the single named reference constant; v2 quote and admin compositions reuse
+it. Comparison tolerance and existing assertions remain unchanged, with zero
+new executed cases. Owner decision 2026-10-20: "zgadzam sie na rekomendacje".
 
 ## P3b — promotion admin and native read/sweep
 
@@ -325,7 +332,9 @@ Five new executed real-PostgreSQL cases leave the programme balance at **17**.
 Fresh full-chain/repeat installation, SQL identity, native reads without data
 writes, canonical write refusal/rollback/dry-run/price history, sequential key
 recognition and explicit invoker grants characterize the incumbent native subset.
-All bundle parity rows remain PENDING; row 1 is now characterized, not closed.
+At P4b all bundle parity rows remained PENDING; row 1 was characterized, not
+closed. The dated owner dispositions below supersede that pending status for
+Bundle-1 and Bundle-2.
 The existing binding case remains one case. Confirmed changed-test collection:
 PostgreSQL 5, binding 1, package boundary 1,030 and cold-consumer tooling 37 (pre-merge counts). Generated
 source-boundary iterations do not consume programme cases.
@@ -343,46 +352,58 @@ not replace, the supervisor's committed-candidate package gates.
 
 ### Bundle parity pending ledger
 
-Each row remains PENDING, not N/A, and must be dispositioned before M05 S1,
-together with D8 and P6. Package application proof closes none of these rows.
+The owner accepted Bundle-1 and Bundle-2 as capability gaps on 2026-10-20:
+"zgadzam sie na rekomendacje". Bundle-3 and Bundle-4 remain PENDING until the
+P7 proofs; package application proof closes neither pending row.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
-| Native database independent human-only actor-kind gate | PENDING: characterized in P4b; native database has no independent gate, handler gate only. |
-| Native history actor identity | PENDING: native actor fields are null versus managed audit identity. |
-| Native mounted admin/feed with actual stock | PENDING: P7 composition proof. |
-| Replay/concurrency beyond sequential replay | PENDING: characterize incumbent outcomes before claiming stronger guarantees. |
+| Bundle-1: Native database independent human-only actor-kind gate | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native human-only publication relies on the handler gate; independent database actor-kind enforcement is absent. First item of a future native-backend parity round. |
+| Bundle-2: Native history actor identity | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native principal audit exists; managed-equivalent actor kind/email history is unavailable and not claimed. |
+| Bundle-3: Native mounted admin/feed with actual stock | PENDING; closed by the P7 proofs native-mounted-bundle-admin-stock-readback and native-bundle-replay-contention-characterization. |
+| Bundle-4: Replay/concurrency beyond sequential replay | PENDING; closed by the P7 proofs native-mounted-bundle-admin-stock-readback and native-bundle-replay-contention-characterization. |
 
 ## P6 — bounded refactor and fixture neutralization
 
-The coordinator approved the seven-source-path cut. The outcome is corrected
+The coordinator approved the original seven-source-path cut and the Q1
+five-path reference composition extension. The outcome is corrected
 comments, delegation of duplicate VAT arithmetic to the existing helper, and
 neutral moved-test fixtures with all assertions retained. Both VAT exports,
 signatures and distinct function identities remain; API snapshot changes are
-comments only. No API, dependency, SQL, migration, functional or cap change is
-included. A behaviour change is never a refactor. C1 witnesses remain unchanged.
+comments only. No package API, dependency, SQL, migration, functional or cap change is
+included. Required reference classifier parameters preserve composed behavior. A behaviour change is never a refactor. C1 witnesses remain unchanged.
 
 Authority is local implementation and the requested focused checks; the
 supervisor owns commits, native candidate review and delivery. This task grants
-no merge, release, activation or adopter continuation. Reference classifiers,
-P5 functional paths and the concurrent inventory, shipping and communications
-work remain excluded. The reference classifier constant awaits its owner.
+no merge, release, activation or adopter continuation. P5 functional paths and the concurrent inventory, shipping and communications
+work remain excluded. The owner decision 2026-10-20, "zgadzam sie na rekomendacje",
+authorizes Q1 and Q2. STEP 0 selects the existing quote-discount composition for
+the constant, avoiding an additional production path. The starter-offer comment
+describes arithmetic parity rather than the threshold location and stays unchanged.
 
 Final-diff ledger against `a2edd8ebd9d72dea5be22197750743e4d2f3d198`:
-**7 production source paths / 12**, **7 production/tooling paths / 35**;
-**35 existing test/helper paths** (26 suites and 9 helpers), **0 new executed
+**12 production source paths / 12**, **12 production/tooling paths / 35**;
+**37 existing test/helper paths** (28 suites and 9 helpers), **0 new executed
 cases**. The post-P5 programme balance stays **5**. The publication catalogue and
 source-release contract were regenerated through their existing generators and
 are byte-unchanged; three API snapshots change comments only. Prose and API
 snapshots are excluded from the production/tooling count.
 
-The seven source paths are pricing `commerceQuoteCatalogReadPort.ts`,
+The original seven source paths are pricing `commerceQuoteCatalogReadPort.ts`,
 `commerceOfferPricing.ts` and `dbBackedCommerceQuoteHelpers.ts`; promotions
 `adminPromotionsDataPort.ts`; catalog `bundleRules.ts` and `bundleRuleCodes.ts`
 (all under `packages/platform/src/`); and `src/domains/bundle/bundleSpec.ts`.
+Q1 adds exactly five reference production paths:
+`server/domains/commerce/promotionCustomerSemantic.ts`,
+`server/domains/commerce/adminPromotionSemantic.ts`,
+`server/domains/commerce/quotePromoDiscounts.ts`,
+`server/domains/commerce/quotePromotionV2.ts` and
+`server/adapters/supabase/adminPromotions.ts`. No tooling source path changes.
 Tests comprise 4 catalog, 19 pricing and 10 promotions package paths, plus
-`tests/platform/catalog/bundleBindings.test.ts` and
-`tests/postgres/bundleNative.test.ts`. The feed fixture derives its reason code
+`tests/platform/catalog/bundleBindings.test.ts`,
+`tests/postgres/bundleNative.test.ts` and the two reference semantic suites
+`server/domains/commerce/promotionCustomerSemantic.test.ts` and
+`server/domains/commerce/adminPromotionSemantic.test.ts`. The feed fixture derives its reason code
 through the existing helper. The native read case deletes only its returned
 temporary tier-row IDs in `finally`, after its unchanged no-write assertions.
 
@@ -391,17 +412,33 @@ null/optional fields, refusal precedence and exact projections. The synthetic
 legacy percentage is 37.537: `floor(16,000 × 37.537 / 100) = 6,005`, and
 `16,000 − 6,005 = 19,990 / 2 = 9,995`. Coverage arithmetic stays 492 and 21.
 Synthetic GTINs retain their valid/invalid checksum distinction. Frozen token
-witnesses and the D8 and bundle parity PENDING rows are unchanged.
+witnesses remain unchanged. D8-1..4 and Bundle-1/2 are accepted native-backend
+capability gaps under the owner decision above, with no parity claim; Bundle-1
+is the first item of a future native-backend parity round. These gaps must be
+named in the S1 CHANGELOG/docs as "not supported on the native backend". The
+managed path is unaffected. Bundle-3/4 stay PENDING until the named P7 proofs.
 
-The proof compares production tokens with comments removed, allows only the
-named VAT delegation, compares API declaration tokens, and checks each test's
+The original seven-path proof compares production tokens with comments removed,
+allows only the named VAT delegation, compares API declaration tokens, and checks each test's
 substitution map, assertion arguments, matcher sequence and collection count.
-All **425 expect call sites** across the 35 changed test/helper paths remain.
-Focused collection stays **1,248 cases** across 27 files including the unchanged
-package-boundary suite. No new case or mandatory full-suite execution is claimed;
+All original **425 expect call sites** across the original 35 changed test/helper
+paths remain. The two reference semantic suites retain their 15 assertions,
+bringing the final changed-test total to **440 expect call sites** across 37 paths.
+Their only changes are the explicit threshold argument and its import. The
+original focused collection stays **1,248 cases** across 27 files. Including the
+two reference semantic suites (7 cases), adapter suite (8), reference binding
+suite (1) and legacy-code outcome suite (6), final focused collection is
+**1,270 → 1,270 cases across 32 files**. All 1,265 non-database cases and 5 native
+PostgreSQL cases pass. No new case or mandatory full-suite execution is claimed;
 the host-load rule permits explicit focused paths only. Required local checks
 and their actual exits are retained in the implementation handoff; supervisor
-candidate gates remain outside this local delivery boundary.
+candidate gates remain outside this local delivery boundary. The continuation's
+ast-grep, lint, published-tree typecheck, public-reference build, focused Vitest
+run and collection checks exit 0. Lint reports 33 warnings and zero errors. Policy
+with regenerated navigation has five obligations and zero unanswered. Package
+exports are unchanged, so this continuation adds no Unreleased changelog note.
+The threshold search has 11 matches: one reference constant, three reference
+fixtures, two immutable baseline SQL predicates and five managed pgTAP matches.
 
 ### Deferred P6 advisories
 
@@ -416,7 +453,11 @@ candidate gates remain outside this local delivery boundary.
 Retro: an initial install omitted the cache setting and was rerun correctly.
 Diff inspection caught a residual fixture label and comment grammar before final
 checks. The simpler path was the existing named VAT wrapper and test-local
-substitutions; public-contract and new-proof advisories stay deferred.
+substitutions; public-contract and new-proof advisories stay deferred. In the Q1/Q2
+continuation, initial collection failed because package build outputs were absent;
+building the existing workspaces restored collection without source changes.
+Lesson: absent build outputs → build existing prerequisites before collection.
+The chosen constant location avoided a thirteenth production source path.
 
 ## Witness ledger
 

@@ -98,7 +98,8 @@ and proves reads without durable writes, paid/released lifecycle, bounded
 sweep, receipt/outbox fences, replay, lock/settlement skips and explicit invoker
 grants. This is existing native lifecycle/read evidence only. Native code
 candidates, mounted issue/honor, acquisition-only mounted acceptance and the
-full native/managed eligibility matrix remain pending in the
+full native/managed eligibility matrix are accepted native-backend capability
+gaps, without a parity claim, in the
 [module ledger](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#d8-pending-outcome-ledger).
 
 ## Pricing
