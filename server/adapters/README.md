@@ -126,3 +126,11 @@ adds no process or route activation. [Real-PG proof](../../tests/postgres/commun
 covers durable effects, concurrency, token/ACL refusals and rollback; the
 [package guide](../../packages/platform/README.md#native-communications-operations-development-preview)
 defines the bounded consent guarantee and schema prerequisite.
+
+The C-compose [native preference adapter](postgres/communicationPreferences.ts)
+uses the packaged native sync store's bounded `registerPreference` operation.
+It commits only denied/suppressed state and default-purpose membership work;
+there is no provider call or independent executor. A failed work insert rolls
+back permission persistence. Signed-token routes select this adapter explicitly;
+missing database/binding/provider identity refuses without managed fallback.
+Native legacy tester lookup is unavailable, while the managed adapter retains it.

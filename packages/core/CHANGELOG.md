@@ -8,6 +8,18 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.17.0]
+
+- Publishable on the npm `latest` dist-tag as `0.17.0`, from tag
+  `openlup-core-v0.17.0`.
+
+- Republish unchanged APIs, runtime behavior and shipped SQL as part of the
+  complete `0.17.0` package set.
+
+Baseline evidence (2026-10-20): published `0.16.0` tarball 161,232 packed bytes,
+SHA256 `48abf4ea8ddc446b8d6e2c610801e2cfcbe5575743bd5a61fbb8b8b50a2b36a3`.
+The initial `0.16.0` release-gates baseline is retained under S1 option B.
+
 ## [0.16.0]
 
 - Publishable on the npm `latest` dist-tag as `0.16.0`, from tag

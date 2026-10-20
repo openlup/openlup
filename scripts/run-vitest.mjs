@@ -176,7 +176,9 @@ function buildCoverageGateArgs(useSingleflight) {
   // GitHub Actions already isolates and schedules its matrix jobs. Sharing the
   // host-local developer broker from CI can make unrelated shards contend on a
   // persistent runner and fail with the broker's local rc=75 policy code.
-  if (process.env.CI === "true" || !isCoverageRun || alreadyInCoverageLane) {
+  // Public checkouts omit the host-local broker; run with the same args/env.
+  if (process.env.CI === "true" || !isCoverageRun || alreadyInCoverageLane
+    || !existsSync("scripts/ai-resource-gate.sh")) {
     return { command: "vitest", args: vitestArgs };
   }
 

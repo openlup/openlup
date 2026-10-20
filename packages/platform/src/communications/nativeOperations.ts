@@ -22,6 +22,8 @@ export interface NativeDeliveryEvidence {
 export interface NativeDeliveryStore extends DeliveryReconciliationPort {
   registerNetworkTarget(input: NativeNetworkTarget): Promise<{ id: string }>;
   applyObservation(input: { sendId: string; messageId: string; observationKey: string; kind: NativeObservationKind; occurredAt: string; recipientEmail: string | null; source: "poll" | "callback" }): Promise<void>;
+  findByMessageId(messageId: string): Promise<{ id: string } | null>;
+  listEvidence(input: { limit: number }): Promise<NativeDeliveryEvidence[]>;
   readEvidence(sendId: string): Promise<NativeDeliveryEvidence | null>;
   close(): Promise<void>;
 }

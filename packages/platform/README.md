@@ -91,7 +91,7 @@ statuses remain unchanged. `withdrawn` may map from `archived` only where an
 authority establishes withdrawal; abandoning a draft does not withdraw a variant.
 Neither entry installs SQL. Rich application catalog interpretation remains
 reference-owned. The [M05 plan](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md)
-records the cut, witness dispositions and separate R3-lite round.
+records the cut, witness dispositions and test/cap ledger.
 The moved characterization suites are under `test/catalog/`; the required cold
 consumer classifies both entries without optional peers and checks installed
 canonicalization, authority identity, selection and unauthorized draft refusal.
@@ -553,6 +553,9 @@ for both-bundle commands, the committed managed grants and installation limits.
 
 ## Communications import
 
+For adoption from `0.16.0`, follow the [0.17.0 Migration guidance](CHANGELOG.md#0170)
+for the complete package set, canonical SQL installation and host-owned bindings.
+
 M04 P1 relocates the existing public implementation without changing its reference
 outputs. The reference shims bind the existing renderer, egress resolver, origin
 defaults, delivery-shaping policy and receipt transaction lane. The package does
@@ -803,3 +806,24 @@ on success/failure and supplies no network/provider default. Existing managed
 HTTP cron/UI routes retain their existing composition. See the
 [B3 expectation inventory](../../docs/platform/plans/oss-m04-communications-triggers.md#b3-native-stores)
 and [real-PG witnesses](../../tests/postgres/communicationsNative.test.ts).
+
+C-compose extends the native delivery store with binding-scoped `findByMessageId`
+and bounded `listEvidence({limit})` (1–100). Existing observation/replay and polling
+methods retain their behavior. `registerPreference` on the native sync store
+commits an authoritative denied/suppressed permission and default-purpose sync
+work together; tester permission adds no marketing work. The trusted
+`registerNativeSyncWorkInTransaction` helper contains the same registration SQL
+used by `registerWork`; standalone input validation still precedes database entry.
+This helper is a trusted host transaction seam: its caller-owned executor must
+already hold the lane's safe effective privileges; the function does not check
+them. Standard native sync factory transactions check
+`public.communication_native_sync_state`, `public.outbox_events` and
+`public.communication_recipient_consents`. The caller owns the transaction and
+must commit or roll back permission, sidecar and existing-rail effects atomically.
+Use a safely admitted lane; the helper grants no claim token or provider authority.
+
+Reference composition remains outside the package: actual installed factories,
+Core readiness, explicit provider ports and host-supplied schedules. Native
+readback and signed-token bridges do not promise managed frequency caps, legacy
+tester-source parity, a send-time fence or a full native network sender. The
+opt-in browser profile adds no npm entry or UI package export.

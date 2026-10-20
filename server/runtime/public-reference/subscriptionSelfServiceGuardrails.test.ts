@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { HttpRequest, HttpResponse } from "../../server/_lib/types/http.js";
+import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
 const mocks = vi.hoisted(() => ({ service: vi.fn(), customer: vi.fn() }));
-vi.mock("../../server/_lib/customer-domain/auth.js", () => ({ createCustomerServiceClient: mocks.service, createCustomerClient: mocks.customer }));
-import { createReferenceAccountHandlers } from "../../server/runtime/public-reference/subscriptionAccount.js";
+vi.mock("../../_lib/customer-domain/auth.js", () => ({ createCustomerServiceClient: mocks.service, createCustomerClient: mocks.customer }));
+import { createReferenceAccountHandlers } from "./subscriptionAccount.js";
 
 describe("selected subscription profile action guard", () => {
   it.each(["change_shipping_address", "gift_next_box", "resume", "cancel", undefined])("refuses unsupported action %s before customer binding or mutation", async (action) => {

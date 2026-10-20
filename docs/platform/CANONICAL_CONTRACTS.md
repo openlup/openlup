@@ -161,6 +161,12 @@ unchanged. The inventory admits no pricing server entry, token crypto, readiness
 or secret configuration. [The pricing package](../../packages/platform/README.md#pricing)
 owns the extracted authority and DTOs.
 
+The communications import inventory grants first-party browser imports only to
+the explicitly selected disposable profile. It does not change ordinary public
+mutation/webhook admission, deployment routes or default clocks. Native diagnostics
+are bounded installation observations, not managed-frequency or full-native-sender
+parity. A built shell does not establish an email destination or T07 action.
+
 
 The opt-in direct OIDC settings registry declares issuer and separate customer
 and operator API audiences. Selecting them adds no browser provider or default
@@ -316,6 +322,19 @@ The outbox rail is a local experimental package candidate in the package catalog
 
 
 ### Native communications evidence
+
+C-compose adds binding-scoped message lookup and bounded delivery evidence.
+Foreign references produce no unrelated row; ambiguous message identity refuses.
+Only the six native observation states can reach the fact writer. Open, click,
+scheduled and unsupported provider events never become delivery. The existing
+raw-byte signature/environment admission remains before the native bridge.
+
+Native signed-token preferences commit denied/suppressed authority and default
+marketing-purpose membership work in the same transaction. Replay reuses the
+current permission event's rail identity; a work failure rolls the permission
+write back. Local suppression does not wait for a provider and a provider response
+cannot grant consent. Native legacy tester links refuse without an authoritative
+legacy source; managed legacy links and localized unsubscribe responses remain.
 
 Position 70 adds native fact storage without changing prior schema identities or
 managed contracts. A trusted network-acceptance registration is distinct from a

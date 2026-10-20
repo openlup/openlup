@@ -1,3 +1,6 @@
+import { createPostgresCommunicationSyncStore, runCommunicationSyncDispatch, type NewsletterSyncProviderPort } from "@openlup/platform/communications";
+import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
+import { runNativeCommunicationJob } from "./communicationDeliveryReconciliationJob.js";
 import type { VercelRequest } from "../../server/_lib/types/vercel.js";
 import { createSupabaseDataGateway } from "../../server/adapters/supabase/dataGateway.js";
 import {
@@ -29,6 +32,7 @@ export async function runCommunicationSyncDispatchCron(
   req: VercelRequest,
   env: Env = process.env,
   gatewayFactory: GatewayFactory = createSupabaseDataGateway,
+  selected?: {provider:NewsletterSyncProviderPort},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   if (req.method !== "GET" && req.method !== "POST") {
     return { status: 405, body: { ok: false, error: "method_not_allowed" } };
@@ -43,6 +47,13 @@ export async function runCommunicationSyncDispatchCron(
     };
   }
 
+  if (env.PLATFORM_BUNDLE === "node-postgres") {
+    if (!selected?.provider || selected.provider.providerKind !== env.COMMUNICATIONS_MEMBERSHIP_PROVIDER) return {status:503,body:{ok:false,error:"native_membership_provider_required"}};
+    return runNativeCommunicationJob(env,COMMUNICATION_SYNC_DISPATCH_JOB_NAME,JOB_LEASE_SECONDS,async()=>{
+      const store=createPostgresCommunicationSyncStore({connectionString:env.DATABASE_URL!},{binding:env.COMMUNICATIONS_BINDING!,providerKind:selected.provider.providerKind,rail:db=>createPostgresOutboxStore(db)});
+      try{return {...await runCommunicationSyncDispatch({store,provider:selected.provider})};}finally{await store.close();}
+    });
+  }
   const gatewayEnv = readSupabaseDataGatewayEnv(env);
   if (!gatewayEnv) {
     return { status: 503, body: { ok: false, error: "supabase_env_required" } };

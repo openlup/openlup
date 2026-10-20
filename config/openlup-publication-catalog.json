@@ -182,6 +182,10 @@
       "class": "public-output"
     },
     {
+      "path": "api/_cron/communicationDeliveryReconciliationJob.ts",
+      "class": "public-output"
+    },
+    {
       "path": "api/_cron/communicationSyncDispatchJob.test.ts",
       "class": "public-output"
     },
@@ -755,6 +759,10 @@
     },
     {
       "path": "config/public-reference-capability-manifest.json",
+      "class": "public-output"
+    },
+    {
+      "path": "config/public-reference-communications-imports.json",
       "class": "public-output"
     },
     {
@@ -5610,6 +5618,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/communicationPreferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/communicationsControlPlane.test.ts",
       "class": "public-output"
     },
@@ -8095,6 +8107,14 @@
     },
     {
       "path": "server/bff/admin/communications/email-sends/events.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/bff/admin/communications/native-evidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/bff/admin/communications/native-evidence.ts",
       "class": "public-output"
     },
     {
@@ -12866,6 +12886,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/communications/communicationsSchema.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/communicationsSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/communications/controlPlaneBinding.test.ts",
       "class": "public-output"
     },
@@ -12874,11 +12902,35 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/communications/nativeEvidenceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/nativeEvidenceBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/communications/newsletterProviderRegistry.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/runtime/communications/newsletterProviderRegistry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/preferenceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/preferenceBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/referenceComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/referenceComposition.ts",
       "class": "public-output"
     },
     {
@@ -12895,6 +12947,14 @@
     },
     {
       "path": "server/runtime/communications/transactionalBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/triggerBindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/triggerBindings.ts",
       "class": "public-output"
     },
     {
@@ -13086,6 +13146,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/communications.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/communications.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -13119,6 +13187,10 @@
     },
     {
       "path": "server/runtime/public-reference/subscriptionProfile.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionSelfServiceGuardrails.test.ts",
       "class": "public-output"
     },
     {
@@ -16139,6 +16211,14 @@
     },
     {
       "path": "src/domains/communications/exampleEmailRegistryProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/communications/nativeEvidenceClient.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/communications/nativeEvidenceContracts.ts",
       "class": "public-output"
     },
     {
@@ -19294,6 +19374,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/admin/email-sends/NativeEvidencePanel.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/NativeEvidencePanel.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/admin/email-sends/emailLabels.ts",
       "class": "public-output"
     },
@@ -19439,6 +19527,14 @@
     },
     {
       "path": "src/public-reference/browserIdentityManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/communications-main.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/communications-main.tsx",
       "class": "public-output"
     },
     {
@@ -20462,6 +20558,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/communicationsCompose.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/communicationsPublicW4.test.ts",
       "class": "public-output"
     },
@@ -20595,10 +20695,6 @@
     },
     {
       "path": "tests/preview/ssg-hydration.spec.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/runtime/subscriptionSelfServiceGuardrails.test.ts",
       "class": "public-output"
     },
     {

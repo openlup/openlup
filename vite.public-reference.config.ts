@@ -6,10 +6,11 @@ import { readFileSync } from "node:fs";
 const configDir = typeof __dirname === "string" ? __dirname : import.meta.dirname;
 const publicReferenceSsrBuild = process.env.OPENLUP_BUILD_TARGET === "public-reference-ssr";
 const referenceProfile = process.env.OPENLUP_REFERENCE_PROFILE;
+const communicationsBuild = referenceProfile === "communications";
 const identityBuild = referenceProfile === "identity";
 const subscriptionBuild = referenceProfile === "subscription";
 const publicReferenceDocument = `<!doctype html>
-<html lang="en"${identityBuild ? ' data-openlup-profile="identity"' : subscriptionBuild ? ' data-openlup-profile="subscription"' : ""}>
+<html lang="en"${identityBuild ? ' data-openlup-profile="identity"' : subscriptionBuild ? ' data-openlup-profile="subscription"' : communicationsBuild ? ' data-openlup-profile="communications"' : ""}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -18,7 +19,7 @@ const publicReferenceDocument = `<!doctype html>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/public-reference/${identityBuild ? "identity-main" : subscriptionBuild ? "subscription-main" : "main"}.tsx"></script>
+    <script type="module" src="/src/public-reference/${identityBuild ? "identity-main" : subscriptionBuild ? "subscription-main" : communicationsBuild ? "communications-main" : "main"}.tsx"></script>
   </body>
 </html>`;
 
@@ -36,13 +37,15 @@ export function assertPublicReferenceModuleId(id: string, root = configDir, shar
 }
 
 function publicReferenceGraphGuard(): Plugin {
-  const sharedFiles: string[] = identityBuild
+  const sharedFiles: string[] = communicationsBuild && !publicReferenceSsrBuild
+    ? JSON.parse(readFileSync(path.resolve(configDir, "config/public-reference-communications-imports.json"), "utf8")).files
+    : identityBuild
     ? JSON.parse(readFileSync(path.resolve(configDir, "config/public-reference-identity-imports.json"), "utf8")).files
     : subscriptionBuild && !publicReferenceSsrBuild
     ? JSON.parse(readFileSync(path.resolve(configDir, "config/public-reference-subscription-imports.json"), "utf8")).files
     : [];
   const check = (id: string) => {
-    if (identityBuild) {
+    if (identityBuild || (communicationsBuild && !publicReferenceSsrBuild)) {
       const source = id.replace(/\?.*$/, "");
       if (path.isAbsolute(source) && !source.split(path.sep).includes("node_modules")
         && source !== path.resolve(configDir, "index.html")

@@ -108,7 +108,9 @@ reflects these routes and never substitutes for those substantive owner updates.
 
 The [domain registry](../../src/lib/coreDomains.ts) names platform domains. The
 [publication catalogue](../../config/openlup-publication-catalog.json) supplies
-the public path inventory. The [documentation routing map](../../config/doc-routing.json)
+the public path inventory. A moved test keeps its `public-output` class
+and takes its new source owner; the subscription action-guard test now lives
+beside the reference handler and is owned by the runtime guide. The [documentation routing map](../../config/doc-routing.json)
 assigns those paths to canonical owner pages and sections; it is not a second
 domain or publication census.
 
