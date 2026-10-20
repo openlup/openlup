@@ -1,0 +1,1 @@
+{"data":{"type":"profile","id":"owned_1","attributes":{"email":"synthetic@example.invalid","external_id":"local:1","first_name":"Synthetic","properties":{"segment":"example"},"subscriptions":{"email":{"marketing":{"consent":"SUBSCRIBED","can_receive_email_marketing":true,"suppression":[],"list_suppressions":[]}}}}}}

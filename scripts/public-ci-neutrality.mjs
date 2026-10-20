@@ -34,6 +34,8 @@ const adapterPaths = new RegExp(`^packages/platform/(?:src|test)/communications/
 const adapterReports = new Set(adapterNames.map((name) => `packages/platform/api/communications-${name}.api.md`));
 const adapterLedger = "docs/platform/plans/oss-a1-communications-adapters.md";
 const adapterSubpathFiles = new Set([
+  "server/runtime/communications/a1ReferenceBinding.ts",
+  "server/runtime/communications/a1ReferenceBinding.test.ts",
   "packages/platform/package.json",
   "packages/platform/release-gates.json",
   "packages/platform/test/packageBoundary.test.ts",
