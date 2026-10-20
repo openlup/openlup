@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
-import { readSettlementProfile } from "../../../src/lib/currency/platformCurrency.js";
-import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
+import type { CreateQuoteResponse } from "../../src/pricing/index.js";
+import type { CommerceQuoteCatalogItem } from "../../src/pricing/index.js";
 import {
   catalogFactsForQuoteLine,
   projectPublicQuoteSnapshot,
-} from "./catalogFactsProvenance.js";
+} from "../../src/pricing/index.js";
 
-const TEST_CURRENCY = readSettlementProfile({}).defaultCurrency;
+const TEST_CURRENCY = "XXX";
 
 describe("catalog facts provenance", () => {
   it("records document and one-time base price facts without policy authority", () => {
@@ -110,7 +109,7 @@ describe("catalog facts provenance", () => {
   });
 });
 
-function strictItem(): CommerceQuoteCatalogItem {
+function strictItem(): CommerceQuoteCatalogItem & { energyPer100g: number } {
   return {
     skuId: "11111111-1111-4111-8111-111111111111",
     skuCode: "opaque:lamb-launch.v1",

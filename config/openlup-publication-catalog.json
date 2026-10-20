@@ -3254,6 +3254,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/catalogFactsProvenance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/catalogFactsSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/commerceOfferPricing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/commerceOfferPricingCache.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/commerceOfferPricingHandler.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/commercePriceAuthority.ts",
       "class": "public-output"
     },
@@ -3262,11 +3282,39 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/commerceQuoteBatchHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/commerceQuoteCatalogReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/commerceQuoteHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/commerceQuoteSnapshotExpect.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/contracts/authority.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/contracts/evidence.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/contracts/money.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/contracts/offer.ts",
       "class": "public-output"
     },
     {
@@ -3278,11 +3326,39 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/contracts/provenance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/contracts/quote.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/dbBackedCommerceQuoteHelpers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/dbBackedCommerceQuotePort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/dbBackedCommerceQuoteSnapshotVerifier.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/index.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/offerPolicyReadiness.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/offerPolicySchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/offerPricingSchemas.ts",
       "class": "public-output"
     },
     {
@@ -3294,7 +3370,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/quoteCodeRejectionDetails.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/quotePorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/quotePrimitives.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/quotePromotionEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/quoteSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/subscriptionPricePolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/taxProfileGuard.ts",
       "class": "public-output"
     },
     {
@@ -3766,6 +3866,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/pricing/catalogFactsProvenance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/catalogFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/commerceOfferPricing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/commerceOfferPricingCache.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/commerceOfferPricingHandler.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/pricing/commercePriceAuthority.test.ts",
       "class": "public-output"
     },
@@ -3774,7 +3894,71 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/pricing/commerceQuoteBatchHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/commerceQuoteHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/commerceQuoteSnapshotExpect.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/commerceTaxProfileGuard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/dbBackedCommerceQuoteHelpers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/dbBackedCommerceQuotePort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/dbBackedCommerceQuoteSnapshotVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/handlerFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/neutralFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/offerFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/offerPolicyReadiness.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/offerPricingContracts.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/pricing/pricingPolicyToken.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/quoteContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/quoteEngineFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/quoteSchemaFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/snapshotFixtures.ts",
       "class": "public-output"
     },
     {
@@ -9618,10 +9802,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/catalogFactsProvenance.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/catalogFactsProvenance.ts",
       "class": "public-output"
     },
@@ -9982,23 +10162,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceOfferPricing.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceOfferPricing.ts",
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceOfferPricingCache.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceOfferPricingCache.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/commerceOfferPricingHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -10106,10 +10274,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceQuoteBatchHandler.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceQuoteBatchHandler.ts",
       "class": "public-output"
     },
@@ -10122,15 +10286,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceQuoteHandler.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceQuoteHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/commerceQuoteSnapshotExpect.test.ts",
       "class": "public-output"
     },
     {
@@ -10230,10 +10386,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/commerceTaxProfileGuard.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/commerceTaxProfileGuard.ts",
       "class": "public-output"
     },
@@ -10250,10 +10402,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/dbBackedCommerceQuoteHelpers.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/dbBackedCommerceQuoteHelpers.ts",
       "class": "public-output"
     },
@@ -10266,15 +10414,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/dbBackedCommerceQuotePort.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/dbBackedCommerceQuotePort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/dbBackedCommerceQuoteSnapshotVerifier.test.ts",
       "class": "public-output"
     },
     {
@@ -10315,10 +10455,6 @@
     },
     {
       "path": "server/domains/commerce/marketingEmailPorts.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/offerPolicyReadiness.test.ts",
       "class": "public-output"
     },
     {
@@ -10723,6 +10859,10 @@
     },
     {
       "path": "server/domains/commerce/quoteAutomaticPromotions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/quoteFoundationPackageBinding.test.ts",
       "class": "public-output"
     },
     {
@@ -15542,10 +15682,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/offerPricingContracts.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/offerPricingContracts.ts",
       "class": "public-output"
     },
@@ -15875,10 +16011,6 @@
     },
     {
       "path": "src/domains/commerce/quoteCodeRejectionDetails.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/quoteContracts.test.ts",
       "class": "public-output"
     },
     {

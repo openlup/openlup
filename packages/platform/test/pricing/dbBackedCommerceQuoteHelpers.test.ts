@@ -2,17 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CommercePriceAuthorityError,
   type CommercePriceAuthorityPort,
-} from "../../../src/domains/pricing/ports.js";
-import type { ResolvedPrice } from "../../../src/domains/pricing/types.js";
-import { buildLineBreakdown } from "../../../src/domains/commerce/pricingBreakdown.js";
-import { CommerceQuoteError } from "../../../src/domains/commerce/ports.js";
+} from "../../src/pricing/index.js";
+import type { ResolvedPrice } from "@openlup/core/pricing";
+import { buildLineBreakdown } from "@openlup/core/pricing";
+import { CommerceQuoteError } from "./quoteSchemaFixtures.js";
 import {
   assertSubscriptionCheapest,
   calculateIncludedVat,
   mapPricingComponent,
   resolveStrictQuotePrice,
   toGrossMinor,
-} from "./dbBackedCommerceQuoteHelpers.js";
+} from "../../src/pricing/index.js";
 
 describe("db backed commerce quote helpers", () => {
   it("uses the supplied tax rate for net/gross conversion and included VAT", () => {

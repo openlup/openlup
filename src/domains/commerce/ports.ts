@@ -4,7 +4,6 @@ import type {
   CreateQuoteRequest,
   CreateQuoteResponse,
 } from "./contracts.js";
-import type { PricingPolicySnapshot } from "./offerPolicyContracts.js";
 import type {
   CheckoutResumeDraft,
   CheckoutResumeDraftState,
@@ -26,20 +25,8 @@ import type {
 } from "./productCompatibilityContracts.js";
 export type { RecoveryDestinationIntent, RecoveryDestinationPolicyInput, RecoveryDestinationSource, RecoveryDestinationState } from "./recoveryDestinationPorts.js";
 export { hasSubscriptionRecoveryContext, resolveRecoveryDestination } from "./recoveryDestinationPorts.js";
-/**
- * Server-resolved options for promo evaluation. Passed OUT-OF-BAND by the caller
- * (orchestration -> provisioned.clientId; preview -> session/null) — NEVER sourced
- * from the client request body — so `first_purchase` eligibility cannot be forged.
- */
-export interface CreateQuoteOptions {
-  clientId?: string | null;
-  pricingPolicy?: PricingPolicySnapshot;
-}
-
-export interface CommerceQuotePort {
-  createQuote(request: CreateQuoteRequest, options?: CreateQuoteOptions): Promise<CreateQuoteResponse>;
-  createServerAuthoritativeQuote?(request: CreateQuoteRequest, options?: CreateQuoteOptions): Promise<CreateQuoteResponse>;
-}
+export type { CreateQuoteOptions } from "@openlup/platform/pricing";
+export type CommerceQuotePort = import("@openlup/platform/pricing").CommerceQuotePort<CreateQuoteRequest, CreateQuoteResponse>;
 
 export interface ConfiguratorIntentPersistencePort {
   persistIntent(
@@ -68,9 +55,7 @@ export interface CommerceProductCompatibilityPort {
   ): Promise<CommerceProductCompatibilityResponse>;
 }
 
-export interface CommerceQuoteSnapshotVerifierPort {
-  verifyQuoteSnapshot(snapshot: CreateQuoteResponse): Promise<CreateQuoteResponse | void>;
-}
+export type CommerceQuoteSnapshotVerifierPort = import("@openlup/platform/pricing").CommerceQuoteSnapshotVerifierPort<CreateQuoteResponse>;
 
 export interface CommerceCustomerDefaultsReadPort {
   getCustomerDefaultsSnapshot(input: {
@@ -202,41 +187,8 @@ export class CommerceCheckoutResumePersistenceError extends Error {
   }
 }
 
-export type CommerceQuoteSnapshotErrorCode = "QUOTE_SNAPSHOT_MISMATCH";
-
-export class CommerceQuoteSnapshotError extends Error {
-  readonly code: CommerceQuoteSnapshotErrorCode;
-  readonly details: Record<string, unknown>;
-
-  constructor(
-    code: CommerceQuoteSnapshotErrorCode,
-    message: string,
-    details: Record<string, unknown> = {},
-  ) {
-    super(message);
-    this.name = "CommerceQuoteSnapshotError";
-    this.code = code;
-    this.details = details;
-  }
-}
-
-export type CommerceQuoteErrorCode =
-  | "UNKNOWN_SKU"
-  | "PRICE_NOT_CONFIGURED"
-  | "UNSUPPORTED_TAX_PROFILE"
-  | "PRICING_INVARIANT_VIOLATION";
-
-export class CommerceQuoteError extends Error {
-  readonly code: CommerceQuoteErrorCode;
-  readonly details: Record<string, unknown>;
-
-  constructor(code: CommerceQuoteErrorCode, message: string, details: Record<string, unknown> = {}) {
-    super(message);
-    this.name = "CommerceQuoteError";
-    this.code = code;
-    this.details = details;
-  }
-}
+export { CommerceQuoteError, CommerceQuoteSnapshotError } from "@openlup/platform/pricing";
+export type { CommerceQuoteErrorCode, CommerceQuoteSnapshotErrorCode } from "@openlup/platform/pricing";
 
 // Re-export hidden checkout runtime ports as commerce public surface so
 // neighboring domains (subscription, etc.) can import the abstract port

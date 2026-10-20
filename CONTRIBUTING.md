@@ -137,7 +137,13 @@ and package discovery already include this directory; no duplicate required
 selector is added. The reference retains configuration/readiness composition
 coverage and one browser-schema/error-identity binding guard. Both pricing
 entries extend the existing optional-peer-free cold consumer and declaration
-compilation.
+compilation. P2b moves the existing quote-equation, provenance, tax-guard, quote-port,
+snapshot-verifier, quote and batch handler, offer pricing, cache and readiness suites
+to the same discovery, with unchanged assertions, neutral fixture values and
+package-local fixture bindings. Three reference cases protect browser/server schema
+parity, error identity and the observed request binding of the three handlers; the
+rich catalog-adapter and promotion-implementation suites remain local. No extra
+required test invocation is added.
 
 The M05 catalog module relocates eight existing catalog suites into the platform
 package's `test/catalog/` discovery, preserving their assertions. Root discovery

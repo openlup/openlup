@@ -77,6 +77,56 @@ separate.
 
 P2a measured: pending committed gates
 
+## P2b — quote and offer layer
+
+Cut, parts A+B: neutral money/tax/quote/offer DTOs; generic quote/options/verifier
+ports and errors; injected server validation; promotion evidence/rejection DTOs
+and validation; bounded catalog facts, provenance and tax guard; quote computation,
+price/tax/component helpers, snapshot comparison, quote/batch handlers, v1/v2 offer
+projection/handler/cache and existing readiness. The existing pricing entries are
+unchanged; the only added graph edges are type imports from `bff` and `http`.
+Reference bindings retain settlement defaults, rich request/context admission and
+snapshot reconstruction, catalog bridge, roster/request/unit/floor/scope policy,
+observed BFF context, flat-fee settings and promotion application. Promotion
+implementation, acquisition terms, threshold shipping, memoizers, price setup,
+UI and SQL remain outside this cut.
+
+Preserved OpenLup behavior: `getShippingFlatMinor` runs before promotion evaluation;
+the existing VAT helper and both shipping/discount tax lanes remain unchanged.
+Quote acceptance/fallback and batch error mapping retain their original rules,
+with ordered `Promise.all`. Offers remain v1/v2, use the first successfully priced
+representative and degrade only for a missing configured product price. Cache
+freshness starts at load start; readiness retains its positive 60-second and
+negative 5-second caps, with no acquisition-aware readiness changes.
+
+Tests: **89 existing cases moved** across fourteen suites; **4 new required cases**
+(three quote-foundation cases and one observed-responder binding case), leaving
+**54 of 100** programme cases from the pre-P2b balance of 58. Assertions remain
+unchanged apart from neutral fixtures: default currency → `XXX`, default country
+→ `ZZ`, locale-specific
+VAT legal-basis text → `Example VAT rule`, and the corresponding quote-fixture
+helper rename. Foreign-currency and alternate-country cases stay distinct.
+Package tests bind the exercised rich policy with local synthetic fixtures; the
+two existing promotion-application suites remain at their unchanged reference
+implementation boundary. Existing selectors execute each suite once; the existing
+cold consumer covers both pricing entries and installed declarations.
+
+Whole-P2b changed production/tooling files against P2a: **50** (48 package/reference
+source and two tooling files), within the coordinator-approved **60** ceiling.
+The overflow above 35 consists entirely of mechanical splits, package destinations,
+named compatibility bindings, barrels and graph/consumer tooling; no behavior
+change is included.
+
+Pack with P2b: **864 files / 846 code files / 533,073 packed B /
+2,336,564 unpacked B / 455,320 code gzip B**, within the raised caps of
+**2,100 files / 2,000 code files / 1,351,680 packed B / 5,734,400 unpacked B /
+1,126,400 code gzip B** (the earlier caps of 800 files / 800 code files /
+522,240 / 2,088,960 / 440,320 B would not hold it).
+Root docs: **32,856 gzip B / 5 files**, within **40,960 B / 10 files**.
+P2b changes no package cap. Pricing contracts
+measure **349 B** minified+gzip; only their browser-entry budget increases from
+**320 B** to **416 B**.
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected

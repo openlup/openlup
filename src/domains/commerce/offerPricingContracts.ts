@@ -1,13 +1,12 @@
+// Browser validation retains the reference scope and floor policy.
 import { z } from "../../lib/validation/zod.js";
 
 import { catalogProductSlugSchema } from "../catalog/contracts.js";
 import { commerceMoneySchema } from "./contractPrimitives.js";
 import { pricingPolicySnapshotSchema } from "./offerPolicyContracts.js";
 
-export const COMMERCE_OFFER_PRICING_CONTRACT_VERSION =
-  "commerce.offer-pricing.v1" as const;
-export const COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION =
-  "commerce.offer-pricing.v2" as const;
+import { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "@openlup/platform/pricing/contracts";
+export { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "@openlup/platform/pricing/contracts";
 
 const offerPriceSchema = z
   .object({
@@ -83,9 +82,7 @@ export const commerceOfferPricingResponseSchema = z.union([
   commerceOfferPricingV2ResponseSchema,
 ]);
 
-export type CommerceProductOfferPricing = z.infer<
-  typeof commerceProductOfferPricingSchema
->;
-export type CommerceOfferPricingResponse = z.infer<
-  typeof commerceOfferPricingResponseSchema
+export type { CommerceProductOfferPricing } from "@openlup/platform/pricing/contracts";
+export type CommerceOfferPricingResponse = import("@openlup/platform/pricing/contracts").CommerceOfferPricingResponse<
+  "dog_products_only_excludes_shipping", "dog_products_and_shipping"
 >;

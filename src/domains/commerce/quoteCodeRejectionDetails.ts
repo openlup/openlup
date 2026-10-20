@@ -1,11 +1,7 @@
+// Browser validation binding; the pricing server entry owns the portable counterpart.
 import { z } from "../../lib/validation/zod.js";
 
-/** UI-safe, additive explanation for a frozen `codeRejections` item. */
-export type CommerceCodeRejectionDetail =
-  | { code: string; reason: "scope_not_applicable"; allowedScopes: Array<"one_time" | "subscription_initial"> }
-  | { code: string; reason: "minimum_not_met"; minimumReferenceMinor: number }
-  | { code: string; reason: "not_yet_active"; validFrom: string }
-  | { code: string; reason: "global_limit_reached" };
+export type { CommerceCodeRejectionDetail } from "@openlup/platform/pricing/contracts";
 
 export const quoteCodeRejectionDetailSchema = z.discriminatedUnion("reason", [
   z.object({

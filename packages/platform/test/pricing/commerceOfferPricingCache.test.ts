@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { CommerceOfferPricingResponse } from "../../../src/domains/commerce/offerPricingContracts.js";
-import { createCommerceOfferPricingCache } from "./commerceOfferPricingCache.js";
+import type { CommerceOfferPricingResponse } from "./quoteSchemaFixtures.js";
+import { createCommerceOfferPricingCache } from "../../src/pricing/index.js";
 
 const value = { contractVersion: "commerce.offer-pricing.v1" } as CommerceOfferPricingResponse;
 

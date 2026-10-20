@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
-  commerceQuoteSchema,
-  createQuoteResponseSchema,
-  publicCreateQuoteBatchResponseSchema,
-  publicCreateQuoteResponseSchema,
+  createCommerceQuoteSchemas,
   quoteDiscountSchema,
   quoteMoneyCurrenciesMatch,
   splitIncludedVat,
-} from "./quoteContracts.js";
-import { catalogFactsProvenanceSchema } from "./catalogFactsProvenance.js";
-import { COMMERCE_CONTRACT_VERSION } from "./types.js";
-import type { CommerceCurrency, CommerceMoney, CommerceQuote } from "./types.js";
+} from "../../src/pricing/index.js";
+import { catalogFactsProvenanceSchema } from "../../src/pricing/index.js";
+import { COMMERCE_CONTRACT_VERSION } from "../../src/pricing/contracts/index.js";
+import type { CommerceCurrency, CommerceMoney, CommerceQuote } from "../../src/pricing/contracts/index.js";
+
+import { z } from "zod";
+import { slugSchema } from "@openlup/core/catalog";
+
+const { commerceQuoteSchema, createQuoteResponseSchema, publicCreateQuoteBatchResponseSchema,
+  publicCreateQuoteResponseSchema } = createCommerceQuoteSchemas({
+  currencySchema: z.string().regex(/^[A-Z]{3}$/).refine(code => code === "XXX", { message: "currency_not_settlement_currency" }),
+  productSlugSchema: slugSchema,
+  contextSchema: z.object({ mode: z.enum(["one_time", "subscription"]), promoCodes: z.array(z.string()) }),
+});
 
 // Build money in an arbitrary currency. The cast this helper used to need is gone:
 // `CommerceCurrency` is now the widened alias from src/lib/currency/platformCurrency.ts,
@@ -24,69 +31,69 @@ function catalogFactsSettlement(quote: CommerceQuote) {
   return { currency: quote.currency };
 }
 
-function validPlnQuote(): CommerceQuote {
+function validQuote(): CommerceQuote {
   return {
-    currency: "PLN",
+    currency: "XXX",
     taxIncluded: true,
     lines: [
       {
         sku: "OPENLUP-DOG-LAMB-CAN-400G",
         productSlug: "lamb",
         quantity: 1,
-        unitPriceGross: money(1490, "PLN"),
-        lineSubtotalGross: money(1490, "PLN"),
+        unitPriceGross: money(1490, "XXX"),
+        lineSubtotalGross: money(1490, "XXX"),
         tax: {
           included: true,
-          country: "PL",
+          country: "ZZ",
           category: "pet_food",
           vatRateBps: 800,
-          legalBasis: "PL VAT Annex 3 item 10c",
-          netAmount: money(1380, "PLN"),
-          vatAmount: money(110, "PLN"),
-          grossAmount: money(1490, "PLN"),
+          legalBasis: "Example VAT rule",
+          netAmount: money(1380, "XXX"),
+          vatAmount: money(110, "XXX"),
+          grossAmount: money(1490, "XXX"),
         },
       },
     ],
     discounts: [],
-    subtotalGross: money(1490, "PLN"),
-    discountTotalGross: money(0, "PLN"),
-    totalGross: money(1490, "PLN"),
-    netTotal: money(1380, "PLN"),
-    taxTotal: money(110, "PLN"),
+    subtotalGross: money(1490, "XXX"),
+    discountTotalGross: money(0, "XXX"),
+    totalGross: money(1490, "XXX"),
+    netTotal: money(1380, "XXX"),
+    taxTotal: money(110, "XXX"),
   };
 }
 
 describe("quote money currency backstop", () => {
   it("accepts a quote whose money all uses the quote currency", () => {
-    expect(quoteMoneyCurrenciesMatch(validPlnQuote())).toBe(true);
-    expect(commerceQuoteSchema.safeParse(validPlnQuote()).success).toBe(true);
+    expect(quoteMoneyCurrenciesMatch(validQuote())).toBe(true);
+    expect(commerceQuoteSchema.safeParse(validQuote()).success).toBe(true);
   });
 
   it("rejects a line money in a foreign currency", () => {
-    const quote = validPlnQuote();
+    const quote = validQuote();
     quote.lines[0].unitPriceGross = money(1490, "EUR");
     expect(quoteMoneyCurrenciesMatch(quote)).toBe(false);
   });
 
   it("rejects a tax-breakdown money in a foreign currency", () => {
-    const quote = validPlnQuote();
+    const quote = validQuote();
     quote.lines[0].tax.netAmount = money(1380, "EUR");
     expect(quoteMoneyCurrenciesMatch(quote)).toBe(false);
   });
 
   it("rejects an order-total money in a foreign currency", () => {
-    const quote = validPlnQuote();
+    const quote = validQuote();
     quote.taxTotal = money(110, "EUR");
     expect(quoteMoneyCurrenciesMatch(quote)).toBe(false);
   });
 
   it("still accepts the wrapped quote response happy path", () => {
-    const response = { contractVersion: COMMERCE_CONTRACT_VERSION, quote: validPlnQuote() };
+    const response = { contractVersion: COMMERCE_CONTRACT_VERSION, quote: validQuote() };
     expect(createQuoteResponseSchema.safeParse(response).success).toBe(true);
   });
 
   it("accepts server-only v1 and policy-derived v2 facts with the required evidence", () => {
-    const quote = validPlnQuote();
+    const quote = validQuote();
     const catalogFacts = {
       version: "catalog_facts_v1" as const,
       skuId: "11111111-1111-4111-8111-111111111111",
@@ -141,7 +148,7 @@ describe("quote money currency backstop", () => {
   });
 
   it("rejects server-only catalog facts from the public batch response", () => {
-    const quote = validPlnQuote();
+    const quote = validQuote();
     const catalogFacts = catalogFactsProvenanceSchema.parse({
       version: "catalog_facts_v1", skuId: "11111111-1111-4111-8111-111111111111",
       documentRevisionId: "22222222-2222-4222-8222-222222222222",
@@ -159,33 +166,33 @@ describe("quote money currency backstop", () => {
 
   it("accepts a non-default tax rate as quote data", () => {
     const quote: CommerceQuote = {
-      currency: "PLN",
+      currency: "XXX",
       taxIncluded: true,
       lines: [
         {
           sku: "EXAMPLE-SKU-ALPHA",
           productSlug: "lamb",
           quantity: 1,
-          unitPriceGross: money(12300, "PLN"),
-          lineSubtotalGross: money(12300, "PLN"),
+          unitPriceGross: money(12300, "XXX"),
+          lineSubtotalGross: money(12300, "XXX"),
           tax: {
             included: true,
             country: "DE",
             category: "standard",
             vatRateBps: 2300,
             legalBasis: "Example VAT rule",
-            netAmount: money(10000, "PLN"),
-            vatAmount: money(2300, "PLN"),
-            grossAmount: money(12300, "PLN"),
+            netAmount: money(10000, "XXX"),
+            vatAmount: money(2300, "XXX"),
+            grossAmount: money(12300, "XXX"),
           },
         },
       ],
       discounts: [],
-      subtotalGross: money(12300, "PLN"),
-      discountTotalGross: money(0, "PLN"),
-      totalGross: money(12300, "PLN"),
-      netTotal: money(10000, "PLN"),
-      taxTotal: money(2300, "PLN"),
+      subtotalGross: money(12300, "XXX"),
+      discountTotalGross: money(0, "XXX"),
+      totalGross: money(12300, "XXX"),
+      netTotal: money(10000, "XXX"),
+      taxTotal: money(2300, "XXX"),
     };
 
     expect(splitIncludedVat(12300, 2300)).toEqual({ netMinor: 10000, vatMinor: 2300 });
@@ -193,28 +200,28 @@ describe("quote money currency backstop", () => {
   });
 
   it("names mixed tax rates as unsupported for quote-level allocation", () => {
-    const quote = validPlnQuote();
+    const quote = validQuote();
     quote.lines.push({
       sku: "EXAMPLE-SKU-ALPHA",
       productSlug: "lamb",
       quantity: 1,
-      unitPriceGross: money(12300, "PLN"),
-      lineSubtotalGross: money(12300, "PLN"),
+      unitPriceGross: money(12300, "XXX"),
+      lineSubtotalGross: money(12300, "XXX"),
       tax: {
         included: true,
         country: "DE",
         category: "standard",
         vatRateBps: 2300,
         legalBasis: "Example VAT rule",
-        netAmount: money(10000, "PLN"),
-        vatAmount: money(2300, "PLN"),
-        grossAmount: money(12300, "PLN"),
+        netAmount: money(10000, "XXX"),
+        vatAmount: money(2300, "XXX"),
+        grossAmount: money(12300, "XXX"),
       },
     });
-    quote.subtotalGross = money(13790, "PLN");
-    quote.totalGross = money(13790, "PLN");
-    quote.netTotal = money(11380, "PLN");
-    quote.taxTotal = money(2410, "PLN");
+    quote.subtotalGross = money(13790, "XXX");
+    quote.totalGross = money(13790, "XXX");
+    quote.netTotal = money(11380, "XXX");
+    quote.taxTotal = money(2410, "XXX");
 
     const result = commerceQuoteSchema.safeParse(quote);
 
@@ -253,4 +260,21 @@ describe("quote discount customer semantics", () => {
       customerSemantic: "operator_label_guess",
     }).success).toBe(false);
   });
+});
+
+it("preserves both shipping and discount tax lanes and their currency backstop", () => {
+  const quote: CommerceQuote = {
+    ...validQuote(),
+    discounts: [
+      { promotionId: "order", appliesTo: "order_total", amountOffMinor: 108, reasonCode: "order" },
+      { promotionId: "shipping", appliesTo: "shipping", amountOffMinor: 54, reasonCode: "shipping" },
+    ],
+    discountTotalGross: money(108, "XXX"), shippingGross: money(108, "XXX"),
+    shippingDiscountGross: money(54, "XXX"), totalGross: money(1436, "XXX"),
+    netTotal: money(1330, "XXX"), taxTotal: money(106, "XXX"),
+  };
+  expect(commerceQuoteSchema.safeParse(quote).success).toBe(true);
+  expect(commerceQuoteSchema.safeParse({ ...quote, shippingDiscountGross: money(55, "XXX") }).success).toBe(false);
+  expect(quoteMoneyCurrenciesMatch({ ...quote, shippingGross: money(108, "EUR") })).toBe(false);
+  expect(quoteMoneyCurrenciesMatch({ ...quote, shippingDiscountGross: money(54, "EUR") })).toBe(false);
 });

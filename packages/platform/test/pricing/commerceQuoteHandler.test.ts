@@ -1,16 +1,17 @@
+import "./neutralFixtures.js";
 import { describe, expect, it, vi } from "vitest";
-import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
-import { COMMERCE_CONTRACT_VERSION } from "../../../src/domains/commerce/types.js";
+import type { HttpRequest as VercelRequest, HttpResponse as VercelResponse } from "../../src/http/index.js";
+import { COMMERCE_CONTRACT_VERSION } from "./quoteSchemaFixtures.js";
 import {
   CommerceQuoteError,
   type CommerceQuotePort,
-} from "../../../src/domains/commerce/ports.js";
+} from "./quoteSchemaFixtures.js";
 import {
   CommercePricingPolicyRequestError,
   CommercePricingPolicyUnavailableError,
-} from "./commercePricingPolicy.js";
-import { CommerceQuoteCatalogReadError } from "./commerceQuoteCatalogReadPort.js";
-import { createCommerceQuoteHandler } from "./commerceQuoteHandler.js";
+} from "../../src/pricing/index.js";
+import { CommerceQuoteCatalogReadError } from "./catalogFixtures.js";
+import { createCommerceQuoteHandler } from "./handlerFixtures.js";
 
 describe("commerce quote BFF handler", () => {
   it("returns hidden VAT-inclusive quotes through the shared envelope", async () => {
@@ -370,33 +371,33 @@ function createPort(result?: unknown): CommerceQuotePort {
 
 function quote() {
   return {
-    currency: "PLN",
+    currency: "XXX",
     taxIncluded: true,
     lines: [
       {
         sku: "OPENLUP-DOG-LAMB-CAN-400G",
         productSlug: "lamb",
         quantity: 1,
-        unitPriceGross: { amountMinor: 1490, currency: "PLN" },
-        lineSubtotalGross: { amountMinor: 1490, currency: "PLN" },
+        unitPriceGross: { amountMinor: 1490, currency: "XXX" },
+        lineSubtotalGross: { amountMinor: 1490, currency: "XXX" },
         tax: {
           included: true,
-          country: "PL",
+          country: "ZZ",
           category: "pet_food",
           vatRateBps: 800,
-          legalBasis: "PL VAT Annex 3 item 10c",
-          netAmount: { amountMinor: 1380, currency: "PLN" },
-          vatAmount: { amountMinor: 110, currency: "PLN" },
-          grossAmount: { amountMinor: 1490, currency: "PLN" },
+          legalBasis: "Example VAT rule",
+          netAmount: { amountMinor: 1380, currency: "XXX" },
+          vatAmount: { amountMinor: 110, currency: "XXX" },
+          grossAmount: { amountMinor: 1490, currency: "XXX" },
         },
       },
     ],
     discounts: [],
-    subtotalGross: { amountMinor: 1490, currency: "PLN" },
-    discountTotalGross: { amountMinor: 0, currency: "PLN" },
-    totalGross: { amountMinor: 1490, currency: "PLN" },
-    netTotal: { amountMinor: 1380, currency: "PLN" },
-    taxTotal: { amountMinor: 110, currency: "PLN" },
+    subtotalGross: { amountMinor: 1490, currency: "XXX" },
+    discountTotalGross: { amountMinor: 0, currency: "XXX" },
+    totalGross: { amountMinor: 1490, currency: "XXX" },
+    netTotal: { amountMinor: 1380, currency: "XXX" },
+    taxTotal: { amountMinor: 110, currency: "XXX" },
   };
 }
 
@@ -423,10 +424,10 @@ function v2Quote() {
         promotionBenefitValueBps: 8000,
         floorApplied: false,
       }],
-      discountTotalGross: { amountMinor: 100, currency: "PLN" },
-      totalGross: { amountMinor: 1390, currency: "PLN" },
-      netTotal: { amountMinor: 1287, currency: "PLN" },
-      taxTotal: { amountMinor: 103, currency: "PLN" },
+      discountTotalGross: { amountMinor: 100, currency: "XXX" },
+      totalGross: { amountMinor: 1390, currency: "XXX" },
+      netTotal: { amountMinor: 1287, currency: "XXX" },
+      taxTotal: { amountMinor: 103, currency: "XXX" },
     },
   };
 }

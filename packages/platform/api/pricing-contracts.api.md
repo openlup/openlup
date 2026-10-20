@@ -37,6 +37,43 @@ export type CommercePriceAuthorityResult = (CommerceBasePriceObservation & {
 });
 export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch";
 ```
+## dist/pricing/contracts/evidence.d.ts
+
+```ts
+/** UI-safe, additive explanation for a frozen `codeRejections` item. */
+export type CommerceCodeRejectionDetail = {
+    code: string;
+    reason: "scope_not_applicable";
+    allowedScopes: Array<"one_time" | "subscription_initial">;
+} | {
+    code: string;
+    reason: "minimum_not_met";
+    minimumReferenceMinor: number;
+} | {
+    code: string;
+    reason: "not_yet_active";
+    validFrom: string;
+} | {
+    code: string;
+    reason: "global_limit_reached";
+};
+export interface QuotePromotionEvidence {
+    promotionId: string;
+    code?: string | null;
+    reasonCode: string;
+    promotionEngineVersion?: "promotion-engine.v2";
+    promotionCodeId?: string;
+    promotionCodeRevision?: number;
+    promotionDefinitionFingerprint?: string;
+    promotionCodeScopes?: Array<"one_time" | "subscription_initial">;
+    promotionMinimumReferenceMinor?: number;
+    promotionCodeValidTo?: string | null;
+    promotionBenefitKind?: "target_percentage" | "percentage" | "fixed_amount" | "free_shipping";
+    promotionBenefitValueBps?: number;
+    promotionBenefitValueMinor?: number;
+    floorApplied?: boolean;
+}
+```
 ## dist/pricing/contracts/index.d.ts
 
 ```ts
@@ -45,6 +82,91 @@ export { SUBSCRIPTION_PRICE_POLICY_SCHEMA_VERSION, SUBSCRIPTION_PRICE_POLICY_DEF
 export type { SubscriptionPricePolicySemantics, SubscriptionPricePolicyCanonicalInput, SubscriptionPricePolicyRevision, SubscriptionPricePolicyDigestRefusal } from "./policy.js";
 export { OFFER_POLICY_V1, OFFER_POLICY_V2, PROMOTION_ENGINE_V1, PROMOTION_ENGINE_V2, OFFER_POLICY_V2_CAPABILITY } from "./offerPolicy.js";
 export type { OfferPolicyVersion, PromotionEngineVersion, PricingPolicyRequest, PricingPolicySnapshot } from "./offerPolicy.js";
+export type { CommerceCurrency, CommerceTaxCountry, CommerceTaxCategory, CommerceTaxLegalBasis, CommerceMoney, CartLineInput, CommerceTaxProfile, CommerceTaxBreakdown } from "./money.js";
+export { COMMERCE_CONTRACT_VERSION } from "./quote.js";
+export type { CommerceQuotePricingComponent, CommerceQuoteContext, CommerceQuoteLine, CommercePromotionCustomerSemantic, CommerceQuoteDiscount, CommerceCodeRejectionReason, CommerceCodeRejection, CommerceQuote, CreateQuoteRequest, CreateQuoteResponse } from "./quote.js";
+export type { QuotePromotionEvidence, CommerceCodeRejectionDetail } from "./evidence.js";
+export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "./provenance.js";
+export type { CatalogFactsProvenance } from "./provenance.js";
+export { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "./offer.js";
+export type { CommerceOfferPrice, CommerceProductOfferPricing, CommerceOfferPricingResponse } from "./offer.js";
+```
+## dist/pricing/contracts/money.d.ts
+
+```ts
+export type CommerceCurrency = string;
+export type CommerceTaxCountry = string;
+export type CommerceTaxCategory = string;
+export type CommerceTaxLegalBasis = string;
+export interface CommerceMoney {
+    amountMinor: number;
+    currency: CommerceCurrency;
+}
+export interface CartLineInput {
+    sku: string;
+    quantity: number;
+    variantId?: string;
+    modeAtLine?: "one_time" | "subscription";
+    isAddon?: boolean;
+}
+export interface CommerceTaxProfile {
+    included: true;
+    country: CommerceTaxCountry;
+    category: CommerceTaxCategory;
+    vatRateBps: number;
+    legalBasis: CommerceTaxLegalBasis;
+}
+export interface CommerceTaxBreakdown extends CommerceTaxProfile {
+    netAmount: CommerceMoney;
+    vatAmount: CommerceMoney;
+    grossAmount: CommerceMoney;
+}
+```
+## dist/pricing/contracts/offer.d.ts
+
+```ts
+import type { CommerceMoney } from "./money.js";
+import type { PricingPolicySnapshot } from "./offerPolicy.js";
+export declare const COMMERCE_OFFER_PRICING_CONTRACT_VERSION: "commerce.offer-pricing.v1";
+export declare const COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION: "commerce.offer-pricing.v2";
+export interface CommerceOfferPrice {
+    packageGross: CommerceMoney;
+    unitGross: CommerceMoney;
+}
+export interface CommerceProductOfferPricing {
+    productSlug: string;
+    unitCount: number;
+    oneTime: CommerceOfferPrice;
+    subscriptionInitial: CommerceOfferPrice;
+    subscriptionRecurring: CommerceOfferPrice;
+    catalogAnchorUnitGross: CommerceMoney;
+    initialDiscountPercent: number;
+    recurringDiscountPercent: number;
+}
+export type CommerceOfferPricingResponse<ScopeV1 extends string = string, ScopeV2 extends string = string> = {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_CONTRACT_VERSION;
+    scope: ScopeV1;
+    products: CommerceProductOfferPricing[];
+    minimum: {
+        oneTime: CommerceProductOfferPricing;
+        subscription: CommerceProductOfferPricing;
+    };
+} | {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION;
+    scope: ScopeV2;
+    products: CommerceProductOfferPricing[];
+    minimum: {
+        oneTime: CommerceProductOfferPricing;
+        subscription: CommerceProductOfferPricing;
+    };
+    pricingPolicy: PricingPolicySnapshot;
+    shipping: {
+        gross: CommerceMoney;
+        discountGross: CommerceMoney;
+        payable: CommerceMoney;
+    };
+    minimumProductPayable: CommerceMoney;
+};
 ```
 ## dist/pricing/contracts/offerPolicy.d.ts
 
@@ -91,4 +213,130 @@ export interface SubscriptionPricePolicyRevision extends SubscriptionPricePolicy
     digest: string;
 }
 export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch";
+```
+## dist/pricing/contracts/provenance.d.ts
+
+```ts
+export declare const CATALOG_FACTS_PROVENANCE_VERSION: "catalog_facts_v1";
+export declare const CATALOG_FACTS_POLICY_PROVENANCE_VERSION: "catalog_facts_v2";
+interface CatalogFactsFields {
+    skuId: string;
+    documentRevisionId: string;
+    documentDigest: string;
+    basePriceEntryId: string;
+    atTime: string;
+    currency: string;
+    resolvedUnitAmountMinor: number;
+    resolvedLineAmountMinor: number;
+    baseUnitAmountMinor: number;
+}
+export type CatalogFactsProvenance = CatalogFactsFields & ({
+    version: typeof CATALOG_FACTS_PROVENANCE_VERSION;
+    resolvedPriceEntryId: string;
+    mode: "one_time" | "subscription";
+} | {
+    version: typeof CATALOG_FACTS_POLICY_PROVENANCE_VERSION;
+    policyRevisionId: string;
+    policyDigest: string;
+    mode: "subscription";
+});
+export {};
+```
+## dist/pricing/contracts/quote.d.ts
+
+```ts
+import type { CommerceCurrency, CommerceMoney, CommerceTaxBreakdown } from "./money.js";
+import type { CommerceCodeRejectionDetail } from "./evidence.js";
+export declare const COMMERCE_CONTRACT_VERSION = "commerce.v0";
+export interface CommerceQuotePricingComponent {
+    scope: "line" | "order";
+    componentType: "base_unit" | "mode_discount" | "qty_tier" | "promo" | "loyalty" | "shipping" | "bundle";
+    amountMinor: number;
+    reasonCode: string;
+    reasonPayload: Record<string, unknown>;
+}
+/** Hosts may extend this context with their own validated policy. */
+export interface CommerceQuoteContext {
+    mode: "one_time" | "subscription";
+    cadenceDays?: number | null;
+    promoCodes: string[];
+}
+export interface CommerceQuoteLine {
+    sku: string;
+    productSlug: string;
+    quantity: number;
+    unitPriceGross: CommerceMoney;
+    lineSubtotalGross: CommerceMoney;
+    tax: CommerceTaxBreakdown;
+    pricingComponents?: CommerceQuotePricingComponent[];
+}
+export type CommercePromotionCustomerSemantic = "first_purchase_10" | "first_subscription_50" | "bundle_5";
+export interface CommerceQuoteDiscount {
+    promotionId: string;
+    code?: string | null;
+    label?: string;
+    appliesTo: "order_total" | "line" | "shipping";
+    amountOffMinor: number;
+    reasonCode: string;
+    /** Stable presentation identity for canonical offers; never inferred from an editable name. */
+    customerSemantic?: CommercePromotionCustomerSemantic;
+    promotionEngineVersion?: "promotion-engine.v2";
+    promotionCodeId?: string;
+    promotionCodeRevision?: number;
+    promotionDefinitionFingerprint?: string;
+    promotionCodeScopes?: Array<"one_time" | "subscription_initial">;
+    promotionMinimumReferenceMinor?: number;
+    promotionCodeValidTo?: string | null;
+    promotionBenefitKind?: "target_percentage" | "percentage" | "fixed_amount" | "free_shipping";
+    promotionBenefitValueBps?: number;
+    promotionBenefitValueMinor?: number;
+    floorApplied?: boolean;
+}
+/**
+ * Why a customer-submitted promo code did not produce a discount, surfaced so the FE
+ * can show a specific message instead of a generic "invalid". `better_price_exists` is
+ * the one non-error reason (eligible but unused because an automatic offer is equally
+ * good or better; the FE renders it neutrally); `scope_not_applicable` means the code
+ * is real but does not apply to this order type. The last two are v2-engine-only reasons.
+ */
+export type CommerceCodeRejectionReason = "not_recognized" | "already_used" | "not_eligible" | "expired" | "better_price_exists" | "scope_not_applicable";
+export interface CommerceCodeRejection {
+    code: string;
+    reason: CommerceCodeRejectionReason;
+}
+export interface CommerceQuote {
+    currency: CommerceCurrency;
+    taxIncluded: true;
+    lines: CommerceQuoteLine[];
+    discounts: CommerceQuoteDiscount[];
+    pricingComponents?: CommerceQuotePricingComponent[];
+    context?: CommerceQuoteContext;
+    /** Submitted coupon codes that produced no discount, with the reason. Omitted when empty. */
+    codeRejections?: CommerceCodeRejection[];
+    /** UI-safe specifics for selected rejected codes. Omitted when no detail is available. */
+    codeRejectionDetails?: CommerceCodeRejectionDetail[];
+    subtotalGross: CommerceMoney;
+    discountTotalGross: CommerceMoney;
+    /** Gross shipping before any free-shipping promo. Optional; absent ⇒ shipping not priced (legacy/0). */
+    shippingGross?: CommerceMoney;
+    /** Gross shipping discount from a free-shipping promo (≤ shippingGross). Optional; absent ⇒ 0. */
+    shippingDiscountGross?: CommerceMoney;
+    totalGross: CommerceMoney;
+    netTotal: CommerceMoney;
+    taxTotal: CommerceMoney;
+}
+export interface CreateQuoteRequest {
+    mode: "one_time" | "subscription";
+    lines: import("./money.js").CartLineInput[];
+    cadenceDays?: number | null;
+    promoCodes: string[];
+}
+export interface CreateQuoteResponse {
+    contractVersion: typeof COMMERCE_CONTRACT_VERSION;
+    quote: Omit<CommerceQuote, "lines"> & {
+        lines: Array<CommerceQuoteLine & {
+            catalogFacts?: import("./provenance.js").CatalogFactsProvenance;
+        }>;
+    };
+}
 ```

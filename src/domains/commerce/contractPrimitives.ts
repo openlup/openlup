@@ -1,3 +1,4 @@
+// Browser validation binding; the pricing server entry owns the portable counterpart.
 import { platformCurrencySchema } from "../../lib/currency/platformCurrency.js";
 import { z } from "../../lib/validation/zod.js";
 import { catalogProductSlugSchema } from "../catalog/contracts.js";
