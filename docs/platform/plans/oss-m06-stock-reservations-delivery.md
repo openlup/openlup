@@ -8,7 +8,7 @@ A stock wait preserves the active subscription, full frozen basket and due/order
 
 ## Ledger
 
-The owner's 2026-10-20 start grant supersedes the earlier hold for the whole M05 stack. The frozen stack has two independent lanes rooted at main, followed by their join. “None” means no external gate; lane predecessors still apply.
+C2 started on 2026-10-20 before the whole M05 stack merged, by owner decision; M06 PRs consume only merged M05 contracts. The frozen stack has two independent lanes rooted at main, followed by their join. “None” means no external gate; lane predecessors still apply.
 
 | PR | Content | Predecessor / external gate |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ P1a adds the inventory entries, explicit DTOs, unchanged schema counterparts and
 
 P1a: 23 total paths, seven production paths; 24 exports against the 49 cap. Four authored cases plus 15 generated package-boundary iterations add 19 root invocations, with no physical test moves. All are collected; focused added test-body time is 12.75 ms (6.31 ms authored, 6.44 ms generated), not an isolated whole-suite wall-time delta or hosted percentile. The affected nine-file root batch passes 1,070 cases; the package-local inventory batch passes two.
 
-Pack before → after (post-merge): 971 → 1,031 files; 951 → 1,011 code files; 614,196 → 667,038 packed B; 2,749,012 → 2,984,720 unpacked B; 525,409 → 576,665 code gzip B. Root docs: 35,868 → 37,098 gzip B, five files throughout. Inventory contracts: 20/32 browser bytes. No cap or released baseline changes.
+Pack main `0594f24` → repaired P1a: 1,016 → 1,031 files (+15); 996 → 1,011 code files (+15); 660,962 → 666,836 packed B (+5,874); 2,951,746 → 2,983,253 unpacked B (+31,507); 571,347 → 576,498 code gzip B (+5,151). Root docs: 36,912 → 37,098 gzip B (+186), five → five files (+0). Inventory contracts: 20/32 browser bytes. No cap or released baseline changes.
 
 ## Shipping lane (P3a–P3c)
 

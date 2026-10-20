@@ -21,8 +21,6 @@ const datetimeSchema = z.string().datetime({ offset: true });
 
 const quantitySchema = z.number().int().nonnegative();
 
-const positiveQuantitySchema = z.number().int().positive();
-
 export const adminInventoryStockRequestSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -128,18 +126,3 @@ return z.object({
   totals: inventorySubscriptionForecastTotalsSchema,
 }).strict();
 }
-
-const inventoryForecastShortageSchema = z.object({
-  skuId: uuidSchema,
-  sku: z.string().trim().min(1),
-  dueAt: datetimeSchema,
-  demandQuantity: positiveQuantitySchema,
-  availableOrExpectedQuantity: quantitySchema,
-  missingQuantity: positiveQuantitySchema,
-}).strict();
-
-export const inventoryForecastResponseSchema = z.object({
-  contractVersion: z.literal(INVENTORY_CONTRACT_VERSION),
-  shortages: z.array(inventoryForecastShortageSchema),
-}).strict();
-

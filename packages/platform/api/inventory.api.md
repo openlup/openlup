@@ -344,15 +344,4 @@ export declare function createInventorySubscriptionForecastResponseSchema(provid
         recommendedProductionQty: z.ZodNumber;
     }, z.core.$strict>;
 }, z.core.$strict>;
-export declare const inventoryForecastResponseSchema: z.ZodObject<{
-    contractVersion: z.ZodLiteral<"inventory.v0">;
-    shortages: z.ZodArray<z.ZodObject<{
-        skuId: z.ZodGUID;
-        sku: z.ZodString;
-        dueAt: z.ZodString;
-        demandQuantity: z.ZodNumber;
-        availableOrExpectedQuantity: z.ZodNumber;
-        missingQuantity: z.ZodNumber;
-    }, z.core.$strict>>;
-}, z.core.$strict>;
 ```
