@@ -266,6 +266,21 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     expect(() => guard("0.6.1", change)).toThrow("0.6.1 is a patch set, but core has no earlier 0.6.<p> set tag; a package joins the set at a minor set");
     expect(() => guard("1.0.1", change)).toThrow(/is not a set version/u);
   },
+  "the plan refuses a stale source snapshot and accepts a fresh exact target": async (m) => {
+    const repository = fixture(), packs = mkdtempSync(join(scratch, "snapshot-packs-"));
+    const network = vi.fn(routes({}));
+    const plan = (target: string) => m.release.planRelease(repository.root, packs, input("0.4.0", "core", target), undefined, network, () => {});
+    const packed = (commit: string) => writeFileSync(join(packs, check.PACKAGES_MANIFEST_FILE), JSON.stringify({ schemaVersion: 2, commit, packages: [{ name: "@openlup/core", version: "0.4.0", filename: "openlup-core-0.4.0.tgz", sha256: createHash("sha256").update(PACKED).digest("hex"), integrity: integrity(PACKED) }] }));
+    writeFileSync(join(packs, "openlup-core-0.4.0.tgz"), PACKED);
+    repository.write("package-lock.json", repository.read("package-lock.json") + "\n");
+    git(repository.root, "add", "package-lock.json"); git(repository.root, "commit", "--quiet", "-m", "stale snapshot");
+    const stale = git(repository.root, "rev-parse", "HEAD"); packed(stale);
+    await expect(plan(stale)).rejects.toThrow(/byte-for-byte/u);
+    expect(network).not.toHaveBeenCalled();
+    const fresh = repository.commit("refresh snapshot"); packed(fresh);
+    await expect(plan(fresh)).resolves.toEqual(["core"]);
+    expect(network).toHaveBeenCalled();
+  },
   "the release plan: one package only from nothing; a set skips, resumes, and releases at least one": async (m) => {
     const repository = fixture();
     const packs = mkdtempSync(join(scratch, "plan-packs-"));
@@ -365,6 +380,7 @@ const quiet = () => { vi.spyOn(console, "log").mockImplementation(() => undefine
 type Defect = { control: string; plant: string; in: keyof Modules; from: string; to: string };
 /** One or more planted defects per control. Each replaces committed text that occurs once, so a stale anchor fails too. */
 const DEFECTS: Defect[] = [
+  { control: "the plan refuses a stale source snapshot and accepts a fresh exact target", plant: "the plan omits snapshot validation", in: "release", from: "  assertSourceReleaseSnapshot(root, requested.target);\n", to: "" },
   { control: "skip and resume preserve the exact reviewed release-note bytes", plant: "a completed release ignores reviewed note bytes", in: "release", from: '  assertReleaseBody(release, input.note, "completed");\n', to: "" },
   { control: "publishable packages carry one set version", plant: "two versions admitted", in: "policy", from: "if (new Set(publishable.map(({ name }) => versions.get(name))).size > 1) {", to: "if (false) {" },
   { control: "publishable packages carry one set version", plant: "a private package held to the set", in: "policy", from: "  const publishable = config.packages.filter(({ publish }) => publish);\n  const findings: Finding[] = [];", to: "  const publishable = config.packages;\n  const findings: Finding[] = [];" },

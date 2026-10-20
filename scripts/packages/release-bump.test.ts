@@ -89,4 +89,17 @@ describe("release:bump", () => {
     expect(run("core", "0.7.0")).toMatchObject({ code: 1, out: expect.stringMatching(/refused: @openlup\/core is at 0\.7\.0/u) });
     expect(run("core", "0.9.0")).toMatchObject({ code: 0, out: expect.stringContaining("release:bump: rewrote packages/core/CHANGELOG.md") });
   });
+
+  it("logs removed fragments and stages only their deletions from the set command", () => {
+    const { root } = fixture(), fragment = "packages/core/changes/a-one.md";
+    mkdirSync(dirname(join(root, fragment)), { recursive: true }); writeFileSync(join(root, fragment), "- A change.\n");
+    const git = (...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8" }).trim();
+    git("init", "-q"); git("add", "."); git("commit", "-qm", "fixture");
+    writeFileSync(join(root, "packages/kit/package.json"), readFileSync(join(root, "packages/kit/package.json"), "utf8") + "\n");
+    const output = execFileSync(process.execPath, ["--experimental-strip-types", resolve("scripts/packages/release-bump.ts"), "--set", "0.9.0"], { cwd: root, encoding: "utf8" });
+    expect(output).toContain(`release:bump: removed ${fragment}`);
+    expect(output).not.toContain(`rewrote ${fragment}`);
+    expect(git("diff", "--cached", "--name-status")).toBe(`D\t${fragment}`);
+    expect(git("ls-files", "--", fragment)).toBe("");
+  });
 });
