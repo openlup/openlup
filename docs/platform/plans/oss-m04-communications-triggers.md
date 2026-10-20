@@ -512,11 +512,9 @@ source can independently acquire an env, SDK or private import. Whole-message
 golden permutations protect distinct locale/copy/optional-field outputs.
 
 Repair checks: whitespace and public policy pass (**1 documentation obligation,
-0 unanswered**); UI neutrality passes. The ledger has zero hits in every UI
-neutrality category. Repository neutrality, both with the default base and explicit
-`039a0a416147449525f1a863faf7cbb5a370f469`, still refuses six commerce test paths
-(three `ui-6`, three `ui-5`), all outside this ledger-only repair's edit authority.
-That required check remains blocked; these results do not claim a green hosted run.
+0 unanswered**); UI neutrality passes. On this change merged into `039a0a4`,
+`node scripts/public-ci-neutrality.mjs --base-commit 039a0a416147449525f1a863faf7cbb5a370f469`
+reports **0 increases**.
 
 Self-retro: repeated config setup → batch depth setup while retaining the complete
 ordered assertion body. Local whole-file time fell 0.32 s but selected probes rose
