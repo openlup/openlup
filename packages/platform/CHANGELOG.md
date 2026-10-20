@@ -23,6 +23,7 @@ actor-kind enforcement remains handler-only. Comment corrections distinguish the
 managed chain's 42501 publish_requires_human refusal from that native boundary.
 The catalog declaration snapshot reorders existing count enum members; their
 values and runtime behavior are unchanged.
+- Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
 
 - Add experimental opt-in Node `communications/resend` with exactly three
   functions for guarded transport, authenticated webhook handling and GET-only
@@ -36,6 +37,7 @@ values and runtime behavior are unchanged.
   retain schemas, shared admin kit/spec/flags, stock/lifecycle helpers, responder,
   wire versions and RPC error identity. Catalog contracts add plain DTOs only;
   browser schemas stay local. Native stores and SQL remain outside this slice.
+- Add experimental shipping ports, injected-schema handlers and type-only contracts.
 
 Migration: existing reference imports remain named compatibility exports.
 Installed consumers bind the host dependencies explicitly. Bundle DTO additions

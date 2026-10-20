@@ -28,6 +28,7 @@ function fixture() {
 
 it("accepts ordinary confined packages and independently verifies absent peers", () => {
   const consumer = fixture(); assertConsumerIsolation(consumer, root); assertExportInventory(consumer);
+  expect(NON_ADAPTER_ENTRIES).toEqual(expect.arrayContaining(["shipping", "shipping/contracts"]));
 });
 it.each(OPTIONAL_PEERS)("refuses a physically installed optional peer: %s", peer => {
   const consumer = fixture(); mkdirSync(join(consumer, "node_modules", peer), { recursive: true });
@@ -279,3 +280,61 @@ it("refuses extra exports and raw bypass in the installed Resend adapter", () =>
       .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 exact three-export surface/s);
   }
 });
+
+// Inventory reference compatibility remains in the repository consumer proof.
+import { expectTypeOf } from "vitest";
+import { z } from "zod";
+import { createInventorySubscriptionForecastResponseSchema, InventoryConflictError, InventoryPersistenceError } from "@openlup/platform/inventory";
+import type * as Dto from "@openlup/platform/inventory/contracts";
+import * as reference from "../../src/domains/inventory/contracts.js";
+import * as referencePorts from "../../src/domains/inventory/ports.js";
+
+const inventoryForecastFixture = {
+  contractVersion: "inventory.v0",
+  generatedAt: "2026-01-01T00:00:00Z",
+  stockMasterProvider: "source-x",
+  horizonDays: 60,
+  protectionDays: 45,
+  skus: [],
+  totals: {
+    activeSubscriptionCount: 0,
+    excludedSubscriptionCount: 0,
+    missingProviderStockSkuCount: 0,
+    staleProviderStockSkuCount: 0,
+    horizonShortageSkuCount: 0,
+    protectionShortageSkuCount: 0,
+    shortageSkuCount: 0,
+    recommendedProductionQty: 0,
+  },
+};
+
+  it("keeps DTO assignability and compatibility error identities", () => {
+    expectTypeOf<Dto.InventoryReservationStatus>().toEqualTypeOf<reference.InventoryReservationStatus>();
+    expectTypeOf<Dto.AdminInventoryStockRequest>().toEqualTypeOf<reference.AdminInventoryStockRequest>();
+    expectTypeOf<Dto.AdminInventoryReservationsRequest>().toEqualTypeOf<reference.AdminInventoryReservationsRequest>();
+    expectTypeOf<Dto.AdminInventoryStockAdjustmentRequest>().toEqualTypeOf<reference.AdminInventoryStockAdjustmentRequest>();
+    expectTypeOf<Dto.AdminInventorySubscriptionForecastRequest>().toEqualTypeOf<reference.AdminInventorySubscriptionForecastRequest>();
+    expectTypeOf<Dto.InventoryStockListResponse>().toEqualTypeOf<reference.InventoryStockListResponse>();
+    expectTypeOf<Dto.InventoryReservationsListResponse>().toEqualTypeOf<reference.InventoryReservationsListResponse>();
+    expectTypeOf<Dto.InventoryStockAdjustmentResponse>().toEqualTypeOf<reference.InventoryStockAdjustmentResponse>();
+    expectTypeOf<Omit<Dto.InventorySubscriptionForecastResponse, "stockMasterProvider">>().toEqualTypeOf<Omit<reference.InventorySubscriptionForecastResponse, "stockMasterProvider">>();
+    expectTypeOf<Dto.InventorySubscriptionForecastResponse["stockMasterProvider"]>().toEqualTypeOf<string>();
+    expectTypeOf<Dto.InventorySubscriptionForecastSku>().toEqualTypeOf<reference.InventorySubscriptionForecastSku>();
+    expectTypeOf<Dto.InventoryForecastDemandLine>().toEqualTypeOf<reference.InventoryForecastDemandLine>();
+    expectTypeOf<Dto.InventoryForecastSupplyLine>().toEqualTypeOf<reference.InventoryForecastSupplyLine>();
+    expectTypeOf<Dto.InventoryForecastResponse>().toEqualTypeOf<reference.InventoryForecastResponse>();
+    expect(InventoryConflictError).toBe(referencePorts.InventoryConflictError);
+    expect(InventoryPersistenceError).toBe(referencePorts.InventoryPersistenceError);
+    expect(new InventoryConflictError().message).toBe("Inventory conflict");
+    expect(new InventoryPersistenceError().message).toBe("Inventory persistence failed");
+  });
+
+  it("preserves fixed reference forecast wire bytes and refuses a substituted provider", () => {
+    // The reference literal is pinned by the byte-equality proof; it stays reference-owned.
+    const provider = reference.inventorySubscriptionForecastResponseSchema.shape.stockMasterProvider.value;
+    const response = { ...inventoryForecastFixture, stockMasterProvider: provider };
+    const bytes = '{"contractVersion":"inventory.v0","generatedAt":"2026-01-01T00:00:00Z","stockMasterProvider":' + JSON.stringify(provider) + ',"horizonDays":60,"protectionDays":45,"skus":[],"totals":{"activeSubscriptionCount":0,"excludedSubscriptionCount":0,"missingProviderStockSkuCount":0,"staleProviderStockSkuCount":0,"horizonShortageSkuCount":0,"protectionShortageSkuCount":0,"shortageSkuCount":0,"recommendedProductionQty":0}}';
+    expect(JSON.stringify(reference.inventorySubscriptionForecastResponseSchema.parse(response))).toBe(bytes);
+    expect(JSON.stringify(createInventorySubscriptionForecastResponseSchema(z.literal(provider)).parse(response))).toBe(bytes);
+    expect(reference.inventorySubscriptionForecastResponseSchema.safeParse(inventoryForecastFixture).success).toBe(false);
+  });

@@ -183,18 +183,16 @@ export const inventoryForecastResponseSchema = z.object({
   shortages: z.array(inventoryForecastShortageSchema),
 }).strict();
 
-export type InventoryReservationStatus = z.infer<typeof inventoryReservationStatusSchema>;
-export type AdminInventoryStockRequest = z.infer<typeof adminInventoryStockRequestSchema>;
-export type AdminInventoryReservationsRequest = z.infer<typeof adminInventoryReservationsRequestSchema>;
-export type AdminInventoryStockAdjustmentRequest = z.infer<typeof adminInventoryStockAdjustmentRequestSchema>;
-export type AdminInventorySubscriptionForecastRequest = z.infer<
-  typeof adminInventorySubscriptionForecastRequestSchema
->;
+export type { InventoryReservationStatus } from "@openlup/platform/inventory/contracts";
+export type { AdminInventoryStockRequest } from "@openlup/platform/inventory/contracts";
+export type { AdminInventoryReservationsRequest } from "@openlup/platform/inventory/contracts";
+export type { AdminInventoryStockAdjustmentRequest } from "@openlup/platform/inventory/contracts";
+export type { AdminInventorySubscriptionForecastRequest } from "@openlup/platform/inventory/contracts";
 export type InventoryStockListResponse = z.infer<typeof inventoryStockListResponseSchema>;
 export type InventoryReservationsListResponse = z.infer<typeof inventoryReservationsListResponseSchema>;
-export type InventoryStockAdjustmentResponse = z.infer<typeof inventoryStockAdjustmentResponseSchema>;
+export type { InventoryStockAdjustmentResponse } from "@openlup/platform/inventory/contracts";
 export type InventorySubscriptionForecastResponse = z.infer<typeof inventorySubscriptionForecastResponseSchema>;
-export type InventorySubscriptionForecastSku = z.infer<typeof inventorySubscriptionForecastSkuSchema>;
-export type InventoryForecastDemandLine = z.infer<typeof inventoryForecastDemandLineSchema>;
-export type InventoryForecastSupplyLine = z.infer<typeof inventoryForecastSupplyLineSchema>;
-export type InventoryForecastResponse = z.infer<typeof inventoryForecastResponseSchema>;
+export type { InventorySubscriptionForecastSku } from "@openlup/platform/inventory/contracts";
+export type { InventoryForecastDemandLine } from "@openlup/platform/inventory/contracts";
+export type { InventoryForecastSupplyLine } from "@openlup/platform/inventory/contracts";
+export type { InventoryForecastResponse } from "@openlup/platform/inventory/contracts";

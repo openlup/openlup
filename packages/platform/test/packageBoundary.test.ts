@@ -200,6 +200,7 @@ describe("package source boundary", () => {
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
+      "shipping/index.ts", "shipping/contracts/index.ts",
       "catalog/index.ts", "catalog/contracts/index.ts",
       "catalog/adminBindings.ts", "catalog/bundleBindings.ts", "catalog/bundleRules.ts", "catalog/bundleRuleCodes.ts",
       "catalog/bundleAvailability.ts", "catalog/bundleAvailabilityService.ts", "catalog/bundleCatalogReadPort.ts",
@@ -213,10 +214,16 @@ describe("package source boundary", () => {
       "promotions/promotionClaims.ts", "promotions/promotionClaimSweepPort.ts", "promotions/sql.ts",
       "communications/index.ts", "communications/contracts/index.ts", "http/webhookSignature.ts",
       "kernel/platformKernel.ts", "bff/dispatch.ts", "composition/composeBundle.ts", "composition/nodeHost.ts",
+      "inventory/index.ts", "inventory/contracts/index.ts", "inventory/schemas.ts", "inventory/ports.ts",
     ]));
     const nativeStore = files.find(({ path }) => path === "catalog/bundleCatalogStore.ts")!.source;
     expect(nativeStore).toContain('import type { PgQueryExecutor } from "../data/index.js"');
     expect(specifiers(nativeStore)).not.toContain("pg");
+    // Shipping lane: audit every source, including contracts and type-only loads.
+    for (const { path, source } of files.filter(({ path }) => path.startsWith("shipping/"))) {
+      expect(specifiers(source).filter((specifier) => /(?:^|\/)inventory(?:\/|$)/u.test(specifier)), path).toEqual([]);
+    }
+
   });
 
   it.each(files)("$path reads no environment variable", ({ source }) => {
