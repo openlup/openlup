@@ -8,11 +8,6 @@ SemVer promise.
 
 ## [Unreleased]
 
-- Repair synthetic consent-push conformance: withdrawals bypass grant-caused
-  fences/quarantine while preserving same-key withdrawal fences and account-level
-  cooling; document honest recording uncertainty and reconciliation. Public types
-  remain unchanged by this repair.
-
 - Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
   through both existing communications entries. Local grants remain audience-scoped;
   only withdrawals allow account-wide scope. The push capability declares
@@ -20,7 +15,11 @@ SemVer promise.
   never prove remote effect. Make the existing `NegativeFeedback` discriminant
   union readonly, consistent with its other fields. Migration: callers must stop
   assigning feedback `kind` or `outcome`; existing providers remain assignable.
-  No factory, activation, callback, retry or package subpath is added.
+  No factory, activation, callback, retry or package subpath is added. Synthetic
+  conformance keeps accepted/acknowledged grants unsettled until settlement and
+  fresh readback. Withdrawals bypass grant-caused fences/quarantine while preserving
+  same-key withdrawal fences and account-level cooling, with honest recording
+  uncertainty and reconciliation.
 - Move the unchanged executor-backed native bundle read store and queries into
   catalog, retaining named reference compatibility exports. Add sparse canonical
   SQL 16/19 descriptors and byte-identical projections, with no new migration.

@@ -160,7 +160,7 @@ export type PushPlant = `missing-ref:${"absent" | "empty" | "blank"}` | `authori
   "push-stale" | "push-generation-key" | `lost-intent:${"same-key" | "new-key"}` | "push-completed" |
   "hide-race" | "hide-race-replay" | "early-read" | `insufficient-read:${"partial" | "unsupported"}` | `insufficient-read-no-grant:${"partial" | "unsupported"}` |
   `pending-withdrawal:${"audience" | "account-wide"}` | "skip-unknown" | "withdraw-as-grant" |
-  "global-widening" | "old-grant-start" | "delay-withdrawal";
+  "global-widening" | "old-grant-start" | "delay-withdrawal" | "ack-grant-settled";
 export function pushRequest(overrides: Partial<ConsentPushRequest> = {}): ConsentPushRequest {
   // The synthetic registry, rather than a public constructor, owns this branded reference.
   return { ...request("profile.sync"), operation: "consent.push", audience,
@@ -247,6 +247,10 @@ export function syntheticPush(plant?: PushPlant) {
     const receipt = { operation: "consent.push", request: r } as Extract<ConsentPushResult, { kind: "accepted" | "acknowledged" }>["receipt"];
     effects.push({ action: r.payload.action, audience: plant === "global-widening" && !state.safeListOnly ? { kind: "account-wide" } : r.audience,
       requestId: r.requestId, evidence });
+    // Only subject:1 + the configured audience can admit grants in this model.
+    // Count our own dispatches too; replay returns from the private journal above.
+    // Acceptance/acknowledgement does not settle a grant, even with confirmed recording.
+    if (r.payload.action === "grant" && state.earlierGrants !== null && !(plant === "ack-grant-settled" && state.mutation === "acknowledged")) state.earlierGrants++;
     if (r.payload.action === "withdraw") {
       state.pendingWithdrawal = r.audience;
       race ||= state.earlierGrants !== 0;
@@ -420,7 +424,7 @@ export function consentPushSuite(factory: PushFactory) {
     expect(cooling.effects, `${label}/cooling zero effect`).toEqual([]);
   });
   row("CP04", ["hide-race", "hide-race-replay", "early-read", "insufficient-read:partial", "insufficient-read:unsupported", "insufficient-read-no-grant:partial", "insufficient-read-no-grant:unsupported", "pending-withdrawal:audience", "pending-withdrawal:account-wide",
-    "skip-unknown", "withdraw-as-grant", "global-widening", "old-grant-start", "delay-withdrawal"], async (fresh, label) => {
+    "skip-unknown", "withdraw-as-grant", "global-widening", "old-grant-start", "delay-withdrawal", "ack-grant-settled"], async (fresh, label) => {
     const withdrawal = pushRequest({ requestId: "withdraw:1", payload: { action: "withdraw", consentEvidenceReference: "withdraw:1" } });
     // Pinned CB2-F1: grant uncertainty never queues a withdrawal behind the grant.
     for (const fault of ["acceptance_ambiguous", "record_failed", "dispatch_unresolved", "partial-persistence"] as const) {
@@ -545,6 +549,23 @@ export function consentPushSuite(factory: PushFactory) {
       const h = fresh(); h.state.supportedGlobal = supportedGlobal;
       expect(await h.port.push(pushRequest({ audience: { kind: "account-wide" }, payload: { action: "withdraw", consentEvidenceReference: "withdraw:1" } })), `${label}/explicit global withdrawal`).toMatchObject(supportedGlobal ? { kind: "acknowledged" } : { kind: "refused", reason: "unsupported" });
       expect(h.effects, `${label}/global support effects`).toHaveLength(supportedGlobal ? 1 : 0);
+    }
+    for (const mutation of ["accepted", "acknowledged"] as const) {
+      for (const scope of [audience, { kind: "account-wide" } as const]) {
+        const h = fresh(); h.state.mutation = mutation;
+        const grant = pushRequest();
+        const admitted = await h.port.push(grant);
+        expect(admitted, `${label}/own grant ${mutation} with confirmed journal`).toMatchObject({ kind: mutation, journal: "confirmed" });
+        expect(await h.port.push(grant), `${label}/own grant replay`).toEqual(admitted);
+        expect(await h.port.push({ ...withdrawal, audience: scope }), `${label}/grant ${mutation} by this port, then withdrawal → reconcileRequired:true`).toMatchObject({ kind: mutation, reconcileRequired: true });
+        expect(h.effects.map(effect => effect.action), `${label}/own grant replay never redispatches`).toEqual(["grant", "withdraw"]);
+        h.state.remote = "unsubscribed";
+        expect(h.read(), `${label}/own grant early read is not settlement`).toMatchObject({ value: { remoteConsent: "unknown" }, reconcileRequired: true });
+        // Inject settlement evidence; only the subsequent consent read closes the race.
+        h.state.earlierGrants = 0;
+        expect(h.read(), `${label}/own grant settlement and fresh read close race`).toMatchObject({ value: { remoteConsent: "unsubscribed" }, reconcileRequired: false });
+        expect(await h.port.push({ ...withdrawal, audience: scope, requestId: "after-settlement:withdraw" }), `${label}/settled own grant no longer conflicts`).toMatchObject({ kind: mutation, reconcileRequired: false });
+      }
     }
     const identity = fresh(); identity.state.identity = false;
     expect(await identity.port.push(withdrawal), `${label}/withdrawal still requires identity`).toMatchObject({ kind: "refused", reason: "identity_conflict" });

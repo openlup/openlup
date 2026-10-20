@@ -230,7 +230,6 @@ mutation/webhook admission, deployment routes or default clocks. Native diagnost
 are bounded installation observations, not managed-frequency or full-native-sender
 parity. A built shell does not establish an email destination or T07 action.
 
-
 The opt-in direct OIDC settings registry declares issuer and separate customer
 and operator API audiences. Selecting them adds no browser provider or default
 login route. Invalid or overlapping audiences refuse composition; managed bundles
@@ -243,8 +242,6 @@ persistent customer identifier, package API version or migration contract. The
 selected browser import inventory is independent of the public default build;
 server credentials do not become browser configuration.
 
-
-
 Identity privacy appends the direct receipt migration at position 69 while
 preserving the preceding manifest entries and SQL projection identities. Erasure
 requires this forward, explicit contributor registration and declared retention
@@ -255,14 +252,12 @@ grants; export exposes its narrower coverage. See
 [identity privacy](IDENTITY.md#identity-personal-data) and
 [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle).
 
-
 Direct human operator sessions introduce a distinct operator audience and a
 browser provider-selection setting. The direct catalogue appends the challenges
 forward with an immutable predecessor prefix. Its normalized-email uniqueness
 constraint refuses ambiguous identities; customer links and machine credentials
 are preserved. [Identity](IDENTITY.md#direct-human-login) owns the authentication
 codes, limits and compatibility requirements; no managed migration is added.
-
 
 The environment registry declares `IDENTITY_EMAIL_VERIFYING_PROVIDERS` as an
 optional server-only value with an empty default. Managed identity hosts parse
@@ -280,8 +275,6 @@ Managed revoked-row reinvitation refuses with `MANAGED_REINVITE_UNSUPPORTED`.
 [Identity](IDENTITY.md#operator-invitation-lifecycle) owns the DTOs and acceptance
 boundary; [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) owns
 the direct catalogue identity and the managed pending-lifecycle compatibility gap.
-
-
 
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement
@@ -310,7 +303,6 @@ for invitation eligibility and conflict checks.
 It does not authorize arbitrary runtime grants. Approval must precede the SQL
 feature's comparison base and introducing commit; registry installation alone
 does not change database permissions.
-
 
 Stable status, idempotency, and provider-extension commitments wait for the stable-framework requirements.
 Before then, changes must still preserve the contracts above and state their
@@ -396,7 +388,6 @@ for execution and proof limits. These checks do not grant application privileges
 or declare complete compatibility evidence. Existing release context checks remain unchanged.
 
 The outbox rail is a local experimental package candidate in the package catalogue. Its exact core peer, export snapshots and shipped baseline hash are separate from publication eligibility. Admission compares the complete observed set and selected adapter facts; unknown inventory or probe state cannot activate a candidate.
-
 
 ### Native communications evidence
 
@@ -486,7 +477,6 @@ Existing marketing ports and their observations and the existing
 `NewsletterSyncProviderPort` remain unchanged. A refusal-only newsletter bridge
 is planned in the later adapter PR. The [A1 ledger](plans/oss-a1-communications-adapters.md)
 records the offline synthetic proof and remaining delivery gates.
-
 
 ### Consent push admission and reconciliation
 
