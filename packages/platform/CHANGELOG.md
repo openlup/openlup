@@ -8,6 +8,18 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental `./promotions` application, advisory read ports, preview,
+  money binding, acceptance and passive telemetry with explicit host bindings;
+  `./promotions/contracts` contains dependency-free preview DTOs. Core remains
+  the evaluator; reference shims retain existing behavior and managed transport.
+  Migration: reference imports remain named compatibility exports; installed
+  callers supply floor, classifier, eligibility, request projection and recorder.
+- Add server-resolved acquisition terms as the final optional argument to both
+  experimental quote acceptance callbacks (issue and honor). This deliberately
+  extends the unreleased opt-in signature; bind that argument in the acceptance
+  helper. Migration: existing callbacks remain assignable; inactive token bytes
+  and reference activation are unchanged.
+
 - Add an experimental opt-in acquisition selection, offer v3 and promise-consent
   API with required host financial policy and no default. Reference activation
   remains off. Migration: none for existing callers.
@@ -20,7 +32,7 @@ SemVer promise.
 
 - Move the existing neutral quote foundation into pricing: money/tax/quote contracts, injected server validation, provenance, bounded catalog facts and tax refusal. Preserve reference browser/context validation and existing quote equations; Computation and offer behavior are preserved.
 
-- Add experimental `./pricing` and `./pricing/contracts` entries by moving the existing OpenLup authority, subscription policy, assignment token and refusal mapping unchanged. Named reference exports preserve identity; browser schemas and feature-flag/secret/readiness composition remain local. Acquisition selection remains outside this cut.
+- Add experimental `./pricing` and `./pricing/contracts` entries by moving the existing OpenLup authority, subscription policy, assignment token and refusal mapping unchanged. Named reference exports preserve identity; browser schemas and feature-flag/secret/readiness composition remain local. Acquisition selection was outside the initial authority move and is now available through the separately configured opt-in API.
 
 - Add experimental `catalog` and dependency-free `catalog/contracts` entries by
   moving the existing public neutral foundation, product types, draft logic,

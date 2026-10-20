@@ -135,6 +135,16 @@
       "types": "./dist/pricing/contracts/index.d.ts",
       "import": "./dist/pricing/contracts/index.js",
       "default": "./dist/pricing/contracts/index.js"
+    },
+    "./promotions": {
+      "types": "./dist/promotions/index.d.ts",
+      "import": "./dist/promotions/index.js",
+      "default": "./dist/promotions/index.js"
+    },
+    "./promotions/contracts": {
+      "types": "./dist/promotions/contracts/index.d.ts",
+      "import": "./dist/promotions/contracts/index.js",
+      "default": "./dist/promotions/contracts/index.js"
     }
   },
   "repository": {

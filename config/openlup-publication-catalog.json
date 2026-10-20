@@ -2242,6 +2242,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/promotions-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/promotions.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/scheduler.api.md",
       "class": "public-output"
     },
@@ -3442,6 +3450,58 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/promotions/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promoDataPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionAcceptanceTelemetry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionBenefitDefinition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionCodePreview.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionCodeQuotePort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionQuoteAcceptance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/promotionQuoteBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/quoteAutomaticPromotions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/quotePromoDiscounts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/quotePromotionCodeAdjustments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/quotePromotionV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/scheduler/advisoryLock.ts",
       "class": "public-output"
     },
@@ -4011,6 +4071,70 @@
     },
     {
       "path": "packages/platform/test/pricing/subscriptionPricePolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/acceptanceCallbacks.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/acceptanceFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/applicationConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/bindingsFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promoDataPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promotionBenefitDefinition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promotionCodePreview.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promotionCodeQuotePort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promotionQuoteAcceptance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/promotionQuoteBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/quoteAutomaticPromotions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/quotePromoDiscounts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/quotePromotionCodeAdjustments.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/quotePromotionV2.legacyCodeOutcomes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/quotePromotionV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/semanticFixtures.ts",
       "class": "public-output"
     },
     {
@@ -10830,10 +10954,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/promoDataPort.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/promoDataPort.ts",
       "class": "public-output"
     },
@@ -10842,11 +10962,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/promotionBenefitDefinition.test.ts",
+      "path": "server/domains/commerce/promotionBenefitDefinition.ts",
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/promotionBenefitDefinition.ts",
+      "path": "server/domains/commerce/promotionBindings.test.ts",
       "class": "public-output"
     },
     {
@@ -10886,15 +11006,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/promotionQuoteAcceptance.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/promotionQuoteAcceptance.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/promotionQuoteBinding.test.ts",
       "class": "public-output"
     },
     {
@@ -10910,10 +11022,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/quoteAutomaticPromotions.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/quoteAutomaticPromotions.ts",
       "class": "public-output"
     },
@@ -10922,27 +11030,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/quotePromoDiscounts.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/quotePromoDiscounts.ts",
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/quotePromotionCodeAdjustments.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/quotePromotionCodeAdjustments.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/quotePromotionV2.legacyCodeOutcomes.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/quotePromotionV2.test.ts",
       "class": "public-output"
     },
     {

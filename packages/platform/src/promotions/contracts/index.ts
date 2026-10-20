@@ -1,0 +1,42 @@
+/** Promotion-owned preview DTOs. Validation and secrets belong to the server entry. */
+export type PromotionCodeBenefit =
+  | { lane: "product"; kind: "target_percentage"; valueBps: number }
+  | { lane: "product" | "shipping"; kind: "fixed_amount"; valueMinor: number }
+  | { lane: "product"; kind: "percentage"; valueBps: number }
+  | { lane: "shipping"; kind: "percentage"; valueBps: number }
+  | { lane: "shipping"; kind: "free_shipping" }
+  | { lane: "product" | "shipping"; kind: "percentage" | "fixed_amount"; validationState: "unsupported_legacy_value" };
+
+export interface PromotionCodePreviewRequest {
+  benefits: PromotionCodeBenefit[];
+  scopes: Array<"one_time" | "subscription_initial">;
+  promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
+  minimumReferenceMinor: number;
+  context: {
+    referenceProductMinor: number;
+    oneTimeProductMinor: number;
+    subscriptionProductMinor: number;
+    shippingMinor: number;
+  };
+}
+
+export interface PromotionCodePreviewResponse {
+  contractVersion: "commerce.v0";
+  promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
+  previewProof: string;
+  results: Array<{
+    scope: "one_time" | "subscription_initial";
+    productPayableMinor: number;
+    shippingPayableMinor: number;
+    effectiveProductDiscountBps: number;
+    winner: "code" | "automatic";
+    floorApplied: boolean;
+    adjustments: Array<{
+      lane: "product" | "shipping";
+      kind: "target_percentage" | "percentage" | "fixed_amount" | "free_shipping";
+      amountOffMinor: number;
+      beforeMinor: number;
+      afterMinor: number;
+    }>;
+  }>;
+}
