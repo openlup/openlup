@@ -332,7 +332,7 @@ source-boundary iterations do not consume programme cases.
 
 Changed production/tooling paths versus e581e1aae980efcea06cb580a15357a45db360bf:
 **17/35**, including JSON companions; tests, API snapshots and prose excluded.
-Pack measured before main's A1 Resend merge: **1,024 files / 1,002 code files / 667,279 packed B / 2,986,256 unpacked B /
+Pack measured before the main merge (A1 P1): **1,024 files / 1,002 code files / 667,279 packed B / 2,986,256 unpacked B /
 571,700 code gzip B**; root docs **37,278 gzip B / 5 files**. Browser entries:
 catalog contracts **3,281/4,096 B**, pricing contracts **386/416 B**, promotions
 contracts **20/32 B** minified+gzip. Existing aggregate caps and released baseline
