@@ -36,9 +36,15 @@ factory, provider SDK, environment reader, host callback, configuration registry
 or package subpath. The private subject mapper, durable admission/journal,
 account leases and provider payload translation belong inside the selected
 adapter's construction and infrastructure boundary. P2 owns that construction.
-The public families expose profile sync, consent readback and erasure; discovery,
+The four public families expose profile sync, consent readback, erasure and
+local-authority consent push; discovery,
 profile reads, history, events and membership remain outside the public surface.
-Positive consent writes are deferred pending an owner decision. The
+Consent push is additive: existing providers remain valid. Its grants carry one
+local purpose/audience evidence reference; account-wide scope is withdrawal-only.
+The push capability declares audience or account-wide grant effects, with no-trigger
+admission covering that entire effect. Withdrawals dispatch immediately, grants
+refuse during pending withdrawals, and only the host reconciles unsettled-grant
+races after a fresh post-settlement consent read. No push result proves effect. The
 [canonical lifecycle](CANONICAL_CONTRACTS.md#neutral-marketing-sync) owns replay,
 negative-only feedback and evidence-bound completion. No default composition
 changes and no existing M04 implementation gains new obligations.
@@ -394,6 +400,8 @@ validators. Separating artifact identity from module responsibility requires
 its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
+
+Inventory remains a non-adapter entry with no catalog import; its bundle-stock shapes are declared structurally. Admin handlers bind host response writers, and native reads require the provider value and validator. The new-purchase projection takes normalized reads, host defaults, fallback, observation and availability calculation; transports and cycle writers retain their owners.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
 entry. Its cross-module edges are type-only data/http/bff inputs: the native read

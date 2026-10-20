@@ -24,10 +24,10 @@ export type SyncRequest<O extends Operation = Operation> = { [K in O]: Readonly<
 }> }[O];
 export type NegativeFeedback = Readonly<{
   [feedbackBrand]: "provider-negative"; sourceReference: string; occurredAtMs: number | null; audience: SyncAudience;
-}> & (
+}> & Readonly<
   | { kind: "unsubscribe" | "complaint" | "manual_block"; outcome: "deny_permission" }
   | { kind: "hard_bounce" | "invalid_address"; outcome: "deny_delivery" }
-);
+>;
 export type ConsentReadback = Readonly<{
   audience: SyncAudience; observedAtMs: number;
   remoteConsent: "subscribed" | "unsubscribed" | "pending" | "never_subscribed" | "unknown";
@@ -77,4 +77,33 @@ export interface ErasurePort {
 export interface MarketingSyncProvider {
   readonly capabilities: SyncCapabilities;
   readonly profiles: ProfileSyncPort; readonly consent: ConsentReadPort; readonly erasure: ErasurePort;
+}
+
+export type ConsentPushRequest = Readonly<
+  Omit<SyncRequest<"profile.sync">, "operation" | "audience" | "payload"> & {
+    operation: "consent.push";
+  } & (
+    { audience: Extract<SyncAudience, { kind: "audience" }>;
+      payload: Readonly<{ action: "grant"; consentEvidenceReference: string }> } |
+    { audience: SyncAudience;
+      payload: Readonly<{ action: "withdraw"; consentEvidenceReference: string }> }
+  )>;
+declare const pushReceiptBrand: unique symbol; // private, same receipt style
+type PushReceipt = Readonly<{ [pushReceiptBrand]: "consent.push";
+  operation: "consent.push"; request: ConsentPushRequest }>;
+type PushFailure = Exclude<SyncFailure, { kind: "unknown" }> |
+  (Omit<Extract<SyncFailure, { kind: "unknown" }>, "receipt"> & { receipt?: PushReceipt });
+export type ConsentPushResult = Readonly<Pick<ConsentPushRequest,
+  "binding" | "operation" | "subjectReference" | "requestId" | "generation">> & Readonly<
+    { kind: "accepted" | "acknowledged"; receipt: PushReceipt;
+      journal: "confirmed" | "unknown"; reconcileRequired: boolean } | PushFailure>;
+export interface ConsentPushPort {
+  readonly capabilities: SyncCapabilities & Readonly<{
+    operations: SyncCapabilities["operations"] & Readonly<{
+      "consent.push": SyncCapabilities["operations"]["profile.sync"] & Readonly<{
+        grantEffect: "audience" | "account-wide";
+      }>;
+    }>;
+  }>;
+  push(request: ConsentPushRequest): Promise<ConsentPushResult>;
 }
