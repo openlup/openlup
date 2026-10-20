@@ -13,3 +13,4 @@ export type {
   InventoryForecastSupplyLine,
   InventoryForecastResponse,
 } from "./inventory.js";
+export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";

@@ -395,6 +395,8 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+Inventory has only a type edge to `catalog/index.js` for the merged bundle-stock port; catalog has no inventory edge. Admin handlers bind host response writers, and native reads require the provider value and validator. The new-purchase projection takes normalized reads, host defaults, fallback, observation and availability calculation; transports and cycle writers retain their owners.
+
 Catalog now also owns fixed-bundle application/admin factories at its existing
 entry. Its only cross-module edges remain type-only http/bff handler/responder
 inputs; there is no data, pricing or promotions edge. Reference wrappers bind

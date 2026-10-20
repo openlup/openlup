@@ -3318,6 +3318,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/adminInventory.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/contracts/index.ts",
       "class": "public-output"
     },
@@ -3326,7 +3330,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/newPurchaseStock.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/inventoryHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/newPurchaseStockAvailability.ts",
       "class": "public-output"
     },
     {
@@ -4134,7 +4150,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/inventory/adminInventoryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/inventory/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/inventoryAvailabilityCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/newPurchaseStockBoundary.test.ts",
       "class": "public-output"
     },
     {
@@ -21035,6 +21063,10 @@
     },
     {
       "path": "tests/platform/customerJourneyReadWork.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/inventoryOperatorBoundaryCharacterization.test.ts",
       "class": "public-output"
     },
     {

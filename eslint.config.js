@@ -164,7 +164,7 @@ export const PLATFORM_MODULE_GRAPH = {
   migrations: { values: [], types: [] },
   // The generic composer over the other modules' public ports and factories.
   composition: { values: ["blob", "bff", "data", "http", "job-ledger", "kernel", "migrations", "scheduler"], types: [] },
-  inventory: { contracts: true, values: [], types: [] },
+  inventory: { contracts: true, values: [], types: ["catalog"] },
 };
 const PLATFORM_SOURCE = "packages/platform/src";
 

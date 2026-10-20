@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Extract admin/native inventory reads and injected new-purchase stock projection.
+
 - Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
 
 - Add experimental opt-in Node `communications/resend` with exactly three
