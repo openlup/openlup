@@ -2298,6 +2298,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260807140000_read_parity_catalog.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260807190000_comms_outbox_rail.sql",
       "class": "public-output"
     },
@@ -2307,6 +2311,10 @@
     },
     {
       "path": "packages/platform/sql/20260809150001_job_run_ledger_v3.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260810120000_storefront_catalog_attributes.sql",
       "class": "public-output"
     },
     {
@@ -2346,7 +2354,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260827220000_catalog_document_revision_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260827220001_catalog_document_revision_foundation_validate.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260901143000_admin_membership_authority_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260908100000_catalog_draft_foundation.sql",
       "class": "public-output"
     },
     {
@@ -2471,6 +2491,18 @@
     },
     {
       "path": "packages/platform/src/catalog/bundleRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogDraftStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSkuEnvelope.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSkuEnvelopeMapper.ts",
       "class": "public-output"
     },
     {
@@ -2963,6 +2995,10 @@
     },
     {
       "path": "packages/platform/src/communications/validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/catalogContribution.ts",
       "class": "public-output"
     },
     {
@@ -6179,10 +6215,6 @@
     },
     {
       "path": "server/adapters/postgres/catalogSkuEnvelope.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/catalogSkuEnvelopeMapper.ts",
       "class": "public-output"
     },
     {
@@ -13694,6 +13726,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m05CatalogBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m05CatalogSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -21078,6 +21118,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/catalog/m05Composition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/catalog/m05ReferenceComposition.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/checkoutInlineRecoveryClientFlow.test.ts",
       "class": "public-output"
     },
@@ -21175,6 +21223,10 @@
     },
     {
       "path": "tests/postgres/identityStatePreservation.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m05CatalogComposition.test.ts",
       "class": "public-output"
     },
     {

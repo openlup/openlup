@@ -187,6 +187,23 @@ in the application. The existing cold consumer exercises both entries and
 compiles installed declarations without optional provider peers.
 
 ## Catalog
+The native envelope and dark draft adapters now live in this entry as
+`createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
+They accept an injected executor and retain the existing mapping, errors and SQL
+semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
+projects canonical positions 1, 8, 58, 59 and 61 byte for byte; these assets are
+sparse references, never a standalone install chain. No canonical migration or
+manifest entry changes.
+
+The composition entry adds `createCatalogContribution` and its structural input
+interface. It describes actual catalog, pricing and promotions callables under
+those existing module identities, with no environment discovery, client creation
+or registration. It imports only readiness types: composition gains no catalog
+edge, and catalog retains its existing type-only data edge. Package boundary
+checks pin those imports and peer-free composition declarations. The packed
+consumer exercises both new stores and the descriptor without optional peers;
+its synthetic executor proves named refusal, not durable storage behavior.
+
 
 `./catalog` is an experimental capability for the existing neutral catalog
 foundation, installed product types, draft validation/use cases, active SKU

@@ -22,6 +22,13 @@ The separate default-off storefront-product readback is DB-only behind
   customer-runtime fallback.
 
 ## Packaged neutral catalog boundary
+The native envelope and isolated draft store factories are also package-owned.
+Reference store imports retain their paths, while installed callers select
+`createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`
+from the existing catalog entry. The injected data executor remains type-only;
+no driver, environment or default mount is introduced. Document interpretation,
+publication and rich catalog reads keep their existing ownership.
+
 
 The neutral foundation, installed product types, drafts, active SKU selection,
 resolved projection and reference list handler now delegate to

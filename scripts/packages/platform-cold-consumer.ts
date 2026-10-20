@@ -530,6 +530,35 @@ process.exit(0);
   }
 }
 
+/** SDK-absent catalog operations and inert structural contribution, reused by the selected P7 case. */
+export function proveCatalogCompositionConsumer(consumer: string) {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import * as catalog from "@openlup/platform/catalog";
+import { createCatalogContribution } from "@openlup/platform/composition";
+const statements = [];
+const executor = { query: async (sql, values) => { statements.push([sql, values]); return { rows: [] }; } };
+const native = catalog.createPostgresCatalogSkuEnvelopeReadPort(executor);
+assert.deepEqual(await native.listActiveSkuEnvelopes({ cursor: null, limit: 1, skuCodes: ["P7-UNIT"] }), { items: [], nextCursor: null });
+assert.equal(statements.length, 1);
+await assert.rejects(native.getSkuEnvelope({ kind: "sku_code", skuCode: "ABSENT" }), error => error instanceof catalog.CatalogSkuAuthorityError && error.code === "catalog_sku_authority_sku_absent");
+const draft = catalog.createPostgresCatalogDraftStore({ query: async () => { throw { code: "42501" }; } });
+assert.deepEqual(await draft.apply({ canonicalCommand: "{}", fingerprint: "a".repeat(64), actorId: "synthetic" }), { outcome: "unauthorized", reason: "operator_required" });
+assert.deepEqual(catalog.CATALOG_MIGRATIONS.map(unit => unit.position), [1,8,58,59,61]);
+for (const unit of catalog.CATALOG_MIGRATIONS) assert.equal(createHash("sha256").update(readFileSync(unit.url)).digest("hex"), unit.sha256);
+const quote = () => { throw new Error("synthetic_quote_unavailable"); };
+const selected = createCatalogContribution({ version: JSON.parse(readFileSync(new URL("./node_modules/@openlup/platform/package.json", import.meta.url))).version, requiredSchema: { version: "complete", migration: "complete", objects: [] },
+  catalog: { read: native.getSkuEnvelope, draft: draft.apply }, pricing: { quote }, promotions: {}, routes: [] });
+assert.equal(selected.ports["@openlup/platform/catalog:read"], native.getSkuEnvelope);
+assert.equal(selected.ports["@openlup/platform/catalog:draft"], draft.apply);
+assert.equal(selected.ports["@openlup/platform/pricing:quote"], quote);
+assert.throws(selected.ports["@openlup/platform/pricing:quote"], /synthetic_quote_unavailable/);
+assert.deepEqual(selected.contributions.map(item => item.manifest.module.id), ["catalog", "pricing", "promotions"]);
+`);
+}
+
 export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {
   const manifest = environment.OPENLUP_PACK_MANIFEST, commit = environment.OPENLUP_PACK_COMMIT;
   if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit)) throw new Error("Missing or malformed OPENLUP_PACK_MANIFEST / OPENLUP_PACK_COMMIT");
@@ -698,6 +727,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
+    proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);

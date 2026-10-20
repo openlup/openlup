@@ -130,6 +130,21 @@ its users or operators can observe.
    package's neutral names in its adapter.
 
 ## Development-preview checks
+M05 P7 Phase A adds four explicit cases across
+`tests/postgres/m05CatalogComposition.test.ts`,
+`tests/platform/catalog/m05Composition.test.ts` and
+`tests/platform/catalog/m05ReferenceComposition.test.ts`. The PostgreSQL pair
+uses independent real transactions for replay/contention and native consumer
+readback. The readiness case runs the existing SDK-absent packed-consumer
+scenario for the moved factories, descriptor and inert contribution; its local
+packs are working-tree feedback, not the supervisor's signed-artifact gate.
+The SSR case exercises the existing static pages and unmounted route inventory.
+Run these files explicitly under the existing collector; Phase B reserves one
+additional stock-backed case as a comment, without a skipped test. No collector,
+coverage budget, resource gate, dependency classification or default profile
+changes. The catalog server remains an adapter entry; composition declarations
+remain usable without optional database peers.
+
 
 Bundle native read extraction adds five cases under the existing
 `tests/postgres/**` collector, using an owned disposable PostgreSQL container and
@@ -149,8 +164,8 @@ reference schemas, shared admin kit/spec and RPC error subclass remain injected.
 The five package bundle suites retain 44 cases and two root binding suites retain
 18. Four neutral composition/stock/allocation/refusal/authority cases plus one
 DTO/schema and browser-closure binding case add five executed cases. No Vitest
-configuration or required selector changes. Catalog remains a non-adapter in this
-slice; its cold-consumer transcript adds composition refusal, honest unknown
+configuration or required selector changes. Catalog server now retains its adapter classification for the native data
+executor type; its cold-consumer transcript adds composition refusal, honest unknown
 stock and exact per-line allocation without optional peers. Native store/SQL proof
 is separate. Uncommitted relocated files still require the supervisor's committed
 inventory/package checks; local candidate ownership checks do not replace them.
