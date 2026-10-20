@@ -44,6 +44,43 @@ evidence, duplicate delivery, out-of-order delivery, and retry/replay. Reference
 fixtures demonstrate these behaviours without live provider access; they do not
 prove a provider integration, release, or support tier.
 
+### Opt-in Node protocol adapter
+
+`communications/resend` is an experimental Node-only subpath.
+It exports exactly three functions: guarded transport creation, authenticated
+webhook handling and GET-only delivery reconciliation. Types remain on the existing neutral entries.
+The neutral communications and browser contracts entries expose no vendor factory.
+
+Every `.send` enters `createGuardedEmailTransport` before the internal POST.
+The host supplies the policy and environment tag name; only the validated
+credential, effective recipient and environment tag reach the provider. Missing,
+throwing, malformed or blocked policy causes zero POST; drop is terminal
+`ok + suppressed` with zero POST. Optional payload keys, exact idempotency-key
+bytes (including empty), abort and 2xx acceptance without an ID retain the
+reference transport shapes. Acceptance is not delivery.
+
+The webhook authenticates the original string/UTF-8 bytes before JSON parsing,
+using the provider bare or `v1,` signature-member dialect, literal or canonical
+`whsec_` keys, a UTC-seconds clock and an inclusive ±300-second window. This
+policy is separate from the standard Auth verifier's normalization and grammar.
+Explicit foreign environment tags stop before lookup or convergence; the
+receiver defaults to non-production. Admitted events use `processEmailObservation`:
+lookup/apply errors retry with 500, while attempt telemetry cannot overturn
+success. Unsupported or missing-ID events are ignored. Event metadata is opaque.
+Webhook and poll observations retain the raw `email.*` provider event type;
+the webhook event inventory is an admission gate only.
+The webhook returns a fixed 500 body on processing failure and only an HTTP
+disposition for unsupported, missing-ID or foreign events.
+
+Reconciliation delegates to `runDeliveryReconciliation`, with internal GET reads
+of host-selected existing IDs. Only failed 404 reads contribute to the existing
+three-consecutive-404 abandonment rule. Auth/network/provider errors remain
+separate; sent and unknown snapshots stay pending. Polls feed the host's existing
+atomic writer and never recovery-send. No route, schedule, store, credential
+reader or reference binding is installed. Fetch is injectable; no SDK or new
+dependency is required. [A1 evidence and limits](plans/oss-a1-communications-adapters.md)
+are protocol-only; account verification remains pending.
+
 ## Subscription lifecycle
 
 The subscription status matrix has one meaning and several spellings. The
@@ -332,6 +369,20 @@ comparison commit uses the ordinary ratchet, including refusal of regrowth after
 a reduction. Scanner pins and every other path, category and increase remain
 unchanged. These counts reuse the existing scanner semantics and do not expand
 a runtime contract or establish a stable preview channel.
+
+The opt-in communications adapters have a `ui-12` vocabulary allowance only
+inside their two declared source/test directories, their exact API reports and
+exact cold-consumer proof lines. The exact path-segment tokens
+`communications/resend` and `communications/klaviyo` are additionally allowed in
+the platform manifest, release gates, package boundary test, publication
+catalogue, changelog, this page, the architecture page and the A1 ledger.
+The two snapshot filename tokens are additionally allowed only in the platform
+release-gates file and publication catalogue; the two relative adapter entry
+tokens are allowed only in the package boundary test. The undeclared-subpath
+fixture uses a neutral vendor segment and needs no allowance.
+Only the ledger additionally allows bare adapter names. Neutral communications
+sources and contracts, other root content and other documentation remain
+checked; baseline counts and matcher pins are unchanged.
 
 Published Tree CI enforces that ratchet in required `self-check` and exercises
 its CLI refusal tests in required root `test`. Managed pgTAP remains a raw

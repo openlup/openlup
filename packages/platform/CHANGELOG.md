@@ -8,6 +8,13 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add experimental opt-in Node `communications/resend` with exactly three
+  functions for guarded transport, authenticated webhook handling and GET-only
+  delivery reconciliation.
+  Hosts supply policy, environment selection and neutral persistence ports;
+  injectable fetch adds no SDK/dependency. Neutral entries and the maintained
+  reference adapter are unchanged. Protocol-only evidence; account verification
+  remains pending. No default sender, route, schedule or recovery send.
 - Move unchanged fixed-bundle rules, availability, semantic ports and admin/feed
   application handlers into the existing catalog server entry. Reference bindings
   retain schemas, shared admin kit/spec/flags, stock/lifecycle helpers, responder,
