@@ -26,7 +26,9 @@ entry. Browser Zod contracts remain here.
 Mail-provider clients, concrete transport factories, callback mapping/verifiers,
 poll protocol reads/mapping, delivery timeline and send-ledger helpers remain reference-owned.
 The reference vendor directories retain comparison-base bytes except for B1's
-four adapter guard insertions and approved invoice test fixture/refusal case.
+four adapter guard insertions and approved invoice test fixture/refusal case,
+plus B2's invoice render delegation/optional locale. Role render delegation is
+also B2-only; transport, evidence and control code remain unchanged.
 The two existing domain
 callback/polling entry points delegate to the package's `processEmailObservation`
 and `runDeliveryReconciliation` through neutral ports. Verification, event tables,
@@ -85,6 +87,25 @@ ledger order and subscription ownership remain unchanged. The
 describes decision validation and host trust; the
 [M04 expectation ledger](../../../docs/platform/plans/oss-m04-communications-triggers.md#b1-egress-boundary)
 lists the intentional alternate-transport changes.
+
+B2's [reference content binding](email/referenceContentBinding.ts) composes four
+neutral Polish/EN package defaults. Invoice defaults to byte-identical Polish, with EN
+only via optional construction locale and `/account?sekcja=orders`; production
+composition remains Polish. Role preserves all active/pending and role/locale bytes.
+Generic inquiry has only pure receipt/notice presentation with caller-supplied
+brand, details, signoff and URL; no sender is activated and private-label copy,
+country formatting and origin refusal remain untouched. The two invoice/role
+canon slugs gain lazy Polish samples through the same binding.
+
+The public opt-out route maps its seven existing branches to neutral bilingual
+content, correct document language and escaped display values. Default/unknown
+language is Polish. Only page output changes: methods, parsing, token/purpose checks,
+RPC durability/replay, privacy headers, logging and statuses stay unchanged.
+The [B2 expectation ledger](../../../docs/platform/plans/oss-m04-communications-triggers.md#b2-changed-expectations-and-preservation)
+enumerates every changed and preserved output; [reference tests](../../../tests/platform/communicationsB2Content.test.ts)
+cover actual mapping and effect boundaries. W4 retains every invoice/role/inquiry
+golden; only three explicitly listed opt-out entries change. the adopter keeps its
+existing locale/copy exceptions at C5; these public defaults do not overwrite them.
 
 ## Public surface (import cross-domain ONLY these)
 - Admin clients: `admin*Client.ts` files for templates, active/content edits,

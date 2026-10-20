@@ -1,12 +1,10 @@
-import { button, dataTable, heading, paragraph } from "../../../src/domains/communications/email/blocks.js";
-import { emailRouteUrl } from "../../../src/domains/communications/email/links.js";
-import { renderEmail } from "../../../src/domains/communications/email/render.js";
+import type { Locale } from "@openlup/platform/communications/contracts";
+import { renderReferenceInvoice } from "../../../src/domains/communications/email/referenceContentBinding.js";
 import {
   ACCOUNTING_INVOICE_DELIVERY_SOURCE,
   ACCOUNTING_INVOICE_DOCUMENT_TEMPLATE_SLUG,
   type AccountingInvoiceEmailDeliveryPort,
 } from "../../../src/domains/accounting/invoiceDeliveryPorts.js";
-import { appEmailBrandForOrigin } from "../../../src/lib/brand/appBrand.js";
 import { guardEmailTransport, type EmailTransport } from "../../infra/email/emailTransport.js";
 import {
   recordEmailDeliveryTimeline,
@@ -18,12 +16,13 @@ export function createAccountingInvoiceDeliveryPort(input: {
   transport: EmailTransport;
   fromEmail: string;
   baseUrl: string;
+  locale?: Locale;
 }): AccountingInvoiceEmailDeliveryPort {
   const { client, transport, fromEmail, baseUrl } = input;
 
   return {
     async sendInvoiceDocument(delivery) {
-      const rendered = renderInvoiceEmail(delivery, baseUrl);
+      const rendered = renderInvoiceEmail(delivery, baseUrl, input.locale ?? "pl");
       await recordEmailDeliveryTimeline(client, {
         dedupeKey: delivery.idempotencyKey,
         templateSlug: ACCOUNTING_INVOICE_DOCUMENT_TEMPLATE_SLUG,
@@ -102,23 +101,11 @@ export function createAccountingInvoiceDeliveryPort(input: {
 function renderInvoiceEmail(
   delivery: Parameters<AccountingInvoiceEmailDeliveryPort["sendInvoiceDocument"]>[0],
   baseUrl: string,
+  locale: Locale,
 ) {
-  const invoiceNumber = delivery.providerInvoiceNumber ?? delivery.invoiceRef;
-  const correction = delivery.deliverySource === "correction_issued";
-  return renderEmail({
-    brand: appEmailBrandForOrigin(baseUrl),
-    locale: "pl",
-    subject: `${correction ? "Korekta faktury" : "Faktura"} do zamówienia ${delivery.orderRef}`,
-    preheader: `${correction ? "Korektę" : "Dokument"} znajdziesz w załączniku i na swoim koncie.`,
-    blocks: [
-      heading(correction ? "Korekta faktury jest gotowa" : "Twoja faktura jest gotowa"),
-      paragraph(correction ? "Korektę faktury przesyłamy w załączniku PDF." : "Fakturę przesyłamy w załączniku PDF."),
-      dataTable([
-        { label: "Zamówienie", value: delivery.orderRef },
-        { label: correction ? "Korekta" : "Faktura", value: invoiceNumber },
-      ]),
-      button("Zobacz dokumenty na koncie", emailRouteUrl(baseUrl, "customerDashboard", "pl", { sekcja: "orders" })),
-      paragraph("Dokument pozostaje dostępny na Twoim koncie niezależnie od dostarczenia tej wiadomości.", { muted: true }),
-    ],
+  return renderReferenceInvoice(locale, {
+    baseUrl, orderRef: delivery.orderRef,
+    documentNumber: delivery.providerInvoiceNumber ?? delivery.invoiceRef,
+    kind: delivery.deliverySource === "correction_issued" ? "correction" : "invoice",
   });
 }
