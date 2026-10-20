@@ -107,7 +107,7 @@ or a hosted time fit.
 | P1 | 32 | 12 egress + 15 protocol + 2 additive cold-consumer + 3 generated package-boundary cases |
 | C-PR1b | 4 | Synthetic CP01–CP04; compile probes fold into K03/K04 |
 | P2 | 34 | S01–S12 + H01–H08 + six generated boundaries = 26; CP01–CP04 + KP01–KP04 = 8 |
-| P3 | 8 | Consumer composition allocation |
+| P3 | 8 | Five adjacent binding cases, one isolation case and two cold-consumer cases |
 | V1 private witnesses | 6 | Separate private evidence allocation |
 | Cumulative ceiling | 100 | +30 s hosted duration ceiling unchanged; final median/p90 remain unmeasured here |
 
@@ -282,3 +282,37 @@ transpiled into isolated temporary modules and removed afterwards; tracked
 production files are never planted. Local timings and check receipts live in
 the task evidence. Hosted median/p90, owner TEST evidence, committed native
 review, publication and activation remain separate gates.
+
+## P3: explicit reference binding
+
+Approved scope: the ten implementation/documentation files plus the file-scoped
+neutrality checker amendment; P2 base `d0b353a`. The binding composes P1 and the
+current P2 single factory (including `.newsletter` refusal), with lazy host-owned
+inputs, readiness admission and invocation-time identity guards. Native polling
+uses the explicit six-entry table in the binding, with unknown-kind refusal,
+unchanged replay/three-404 behavior and per-invocation store cleanup. Default and
+reference Resend wiring is unchanged. No executor, scheduler, claim loop or
+subscription writer is added. See [canonical composition](../CANONICAL_CONTRACTS.md#explicit-reference-adapter-composition)
+and [runtime installation](../RUNTIME_AND_SELF_HOSTING.md).
+
+| Case | Owner and proof | Plant |
+| --- | --- | --- |
+| 1 | Adjacent binding: absent/false opt-in does no loading or imports | Move lazy loading before the guard |
+| 2 | Adjacent binding: schema refusal and stale identity block every callable | Remove invocation-time assertion |
+| 3 | Adjacent binding: guarded send and authenticated/environment-selected callback | Raw sender; wrong callback tag |
+| 4 | Adjacent binding: pending verification, shared host state and newsletter refusal | Replace shared availability |
+| 5 | Adjacent binding: real poller → explicit wrapper → native writer, five emitted states, replay, unknown refusal and cleanup | Identity-map `email.delivery_delayed` |
+| 6 | `adapterOptIn.test.ts`: neutral/browser isolation and inert import | Re-export a vendor factory from the neutral entry |
+| 7 | Existing cold-consumer harness: actual host binding with packed subpaths and absent peers | Missing packed entry; checkout fallback |
+| 8 | Existing cold-consumer harness: exact admitted selection, empty default work and single sender | Install default work; second sender |
+
+The checker additionally permits exactly `communications/resend` and
+`communications/klaviyo` in `a1ReferenceBinding.ts` and its adjacent test, with no
+bare vendor-word exception. The paired plant in another communications runtime
+file must fail. Baseline counts and scanner pins stay unchanged.
+
+The two added cold cases pack current local build outputs and execute the actual
+host binding copied into an isolated consumer; the retained-artifact runner also
+executes it against its verified tarballs. These are offline composition proofs,
+not TEST-account certification, production activation or a measured hosted time
+fit. The cumulative 100-case and +30 s hosted ceilings remain unchanged.

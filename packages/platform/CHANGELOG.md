@@ -8,6 +8,15 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add a separately opt-in reference host binding for `communications/resend` and
+  `communications/klaviyo`. Lazy host inputs and invocation-time admission guard
+  sending, authenticated callbacks, native delivery polling and current marketing
+  ports, including newsletter refusal. An explicit poll-kind table bridges the
+  native writer without changing public ports. Routes, schedules and handlers
+  default to empty; existing default wiring remains unchanged. Eight offline
+  cases include actual host composition against locally packed entries without
+  SDKs or optional peers. No provider activation or stable runtime claim is made.
+
 - Add experimental opt-in Node `communications/klaviyo` with one marketing-sync
   factory, singleton profile projection, negative-only consent readback, deletion
   acknowledgement and authoritative consent push. Host identity/authority and

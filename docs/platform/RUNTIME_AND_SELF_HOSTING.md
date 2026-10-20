@@ -16,6 +16,25 @@ presentation binding, not a new route/sender. Private-label inquiry and adopter
 legacy copy/locale exceptions remain owned by their current hosts. See the
 [B2 mapping ledger](plans/oss-m04-communications-triggers.md#b2-changed-expectations-and-preservation).
 
+The [A1 reference binding](../../server/runtime/communications/a1ReferenceBinding.ts)
+is separately opt-in: call `createA1ReferenceBinding` with `enabled: true` and a
+lazy `loadHostInputs`. Without that literal opt-in it returns `undefined` before
+loading inputs or runtime modules. The host owns credentials, egress policy,
+callback observation/environment selection, marketing verification and shared
+account state. Construction performs reference readiness admission; every
+exposed effect rechecks that admission before effect work. Install only the
+returned guarded ports through the existing transport and reference composition
+seams. Select routes, schedules and inert handler descriptors explicitly; their
+defaults are empty. Existing default/reference delivery wiring is unchanged.
+
+The bounded delivery callable uses the native direct store with a six-entry
+poll-event translation and closes the store on success or failure. It adds no
+scheduler, executor, claim loop, subscription capability or recovery send. See
+[canonical composition rules](CANONICAL_CONTRACTS.md#explicit-reference-adapter-composition)
+for exact translation and refusal semantics. Synthetic offline fixtures and
+locally packed consumers establish composition, not provider-account activation
+or hosted duration evidence.
+
 The native [communications lifecycle binding](../../server/runtime/communications/communicationsLifecycleBinding.ts)
 is an explicit host-callable capability for `node-postgres` with `DATABASE_URL`.
 It registers real network references, reconciles injected neutral observations,

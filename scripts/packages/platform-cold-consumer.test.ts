@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterEach, expect, it } from "vitest";
-import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -294,4 +295,50 @@ it("refuses extra exports and raw bypass in the installed Resend adapter", () =>
     expect(() => proveResendConsumer(resendFixture(mode)), `I02 ${mode}: named invariant assertion`)
       .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 exact three-export surface/s);
   }
+});
+
+function packedA1Fixture() {
+  const consumer = scratch();
+  writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
+  for (const name of ["core", "platform"]) {
+    const output = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", consumer], { cwd: join(root, "packages", name), encoding: "utf8", env: { ...isolatedConsumerEnv(), npm_config_cache: join(consumer, "cache") } }));
+    const target = join(consumer, "node_modules/@openlup", name); mkdirSync(target, { recursive: true });
+    execFileSync("tar", ["-xzf", join(consumer, output[0].filename), "-C", target, "--strip-components=1"]);
+  }
+  cpSync(join(root, "node_modules/zod"), join(consumer, "node_modules/zod"), { recursive: true });
+  installA1HostBinding(consumer);
+  return consumer;
+}
+it("P3 case 7: actual host binding resolves packed subpaths with no SDK, peers or checkout fallback", () => {
+  const consumer = packedA1Fixture(); assertConsumerIsolation(consumer, root);
+  proveA1ReferenceBindingConsumer(consumer, "imports");
+  const metadataPath = join(consumer, "node_modules/@openlup/platform/package.json");
+  const metadataSource = readFileSync(metadataPath, "utf8");
+  for (const entry of ADAPTER_ENTRIES.filter(entry => entry.startsWith("communications/"))) {
+    const metadata = JSON.parse(metadataSource); delete metadata.exports["./" + entry];
+    try {
+      writeFileSync(metadataPath, JSON.stringify(metadata));
+      expect(() => proveA1ReferenceBindingConsumer(consumer, "imports"), `P3 missing packed ${entry}`).toThrow(/ERR_PACKAGE_PATH_NOT_EXPORTED/);
+    } finally { writeFileSync(metadataPath, metadataSource); }
+  }
+  const bindingPath = join(consumer, "server/runtime/communications/a1ReferenceBinding.js"), source = readFileSync(bindingPath, "utf8");
+  try {
+    writeFileSync(bindingPath, source.replace('"@openlup/platform/communications"', JSON.stringify(pathToFileURL(join(root, "packages/platform/dist/communications/index.js")).href)));
+    expect(() => proveA1ReferenceBindingConsumer(consumer, "imports")).toThrow(/P3 checkout fallback/);
+  } finally { writeFileSync(bindingPath, source); }
+  proveA1ReferenceBindingConsumer(consumer, "imports");
+});
+it("P3 case 8: exact callable selection leaves no default work and uses one existing executor", () => {
+  const consumer = packedA1Fixture(); assertConsumerIsolation(consumer, root);
+  proveA1ReferenceBindingConsumer(consumer, "selection");
+  const path = join(consumer, "server/runtime/communications/a1ReferenceBinding.js"), source = readFileSync(path, "utf8");
+  for (const [before, after, diagnostic] of [
+    ['selected?.routes ?? []', 'selected?.routes ?? [{ id: "/unselected", handle: ports.webhook }]', /P3 empty default routes/],
+    ['sender.send = guard(sender.send);', 'const originalSend = sender.send; sender.send = guard(async message => { await originalSend(message); return originalSend(message); });', /P3 single sender/],
+  ] as const) {
+    const changed = source.replace(before, after); expect(changed).not.toBe(source);
+    try { writeFileSync(path, changed); expect(() => proveA1ReferenceBindingConsumer(consumer, "selection")).toThrow(diagnostic); }
+    finally { writeFileSync(path, source); }
+  }
+  proveA1ReferenceBindingConsumer(consumer, "selection");
 });

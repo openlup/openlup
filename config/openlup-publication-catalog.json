@@ -3798,6 +3798,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/adapterOptIn.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/authEgress.test.ts",
       "class": "public-output"
     },
@@ -13343,6 +13347,14 @@
     },
     {
       "path": "server/runtime/commerce/promotionClaimsBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/a1ReferenceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/a1ReferenceBinding.ts",
       "class": "public-output"
     },
     {

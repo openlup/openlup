@@ -3,6 +3,34 @@
 Status: development-preview contract. These rules define the intended public
 behavioural boundary; they do not assert a stable provider catalogue or release.
 
+## Explicit reference adapter composition
+
+The development-preview [A1 host binding](../../server/runtime/communications/a1ReferenceBinding.ts)
+selects `communications/resend` and `communications/klaviyo` only when
+`enabled === true`. Absent or false opt-in returns before loading host inputs or
+runtime imports. Hosts supply a lazy input supplier, egress policy, credential
+resolution, callback observation port and environment selection, subject mapping,
+authority/evidence, verification and shared durable account storage/availability.
+The binding creates none of that authority and does not reset account fences.
+
+The exact returned callables are composed and admitted by the existing reference
+communications admission. Each effect entry asserts current candidate identity
+before policy, credential, clock, network or database work. Routes, schedules and
+handler descriptors are empty until explicitly selected by the host; no new
+executor, subscription writer or default wiring is installed. The original
+transport's egress admission identity survives the invocation guard, so existing
+transport injection remains usable. The newsletter bridge retains its refusal.
+
+Polling opens the selected native store per invocation and closes it in `finally`.
+A binding-local table maps `email.sent` to `sent`, `email.delivery_delayed` to
+`delayed`, `email.delivered` to `delivered`, `email.failed` to `failed`,
+`email.bounced` to `bounced` and `email.complained` to `complained`. Unknown kinds
+throw before the native writer; IDs, recipient and timestamp pass through.
+Neither public port nor adapter mapping changes. Native replay and three-404
+abandonment retain their existing semantics. The
+[eight-case ledger](plans/oss-a1-communications-adapters.md#p3-explicit-reference-binding)
+names the offline falsifiers and their limits.
+
 ## Canonical status
 
 Each domain owns its canonical status vocabulary, allowed transitions, and
@@ -415,6 +443,9 @@ exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
 the platform manifest, release gates, package boundary test, publication
 catalogue, changelog, this page, the architecture page and the A1 ledger.
+Those same two subpath tokens are allowed in only the A1 reference binding and
+its adjacent test under `server/runtime/communications`; bare adapter words
+receive no allowance there. A paired out-of-scope token plant must still fail.
 The two snapshot filename tokens are additionally allowed only in the platform
 release-gates file and publication catalogue; the two relative adapter entry
 tokens are allowed only in the package boundary test. The undeclared-subpath

@@ -1,4 +1,5 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
+import { stripTypeScriptTypes } from "node:module";
 import { env as processEnvironment } from "node:process";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -559,6 +560,73 @@ process.exit(0);
   }
 }
 
+/** Copy only the actual host composition; all package imports resolve installed bytes. */
+export function installA1HostBinding(consumer: string, checkout = root): void {
+  for (const relative of ["communications/a1ReferenceBinding", "communications/referenceComposition", "communications/communicationsSchema", "outbox/candidateAdmission"]) {
+    const target = join(consumer, "server/runtime", relative + ".js");
+    mkdirSync(dirname(target), { recursive: true });
+    const source = readFileSync(join(checkout, "server/runtime", relative + ".ts"), "utf8");
+    writeFileSync(target, stripTypeScriptTypes(source));
+  }
+}
+
+/** Uses the same SDK-absent installed-consumer runner as the adapter proofs. */
+export function proveA1ReferenceBindingConsumer(consumer: string, phase: "imports" | "selection"): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+const bindingUrl = new URL("./server/runtime/communications/a1ReferenceBinding.js", import.meta.url);
+const source = readFileSync(bindingUrl, "utf8");
+// No absolute/checkout fallback may coexist with successful installed resolution.
+for (const [, specifier] of source.matchAll(/\\b(?:from\\s*|import\\s*\\()\\s*["']([^"']+)["']/g)) {
+ if (specifier.startsWith("@openlup/")) assert(fileURLToPath(import.meta.resolve(specifier)).startsWith(process.cwd() + "/node_modules/"), "P3 installed resolution");
+ assert(!specifier.startsWith("/") && !specifier.startsWith("file:"), "P3 checkout fallback");
+}
+globalThis.fetch = () => { throw Error("ambient network forbidden"); };
+const { createA1ReferenceBinding } = await import(bindingUrl.href);
+let loads = 0, posts = 0, clocks = 0, credentials = 0;
+assert.equal(await createA1ReferenceBinding(), undefined);
+assert.equal(await createA1ReferenceBinding({ enabled:false, loadHostInputs:()=>{loads++;throw Error("eager");} }), undefined);
+assert.equal(loads, 0);
+const candidate = {artifact:"synthetic",configuration:"selected",environment:"disposable",database:"synthetic",schema:"70"};
+const binding = {account:"synthetic",environment:"disposable",namespace:"cold",mappingVersion:"1"};
+const values = new Map();
+const host = {
+ migrationIdentity:"70", admission:{candidate,currentIdentity:()=>candidate,
+ observed:{loadedPackages:[{name:"@openlup/core",version:"0.17.0",kind:"kernel"},{name:"@openlup/platform",version:"0.17.0",kind:"rail"}],inventoryComplete:true},
+ schemaProbe:{observe:async required=>({database:"synthetic",version:"70",objects:required.objects.map(object=>({object,present:true}))})}},
+ sender:{environmentTagName:"host_env",policy:to=>({mode:"sandbox_sink",reason:"synthetic",intendedRecipient:to,recipient:"sink@example.invalid",credential:"synthetic",environmentTag:"non_production"}),fetch:async()=>{posts++;return Response.json({id:"cold"});}},
+ callback:{environmentTagName:"host_env",webhookSecret:"synthetic",port:{findSend:async()=>null,applyObservation:async()=>{throw Error("unexpected callback");},recordAttempt:async()=>{}}},
+ marketing:{binding,audience:{kind:"account-wide"},subjectMapper:()=>undefined,resolveCredential:()=>{credentials++;return undefined;},authorizations:new Map(),localEvidence:new Map(),
+ storage:{availability:{account:binding.account,environment:binding.environment,busy:false,quarantined:true},get:async key=>values.get(key)??null,compareAndSwap:async()=>{throw Error("unexpected storage");}},now:()=>{clocks++;return 1;}},
+ delivery:{database:{connectionString:"postgresql://unused.invalid/cold"},options:{binding:"synthetic"},resolveCredential:()=>{throw Error("unselected credential");},now:()=>{throw Error("unselected clock");},limit:1,graceMinutes:45}
+};
+const unselected = await createA1ReferenceBinding({enabled:true,loadHostInputs:()=>host});
+assert.equal(unselected.admitted,true,"P3 installed admission");
+assert.deepEqual(unselected.runtime.routes,[],"P3 empty default routes");assert.deepEqual(unselected.runtime.schedules,[],"P3 empty default schedules");assert.deepEqual(unselected.runtime.handlers,[],"P3 empty default handlers");
+assert.equal(unselected.ports.marketing.capabilities.operations["profile.sync"].state,"verification_pending");
+assert.deepEqual(await unselected.ports.marketing.newsletter.sync({}),{status:"skipped",reason:"unsupported"});
+assert.equal(posts+clocks+credentials,0,"P3 no unselected effects");
+if (${JSON.stringify(phase)} === "selection") {
+ let selected;
+ host.select=ports=>{selected=ports;return {routes:[{id:"/synthetic",handle:ports.webhook}],schedules:[{id:"synthetic",cadenceSeconds:60,run:ports.reconcile}],handlers:[]};};
+ const active = await createA1ReferenceBinding({enabled:true,loadHostInputs:()=>host});
+ assert.equal(active.ports,selected,"P3 exact selected ports");
+ for (const [key,value] of Object.entries(selected)) assert.equal(active.runtime.ports[key],value,"P3 exact admitted callable");
+ assert.equal(active.runtime.routes.length,1);assert.equal(active.runtime.schedules.length,1);assert.deepEqual(active.runtime.handlers,[]);
+ assert.equal(active.runtime.routes[0].handle,selected.webhook,"P3 exact selected route");assert.equal(active.runtime.schedules[0].run,selected.reconcile,"P3 exact selected schedule");
+ const { guardEmailTransport } = await import("@openlup/platform/communications");
+ const transport = guardEmailTransport(selected.transport);
+ assert.equal(transport,selected.transport,"P3 existing transport injection seam");
+ assert.equal((await transport.send({from:"sender@example.invalid",to:"reader@example.invalid",subject:"Synthetic",html:"<p>Notice</p>"})).outcome.ok,true);
+ assert.equal(posts,1,"P3 single sender");
+ assert.deepEqual(Object.keys(active.ports).sort(),["marketing","reconcile","transport","webhook"]);
+ assert(!/subscription|claimBatch|setInterval|setTimeout/.test(source),"P3 no second executor or subscription writer");
+}
+`);
+}
+
 export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {
   const manifest = environment.OPENLUP_PACK_MANIFEST, commit = environment.OPENLUP_PACK_COMMIT;
   if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit)) throw new Error("Missing or malformed OPENLUP_PACK_MANIFEST / OPENLUP_PACK_COMMIT");
@@ -723,6 +791,9 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveCommunicationsConsumer(consumer);
     proveResendConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
+    installA1HostBinding(consumer, checkout);
+    proveA1ReferenceBindingConsumer(consumer, "imports");
+    proveA1ReferenceBindingConsumer(consumer, "selection");
     compileConsumer(consumer, ["communications/resend"], compiler);
     compileConsumer(consumer, ["communications/klaviyo"], compiler);
     install(OPTIONAL_PEERS.map(locked), true);
