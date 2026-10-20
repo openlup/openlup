@@ -387,6 +387,19 @@ See [the protocol contract](CANONICAL_CONTRACTS.md#opt-in-node-protocol-adapter)
 and [A1 ledger](plans/oss-a1-communications-adapters.md); importing this subpath
 installs no route, schedule or sender binding.
 
+The opt-in Node `communications/klaviyo` subpath uses the same platform
+release and maintenance owner. Its single factory implements the existing
+neutral marketing-sync and consent-push contracts without an SDK, new package
+or dependency. Provider payloads, revision, credentials and remote mappings
+stay inside that subpath; root and browser entries retain type-only neutral
+contracts. A host supplies current local authority and atomic account storage;
+no lifecycle callback registry, default binding or background executor is added.
+An unresolved journal or cooldown requires host reconciliation. Account-specific
+capabilities remain pending until TEST evidence establishes safe effects;
+[the canonical adapter boundary](CANONICAL_CONTRACTS.md#opt-in-singleton-marketing-adapter)
+and [A1 evidence](plans/oss-a1-communications-adapters.md#p2-opt-in-singleton-marketing-adapter)
+describe the remaining limits.
+
 ### Package kinds and dependency direction
 
 Today each package declares one `kind` in `release-gates.json` and the readiness

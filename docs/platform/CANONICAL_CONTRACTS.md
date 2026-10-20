@@ -3,6 +3,34 @@
 Status: development-preview contract. These rules define the intended public
 behavioural boundary; they do not assert a stable provider catalogue or release.
 
+## Explicit reference adapter composition
+
+The development-preview [A1 host binding](../../server/runtime/communications/a1ReferenceBinding.ts)
+selects `communications/resend` and `communications/klaviyo` only when
+`enabled === true`. Absent or false opt-in returns before loading host inputs or
+runtime imports. Hosts supply a lazy input supplier, egress policy, credential
+resolution, callback observation port and environment selection, subject mapping,
+authority/evidence, verification and shared durable account storage/availability.
+The binding creates none of that authority and does not reset account fences.
+
+The exact returned callables are composed and admitted by the existing reference
+communications admission. Each effect entry asserts current candidate identity
+before policy, credential, clock, network or database work. Routes, schedules and
+handler descriptors are empty until explicitly selected by the host; no new
+executor, subscription writer or default wiring is installed. The original
+transport's egress admission identity survives the invocation guard, so existing
+transport injection remains usable. The newsletter bridge retains its refusal.
+
+Polling opens the selected native store per invocation and closes it in `finally`.
+A binding-local table maps `email.sent` to `sent`, `email.delivery_delayed` to
+`delayed`, `email.delivered` to `delivered`, `email.failed` to `failed`,
+`email.bounced` to `bounced` and `email.complained` to `complained`. Unknown kinds
+throw before the native writer; IDs, recipient and timestamp pass through.
+Neither public port nor adapter mapping changes. Native replay and three-404
+abandonment retain their existing semantics. The
+[eight-case ledger](plans/oss-a1-communications-adapters.md#p3-explicit-reference-binding)
+names the offline falsifiers and their limits.
+
 ## Canonical status
 
 Each domain owns its canonical status vocabulary, allowed transitions, and
@@ -80,6 +108,45 @@ atomic writer and never recovery-send. No route, schedule, store, credential
 reader or reference binding is installed. Fetch is injectable; no SDK or new
 dependency is required. [A1 evidence and limits](plans/oss-a1-communications-adapters.md)
 are protocol-only; account verification remains pending.
+
+### Opt-in singleton marketing adapter
+
+`communications/klaviyo` exposes one Node factory implementing the neutral
+profile, negative-consent, erasure and consent-push ports, plus the existing
+marketing bridge and refusal-only newsletter port. Construction supplies private
+host identity/authority registries, a credential resolver and atomic account
+storage; fetch and clock are injectable. Nothing installs a route or worker.
+
+Account-dependent operations remain `verification_pending` until owner TEST
+readback binds scopes, mappings and operation-specific no-trigger evidence.
+Deletion read is unsupported; audience-only deletion cannot become account-wide.
+Profile writes change owned fields only and verify the private projection.
+Negative readback preserves each fact's scope; scoped remote consent is unknown,
+missing sources mean partial coverage, and remote subscribed never grants locally.
+
+The push capability declares account-wide grant effects while each local grant
+remains audience-scoped. Grant admission must account for all profile-consent
+flows, segments, backfills and DOI, and prove suppression cannot be cleared at
+effect time. List-only withdrawal requires proven-safe scope; explicit all-purpose
+withdrawal is separate. Every request encodes one subject. Asynchronous job
+acknowledgement proves acceptance only, with no import flag or job-control API.
+
+An earlier unsettled grant never delays withdrawal. Its receipt/result retains
+`reconcileRequired`, grants stay restricted during unconfirmed withdrawal, and
+only fresh complete readback after authenticated settlement of all earlier grants
+can resolve the race. The host reissues a withdrawal with a new requestId when
+that read shows subscribed. Replay, generation fences, cooling, mapping writes
+and quarantine share the host's atomic journal; uncertain mutation dispatch is
+never automatically retried. Result recording retains durable quarantine until
+the stored bytes are verified, then releases the account slot. An uncertain
+recording or release preserves completed facts with an unknown journal and
+quarantines the account for repair. The private storage seam also supplies one
+shared mutable availability record per account/environment, independent of
+storage failures. It holds admission through result release and remains closed
+on uncertainty. A host restart begins quarantined; only explicit host journal
+reconciliation and adapter reconstruction restore admission. Default pacing waits within the deadline so
+preflight reads cannot starve the mutation. See the [A1 ledger](plans/oss-a1-communications-adapters.md#p2-opt-in-singleton-marketing-adapter)
+for construction requirements, offline evidence and remaining account gates.
 
 ## Subscription lifecycle
 
@@ -374,6 +441,9 @@ exact cold-consumer proof lines. The exact path-segment tokens
 the platform manifest, release gates, package boundary test, publication
 catalogue, platform CHANGELOG and validated platform `changes/*.md` fragments,
 this page, the architecture page and the A1 ledger.
+Those same two subpath tokens are allowed in only the A1 reference binding and
+its adjacent test under `server/runtime/communications`; bare adapter words
+receive no allowance there. A paired out-of-scope token plant must still fail.
 The two snapshot filename tokens are additionally allowed only in the platform
 release-gates file and publication catalogue; the two relative adapter entry
 tokens are allowed only in the package boundary test. The undeclared-subpath
@@ -511,12 +581,15 @@ is introduced by this contract.
 
 Withdrawals dispatch immediately even when remote consent is unknown or an
 earlier grant is unsettled, subject to local authority, identity, safe scope and
-ordinary admission. Withdrawals bypass every per-subject fence or quarantine
-caused by an unresolved grant (ambiguous acceptance, failed recording, unresolved
-dispatch or partial persistence), while preserving an earlier unresolved
-withdrawal's same-key replay fence and account-level provider cooling; cooling
-returns `retryable/cooling` with finite positive `afterSeconds` for the host to
-retry. An earlier grant never delays or drops withdrawal. A pending
+ordinary admission minus exactly the fence caused by this subject's unresolved
+grants (ambiguous acceptance, failed recording, unresolved dispatch or partial
+persistence). Another subject's grant-caused uncertainty never holds a withdrawal.
+Availability quarantine held exclusively by grant causes is exempt across subjects;
+any non-grant cause keeps it closed. Durable non-grant ledger quarantine, storage
+faults, the single in-flight slot, pacing and the withdrawal's same-key replay
+fence still apply. Account-level provider cooling returns `retryable/cooling`
+with finite positive `afterSeconds` for the host to retry. Non-grant quarantine
+requires explicit host repair. A pending
 or unconfirmed withdrawal blocks grants for that subject/audience; account-wide
 withdrawal covers every audience. Unresolved dispatch still fences duplicate sends.
 

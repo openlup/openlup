@@ -2206,6 +2206,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-klaviyo.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications-resend.api.md",
       "class": "public-output"
     },
@@ -2879,6 +2883,14 @@
     },
     {
       "path": "packages/platform/src/communications/integrationEventSignature.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/klaviyo/consentPush.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/klaviyo/index.ts",
       "class": "public-output"
     },
     {
@@ -3974,6 +3986,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/adapterOptIn.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/authEgress.test.ts",
       "class": "public-output"
     },
@@ -4015,6 +4031,26 @@
     },
     {
       "path": "packages/platform/test/communications/hookRawReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/harness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/permissions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/portConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/profile.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/protocol.test.ts",
       "class": "public-output"
     },
     {
@@ -13551,6 +13587,14 @@
     },
     {
       "path": "server/runtime/commerce/promotionClaimsBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/a1ReferenceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/a1ReferenceBinding.ts",
       "class": "public-output"
     },
     {
