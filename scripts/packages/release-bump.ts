@@ -113,7 +113,7 @@ const manifestVersion = (root: string, entry: PackageEntry): unknown => (JSON.pa
 const writeAll = (root: string, { writes, consumed }: { writes: Array<[string, string]>; consumed: string[] }): string[] => {
   for (const [file, text] of writes) writeFileSync(join(root, file), text);
   for (const file of consumed) unlinkSync(join(root, file));
-  if (consumed.length > 0) documentationGit(root, ["rm", "--cached", "--quiet", "--ignore-unmatch", "--", ...consumed]);
+  if (consumed.length > 0) documentationGit(root, ["rm", "--cached", "--quiet", "--ignore-unmatch", "--", ...consumed.map((file) => `:(literal)${file}`)]);
   return [...writes.map(([file]) => file), ...consumed];
 };
 

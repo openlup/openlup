@@ -67,6 +67,17 @@ describe("release-only source snapshots", () => {
     expect(prepareSourceRelease(f.root, "--write", () => {})).toBe(true);
     expect(prepareSourceRelease(f.root, "--check", () => {})).toBe(false);
   });
+  it("bump stages consumed fragment names literally, never as glob pathspecs", () => {
+    const f = fixture(), consumed = "packages/core/changes/a[1].md", sibling = "packages/core/changes/a1.md";
+    f.write("package-lock.json", JSON.stringify({ packages: { "packages/core": { version: "0.17.0" } } }, null, 2));
+    f.write("packages/core/package-lock.json", JSON.stringify({ version: "0.17.0", packages: { "": { version: "0.17.0" } } }, null, 2));
+    f.write(consumed, "- A change.\n"); f.write(sibling, "- Another change.\n");
+    f.commit();
+    rmSync(join(f.root, sibling));
+    bumpSet(f.root, "0.18.0");
+    expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([`D\t${consumed}`]);
+    expect(f.git("ls-files", "--", sibling)).toContain(sibling);
+  });
   it("PR policy/inventory recompute stale bindings; write is idempotent; check is strict and read-only", () => {
     const f = fixture(), stale = f.read(SOURCE_RELEASE_CONTRACT_PATH), lines: string[] = [];
     expect(policyVerdict(f.root, (line) => lines.push(line))).toBe(true);
