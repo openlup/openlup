@@ -401,7 +401,7 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
-Inventory has only a type edge to `catalog/index.js` for the merged bundle-stock port; catalog has no inventory edge. Admin handlers bind host response writers, and native reads require the provider value and validator. The new-purchase projection takes normalized reads, host defaults, fallback, observation and availability calculation; transports and cycle writers retain their owners.
+Inventory remains a non-adapter entry with no catalog import; its bundle-stock shapes are declared structurally. Admin handlers bind host response writers, and native reads require the provider value and validator. The new-purchase projection takes normalized reads, host defaults, fallback, observation and availability calculation; transports and cycle writers retain their owners.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
 entry. Its cross-module edges are type-only data/http/bff inputs: the native read

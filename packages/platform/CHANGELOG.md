@@ -8,6 +8,7 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Extract admin/native inventory reads and injected new-purchase stock projection.
 - Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
   through both existing communications entries. Local grants remain audience-scoped;
   only withdrawals allow account-wide scope. The push capability declares
@@ -35,8 +36,6 @@ actor-kind enforcement remains handler-only. Comment corrections distinguish the
 managed chain's 42501 publish_requires_human refusal from that native boundary.
 The catalog declaration snapshot reorders existing count enum members; their
 values and runtime behavior are unchanged.
-- Extract admin/native inventory reads and injected new-purchase stock projection.
-
 - Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
 
 - Add experimental opt-in Node `communications/resend` with exactly three
