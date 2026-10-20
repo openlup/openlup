@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createSellableBundleHandler, toSellableBundle } from "./sellableBundleHandler.js";
-import type { BundleAvailabilityRow } from "./bundleAvailabilityService.js";
-import type { ActiveBundleComposition, BundleComponentRow } from "./bundleCatalogReadPort.js";
-import { sellableBundleListResponseSchema } from "../../../src/domains/bundle/sellableBundleContracts.js";
-import type { BundleAvailability } from "../../../src/domains/bundle/availability.js";
+import { createSellableBundleHandler, toSellableBundle } from "./bundleTestBindings.js";
+import type { BundleAvailabilityRow } from "./bundleTestBindings.js";
+import type { ActiveBundleComposition, BundleComponentRow } from "../../src/catalog/bundleCatalogReadPort.js";
+import { sellableBundleListResponseSchema } from "./bundleTestBindings.js";
+import type { BundleAvailability } from "./bundleTestBindings.js";
 
 type Handler = ReturnType<typeof createSellableBundleHandler>;
 type Res = Parameters<Handler>[1];

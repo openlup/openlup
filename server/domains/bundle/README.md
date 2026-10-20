@@ -7,6 +7,14 @@ target price.
 
 ## Owns / does not own
 
+These server paths are named compatibility bindings over the application code in
+[`@openlup/platform/catalog`](../../../packages/platform/README.md#catalog).
+They retain the shared reference admin kit, operation spec/flags, schemas,
+responder, wire versions and BundleRpcError subclass; handlers receive that
+constructor by identity. Catalog read error identity is re-exported from the
+package. Native/managed stores, RPC marshalling and runtime composition retain
+their owners. No SQL or mounted surface changes in this application slice.
+
 - **Owns:** the semantic write port (`adminBundleWritePort.ts`) and the write
   handlers built from the generic agent-domain kit (`adminBundleHandler.ts`).
 - **Owns:** the semantic read port (`bundleCatalogReadPort.ts`), the read handlers

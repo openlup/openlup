@@ -187,6 +187,14 @@ BFF responder. Draft commands retain the original canonical bytes, receipt-first
 replay, actor binding and named refusals. Read projections carry opaque
 product-scoped document references; they do not interpret document payloads.
 
+Fixed-bundle application/admin now uses this same server entry: rules, read/write
+ports, batched stock derivation, nine mutations, four reads/price preview and the
+public sellable-feed factory. Named reference wrappers inject lifecycle and stock
+helpers, existing admin kit/spec/flags, validators, responder, wire versions and
+the reference-owned RPC error constructor. The read error has one package identity.
+No native store, SQL, mount or activation moves in this application slice.
+Preview target selection remains the existing first active matching-mode row.
+
 `./catalog/contracts` carries dependency-free DTOs, the shared authority error,
 GTIN/authority helpers, quantity/option helpers and the existing draft JSON
 canonicalizer. It imports no Zod, Node runtime or server barrel. Runtime schemas
@@ -218,6 +226,13 @@ consumer classifies both entries without optional peers and checks installed
 canonicalization, authority identity, selection and unauthorized draft refusal.
 Three synthetic media conformance cases and one lifecycle type case complement
 those moved suites; the existing package boundary tests cover browser closure.
+Bundle browser schemas remain locally defined by the reference, preserving
+parse/default/strictness behavior; the package contracts add plain DTO types only.
+Installed callers inject validators into server factories. Five package suites
+retain 44 bundle cases; two root binding suites retain 18. Four neutral W4 cases
+and one binding/browser-closure case add five required cases. The cold consumer
+also checks bundle composition refusal, unknown stock and exact allocation;
+both catalog entries remain non-adapters without optional peers in P4a.
 The complete contracts entry measures 3,281 B minified+gzip against its 4,096 B
 budget; other entry and aggregate caps are unchanged.
 
@@ -703,8 +718,10 @@ The maintained mail transport, credentials, callback verification/mapping,
 poll read/mapping, timeline and send-ledger adapters remain in reference source.
 B1 changes only the four raw-injection guard sites in the reference delivery
 adapters and the approved invoice test fixture; the concrete client and all
-other vendor-directory files retain the comparison-base bytes. The package exposes
-transport/result contracts and capture without a concrete mail factory.
+other vendor-directory files retain the comparison-base bytes. The neutral
+`./communications` entry exposes transport/result contracts and capture without
+concrete mail wiring. The platform ships opt-in vendor adapter subpaths;
+default wiring includes none, and adopters choose or replace them.
 The type-only `CommunicationProvider<Provider>` and `EmailMessageReadModel<Provider>`
 accept host vocabulary; reference types retain their original literal.
 
@@ -714,8 +731,9 @@ whole decision and enters the sender only for a coherent `production`,
 `sandbox_direct` or `sandbox_sink` decision. The sender receives the effective
 recipient and a frozen context with intended recipient, host-selected credential,
 mode, reason and environment tag. It must consume that context when selecting
-credentials and emitting provider metadata. The package reads no environment and
-contains no provider client. Missing/throwing policy, unknown modes, mismatched
+credentials and emitting provider metadata. The neutral entry reads no environment
+and contains no provider client. Opt-in adapters consume this same guard and
+host-selected context. Missing/throwing policy, unknown modes, mismatched
 recipients/tags, blank credentials or unsupported fields fail with status zero,
 no identifier and bounded error codes. Reasons are lower-case token codes up to
 80 characters. One unadorned `local@domain.example` recipient mailbox is required;

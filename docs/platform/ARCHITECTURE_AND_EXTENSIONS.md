@@ -348,6 +348,18 @@ Size growth is not a topology trigger. When measured growth exceeds a cap,
 raise that cap in a reviewed change with the applicable maintainer read of the
 proposed budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 
+The A1 email adapter follows this placement decision at the opt-in Node subpath
+`communications/resend`, within the existing platform release
+and maintenance lifecycle. It adapts the existing guarded email transport,
+observation port and delivery reconciliation runner. Internal POST/GET helpers
+are not public exports; host policy and persistence stay outside the adapter.
+Injectable fetch requires no SDK peer or new dependency. No independent lifecycle,
+incompatible peer or runtime split has been demonstrated. The neutral root and
+browser contracts entries and the incumbent reference adapter remain unchanged.
+See [the protocol contract](CANONICAL_CONTRACTS.md#opt-in-node-protocol-adapter)
+and [A1 ledger](plans/oss-a1-communications-adapters.md); importing this subpath
+installs no route, schedule or sender binding.
+
 ### Package kinds and dependency direction
 
 Today each package declares one `kind` in `release-gates.json` and the readiness
@@ -388,6 +400,15 @@ validators. Separating artifact identity from module responsibility requires
 its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
+
+Catalog now also owns fixed-bundle application/admin factories at its existing
+entry. Its only cross-module edges remain type-only http/bff handler/responder
+inputs; there is no data, pricing or promotions edge. Reference wrappers bind
+existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
+versions and the RPC error constructor. Browser-reached schemas retain their
+reference owner and never re-export the server entry; catalog contracts expose
+plain bundle DTO types. No native store moves in this slice, so catalog remains
+non-adapter and neither entry requires optional provider peers.
 
 The experimental promotions module has one value edge to pricing through
 `pricing/index.js`, for acquisition binding and the protocol constant. Type-only

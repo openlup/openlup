@@ -1,175 +1,176 @@
 # A1 communications adapters
 
-Status: development-preview implementation record, 2026-10-20.
-Audience: platform contributors implementing the frozen neutral marketing-sync
-boundary. No provider/account certification, release or activation is implied.
+Status: development-preview implementation ledger, 2026-10-20.
+Audience and purpose: platform contributors maintaining the neutral marketing-sync
+contract and opt-in Node communications adapters. Protocol and synthetic
+conformance evidence does not certify a provider account or authorize activation
+or release.
 
-## C-PR1 task
+## Scope and ownership
 
-Finite outcome: the exact frozen 14-declaration contract, additive exports and
-provider-agnostic offline conformance. Scope is the approved C-PR1 file matrix;
-P2 owns the vendor factory and private construction. The original C-PR1 excludes positive consent writes; C-PR1b below adds them
-under its separately frozen authority. Local consent remains authoritative. The existing
-newsletter port is unchanged; a refusal-only bridge is planned in the later
-adapter PR. No git writes, network/vendor calls, secrets, submission,
-merge or release authority. The owner performs committed final verification and
-native review. Acceptance: exact API, at most 16 cases, all named plants killed,
-required local checks and regenerated API reports with existing caps unchanged.
+A1 extends the existing platform communications module. C-PR1 merged in #233
+with the neutral marketing-sync boundary; P1 merged in #235 with the opt-in
+Resend adapter. C-PR1b is this change: additive consent-push types and synthetic
+conformance through the existing communications entries. The neutral
+communications and communications/contracts entries export the marketing-sync
+types; the vendor factory is available only from `communications/resend`.
+The maintained reference adapters, newsletter port, private persistence witnesses
+and browser-entry limits retain their roles.
 
-Smallest adequate approach: copy the frozen declarations and use one synthetic
-dialect with audience differences as subassertions. No production helper or new
-runtime abstraction is needed. Risk: test-only provenance models cannot certify
-a real provider's admission, persistence or authenticated deletion evidence.
+The [canonical contracts](../CANONICAL_CONTRACTS.md#neutral-marketing-sync) own
+marketing lifecycle semantics and the
+[architecture guide](../ARCHITECTURE_AND_EXTENSIONS.md) owns package placement and
+host composition. P2 owns the Klaviyo factory and private construction; P3 owns
+consumer composition. C-PR1b supplies the neutral consent-push contract; P2 owns
+its real-adapter implementation and evidence.
+Versioning, private adoption, production activation and account certification are
+separate outcomes. No default sender, callback, route, schedule or recovery send
+is installed by these surfaces.
+
+## C-PR1: neutral marketing sync
+
+C-PR1 introduced 14 type-only declarations through the existing communications
+entries from [marketingSync.ts](../../../packages/platform/src/communications/contracts/marketingSync.ts).
+The original contract describes profile sync, negative consent readback and
+erasure request/status; C-PR1b extends it with the consent-push family below.
+Local consent remains authoritative. Existing M04 providers remain assignable;
+there is no new package subpath, runtime helper or production abstraction.
+A refusal-only newsletter bridge belongs to the later adapter work.
+
+The offline conformance helper uses one synthetic dialect, with audience
+variants asserted inside each case. S01–S12 cover binding/capability, private
+mapper substitution, post-await fences, owned create/update/mapping, removed
+surface, scope, negative feedback, receipt substitution, closed outcomes,
+replay/persistence, fresh read authority and cooldown/quarantine. K01–K04 check
+both built entries with strict exact-optional compilation: positive controls
+compile and the original 28 unmarked forbidden-state probes per entry are
+rejected. C-PR1b expands that inventory to 46 per entry.
+The 21 invariant plants are exercised inside their named cases, with baseline
+and restored witnesses; they add no registrations. Fixture and API paths resolve
+from the owning test module, so the tests work from either package or repository
+root. Synthetic provenance cannot certify real provider admission, persistence
+or authenticated deletion evidence.
+
+## P1: opt-in Resend adapter
+
+The Node-only [adapter entry](../../../packages/platform/src/communications/resend/index.ts)
+exports exactly `createResendTransport`, `createResendWebhookHandler` and
+`runResendDeliveryReconciliation`, with no exported types or constants. It adapts
+EmailTransport, EmailObservationPort and the existing neutral reconciliation
+runner. Hosts supply policy, environment selection and persistence ports;
+injected fetch adds no SDK or dependency.
+
+W1 preserves payload, idempotency, abort and outcome behavior. Every send passes
+through the existing egress guard and uses its selected credential and recipient.
+W2 verifies raw webhook bytes before parsing, checks the environment and uses the
+neutral observation engine. Polling is GET-only; only a 404 can establish the
+not-found abandonment boundary. Raw bypass, original credential/recipient
+fallback, parse-before-verify and authentication-as-404 plants falsify these
+properties. Installed-consumer proofs check the exact export surface, absence of
+SDK/optional peers and injected I/O, including refusal of extra exports and raw
+bypass. Account verification remains unestablished.
+
+Package boundary checks resolve declared nested entries under an existing
+module, preserve contracts isolation and reject undeclared nested entries. The
+undeclared fixture uses a neutral placeholder for a deliberately absent nested
+entry; it needs no vocabulary exception. Existing neutral transport, observation, webhook-dialect and egress
+conformance witnesses remain required.
 
 ## Test ledger
 
-Counts are allocations; seconds are forecasts until hosted measurements exist.
-The coordinator accepted no overrun of the cumulative +100 cases / +30 seconds.
+The accepted A1 baseline is 1,751 files / 14,700 cases / provisional 523.419 s.
+The cumulative allocation is at most +100 required cases and +30 s summed median
+hosted file-test time, including C-PR1b. The ledger distinguishes implemented
+inventory from later allocations; case counts do not establish runtime savings
+or a hosted time fit.
 
-| Whole A1 | Cases | Evidence / disposition |
+| A1 slice | Added required cases | Inventory and evidence |
 | --- | ---: | --- |
-| P1 | 32 | coordinator-accepted 44→32 fold; P1 owner still supplies executed inventory |
-| C-PR1 | 16 | S01–S12 and K01–K04; unchanged registrations |
-| C-PR1b | 4 | synthetic CP01–CP04; compile probes fold into K03/K04 |
-| P2 | at most 34 | previous 26 plus real-adapter CP01–CP04 and KP01–KP04 |
-| P3 | 8 | unchanged allocation |
-| V1 private witnesses | 6 | separate private evidence |
-| Cumulative A1 | 100 | 100−44+32+12=100; no case overrun |
+| C-PR1 | 16 | S01–S12 shared conformance and K01–K04 compatibility; two test files |
+| P1 | 32 | 12 egress + 15 protocol + 2 additive cold-consumer + 3 generated package-boundary cases |
+| C-PR1b | 4 | Synthetic CP01–CP04; compile probes fold into K03/K04 |
+| P2 | at most 34 | Original 26 plus 8 real-adapter consent-push cases: CP01–CP04 and KP01–KP04 |
+| P3 | 8 | Consumer composition allocation |
+| V1 private witnesses | 6 | Separate private evidence allocation |
+| Cumulative ceiling | 100 | +30 s hosted duration ceiling unchanged; final median/p90 remain unmeasured here |
 
-The +12 consent-push allocation spans C-PR1b (4) and P2 (8), not twelve
-synthetic registrations. The +30 s cap remains unchanged; hosted summed file
-median/p90 including plants and the P1 fold remain unmeasured. Allocations do
-not establish executed P1 savings or timing fit. Baseline: 1,751 files / 14,700 cases / provisional 523.419 s.
-C-PR1 adds two discovered test files, 12 shared rows and four compatibility rows.
-All plants run baseline/failing invariant/restored within their named row, never
-as extra registrations. Logs print each receipt and elapsed local time. Shared
-rows cover binding/capability, private mapper substitution, post-await fences,
-owned create/update/mapping, removed surface, scope, negative feedback, receipt
-substitution, closed outcomes, replay/persistence, fresh read authority and
-cooldown/quarantine. Compatibility compiles strict exact-optional probes through
-both built package entries, then removes directives to prove all 28 reject.
+The +12 consent-push allocation spans four cases in C-PR1b and eight in P2.
+P1's 32 cases replace the earlier 44-case grouping, leaving the cumulative
+allocation at 100. Every original P1 registration maps to E01–E12, R01–R15,
+I01–I02 or B01–B03. Guard variants and observation faults use ordinary loops
+with fresh fixtures and labeled assertions; no named invariant or plant is
+removed. The three generated boundary cases come from the adapter source
+inventory, rather than three new explicit test declarations.
+C-PR1's 16 cases and C-PR1b's four cases are additional to P1.
 
-## Candidate and repair evidence
+| Property | Required witness | Added cases | Owner |
+| --- | --- | ---: | --- |
+| Neutral marketing lifecycle, provenance and refusal | [shared conformance](../../../packages/platform/test/communications/marketingSyncConformance.test.ts) | 12 | platform communications |
+| Existing-provider assignment and exact type boundary | [compatibility](../../../packages/platform/test/communications/marketingSyncCompatibility.test.ts) | 4 | platform communications |
+| Consent push, replay fences and withdrawal/readback races | [shared conformance](../../../packages/platform/test/communications/marketingSyncConformance.test.ts) | 4 | platform communications |
+| Guarded transport, selected context and wire shapes | [egress](../../../packages/platform/test/communications/resend/egress.test.ts) | 12 | platform communications |
+| Raw authentication, environment, convergence and 404-only polling | [protocol](../../../packages/platform/test/communications/resend/protocol.test.ts) | 15 | platform communications |
+| Installed export inventory and guarded injected I/O | [cold consumer](../../../scripts/packages/platform-cold-consumer.test.ts) | 2 | package tooling |
+| Source isolation and exact nested entry inventory | [package boundary](../../../packages/platform/test/packageBoundary.test.ts) | 3 generated | platform package |
 
-Candidate `63a0114` is committed and includes the regenerated publication
-catalogue and source-release contract. Public CI neutrality passes on the merged
-tree with 0 increases against the default base. No baseline or scanner was changed.
+## Neutrality and verification limits
 
-The local R1 repair makes source, API snapshot and virtual compiler paths relative
-to `import.meta.url`, and casts the synthetic journal's generic results at its two
-writes. The frozen contract and exported declarations are unchanged. Root and
-package-local communications runs each pass 207 tests in 19 files. The C-PR1
-subset retains 16 cases: all 21 plants fail at labeled invariant assertions,
-with baseline/restored runs passing, and both built entries reject all 28
-unmarked forbidden-state probes with positive controls passing. Strict ad-hoc
-TypeScript compilation covers both new test files and their helper; TypeScript 6
-requires `--ignoreConfig` for that explicit-file invocation. Policy and inventory
-pass after updating the package owner explanation; generated navigation is
-current. Ast-grep, lint (0 errors, 33 existing warnings) and diff whitespace
-checks pass.
+The existing file-scoped `ui-12` allowance covers the adapter source/test
+directories and API reports, exact approved path-segment tokens in the manifest,
+release gates, boundary test, publication catalogue, changelog, canonical
+contracts and architecture guide, and exact cold-proof lines. API report filename
+tokens are restricted to release gates and the publication catalogue; relative
+adapter-entry tokens are restricted to the boundary test. This ledger alone also
+permits bare vendor words outside those existing adapter/report/proof allowances.
+Neutral contracts, the neutral entry and platform root retain their refusals.
+Longer, prefixed or directory-shaped tokens do not inherit the exceptions.
+Baseline, scanner pins, caps and browser budgets remain unchanged.
 
-Repair authority covers local edits and offline checks only: no Git writes,
-network calls, submission, merge or release. The supervisor owns committing the
-repair, renewed native review and final committed-candidate verification.
-TEST account/key, no-trigger and provider capability readback remain later-adapter
-gates; these synthetic tests establish no provider certification or live effects.
+Root and package-local test execution, generated API checks, neutrality, lint and
+publication policy are distinct obligations. An installed-artifact release proof
+requires the actual retained tarball; synthetic consumer fixtures establish only
+their named offline properties. Hosted timing, TEST-account/key capability
+readback and no-trigger evidence remain separate later-adapter gates.
 
-Rethink/retro: cwd-dependent file reads → resolve fixtures from their owning test
-module. Two local journal casts fix the generic assignment errors without changing
-the contract or adding an abstraction. The Test ledger allocations remain fixed.
+## C-PR1b: additive consent push
 
+This change adds exactly `ConsentPushRequest`, `ConsentPushResult` and
+`ConsentPushPort` through both existing communications entries, bringing the
+neutral export inventory from 14 to 17. It also makes the existing
+`NegativeFeedback` discriminant union readonly. Callers that assign feedback
+`kind` or `outcome` must stop doing so; existing providers remain assignable.
+No new subpath, factory, executor, automatic retry or provider activation is added.
 
-## C-PR1b task
+Grants require an audience-scoped request; withdrawals also allow account-wide
+scope. The push capability declares `grantEffect`. Accepted and acknowledged
+results carry `reconcileRequired` and identify the admitted request without
+proving its remote effect. Local consent remains authoritative. P2 owns the
+provider implementation, private construction and real-adapter evidence.
 
-Finite outcome: the frozen additive consent-push family, exactly three exports
-through both existing entries, with the coordinator-authorized readonly tightening
-of `NegativeFeedback`'s discriminant union. Authority: coordinator freeze and
-rulings of 2026-10-20; implement the exact §2 block, with `grantEffect` on the
-push capability and `reconcileRequired` on success. Frozen C-PR1 declarations
-otherwise stay unchanged. Scope: the declared contract/tests/API/CHANGELOG and
-platform documentation, plus derived publication inventory/contract. Exclusions:
-P2 factory/provider implementation, new subpath, package manifest or gate-limit
-changes, live account effects, automatic retry and executor. Local edits and
-offline checks only; no Git writes, submission, merge or release. Network is
-limited to installing dependencies if absent. Committed native review and final
-delivery remain the authorized supervisor's work.
+Four synthetic CP rows reuse the conformance runner with a single-subject model.
+Scope, authority, flow, suppression, binding and pending-withdrawal variants have
+independent baseline/plant/restored assertions within those registrations.
+Changed replay fields cannot add effects. Lost admission fences both same-key
+and new-key redispatch. Partial or unsupported readback cannot clear any pending
+withdrawal, including one without an earlier grant; sufficient-readback positive
+controls permit a fresh local grant. Unknown grant settlement preserves
+reconciliation. Synthetic evidence does not certify real provider behavior or
+account capabilities.
 
-Smallest adequate approach: append the exact type block and reuse the existing
-conformance runner with a separate single-subject synthetic model. Four CP rows
-retain isolated scope variants and labeled baseline/plant/restored assertions;
-K03/K04 gain strict exact-optional forbidden-state probes without registrations.
-Risk: a synthetic dialect proves the neutral conformance assertions, not real
-provider behavior, safe asynchronous preconditions, owner TEST evidence or timing.
-Acceptance: exact export delta and readonly tightening, all named plant kills,
-both working-directory runs, updated snapshots and the requested local checks.
-Two fresh full source reviews are preliminary evidence only until a committed
-candidate can enter native review. The user prohibits Git writes in this run.
+K03/K04 include strict exact-optional consent-push probes without adding cases.
+Both built entries reject 46 unmarked forbidden-state probes each, with positive
+controls. The original 21 invariant plants and 52 consent-push plant cycles stay
+inside the twenty contract cases. Fixture and virtual compiler paths resolve
+from their owning test modules for root and package-local execution.
 
+## Implementation lessons
 
-### C-PR1b local evidence
+Module-relative fixtures remove working-directory assumptions. Declared nested
+entries preserve exact export and contracts boundaries. Reusing the egress guard
+and neutral engines avoids a second convergence mechanism. Webhook observations
+retain raw provider event types, matching polling; R14 covers parity for all five
+polled states, and the installed-consumer proof pins those names too.
 
-The neutral export delta is exactly +3 (14→17): two types and one interface.
-The appended block matches frozen §2 byte for byte; the original prefix differs
-only in the authorized `NegativeFeedback` readonly wrapper. Both existing entries
-already re-export it. Manifests, package subpaths and release-gate bytes are
-unchanged. Four CP registrations plus the existing sixteen rows make twenty
-contract cases; the full communications selection contains 211 cases in 19 files.
-K03/K04 reject all 46 unmarked strict/exact-optional forbidden states per entry,
-with positive controls. Fixture and virtual compiler paths use `import.meta.url`.
-
-The first local runs passed from root and package cwd. Source review found three
-proof gaps: early plant failure masked later variants, changed replay refusals
-lacked a following effect-count assertion, and insufficient readback had no race
-control. Repairs target each authority/flow/suppression/binding/pending-withdrawal
-variant independently inside the same registrations, assert zero additional replay
-effects per changed field, and preserve UNKNOWN/reconciliation for partial or
-unsupported readback and unknown grant settlement. Race plants separately cover
-acknowledged withdrawal, replay, premature read and insufficient readback. Lost
-admission plants now target same-key and new-key redispatch after the initial
-unknown result. No contract change or new test registration was needed.
-
-Publication catalog and source-release contract regeneration yields identical
-bytes; the source-map projection likewise adds no path. API update/check,
-ast-grep, lint (0 errors, 33 existing warnings), published-tree typecheck,
-inventory, default-base public CI neutrality (0 increases), UI neutrality and
-strict compilation of the affected tests have passed locally. Final reruns and
-fresh full source review follow the stabilized repair. Policy's structural checks
-pass but it exits 1 for the package-owner no-impact trailer: that README lies
-outside the authorized closure, and a message file cannot satisfy a trailer that
-must exist in a commit. The requested commit message carries the exact digest;
-no commit or native receipt is claimed.
-
-Rethink/retro: whole-scenario plant kill → target each required variant separately
-inside the existing row. This preserves the case budget and gives each safety
-condition its own discriminating failure without another runner or production
-mechanism. Hosted timing, the P1 owner's executed fold, owner TEST evidence and
-committed native review remain separate delivery evidence.
-
-A second source review closed the variant/replay repairs but found that insufficient
-readback without an earlier grant could still clear a pending withdrawal. The
-same existing readback control now requires sufficient coverage for every pending
-withdrawal. CP04 adds partial/unsupported no-earlier-grant controls and independent
-plants, with a sufficient-readback positive control that permits a fresh local
-grant. The case count and frozen surface remain unchanged. Lesson: a safety
-condition shared by race and ordinary paths needs controls on both paths.
-
-
-Final local outcome: root and package-directory communications selections each
-pass 211 tests in 19 files, including the same twenty contract cases. All 52 new
-and 21 inherited plant cycles have labeled baseline/failure/restored receipts;
-both built entries reject 46/46 unmarked forbidden probes with positive controls.
-Two fresh full source reviews pass after the two local repair batches, closing
-all four finding cards. These are preliminary uncommitted reviews, not native
-admission, counters or delivery receipts. Strict affected-test compilation, API
-update/check, lint (0 errors, 33 existing warnings), ast-grep, published-tree
-typecheck, inventory, default-base neutrality (0 increases), UI neutrality and
-whitespace checks pass. Generated publication/catalog/contract navigation has no
-byte delta. Policy still exits 1 solely for the package-owner trailer pending a
-commit; its exact current digest is in the requested signed commit-message file.
-No Git write, external submission, account effect, merge or release was performed.
-
-One typecheck attempt overlapped lint's package rebuild and saw transient missing
-Core declaration edges plus eight consumer diagnostics. The serialized rerun
-after the build passes with zero unresolved edges and zero consumer errors.
-Terminal retro: checks consuming regenerated declarations must follow the build;
-the existing serialization rule already covers this, so no new process is needed.
+Targeting each plant variant inside its existing row preserves the case budget
+while making every safety condition independently falsifiable. A condition shared
+by race and ordinary paths needs controls on both paths.

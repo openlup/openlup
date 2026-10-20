@@ -4,7 +4,7 @@ import {
   BUNDLE_ALLOCATION_RULE_CODE,
   BUNDLE_RULE_CODES,
   BUNDLE_RULE_ENFORCEMENT,
-} from "./bundleRuleCodes.js";
+} from "../../src/catalog/bundleRuleCodes.js";
 import {
   evaluateBundleComposition,
   evaluateBundleCompositionConstraint,
@@ -12,7 +12,7 @@ import {
   evaluateBundleTargetPrice,
   evaluateBundleWriteRules,
   isEmptyCompositionConstraint,
-} from "./bundleRules.js";
+} from "./bundleTestBindings.js";
 
 const CORE = { sku: "UNIT-A", quantity: 1, isAddon: false };
 const ADDON = { sku: "UNIT-B", quantity: 1, isAddon: true };

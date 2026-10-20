@@ -1707,8 +1707,8 @@ export declare const newsletterSyncEventTypeSchema: z.ZodEnum<{
     suppress: "suppress";
 }>;
 export declare const newsletterWebhookEventTypeSchema: z.ZodEnum<{
-    email_change: "email_change";
     update: "update";
+    email_change: "email_change";
     subscribe: "subscribe";
     unsubscribe: "unsubscribe";
     suppress: "suppress";
@@ -1732,8 +1732,8 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     providerKind: z.ZodString;
     providerEventId: z.ZodString;
     eventType: z.ZodEnum<{
-        email_change: "email_change";
         update: "update";
+        email_change: "email_change";
         subscribe: "subscribe";
         unsubscribe: "unsubscribe";
         suppress: "suppress";
@@ -1771,8 +1771,8 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
         providerKind: z.ZodString;
         providerEventId: z.ZodString;
         eventType: z.ZodEnum<{
-            email_change: "email_change";
             update: "update";
+            email_change: "email_change";
             subscribe: "subscribe";
             unsubscribe: "unsubscribe";
             suppress: "suppress";

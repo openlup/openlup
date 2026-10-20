@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createBundleAvailabilityService } from "./bundleAvailabilityService.js";
+import { createBundleAvailabilityService } from "./bundleTestBindings.js";
 import type {
   ActiveBundleComposition,
   BundleCatalogReadPort,
   BundleComponentRow,
-} from "./bundleCatalogReadPort.js";
-import type { CommerceOfferAvailabilityPort } from "../../../src/domains/commerce/ports.js";
+} from "../../src/catalog/bundleCatalogReadPort.js";
+import type { CommerceOfferAvailabilityPort } from "./bundleTestBindings.js";
 
 function component(sku: string, quantity = 1, isAddon = false): BundleComponentRow {
   return {

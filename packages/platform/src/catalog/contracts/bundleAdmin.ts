@@ -1,0 +1,20 @@
+/** Plain bundle transport DTOs. The host owns parsing, defaults and wire-version values. */
+export type CreateBundleDraftRequest = { bundle: { code: string; title: string; fulfillmentMode: "virtual" | "kitted"; compositionConstraint?: { kind: string; version: number; data: Record<string, unknown>; } | undefined; metadata?: Record<string, unknown> | undefined; }; mode: "commit" | "dry_run"; idempotencyKey?: string | undefined; };
+export type CreateBundleDraftResponse = { code: string; bundleId: string; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
+export type UpdateBundleDraftRequest = { code: string; updates: { title?: string | undefined; fulfillmentMode?: "virtual" | "kitted" | undefined; compositionConstraint?: { kind: string; version: number; data: Record<string, unknown>; } | undefined; metadata?: Record<string, unknown> | undefined; }; mode: "commit" | "dry_run"; idempotencyKey?: string | undefined; };
+export type UpdateBundleDraftResponse = { code: string; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
+export type BundleComponent = { sku: string; quantity: number; isAddon: boolean; sortOrder: number; };
+export type SetBundleCompositionRequest = { code: string; components: { sku: string; quantity: number; isAddon: boolean; sortOrder: number; }[]; mode: "commit" | "dry_run"; idempotencyKey?: string | undefined; };
+export type SetBundleCompositionResponse = { code: string; componentCount: number; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
+export type SetBundleTargetPriceRequest = { code: string; price: { mode: "any" | "one_time" | "subscription"; targetPriceMinor: number; currency: string; amountKind: "gross" | "net"; }; mode: "commit" | "dry_run"; idempotencyKey?: string | undefined; };
+export type SetBundleTargetPriceResponse = { code: string; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
+export type ArchiveBundleRequest = { code: string; mode: "commit" | "dry_run"; idempotencyKey?: string | undefined; };
+export type ArchiveBundleResponse = { code: string; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
+export type RestoreBundleRequest = { code: string; mode: "commit" | "dry_run"; idempotencyKey?: string | undefined; };
+export type RestoreBundleResponse = { code: string; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
+export type CloneBundleDraftRequest = { sourceCode: string; code: string; mode: "commit" | "dry_run"; title?: string | undefined; idempotencyKey?: string | undefined; };
+export type CloneBundleDraftResponse = { code: string; bundleId: string; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
+export type ActivateBundleRequest = { code: string; mode: "commit" | "dry_run"; idempotencyKey?: string | undefined; };
+export type ActivateBundleResponse = { code: string; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
+export type DeactivateBundleRequest = { code: string; mode: "commit" | "dry_run"; idempotencyKey?: string | undefined; };
+export type DeactivateBundleResponse = { code: string; contractVersion: "commerce.v0"; dryRun: boolean; idempotent: boolean; };
