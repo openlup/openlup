@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Keep the subscription inventory forecast with required provider injection; add the separate dated forecast calculator.
+
 - Extract unchanged reservation TTL policy and native renewal reserve/release/expiry.
 
 - Extract admin/native inventory reads and injected new-purchase stock projection.

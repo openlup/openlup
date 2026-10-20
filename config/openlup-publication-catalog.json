@@ -3322,6 +3322,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/forecast.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/contracts/index.ts",
       "class": "public-output"
     },
@@ -3335,6 +3339,10 @@
     },
     {
       "path": "packages/platform/src/inventory/contracts/reservation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/forecast.ts",
       "class": "public-output"
     },
     {
@@ -3363,6 +3371,10 @@
     },
     {
       "path": "packages/platform/src/inventory/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/subscriptionForecastCalculation.ts",
       "class": "public-output"
     },
     {
@@ -4179,6 +4191,10 @@
     },
     {
       "path": "packages/platform/test/inventory/reservationPolicyConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/subscriptionForecastCalculation.test.ts",
       "class": "public-output"
     },
     {
@@ -21079,6 +21095,10 @@
     },
     {
       "path": "tests/platform/customerJourneyReadWork.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/inventoryForecastReadbackCharacterization.test.ts",
       "class": "public-output"
     },
     {

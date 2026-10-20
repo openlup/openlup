@@ -12,14 +12,14 @@ Hidden stock/ATP/reservation control plane: stock ledger, available-to-promise, 
 - `contracts.ts` — stock / ATP / reservation / subscription forecast contracts.
 - `ports.ts` — named compatibility exports of `@openlup/platform/inventory` read/mutation ports and errors.
 - `atp.ts` — re-export shim over the core available-to-promise kernel.
-- `forecast.ts` — the pure demand-forecast helper, still local to this domain.
+- `forecast.ts` — named shortage export and exact provider binding for the packaged forecast.
 
 ## Where the code lives
 - Engine: `packages/core/src/inventory/atp.ts`, exposed as
   `@openlup/core/inventory` — `calculateInventoryAtp` and `availableNow`, the
   pure available-to-promise arithmetic. An ATP behaviour change belongs there;
   `atp.ts` here forwards the names and must never grow logic of its own.
-- Shared/frontend: `src/domains/inventory/` (the forecast helper, contracts,
+- Shared/frontend: `src/domains/inventory/` (the forecast binding, contracts,
   ports, client, and the ATP shim)
 - Server domain: `server/domains/inventory/inventoryHandlers.ts`
 - Managed persistence adapter: `server/adapters/managed/inventory/inventoryPort.ts`
@@ -40,6 +40,18 @@ runs. On upgrade, configure the intended region or send it explicitly instead
 of relying on the former implicit country value.
 
 ## Subscription forecast
+
+The package keeps OpenLup's forecast arithmetic and strict response validation.
+Its required provider value and validator are injected; this reference wrapper
+binds the existing exact identity. The separate `calculateSubscriptionForecastSkus`
+and `calculateSubscriptionForecastTotals` retain the adopter's dated calculator
+without replacing the reference forecast or changing its validation, defaults,
+ordering, rounding or fault modes. The calculator accepts structural inputs;
+validation remains with its caller. These functions only plan coverage: they
+never write reservations, cycles, anchors, due dates or attempts. W5 retains
+managed dated supply and expired-reservation readback versus the native aggregate
+projection's stale sellable stock, nullable coverage and absent planned supply.
+
 
 `GET /api/bff/admin/inventory/subscription-forecast` is read-only. It uses
 OmniPack provider-current stock as the physical stock master, subtracts open
