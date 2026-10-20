@@ -282,9 +282,9 @@ describe("complete public CI", () => {
       writeFileSync(join(directory, "package.json"), '{"type":"commonjs"}\n');
       writeFileSync(binary, `#!${process.execPath}\nconst environment = Reflect.get(process, 'env'); require('node:fs').writeFileSync(environment.PUBLIC_TEST_ARGV_LOG, JSON.stringify(process.argv.slice(2))); process.exit(Number(environment.PUBLIC_TEST_EXIT));\n`);
       chmodSync(binary, 0o755);
-      const run = (args: string[], code: number) => spawnSync(process.execPath, [join(ROOT, "scripts/run-vitest.mjs"), ...args], {
+      const run = (args: string[], code: number, ci = "true") => spawnSync(process.execPath, [join(ROOT, "scripts/run-vitest.mjs"), ...args], {
         cwd: directory, encoding: "utf8", timeout: 10_000,
-        env: { PATH: directory, CI: "true", PUBLIC_TEST_ARGV_LOG: log, PUBLIC_TEST_EXIT: String(code) },
+        env: { PATH: directory, CI: ci, PUBLIC_TEST_ARGV_LOG: log, PUBLIC_TEST_EXIT: String(code) },
       });
       const full = run(["run"], 0);
       expect(full.error).toBeUndefined();
@@ -302,6 +302,14 @@ describe("complete public CI", () => {
       expect(combined.error).toBeUndefined();
       expect(combined.status).toBe(29);
       expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run", ...additional]);
+      // An unbrokered public checkout has no ai-resource-gate.sh helper.
+      for (const code of [0, 29]) {
+        const args = ["run", "--coverage", "server/example.test.ts", "--maxWorkers=1"];
+        const local = run(args, code, "false");
+        expect(local.error).toBeUndefined();
+        expect(local.status).toBe(code);
+        expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(args);
+      }
       const inherited = spawnSync(process.execPath, [join(ROOT, "scripts/run-vitest.mjs"), 'run', '--coverage'], {
         cwd: directory, encoding: 'utf8', timeout: 10000,
         env: { PATH: directory, AI_RESOURCE_GATE_ACTIVE: '1', AI_RESOURCE_GATE_LANE: 'coverage', PUBLIC_TEST_ARGV_LOG: log, PUBLIC_TEST_EXIT: '0' },

@@ -12986,6 +12986,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/subscriptionSelfServiceGuardrails.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/settlementProfileBootstrap.test.ts",
       "class": "public-output"
     },
@@ -20511,10 +20515,6 @@
     },
     {
       "path": "tests/preview/ssg-hydration.spec.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/runtime/subscriptionSelfServiceGuardrails.test.ts",
       "class": "public-output"
     },
     {

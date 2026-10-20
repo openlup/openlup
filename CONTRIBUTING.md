@@ -779,9 +779,10 @@ Root tests include required disposable Docker/PostgreSQL proofs. Some older test
 
 pgTAP remains a raw diagnostic, while root `test` and package `install-proof` are required. Triage actual exits, failed/aborted files, skipped prerequisites and new failures against the exact base; [historical diagnostic evidence](docs/platform/plans/public-ci-known-red.md) grants no waiver. Neither mocks, static SQL assertions, listing, a build nor a green aggregate proves an unexecuted DB/browser/provider obligation.
 
-Known discovery gap: `tests/runtime/subscriptionSelfServiceGuardrails.test.ts` has five cases outside root discovery and no separate invocation; do not count them as covered.
-
-Known coverage gap: unbrokered local root coverage through `scripts/run-vitest.mjs` launches the absent ai-resource-gate.sh helper under scripts/; the configured thresholds do not establish execution.
+Local root coverage (`npm test -- --coverage <path>`) runs Vitest directly when
+the host-local broker helper is absent, with the same arguments, environment
+and coverage-summary handling as an already admitted run. A focused subset still
+uses root percentage thresholds; it does not establish full-suite coverage.
 
 Keep documentation falsifiers independently discoverable for routing, impact, bare-runtime CLI and bundle corruption; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation impact](docs/platform/DOCUMENTATION.md#impact). Fixtures still obey neutrality and secret-handling policy.
 
