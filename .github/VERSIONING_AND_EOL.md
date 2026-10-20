@@ -440,7 +440,8 @@ lists exactly the commit's Git inventory, that every changed direct execution
 entrypoint is registered, that the policy registry's active paths exist and that
 the tree's `package.json` files and their execution surfaces match the catalogue.
 `config/openlup-source-release-contract.json` must equal
-`deriveSourceReleaseContract` of the commit's own bytes, so every digest field
+`deriveSourceReleaseContract` of the commit's own bytes (including pattern-admitted
+fragments), so every digest field
 describes the tree. The contract keeps
 the previous release's `schemaVersion`, `platformMigrationManifest.path`,
 `databaseSchema`, `policy.registryDigest`, `repository` and `release`; the
@@ -540,7 +541,7 @@ one set:
 - For a pull request or merge group, the `--policy` self-check refuses a change
   since its base that removes or changes a line of a publishable package's API
   snapshot unless the package's single `## [Unreleased]` changelog section
-  carries a `Migration:` block, or a real coherent set bump above the base moves
+  or a validated package fragment at the head Git tree carries a `Migration:` block, or a real coherent set bump above the base moves
   it into the unique section for the manifest's candidate version, with a unique
   empty Unreleased section. The versioned alternative requires one new version
   across the publishable set, matching lockfile carriers and exact internal
@@ -723,10 +724,25 @@ A release takes three steps:
    PR, runs
    `npm run release:bump -- --set <version>`. It sets every publishable
    package's version in its `package.json` and lockfile entries, every exact
-   internal pin on one, and in each changelog moves the Unreleased entries under
-   a new `## [<version>]` heading that opens with its "Publishable" line. The
-   pull request regenerates the source release contract as `CONTRIBUTING.md`
-   describes. The version is the next set version `0.N.P` and must be above
+   internal pin on one, and in each changelog assembles legacy Unreleased first,
+   then `packages/{core,outbox,platform}/changes/*.md` fragments in byte order of
+   path under a new `## [<version>]` heading and its "Publishable" line. It leaves
+   an empty Unreleased, preserves history byte-for-byte, validates and plans all
+   packages before writes, and deletes only consumed fragments after successful
+   writes. Nonempty ordinary Markdown, optional `###` headings, `Migration:` and
+   size-growth lines are accepted; `#`/`##` headings, conflict markers, nested
+   directories, links and executable modes refuse. Fragments are excluded from
+   npm; the assembled changelog ships. Contributors add fragments for notable
+   changes; there is no new universal per-PR fragment gate.
+   The PR refreshes digests **at release prep only**, with
+   `node --experimental-strip-types scripts/source-release-preparation.ts --write`,
+   then its read-only `--check`. The catalogue stays authored; only validated
+   non-executable fragments use the exact pattern admission without per-file
+   rows. Ordinary PR/main/group checks derive live bindings and validate the
+   contract without requiring current committed digests. Source prepare,
+   package/set preflight, protected prepare/plan and publication/resume refuse
+   a stale snapshot byte-for-byte against the exact target Git objects.
+   A post-snapshot change to a bound input requires another reviewed refresh. The version is the next set version `0.N.P` and must be above
    every version npm holds for each package. Choose it from actual registry
    observations and the API, behaviour, schema and shipped-SQL classification,
    then recheck before dispatch. A conflict after review needs a repair and

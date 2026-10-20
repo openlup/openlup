@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
-import { documentationDigest, renderDocumentationSourceMap, type DocumentationSource } from "./documentation-navigation.ts";
+import { documentationDigest, documentationSources, renderDocumentationSourceMap, type DocumentationSource } from "./documentation-navigation.ts";
 import type { DocumentationState } from "./documentation-routing.ts";
 
 const fixtures: string[] = [];
@@ -34,6 +34,12 @@ function write(root: string, contents: Map<string, Buffer>, name = "export"): st
 }
 
 describe("public documentation bundle", () => {
+  it("labels implicit package fragments public-output and hashes their actual bytes", () => {
+    const { root, state } = fixture(), path = "packages/core/changes/carry-one.md", bytes = "- Pending notes.\n";
+    mkdirSync(join(root, "packages/core/changes"), { recursive: true }); writeFileSync(join(root, path), bytes);
+    state.paths.push(path); state.ownersByPath.set(path, state.ownersByPath.get("README.md")!);
+    expect(documentationSources(root, state).find((source) => source.path === path)).toMatchObject({ class: "public-output", digest: documentationDigest(bytes) });
+  });
   it("keeps committed provenance bound to its checkout despite ambient Git redirects", () => {
     const { root, state } = fixture(); const decoy = fixture().root;
     const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
