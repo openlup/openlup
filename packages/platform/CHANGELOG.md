@@ -26,11 +26,6 @@ SemVer promise.
   historical import, suppression edits or automatic mutation retry is added.
   Migration: opt in through the new subpath and supply its private host wiring;
   existing neutral providers and communications entries remain unchanged.
-- Repair synthetic consent-push conformance: withdrawals bypass grant-caused
-  fences/quarantine while preserving same-key withdrawal fences and account-level
-  cooling; document honest recording uncertainty and reconciliation. Public types
-  remain unchanged by this repair.
-
 - Import the flat-rate shipping handler with required host schemas and retain reference selection, pickup and stock UI mechanics.
 
 - Add address lookup, authenticated address-book handlers and row helpers to shipping with required host validation and canonicalization.
