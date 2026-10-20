@@ -3444,6 +3444,7 @@ export { MIN_CHECKOUT_RESERVATION_TTL_MINUTES, MAX_CHECKOUT_RESERVATION_TTL_MINU
 export { createPostgresRenewalReservationPort, type AutomaticRenewalInventoryPort } from "./renewalReservation.js";
 export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForecast } from "./forecast.js";
 export { calculateSubscriptionForecastSkus, calculateSubscriptionForecastTotals } from "./subscriptionForecastCalculation.js";
+export { INVENTORY_MIGRATIONS } from "./sql.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -3737,6 +3738,24 @@ export declare function createInventorySubscriptionForecastResponseSchema(provid
         recommendedProductionQty: z.ZodNumber;
     }, z.core.$strict>;
 }, z.core.$strict>;
+```
+## dist/inventory/sql.d.ts
+
+```ts
+/** Sparse projections of canonical units, never an install chain. */
+export declare const INVENTORY_MIGRATIONS: readonly [{
+    readonly id: "20260814000000_fulfillment_stock_evidence";
+    readonly catalogPath: "db/platform/migrations/20260814000000_fulfillment_stock_evidence.sql";
+    readonly position: 27;
+    readonly sha256: "df20c2491cb0196b4e28d19e7578c95bfa5c87b8f89fb0b6284c0e0695a3cc1d";
+    readonly url: URL;
+}, {
+    readonly id: "20260815120000_automatic_subscription_renewal";
+    readonly catalogPath: "db/platform/migrations/20260815120000_automatic_subscription_renewal.sql";
+    readonly position: 33;
+    readonly sha256: "edef131f4f483a009e0bb6728a071ab78b6c9ac2aa8047aa7107646a11baec73";
+    readonly url: URL;
+}];
 ```
 ## dist/inventory/subscriptionForecastCalculation.d.ts
 

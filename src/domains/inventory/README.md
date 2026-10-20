@@ -70,3 +70,13 @@ bounded public-source inventory. A repository path establishes source existence
 at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
+
+P2c exposes `INVENTORY_MIGRATIONS` as sparse immutable canonical units 27/33,
+not an installation chain. The [store/refusal matrix](../../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows)
+records direct observed-stock versus managed lot semantics and pending real-host
+proof. Manual reservation repair remains POST/auth/flag/manual_admin-lease gated,
+without a schedule; automatic expiry, provider stock sync and recount are distinct
+operations. Retry maintenance releases holds without cancelling subscriptions or
+dunning. The TTL documentation versus staging flag/control mismatch is report-only.
+W4 is a frozen boundary transcript at the incumbent charge routine, not a private
+stock-wait implementation: no subscription, payment or delivery timing writer moves.

@@ -71,6 +71,18 @@ P2b transplants W5's four expanded cases from C1 `4595d4b3d`, with assertion sta
 
 P2b own pack base `f7de0137` → working tree: 1,052 → 1,061 total files (+9), 1,032 → 1,041 code files (+9), 681,717 → 690,429 packed B (+8,712), 3,052,944 → 3,092,551 unpacked B (+39,607), 589,257 → 595,923 code gzip B (+6,666). Root docs: 37,221 → 37,287 gzip B (+66), five files unchanged; 3,673 B headroom under 40,960 B. Inventory contracts: 20 → 20 browser B (32 B cap). One platform-index line changes. No cap or released baseline changes.
 
+P2c adds sparse `INVENTORY_MIGRATIONS` (one export, cap one), consumed by `tests/postgres/inventoryNative.test.ts`. The two SQL assets project canonical positions 27/33 byte-for-byte; no canonical migration, manifest, graph edge, activation or production timing change. Install the full catalogue, never just these projections. Native invoker rights and managed service-role/lot semantics remain distinct.
+
+P2c paths (20): `packages/platform/src/inventory/{sql,index}.ts`; `packages/platform/sql/{20260814000000_fulfillment_stock_evidence,20260815120000_automatic_subscription_renewal}.sql`; `tests/postgres/inventory{Native,Managed}.test.ts`; `tests/platform/inventory/{reservationMaintenanceCharacterization,subscriptionStockContinuityCharacterization,reservationMaintenanceConformance,stockWaitConformance}.test.ts`; `packages/platform/{CHANGELOG.md,README.md,release-gates.json}`; `packages/platform/api/inventory.api.md`; `config/openlup-{publication-catalog,source-release-contract}.json`; `docs/platform/{README.md,DATA_AND_MIGRATIONS.md}`; this plan; `src/domains/inventory/README.md`. Two production paths; append-only evidence registration.
+
+P2c W3 (four) binds incumbent manual/automatic routes; W4 (five expanded boundary transcripts) binds the incumbent charge routine to finite admission fixtures. All C1 assertion statements from `4595d4b3d` remain byte-identical, with imports/bindings and host-owned currency/provider fixture bindings only. Private selection/recovery/stock-wait SQL is not imported; a transcript cannot establish its durable effects. Eighteen new scenarios are allocated: eight native real-PG, four managed real-host, three maintenance and three preflight refusals. Execution, collection and P2c-only pack delta against `b4fe7ed2` follow focused verification.
+
+P2c collection: all six new files are root-node tests; none belongs to package-local discovery (they bind reference routes/stores). Final execution: W3 four + W4 five transplants PASS; 14/18 new cases PASS (eight real native PostgreSQL + three maintenance + three incumbent preflight); four managed scenarios self-skipped, PENDING P5a because the supplied harness pins Supabase CLI `2.98.2` while this host has `2.120.0`. No tooling was installed. The 11-file reference batch passes 76 cases. No test physically moves. Across development runs the six new files had 76 executed invocations (66 passed, ten fixture/setup failures subsequently repaired) plus four self-skips; final results are 23 passed/four skipped. Package-local adds zero invocations.
+
+P2c local final test-body samples: W3/W4 11.463 ms; new maintenance/preflight 8.701 ms; native 11,493.341 ms (including independent prefix-cluster setup inside its case). The native sample exceeds P2c's 9.0 s forecast; this is not an isolated module gate or hosted median/p90. Aggregate module runtime remains for P5a/S1 measurement/disposition; no budget increase is claimed.
+
+P2c own pack base `b4fe7ed2` → working tree: 1,061 → 1,066 total files (+5), 1,041 → 1,044 code files (+3), 690,429 → 701,099 packed B (+10,670), 3,092,551 → 3,156,901 unpacked B (+64,350), 595,923 → 596,983 code gzip B (+1,060). Root docs: 37,287 → 37,456 gzip B (+169), five files unchanged; 3,504 B headroom under 40,960 B. Inventory contracts: 20 → 20 browser B (32 B cap). No cap or released baseline changes.
+
 ## Shipping lane (P3a–P3c)
 
 Recorded by the shipping lane PRs.
@@ -81,15 +93,25 @@ P4 joins both lanes and preserves the frozen witness equivalence. P5a/P5b remain
 
 ## Parity (PENDING rows)
 
-All eight rows remain PENDING; none is claimed. Each requires its stated disposition before S1.
+Executed evidence is scoped to the named test and store. Remaining required outcomes stay PENDING until their stated disposition before S1; transcripts and self-skips are not durable parity proof.
 
-| Outcome | Disposition PR |
+| OpenLup operation | Direct/native store | Managed store | Executed P2c evidence / remaining proof |
+| --- | --- | --- | --- |
+| Stock/ATP | Observed-source quantities; stale stock excluded from ATP; no lots, unavailable, incoming or safety stock | Lot/location balances, expiry/FEFO/safety rules implemented | `inventoryNative.test.ts`: “projects fresh/stale/missing stock, held/committed/expired rows and aggregate demand while refusing adjustment” PASS. Managed real ATP/FEFO/safety PENDING P5a. |
+| Subscription forecast | Aggregate 30/45/60 demand, stale sellable projection retained; planned supply zero, coverage/shortage date null | Dated supply/coverage and expired-reservation projection differ | Same native “projects…” test PASS; managed reference adapter tests execute, but managed real-host forecast remains PENDING P5a. |
+| Adjustment / admin reservation listing | Adjustment explicitly refused; listing maps held/committed to reserved | Adjustment and listing implemented under managed authority | Native “projects…” proves adjustment refusal. Real listing/managed adjustment PENDING P5a; no identical-semantics claim. |
+| Renewal reserve/release/expiry | Fenced public renewal functions; replay, lease, expiry, stock-row serialization and invoker grants | Separate managed batch/lot reservation, release/consume, paid hold and recount routines | Native “reserves and releases once…”, “expires only eligible holds…”, “fences stale claims…”, “serializes competing baskets…” and “requires explicit relation privileges…” PASS. Managed four focused scenarios self-skip: all durable managed outcomes PENDING P5a. |
+| Installation / trust | Complete canonical catalogue; sparse descriptors are not an install chain | Complete managed baseline/forwards required | Native “installs the full catalogue…” and “upgrades the exact complete prefix before unit 33…” PASS with canonical ledger/object inventory and unchanged prefix rows. Installed tarball consumer identity remains PENDING P5a. |
+| Dormant maintenance / stock wait | Inventory-only expiry; no private stock-wait lifecycle implementation | Manual repair, automatic expiry, provider sync and recount are distinct; retry sweep release-only | W3/W4 and `reservationMaintenanceConformance.test.ts` / `stockWaitConformance.test.ts` PASS only for route/port transcripts and incumbent preflight. Real managed/private effects PENDING P5a/adopter C5. |
+
+| Remaining required outcome / report-only observation | Disposition PR |
 | --- | --- |
-| Managed/direct ATP, lots, expiry, safety, forecast, supply; direct adjustment refusal; expired/stale projection differences | P2c → P5a |
-| Reserve/batch/release/consume, paid pin/reacquire, cancel/full refund, invalidate/recount; replay/conservation, rollback/ACL/freshness/locks/concurrency/55P03 | P2c → P5a |
-| Fresh full chain/exact-prefix upgrade, ledger/object inventory, installed projection identity; no invented durable in-memory parity | P2c → P5a |
-| Adopter listing/BOM/renewal priority/own credit and stock-wait/preflight; missing/different managed routines | P1b/P2c → P5a |
-| Dormant manual POST/auth/flag/manual_admin lease without schedule versus automatic expiry; TTL/staging flag-control discrepancies report-only | P2c → P5a |
+| Managed real ATP/lots/expiry/FEFO/safety/forecast/supply, direct/managed listing and adjustment boundaries beyond the executed native refusal; preserve expired/stale differences | P5a |
+| Managed reserve/batch/compensation/release/consume replay, paid pin/reacquire, cancellation/full one-time refund without stock resurrection, invalidate/recount conservation; real ACL/role isolation/rollback/concurrency/lock order/freshness beyond executed native subset | P5a |
+| Managed clean install/upgrade/ledger and installed artifact projection identity; native actual installed consumer proof; no invented durable in-memory parity | P5a |
+| Adopter listing/BOM/renewal priority/own credit once; closed stale equality, READ COMMITTED/try-advisory/50 ms/55P03 and no busy-to-legacy fallback. OpenLup lacks private admission/budget/stock-wait SQL; no donor SQL imported | P5a / adopter C5 real private host |
+| Original active subscription/full frozen basket/due/order/cycle/attempt; no charge on short/stale/busy is proved only at the incumbent boundary. Provider-owned recovery, paid/full commitment/local fulfillment before resumption, late payment/actual delivery extending later only without earlier/stacked/catch-up cycles remain real-host obligations. Subscription/payment/delivery writers stay incumbent; no production timing code changes | P5a / adopter C5 |
+| Manual POST/auth/flag/manual_admin lease/no schedule versus separate automatic expiry: W3's four named traces execute against incumbent routes; conformance covers unscheduled/manual versus auto, disabled/denied lease and release-only RPC. Actual staging controls and TTL-doc/staging flag-control mismatch remain report-only, PENDING; no activation/fix | P5a / adopter C5 |
 | Empty dictionary 502, withdrawn-selection legacy fallback, static/dictionary/canonical point and fresh-selection equivalence | P3a/P3c → P5b |
 | Address ownership/default/mutation, frozen destination and ACL; absent native writer; offline versus no-match/manual save | P3b → P5b |
 | Flat-rate read/save/audit/refusal and useful stock/settings/picker/manual/address UI through selected real stores | P3c → P5a/P5b |

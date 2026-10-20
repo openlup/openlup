@@ -2318,7 +2318,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260814000000_fulfillment_stock_evidence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260814090000_customer_selfservice_recovery.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260815120000_automatic_subscription_renewal.sql",
       "class": "public-output"
     },
     {
@@ -3371,6 +3379,10 @@
     },
     {
       "path": "packages/platform/src/inventory/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/sql.ts",
       "class": "public-output"
     },
     {
@@ -21110,6 +21122,22 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/inventory/reservationMaintenanceCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/reservationMaintenanceConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/stockWaitConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/subscriptionStockContinuityCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/mailEgressCallers.test.ts",
       "class": "public-output"
     },
@@ -21171,6 +21199,14 @@
     },
     {
       "path": "tests/postgres/identityStatePreservation.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/inventoryManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/inventoryNative.test.ts",
       "class": "public-output"
     },
     {
