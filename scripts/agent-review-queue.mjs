@@ -43,12 +43,21 @@ async function ancestor(runGit, cwd, base, head) {
 }
 export async function carryOverSourceReview(cwd, candidate, group, runGit = git) {
   const baseAncestor = await ancestor(runGit, cwd, candidate.base, group.base);
-  let predictedTree; let movedPaths = [];
+  let predictedTree; let movedPaths = []; const manifests = {};
   if (baseAncestor && candidate.tree !== group.tree) {
     try { predictedTree = (await runGit(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predictedTree = null; }
     movedPaths = (await runGit(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
+    for (const path of movedPaths.filter(path => /^packages\/[\w.-]+\/package\.json$/u.test(path))) {
+      const [base, queueBase, head] = await Promise.all([candidate.base, group.base, candidate.head].map(async sha => {
+        try {
+          const blob = await runGit(cwd, 'show', `${sha}:${path}`);
+          return Buffer.byteLength(blob, 'utf8') <= 1024 * 1024 ? JSON.parse(blob) : undefined;
+        } catch { return undefined; }
+      }));
+      manifests[path] = { base, queueBase, head };
+    }
   }
-  return carryOver({ reviewedTree: candidate.tree, groupTree: group.tree, baseAncestor, predictedTree, changedPaths: candidate.changedPaths, movedPaths });
+  return carryOver({ reviewedTree: candidate.tree, groupTree: group.tree, baseAncestor, predictedTree, changedPaths: candidate.changedPaths, movedPaths, manifests });
 }
 export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 20 * 60 * 1000, runGit = git }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');

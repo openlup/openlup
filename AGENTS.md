@@ -220,6 +220,9 @@ A source review carries over to a merge group when either:
   dependency and migration machinery (`.github/`, the review scripts, the
   identity fence, package manifests and lockfiles, migrations). Other check
   configuration is not on this list; the group's mechanical checks run with it.
+  A moved `packages/<name>/package.json` does not block carry-over when main's
+  and the change's edits to it only add new, disjoint `exports` keys and leave
+  every other key unchanged; root manifests and lockfiles still block.
 
 The source receipt then admits the group without a new receipt or live session;
 the six mechanical checks on the group tree cover behavioural interaction.
