@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 ## Package surface
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its seventeen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its nineteen experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -27,6 +27,49 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
+| `./promotions` | Experimental promotion application, advisory read ports, preview, money projection, acceptance and passive telemetry |
+| `./promotions/contracts` | Dependency-free preview request, benefit and response DTOs |
+
+## Promotions
+
+`./promotions` owns the existing automatic/legacy and code quote application,
+benefit interpretation, advisory read ports, preview proofs, public-money binding,
+acceptance tokens and passive telemetry. It calls `@openlup/core/promo`; it does
+not contain another evaluator. Each factory receives the host facts it needs:
+`createQuotePromoDiscounts` takes a customer classifier;
+`createQuotePromotionV2` also takes the product floor and bound legacy application;
+`createQuoteAutomaticPromotions` takes an email eligibility resolver and the bound
+applications. `createQuotePromotionCodeAdjustments` and `createPromotionCodePreview`
+require the floor. No factory supplies a default financial policy.
+
+`createPromotionQuoteAcceptance<Request>` requires `projectRequest`, which returns
+the host's exact request-binding projection; `promoCodes` also binds separately.
+Its four issue/verify functions retain public-money projection, section diagnostics,
+TTL and rotation. Explicit `acquisitionTerms` binds the full server-selected promise.
+The pricing quote handler passes its resolved terms as the last argument to both
+acceptance callbacks. A host must forward them to the acceptance helper. With no
+acquisition configuration, terms are absent and historical token bytes stay equal.
+This opt-in signature addition does not activate acquisition-only mounted issuance.
+
+`recordPromotionAcceptanceOutcome` requires a recorder and swallows recorder
+failure. The reference wrapper retains its existing sanitized operational recorder.
+Reference wrappers also retain startup floor resolution, customer classification,
+email/contact precedence and the rich request projection. Managed RPC names and
+transport, admin handlers, native stores, claim writers and checkout remain with
+their existing owners. Quote reads never reserve capacity. Promotions imports
+pricing only through its server entry; pricing receives application callbacks and
+has no import back to promotions. Both promotions entries are non-adapters and
+compile without optional provider peers; contracts import no other module.
+
+The [promotion suites](test/promotions/) retain existing assertions with synthetic
+currency/country fixtures. Four application conformance transcripts protect code
+evidence, acceptance, floor/tax equations, legacy rank/stack/mirrors, rejection
+outcomes and no-claim behavior. The installed consumer extends the existing cold
+proof with application-to-token success, changed-money refusal and dependency
+failure, alongside all-entry imports and both declaration resolution modes.
+Native lifecycle/read PostgreSQL proof is deferred to the admin/native slice;
+[the module ledger](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#p3a--promotion-application-and-acceptance)
+records pending native and mounted outcomes.
 
 ## Pricing
 

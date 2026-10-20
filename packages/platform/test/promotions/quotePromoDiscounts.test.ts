@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { PromotionRow } from "../../../src/domains/promo/types.js";
-import { evaluateOrderTotalDiscounts } from "./quotePromoDiscounts.js";
-import type { CommercePromoDataPort } from "./promoDataPort.js";
+import type { PromotionRow } from "@openlup/core/promo";
+import { evaluateOrderTotalDiscounts } from "./bindingsFixtures.js";
+import type { CommercePromoDataPort } from "../../src/promotions/promoDataPort.js";
 
 const NOW = "2026-06-03T14:00:00Z";
 
@@ -20,7 +20,7 @@ function firstOnetimePromo(): PromotionRow {
     valid_from: "2026-06-01T00:00:00Z",
     valid_to: null,
     status: "active",
-    region_availability: ["PL"],
+    region_availability: ["ZZ"],
   };
 }
 
@@ -41,7 +41,7 @@ const baseInput = {
   visitorId: "vid-used-device",
   mode: "one_time" as const,
   promoCodes: [] as string[],
-  regionCode: "PL" as const,
+  regionCode: "ZZ" as const,
   subtotalGrossMinor: 10000,
   shippingGrossMinor: 0,
   atTime: NOW,
@@ -225,7 +225,7 @@ function couponPromo(overrides: Partial<PromotionRow>): PromotionRow {
     valid_from: "2026-06-01T00:00:00Z",
     valid_to: null,
     status: "active",
-    region_availability: ["PL"],
+    region_availability: ["ZZ"],
     ...overrides,
   };
 }

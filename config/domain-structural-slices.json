@@ -438,7 +438,7 @@
             "server/domains/commerce/promotionCustomerSemantic.test.ts",
             "server/domains/commerce/ports.test.ts",
             "server/adapters/supabase/quoteCustomerEligibility.test.ts",
-            "server/domains/commerce/quotePromotionV2.test.ts",
+            "packages/platform/test/promotions/quotePromotionV2.test.ts",
             "server/domains/commerce/staticOfferAvailabilityPort.test.ts",
             "server/adapters/supabase/commerce/offerAvailability.test.ts",
             "server/adapters/supabase/commerce/offerPolicyReadiness.test.ts"

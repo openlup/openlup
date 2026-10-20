@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildQuoteRequest } from "./commerceCheckoutOrchestrationHelpers.js";
-import { intent, quoteSnapshot } from "./commerceCheckoutHandler.testFixtures.js";
+import { acceptanceRequest, quoteSnapshot } from "./acceptanceFixtures.js";
 import {
   issuePromotionQuoteAcceptance,
   PROMOTION_ACCEPTANCE_MAX_TTL_MS,
   verifyPromotionQuoteAcceptance,
   verifyPromotionQuoteAcceptanceWithOutcome,
-} from "./promotionQuoteAcceptance.js";
+} from "./bindingsFixtures.js";
 
 const OLD_SECRET = "old-promotion-acceptance-secret-0000000001";
 const NEW_SECRET = "new-promotion-acceptance-secret-0000000002";
@@ -134,9 +133,8 @@ describe("promotion quote acceptance", () => {
 });
 
 function fixture(validTo = "2026-07-20T00:00:00.000Z") {
-  const checkoutIntent = { ...intent(), promoCodes: ["SAVE80"], visitorId: "visitor-1" };
-  const request = buildQuoteRequest(checkoutIntent, { petId: "22222222-2222-4222-8222-222222222222" });
-  const base = quoteSnapshot({ amountMinor: 2_000, currency: "PLN" }).quote;
+  const request = acceptanceRequest();
+  const base = quoteSnapshot({ amountMinor: 2_000, currency: "XXX" }).quote;
   const quote = {
     ...base,
     discounts: [{

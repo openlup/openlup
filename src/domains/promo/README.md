@@ -36,6 +36,10 @@ pure package.
   no storage and no runtime eligibility.
 - Shared/frontend: `src/domains/promo/` re-exports the package by name so
   existing product imports stay stable across the split. Shims only.
+- Quote application and acceptance: `packages/platform/src/promotions/`, exposed as
+  `@openlup/platform/promotions`. Its reference wrappers inject settlement floor,
+  customer semantics, eligibility facts, request hashing and passive recording;
+  evaluation still delegates to core. Quote reads never claim capacity.
 - Runtime transition sources: the two registered forward migrations named
   above plus the `promotion*` modules under `server/domains/commerce/`.
   Historical `supabase/migrations/*promotion*` files are not that forward
@@ -45,5 +49,5 @@ Use the public [architecture and extension boundary](../../../docs/platform/ARCH
 and [publication catalog](../../../config/openlup-publication-catalog.json)
 before adding an adapter or changing composition. This folder owns compatibility
 exports only: pure evaluator changes belong in `packages/core`, while stored
-promotion lifecycle, quote integration, and runtime composition remain outside
+promotion lifecycle and runtime composition remain outside
 this folder and need their own owning surface.

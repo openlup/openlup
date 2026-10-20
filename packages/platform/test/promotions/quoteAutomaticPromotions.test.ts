@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CreateQuoteRequest } from "../../../src/domains/commerce/contracts.js";
-import { PROMOTION_ENGINE_V2 } from "../../../src/domains/commerce/offerPolicyContracts.js";
-import type { CreateQuoteOptions } from "../../../src/domains/commerce/ports.js";
-import type { CommercePromoDataPort } from "./promoDataPort.js";
-import { resolveAutomaticQuotePromotions } from "./quoteAutomaticPromotions.js";
+import type { CreateQuoteRequest } from "../pricing/quoteSchemaFixtures.js";
+import { PROMOTION_ENGINE_V2 } from "../../src/pricing/index.js";
+import type { CreateQuoteOptions } from "../../src/pricing/index.js";
+import type { CommercePromoDataPort } from "../../src/promotions/promoDataPort.js";
+import { createQuoteAutomaticPromotions } from "../../src/promotions/index.js";
 
 const mocks = vi.hoisted(() => ({
   evaluateLegacy: vi.fn(),
@@ -11,13 +11,10 @@ const mocks = vi.hoisted(() => ({
   legacyPort: vi.fn((port) => port),
 }));
 
-vi.mock("./quotePromoDiscounts.js", () => ({
-  evaluateOrderTotalDiscounts: mocks.evaluateLegacy,
-}));
-vi.mock("./quotePromotionV2.js", () => ({
-  evaluateAutomaticPromotionV2: mocks.evaluateV2,
-  legacyPromotionDataPort: mocks.legacyPort,
-}));
+const { resolveAutomaticQuotePromotions } = createQuoteAutomaticPromotions<CreateQuoteRequest>({
+  resolveEmailEligibility: request => Boolean(request.customerEligibilityContext?.email ?? request.customerEligibilityContext?.contactEmail),
+  evaluateOrderTotalDiscounts: mocks.evaluateLegacy, evaluateAutomaticPromotionV2: mocks.evaluateV2, legacyPromotionDataPort: mocks.legacyPort,
+});
 
 const promoDataPort = {} as CommercePromoDataPort;
 const request = {
@@ -29,7 +26,7 @@ const request = {
 } as CreateQuoteRequest;
 const baseInput = {
   request,
-  regionCode: "PL" as const,
+  regionCode: "ZZ" as const,
   referenceProductMinor: 20_860,
   subtotalGrossMinor: 18_760,
   shippingGrossMinor: 0,

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { PromotionRow } from "../../../src/domains/promo/types.js";
-import type { CommercePromoDataPort, PromotionRedemptionCount } from "./promoDataPort.js";
-import { evaluateAutomaticPromotionV2, legacyPromotionDataPort } from "./quotePromotionV2.js";
-import { evaluateOrderTotalDiscounts } from "./quotePromoDiscounts.js";
+import type { PromotionRow } from "@openlup/core/promo";
+import type { CommercePromoDataPort, PromotionRedemptionCount } from "../../src/promotions/promoDataPort.js";
+import { evaluateAutomaticPromotionV2, legacyPromotionDataPort } from "./bindingsFixtures.js";
+import { evaluateOrderTotalDiscounts } from "./bindingsFixtures.js";
 
 const legacy = row("legacy", {
   discount_value: 44.404,
@@ -23,7 +23,7 @@ describe("quote promotion v2 adapter", () => {
   it("applies explicit 5000 bps against reference price, not the subscription price", async () => {
     const result = await evaluateAutomaticPromotionV2({
       promoDataPort: port([legacy, target]), clientId: null,
-      mode: "subscription", regionCode: "PL", referenceProductMinor: 10_000,
+      mode: "subscription", regionCode: "ZZ", referenceProductMinor: 10_000,
       currentProductMinor: 9_000, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
@@ -61,13 +61,13 @@ describe("quote promotion v2 adapter", () => {
 
     const v1 = await evaluateOrderTotalDiscounts({
       promoDataPort: legacyPromotionDataPort(currentPolicy), clientId: null,
-      mode: "subscription", promoCodes: [], regionCode: "PL",
+      mode: "subscription", promoCodes: [], regionCode: "ZZ",
       subtotalGrossMinor: 18_760, shippingGrossMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
     const v2 = await evaluateAutomaticPromotionV2({
       promoDataPort: currentPolicy, clientId: null,
-      mode: "subscription", regionCode: "PL", referenceProductMinor: 20_860,
+      mode: "subscription", regionCode: "ZZ", referenceProductMinor: 20_860,
       currentProductMinor: 18_760, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
@@ -90,7 +90,7 @@ describe("quote promotion v2 adapter", () => {
     });
     const result = await evaluateAutomaticPromotionV2({
       promoDataPort: port([firstPurchase]), clientId: null,
-      mode: "one_time", regionCode: "PL", referenceProductMinor: 10_000,
+      mode: "one_time", regionCode: "ZZ", referenceProductMinor: 10_000,
       currentProductMinor: 10_000, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
@@ -114,7 +114,7 @@ describe("quote promotion v2 adapter", () => {
     returningPort.countPaidOrdersByMode = async () => ({ oneTime: 1, subscription: 0 });
     const result = await evaluateAutomaticPromotionV2({
       promoDataPort: returningPort, clientId: "returning-client",
-      mode: "one_time", regionCode: "PL", referenceProductMinor: 20_000,
+      mode: "one_time", regionCode: "ZZ", referenceProductMinor: 20_000,
       currentProductMinor: 20_000, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
@@ -136,12 +136,12 @@ describe("quote promotion v2 adapter", () => {
     const changedPolicy = port([changedLegacy]);
     const v1 = await evaluateOrderTotalDiscounts({
       promoDataPort: changedPolicy, clientId: null, mode: "subscription",
-      promoCodes: [], regionCode: "PL", subtotalGrossMinor: 18_760,
+      promoCodes: [], regionCode: "ZZ", subtotalGrossMinor: 18_760,
       shippingGrossMinor: 1_500, atTime: "2026-07-14T12:00:00.000Z",
     });
     const inFlightV2 = await evaluateAutomaticPromotionV2({
       promoDataPort: changedPolicy, clientId: null, mode: "subscription",
-      regionCode: "PL", referenceProductMinor: 20_860,
+      regionCode: "ZZ", referenceProductMinor: 20_860,
       currentProductMinor: 18_760, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
@@ -176,7 +176,7 @@ describe("quote promotion v2 adapter", () => {
 
     const result = await evaluateAutomaticPromotionV2({
       promoDataPort: port([legacyCapped, mirror], counts), clientId: "client-a",
-      mode: "subscription", regionCode: "PL", referenceProductMinor: 10_000,
+      mode: "subscription", regionCode: "ZZ", referenceProductMinor: 10_000,
       currentProductMinor: 9_000, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
@@ -208,7 +208,7 @@ describe("quote promotion v2 adapter", () => {
 
     const result = await evaluateAutomaticPromotionV2({
       promoDataPort: port([legacyCapped, mirror], counts), clientId: "client-a",
-      mode: "subscription", regionCode: "PL", referenceProductMinor: 10_000,
+      mode: "subscription", regionCode: "ZZ", referenceProductMinor: 10_000,
       currentProductMinor: 9_000, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
@@ -240,7 +240,7 @@ describe("quote promotion v2 adapter", () => {
 
     const result = await evaluateAutomaticPromotionV2({
       promoDataPort: port([legacyCapped, mirror], counts), clientId: "client-a",
-      mode: "subscription", regionCode: "PL", referenceProductMinor: 10_000,
+      mode: "subscription", regionCode: "ZZ", referenceProductMinor: 10_000,
       currentProductMinor: 9_000, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
@@ -260,7 +260,7 @@ function row(id: string, extra: Record<string, unknown> = {}): PromotionRow {
     applies_to_kind: "order_total", applies_to_payload: {},
     stacking_rule: "exclusive", eligibility: {},
     valid_from: "2026-01-01T00:00:00.000Z", valid_to: null,
-    status: "active", region_availability: ["PL"], ...extra,
+    status: "active", region_availability: ["ZZ"], ...extra,
   } as PromotionRow;
 }
 

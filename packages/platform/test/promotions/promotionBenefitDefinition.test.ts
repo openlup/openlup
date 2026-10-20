@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolvePromotionBenefitDefinition } from "./promotionBenefitDefinition.js";
+import { resolvePromotionBenefitDefinition } from "../../src/promotions/promotionBenefitDefinition.js";
 
 describe("promotion benefit dual read", () => {
   it("reads legacy 44.404 only from discount_value even when v2-shaped backfill exists", () => {
