@@ -452,6 +452,248 @@ export declare function verifyHmacSignature(input: {
  */
 export declare function timingSafeStringEqual(left: string, right: string): boolean;
 ```
+## dist/shipping/addressCanonical.d.ts
+
+```ts
+import type { CanonicalAddressInput } from "./contracts/address.js";
+export declare function canonicalAddressKey(input: CanonicalAddressInput, defaultCountry: string): string;
+```
+## dist/shipping/addressCanonLookupHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { AddressCanonLookupDeps } from "./addressPorts.js";
+import type { AddressLookupSchemas } from "./addressSchemas.js";
+export declare function createAddressCanonPostalCodeHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAddressCanonLocalitiesHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAddressCanonStreetsHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/addressPorts.d.ts
+
+```ts
+import type { AddressCanonLocalitiesLookupRequest, AddressCanonLocalitiesLookupResponse, AddressCanonPostalCodeLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonStreetsLookupRequest, AddressCanonStreetsLookupResponse } from "./contracts/address.js";
+export interface AddressCanonLookupPort {
+    lookupPostalCode(request: AddressCanonPostalCodeLookupRequest): Promise<AddressCanonPostalCodeLookupResponse>;
+    searchLocalities(request: AddressCanonLocalitiesLookupRequest): Promise<AddressCanonLocalitiesLookupResponse>;
+    listStreets(request: AddressCanonStreetsLookupRequest): Promise<AddressCanonStreetsLookupResponse>;
+}
+import type { HttpRequest } from "../http/index.js";
+import type { CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./contracts/address.js";
+export interface AddressCanonLookupDeps {
+    lookupPort: AddressCanonLookupPort;
+}
+export interface CustomerAddressBookPort {
+    getAddressBook(userId: string): Promise<CustomerAddressesResponse | null>;
+}
+export interface CustomerAddressMutationPort {
+    upsertAddress(userId: string, input: CustomerAddressUpsertRequest): Promise<CustomerAddressesResponse | null>;
+    deleteAddress(userId: string, input: CustomerAddressDeleteRequest): Promise<CustomerAddressesResponse | null>;
+}
+export interface CustomerAddressesDeps {
+    addressBookPort: CustomerAddressBookPort;
+    addressMutationPort?: CustomerAddressMutationPort;
+    authenticateUser: (req: HttpRequest) => Promise<{
+        ok: true;
+        userId: string;
+    } | {
+        ok: false;
+        code: "UNAUTHORIZED";
+        message: string;
+    }>;
+}
+type Row = Record<string, unknown>;
+export interface CustomerAddressReadStore {
+    readAddresses(clientId: string): Promise<Row[]>;
+    readOrdererProfiles(clientId: string): Promise<Row[]>;
+    addressUsedByActiveSubscription(clientId: string, addressId: string): Promise<boolean>;
+    findCanonicalAddressId(clientId: string, canonicalKey: string): Promise<string | null>;
+    clearDefaultAddress(clientId: string, kind: string, updatedAt: string): Promise<void>;
+}
+export {};
+```
+## dist/shipping/addressSchemas.d.ts
+
+```ts
+import type { AddressCanonPostalCodeLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupRequest, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupRequest, AddressCanonStreetsLookupResponse, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./contracts/address.js";
+type Schema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+/** Host-owned format, source and geographic validation. */
+export interface AddressLookupSchemas {
+    addressCanonPostalCodeLookupRequestSchema: Schema<AddressCanonPostalCodeLookupRequest>;
+    addressCanonPostalCodeLookupResponseSchema: Schema<AddressCanonPostalCodeLookupResponse>;
+    addressCanonLocalitiesLookupRequestSchema: Schema<AddressCanonLocalitiesLookupRequest>;
+    addressCanonLocalitiesLookupResponseSchema: Schema<AddressCanonLocalitiesLookupResponse>;
+    addressCanonStreetsLookupRequestSchema: Schema<AddressCanonStreetsLookupRequest>;
+    addressCanonStreetsLookupResponseSchema: Schema<AddressCanonStreetsLookupResponse>;
+}
+/** Host-owned validation and mutation-conflict identity. */
+export interface CustomerAddressSchemas {
+    customerAddressesRequestSchema: Schema<CustomerAddressesRequest>;
+    customerAddressesResponseSchema: Schema<CustomerAddressesResponse>;
+    customerAddressUpsertRequestSchema: Schema<CustomerAddressUpsertRequest>;
+    customerAddressDeleteRequestSchema: Schema<CustomerAddressDeleteRequest>;
+    isMutationConflict(error: unknown): error is Error;
+}
+export {};
+```
+## dist/shipping/contracts/address.d.ts
+
+```ts
+export interface CanonicalAddressInput {
+    clientId?: string | null;
+    kind?: string | null;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    country?: string | null;
+}
+export interface AddressCanonSource {
+    sourceKind: string;
+    status: "active" | "inactive" | "disabled_pending_license";
+    displayName: string;
+    officialUrl: string;
+    sourceRevision: string | null;
+    sourceUpdatedAt: string | null;
+}
+export interface AddressCanonLocalityCandidate {
+    localityId: string;
+    countryCode: string;
+    name: string;
+    tercCode: string;
+    simcCode: string;
+    municipalityName: string | null;
+    municipalityTercCode: string | null;
+    countyName: string | null;
+    voivodeshipName: string | null;
+    sources: AddressCanonSource[];
+    postalCode: string | null;
+    confidence: "exact" | "ambiguous" | "partial";
+    resolutionLevel: "postal_code" | "locality" | "street" | "address_point";
+}
+export interface AddressCanonStreet {
+    streetId: string;
+    localityId: string;
+    name: string;
+    ulicCode: string | null;
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonPostalCodeLookupRequest {
+    postalCode: string;
+    limit: number;
+}
+export interface AddressCanonLocalitiesLookupRequest {
+    q: string;
+    limit: number;
+}
+export interface AddressCanonStreetsLookupRequest {
+    localityId: string;
+    q?: string;
+    limit: number;
+}
+export interface AddressCanonPostalCodeLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        postalCode: string;
+    };
+    resolutionLevel: "postal_code";
+    candidates: AddressCanonLocalityCandidate[];
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonLocalitiesLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        q: string;
+    };
+    resolutionLevel: "locality";
+    candidates: AddressCanonLocalityCandidate[];
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonStreetsLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        localityId: string;
+        q: string | null;
+    };
+    resolutionLevel: "street";
+    streets: AddressCanonStreet[];
+    sources: AddressCanonSource[];
+}
+export type CustomerAddressKind = "shipping" | "billing" | "both";
+export interface CustomerAddress {
+    addressId: string;
+    kind: CustomerAddressKind;
+    label: string | null;
+    recipientName: string | null;
+    contactPhone: string | null;
+    companyName: string | null;
+    taxId: string | null;
+    line1: string;
+    line2: string | null;
+    city: string;
+    postalCode: string;
+    country: string;
+    isDefault: boolean;
+    deliveryNotes: string | null;
+    courierInstructions: string | null;
+    lastUsedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface CustomerOrdererProfile {
+    profileId: string;
+    label: string | null;
+    fullName: string;
+    email: string;
+    phone: string | null;
+    companyName: string | null;
+    taxId: string | null;
+    companyVerificationLevel?: "registry_verified" | "provider_verified" | "manual_unverified" | "invalid" | null;
+    companyIdentitySource?: string | null;
+    companyIdentityEvidenceHash?: string | null;
+    isDefault: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+export type CustomerAddressesRequest = Record<string, never>;
+export interface CustomerAddressesResponse {
+    contractVersion: "customer.addresses.v1";
+    ordererProfiles: CustomerOrdererProfile[];
+    addresses: CustomerAddress[];
+}
+export interface CustomerAddressUpsertRequest {
+    idempotencyKey: string;
+    addressId?: string;
+    kind: CustomerAddressKind;
+    label?: string | null;
+    recipientName?: string | null;
+    contactPhone?: string | null;
+    companyName?: string | null;
+    taxId?: string | null;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    country?: string;
+    isDefault?: boolean;
+    deliveryNotes?: string | null;
+    courierInstructions?: string | null;
+}
+export interface CustomerAddressDeleteRequest {
+    idempotencyKey: string;
+    addressId: string;
+}
+```
 ## dist/shipping/contracts/delivery.d.ts
 
 ```ts
@@ -570,6 +812,47 @@ export interface DeliverySelectionEvidence {
 
 ```ts
 export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryService, PickupPoint, DeliveryOption, DeliveryOptionsResponse, PickupPointValidationRequest, PickupPointValidationResponse, PickupPointSearchRequest, PickupPointSearchResult, PickupPointSearchResponse, } from "./delivery.js";
+export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
+```
+## dist/shipping/customerAddressesHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { CustomerAddressesDeps } from "./addressPorts.js";
+import type { CustomerAddressSchemas } from "./addressSchemas.js";
+export declare function createCustomerAddressesHandler({ addressBookPort, addressMutationPort, authenticateUser, }: CustomerAddressesDeps, schemas: CustomerAddressSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/customerSelfServiceAddressModels.d.ts
+
+```ts
+import type { CanonicalAddressInput, CustomerAddressUpsertRequest, CustomerAddress, CustomerOrdererProfile } from "./contracts/address.js";
+import type { CustomerAddressReadStore } from "./addressPorts.js";
+export declare function readAddresses(store: CustomerAddressReadStore, clientId: string): Promise<CustomerAddress[]>;
+export declare function readOrdererProfiles(store: CustomerAddressReadStore, clientId: string): Promise<CustomerOrdererProfile[]>;
+export declare function addressUsedByActiveSubscription(store: CustomerAddressReadStore, clientId: string, addressId: string): Promise<boolean>;
+export declare function addressRow(clientId: string, input: CustomerAddressUpsertRequest, canonicalAddressKey: (input: CanonicalAddressInput) => string): {
+    client_id: string;
+    kind: import("./contracts/address.js").CustomerAddressKind;
+    label: string | null;
+    recipient_name: string | null;
+    contact_phone: string | null;
+    company_name: string | null;
+    tax_id: string | null;
+    line1: string;
+    line2: string | null;
+    city: string;
+    postal_code: string;
+    country: string | undefined;
+    is_default: boolean;
+    delivery_notes: string | null;
+    courier_instructions: string | null;
+    canonical_key: string;
+    source: string;
+    updated_at: string;
+};
+export declare function findCanonicalAddressId(store: CustomerAddressReadStore, clientId: string, input: CustomerAddressUpsertRequest, canonicalAddressKey: (input: CanonicalAddressInput) => string): Promise<string | null>;
+export declare function clearDefaultAddress(store: CustomerAddressReadStore, clientId: string, kind: string): Promise<void>;
 ```
 ## dist/shipping/deliverySelectionHandler.d.ts
 
@@ -638,6 +921,13 @@ export type { DeliverySelectionSchemas } from "./handlerSchemas.js";
 export { createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler, DELIVERY_SELECTION_CONTRACT_VERSION, PICKUP_POINT_SEARCH_CONTRACT_VERSION, } from "./deliverySelectionHandler.js";
 export { summarizeDeliverySelection } from "./deliverySelectionSummary.js";
 export { resolveDeliverySelectionEvidence } from "./readDeliverySelectionEvidence.js";
+export type { CanonicalAddressInput } from "./contracts/address.js";
+export type { AddressCanonLookupPort, AddressCanonLookupDeps, CustomerAddressesDeps, CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressReadStore } from "./addressPorts.js";
+export type { AddressLookupSchemas, CustomerAddressSchemas } from "./addressSchemas.js";
+export { createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandler, createAddressCanonStreetsHandler } from "./addressCanonLookupHandler.js";
+export { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
+export { canonicalAddressKey } from "./addressCanonical.js";
+export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, addressRow, findCanonicalAddressId, clearDefaultAddress } from "./customerSelfServiceAddressModels.js";
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 

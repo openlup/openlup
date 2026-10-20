@@ -30,6 +30,11 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The shipping server entry owns address lookup and authenticated address-book
+handlers and row helpers. Reference bindings retain geographic, source and tax
+validation, conflict identity and the canonical country default; hosts supply
+these explicitly. Address persistence remains behind the existing ports.
+
 Neutral marketing sync lives in the existing communications contracts subtree
 and is re-exported as types by both communications entries. It adds no runtime
 factory, provider SDK, environment reader, host callback, configuration registry

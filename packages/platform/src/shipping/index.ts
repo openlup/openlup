@@ -11,3 +11,10 @@ export {
 } from "./deliverySelectionHandler.js";
 export { summarizeDeliverySelection } from "./deliverySelectionSummary.js";
 export { resolveDeliverySelectionEvidence } from "./readDeliverySelectionEvidence.js";
+export type { CanonicalAddressInput } from "./contracts/address.js";
+export type { AddressCanonLookupPort, AddressCanonLookupDeps, CustomerAddressesDeps, CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressReadStore } from "./addressPorts.js";
+export type { AddressLookupSchemas, CustomerAddressSchemas } from "./addressSchemas.js";
+export { createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandler, createAddressCanonStreetsHandler } from "./addressCanonLookupHandler.js";
+export { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
+export { canonicalAddressKey } from "./addressCanonical.js";
+export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, addressRow, findCanonicalAddressId, clearDefaultAddress } from "./customerSelfServiceAddressModels.js";

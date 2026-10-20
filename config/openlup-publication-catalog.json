@@ -3678,11 +3678,39 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/addressCanonLookupHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressCanonical.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/address.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/contracts/delivery.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/shipping/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerAddressesHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerSelfServiceAddressModels.ts",
       "class": "public-output"
     },
     {
@@ -4403,6 +4431,10 @@
     },
     {
       "path": "packages/platform/test/scheduler/vercelScheduler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/addressConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -21071,6 +21103,10 @@
     },
     {
       "path": "tests/platform/promotions/adminPromotionsHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts",
       "class": "public-output"
     },
     {

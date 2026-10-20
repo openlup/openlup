@@ -8,6 +8,8 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add address lookup, authenticated address-book handlers and row helpers to shipping with required host validation and canonicalization.
+
 - Add experimental opt-in Node `communications/resend` with exactly three
   functions for guarded transport, authenticated webhook handling and GET-only
   delivery reconciliation.
