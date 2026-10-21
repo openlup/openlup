@@ -1003,6 +1003,15 @@ previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
 
+The named first-party adoption example has a narrow prose allowance: only the
+approved complete lines in the root README, the documentation owner's page and
+the exact screenshot catalogue reference are counted once. It subtracts only
+that adopter's name/domain categories. Changed or repeated lines, another path,
+other brands and every other category still fail normally. Production code has
+no exemption, and the baseline and pinned scanner chain remain unchanged.
+The existing neutrality CLI tests cover both the admitted illustration and
+refusals; changes to the approved wording need the same policy review.
+
 Within one ratchet invocation, the pinned counts-mode scanners reuse the measured
 base result only when the complete base and working inventories have identical
 paths and bytes, including baseline, scanner and binary files. Both inventories

@@ -69,6 +69,51 @@ function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
 describe("tree-wide neutrality ratchet", () => {
+  it("admits only the approved adoption prose and screenshot references without raising the baseline", () => {
+    const { root, base } = installed();
+    const before = readFileSync(join(root, baselinePath), "utf8");
+    for (const path of ["README.md", "docs/platform/DOCUMENTATION.md", "config/openlup-publication-catalog.json"]) {
+      const lines = readFileSync(join(sourceRoot, path), "utf8").split("\n")
+        .filter((line) => line.toLowerCase().includes(debt));
+      expect(lines.length).toBeGreaterThan(0);
+      put(root, path, `${lines.join("\n")}\n`);
+    }
+    const image = `docs/platform/assets/${debt}-storefront-en.png`;
+    put(root, image, Buffer.from([0, 1, 2, 3]));
+    const accepted = cli(root, base);
+    expect(accepted.status, accepted.output).toBe(0);
+    expect(readFileSync(join(root, baselinePath), "utf8")).toBe(before);
+  }, 30_000);
+
+  it("still refuses the approved prose in code or any other documentation path", () => {
+    const { root, base } = installed();
+    const approved = readFileSync(join(sourceRoot, "README.md"), "utf8").split("\n")
+      .find((line) => line.startsWith("Shaped by real subscription-commerce work"))!;
+    for (const path of ["src/example.ts", "server/example.ts", "packages/core/src/example.ts", "docs/example.md"]) {
+      put(root, path, `${approved}\n`);
+      const refused = cli(root, base);
+      expect(refused.status, refused.output).toBe(1);
+      expect(refused.output).toContain("brand increased");
+      rmSync(join(root, path));
+    }
+  }, 30_000);
+
+  it("refuses changed or duplicated prose and unrelated categories at an approved carrier", () => {
+    const { root, base } = installed();
+    const approved = readFileSync(join(sourceRoot, "README.md"), "utf8").split("\n")
+      .find((line) => line.startsWith("Shaped by real subscription-commerce work"))!;
+    for (const contents of [`${approved} changed\n`, `${approved}\n${approved}\n`,
+      `${approved}\nconst brand = "${debt}";\n`,
+      `${approved}\n${debt.toUpperCase()}_TOKEN\n`,
+      `${approved}\n${String.fromCharCode(112, 114, 111, 116, 101, 105, 110, 101)}\n`]) {
+      put(root, "README.md", contents);
+      const refused = cli(root, base);
+      expect(refused.status, refused.output).toBe(1);
+    }
+    put(root, "README.md", `${approved}\n`);
+    expect(cli(root, base).status).toBe(0);
+  }, 30_000);
+
   it("limits changelog and fragment vocabulary to complete adapter subpaths in the platform carriers", () => {
     const { root, base } = installed();
     const vendor = String.fromCharCode(114, 101, 115, 101, 110, 100);
