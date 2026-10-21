@@ -13,6 +13,8 @@ SemVer promise.
 - Publishable on the npm `latest` dist-tag as `0.20.0`, from tag
   `openlup-platform-v0.20.0`.
 
+- Refresh release size-gate baselines from the published `0.19.0` tarballs; all caps remain unchanged.
+
 - Keep active subscriptions active on dunning exhaustion (invariant repair).
 
 Migration: apply the complete portable catalogue through
@@ -35,10 +37,19 @@ role changes are made. New code on an unmigrated schema keeps refusing. Old code
 ignores the row, but older runners refuse the extended ledger. Application rollback
 does not reverse the migration. Managed host-save authority remains pending.
 
-### M06 completion
+- Add the shipping `SHIPPING_MIGRATIONS` export and the
+  `nativeRateReadiness` / `nativeRateSchema` binding dependencies.
+
+Migration: upgrade the complete `@openlup/*` set from `0.19.0` to `0.20.0`
+for exact internal pins. Native rate bindings require the selected port plus
+Core readiness and a same-database schema observation of the applied seed.
+Install the complete canonical migration catalogue, never sparse package
+projections as an installation chain.
+
+### M06 in this release
 
 - M06 provides development-preview inventory contracts, stock/ATP reads,
-  reservations and release/consume operations, subscription forecasts, delivery
+  reserve/release/expire operations, subscription forecasts, delivery
   selection, address handlers and flat-rate handling through explicit inventory
   and shipping composition. Native flat-rate read/save now works through its
   named capability lane and applied-seed readiness proof; host-owned policy and
@@ -46,18 +57,42 @@ does not reverse the migration. Managed host-save authority remains pending.
 
 ### Known limitations
 
+- D8-1: native advisory v2 promo-code candidates and rejection details are not supported on the native backend.
+- D8-2: native mounted v2 code issue/honor/fallback is not supported on the native backend.
+- D8-3: acquisition-only mounted issuance/honor is not supported on the native backend.
+- D8-4: full native/managed eligibility equivalence is not supported on the native backend.
+- Bundle-1: independent database human-only actor-kind enforcement is not supported on the native backend and is the first item of a future native-backend parity round.
+- Bundle-2: managed-equivalent actor-kind/email history is not supported on the native backend.
+- Bundle-3 remains closed for M05 mounted admin/feed readback with an injected stock reader, while native new-purchase stock reads remain unsupported despite P5a's installed native inventory-store read proof.
+- Bundle-4 establishes only incumbent real-PostgreSQL contention characterization and provides no exactly-once guarantee.
+- The managed baseline schema and its pgTAP tests retain the incumbent legacy value `44.404`; removing it needs a forward migration and an owner decision, while reference composition supplies that value to application code.
+- A1 evidence is offline only: account verification, hosted-time behaviour and owner TEST certification are not claimed, and the `communications/klaviyo` adapter's capabilities stay verification-pending.
+- M05 parity seams are opt-in and omitted bindings preserve incumbent defaults, outputs, read order, scheduling, refusals, acceptance-token bytes and exported SQL.
+- Native inventory adjustment remains unsupported; native address writes refuse
+  required-capability readiness. Native flat-rate save is supported only behind
+  the selected port, Core readiness and applied-seed schema observation.
 - Native new-purchase stock read is deferred to the native-backend parity round
   (owner 2026-10-21), second after M05 bundle-1; required readiness still refuses
   honestly.
-- Native address writes are unsupported and refuse required readiness.
 - Native shipping-rate save has no durable audit: audit is explicitly unsupported,
   and the incumbent handler swallows the best-effort audit failure.
-- Native flat-rate value bounds (integer, 0 <= value <= the handler maximum) are
-  enforced by the host request schema, not a database CHECK; the reference maximum
-  is 100,000 minor units.
-- Busy/try-gate protocol, durable stock-wait continuity and staging flag/TTL rows
-  transferred to C5 adopter evidence are dispositions, not PASS.
-- Managed host flat-rate save remains pending host authority.
+- Native flat-rate value bounds (integer, 0 <= value <= the host request schema's
+  maximum) are enforced by that schema, not a database CHECK; the reference
+  maximum is 100,000 minor units.
+- Managed host ATP/forecast/dated-supply/pagination readback is not proved and
+  remains pending in the M06 ledger; no managed-host parity is claimed.
+- Managed two-session lock order/concurrency and uncovered compensation paths
+  are not proved on a managed host and remain pending; no equivalence is claimed.
+- Managed exact-prefix upgrade/ledger is not proved on a managed host and remains
+  pending; no managed installation equivalence is claimed.
+- Managed address adapter idempotency/conflict/readback is not proved on a managed
+  host and remains pending; no fixture-to-host equivalence is claimed.
+- Managed successful flat-rate read/save remains pending host authority and is
+  not proved on a managed host; no successful managed host-save claim is made.
+- M06 adopter stock-wait lifecycle, durable subscription timing and staging
+  control observations retain their separate C5/C6 evidence gates. Busy/try-gate
+  protocol, durable stock-wait continuity and staging flag/TTL rows transferred
+  to C5 adopter evidence are dispositions, not PASS.
 - Reference shipping UI copy remains locale-specific until M16.
 
 ## [0.19.0]

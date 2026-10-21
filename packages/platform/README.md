@@ -4,12 +4,10 @@ Development preview. This package joins core and outbox in the publishable set f
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.20.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0200) before selecting M06 inventory and shipping
-composition, including native flat-rate save. Unsupported native operations and
-managed host authority retain their documented limits.
-The size gate retains the published `0.18.0` baseline until the preceding
-`0.19.0` publication and C4 artifact readback are recorded;
+For the prepared `0.19.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0190) before selecting the opt-in M05 parity seams or
+M06 composition bindings. M06 in progress: inventory and shipping entries are early surfaces; module not complete
+The size gate compares the prepared `0.20.0` set with the published `0.19.0` tarball;
 preparation, offline adapter evidence and a passing size cap grant no publication
 or provider-account certification.
 
