@@ -34,6 +34,8 @@ const adapterPaths = new RegExp(`^packages/platform/(?:src|test)/communications/
 const adapterReports = new Set(adapterNames.map((name) => `packages/platform/api/communications-${name}.api.md`));
 const adapterLedger = "docs/platform/plans/oss-a1-communications-adapters.md";
 const adapterSubpathFiles = new Set([
+  "server/runtime/communications/a1ReferenceBinding.ts",
+  "server/runtime/communications/a1ReferenceBinding.test.ts",
   "packages/platform/package.json",
   "packages/platform/release-gates.json",
   "packages/platform/test/packageBoundary.test.ts",
@@ -74,7 +76,7 @@ const coldProofLines = Object.fromEntries(Object.entries({
 ]));
 function allowedAdapterWords(path, contents) {
   if (adapterPaths.test(path) || adapterReports.has(path) || path === adapterLedger) return [...contents.matchAll(adapterWord)].length;
-  if (adapterSubpathFiles.has(path)) {
+  if (adapterSubpathFiles.has(path) || /^packages\/platform\/changes\/[^/]+\.md$/.test(path)) {
     const tokens = [...contents.matchAll(adapterSubpath)];
     if (adapterReportFiles.has(path)) tokens.push(...contents.matchAll(adapterReportToken));
     if (path === "packages/platform/test/packageBoundary.test.ts") tokens.push(...contents.matchAll(adapterRelativeEntry));

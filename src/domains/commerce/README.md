@@ -49,6 +49,18 @@ section order, eligibility and historical token bytes are unchanged. This does
 not activate a route issuer or change checkout admission; acquisition-only
 mounted-route issuance remains pending composition evidence.
 
+## Reference browser promotion schemas
+
+`adminPromotionsContracts.ts` and `adminPromotionCodesContracts.ts` define the
+browser validators locally. They use the core promotion enums, local settlement
+validator and pricing contracts version; neither imports the promotions server
+entry. Server schemas and DTOs retain their existing package owner. The
+[admin binding proof](../../../tests/platform/promotions/adminBinding.test.ts)
+compares parse acceptance, errors and output (including trim, defaults, stripping
+and strict objects), checks DTO compatibility and bundles the actual clients and
+value-importing dialogs with positive local-schema controls. Shipping rates,
+subscription bands and catalog-price inputs keep their existing semantics.
+
 ## Promotion application package boundary
 
 The experimental [promotions module](../../../packages/platform/README.md#promotions)
@@ -70,7 +82,8 @@ composition and admin adapter pass that same value. This keeps classification,
 comparison tolerance, system-managed read-only rows and quote money unchanged
 while keeping adopter policy out of the classifiers. No package export changes.
 The managed baseline's legacy-mirror predicate remains immutable; changing its
-incumbent value requires a forward migration, tracked for C5 in the
+incumbent value requires a forward migration, recorded as an M05 follow-up
+needing an owner decision in the
 [M05 ledger](../../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#p6-acceptance-obligation).
 
 ## Public surface (import cross-domain ONLY these)

@@ -71,11 +71,11 @@ describe("commerce quote BFF handler", () => {
     await createCommerceQuoteHandler({
       quotePort: createPort(
         new CommerceQuoteError("UNKNOWN_SKU", "Unknown commerce SKU", {
-          sku: "OPENLUP-DOG-DUCK-CAN-400G",
+          sku: "ITEM-BETA-400",
         }),
       ),
     })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-DUCK-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-BETA-400", quantity: 1 }] }),
       unknown,
     );
 
@@ -92,7 +92,7 @@ describe("commerce quote BFF handler", () => {
       expect.objectContaining({
         error: expect.objectContaining({
           code: "BAD_REQUEST",
-          details: { sku: "OPENLUP-DOG-DUCK-CAN-400G" },
+          details: { sku: "ITEM-BETA-400" },
         }),
       }),
     );

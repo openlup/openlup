@@ -92,12 +92,12 @@ describe("createExpectedQuote", () => {
 
   it("wraps a CommerceQuoteError with the supplied catalogMismatchMessage, preserving code + details", async () => {
     const port = portThrowing(
-      new CommerceQuoteError("UNKNOWN_SKU", "nope", { sku: "OPENLUP-DOG-DUCK-CAN-400G" }),
+      new CommerceQuoteError("UNKNOWN_SKU", "nope", { sku: "ITEM-BETA-400" }),
     );
     await expect(createExpectedQuote(port, REQUEST, MESSAGES)).rejects.toMatchObject({
       name: "CommerceQuoteSnapshotError",
       message: "MISMATCH_MSG",
-      details: { reason: "UNKNOWN_SKU", sku: "OPENLUP-DOG-DUCK-CAN-400G" },
+      details: { reason: "UNKNOWN_SKU", sku: "ITEM-BETA-400" },
     });
   });
 

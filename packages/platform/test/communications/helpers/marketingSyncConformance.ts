@@ -160,26 +160,27 @@ export type PushPlant = `missing-ref:${"absent" | "empty" | "blank"}` | `authori
   "push-stale" | "push-generation-key" | `lost-intent:${"same-key" | "new-key"}` | "push-completed" |
   "hide-race" | "hide-race-replay" | "early-read" | `insufficient-read:${"partial" | "unsupported"}` | `insufficient-read-no-grant:${"partial" | "unsupported"}` |
   `pending-withdrawal:${"audience" | "account-wide"}` | "skip-unknown" | "withdraw-as-grant" |
-  "global-widening" | "old-grant-start" | "delay-withdrawal" | "ack-grant-settled";
+  "global-widening" | "old-grant-start" | "delay-withdrawal" | "ack-grant-settled" | "account-wide-uncertain-scan" | "withdraw-skip-non-grant";
 export function pushRequest(overrides: Partial<ConsentPushRequest> = {}): ConsentPushRequest {
   // The synthetic registry, rather than a public constructor, owns this branded reference.
   return { ...request("profile.sync"), operation: "consent.push", audience,
     payload: { action: "grant", consentEvidenceReference: "grant:1" }, ...overrides } as ConsentPushRequest;
 }
 
-/** Offline single-subject model for the additive family, injectable into shared CP rows. */
-export function syntheticPush(plant?: PushPlant) {
+/** Offline subject model with an unrelated profile entry, injectable into shared CP rows. */
+export function syntheticPush(plant?: PushPlant, grantEffect: "audience" | "account-wide" = "audience") {
   const state = {
     generation: 1, now: 10, erased: false, localGranted: false, remote: "unknown" as ConsentReadback["remoteConsent"],
     authority: true, allPurposes: true, supportedGlobal: true, safeListOnly: true, identity: true,
     armed: "" as string, suppression: "" as string, suppressionCovered: true,
     earlierGrants: 0 as number | null, readCoverage: "complete" as ConsentReadback["coverage"], pendingWithdrawal: undefined as SyncAudience | undefined,
-    lostIntent: false, recordFails: false, journalFails: false, coolingUntil: 0, quarantined: false,
+    lostIntent: false, recordFails: false, journalFails: false, coolingUntil: 0, quarantined: false, nonGrantQuarantined: false,
+    unrelatedUncertain: undefined as undefined | { subjectReference: string; operation: "profile.sync"; kind: "unknown"; reason: "acceptance_ambiguous" },
     mutation: "acknowledged" as "accepted" | "acknowledged" | "unknown", afterAwait: () => {},
   };
   const operations = structuredClone(synthetic().provider.capabilities.operations);
   const capabilities: ConsentPushPort["capabilities"] = { binding, audience, operations: { ...operations,
-    "consent.push": { ...operations["profile.sync"], grantEffect: "audience" },
+    "consent.push": { ...operations["profile.sync"], grantEffect },
   } };
   const effects: { action: "grant" | "withdraw"; audience: SyncAudience; requestId: string; evidence: string }[] = [];
   const journal = new Map<string, { semantic: string; result: ConsentPushResult }>();
@@ -211,7 +212,7 @@ export function syntheticPush(plant?: PushPlant) {
       ...((prior.result.kind === "accepted" || prior.result.kind === "acknowledged") ? { reconcileRequired: plant === "hide-race-replay" && race ? false : prior.result.reconcileRequired || race } : {}) }) : refuse("invalid_request");
     const blocked = r.payload.action === "withdraw" ? withdrawalFences.has(key) || (plant === "delay-withdrawal" && fenced) : fenced;
     if (blocked && !(plant === "lost-intent:same-key" && key === fencedKey) && !(plant === "lost-intent:new-key" && key !== fencedKey)) return result({ kind: "unknown", reason: "dispatch_unresolved" });
-    if ((r.payload.action === "grant" && state.quarantined) || state.coolingUntil > state.now) return result({ kind: "retryable", reason: "cooling", afterSeconds: Math.max(1, Math.ceil((state.coolingUntil - state.now) / 1000)) });
+    if ((state.nonGrantQuarantined && !(plant === "withdraw-skip-non-grant" && r.payload.action === "withdraw")) || (r.payload.action === "grant" && state.quarantined) || plant === "account-wide-uncertain-scan" && state.quarantined && state.unrelatedUncertain || state.coolingUntil > state.now) return result({ kind: "retryable", reason: "cooling", afterSeconds: Math.max(1, Math.ceil((state.coolingUntil - state.now) / 1000)) });
     const evidence = r.payload.consentEvidenceReference;
     const expected = r.payload.action === "grant" ? "grant:1" : "withdraw:1";
     if (evidence?.trim() && !["grant:1", "withdraw:1"].includes(evidence) && plant !== `authority:${evidence}`) return refuse("provenance");
@@ -258,7 +259,7 @@ export function syntheticPush(plant?: PushPlant) {
     const outcome = result(state.recordFails && r.payload.action === "grant" ? { kind: "unknown", reason: "record_failed", receipt } : state.mutation === "unknown" ?
       { kind: "unknown", reason: "acceptance_ambiguous", receipt } : {
         kind: plant === "push-completed" ? "completed" : state.mutation, receipt,
-        journal: state.recordFails || state.journalFails ? "unknown" : "confirmed", reconcileRequired: race && !(plant === "hide-race" && state.mutation === "acknowledged"),
+        journal: state.recordFails || state.journalFails || state.quarantined ? "unknown" : "confirmed", reconcileRequired: race && !(plant === "hide-race" && state.mutation === "acknowledged"),
       });
     if (state.recordFails || state.journalFails || state.mutation === "unknown") {
       if (r.payload.action === "grant") { fenced = true; fencedKey = key; state.earlierGrants = null; }
@@ -284,13 +285,44 @@ export function syntheticPush(plant?: PushPlant) {
   return { port, state, effects, read };
 }
 export type PushHarness = ReturnType<typeof syntheticPush>;
-export type PushFactory = (plant?: PushPlant) => PushHarness;
+export type PushFactory = (plant?: PushPlant, grantEffect?: "audience" | "account-wide") => PushHarness;
+
+/** Both real and synthetic CP04/KP04 run this subject-isolation and cooling pair. */
+export async function assertMultiSubjectWithdrawal(fresh: (cooling: boolean) => Promise<{
+  withdraw: () => Promise<ConsentPushResult>; effects: () => readonly unknown[];
+}>, label: string) {
+  for (const cooling of [false, true]) {
+    const h = await fresh(cooling), count = h.effects().length;
+    const value = await h.withdraw();
+    expect(value, `${label}/multi-subject ${cooling ? "provider cooling" : "withdrawal bypasses unrelated uncertainty"}`).toMatchObject(
+      cooling ? { kind: "retryable", reason: "cooling" } : { kind: "acknowledged", reconcileRequired: true, journal: "unknown" });
+    if (value.kind === "retryable") expect(Number.isFinite(value.afterSeconds) && value.afterSeconds > 0, `${label}/multi-subject finite provider cooling`).toBe(true);
+    expect(h.effects().length - count, `${label}/multi-subject withdrawal effects`).toBe(cooling ? 0 : 1);
+  }
+}
+
+/** Reused by real adapters, including immutable capability declarations. */
+export async function assertGrantEffectControls(fresh: () => {
+  port: ConsentPushPort; request: ConsentPushRequest; effects: () => readonly unknown[];
+  arm: (flow: string) => void;
+}, label: string) {
+  for (const armed of ["safe", ...flowVariants] as const) {
+    const h = fresh();
+    const effect = h.port.capabilities.operations["consent.push"].grantEffect;
+    expect(["audience", "account-wide"], `${label}/declared grant effect`).toContain(effect);
+    if (armed !== "safe") h.arm(armed);
+    const allowed = armed === "safe" || armed.startsWith("other:") && effect === "audience";
+    expect(await h.port.push(h.request), `${label}/${armed}/${effect} effect-scoped admission`).toMatchObject(
+      allowed ? { kind: "acknowledged", reconcileRequired: false } : { kind: "refused", reason: "restricted" });
+    expect(h.effects(), `${label}/${armed}/${effect} effect-scoped dispatch`).toHaveLength(allowed ? 1 : 0);
+  }
+}
 
 // Four registrations; variants and baseline/plant/restored executions stay inside each row.
 // P2 injects the real adapter factory into these same rows, rather than a second synthetic dialect.
 export function consentPushSuite(factory: PushFactory) {
-  const row = (id: string, plants: PushPlant[], scenario: (fresh: () => ReturnType<PushFactory>, label: string) => Promise<void>) =>
-    conformanceCase<PushPlant, () => ReturnType<PushFactory>>(id, plants, (fresh, plant) => scenario(fresh, `${id}/${plant}`), plant => () => factory(plant));
+  const row = (id: string, plants: PushPlant[], scenario: (fresh: (effect?: "audience" | "account-wide") => ReturnType<PushFactory>, label: string) => Promise<void>) =>
+    conformanceCase<PushPlant, (effect?: "audience" | "account-wide") => ReturnType<PushFactory>>(id, plants, (fresh, plant) => scenario(fresh, `${id}/${plant}`), plant => effect => factory(plant, effect));
   row("CP01", ["missing-ref:absent", "missing-ref:empty", "missing-ref:blank", ...authorityVariants.map(value => `authority:${value}` as const),
     "authority:revoked-grant", "authority:revoked-withdraw", "authority:wrong-direction-grant", "authority:wrong-direction-withdraw", "authority:all-purposes", "remote-grant", "broaden-grant", "second-audience"], async (fresh, label) => {
     const valid = fresh();
@@ -337,20 +369,12 @@ export function consentPushSuite(factory: PushFactory) {
     }
   });
   row("CP02", ["unverified", ...flowVariants.map(value => `flow:${value}` as const), ...suppressionVariants.map(value => `suppression-clear:${value}` as const)], async (fresh, label) => {
-    for (const grantEffect of ["audience", "account-wide"] as const) {
-      const h = fresh(); Reflect.set(h.port.capabilities.operations["consent.push"], "grantEffect", grantEffect);
-      expect(h.port.capabilities.operations["consent.push"].grantEffect, `${label}/declared grant effect`).toBe(grantEffect);
-      expect(await h.port.push(pushRequest()), `${label}/verified no-trigger safe positive`).toMatchObject({ kind: "acknowledged", reconcileRequired: false });
-      expect(h.effects, `${label}/safe singleton grant`).toHaveLength(1);
-    }
-    for (const grantEffect of ["audience", "account-wide"] as const) {
-      for (const armed of flowVariants.filter(value => value.startsWith("other:"))) {
-        const h = fresh(); h.state.armed = armed;
-        Reflect.set(h.port.capabilities.operations["consent.push"], "grantEffect", grantEffect);
-        expect(await h.port.push(pushRequest()), `${label}/${armed}/${grantEffect} effect-scoped admission`).toMatchObject(
-          grantEffect === "audience" ? { kind: "acknowledged", reconcileRequired: false } : { kind: "refused", reason: "restricted" });
-        expect(h.effects, `${label}/${armed}/${grantEffect} effect-scoped dispatch`).toHaveLength(grantEffect === "audience" ? 1 : 0);
-      }
+    for (const effect of ["audience", "account-wide"] as const) {
+      await assertGrantEffectControls(() => {
+        const h = fresh(effect);
+        return { port: h.port, request: pushRequest(), effects: () => h.effects,
+          arm: (flow: string) => { h.state.armed = flow; } };
+      }, label);
     }
     for (const state of ["unsupported", "verification_pending", "absent"] as const) {
       const h = fresh();
@@ -361,7 +385,7 @@ export function consentPushSuite(factory: PushFactory) {
       expect(result, `${label}/${state} capability`).toMatchObject({ kind: "refused", reason: state === "absent" ? "unsupported" : state });
     }
     for (const armed of flowVariants) {
-      const h = fresh(); h.state.armed = armed; Reflect.set(h.port.capabilities.operations["consent.push"], "grantEffect", "account-wide");
+      const h = fresh("account-wide"); h.state.armed = armed;
       const result = await h.port.push(pushRequest());
       expect(h.effects, `${label}/${armed} zero-grant-effect`).toEqual([]);
       expect(result, `${label}/${armed} no-trigger refusal`).toMatchObject({ kind: "refused", reason: "restricted" });
@@ -424,8 +448,26 @@ export function consentPushSuite(factory: PushFactory) {
     expect(cooling.effects, `${label}/cooling zero effect`).toEqual([]);
   });
   row("CP04", ["hide-race", "hide-race-replay", "early-read", "insufficient-read:partial", "insufficient-read:unsupported", "insufficient-read-no-grant:partial", "insufficient-read-no-grant:unsupported", "pending-withdrawal:audience", "pending-withdrawal:account-wide",
-    "skip-unknown", "withdraw-as-grant", "global-widening", "old-grant-start", "delay-withdrawal", "ack-grant-settled"], async (fresh, label) => {
+    "skip-unknown", "withdraw-as-grant", "global-widening", "old-grant-start", "delay-withdrawal", "ack-grant-settled", "account-wide-uncertain-scan", "withdraw-skip-non-grant"], async (fresh, label) => {
     const withdrawal = pushRequest({ requestId: "withdraw:1", payload: { action: "withdraw", consentEvidenceReference: "withdraw:1" } });
+    await assertMultiSubjectWithdrawal(async cooling => {
+      const h = fresh();
+      h.state.unrelatedUncertain = { subjectReference: "subject:A", operation: "profile.sync", kind: "unknown", reason: "acceptance_ambiguous" };
+      h.state.journalFails = true;
+      expect(await h.port.push(pushRequest()), `${label}/multi-subject grant journal unknown`).toMatchObject({ kind: "acknowledged", journal: "unknown" });
+      h.state.journalFails = false;
+      if (cooling) h.state.coolingUntil = 6010;
+      return { withdraw: () => h.port.push(withdrawal), effects: () => h.effects };
+    }, label);
+    {
+      const h = fresh(); h.state.mutation = "unknown";
+      expect(await h.port.push(pushRequest()), `${label}/L-F1 own uncertain grant`).toMatchObject({ kind: "unknown", reason: "acceptance_ambiguous" });
+      h.state.mutation = "acknowledged"; h.state.nonGrantQuarantined = true;
+      const count = h.effects.length, answer = await h.port.push(withdrawal);
+      expect(answer, `${label}/L-F1 durable non-grant quarantine holds withdrawal`).toMatchObject({ kind: "retryable", reason: "cooling" });
+      if (answer.kind === "retryable") expect(Number.isFinite(answer.afterSeconds) && answer.afterSeconds > 0, `${label}/L-F1 finite admission delay`).toBe(true);
+      expect(h.effects.length - count, `${label}/L-F1 zero new effects`).toBe(0);
+    }
     // Pinned CB2-F1: grant uncertainty never queues a withdrawal behind the grant.
     for (const fault of ["acceptance_ambiguous", "record_failed", "dispatch_unresolved", "partial-persistence"] as const) {
       for (const mutation of ["accepted", "acknowledged"] as const) {

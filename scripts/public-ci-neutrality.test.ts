@@ -69,6 +69,22 @@ function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
 describe("tree-wide neutrality ratchet", () => {
+  it("limits changelog and fragment vocabulary to complete adapter subpaths in the platform carriers", () => {
+    const { root, base } = installed();
+    const vendor = String.fromCharCode(114, 101, 115, 101, 110, 100);
+    const carriers = ["packages/platform/CHANGELOG.md", "packages/platform/changes/a-one.md"];
+    for (const path of carriers) put(root, path, `- Add communications/${vendor}.\n`);
+    expect(cli(root, base).status).toBe(0);
+    for (const wrong of ["packages/core/CHANGELOG.md", "packages/core/changes/a-one.md", "packages/platform/changes/nested/a.md", "packages/platform/changes/a.txt"]) {
+      put(root, wrong, `- Add communications/${vendor}.\n`);
+      const refused = cli(root, base); expect(refused.status, refused.output).toBe(1); rmSync(join(root, wrong));
+    }
+    for (const path of carriers) {
+      put(root, path, `- Bare ${vendor}.\n`); expect(cli(root, base).status).toBe(1);
+      put(root, path, `- Add communications/${vendor}.\n`);
+    }
+  });
+
   it("does not let another path or category pay for new debt", () => {
     expect(neutralityIncreases({ a: { brand: 3 }, b: { brand: 2 } }, { a: { brand: 2 }, b: { brand: 3 } })).toEqual([{ path: "b", category: "brand", before: 2, after: 3 }]);
     expect(neutralityIncreases({ a: { brand: 3 } }, { a: { brand: 2, "ui-1": 1 } })).toEqual([{ path: "a", category: "ui-1", before: 0, after: 1 }]);

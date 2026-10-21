@@ -2,11 +2,11 @@
 // Self-checks for an already-published checkout; source-only partition inputs stay out of --policy.
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PUBLIC_EXECUTION_ENTRYPOINTS, SOURCE_RELEASE_CONTRACT_PATH, isDirectExecutionEntrypoint, validateSourceReleaseContract } from "./oss-publication-contract.ts";
-import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog, publicPublicationCatalogDigests, type PublicPackageExecutionSurface } from "./oss-publication-policy.ts";
+import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog, effectivePublicCatalogPaths, type PublicPackageExecutionSurface } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 import { runPlatformMigrationManifestCheck } from "./platform-migration-manifest.ts";
 import { comparePublicTypecheck, readPublicTypecheckCompatibility, runPublicTypecheckProjects, summarizePublicDiagnostics } from "./oss-public-typecheck.ts";
@@ -14,7 +14,7 @@ import { assertDocumentationNavigation, readDocumentationState } from "./documen
 import { documentationGit, resolveDocumentationBase } from "./documentation-git.ts";
 import { checkDocumentationImpact, renderDocumentationImpact } from "./documentation-impact.ts";
 import { evaluatePlatformMigrationManifest, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
-import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
+import { assertAdmittedPlatformForward, deriveSourceReleaseContract } from "./oss-source-release-contract.ts";
 import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
 import { validateDocumentationBundle, writeDocumentationBundle } from "./documentation-bundle-io.ts";
@@ -192,13 +192,14 @@ export function assertMaterializedPublicationCatalog(root: string, catalogSource
     readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"),
     catalogSource,
   );
-  assertMaterializedOutputInventory(root, catalog.publicPaths.map((row) => row.path), observed);
+  const effective = liveCatalogPaths(root, catalogSource, observed);
+  assertMaterializedOutputInventory(root, effective.map((row) => row.path), observed);
   const scripts = JSON.parse(readFileSync(join(root, MANIFEST), "utf8") as string) as { scripts?: Record<string, string> };
   const actualScripts = Object.entries(scripts.scripts ?? {}).sort(([left], [right]) => left.localeCompare(right));
   const catalogScripts = catalog.packageCommands.map(({ name, command }) => [name, command] as [string, string]).sort(([left], [right]) => left.localeCompare(right));
   if (JSON.stringify(actualScripts) !== JSON.stringify(catalogScripts)) throw new Error(`${PUBLICATION_CATALOG_PATH}: packageCommands differ from the materialized package.json scripts`);
   const commands = new Set(actualScripts.map(([name]) => name));
-  const paths = new Set(catalog.publicPaths.map((row) => row.path));
+  const paths = new Set(effective.map((row) => row.path));
   assertMaterializedExecutionReferences(root, paths, commands);
   const allowedEntrypoints = new Set<string>(PUBLIC_EXECUTION_ENTRYPOINTS);
   assertPackageExecutionSurfaces(root, paths, allowedEntrypoints, catalog.packageExecutionSurfaces);
@@ -266,29 +267,36 @@ export function typecheckVerdict(root: string, contractSource: string, log: (lin
   return verdict.ok;
 }
 
+export function liveSourceInventory(root: string): Array<{ path: string; mode: string }> {
+  return [...new Set(trackedFiles(root))].sort().map((path) => {
+    const stat = lstatSync(join(root, path));
+    return { path, mode: stat.isFile() ? (stat.mode & 0o111 ? "100755" : "100644") : "unsupported" };
+  });
+}
+
+function liveCatalogPaths(root: string, source: string, paths: readonly string[]) {
+  return effectivePublicCatalogPaths(source, paths.map((path) => {
+    const stat = lstatSync(join(root, path));
+    return { path, mode: stat.isFile() ? (stat.mode & 0o111 ? "100755" : "100644") : "unsupported" };
+  }), (path) => readFileSync(join(root, path)));
+}
+
+export function reportSourceReleaseSnapshot(root: string, log: (line: string) => void): void {
+  const current = readFileSync(join(root, SOURCE_RELEASE_CONTRACT_PATH), "utf8");
+  validateSourceReleaseContract(current);
+  const derived = deriveSourceReleaseContract((path) => existsSync(join(root, path)) ? readFileSync(join(root, path)) : undefined, liveSourceInventory(root));
+  log(`- computed bindings ok; committed snapshot ${derived.contents === current ? "fresh" : "stale (refreshed at release prep)"}`);
+}
+
 export function publicInventoryVerdict(root: string, log: (line: string) => void): boolean {
   const catalogSource = readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8");
-  const { catalog } = validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource);
+  validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource);
   const tracked = trackedFiles(root);
   assertMaterializedPublicationCatalog(root, catalogSource, tracked);
-  const expectedPaths = catalog.publicPaths.map((row) => row.path);
-  const contractSource = readFileSync(join(root, SOURCE_RELEASE_CONTRACT_PATH), "utf8");
-  validateSourceReleaseContract(contractSource);
-  const contract = JSON.parse(contractSource) as { inventory: { digest: string }; packages: { manifestDigest: string; rootLockDigest: string; coreLockDigest: string }; platformMigrationManifest: { path: string; digest: string }; databaseSchema: { path: string; digest: string }; policy: { registryDigest: string; publicationCatalogDigest: string } };
+  reportSourceReleaseSnapshot(root, log);
   const digest = (contents: string | Buffer) => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
-  const bindings = [
-    ["inventory", contract.inventory.digest, publicPublicationCatalogDigests(catalogSource).inventoryDigest],
-    [MANIFEST, contract.packages.manifestDigest, digest(readFileSync(join(root, MANIFEST)))],
-    ["package-lock.json", contract.packages.rootLockDigest, digest(readFileSync(join(root, "package-lock.json")))],
-    ["packages/core/package-lock.json", contract.packages.coreLockDigest, digest(readFileSync(join(root, "packages/core/package-lock.json")))],
-    [contract.platformMigrationManifest.path, contract.platformMigrationManifest.digest, digest(readFileSync(join(root, contract.platformMigrationManifest.path)))],
-    [contract.databaseSchema.path, contract.databaseSchema.digest, digest(readFileSync(join(root, contract.databaseSchema.path)))],
-    [PUBLIC_POLICY_REGISTRY_PATH, contract.policy.registryDigest, digest(readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH)))],
-    [PUBLICATION_CATALOG_PATH, contract.policy.publicationCatalogDigest, digest(catalogSource)],
-  ];
-  const failures = bindings.filter(([, expected, actual]) => expected !== actual).map(([name]) => `${name} digest is not bound to ${SOURCE_RELEASE_CONTRACT_PATH}`);
+  const failures: string[] = [];
   failures.push(...runPlatformMigrationManifestCheck(root));
-  if (JSON.stringify(tracked) !== JSON.stringify(expectedPaths)) failures.push("tracked paths differ from the public publication catalogue");
   const manifest = readFileSync(join(root, MANIFEST), "utf8");
   if (Object.values((JSON.parse(manifest) as { imports?: Record<string, unknown> }).imports ?? {}).some((target) => typeof target !== "string")) failures.push(`${MANIFEST} retains an unresolved conditional seam`);
   log(`- tracked public paths: ${tracked.length}`);
@@ -308,6 +316,7 @@ export function policyVerdict(root: string, log: (line: string) => void): boolea
   const tracked = trackedFiles(root);
   assertMaterializedPublicationCatalog(root, catalogSource, tracked);
   assertAgentGuidancePlacement(root, tracked);
+  reportSourceReleaseSnapshot(root, log);
   log(`- public policy paths: ${state.policy.activePaths.length}`);
   log(`- public policy contracts: ${state.policy.contracts.length}`);
   log(`- guard viability entries: ${state.catalog.guardViability.length}`);

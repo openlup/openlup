@@ -72,7 +72,7 @@ describe("commerce quote batch BFF handler", () => {
     await createCommerceQuoteBatchHandler({
       quotePort: createPort(
         new CommerceQuoteError("UNKNOWN_SKU", "Unknown commerce SKU", {
-          sku: "OPENLUP-DOG-DUCK-CAN-400G",
+          sku: "ITEM-BETA-400",
         }),
       ),
     })(request("POST", { quotes: [{ lines: [LINE] }] }), unknown);
@@ -87,7 +87,7 @@ describe("commerce quote batch BFF handler", () => {
       expect.objectContaining({
         error: expect.objectContaining({
           code: "BAD_REQUEST",
-          details: { sku: "OPENLUP-DOG-DUCK-CAN-400G" },
+          details: { sku: "ITEM-BETA-400" },
         }),
       }),
     );

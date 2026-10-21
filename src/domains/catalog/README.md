@@ -48,6 +48,31 @@ move to `packages/platform/test/catalog/`; the local binding guard checks that
 observed response context survives composition. No SQL, publication capability,
 admin-document behavior or rich document interpretation changes in this move.
 
+## Explicit reference presentation
+
+`referenceCatalogUi.ts` supplies each locale's sellable facts, exact catalog,
+product and basket links, display copy, resolved media and optional lifecycle
+read result. The reference catalog/product/builder pages consume those facts
+through `ReferenceCatalogRoutes`; that route component is opt-in and is not
+mounted by the shipped public profile. The builder selects SKU quantities and
+purchase mode, not fixed-bundle definitions. Its separate quote transport and
+draft scope do not enable incumbent acquisition endpoints or caches.
+
+`CatalogLifecycleObservation` renders only authority-supplied draft, active and
+withdrawn observations. Known unpublished, unsupported authority, dependency
+outage and named refusals remain distinct. It offers no activate or withdraw
+operation. Existing admin shells accept optional explicit read/lifecycle bindings
+and retain their default transports, token/flag gates and mutation paths.
+
+The older SSG product snapshot accepts optional resolved `media` and compiled
+`details`. `ProductDetailsTabs` and `ProductFAQ` accept supplied details while
+retaining their existing detail lookup when omitted; an explicit FAQ item list
+still has precedence. The gallery behavior is unchanged. The
+[reference rendering proof](../../../tests/platform/catalog/referenceUi.test.ts)
+checks supplied facts/media/details and the legacy detail fallback, while the
+[locale proof](../../pages/ReferenceCatalogUi.test.tsx) checks deep-link hydration
+and authoritative refusal presentation.
+
 ## Isolated product drafts
 
 `catalogDraftContracts.ts`, `catalogProductTypeContracts.ts` and

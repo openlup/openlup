@@ -2206,6 +2206,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-klaviyo.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications-resend.api.md",
       "class": "public-output"
     },
@@ -2342,7 +2346,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260814000000_fulfillment_stock_evidence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260814090000_customer_selfservice_recovery.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260815120000_automatic_subscription_renewal.sql",
       "class": "public-output"
     },
     {
@@ -2906,6 +2918,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/klaviyo/consentPush.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/klaviyo/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/managedTransactionalDeliveryStore.ts",
       "class": "public-output"
     },
@@ -3386,6 +3406,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/forecast.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/contracts/index.ts",
       "class": "public-output"
     },
@@ -3395,6 +3419,14 @@
     },
     {
       "path": "packages/platform/src/inventory/contracts/newPurchaseStock.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/contracts/reservation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/forecast.ts",
       "class": "public-output"
     },
     {
@@ -3414,7 +3446,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/renewalReservation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/reservationPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/subscriptionForecastCalculation.ts",
       "class": "public-output"
     },
     {
@@ -3778,11 +3826,47 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/addressCanonLookupHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressCanonical.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/addressSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/adminShippingRateHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/address.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/contracts/delivery.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/shipping/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/contracts/shippingRate.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerAddressesHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/customerSelfServiceAddressModels.ts",
       "class": "public-output"
     },
     {
@@ -3811,6 +3895,10 @@
     },
     {
       "path": "packages/platform/src/shipping/readDeliverySelectionEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/shippingRatePorts.ts",
       "class": "public-output"
     },
     {
@@ -3934,6 +4022,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/adapterOptIn.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/authEgress.test.ts",
       "class": "public-output"
     },
@@ -3975,6 +4067,26 @@
     },
     {
       "path": "packages/platform/test/communications/hookRawReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/harness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/permissions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/portConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/profile.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/protocol.test.ts",
       "class": "public-output"
     },
     {
@@ -4266,6 +4378,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/inventory/reservationPolicyConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/subscriptionForecastCalculation.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/job-ledger/postgres.test.ts",
       "class": "public-output"
     },
@@ -4522,7 +4642,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/shipping/addressConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/shipping/deliveryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/shipping/shippingRateConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -5046,6 +5174,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/changelog-fragments.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/changelog-fragments.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/eslint-import-map.test.ts",
       "class": "public-output"
     },
@@ -5287,6 +5423,14 @@
     },
     {
       "path": "scripts/source-preview-release.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/source-release-preparation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/source-release-preparation.ts",
       "class": "public-output"
     },
     {
@@ -13478,6 +13622,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/communications/a1ReferenceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/a1ReferenceBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/communications/communicationsLifecycleBinding.test.ts",
       "class": "public-output"
     },
@@ -14226,6 +14378,22 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/composer/referenceBuilderConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceBuilderDraft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceBuilderModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceQuoteConsent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/composer/useEffectiveConfiguratorPackage.ts",
       "class": "public-output"
     },
@@ -14670,6 +14838,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/admin/BundleStockCard.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/admin/BundleStockCard.tsx",
       "class": "public-output"
     },
@@ -14679,6 +14851,10 @@
     },
     {
       "path": "src/components/admin/CatalogDocumentPanel.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/CatalogLifecycleObservation.tsx",
       "class": "public-output"
     },
     {
@@ -15103,6 +15279,30 @@
     },
     {
       "path": "src/components/seoUtils.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/DeliveryMethodCard.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/DeliveryMethodCard.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/PickupPointPicker.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/PickupPointPicker.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/ShippingFieldsCard.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/deliverySelectionCheckoutCharacterization.test.tsx",
       "class": "public-output"
     },
     {
@@ -15599,6 +15799,10 @@
     },
     {
       "path": "src/domains/catalog/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/catalog/referenceCatalogUi.ts",
       "class": "public-output"
     },
     {
@@ -17846,6 +18050,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/shipping/useDeliverySelection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/shipping/usePickupPointSearch.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/subscription/README.md",
       "class": "public-output"
     },
@@ -19298,6 +19510,22 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/ReferenceBuilderPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceCatalogPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceCatalogUi.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceProductPage.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/ReferenceStorePage.test.tsx",
       "class": "public-output"
     },
@@ -20187,6 +20415,10 @@
     },
     {
       "path": "src/routes/AppRuntimeEffects.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/routes/ReferenceCatalogRoutes.tsx",
       "class": "public-output"
     },
     {
@@ -21154,6 +21386,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/catalog/referenceUi.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/checkoutInlineRecoveryClientFlow.test.ts",
       "class": "public-output"
     },
@@ -21182,7 +21418,31 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/inventory/inventoryForecastReadbackCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/inventory/inventoryOperatorBoundaryCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/inventoryReservationLifecycleCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/reservationMaintenanceCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/reservationMaintenanceConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/stockWaitConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/subscriptionStockContinuityCharacterization.test.ts",
       "class": "public-output"
     },
     {
@@ -21203,6 +21463,10 @@
     },
     {
       "path": "tests/platform/promotions/adminPromotionsHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/shipping/deliveryAddressContinuityCharacterization.test.ts",
       "class": "public-output"
     },
     {
@@ -21255,6 +21519,10 @@
     },
     {
       "path": "tests/postgres/identityStatePreservation.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/inventoryNative.test.ts",
       "class": "public-output"
     },
     {

@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { fadeUp } from "@/lib/animations";
 import { ChevronDown } from "lucide-react";
-import { detailsFromStorefrontSsgCatalog, type StorefrontSsgLocale } from "@/domains/catalog/storefrontSsgCatalog";
+import { detailsFromStorefrontSsgCatalog, type StorefrontSsgProductDetails, type StorefrontSsgLocale } from "@/domains/catalog/storefrontSsgCatalog";
 import { storefrontSsgDetails } from "#storefront-ssg-details";
 
 export interface ProductFaqItem {
@@ -10,12 +10,12 @@ export interface ProductFaqItem {
   answer: string;
 }
 
-type Props = { items: readonly ProductFaqItem[]; slug?: never; locale?: never }
-  | { items?: never; slug: string; locale: StorefrontSsgLocale };
+type Props = { details?: StorefrontSsgProductDetails } & ({ items: readonly ProductFaqItem[]; slug?: never; locale?: never }
+  | { items?: never; slug: string; locale: StorefrontSsgLocale });
 
 const ProductFAQ = (props: Props) => {
   const { t } = useTranslation("catalog");
-  const items = props.items ?? detailsFromStorefrontSsgCatalog(storefrontSsgDetails, props.slug, props.locale)?.faq ?? [];
+  const items = props.items ?? props.details?.faq ?? detailsFromStorefrontSsgCatalog(storefrontSsgDetails, props.slug, props.locale)?.faq ?? [];
 
   return (
     // Jasne tło jak FAQv2 na homepage — odchodzimy od sekcji na bg-void.

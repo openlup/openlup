@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
+// Keep the reference catalog schema type: its inferred optionality is part of the existing caller contract.
 import type { BundleAvailabilityView } from "@/domains/bundle/adminBundleReadContracts";
 import { fetchSellableBundles } from "@/domains/bundle/sellableBundleClient";
 import { CARD, CARD_TITLE, LABEL, sellableBundlesKey } from "./bundleAdminUi";

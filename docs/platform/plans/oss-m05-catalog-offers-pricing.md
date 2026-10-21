@@ -383,12 +383,17 @@ authorizes Q1 and Q2. STEP 0 selects the existing quote-discount composition for
 the constant, avoiding an additional production path. The starter-offer comment
 describes arithmetic parity rather than the threshold location and stays unchanged.
 
-Final-diff ledger against `a2edd8ebd9d72dea5be22197750743e4d2f3d198`:
+Final-diff ledger, **FORK POINT `2347e83d`**
+(`2347e83defeb3a1ff86f5aff37751c373ee74b3a`):
 **12 production source paths / 12**, **12 production/tooling paths / 35**;
 **37 existing test/helper paths** (28 suites and 9 helpers), **0 new executed
-cases**. The post-P5 programme balance stays **5**. The publication catalogue and
-source-release contract were regenerated through their existing generators and
-are byte-unchanged; three API snapshots change comments only. Prose and API
+cases**. The post-P5 programme balance stays **5**, reserved for P7. The authored
+publication catalogue covers P6's real files; the platform's pending
+`m05-p6.md` change note needs no per-file catalogue row and passes
+the fragment validator and release-tooling checks. The source-release contract
+and platform CHANGELOG retain main's bytes; the contract is computed by checks
+and was not regenerated. Documentation navigation regeneration is byte-unchanged;
+three API snapshots change comments only. Prose, pending changelog fragments and API
 snapshots are excluded from the production/tooling count.
 
 The original seven source paths are pricing `commerceQuoteCatalogReadPort.ts`,
@@ -428,19 +433,50 @@ substitution map, assertion arguments, matcher sequence and collection count.
 All original **425 expect call sites** across the original 35 changed test/helper
 paths remain. The two reference semantic suites retain their 15 assertions,
 bringing the final changed-test total to **440 expect call sites** across 37 paths.
-Their only changes are the explicit threshold argument and its import. The
-original focused collection stays **1,248 cases** across 27 files. Including the
-two reference semantic suites (7 cases), adapter suite (8), reference binding
-suite (1) and legacy-code outcome suite (6), final focused collection is
-**1,270 → 1,270 cases across 32 files**. All 1,265 non-database cases and 5 native
-PostgreSQL cases pass. No new case or mandatory full-suite execution is claimed;
-the host-load rule permits explicit focused paths only. Required local checks
-and their actual exits are retained in the implementation handoff; supervisor
-candidate gates remain outside this local delivery boundary. The continuation's
-ast-grep, lint, published-tree typecheck, public-reference build, focused Vitest
-run and collection checks exit 0. Lint reports 33 warnings and zero errors. Policy
-with regenerated navigation has five obligations and zero unanswered. Package
-exports are unchanged, so this continuation adds no Unreleased changelog note.
+Their changes are the explicit threshold argument and its import, plus neutral
+SKU and region fixtures. The original bounded focused selection recomputes to
+**193 cases** across 27 files.
+Against **FORK POINT `2347e83d`**, every changed suite collects: **180 cases across
+28 files**; the other nine changed test paths are imported helpers. Repair cycle 1
+runs this exact selection, with each file selected once:
+
+| File group (paths relative to the repository root) | Files | Cases |
+| --- | ---: | ---: |
+| P6-changed `packages/platform/test/catalog/*.test.ts` | 4 | 30 |
+| P6-changed `packages/platform/test/pricing/*.test.ts` (including the three quote handler/batch/snapshot suites: 3 files, 25 cases) | 13 | 90 |
+| P6-changed `packages/platform/test/promotions/*.test.ts` | 7 | 47 |
+| `server/domains/commerce/{adminPromotionSemantic,promotionCustomerSemantic}.test.ts` | 2 | 7 |
+| `tests/platform/catalog/bundleBindings.test.ts` | 1 | 1 |
+| `tests/postgres/bundleNative.test.ts` | 1 | 5 |
+| **Changed-suite subtotal** | **28** | **180** |
+| Additional `packages/platform/test/catalog/bundleRules.test.ts` | 1 | 20 |
+| Additional `server/adapters/supabase/adminPromotions.test.ts` | 1 | 8 |
+| Additional `server/domains/commerce/promotionBindings.test.ts` | 1 | 1 |
+| Additional `packages/platform/test/promotions/quotePromotionV2.legacyCodeOutcomes.test.ts` | 1 | 6 |
+| **Focused total** | **32** | **215** |
+
+The seven semantic cases are already in the changed-suite subtotal; the four
+additional suites contribute **35 cases**, so **180 + 20 + 8 + 1 + 6 = 215**.
+These explicit-path counts correct the previously recorded 1,248/1,270 figures.
+Repair collection matches HEAD `450b9c9d`: 180 cases across the same 28 changed
+suites, with unchanged case registrations and matcher sequences and zero new cases.
+All **210 non-database cases and 5 native PostgreSQL cases pass**. No mandatory
+full-suite execution is claimed; the host-load rule permits explicit focused paths
+only. Supervisor candidate gates remain outside this local delivery boundary.
+Repair cycle 1 replaces all seven sibling duck-SKU occurrences with
+`ITEM-BETA-400`; scanning all 37 P6 test/helper paths and the package tests also
+found and neutralized one beef SKU and two region fixtures in the reference
+semantic suites. The existing test-local substitution dictionary records these
+pairs. Assertions remain **425 original / 440 total**. The moved-package-test
+acceptance obligation remains satisfied.
+
+Repair cycle 1's focused run, collection comparison, all-project published-tree
+typecheck, ast-grep scan, ESLint on all 49 changed TypeScript paths, publication
+policy and `git diff --check` exit 0. ESLint reports zero warnings and zero errors;
+public CI neutrality reports zero increases. Policy with regenerated navigation
+has five obligations and zero unanswered. Exact commands, per-file counts and
+every residue-scan hit with its disposition are retained in the repair handoff.
+Package exports are unchanged, so this continuation adds no Unreleased changelog note.
 The threshold search has 11 matches: one reference constant, three reference
 fixtures, two immutable baseline SQL predicates and five managed pgTAP matches.
 
@@ -462,6 +498,119 @@ continuation, initial collection failed because package build outputs were absen
 building the existing workspaces restored collection without source changes.
 Lesson: absent build outputs → build existing prerequisites before collection.
 The chosen constant location avoided a thirteenth production source path.
+Slot-check retro: cold packaging removes earlier package declarations, so the
+first subsequent API check refused the missing output; rebuilding the existing
+workspaces restored all API checks without source changes. Explicit collection
+also exposed inflated ledger counts. Lesson: cold pack → restore declarations
+before API checks; count collected JSON cases rather than inferred totals.
+Repair-cycle retro: the sibling SKU was absent from the substitution dictionary,
+and the collection explanation omitted the 20-case bundle-rule suite while
+counting semantic cases twice. Lesson: incomplete fixture dictionary → scan the
+whole changed fixture set; ambiguous totals → sum disjoint collected file groups.
+The repair uses direct substitutions and adds no cases, helper or production path.
+
+## P5
+
+The approved reference-only cut repairs browser promotion schemas and applies
+Decision B's exponent-aware subscribe display, including fallback and refusal to
+guess. Local schemas preserve current package semantics; package server exports,
+DTOs, shipping and band behavior remain unchanged.
+
+Explicit locale/data/media/lifecycle inputs feed additive catalog, product and
+selected-basket pages through testable reference routes. The shipped public root
+is not mounted here; that composition remains P7. The builder maps neutral
+acquisition terms into a separate persisted consent expectation, with fresh
+selected-quote navigation and consent invalidation on basket edits. Existing
+admin pages accept optional read/lifecycle bindings without changing default
+transports, gates or mutations. Optional SSG details/media preserve legacy detail
+lookup and gallery behavior. The W6 source witness remains unchanged outside
+this tree; the neutral reference transcript exercises production save/reload and
+navigation paths without activating incumbent endpoints or caches.
+
+Task authority: implementation and focused local verification only, in the
+assigned task worktree. The supervisor owns commits, native candidate review and
+delivery. No Git writes, release, external mutation or adopter change is included.
+The separate in-flight extraction is not a dependency. The agreed stock-card,
+reservation and shipping-handler exclusions remain intact; no communications
+integration is introduced. Existing D8, bundle parity and P6 obligations stay open
+as recorded below and above.
+
+Diff against fork point `090f37f8`
+(`090f37f82e2941fd883ab5ab6e8a586bb76922a8`):
+**20/35 production/tooling paths**, comprising 19 reference source paths and one
+publication catalogue JSON companion. The 30 changed paths also include five
+test files and five prose files, excluded from this path count. The committed
+source-release contract matches main and is not part of the P5 delta.
+Review repair `40020ff8` makes the builder consent line state the exact
+second-delivery promise.
+**12 new executed cases** consume the coordinator's supplied post-extraction
+planning balance **17 → 5**. P5 leaves **5** for P7; the planned P7 allocation
+consumes **5 → 0**. The allocation is currency 2 (both normal/fallback
+tables in one case, exponent refusal in one), promotion parity/browser closure 3,
+W6 4 and SSR/locale/lifecycle 3. The existing D8, bundle parity and P6 rows are
+unchanged.
+
+Collection on the final source: subscribe entry model **8**, promotion binding
+**4**, reference builder conformance **4**, reference SSR **1**, reference page
+DOM **2**. All are in existing include globs: Node `src/**/*.{test,spec}.ts` and
+`tests/platform/**/*.{test,spec}.ts`, DOM `src/**/*.{test,spec}.tsx`; the builder
+Node path explicitly selects the DOM environment for actual persistence. The
+second-main-merge focused selection passed **21 files / 153 cases** (19 files / 134
+cases, plus two direct promotion handler suites / 19 cases), with two workers.
+All five changed test files were explicitly listed: **5 files / 19 cases**,
+including the three new files / seven cases. Existing
+client, document panel, bundle helper, quote/cache, draft, subscribe journey,
+product FAQ/support, reference-store and public-entry SSR guards remain intact.
+The overlapping catalogue/documentation consumers also pass **11 files / 646
+cases**; these existing cases do not consume the new-case allocation.
+
+At fork point `090f37f8` plus P5, the existing browser measurement helper reports
+**22,007 B** for the promotion
+client, **20,610 B** for the code client and **43,473 B** for the opt-in reference
+routes (minified+gzip, including their runtime closures). Replacing only the two
+schema inputs with their baseline versions makes browser bundling refuse Node
+built-ins; a comparable baseline browser-byte total is therefore unavailable.
+These are application measurements, not package-entry limits. No package or
+browser budget change is requested.
+
+Cold platform pack at fork point `090f37f8` plus P5: **1,140 files / 1,116 code files /
+761,916 packed B / 3,436,956 unpacked B / 647,945 code gzip B**; root docs
+**38,848 gzip B / 5 files**. All three package artifacts pass existing caps and
+content checks; no package file, cap or baseline changes in P5.
+
+Second-main-merge structural scan, lint, all five typecheck projects (including tests),
+static and subscription builds, focused tests, collection and P5-scoped diff
+whitespace checks pass. Lint reports zero errors and 33 warnings. Cold packing,
+all three API snapshot checks and all three installed consumers pass, including
+disposable PostgreSQL proofs. Core smoke types, documentation and release checks
+also pass. Broad tests and coverage remain excluded by the focused-check grant; the
+aggregate package runner was not invoked because it includes coverage. These
+focused results do not claim that aggregate gate. This run used the task-owned
+cache from the start, with two Vitest workers; no check required a retry.
+
+The publication catalogue covers all 30 P5 paths with no missing or stale rows;
+policy and inventory pass across 5,404 public paths (5,402 authored rows and two
+pattern-admitted fragments). Catalogue serialization produces identical bytes,
+with every main row preserved and no duplicate, missing or stale row. Both P5's
+reference-UI paragraphs and main's A1 additions remain coherent. Navigation
+regeneration produces no delta, and all four documentation impact obligations are answered.
+The source-release snapshot remains unchanged under the current release flow;
+checks validate computed bindings and report its stale aggregate snapshot as
+expected. P5 changes no package changelog or fragment. Root neutrality reports
+zero increases against fork point `090f37f8`; UI neutrality also passes. All eight
+commits in `090f37f8..HEAD`, including both merges, carry DCO sign-off. Task-created untracked build
+directories were removed. The only repository edit from this second-main-merge pass is
+this ledger; commits, native candidate review and delivery remain supervisor
+obligations.
+
+Self-retro: checking actual legacy renderer fields caught incorrect new fixture
+assumptions before handoff. Use rendered composition cards and FAQ/supplement
+facts to test the supplied-details seam; keep the finite case allocation rather
+than adding a second harness or new runner. Slot-time lesson: a default cache
+write restriction caused two failed attempts; a task-owned cache preserved the
+existing checks without a repository or host configuration change. Second-merge
+lesson: reusing that cache and the existing catalogue serializer avoided retries
+and an unnecessary generator or merge repair. No successor work is opened.
 
 ## P7 — inert native composition and M05 mounted readback
 

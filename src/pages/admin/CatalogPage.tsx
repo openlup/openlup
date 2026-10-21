@@ -1,3 +1,5 @@
+import { CatalogLifecycleObservation } from "@/components/admin/CatalogLifecycleObservation";
+import type { CatalogPublicationReadResult } from "@openlup/platform/catalog/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
@@ -36,7 +38,11 @@ import { CatalogDocumentPanel } from "@/components/admin/CatalogDocumentPanel";
 /** The projection's source table, named in help copy through interpolation. */
 const PACKS_SOURCE_TABLE = "catalog_sku_eans";
 
-export default function CatalogPage() {
+export default function CatalogPage({ reference }: { reference?: {
+  lifecycle?: CatalogPublicationReadResult;
+  packs?: typeof getCatalogSkuPacks;
+  reconciliations?: typeof getOpenProductReconciliationCount;
+} } = {}) {
   const { t } = useTranslation("admin");
   const { session } = useAuth();
   const accessToken = session?.access_token;
@@ -50,12 +56,12 @@ export default function CatalogPage() {
   // say so; `BundlesPage` states the same clause for the same reason.
   const packsQuery = useQuery({
     queryKey: ["admin-catalog-sku-packs"],
-    queryFn: () => getCatalogSkuPacks(accessToken as string),
+    queryFn: () => (reference?.packs ?? getCatalogSkuPacks)(accessToken as string),
     enabled: Boolean(accessToken) && catalogAdminEnabled(),
   });
   const reconciliationQuery = useQuery({
     queryKey: ["admin-product-reconciliation-open-count"],
-    queryFn: () => getOpenProductReconciliationCount(accessToken as string),
+    queryFn: () => (reference?.reconciliations ?? getOpenProductReconciliationCount)(accessToken as string),
     enabled: Boolean(accessToken) && catalogAdminEnabled(),
   });
   const openReconciliations = reconciliationQuery.data ?? 0;
@@ -66,6 +72,7 @@ export default function CatalogPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
+      {reference?.lifecycle && <CatalogLifecycleObservation result={reference.lifecycle} />}
       <header>
         <h1 className="font-display text-[24px] font-bold text-teal-dark">
           {t("admin:adminCatalog.title")}

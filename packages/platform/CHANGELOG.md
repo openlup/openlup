@@ -7,23 +7,10 @@ which. Declaration snapshots track candidate drift, not a stable API or
 SemVer promise.
 
 ## [Unreleased]
-- Add the existing native catalog envelope/draft factories and sparse
-  `CATALOG_MIGRATIONS` projections at positions 1/8/58/59/61. Store bodies move
-  unchanged except imports; no schema, manifest, default exposure or activation
-  changes. Add the inert structural catalog contribution and explicit reference
-  binding with unsupported native capabilities declared.
 
-Migration: existing store import paths remain reference compatibility paths;
-installed consumers use the two factories from `./catalog`. Mapper helpers are
-not public exports. API reports add the new declaration sections in sorted emit
-order; no existing export is removed or renamed. The contribution entry adds
-`createCatalogContribution` and `CatalogContributionInput`. Native publication,
-lifecycle writes and acquisition acceptance remain unsupported. No version bump
-or release is prepared by this change.
+- Import the flat-rate shipping handler with required host schemas and retain reference selection, pickup and stock UI mechanics.
 
-
-- Correct pricing and bundle comments, delegate VAT arithmetic to the existing helper,
-  and neutralize moved test fixtures without changing assertions. No API change.
+- Add address lookup, authenticated address-book handlers and row helpers to shipping with required host validation and canonicalization.
 
 - Extract admin/native inventory reads and injected new-purchase stock projection.
 - Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
@@ -53,7 +40,6 @@ actor-kind enforcement remains handler-only. Comment corrections distinguish the
 managed chain's 42501 publish_requires_human refusal from that native boundary.
 The catalog declaration snapshot reorders existing count enum members; their
 values and runtime behavior are unchanged.
-
 - Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
 
 - Add experimental opt-in Node `communications/resend` with exactly three

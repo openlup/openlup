@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 
+import { isChangelogFragmentArea, validateChangelogFragment } from "./packages/changelog-fragments.ts";
+
 export const PUBLIC_POLICY_REGISTRY_PATH = "config/openlup-policy-registry.json";
 export const PUBLICATION_CATALOG_PATH = "config/openlup-publication-catalog.json";
 export const PUBLIC_REFERENCE_BUILD_COMMAND = "npm --workspace @openlup/core run build && npm --workspace @openlup/platform run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender";
@@ -110,3 +112,16 @@ export function parsePublicPublicationCatalog(source: string): PublicPublication
 }
 export function createPublicPublicationCatalog(publicPaths: PublicCatalogPath[], guardViability: PublicGuardViability[]) { const contents = `${JSON.stringify({ schemaVersion: 3, publicPaths, packageCommands: PUBLIC_PACKAGE_COMMANDS, packageExecutionSurfaces: PUBLIC_PACKAGE_EXECUTION_SURFACES, guardViability }, null, 2)}\n`; parsePublicPublicationCatalog(contents); return { contents, digest: digest(contents) }; }
 export function publicPublicationCatalogDigests(source: string) { const catalog = parsePublicPublicationCatalog(source); return { inventoryDigest: digest(JSON.stringify(catalog.publicPaths.map(({ path }) => path))), classDigest: digest(JSON.stringify(catalog.publicPaths)) }; }
+
+/** Exact authored rows, plus the single content-validated fragment admission pattern. */
+export function effectivePublicCatalogPaths(source: string, entries: readonly { path: string; mode: string }[], read: (path: string) => string | Buffer | undefined): PublicCatalogPath[] {
+  const rows = parsePublicPublicationCatalog(source).publicPaths;
+  const fragments = entries.filter(({ path }) => isChangelogFragmentArea(path));
+  for (const { path, mode } of fragments) {
+    const bytes = read(path);
+    if (bytes === undefined) throw new Error(`${path}: fragment is absent`);
+    validateChangelogFragment(path, bytes, mode);
+    if (rows.some((row) => row.path === path)) throw new Error(`${path}: fragments use pattern admission, not per-file catalog rows`);
+  }
+  return [...rows, ...fragments.map(({ path }) => ({ path, class: "public-output" }))].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
+}

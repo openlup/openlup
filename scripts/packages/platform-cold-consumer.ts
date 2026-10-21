@@ -1,4 +1,5 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
+import { stripTypeScriptTypes } from "node:module";
 import { env as processEnvironment } from "node:process";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -15,6 +16,7 @@ export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "compo
 export const ADAPTER_ENTRIES = [
   "blob", "data", "migrations", "job-ledger", "identity", "communications", "promotions", "catalog",
   "communications/resend",
+  "communications/klaviyo",
 ] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -298,6 +300,34 @@ assert.deepEqual(calls.map(call=>call.options.method),["POST","GET"]);
 `);
 }
 
+/** Singleton marketing proof from installed bytes, with local-only credentials and injected I/O. */
+export function proveMarketingSyncConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+globalThis.fetch = () => { throw Error("ambient network forbidden"); };
+const adapter = await import("@openlup/platform/communications/klaviyo");
+assert.equal(Object.keys(adapter).length,1,"P2 installed exact one-export surface");
+const factory = Object.values(adapter)[0]; assert.equal(typeof factory,"function");
+const binding={account:"synthetic",environment:"test",namespace:"host",mappingVersion:"1"},audience={kind:"account-wide"};
+const subject={binding,subjectReference:"opaque:1",generation:1,erased:false,id:"profile_1",email:"reader@example.invalid",externalReference:"local:1",ownedFields:[],ownedProperties:[]};
+const values=new Map(),calls=[];
+const storage={availability:{account:binding.account,environment:binding.environment,busy:false,quarantined:false},get:async k=>values.get(k)??null,compareAndSwap:async(k,expected,next)=>{if((values.get(k)??null)!==expected)return false;values.set(k,next);return true;}};
+const auth={binding,audience,subjectReference:"opaque:1",operation:"consent.read",expiresAtMs:10000};
+let clock=10;
+const config={binding,audience,subjectMapper:ref=>ref==="opaque:1"?subject:undefined,resolveCredential:()=>({binding,key:"synthetic-key"}),authorizations:new Map([["authorization:1",auth]]),localEvidence:new Map(),storage,now:()=>clock,rateIntervalMs:1,fetch:async(url,options)=>{calls.push({url,options});clock+=2;return Response.json({data:{type:"profile",id:"profile_1",attributes:{email:subject.email,external_id:subject.externalReference,subscriptions:{email:{marketing:{consent:"SUBSCRIBED",can_receive_email_marketing:true,suppression:[],list_suppressions:[]}}}}}});}};
+const request={binding,audience,subjectReference:"opaque:1",requestId:"read:1",generation:1,deadlineMs:10000,authorizationReference:"authorization:1",operation:"consent.read",payload:{}};
+const pending=factory(config);
+assert.equal(pending.capabilities.operations["consent.read"].state,"verification_pending","P2 installed pending account evidence");
+assert.equal((await pending.consent.read(request)).reason,"verification_pending");assert.equal(calls.length,0,"P2 unverified zero IO");
+assert.deepEqual(Object.values(pending.newsletter.capabilities),Array(9).fill(false));assert.equal((await pending.newsletter.sync({})).status,"skipped");
+config.verification={binding,audience,evidenceReference:"offline:synthetic",revision:"2026-07-15",operations:["consent.read"],scopes:["profiles:read"],noTrigger:{profile:false,accountWideGrant:false,doi:false},safeCreate:false,safeListRemoval:false,suppressionSafeAtEffect:false,negativeSourcesComplete:true,listMappings:{}};
+const verified=factory(config),result=await verified.consent.read(request);
+assert.equal(result.kind,"completed","P2 installed injected positive control");assert.equal(result.value.remoteConsent,"subscribed");assert(!Object.hasOwn(result.value,"localConsent"));
+assert.equal(calls.length,1);assert.equal(calls[0].options.method,"GET");assert.equal(calls[0].options.redirect,"manual");
+assert.equal(verified.consentPush.capabilities.operations["consent.push"].grantEffect,"account-wide");
+`);
+}
+
 export function proveCommunicationsConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
@@ -559,6 +589,73 @@ assert.deepEqual(selected.contributions.map(item => item.manifest.module.id), ["
 `);
 }
 
+/** Copy only the actual host composition; all package imports resolve installed bytes. */
+export function installA1HostBinding(consumer: string, checkout = root): void {
+  for (const relative of ["communications/a1ReferenceBinding", "communications/referenceComposition", "communications/communicationsSchema", "outbox/candidateAdmission"]) {
+    const target = join(consumer, "server/runtime", relative + ".js");
+    mkdirSync(dirname(target), { recursive: true });
+    const source = readFileSync(join(checkout, "server/runtime", relative + ".ts"), "utf8");
+    writeFileSync(target, stripTypeScriptTypes(source));
+  }
+}
+
+/** Uses the same SDK-absent installed-consumer runner as the adapter proofs. */
+export function proveA1ReferenceBindingConsumer(consumer: string, phase: "imports" | "selection"): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+const bindingUrl = new URL("./server/runtime/communications/a1ReferenceBinding.js", import.meta.url);
+const source = readFileSync(bindingUrl, "utf8");
+// No absolute/checkout fallback may coexist with successful installed resolution.
+for (const [, specifier] of source.matchAll(/\\b(?:from\\s*|import\\s*\\()\\s*["']([^"']+)["']/g)) {
+ if (specifier.startsWith("@openlup/")) assert(fileURLToPath(import.meta.resolve(specifier)).startsWith(process.cwd() + "/node_modules/"), "P3 installed resolution");
+ assert(!specifier.startsWith("/") && !specifier.startsWith("file:"), "P3 checkout fallback");
+}
+globalThis.fetch = () => { throw Error("ambient network forbidden"); };
+const { createA1ReferenceBinding } = await import(bindingUrl.href);
+let loads = 0, posts = 0, clocks = 0, credentials = 0;
+assert.equal(await createA1ReferenceBinding(), undefined);
+assert.equal(await createA1ReferenceBinding({ enabled:false, loadHostInputs:()=>{loads++;throw Error("eager");} }), undefined);
+assert.equal(loads, 0);
+const candidate = {artifact:"synthetic",configuration:"selected",environment:"disposable",database:"synthetic",schema:"70"};
+const binding = {account:"synthetic",environment:"disposable",namespace:"cold",mappingVersion:"1"};
+const values = new Map();
+const host = {
+ migrationIdentity:"70", admission:{candidate,currentIdentity:()=>candidate,
+ observed:{loadedPackages:[{name:"@openlup/core",version:"0.17.0",kind:"kernel"},{name:"@openlup/platform",version:"0.17.0",kind:"rail"}],inventoryComplete:true},
+ schemaProbe:{observe:async required=>({database:"synthetic",version:"70",objects:required.objects.map(object=>({object,present:true}))})}},
+ sender:{environmentTagName:"host_env",policy:to=>({mode:"sandbox_sink",reason:"synthetic",intendedRecipient:to,recipient:"sink@example.invalid",credential:"synthetic",environmentTag:"non_production"}),fetch:async()=>{posts++;return Response.json({id:"cold"});}},
+ callback:{environmentTagName:"host_env",webhookSecret:"synthetic",port:{findSend:async()=>null,applyObservation:async()=>{throw Error("unexpected callback");},recordAttempt:async()=>{}}},
+ marketing:{binding,audience:{kind:"account-wide"},subjectMapper:()=>undefined,resolveCredential:()=>{credentials++;return undefined;},authorizations:new Map(),localEvidence:new Map(),
+ storage:{availability:{account:binding.account,environment:binding.environment,busy:false,quarantined:true},get:async key=>values.get(key)??null,compareAndSwap:async()=>{throw Error("unexpected storage");}},now:()=>{clocks++;return 1;}},
+ delivery:{database:{connectionString:"postgresql://unused.invalid/cold"},options:{binding:"synthetic"},resolveCredential:()=>{throw Error("unselected credential");},now:()=>{throw Error("unselected clock");},limit:1,graceMinutes:45}
+};
+const unselected = await createA1ReferenceBinding({enabled:true,loadHostInputs:()=>host});
+assert.equal(unselected.admitted,true,"P3 installed admission");
+assert.deepEqual(unselected.runtime.routes,[],"P3 empty default routes");assert.deepEqual(unselected.runtime.schedules,[],"P3 empty default schedules");assert.deepEqual(unselected.runtime.handlers,[],"P3 empty default handlers");
+assert.equal(unselected.ports.marketing.capabilities.operations["profile.sync"].state,"verification_pending");
+assert.deepEqual(await unselected.ports.marketing.newsletter.sync({}),{status:"skipped",reason:"unsupported"});
+assert.equal(posts+clocks+credentials,0,"P3 no unselected effects");
+if (${JSON.stringify(phase)} === "selection") {
+ let selected;
+ host.select=ports=>{selected=ports;return {routes:[{id:"/synthetic",handle:ports.webhook}],schedules:[{id:"synthetic",cadenceSeconds:60,run:ports.reconcile}],handlers:[]};};
+ const active = await createA1ReferenceBinding({enabled:true,loadHostInputs:()=>host});
+ assert.equal(active.ports,selected,"P3 exact selected ports");
+ for (const [key,value] of Object.entries(selected)) assert.equal(active.runtime.ports[key],value,"P3 exact admitted callable");
+ assert.equal(active.runtime.routes.length,1);assert.equal(active.runtime.schedules.length,1);assert.deepEqual(active.runtime.handlers,[]);
+ assert.equal(active.runtime.routes[0].handle,selected.webhook,"P3 exact selected route");assert.equal(active.runtime.schedules[0].run,selected.reconcile,"P3 exact selected schedule");
+ const { guardEmailTransport } = await import("@openlup/platform/communications");
+ const transport = guardEmailTransport(selected.transport);
+ assert.equal(transport,selected.transport,"P3 existing transport injection seam");
+ assert.equal((await transport.send({from:"sender@example.invalid",to:"reader@example.invalid",subject:"Synthetic",html:"<p>Notice</p>"})).outcome.ok,true);
+ assert.equal(posts,1,"P3 single sender");
+ assert.deepEqual(Object.keys(active.ports).sort(),["marketing","reconcile","transport","webhook"]);
+ assert(!/subscription|claimBatch|setInterval|setTimeout/.test(source),"P3 no second executor or subscription writer");
+}
+`);
+}
+
 export function runPlatformColdConsumer(checkout = root, environment = processEnvironment): void {
   const manifest = environment.OPENLUP_PACK_MANIFEST, commit = environment.OPENLUP_PACK_COMMIT;
   if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit)) throw new Error("Missing or malformed OPENLUP_PACK_MANIFEST / OPENLUP_PACK_COMMIT");
@@ -732,7 +829,12 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);
     proveResendConsumer(consumer);
+    proveMarketingSyncConsumer(consumer);
+    installA1HostBinding(consumer, checkout);
+    proveA1ReferenceBindingConsumer(consumer, "imports");
+    proveA1ReferenceBindingConsumer(consumer, "selection");
     compileConsumer(consumer, ["communications/resend"], compiler);
+    compileConsumer(consumer, ["communications/klaviyo"], compiler);
     install(OPTIONAL_PEERS.map(locked), true);
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);

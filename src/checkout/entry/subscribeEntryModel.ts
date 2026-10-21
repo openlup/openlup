@@ -1,3 +1,5 @@
+import { formatCurrencyMinor } from "@/lib/currency/formatMinor";
+import { currencyExponent } from "@/lib/currency/platformCurrency";
 import {
   checkoutCommandV1Schema,
   CHECKOUT_COMMAND_V1,
@@ -195,13 +197,14 @@ export function formatOfferPrice(
   profile: SellableCatalogProfile,
   item: SellableCatalogItem,
 ): string {
-  const major = item.unitPrice.amountMinor / 100;
   try {
-    return new Intl.NumberFormat(profile.locale, {
-      style: "currency",
+    return formatCurrencyMinor(item.unitPrice.amountMinor, {
+      locale: profile.locale,
       currency: item.unitPrice.currency,
-    }).format(major);
+    });
   } catch {
-    return `${major.toFixed(2)} ${item.unitPrice.currency}`;
+    const exponent = currencyExponent(item.unitPrice.currency);
+    const major = item.unitPrice.amountMinor / 10 ** exponent;
+    return `${major.toFixed(exponent)} ${item.unitPrice.currency}`;
   }
 }

@@ -22,6 +22,7 @@
  * publishes. `--cold` also removes untracked dist outputs before each attempt;
  * preflight and publisher use it so no package depends on another pack's residue.
  */
+import { isChangelogFragmentArea, validateChangelogFragment } from "./changelog-fragments.ts";
 import { env as processEnvironment } from "node:process";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -222,6 +223,14 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
       return released.length === 1 && sections.indexOf(released[0]!) > sections.findIndex((section) => section.startsWith("## [Unreleased]")) && /^\s*Migration:/mu.test(released[0]!);
     } catch { return false; }
   };
+  const fragmentNotes = new Map<string, string[]>();
+  for (const row of capture(root, "git", ["ls-tree", "-r", "-z", "--full-tree", head]).split("\0").filter(Boolean)) {
+    const match = /^(\d{6}) \w+ ([a-f0-9]{40})\t(.+)$/u.exec(row);
+    if (!match || !isChangelogFragmentArea(match[3]!)) continue;
+    const path = match[3]!, directory = path.split("/").slice(0, 2).join("/");
+    const contents = validateChangelogFragment(path, capture(root, "git", ["cat-file", "blob", match[2]!]), match[1]!);
+    fragmentNotes.set(directory, [...(fragmentNotes.get(directory) ?? []), contents]);
+  }
   const refusals: string[] = [];
   for (const { name, directory } of parsePackagesConfig(atBase(PACKAGES_CONFIG_PATH)).packages.filter(({ publish }) => publish)) {
     const gates = `${directory}/release-gates.json`, before = surface(base, gates, atBase(gates)), after = surface(head, gates, atHead(gates));
@@ -233,7 +242,7 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
     const sections = (atHead(`${directory}/CHANGELOG.md`) ?? "").split(/^(?=## )/mu);
     const unreleased = sections.filter((section) => section.startsWith("## [Unreleased]"));
     const missing = unreleased.length !== 1 ? `${directory}/CHANGELOG.md has ${unreleased.length} "## [Unreleased]" sections, not one`
-      : /^\s*Migration:/mu.test(unreleased[0]!) || (unreleased[0]!.trim() === "## [Unreleased]" && preparedMigration(directory, sections)) ? undefined : `its "## [Unreleased]" section has no Migration: block`;
+      : [/^\s*Migration:/mu.test(unreleased[0]!), ...(fragmentNotes.get(directory) ?? []).map((text) => /^\s*Migration:/mu.test(text))].some(Boolean) || (unreleased[0]!.trim() === "## [Unreleased]" && preparedMigration(directory, sections)) ? undefined : `its "## [Unreleased]" section has no Migration: block`;
     if (missing) refusals.push(`migration-block ${name}: ${changed.join(", ")} removes or changes a declaration line since ${base}, and ${missing}; add a Migration: block with the code or SQL before and after`);
   }
   let publishable: readonly PackageEntry[] = [];

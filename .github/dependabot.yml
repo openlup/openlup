@@ -1,10 +1,9 @@
 version: 2
-# Dependabot pull requests here are a signal, not a merge route. Their commits
-# carry no Signed-off-by line, and a lockfile change also needs the regenerated
-# config/openlup-source-release-contract.json. A maintainer applies an update on
-# a signed branch that regenerates the contract (CONTRIBUTING.md) and closes the
-# Dependabot pull requests it supersedes. Published Tree CI runs the jobs of a
-# Dependabot pull request only when a person marks it ready for review.
+# Dependabot pull requests are a signal, not a merge route. Their commits carry
+# no Signed-off-by line. A maintainer applies updates on a signed branch and
+# closes superseded PRs. Lockfile PRs keep the source-release snapshot unchanged:
+# digests refresh at release prep only (CONTRIBUTING.md). Published Tree CI runs
+# Dependabot jobs only when a person marks the PR ready for review.
 updates:
   - package-ecosystem: npm
     # "/" is the workspace root; "/packages/core" keeps its own standalone
