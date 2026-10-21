@@ -219,4 +219,10 @@ it("accepts an empty optional payer name and refuses JSON-escaped payer leaks", 
     await expect(runPaymentAdapterConformance([f])).rejects.toThrow("readback secret redaction");
     f.adapter.readbackPort.readPayment = async () => ({ ...f.readbackInput, kind: "unknown", reason: "timeout" });
   }
+  const authorization = 'code"with\\escape' as typeof f.executionInput.customerAuthorization;
+  f.executionInput.customerAuthorization = authorization;
+  f.verification.length = 0;
+  f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "attempt", status: "processing" },
+    dispatch: { kind: "unknown" }, diagnostics: { echoed: authorization } });
+  await expect(runPaymentAdapterConformance([f])).rejects.toThrow();
 });

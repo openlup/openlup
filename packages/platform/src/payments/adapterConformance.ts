@@ -34,7 +34,7 @@ export async function runPaymentAdapterConformance(
       providerRequestFingerprint: executionInput.fingerprint, paymentIntentId: executionInput.intentRef,
       amountMinor: executionInput.money.amountMinor, currency: executionInput.money.currency, mode: "one_time" as const,
     };
-    const validation = validatePaymentExecutionContractResult({ input, expectedProvider: provider, sensitiveValues,
+    const validation = validatePaymentExecutionContractResult({ input, expectedProvider: provider, sensitiveValues: sensitiveForms,
       result: { provider, providerAttemptId: result.dispatch.kind === "dispatched" ? result.dispatch.providerPaymentRef : null,
         providerSessionId: null, attemptStatus: result.outcome.kind === "attempt" ? result.outcome.status : "processing",
         nextActionKind: null, requestPayload: { providerIdempotencyKey: input.providerIdempotencyKey,
