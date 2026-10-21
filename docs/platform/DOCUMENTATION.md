@@ -61,6 +61,15 @@ source availability. Release-specific instructions belong with the selected
 immutable release; see the [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md).
 
 ## Ownership
+The P7 native catalog move keeps the package README as owner of the two
+factory exports, sparse descriptor and structural contribution. The adapter
+owner explains reference compatibility paths; the runtime owner explains the
+explicit inert selection and unchanged default exposure. Contributor guidance
+owns the three P7 proof files, five cases and reused packed-consumer scenario. The
+publication catalogue and derived source contract inventory these additions;
+neither generated navigation nor schema-object presence establishes activation
+or a successful installed consumer.
+
 
 The catalog extraction keeps the platform README as owner of its new package
 entries and moved witnesses, and the catalog domain README as owner of reference

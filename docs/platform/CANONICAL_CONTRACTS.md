@@ -47,6 +47,16 @@ transition requires an explicit mapping, persistence compatibility, and tests
 for refusal, replay, and ordering.
 
 ## Idempotency
+The native bundle contention witness characterizes the existing global event
+key, without adding payload/entity binding. Two absent-key transactions on
+disjoint bundles can block at the unique key index: after the first commits,
+the second raises `23505` and its attempted composition is rolled back. If the
+first rolls back, the second can commit. A later same-key call recognizes the
+key before validating changed payload, entity or routine. This is incumbent
+recognition, not a stronger exactly-once or payload-fingerprint guarantee.
+Catalog draft receipts retain their separate canonical-command fingerprint and
+revision behavior; moving their adapter does not change either protocol.
+
 
 Every externally repeatable write has an idempotency scope, a stable operation
 identity, and a request fingerprint. Replaying the same logical request returns

@@ -15,3 +15,4 @@ export {
   type ServeNodeOptions,
   type ServeNodeResult,
 } from "./nodeHost.js";
+export { createCatalogContribution, type CatalogContributionInput } from "./catalogContribution.js";

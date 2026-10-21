@@ -30,6 +30,23 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The opt-in reference catalog routes consume explicit per-locale snapshots with
+resolved media, detail facts and links. Their browser graph uses contracts
+entries and local validators; promotion clients and dialogs no longer enter the
+promotions server barrel. The subscription entry formats minor money with the
+currency exponent in normal and fallback paths and refuses an unknown exponent.
+No implicit catalog route is added to the shipped static or subscription profile.
+
+The reference selected-basket builder maps the neutral acquisition quote's
+top-level terms into a separate persisted expectation. It reuses the existing
+SSR-safe draft codec and pricing-policy admission predicate, keeping amount,
+currency, signed token, policy and second-delivery promise bound independently.
+Reloaded totals alone cannot authorize navigation: the selected fresh signed
+quote and explicit matching terms consent are required. An accepted basket edit
+clears both expectation and terms while retaining customer facts. The reference
+transport/storage scope leaves incumbent endpoints, caches and draft keys intact.
+Read-only lifecycle observations do not grant publication or withdrawal authority.
+
 The shipping server entry owns address lookup and authenticated address-book
 handlers and row helpers. Reference bindings retain geographic, source and tax
 validation, conflict identity and the canonical country default; hosts supply
@@ -488,6 +505,16 @@ For a separate integration artifact, follow the canonical
 Generic supported orchestration remains the platform's responsibility.
 
 ### Contributions, seams and readiness
+The M05 contribution is a structural declaration over supplied bound callables,
+not another domain or activation registry. Its three contributions retain the
+`catalog`, `pricing` and `promotions` identities. Ports and bundle routes retain
+actual function identity for the existing readiness checker. The reference binding
+selects native stores and delegates operator verification through the existing
+identity binding; no default dispatcher or authorization control changes. The
+package contribution imports readiness types only, so no new cross-module edge
+is needed. Missing selected callables or stock refuse, and incomplete/unknown
+schema observations cannot admit the candidate.
+
 
 The local outbox contribution implements these rules through the experimental
 `@openlup/core/readiness`, `./outbox` and `./standard-schema` subpaths.

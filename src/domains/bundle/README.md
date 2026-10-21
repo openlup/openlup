@@ -79,7 +79,9 @@ and native human-only activation still depends on the handler gate.
 `allowedActorKinds: ["human"]`. The MCP generator drops them, so the agent surface
 has no publish tool at all. The managed write routine independently refuses
 machine actors; native SQL has no independent actor-kind gate and relies on the
-handler. This extraction does not close that pending parity outcome. See `server/domains/bundle/README.md` for the enforcement table.
+handler. The spec comments distinguish these boundaries: request checks do not
+establish an independent native database actor-kind check. This extraction does
+not close that pending parity outcome. See `server/domains/bundle/README.md` for the enforcement table.
 
 ## Public navigation and availability
 

@@ -23,7 +23,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
-| `./inventory` | Experimental stock schemas/ports and SQL projections; forecast provider validation is required and injected. Browser DTOs: `./inventory/contracts`; reference browser validators stay local. |
+| `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
@@ -102,7 +102,8 @@ and proves reads without durable writes, paid/released lifecycle, bounded
 sweep, receipt/outbox fences, replay, lock/settlement skips and explicit invoker
 grants. This is existing native lifecycle/read evidence only. Native code
 candidates, mounted issue/honor, acquisition-only mounted acceptance and the
-full native/managed eligibility matrix remain pending in the
+full native/managed eligibility matrix are accepted native-backend capability
+gaps, without a parity claim, in the
 [module ledger](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#d8-pending-outcome-ledger).
 
 ## Pricing
@@ -190,6 +191,23 @@ in the application. The existing cold consumer exercises both entries and
 compiles installed declarations without optional provider peers.
 
 ## Catalog
+The native envelope and dark draft adapters now live in this entry as
+`createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
+They accept an injected executor and retain the existing mapping, errors and SQL
+semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
+projects canonical positions 1, 8, 58, 59 and 61 byte for byte; these assets are
+sparse references, never a standalone install chain. No canonical migration or
+manifest entry changes.
+
+The composition entry adds `createCatalogContribution` and its structural input
+interface. It describes actual catalog, pricing and promotions callables under
+those existing module identities, with no environment discovery, client creation
+or registration. It imports only readiness types: composition gains no catalog
+edge, and catalog retains its existing type-only data edge. Package boundary
+checks pin those imports and peer-free composition declarations. The packed
+consumer exercises both new stores and the descriptor without optional peers;
+its synthetic executor proves named refusal, not durable storage behavior.
+
 
 `./catalog` is an experimental capability for the existing neutral catalog
 foundation, installed product types, draft validation/use cases, active SKU
@@ -261,6 +279,14 @@ have no independent human-only actor-kind gate; the handler supplies that gate.
 This does not close the bundle parity ledger.
 The complete contracts entry measures 3,281 B minified+gzip against its 4,096 B
 budget; other entry and aggregate caps are unchanged.
+
+Moved catalog, pricing and promotion fixtures use synthetic identities, regions,
+currencies and host-defined context fields. Their assertions retain the original
+operators and case counts. Reference classifiers receive the legacy threshold
+from their host composition; only the immutable managed baseline predicates
+await an owner decision. Pricing VAT calculation retains
+both exported helpers and their signatures: `calculateIncludedVat` delegates to
+`splitIncludedVat` through a distinct named wrapper using the same arithmetic.
 
 ## Scheduled jobs
 
@@ -387,7 +413,7 @@ phase redirects npm to an empty temporary cache.
 
 The composition declarations describe the injected Supabase factory structurally;
 they do not import the data entry or its PostgreSQL types. The cold proof still
-requires all six nonadapter entries (including `./identity/contracts`) to import in fresh processes and compile
+requires all declared non-adapter entries (including `./identity/contracts`) to import in fresh processes and compile
 in both resolution modes with all three optional peers absent.
 
 <!-- openlup-doc-impact {"unit":"platform-substrate","digest":"sha256-00994d288cfec0c8dc0ae9aeae2ff542e2e9af2fedcb4dd2dfeb6c99523be92d","reason":"The manifest moves to the 0.15.0 set version with the exact @openlup/core 0.15.0 peer pin. The package surface, settings and verification described here are unchanged by this preparation delta."} -->

@@ -75,32 +75,36 @@ it("reads ordered complete composition, selected figures, feed and history witho
   await pool.query("SELECT public.admin_activate_bundle($1,'READ-SET')", [actor]);
   // The incumbent read retains an unpriced component; the writer refuses it after pricing.
   await pool.query("INSERT INTO public.catalog_bundle_components(bundle_id,catalog_sku_id,quantity,sort_order) SELECT b.id,s.id,1,3 FROM public.catalog_bundles b,public.catalog_skus s WHERE b.code='READ-SET' AND s.sku='UNIT-U'");
-  await pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,min_qty,unit_price_minor,valid_from) SELECT price_list_id,variant_id,10,700,valid_from FROM public.price_entries WHERE variant_id=(SELECT id FROM public.catalog_skus WHERE sku='UNIT-A')");
-  const initial = await snapshot();
-  expect(await read().listBundles({ status: "active", query: "READ-", limit: 10, offset: 0 })).toMatchObject({ total: 1, bundles: [{ code: "READ-SET", componentCount: 3, hasActiveTargetPrice: true }] });
-  const detail = await read().getBundle({ code: "READ-SET", currency: "XXX" });
-  expect(detail).toMatchObject({ code: "READ-SET", resolvedCurrency: "XXX", compositionConstraint: null, prices: [{ targetPriceMinor: 2001, active: true }] });
-  expect(detail!.components.map(({ sku, quantity, isAddon, referenceUnitPriceMinor }) => ({ sku, quantity, isAddon, referenceUnitPriceMinor }))).toEqual([
-    { sku: "UNIT-B", quantity: 1, isAddon: true, referenceUnitPriceMinor: 500 },
-    { sku: "UNIT-A", quantity: 2, isAddon: false, referenceUnitPriceMinor: 1000 },
-    { sku: "UNIT-U", quantity: 1, isAddon: false, referenceUnitPriceMinor: null },
-  ]);
-  expect((await read().getBundle({ code: "READ-SET", mode: "one_time" }))!.components).toEqual(detail!.components);
-  expect(await read().listActiveBundleCompositions({ currency: "XXX" })).toEqual([expect.objectContaining({ code: "READ-SET", targetPriceMinor: 2001, components: detail!.components })]);
-  expect(await read().listActiveBundleCompositions({ currency: "YYY" })).toEqual([]);
-  const history = await read().listBundleHistory({ code: "READ-SET", limit: 20, offset: 0 });
-  expect(history.total).toBe(4);
-  expect(history.events.map(event => event.action).sort()).toEqual(["bundle_activate", "bundle_composition_set", "bundle_draft_upsert", "bundle_target_price_set"]);
-  for (const event of history.events) expect(event).toMatchObject({ actorKind: null, actorEmail: null, entityId: "READ-SET" });
-  expect(await read().getBundle({ code: "ABSENT" })).toBeNull();
-  // A real database permission failure is different from absence.
-  await pool.query("CREATE ROLE bundle_read_denied NOLOGIN");
-  const client = await pool.connect();
+  const tier = await pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,min_qty,unit_price_minor,valid_from) SELECT price_list_id,variant_id,10,700,valid_from FROM public.price_entries WHERE variant_id=(SELECT id FROM public.catalog_skus WHERE sku='UNIT-A') RETURNING id");
   try {
-    await client.query("SET ROLE bundle_read_denied");
-    await expect(createPostgresBundleCatalogStore(executor(client)).getBundle({ code: "ABSENT" })).rejects.toBeInstanceOf(BundleCatalogReadError);
-  } finally { await client.query("RESET ROLE"); client.release(); }
-  expect(await snapshot()).toEqual(initial);
+    const initial = await snapshot();
+    expect(await read().listBundles({ status: "active", query: "READ-", limit: 10, offset: 0 })).toMatchObject({ total: 1, bundles: [{ code: "READ-SET", componentCount: 3, hasActiveTargetPrice: true }] });
+    const detail = await read().getBundle({ code: "READ-SET", currency: "XXX" });
+    expect(detail).toMatchObject({ code: "READ-SET", resolvedCurrency: "XXX", compositionConstraint: null, prices: [{ targetPriceMinor: 2001, active: true }] });
+    expect(detail!.components.map(({ sku, quantity, isAddon, referenceUnitPriceMinor }) => ({ sku, quantity, isAddon, referenceUnitPriceMinor }))).toEqual([
+      { sku: "UNIT-B", quantity: 1, isAddon: true, referenceUnitPriceMinor: 500 },
+      { sku: "UNIT-A", quantity: 2, isAddon: false, referenceUnitPriceMinor: 1000 },
+      { sku: "UNIT-U", quantity: 1, isAddon: false, referenceUnitPriceMinor: null },
+    ]);
+    expect((await read().getBundle({ code: "READ-SET", mode: "one_time" }))!.components).toEqual(detail!.components);
+    expect(await read().listActiveBundleCompositions({ currency: "XXX" })).toEqual([expect.objectContaining({ code: "READ-SET", targetPriceMinor: 2001, components: detail!.components })]);
+    expect(await read().listActiveBundleCompositions({ currency: "YYY" })).toEqual([]);
+    const history = await read().listBundleHistory({ code: "READ-SET", limit: 20, offset: 0 });
+    expect(history.total).toBe(4);
+    expect(history.events.map(event => event.action).sort()).toEqual(["bundle_activate", "bundle_composition_set", "bundle_draft_upsert", "bundle_target_price_set"]);
+    for (const event of history.events) expect(event).toMatchObject({ actorKind: null, actorEmail: null, entityId: "READ-SET" });
+    expect(await read().getBundle({ code: "ABSENT" })).toBeNull();
+    // A real database permission failure is different from absence.
+    await pool.query("CREATE ROLE bundle_read_denied NOLOGIN");
+    const client = await pool.connect();
+    try {
+      await client.query("SET ROLE bundle_read_denied");
+      await expect(createPostgresBundleCatalogStore(executor(client)).getBundle({ code: "ABSENT" })).rejects.toBeInstanceOf(BundleCatalogReadError);
+    } finally { await client.query("RESET ROLE"); client.release(); }
+    expect(await snapshot()).toEqual(initial);
+  } finally {
+    await pool.query("DELETE FROM public.price_entries WHERE id = ANY($1::uuid[])", [tier.rows.map(row => row.id)]);
+  }
 });
 it("replaces whole sets atomically, refuses invalid writes, preserves dry runs and appends price history", async () => {
   await fixture("WRITE-SET");

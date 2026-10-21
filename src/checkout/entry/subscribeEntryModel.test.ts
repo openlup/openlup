@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { PLATFORM_DEFAULT_CURRENCY } from "@/lib/currency/platformCurrency";
+import { describe, expect, it, vi } from "vitest";
 
 import type { SellableCatalogItem, SellableCatalogProfile } from "@/domains/catalog/contracts";
 import {
+  formatOfferPrice,
   buildSubscribeEntryCommand,
   isContactComplete,
   subscribableOffers,
@@ -102,4 +104,28 @@ describe("subscribeEntryModel", () => {
       expect(result.status, `cadence ${cadenceDays}`).toBe("ready");
     }
   });
+});
+
+it("uses the owner-approved exponent table in normal and fallback output", () => {
+  const rows = [
+    ["JPY", 1500, "¥15", "¥1,500", "15.00 JPY", "1500 JPY"],
+    ["EUR", 1999, "€19.99", "€19.99", "19.99 EUR", "19.99 EUR"],
+    [PLATFORM_DEFAULT_CURRENCY, 1999, `${PLATFORM_DEFAULT_CURRENCY}\u00a019.99`, `${PLATFORM_DEFAULT_CURRENCY}\u00a019.99`, `19.99 ${PLATFORM_DEFAULT_CURRENCY}`, `19.99 ${PLATFORM_DEFAULT_CURRENCY}`],
+    ["KWD", 12345, "KWD\u00a0123.450", "KWD\u00a012.345", "123.45 KWD", "12.345 KWD"],
+  ] as const;
+  for (const [currency, amountMinor, normalBefore, normalAfter, fallbackBefore, fallbackAfter] of rows) {
+    const item = { ...subscribable, unitPrice: { currency, amountMinor } };
+    const normalProfile = { ...profile, locale: "en-US" };
+    expect(new Intl.NumberFormat(normalProfile.locale, { style: "currency", currency }).format(amountMinor / 100)).toBe(normalBefore);
+    expect(`${(amountMinor / 100).toFixed(2)} ${currency}`).toBe(fallbackBefore);
+    expect(formatOfferPrice(normalProfile, item)).toBe(normalAfter);
+    expect(formatOfferPrice({ ...normalProfile, locale: "invalid_locale" }, item)).toBe(fallbackAfter);
+  }
+});
+
+it("refuses to guess when the runtime cannot resolve the exponent", () => {
+  const lookup = vi.spyOn(Intl.NumberFormat.prototype, "resolvedOptions").mockReturnValue({ minimumFractionDigits: undefined } as Intl.ResolvedNumberFormatOptions);
+  try {
+    expect(() => formatOfferPrice(profile, { ...subscribable, unitPrice: { amountMinor: 1500, currency: "XXX" } })).toThrow("Refusing to guess");
+  } finally { lookup.mockRestore(); }
 });

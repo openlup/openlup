@@ -167,6 +167,30 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+The separate M05 reference factories
+[`m05CatalogBinding.ts`](../../server/runtime/public-reference/m05CatalogBinding.ts)
+and [`m05CatalogSchema.ts`](../../server/runtime/public-reference/m05CatalogSchema.ts)
+are explicit and inert. A host supplies its executor, verified identity binding,
+registry, quote/offer/promotion callbacks, stock port and complete catalogue
+identity. The factory selects the existing native envelope/draft, price-authority
+and bundle stores, supplies the existing handler factories and closes its owned
+bundle-write resources. Injected executor and identity lifetimes remain the host's.
+The finite schema requirement includes selected relations, columns and exact
+routine overloads; readiness still requires independently observed inventory,
+database and complete migration identity. Schema presence proves neither SQL
+semantics nor permission grants.
+
+All read, mutation and activation flags default to disabled. Returning a handler
+table does not register it: the shipped BFF caller table, browser pages, site
+manifest, prerender and subscription profile remain unchanged. Publication reads,
+publish, lifecycle writes and native acquisition acceptance remain unsupported.
+The consumer proof uses the existing quote/offer and authorized draft readback
+surfaces. The mounted admin/feed readback proof feeds the merged availability
+builder (`createNewPurchaseStockAvailabilityPort`) from an injected port-boundary
+stock reader double, so it proves the mounted readback, not native stock; the
+native stock read remains M06 P5a work. No acceptance token, publication receipt
+or real stock claim is made.
+
 
 The communications browser profile is separately opt-in with
 `OPENLUP_REFERENCE_PROFILE=communications`. Build it with the existing

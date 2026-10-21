@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { motion } from "framer-motion";
 import type { StorefrontItem } from "@/domains/catalog/storefrontItemModel";
-import type { StorefrontSsgLocale, StorefrontSsgSummaryItem } from "@/domains/catalog/storefrontSsgCatalog";
+import type { StorefrontSsgProductDetails, StorefrontSsgLocale, StorefrontSsgSummaryItem } from "@/domains/catalog/storefrontSsgCatalog";
 import { detailsFromStorefrontSsgCatalog } from "@/domains/catalog/storefrontSsgCatalog";
 import { storefrontSsgDetails } from "#storefront-ssg-details";
 import { useTranslation } from "react-i18next";
@@ -13,14 +13,15 @@ import { useRenderRuntime } from "@/app/renderMode";
 interface Props {
   product: StorefrontSsgSummaryItem;
   locale: StorefrontSsgLocale;
+  details?: StorefrontSsgProductDetails;
 }
 
 type ProductTabId = "ingredients" | "nutrition" | "transition";
 
 const useBrowserLayoutEffect = typeof document === "undefined" ? useEffect : useLayoutEffect;
 
-const ProductDetailsTabs = ({ product: summary, locale }: Props) => {
-  const detail = detailsFromStorefrontSsgCatalog(storefrontSsgDetails, summary.slug, locale);
+const ProductDetailsTabs = ({ product: summary, locale, details }: Props) => {
+  const detail = details ?? detailsFromStorefrontSsgCatalog(storefrontSsgDetails, summary.slug, locale);
   if (!detail) throw new Error(`storefront SSG detail missing: ${locale}:${summary.slug}`);
   const product: StorefrontItem = { ...summary, ...detail.item };
   const [activeTab, setActiveTab] = useState<ProductTabId>("ingredients");
