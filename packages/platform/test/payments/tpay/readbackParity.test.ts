@@ -47,10 +47,12 @@ it.each(statuses)("projects donor $label readback for both purposes and all paid
         expect(recovery, label).toMatchObject({ identityMatches: true, configuredMoneyMatches: true,
           manualReviewRequired: row.label === "chargeback" });
 
-        // The host helper is unchanged from the pinned donor's paymentProviderReconciliationEvidence.ts:33-44.
-        // Coordinator projection: pending/refused retain configured money; success must pass the host paid-money gate.
+        // Pinned donor e0b142a77 host: paymentProviderReconciliationWorker.ts:215-225,
+        // paymentVerifyNowService.ts:94-96 and checkoutRecoveryPaymentResolver.ts:135-136
+        // gate both terminal statuses; zero paid refusals retain this adapter's unpaid-obligation rule.
         const manualReview = recovery.manualReviewRequired
-          || (normalized.status === "succeeded" && terminalAmountMismatch(attempt, normalized) !== null);
+          || ((normalized.status === "succeeded" || (normalized.status === "failed" && normalized.amountMinor !== 0))
+            && terminalAmountMismatch(attempt, normalized) !== null);
         const base = { identity, expectedMoney, purpose };
         const expected = manualReview || !recovery.identityMatches || !recovery.configuredMoneyMatches || normalized.status === "unknown"
           ? { ...base, kind: "unknown", reason: "indeterminate" }
@@ -75,6 +77,9 @@ it.each(statuses)("projects donor $label readback for both purposes and all paid
         expect.soft(actual, label).toEqual(expected);
         expect.soft(actual.identity, label).toBe(identity);
         expect.soft(actual.expectedMoney, label).toBe(expectedMoney);
+        if (row.label === "refused") {
+          expect(actual.kind, label).toBe(amount.label === "under" || amount.label === "over" ? "unknown" : "failed");
+        }
         expect(fetchImpl, label).toHaveBeenCalledTimes(2);
         observations += 1;
       }
