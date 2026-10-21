@@ -4,6 +4,13 @@ Development preview. This package joins core and outbox in the publishable set f
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
+For the prepared `0.18.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0180) before selecting M05 catalog/pricing/promotions
+or A1 communications adapters. M06 in progress: inventory and shipping entries are early surfaces; module not complete.
+The size gate compares this candidate with the published `0.17.0` tarball;
+preparation, offline adapter evidence and a passing size cap grant no publication
+or provider-account certification.
+
 ## Package surface
 
 `release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its twenty-five experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
