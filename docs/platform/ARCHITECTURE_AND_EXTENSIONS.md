@@ -663,6 +663,14 @@ executor. Browser preview values remain reference-owned. See the
 
 ## Fulfillment contracts
 
+The internal `fulfillment/omnipack` transport contributes injected HTTP, per-request
+credential resolution, provider codecs and selected donor witnesses without adding
+a public subpath. Order preparation materializes canonical JSON once; its SHA-256
+fingerprint and transport use exactly those bytes. The transport installs no route,
+schedule or default binding. Root reference implementations remain unchanged;
+neutral-port glue, closed evidence projection and public registration are later
+phases in the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
+
 Fulfillment P1 lives at the two existing-package subpaths
 `@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
 requires another package or dependency. The type-only contracts entry has no server

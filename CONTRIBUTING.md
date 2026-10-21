@@ -1021,6 +1021,14 @@ After removing debt, lower the affected counts; never raise them.
 After all allowances are subtracted, a negative count fails the ratchet with
 the category, quoted path and remainder; allowances never clamp counts to zero.
 
+The internal fulfillment example lane subtracts only ui-15 at its exact source,
+test, API-report and [A3 ledger](docs/platform/plans/oss-a3-fulfillment-adapter.md)
+paths. Fixed registration carriers and platform change fragments admit only the
+complete case-sensitive subpath token; the report filename is admitted only in
+release gates and the publication catalogue. Outside paths, bare vendor prose,
+lookalikes, casing changes and other categories still fail. The script's tests
+exercise these plants and negative subtraction without changing the baseline.
+
 The named first-party adoption example has a narrow prose allowance: only the
 approved complete lines in the root README, the documentation owner's page and
 the exact screenshot catalogue reference are counted once. It subtracts only

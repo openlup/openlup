@@ -160,6 +160,23 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   return tokens.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0);
 }
 
+// One vendor category, with exact paths and complete, case-sensitive carrier tokens.
+const fulfillmentAdapterName = "omni" + "pack";
+const fulfillmentAdapterWord = new RegExp(`\\b${fulfillmentAdapterName}\\b`, "gi");
+const fulfillmentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/fulfillment/${fulfillmentAdapterName}/`);
+const fulfillmentAdapterSubpath = new RegExp(`(?<![\\w-])fulfillment/${fulfillmentAdapterName}(?![\\w-])`, "g");
+const fulfillmentAdapterReport = new RegExp(`(?<![\\w.-])fulfillment-${fulfillmentAdapterName}\\.api\\.md(?![\\w./-])`, "g");
+export function allowedFulfillmentAdapterWords(path, contents) {
+  if (fulfillmentAdapterPaths.test(path) || path === `packages/platform/api/fulfillment-${fulfillmentAdapterName}.api.md`
+    || path === "docs/platform/plans/oss-a3-fulfillment-adapter.md") return [...contents.matchAll(fulfillmentAdapterWord)].length;
+  if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;
+  const tokens = [...contents.matchAll(fulfillmentAdapterSubpath)];
+  if (["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"].includes(path)) {
+    tokens.push(...contents.matchAll(fulfillmentAdapterReport));
+  }
+  return tokens.reduce((count, [token]) => count + [...token.matchAll(fulfillmentAdapterWord)].length, 0);
+}
+
 export function neutralityIncreases(baseline, current) {
   const increases = [];
   for (const [path, counts] of Object.entries(current)) for (const [category, count] of Object.entries(counts)) {
@@ -305,6 +322,10 @@ export function scanSnapshots(snapshots) {
   if (typeof adoptionBrand !== "string" || !/^[a-z]+$/.test(adoptionBrand)) throw new Error("invalid adoption brand policy");
   const sourceContents = new Map(sources.map(({ path, contents }) => [path, contents]));
   for (const row of ui.counts) {
+    if (row.counts?.["ui-15"]) {
+      row.counts["ui-15"] -= allowedFulfillmentAdapterWords(row.path, sourceContents.get(row.path) ?? "");
+      if (row.counts["ui-15"] === 0) delete row.counts["ui-15"];
+    }
     for (const category of ["ui-13", "ui-14", "ui-5", "ui-8"]) {
       if (row.counts?.[category]) {
         row.counts[category] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category);

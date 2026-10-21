@@ -74,6 +74,59 @@ function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
 describe("tree-wide neutrality ratchet", () => {
+  it("subtracts only the fulfillment vendor category at its exact paths and complete carrier tokens", () => {
+    const { root, base } = installed();
+    const vendor = ["omni", "pack"].join("");
+    const before = readFileSync(join(root, baselinePath), "utf8");
+    const paths = [`packages/platform/src/fulfillment/${vendor}/client.ts`, `packages/platform/test/fulfillment/${vendor}/wire.test.ts`,
+      `packages/platform/api/fulfillment-${vendor}.api.md`, "docs/platform/plans/oss-a3-fulfillment-adapter.md"];
+    for (const path of paths) put(root, path, `${vendor} ${vendor.toUpperCase()}\n`);
+    const carriers = ["packages/platform/package.json", "packages/platform/release-gates.json", "packages/platform/test/packageBoundary.test.ts",
+      "packages/platform/README.md", "config/openlup-publication-catalog.json", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts", "scripts/packages/platform-cold-consumer.test.ts",
+      "packages/platform/changes/a-three.md"];
+    for (const path of carriers) put(root, path, `fulfillment/${vendor}\n`);
+    for (const path of [carriers[1], carriers[4]]) put(root, path, `fulfillment/${vendor} fulfillment-${vendor}.api.md\n`);
+    expect(cli(root, base).status).toBe(0);
+    expect(readFileSync(join(root, baselinePath), "utf8")).toBe(before);
+  }, 30_000);
+
+  it("refuses fulfillment outside-path, bare-prose, casing and lookalike plants while retaining other categories", () => {
+    const { root, base } = installed();
+    const vendor = ["omni", "pack"].join("");
+    const plants: Array<[string, string, string]> = [
+      ["src/example.ts", vendor, "ui-15"],
+      ["packages/platform/README.md", `bare ${vendor}`, "ui-15"],
+      ["packages/platform/README.md", `fulfillment/${vendor}-x`, "ui-15"],
+      ["packages/platform/README.md", `fulfillment/${vendor.toUpperCase()}`, "ui-15"],
+      ["packages/platform/README.md", `fulfillment-${vendor}.api.md`, "ui-15"],
+      [`packages/platform/src/fulfillment/${vendor}-x/client.ts`, vendor, "ui-15"],
+      [`packages/platform/src/fulfillment/${vendor.toUpperCase()}/client.ts`, vendor, "ui-15"],
+      ["packages/platform/changes/nested/a-three.md", `fulfillment/${vendor}`, "ui-15"],
+      [`packages/platform/src/fulfillment/${vendor}/client.ts`, `${vendor} ${["str", "ipe"].join("")}`, "ui-13"],
+      [`packages/platform/test/fulfillment/${vendor}/wire.test.ts`, `${vendor} ${String.fromCharCode(80, 76, 78)}`, "ui-5"],
+    ];
+    for (const [path, contents, category] of plants) {
+      put(root, path, contents);
+      const result = cli(root, base);
+      expect(result.status, result.output).toBe(1); expect(result.output).toContain(`${category} increased`);
+      rmSync(join(root, path));
+    }
+  }, 30_000);
+
+  it("fails closed when the fulfillment allowance exceeds the ui-15 scanner count", () => {
+    const vendor = ["omni", "pack"].join("");
+    const path = `packages/platform/src/fulfillment/${vendor}/client.ts`;
+    const invoke = vi.mocked(execFileSync);
+    invoke.mockReturnValueOnce(JSON.stringify({ counts: [{ path, counts: { "ui-15": 1 } }],
+      policy: { rules: [{ id: "tree-brand", terms: [debt] }] } }));
+    invoke.mockReturnValueOnce(JSON.stringify([]));
+    try {
+      expect(() => scanSnapshots(new Map([[path, Buffer.from(`${vendor} ${vendor}`)]])))
+        .toThrow(`neutrality allowance over-subtracted ui-15 in ${JSON.stringify(path)}: -1`);
+    } finally { invoke.mockClear(); }
+  });
+
   it("fails closed when the communications allowance exceeds the ui-12 scanner count", () => {
     const vendor = ["res", "end"].join("");
     const path = `packages/platform/src/communications/${vendor}/index.ts`;
