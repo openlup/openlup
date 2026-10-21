@@ -10,6 +10,13 @@ Start with the [platform index](README.md) and the affected module's README.
 
 ## Authoring
 
+The root README uses an actual English-language Velipet storefront capture at
+`docs/platform/assets/velipet-storefront-en.png`, with a caption distinguishing
+application-specific presentation from the generic reference profile. It shows
+public storefront content only; no customer account, order or operator data is
+included. The image illustrates first-party experience, not a passing install
+or independent-adopter result.
+
 Keep one canonical explanation for each boundary. A domain README describes its
 responsibility, public contracts, important internal steps, refusal behavior and
 verification route. A platform page explains a contract spanning domains. Link
@@ -61,6 +68,14 @@ source availability. Release-specific instructions belong with the selected
 immutable release; see the [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md).
 
 ## Ownership
+
+The root README's [Velipet storefront screenshot](assets/velipet-storefront-en.png)
+is a public, English-language first-party application illustration. Its branding
+and content belong to that application; it is not a generic reference UI,
+installed-package acceptance result or independent-adopter certification. The
+publication catalogue includes the image so README links resolve in the public
+tree. This illustration changes no runtime, package or release contract.
+
 The P7 native catalog move keeps the package README as owner of the two
 factory exports, sparse descriptor and structural contribution. The adapter
 owner explains reference compatibility paths; the runtime owner explains the
