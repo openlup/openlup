@@ -151,7 +151,7 @@ owner needs the scoped trailer proposed in the handoff. No full verification,
 Git/remote write, DCO, native review, release or activation was performed.
 
 P4 final ledger: 34 paths, 15 production paths, about 2,050 lines of churn (including the regenerated example-adapter API report), nine frozen
-export additions. Computed against main after the example Stripe adapter (#278), representing main
+export additions. Computed against main after the first opt-in example adapter (#278), representing main
 after P3 for this stacked task; this is not an aggregate P1–P4 comparison or a
 claim about the later moving main. No dependency, public subpath, migration or
 budget change. Predecessor to candidate pack: 1,275 → 1,287 files, 880,494 →
