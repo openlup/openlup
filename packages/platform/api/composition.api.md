@@ -188,7 +188,7 @@ export declare function createCatalogContribution(input: CatalogContributionInpu
 import type { AnalyticsPort, BlobStoragePort, DataGatewayPort, HttpRuntimePort, MigrationRunnerPort, SchedulerPort, TransactionalRuntimePort } from "@openlup/core/platform-runtime";
 import { type PlatformBundleDescriptor, type PlatformBundleId } from "../kernel/index.js";
 interface PaymentServices {
-    run<T>(work: (port: never) => Promise<T>): Promise<T>;
+    run<T>(work: (port: unknown) => Promise<T>): Promise<T>;
 }
 type Env = Record<string, string | undefined>;
 export interface PlatformBundlePorts {

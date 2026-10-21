@@ -264,9 +264,11 @@ opens and closes its existing executor. The existing bundle composer accepts one
 optional payments binder; no second registry, cron or dormant handler is added.
 Reference selection is explicit, default-off and refuses unknown capabilities.
 
-D11 is the second declared behaviour change: the selected reference verified
-ingress applies and post-processes a redelivery at the first stored receipt
-instant, rather than a later provider timestamp. The first insert stores the
+D11 is the second declared behaviour change: every caller of the reference
+payment control port (the selected verified ingress, the existing provider
+webhook handler and the captured reference checkout) applies and post-processes
+a redelivery at the first stored receipt instant, rather than a later provider
+timestamp. The first insert stores the
 adapter fingerprint, independent of receipt time and audit payload; concurrent
 replays read the winning row. Missing durable receipt evidence refuses. No schema
 or existing route is activated. Four direct missing-audit reader proofs extend
