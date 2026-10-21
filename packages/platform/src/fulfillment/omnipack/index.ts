@@ -2,7 +2,7 @@ import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDisp
   FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { createOmnipackClient, OmnipackProviderError } from "./client.js";
 import { omnipackFulfillmentCapabilities } from "./capabilities.js";
-import { buildOmnipackDispatchCommand, stableDispatchHash } from "./omnipackDispatchPayload.js";
+import { buildOmnipackDispatchCommand, serializeOmnipackDispatchPayload, stableDispatchHash } from "./omnipackDispatchPayload.js";
 import { mapOmnipackWebhookPayload } from "./mappers.js";
 import { verifyOmnipackWebhookToken, type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { localStatusFor, normalizeStatus } from "./omnipackStatusVocabulary.js";
@@ -51,9 +51,9 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
   capabilities.selected = config.selected === true;
   capabilities.readiness = config.readiness?.ready === true ? { ready: true }
     : { ready: false, refusal: refusal("not_ready", "selection") };
-  const prepared = new WeakMap<FulfillmentDispatchRequest, { body: string; evidence: DispatchEvidence; requestDigest: string }>();
-  const preparations = new WeakMap<FulfillmentDispatchRequest, object>();
-  const submissions = new Map<string, ReturnType<FulfillmentDispatchPort["dispatch"]>>();
+  const prepared = new Map<string, { body: string; evidence: DispatchEvidence; requestDigest: string; generation: number }>();
+  const preparations = new Map<string, number>();
+  const submissions = new Map<string, { evidenceKey: string; requestDigest: string; result: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
   const selectionFailure = (request: FulfillmentDispatchRequest) => {
     if (!request.selection?.providerRef?.trim()) return refusal("selection_required", "selection");
     if (request.selection.providerRef !== capabilities.providerRef) return refusal("provider_mismatch", "selection");
@@ -75,15 +75,15 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     capabilities,
     dispatch: {
       async prepare(request) {
-        const generation = {};
-        preparations.set(request, generation);
         try {
+          const requestDigest = stableDispatchHash(request);
+          const generation = (preparations.get(requestDigest) ?? 0) + 1;
+          preparations.set(requestDigest, generation);
           const failed = selectionFailure(request);
           if (failed) return { kind: "refused", refusal: failed };
           if (!Number.isSafeInteger(request.contactRevision.schemaVersion) || request.contactRevision.schemaVersion < 1
             || !reference(request.contactRevision.source) || !Number.isSafeInteger(request.contactRevision.revision)
             || request.contactRevision.revision < 0) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-          const requestDigest = stableDispatchHash(request);
           const lines = [];
           for (const line of request.lines) {
             const metadata = await config.resolveProduct(line);
@@ -102,40 +102,48 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           const evidence: DispatchEvidence = { commandFingerprint: command.requestFingerprint,
             contactRevision: { schemaVersion: request.contactRevision.schemaVersion, source: request.contactRevision.source, revision: request.contactRevision.revision },
             providerRef: capabilities.providerRef, carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef };
-          if (preparations.get(request) !== generation) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-          prepared.set(request, { body: command.body, evidence: structuredClone(evidence), requestDigest });
+          if (preparations.get(requestDigest) !== generation) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
+          const evidenceKey = serializeOmnipackDispatchPayload(evidence).body;
+          prepared.set(evidenceKey, { body: command.body, evidence: structuredClone(evidence), requestDigest, generation });
           return { kind: "prepared", evidence };
         } catch { return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") }; }
       },
       async dispatch(request, evidence) {
-        const command = prepared.get(request);
+        let command;
+        let evidenceKey: string;
+        let requestDigest: string;
         try {
-          if (!command || !evidence || stableDispatchHash(evidence) !== stableDispatchHash(command.evidence)
-            || stableDispatchHash(request) !== command.requestDigest || selectionFailure(request)) {
-            return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("not_dispatchable", "dispatch") };
+          if (Object.keys(evidence).length !== 5 || Object.keys(evidence.contactRevision).length !== 3) throw Error();
+          evidenceKey = serializeOmnipackDispatchPayload(evidence).body;
+          requestDigest = stableDispatchHash(request);
+          const submitted = submissions.get(evidence.commandFingerprint);
+          command = prepared.get(evidenceKey);
+          if (selectionFailure(request)) throw Error();
+          if (submitted) {
+            // One POST per fingerprint; incompatible evidence never inherits another binding's result.
+            if (submitted.evidenceKey !== evidenceKey || (submitted.requestDigest !== requestDigest && command?.requestDigest !== requestDigest)) throw Error();
+            return structuredClone(await submitted.result);
           }
+          if (!command || command.requestDigest !== requestDigest || preparations.get(requestDigest) !== command.generation) throw Error();
         } catch { return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("not_dispatchable", "dispatch") }; }
         const fingerprint = command.evidence.commandFingerprint;
-        let result = submissions.get(fingerprint);
-        if (!result) {
-          // Defer submission until its promise is recorded, before any credential or HTTP callback.
-          result = Promise.resolve().then(async () => {
-            try {
-              const result = await client.createOrder(command.body);
-              const externalRef = reference(result.providerOrderId);
-              if (!externalRef) return { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("malformed", "acknowledge") };
-              // Opaque provider proof; the worker replaces these with authoritative host keys.
-              const proof = digest(JSON.stringify([externalRef, command.evidence.commandFingerprint]));
-              return { kind: "accepted" as const, externalRef, evidence: structuredClone(command.evidence),
-                providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` };
-            } catch (error) {
-              return error instanceof OmnipackProviderError && !error.mayHaveSucceeded
-                ? { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const, refusal: refusal("io_failure", "dispatch") }
-                : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch") };
-            } finally { command.body = ""; }
-          });
-          submissions.set(fingerprint, result);
-        }
+        // Defer submission until its promise is recorded, before any credential or HTTP callback.
+        const result = Promise.resolve().then(async () => {
+          try {
+            const result = await client.createOrder(command.body);
+            const externalRef = reference(result.providerOrderId);
+            if (!externalRef) return { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("malformed", "acknowledge") };
+            // Opaque provider proof; the worker replaces these with authoritative host keys.
+            const proof = digest(JSON.stringify([externalRef, command.evidence.commandFingerprint]));
+            return { kind: "accepted" as const, externalRef, evidence: structuredClone(command.evidence),
+              providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` };
+          } catch (error) {
+            return error instanceof OmnipackProviderError && !error.mayHaveSucceeded
+              ? { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const, refusal: refusal("io_failure", "dispatch") }
+              : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch") };
+          } finally { command.body = ""; }
+        });
+        submissions.set(fingerprint, { evidenceKey, requestDigest, result });
         return structuredClone(await result);
       },
     },

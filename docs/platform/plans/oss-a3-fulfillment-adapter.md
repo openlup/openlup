@@ -238,12 +238,12 @@ it without installation or changing the existing cache.
 
 | Destination | Cases | Status | O-P1 + O-P2 running total |
 | --- | ---: | --- | ---: |
-| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 24 | net-new glue/refusal/redaction; round 1 adds 4, round 2 adds 1; round 3 extends replay/remap cases only | 48 |
-| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 49 |
-| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 50 |
+| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 26 | net-new glue/refusal/redaction; round 1 adds 4, round 2 adds 1, round 4 adds 2; round 3 extends replay/remap cases only | 50 |
+| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 51 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 52 |
 
-O-P2 is **26 net-new**, under its target of 30. O-P1 + O-P2 is **50**;
-private V-C1 18 + 50 + O-P3 projected 2 = **70 / 100**, leaving 30 cases
+O-P2 is **28 net-new**, under its target of 30. O-P1 + O-P2 is **52**;
+private V-C1 18 + 52 + O-P3 projected 2 = **72 / 100**, leaving 28 cases
 (10 remain a planning reserve). Package-boundary generated rows are counted
 separately under ruling A; actual runtime is reported with final checks.
 
@@ -501,3 +501,58 @@ Self-retro/rethink: replay protection tied to replaceable preparation state →
 append-only submission record keyed by fingerprint. Separating preparation from
 submission removes the evidence-comparison special case and protects replay
 history across all intervening preparations rather than patching each sequence.
+
+
+### O-P2 repair round 4
+
+Authority: lead decision closing review r7/r8's two major findings on `8e363ad9`;
+local repairs, ledger/owner documentation and focused offline proof, including the
+actual pinned M08 worker in the existing P3 scratch tree. No Git writes, installs,
+network/secrets, frozen-contract edits, committed review or delivery. Claude keeps
+those existing review/delivery responsibilities; this run resets no review budget.
+
+| Finding | Decision and regression witness |
+| --- | --- |
+| Fingerprint-only replay returns stale accepted evidence when the wire body is unchanged | Each append-only submission now stores its canonical evidence key as well as its request-value digest and result promise. Different evidence for that fingerprint refuses `not_dispatchable / dispatch / retryable:false` before I/O; matching evidence joins or replays the original result. Two new factory cases cover sequential and gated in-flight changes to contact revision, source, schemaVersion and carrierRef: same fingerprint, explicit refusal, one POST/credential call, original cloned replay unchanged. |
+| Object-identity preparation rejects equal-valued inputs and M08 worker copies | Prepared bodies are keyed by the canonical serialization of complete evidence, with a digest of all frozen request fields. Dispatch compares request values; separate cloned request/evidence dispatch and replay pass. Missing, foreign, malformed and mismatched inputs still refuse before I/O. The actual `a8708cf1` worker passes with its separate prepare/dispatch shallow copies and an in-memory store fixture. |
+
+Removed both WeakMaps, per-object generation tokens and fingerprint-only result
+lookup. Numeric generations keyed by request value preserve the existing delayed
+preparation fence, including separate equivalent objects. Before first submission,
+superseded preparation for that request value still refuses; after submission,
+original replay uses the retained request binding and needs no current preparation
+entry. Existing unknown and in-flight A → B → A cases now require original replay
+while B is prepared, as the lead decision supersedes round 3's stale-A refusal.
+A successful new preparation may bind host-only description changes to unchanged
+evidence; it cannot replace or erase the submission result. Bodies remain transient;
+no host persistence or durable cross-process protection is added.
+
+Case accounting: **+2** this repair; factory **26**, transport adaptation **4**,
+retained characterization **18**, adapter directory **48**. O-P2 **28**, public
+O-P1 + O-P2 **52**, conservative whole-round projection **72 / 100**. Scratch
+worker diagnostic adds one local case (8 total), outside the hosted case ledger.
+
+Self-retro/rethink: partial or object-identity keys for preparation/replay → key by
+canonical evidence value, fence submissions per fingerprint. The worker witness
+exercises the actual consumer's value-copy boundary; direct same-object fixtures
+missed it. Reusing the serializer and existing state seams avoids a new transport,
+cache subsystem or orchestration change. Focused evidence follows below.
+
+Focused round-4 evidence: **1,603 tests / 11 files pass** (49.73 s): adapter **48**,
+package-boundary **1,474**, cold-consumer **46**, neutrality tooling **35**.
+Platform no-emit typecheck, serialized build and API snapshots pass; TypeScript
+module inspection confirms exactly the factory, descriptor and configuration type.
+Ast-grep, focused ESLint and whitespace checks pass. Neutrality reports **0 increases**;
+UI neutrality smoke and source/test/docs gitleaks scans pass. The pinned policy
+pre-check passed with **3 obligations / 0 unanswered**; the final docs-update/policy
+sequence runs after this entry. No manifest, release-gate, API or frozen-port delta.
+
+P3 scratch evidence: all **11** imported M08 runner/contracts/worker/projection files
+match **a8708cf1** byte-for-byte; repaired adapter files copied. **8/8** scratch tests
+pass (0.27 s): complete conformance **12/12**, refused profile **10/10**, both
+unsupported-label profiles and the actual worker witness. Worker result:
+`ok:true, checked:1, updated:1, failures:0, providerCalls:1`; exactly **1 POST**,
+**1 mapped attempt**, **1 host-key acknowledgement**, **0 non-acceptance finalizations**.
+This remains an isolated pre-check, with no adapter shim or committed integration
+claim. Claude's committed review and remaining delivery gates stay owed. Git is
+read-only and HEAD remains **8e363ad9** for handoff.

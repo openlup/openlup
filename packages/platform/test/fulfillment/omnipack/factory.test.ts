@@ -87,14 +87,14 @@ it("binds full contact revision and the exact posted bytes while excluding comma
   const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
   expect(evidence.contactRevision).toEqual(req.contactRevision);
   expect(evidence).toMatchObject({ carrierRef: "CARRIER-A", serviceRef: "SERVICE-A", providerRef: "omnipack" });
-  const result = await f.adapter.dispatch.dispatch(req, structuredClone(evidence));
+  const result = await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(evidence));
   expect(result).toMatchObject({ kind: "accepted", externalRef: "external-a", providerAttemptKey: expect.stringMatching(/^attempt:[a-f0-9]{64}$/u), labelKey: expect.stringMatching(/^label:[a-f0-9]{64}$/u) });
   const body = f.fetchImpl.mock.calls[0]![1]!.body as string;
   expect(evidence.commandFingerprint).toBe(createHash("sha256").update(body).digest("hex"));
   expect(JSON.parse(body).shippingDetails).toMatchObject({ carrier: "SERVICE-A", service: "SERVICE-A" });
   safe(evidence); safe(result);
   expect(await prepare(f.adapter, req)).toEqual(evidence);
-  expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
+  expect(await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(evidence))).toEqual(result);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1);
 });
 it("refuses missing and foreign preparation before credentials or HTTP", async () => {
@@ -102,6 +102,9 @@ it("refuses missing and foreign preparation before credentials or HTTP", async (
   expect(await f.adapter.dispatch.dispatch(req, {} as DispatchEvidence)).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
   const evidence = await prepare(f.adapter, req);
   expect(await fixture().adapter.dispatch.dispatch(req, evidence)).toMatchObject({ kind: "not_dispatched" });
+  for (const malformed of [null, {}, { ...evidence, extra: undefined }, { ...evidence, contactRevision: { ...evidence.contactRevision, extra: undefined } }]) {
+    expect(await f.adapter.dispatch.dispatch(req, malformed as DispatchEvidence)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
+  }
   expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
 it("refuses every request/evidence mismatch and requires fresh prepare for a contact remap", async () => {
@@ -116,9 +119,10 @@ it("refuses every request/evidence mismatch and requires fresh prepare for a con
   expect((await remap.adapter.dispatch.dispatch(frozen, after)).kind).toBe("accepted");
   expect((await remap.adapter.dispatch.dispatch(frozen, after)).kind).toBe("accepted");
   expect(remap.fetchImpl).toHaveBeenCalledTimes(1);
-  for (const change of ["contact", "recipient", "line", "selection", "evidence"] as const) {
+  for (const change of ["contact", "recipient", "line", "selection", "evidence", "requestKey", "fulfillmentRef", "orderRef", "orderNumber", "parcelRef"] as const) {
     const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
     const original = structuredClone(req); const validEvidence = structuredClone(evidence);
+    if (change === "requestKey" || change === "fulfillmentRef" || change === "orderRef" || change === "orderNumber" || change === "parcelRef") req[change] = "other";
     if (change === "contact") req.contactRevision.source = "remap";
     if (change === "recipient") req.recipient.line1 = "456 Other Street";
     if (change === "line") req.lines = [{ ...req.lines[0]!, quantity: 3 }];
@@ -143,6 +147,47 @@ it("refuses every request/evidence mismatch and requires fresh prepare for a con
     expect(await f.adapter.dispatch.dispatch(req, validEvidence)).toMatchObject({ kind: "not_dispatched" });
     expect((await f.adapter.dispatch.dispatch(req, remapped)).kind).toBe("accepted");
     expect(f.fetchImpl).toHaveBeenCalledTimes(2);
+  }
+});
+it("refuses same-wire different evidence after submission while preserving original cloned replay", async () => {
+  for (const change of ["revision", "source", "schemaVersion", "carrierRef"] as const) {
+    const f = fixture(); const req = frozenRequest(); const original = await prepare(f.adapter, req);
+    const result = await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original));
+    expect(result).toMatchObject({ kind: "accepted", evidence: original });
+    const changed = structuredClone(req);
+    if (change === "carrierRef") changed.selection.carrierRef = "CARRIER-B";
+    else if (change === "source") changed.contactRevision.source = "remapped";
+    else changed.contactRevision[change]++;
+    const different = await prepare(f.adapter, changed);
+    expect(different).not.toEqual(original); expect(different.commandFingerprint).toBe(original.commandFingerprint);
+    expect(await f.adapter.dispatch.dispatch(changed, different)).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
+    expect(await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original))).toEqual(result);
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
+  }
+});
+it("refuses same-wire different evidence in flight while joining the original cloned replay", async () => {
+  for (const change of ["revision", "source", "schemaVersion", "carrierRef"] as const) {
+    let enter!: () => void, finish!: (response: Response) => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const f = fixture(() => { enter(); return new Promise<Response>(resolve => { finish = resolve; }); });
+    const req = frozenRequest(); const original = await prepare(f.adapter, req);
+    const first = f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original));
+    await entered;
+    const changed = structuredClone(req);
+    if (change === "carrierRef") changed.selection.carrierRef = "CARRIER-B";
+    else if (change === "source") changed.contactRevision.source = "remapped";
+    else changed.contactRevision[change]++;
+    const different = await prepare(f.adapter, changed);
+    expect(different).not.toEqual(original); expect(different.commandFingerprint).toBe(original.commandFingerprint);
+    expect(await f.adapter.dispatch.dispatch(changed, different)).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
+    const replay = f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original));
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+    finish(jsonResponse({ orderId: "external-a" }));
+    const result = await first;
+    expect(result).toMatchObject({ kind: "accepted", evidence: original });
+    expect(await replay).toEqual(result);
+    expect(await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original))).toEqual(result);
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
   }
 });
 it("retains exact selection refusals and rejects missing host product metadata", async () => {
@@ -179,7 +224,7 @@ it("keeps lost/malformed acknowledgements and ambiguous POSTs unknown across A �
     expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
     lotNumber = "LOT-B";
     expect((await prepare(f.adapter, req)).commandFingerprint).not.toBe(evidence.commandFingerprint);
-    expect(await f.adapter.dispatch.dispatch(req, evidence)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
+    expect(await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(evidence))).toEqual(result);
     lotNumber = "LOT-A";
     expect(await prepare(f.adapter, req)).toEqual(evidence);
     expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
@@ -199,14 +244,14 @@ it("preserves an in-flight dispatch across unchanged and A → B → A re-prepar
   const replay = f.adapter.dispatch.dispatch(req, evidence);
   lotNumber = "LOT-B";
   expect((await prepare(f.adapter, req)).commandFingerprint).not.toBe(evidence.commandFingerprint);
-  expect(await f.adapter.dispatch.dispatch(req, evidence)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
+  const retained = f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(evidence));
   lotNumber = "LOT-A";
   expect(await prepare(f.adapter, req)).toEqual(evidence);
   const restored = f.adapter.dispatch.dispatch(req, evidence);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1);
   finish(jsonResponse({ orderId: "external-a" }));
   const result = await first;
-  expect(result.kind).toBe("accepted"); expect(await replay).toEqual(result); expect(await restored).toEqual(result);
+  expect(result.kind).toBe("accepted"); expect(await replay).toEqual(result); expect(await restored).toEqual(result); expect(await retained).toEqual(result);
   expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
 });
@@ -316,7 +361,7 @@ it("keeps paginated, truncated and unproven readback collections unknown", async
 it("fences overlapping preparations and shares in-flight and completed dispatch results", async () => {
   const releases: (() => void)[] = [];
   const f = fixture(undefined, { resolveProduct: () => new Promise(resolve => releases.push(() => resolve({ lotNumber: "LOT-A", expirationDate: "2027-01-01" }))) });
-  const req = request(); const older = f.adapter.dispatch.prepare(req); const newer = f.adapter.dispatch.prepare(req);
+  const req = request(); const older = f.adapter.dispatch.prepare(req); const newer = f.adapter.dispatch.prepare(structuredClone(req));
   releases[1]!(); const current = await newer;
   if (current.kind !== "prepared") throw Error("Expected preparation");
   const [first, overlapping] = await Promise.all([f.adapter.dispatch.dispatch(req, current.evidence), f.adapter.dispatch.dispatch(req, current.evidence)]);

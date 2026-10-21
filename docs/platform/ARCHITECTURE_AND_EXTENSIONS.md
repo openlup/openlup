@@ -666,12 +666,17 @@ executor. Browser preview values remain reference-owned. See the
 The opt-in `@openlup/platform/fulfillment/omnipack` example composes the contributed
 transport/codecs with the frozen ports. Its host supplies HTTP, per-call secrets,
 product metadata and explicit selection/readiness. Preparation keeps canonical
-bytes transient and returns closed fingerprint/contact/selection evidence;
-mismatched dispatch refuses before credentials or HTTP without consuming valid
-state. A separate append-only per-instance submission record, keyed by command
-fingerprint, serves concurrent and completed replays without I/O even across
-A → B → A re-preparation. Preparation remains replaceable, and superseded
-preparations cannot restore state; durable replay belongs to the host worker.
+bytes transient and returns closed fingerprint/contact/selection evidence.
+Preparations use canonical evidence values and bind request fields by value;
+equal-valued request/evidence copies work without JavaScript object identity.
+Unknown or mismatched evidence refuses before credentials or HTTP. A separate
+append-only per-instance submission record is keyed by command fingerprint and
+bound to the submitted evidence key. Matching evidence joins or replays its result
+without I/O; different evidence for that fingerprint refuses `not_dispatchable`
+with phase `dispatch` and `retryable:false`, preserving the one-POST fence.
+Original replay remains available after later preparations even when its current
+preparation entry was replaced. Numeric generations fence older overlapping
+preparations for the same request value; durable replay belongs to the host worker.
 Proven pre-submission failures and definitive HTTP rejections are
 non-submissions even if the rejection body is unreadable; successful statuses
 without a readable acknowledgement and ambiguous POSTs stay unknown without retry. Accepted provider

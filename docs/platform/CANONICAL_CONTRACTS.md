@@ -107,14 +107,22 @@ Credentials never establish readiness. The descriptor starts unselected and not 
 
 Prepare retains serialized command bytes transiently and returns only the actual
 body fingerprint, full contact revision and separate provider/carrier/service
-references. Dispatch refuses absent or mismatched preparation before credentials
-or HTTP without invalidating a valid preparation. Preparation remains replaceable;
-overlapping preparations cannot restore superseded state. A separate per-instance
-submission record retains one in-flight or completed result per command fingerprint,
-including accepted, unknown and refused outcomes. Re-preparing A after B cannot
-erase A's result or permit another POST. Evidence and request validation precede
-submission lookup; changed command evidence may submit once under its new fingerprint.
-Changes to host descriptions omitted from the wire body preserve replay protection.
+references. Preparations are keyed by the canonical value of that complete evidence,
+and bind the frozen request fields by value, so equal-valued copies work through
+host workers. Dispatch refuses unknown, malformed or mismatched evidence before
+credentials or HTTP. A numeric generation fence prevents an older overlapping
+preparation for the same request value from restoring superseded state.
+A separate append-only per-instance submission record retains one in-flight or
+completed result per command fingerprint, including accepted, unknown and refused
+outcomes, bound to the evidence key used for submission. The same evidence key
+replays that result without I/O; different evidence for an already submitted
+fingerprint refuses as `not_dispatchable`, phase `dispatch`, `retryable:false`.
+It never inherits another preparation's accepted evidence or permits a second POST.
+Original replay survives later preparations, including A → B → A, without requiring
+the current preparation entry. Request validation still binds replay to the
+submitted request value or an equivalent-evidence preparation. Changes to host
+descriptions omitted from the wire body preserve replay after preparation.
+Changed command evidence may submit once under its new fingerprint.
 Durable replay across processes belongs to the host worker. Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
 an unreadable rejection body preserves the status-derived rejection. An unreadable
