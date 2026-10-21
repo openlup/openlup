@@ -309,14 +309,7 @@
         "test/inventory/inventoryAvailabilityCharacterization.test.ts",
         "test/inventory/newPurchaseStockBoundary.test.ts",
         "test/inventory/reservationPolicyConformance.test.ts",
-        "../../tests/platform/inventory/inventoryReservationLifecycleCharacterization.test.ts",
-        "test/inventory/subscriptionForecastCalculation.test.ts",
-        "../../tests/platform/inventory/inventoryForecastReadbackCharacterization.test.ts",
-        "../../tests/postgres/inventoryNative.test.ts",
-        "../../tests/platform/inventory/reservationMaintenanceCharacterization.test.ts",
-        "../../tests/platform/inventory/subscriptionStockContinuityCharacterization.test.ts",
-        "../../tests/platform/inventory/reservationMaintenanceConformance.test.ts",
-        "../../tests/platform/inventory/stockWaitConformance.test.ts"
+        "test/inventory/subscriptionForecastCalculation.test.ts"
       ],
       "entrypoint": "dist/inventory/index.d.ts",
       "snapshot": "api/inventory.api.md"

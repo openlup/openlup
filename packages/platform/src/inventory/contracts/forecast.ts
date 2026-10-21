@@ -94,4 +94,3 @@ export interface SubscriptionForecastTotals extends SubscriptionForecastCounts {
   shortageSkuCount: number;
   recommendedProductionQty: number;
 }
-

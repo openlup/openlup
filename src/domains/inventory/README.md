@@ -52,7 +52,6 @@ never write reservations, cycles, anchors, due dates or attempts. W5 retains
 managed dated supply and expired-reservation readback versus the native aggregate
 projection's stale sellable stock, nullable coverage and absent planned supply.
 
-
 `GET /api/bff/admin/inventory/subscription-forecast` is read-only. It uses
 OmniPack provider-current stock as the physical stock master, subtracts open
 OmniPack hard reservations and safety stock, then overlays active subscription
@@ -76,7 +75,7 @@ not an installation chain. The [store/refusal matrix](../../../docs/platform/pla
 records direct observed-stock versus managed lot semantics and pending real-host
 proof. Manual reservation repair remains POST/auth/flag/manual_admin-lease gated,
 without a schedule; automatic expiry, provider stock sync and recount are distinct
-operations. Retry maintenance releases holds without cancelling subscriptions or
-dunning. The TTL documentation versus staging flag/control mismatch is report-only.
+operations. Retry maintenance releases holds without changing subscription or retry-cycle
+state. The TTL documentation versus staging flag/control mismatch is report-only.
 W4 is a frozen boundary transcript at the incumbent charge routine, not a private
 stock-wait implementation: no subscription, payment or delivery timing writer moves.

@@ -18,4 +18,3 @@ export interface AutomaticRenewalReservationResult {
   status: "held" | "committed" | "consumed" | "released" | "expired" | "refused";
   reason: string | null;
 }
-

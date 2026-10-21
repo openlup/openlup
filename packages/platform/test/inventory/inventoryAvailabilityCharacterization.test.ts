@@ -2,6 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createNewPurchaseStockAvailabilityPort, type NewPurchaseStockRow, type NewPurchaseStockAvailabilityOptions } from "@openlup/platform/inventory";
 import type { BundleStockAvailability, BundleStockRequestItem } from "@openlup/platform/catalog";
 
+// Synthetic transport vocabulary belongs only to this binding fixture.
+const transport = {
+  read: "fixture_stock_read", missingCode: "fixture_function_missing",
+  skus: "fixture_skus", horizonDays: "fixture_horizon_days", excludeOrderId: "fixture_excluded_order",
+  providerStock: "fixture_provider_stock", balances: "fixture_balances", reservations: "fixture_reservations",
+  skuRows: "fixture_sku_rows", locations: "fixture_locations", lots: "fixture_lots",
+} as const;
+
 // Binding fixture only: the private RPC/parser/fallback implementation is not imported.
 // Calls below preserve W1's observation assertions; they do not prove a transport or SQL.
 function createNewPurchaseStockAvailabilityPortFromClient(
@@ -10,10 +18,10 @@ function createNewPurchaseStockAvailabilityPortFromClient(
 ) {
   return createNewPurchaseStockAvailabilityPort({
     readPort: { async read(input) {
-      const { data, error } = await client.rpc("commerce_new_purchase_stock_availability", {
-        p_skus: input.skus, p_renewal_horizon_days: input.horizonDays, p_exclude_order_id: input.excludeOrderId,
+      const { data, error } = await client.rpc(transport.read, {
+        [transport.skus]: input.skus, [transport.horizonDays]: input.horizonDays, [transport.excludeOrderId]: input.excludeOrderId,
       });
-      if (error) throw new Error(error.code === "PGRST202" ? "fixture_missing" : error.message);
+      if (error) throw new Error(error.code === transport.missingCode ? "fixture_missing" : error.message);
       return new Map((data ?? []).map(raw => [String(raw.sku), {
         sku: raw.sku, catalogSkuId: raw.catalog_sku_id, source: raw.source,
         providerForSale: raw.provider_for_sale, activeHolds: raw.active_holds, safetyStock: raw.safety_stock,
@@ -22,7 +30,7 @@ function createNewPurchaseStockAvailabilityPortFromClient(
       } as NewPurchaseStockRow]));
     } },
     functionMissingFallback: () => ({ async getAvailability({ items }) {
-      for (const table of ["fulfillment_provider_stock_current", "inventory_balances", "inventory_reservations"]) client.from(table);
+      for (const table of [transport.providerStock, transport.balances, transport.reservations]) client.from(table);
       return items.map(item => project({ ...item, sellableNow: 30, source: "inventory", lowStockThreshold: 20 }));
     } }),
     functionMissingError: "fixture_missing", defaultLowStockThreshold: 20, defaultHorizonDays: 14,
@@ -60,8 +68,8 @@ describe("W1 actual stock read → storefront availability", () => {
       ["missing", "out_of_stock", 0, "inventory_provider"],
     ]);
     expect(result.slice(2).map(r => r.reasonCode)).toEqual(["provider_stock_stale", "provider_stock_missing", "provider_stock_missing"]);
-    expect(f.rpc).toHaveBeenCalledExactlyOnceWith("commerce_new_purchase_stock_availability", {
-      p_skus: items.map(i => i.sku), p_renewal_horizon_days: 14, p_exclude_order_id: null,
+    expect(f.rpc).toHaveBeenCalledExactlyOnceWith(transport.read, {
+      [transport.skus]: items.map(i => i.sku), [transport.horizonDays]: 14, [transport.excludeOrderId]: null,
     });
     expect(f.from).not.toHaveBeenCalled();
   });
@@ -82,15 +90,15 @@ describe("W1 actual stock read → storefront availability", () => {
   });
   it("enters the legacy read only for a recognized missing-function error", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const f = setup({ code: "PGRST202", message: "Could not find the function public.commerce_new_purchase_stock_availability" });
+    const f = setup({ code: transport.missingCode, message: `Could not find the function ${transport.read}` });
     f.from.mockImplementation((table: string) => {
-      const data = table === "inventory_balances" ? [{ on_hand: 30, unavailable: 0, safety_stock: 0,
-        catalog_skus: { sku: "fresh" }, inventory_locations: { status: "active", fulfillable: true }, inventory_lots: null }] : [];
+      const data = table === transport.balances ? [{ on_hand: 30, unavailable: 0, safety_stock: 0,
+        [transport.skuRows]: { sku: "fresh" }, [transport.locations]: { status: "active", fulfillable: true }, [transport.lots]: null }] : [];
       const query = { select: vi.fn(), in: vi.fn(), then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(resolve) };
       query.select.mockReturnValue(query); query.in.mockReturnValue(query); return query as never;
     });
     const result = await f.port.getAvailability({ items: [items[0]!] });
-    expect(f.from.mock.calls).toEqual([["fulfillment_provider_stock_current"], ["inventory_balances"], ["inventory_reservations"]]);
+    expect(f.from.mock.calls).toEqual([[transport.providerStock], [transport.balances], [transport.reservations]]);
     expect(result).toMatchObject([{ status: "available", sellableNow: 30, source: "inventory" }]);
   });
 });
