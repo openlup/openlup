@@ -75,7 +75,10 @@ export interface PaymentExecutionEnvelope {
     handoff?: PaymentMethodHandoff;
     diagnostics: Readonly<Record<string, string | number | boolean | null>>;
 }
-/** Host identity/key/fingerprint and configured integer-minor money pass verbatim. */
+/** Host identity/key/fingerprint and configured integer-minor money pass verbatim.
+ * Missing adapter-required input must refuse before dispatch with exact
+ * notDispatched evidence (phase before-dispatch), never unknown or dispatched.
+ */
 export interface PaymentAttemptPort {
     validateInput(input: {
         attemptRef: string;
@@ -88,6 +91,15 @@ export interface PaymentAttemptPort {
         };
         mode: "live" | "test";
         purpose: "initial" | "renewal-unattended" | "recovery";
+        methodSelection?: {
+            family: "card" | "wallet" | "bank-redirect" | "one-time-code";
+            channelRef?: string;
+        };
+        /** Transient dispatch input only; never persist, audit, log or diagnose. */
+        payer?: {
+            email: string;
+            name?: string;
+        };
         storedMethod?: {
             reference: string;
             mandate: StoredMandateSnapshot;
@@ -445,6 +457,7 @@ export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidenc
 export type { PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource, } from "./truth.js";
 export type { PaymentIngressPort } from "./evidence.js";
 export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
+export type { PostgresPaymentTruthOptions } from "./truth.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -916,6 +929,11 @@ export type CanonicalPaymentSource = {
     occurredAt: string | null;
     payloadFingerprint: string;
 };
+export type PostgresPaymentTruthOptions = {
+    dunningTemplateSlug: string;
+    recoveryUrlPath: string;
+    recoveryTemplateSlug: string;
+};
 ```
 ## dist/payments/eventConformanceRunner.d.ts
 
@@ -945,6 +963,9 @@ export { runPaymentProviderReconciliationWorker } from "./paymentProviderReconci
 export { verifyPaymentAttemptNow } from "./paymentVerifyNowService.js";
 export { runExecutionConformance, runDurableEventConformance } from "./eventConformanceRunner.js";
 export { runPaymentAdapterConformance } from "./adapterConformance.js";
+export { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
+export { PAYMENT_MIGRATIONS } from "./sql.js";
+export { paymentSchemaDescriptor } from "./schemaCapabilities.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -1034,6 +1055,20 @@ export interface PaymentFailureDunningPort {
  */
 export declare function handoffExplicitPaymentRefusal(input: PaymentRefusalHandoff, port: PaymentFailureDunningPort): Promise<void>;
 ```
+## dist/payments/postgresPaymentTruth.d.ts
+
+```ts
+import type { PaymentTruthPort } from "./contracts/truth.js";
+import type { PostgresPaymentTruthOptions } from "./contracts/truth.js";
+interface PgQueryExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Direct-PG caller for the provider-neutral payment truth public forward. */
+export declare function createPostgresPaymentTruthPort(executor: PgQueryExecutor, options: PostgresPaymentTruthOptions): PaymentTruthPort;
+export {};
+```
 ## dist/payments/preparedAttempt.d.ts
 
 ```ts
@@ -1043,6 +1078,44 @@ import type { PreparedAttemptExecutionInput, PreparedAttemptExecutionResult, Pre
 export declare function executePreparedAttemptMechanism<I extends PaymentExecutionBaseInput, R extends PaymentExecutionBaseResult & {
     nextActionKind: N | null;
 }, P extends string, N extends string, E extends Error>(input: PreparedAttemptExecutionInput<I, R, P, N>, policy: PreparedAttemptFailurePolicy<E, N>): Promise<PreparedAttemptExecutionResult<R>>;
+```
+## dist/payments/schemaCapabilities.d.ts
+
+```ts
+/** Direct truth graph only; unsupported operations require a separate store. */
+export declare const paymentSchemaDescriptor: {
+    readonly truth: "supported";
+    readonly settlement: "supported";
+    readonly laterOnlyCycle: "supported";
+    readonly preparedDurableStore: "unsupported";
+    readonly methodSetup: "unsupported";
+    readonly absenceReopen: "unsupported";
+    readonly cumulativeRefund: "unsupported";
+};
+```
+## dist/payments/sql.d.ts
+
+```ts
+/** Sparse projections of canonical units, never an install chain. */
+export declare const PAYMENT_MIGRATIONS: readonly [{
+    readonly id: "20260810180000_payment_settlement_rail";
+    readonly catalogPath: "db/platform/migrations/20260810180000_payment_settlement_rail.sql";
+    readonly position: 10;
+    readonly sha256: "af153aadedc09c07b25f69300d335d8928526cad126646c1b9bf25341f1c2d0e";
+    readonly url: URL;
+}, {
+    readonly id: "20260815150000_payment_truth_reconciliation";
+    readonly catalogPath: "db/platform/migrations/20260815150000_payment_truth_reconciliation.sql";
+    readonly position: 35;
+    readonly sha256: "dd38a601edc2f43f259eefc2cdb9af14fd37fe792a7f82e58c351bd373a88905";
+    readonly url: URL;
+}, {
+    readonly id: "20260826100000_late_payment_shifts_the_subscription_cycle";
+    readonly catalogPath: "db/platform/migrations/20260826100000_late_payment_shifts_the_subscription_cycle.sql";
+    readonly position: 56;
+    readonly sha256: "992540b0f49713d604859926624b3bef09d5075b68b604f069dcbd688328e452";
+    readonly url: URL;
+}];
 ```
 ## dist/payments/verifiedIngress.d.ts
 

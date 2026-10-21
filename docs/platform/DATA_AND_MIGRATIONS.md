@@ -56,6 +56,17 @@ forward, rather than relying on a reference fixture or process startup. A missin
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
+Payments publishes `PAYMENT_MIGRATIONS` as byte-identical projections of canonical
+positions 10 (settlement), 35 (truth/reconciliation) and 56 (later-only cycle).
+Each retains its canonical path, SHA-256 and package asset URL. These three assets
+are not an install chain: install the complete catalogue and preserve its exact
+ledger prefix. No migration or manifest row is added. `paymentSchemaDescriptor`
+declares direct truth, settlement and later-only alignment supported; durable
+prepared attempts, method setup, absence reopen and cumulative refund unsupported.
+Refunds are purely financial and do not cancel subscriptions. The direct truth
+store retains its invoker SQL and requires the host's existing executor and
+privileges; descriptor presence alone does not prove installed schema readiness.
+
 `CATALOG_MIGRATIONS` additionally projects existing canonical catalog positions
 1, 8, 58, 59 and 61: read foundation, storefront attributes, document/identifier
 and subscription price-policy foundation, its validation, and isolated drafts.

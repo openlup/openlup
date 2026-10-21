@@ -61,3 +61,49 @@ Self-retro: the existing invalid-reversal witness caught a dispute-route bypass 
 Package ingress stores adapter-filtered, redacted audit facts with nested normalized evidence, never the raw body. Typed evidence overrides overlapping reader facts; the optional audit bag supplies facts without typed homes. Adapter event identity and fingerprint exclude this bag and receipt time. Missing or incomplete refund evidence is ingested and acknowledged, but not applied under require-evidence.
 
 Known limitations until P4 (method seams): method evidence does not yet carry reusable-method registration data, so package ingress does not support reusable-method persistence. Forwarding the adapter refusal envelope to hosts is also not yet supported.
+
+## P3 record
+
+The direct truth store is contributed with unchanged logic, using the existing
+platform data executor structural shape, as in the inventory precedent. Its options DTO moves
+to the contracts entry. Three byte-identical SQL projections retain canonical
+positions 10/35/56, paths and hashes; the sparse descriptor is not an install
+chain. Direct truth, settlement and later-only alignment are supported; prepared
+durable storage, method setup, absence reopen and cumulative refund explicitly
+refuse capability admission. Refunds are purely financial; no refund operation
+cancels a subscription, and no activating-cycle cancellation exception applies.
+
+Attempt inputs add optional method selection (opaque, persistable channelRef) and
+transient payer email/name. Payer data is dispatch-only: never persisted, audited,
+logged or diagnosed. Missing adapter-required input requires exact before-dispatch
+notDispatched evidence. Conformance checks execution, diagnostics and the whole
+projected audit payload for payer/secret leaks. Normalized stored evidence copies
+an explicit typed field list, including nested money, reversal, refusal and method
+lifecycle facts; it excludes unknown envelope properties.
+
+AMENDMENT 1 drops the incomplete-chargeback reclassification: the donor applies a
+dispute without checking refund completeness. Keeping incomplete evidence stored
+as a refund and unapplied is fail-closed. The stored event type remains a declared
+operator recovery limit. The audit snapshot compatibility reader still uses
+chargeId key detection: the frozen refund observation has operationId and original
+money but no typed charge identity; equating those identities would change behavior.
+Reference host readers and binding remain unchanged.
+
+P3 verification and final ledger are recorded below after the final diff.
+
+P3 local checks: 14 authored cases (seven package contract/conformance cases and
+seven real PostgreSQL cases), within the permitted maximum of 14. Fresh install,
+exact-prefix upgrade, lost-ACK replay/conflict, mismatch/rollback/reconciliation,
+ACL/dunning/recovery, lock serialization and later-only dates pass. Package and
+retained payment suites, typecheck, lint, API and neutrality checks pass. The
+publication policy refuses untracked additions under the local no-Git-write
+boundary; navigation is regenerated through the same repository renderer and the
+remaining tests-owner no-impact trailer is proposed in the handoff.
+
+P3 final ledger: 24 paths, 9 production paths, 1973 lines of churn, four frozen export additions. Computed against a24b10c9 (P2), representing the post-P2 comparison; local origin/main still predates P2. No dependency, canonical migration, public subpath or budget change.
+
+Self-retro: the first SQL run exposed six fixture failures (one manifest-key typo
+and five deferred order-line constraint failures). Preserve canonical manifest
+keys and create orders with their lines in one transaction; the corrected real
+suite passes. The native executor uses the existing structural shape, following
+the inventory precedent, avoiding an unnecessary transitive declaration graph.

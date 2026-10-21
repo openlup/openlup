@@ -63,7 +63,10 @@ export interface PaymentExecutionEnvelope {
     handoff?: PaymentMethodHandoff;
     diagnostics: Readonly<Record<string, string | number | boolean | null>>;
 }
-/** Host identity/key/fingerprint and configured integer-minor money pass verbatim. */
+/** Host identity/key/fingerprint and configured integer-minor money pass verbatim.
+ * Missing adapter-required input must refuse before dispatch with exact
+ * notDispatched evidence (phase before-dispatch), never unknown or dispatched.
+ */
 export interface PaymentAttemptPort {
     validateInput(input: {
         attemptRef: string;
@@ -76,6 +79,15 @@ export interface PaymentAttemptPort {
         };
         mode: "live" | "test";
         purpose: "initial" | "renewal-unattended" | "recovery";
+        methodSelection?: {
+            family: "card" | "wallet" | "bank-redirect" | "one-time-code";
+            channelRef?: string;
+        };
+        /** Transient dispatch input only; never persist, audit, log or diagnose. */
+        payer?: {
+            email: string;
+            name?: string;
+        };
         storedMethod?: {
             reference: string;
             mandate: StoredMandateSnapshot;
@@ -433,6 +445,7 @@ export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidenc
 export type { PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource, } from "./truth.js";
 export type { PaymentIngressPort } from "./evidence.js";
 export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
+export type { PostgresPaymentTruthOptions } from "./truth.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -903,5 +916,10 @@ export type CanonicalPaymentSource = {
     currency: string | null;
     occurredAt: string | null;
     payloadFingerprint: string;
+};
+export type PostgresPaymentTruthOptions = {
+    dunningTemplateSlug: string;
+    recoveryUrlPath: string;
+    recoveryTemplateSlug: string;
 };
 ```
