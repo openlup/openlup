@@ -25,6 +25,12 @@ export function projectVerifiedEvidence(
   };
   switch (evidence.kind) {
     case "money": {
+      // The donor treats absent money as unasserted and skips parity checks.
+      // Settling adapter evidence must instead use its existing mismatch refusal.
+      if (evidence.money === null && (evidence.outcome === "succeeded"
+        || evidence.outcome === "refunded" || evidence.outcome === "disputed")) {
+        throw new Error("payment_control_result_amount_mismatch");
+      }
       const reversal = evidence.refund;
       const refundKind = evidence.outcome === "refunded"
         ? (reversal ? projectRefund(reversal, evidence) : null) ?? (policy === "legacy-assume-full" ? "full" : null)

@@ -148,3 +148,24 @@ it("projects reusable registration with host ownership and copies lifecycle fiel
   expect((await failingOwner.receive(input)).status).toBe(503);
   expect(ingested).toHaveLength(2);
 });
+
+
+it("refuses null settling money through the existing amount mismatch response", async () => {
+  const mismatch = fixture();
+  mismatch.apply.mockRejectedValueOnce(new Error("payment_control_result_amount_mismatch"));
+  const mismatchResponse = await mismatch.receive(input);
+  expect(mismatchResponse).toEqual({ status: 503, data: { error: "Provider webhook processing failed" } });
+  for (const outcome of ["succeeded", "refunded", "disputed"] as const) {
+    const f = fixture({ ...evidence, outcome, money: null });
+    expect(await f.receive(input)).toEqual(mismatchResponse);
+    expect(f.ingest).not.toHaveBeenCalled();
+    expect(f.apply).not.toHaveBeenCalled();
+    expect(f.hook).not.toHaveBeenCalled();
+  }
+  for (const outcome of ["failed", "pending"] as const) {
+    const f = fixture({ ...evidence, outcome, money: null });
+    expect((await f.receive(input)).status).toBe(200);
+    expect(f.ingest).toHaveBeenCalledTimes(1);
+    expect(f.apply).toHaveBeenCalledTimes(outcome === "failed" ? 1 : 0);
+  }
+});

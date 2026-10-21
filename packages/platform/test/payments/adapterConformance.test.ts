@@ -198,3 +198,16 @@ describe("adapter conformance suites", () => {
     expect(proof.cleanupResidualRows).toBe(0); expect(proof.final.aggregates.lateSuccess.paymentStatus).toBe("succeeded");
   });
 });
+
+
+it("refuses verification fixtures with null settling money", async () => {
+  for (const outcome of ["succeeded", "refunded", "disputed"] as const) {
+    const s = subject("provider-a");
+    const original = s.verification[0].expected;
+    if (original.kind !== "money") throw new Error("money fixture required");
+    s.verification = [{ input: s.verification[0].input, expected: { ...original, outcome, money: null } }];
+    s.adapter.verifyPort = { verifyAndNormalize: async () => s.verification[0].expected };
+    await expect(runPaymentAdapterConformance([s])).rejects.toThrow(
+      "payment_adapter_conformance:settling outcome requires money");
+  }
+});

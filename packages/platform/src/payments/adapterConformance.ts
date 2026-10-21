@@ -74,6 +74,9 @@ export async function runPaymentAdapterConformance(
       const verified = await adapter.verifyPort.verifyAndNormalize(fixture.input);
       requireFact(JSON.stringify(verified) === JSON.stringify(fixture.expected), "verified fixture");
       if (verified.kind !== "refusal") {
+        requireFact(verified.kind !== "money" || verified.money !== null
+          || (verified.outcome !== "succeeded" && verified.outcome !== "refunded" && verified.outcome !== "disputed"),
+          "settling outcome requires money");
         requireFact(!sensitiveValues.some(value => JSON.stringify({ payload: projectVerifiedEvidence(verified, fixture.input, "require-evidence").rawPayload, diagnostics: result.diagnostics }).includes(value)),
           "audit payload secret redaction");
         const outcome = verified.kind + ":" + verified.outcome;

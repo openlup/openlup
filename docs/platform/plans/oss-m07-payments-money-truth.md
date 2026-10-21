@@ -167,3 +167,22 @@ layer. Host assertions belong in reference tests, keeping public tests local and
 preserving the assertions, rather than weakening the import controls. Run the
 hidden-UI and payment-control guardrails whenever reference pages change. Serialize package builds and tests: one early BFF run raced
 lint's dependency build; the isolated rerun passed. No new process is needed.
+
+
+## P4d record
+
+Bounded new-boundary hardening: refuse null money for succeeded, refunded and
+disputed adapter evidence at projection through the donor amount-mismatch
+processing-failure path, and refuse those verification fixtures in adapter
+conformance. Failed and pending evidence retain nullable money. Two added cases
+cover ingress refusal and conformance across all three settling outcomes.
+No contract type, export, migration, reference binding or HTTP semantic changes.
+Local edits and focused offline checks only; no Git writes, submission, native
+review, release or activation authority. Completion evidence is recorded in the
+task handoff. Both added cases fail against the restored predecessor sources
+and pass after rebuilding the fix. Focused payment runs pass 274 package cases
+and 424 root cases; structural, lint, typecheck, both neutrality and policy
+checks pass. The existing null-refund assertion now expects mismatch refusal.
+
+Self-retro: package tests require built package entries. Build the original
+sources before the reverted-source witness, and serialize rebuilds with tests.

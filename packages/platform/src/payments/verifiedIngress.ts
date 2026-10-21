@@ -126,9 +126,7 @@ export function createVerifiedPaymentIngress({
         : { status: 400, data: { error: "Invalid provider webhook signature" } };
     }
     const verifiedEvidence = evidence;
-    let event: NormalizedProviderPaymentWebhook;
-    try { event = projectVerifiedEvidence(evidence, input, refundEvidencePolicy); }
-    catch { return { status: 400, data: { error: "Invalid provider webhook evidence" } }; }
+    let event: NormalizedProviderPaymentWebhook | undefined;
     const res: IngressResponse = { status: 503, data: {} };
     const sendSuccess = (target: IngressResponse, data: Record<string, unknown>) => { target.status = 200; target.data = data; };
     const sendBffError = (target: IngressResponse, code: string, error: string) => {
@@ -138,12 +136,18 @@ export function createVerifiedPaymentIngress({
     await processEvent();
     return res;
     async function processEvent(): Promise<void> {
-    if (event.provider !== provider) {
-      sendBffError(res, "BAD_REQUEST", "Provider webhook route mismatch");
-      return;
-    }
-
     try {
+      try { event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy); }
+      catch (error) {
+        if (error instanceof Error && error.message === "payment_control_result_amount_mismatch") throw error;
+        sendBffError(res, "BAD_REQUEST", "Invalid provider webhook evidence");
+        return;
+      }
+      if (event.provider !== provider) {
+        sendBffError(res, "BAD_REQUEST", "Provider webhook route mismatch");
+        return;
+      }
+
       if (verifiedEvidence.kind === "method" && verifiedEvidence.reusableMethod && resolveMethodOwner) {
         const owner = await resolveMethodOwner(verifiedEvidence);
         event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy, owner ?? undefined);
@@ -228,7 +232,7 @@ export function createVerifiedPaymentIngress({
       // match the RPC's exception text specifically, NOT the bare 22023 code,
       // because 22023 is also raised for genuine mismatches (amount / currency /
       // intent-not-found) that must still surface as 503.
-      if (/payment_control_result_terminal_intent/.test(message)) {
+      if (event && /payment_control_result_terminal_intent/.test(message)) {
         operationalEvents({
           name: "provider_payment_result_after_terminal_intent",
           domain: "payment",
@@ -255,7 +259,7 @@ export function createVerifiedPaymentIngress({
       // changes on redelivery, so ACK 200 instead of creating an endless retry
       // loop. The durable inbound event and this reason route operator recovery.
       // Match named reasons only, never the shared 22023 SQLSTATE.
-      if (/payment_control_result_attempt_(?:mismatch|unresolved)/.test(message)) {
+      if (event && /payment_control_result_attempt_(?:mismatch|unresolved)/.test(message)) {
         const reason = message.includes("payment_control_result_attempt_unresolved")
           ? "attempt_unresolved"
           : "attempt_mismatch";
