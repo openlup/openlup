@@ -1,15 +1,15 @@
 # A2 payment example adapters
 
-Status: development-preview implementation ledger, 2026-10-21. O-P1 supplies
-an opt-in Node example behind M07's neutral payment ports. It makes no stable
+Status: development-preview implementation ledger, 2026-10-21. O-P1 and O-P2 supply
+opt-in Node examples behind M07's neutral payment ports. It makes no stable
 framework, account activation or release claim.
 
 ## Owner and coordinator decisions
 
-- Owner, 2026-10-21: Stripe and the second example adapter (O-P2) are opt-in,
+- Owner, 2026-10-21: Stripe and Tpay are opt-in,
   default-off example adapters behind M07 neutral payment ports; adopters may
   replace them. O-P1 implements
-  Stripe only; the second example adapter (O-P2) remains a separate step.
+  Stripe; O-P2 implements Tpay.
 - Owner “Approve O1–O3 (Recommended)”: O1 preserves observed behaviour only.
   Refund creation and an authorization/capture split are honestly `unsupported`.
   O2 injects the host's structural SDK client: no SDK dependency or SDK import
@@ -23,9 +23,9 @@ framework, account activation or release claim.
   New glue composes these modules into M07 without changing the neutral ports.
   Host environment and feature flags, SDK construction, credentials and provider
   configuration remain outside this entry.
-- D3 authorizes only the ui-13 path/token allowance for the adapter source and
-  tests, API report, exact registration tokens and this ledger. No baseline
-  increase or allowance for another category is authorized. Paired plants keep
+- D3 authorizes the ui-13/ui-14 path/token allowance for the adapter source and
+  tests, API report, exact registration tokens and this ledger. The market currency token is allowed only in the Tpay source/test directories. No baseline
+  increase is authorized. Paired plants keep
   outside vocabulary counted.
 - M07 requires refund evidence. Stripe `amount_refunded` is an explicit
   cumulative snapshot with the original payment money and stable charge ID.
@@ -87,7 +87,58 @@ execution and refusal boundary. No provider-account verification is claimed.
 Detailed per-file provenance, unchanged-versus-glue comparisons, exact case
 counts, timings and local check results belong to the existing task evidence.
 
-The second example adapter (O-P2), O-P3 account verification/reference binding, M07 P2
+O-P3 account verification/reference binding, M07 P2
 conformance and the additive dispute outcome remain separate work. Committed
 native review, broad gates, submission and any release remain with the active
 supervisor; these local checks grant none of that authority.
+
+## O-P2 boundary and named deltas
+
+`@openlup/platform/payments/tpay` exports exactly `createTpayPaymentAdapter`,
+`type TpayPaymentAdapterConfig` and `tpayPaymentCapabilities`. The host explicitly
+supplies HTTP credentials/fetch, callback and return URLs, mode, Model O
+activation policy, certificate root, HTTPS certificate directory prefix ending
+in `/`, and an asynchronous certificate resolver. Importing performs no I/O,
+reads no environment and installs no route or default binding. The resolver
+owns redirect and egress policy. Clock values are UTC seconds.
+
+The adapter declares only its supported market currency. It offers bank-redirect
+and one-time-code flows, Model O alias activation and unattended alias charging;
+Model M and unknown mandate models refuse before dispatch. No recurring card
+capability is claimed. Account-dependent offers remain `verification_pending`
+until O-P3 owner TEST readback; protocol witnesses do not establish activation.
+Refund creation, split authorization/capture, close and exact absence are
+unsupported. Transaction-ID readback is neither a complete bounded search nor
+absence proof. Refunded/chargeback readback stays unknown for host manual review.
+
+Named deltas from the contributed donor:
+
+1. Verify certificate validity and notification freshness. Root and prefix are
+   required construction inputs; signing and root certificate validity windows
+   use the injected clock. A verified protected-header `iat` is interpreted as
+   UTC seconds. Maximum notification age defaults to seven days, a generous
+   assumption while the provider retry schedule is unconfirmed. A missing
+   assertion leaves provider time null; the host deduplicates by exact event
+   identity and fingerprint. No receipt timestamp becomes provider time.
+2. Transaction event identity combines the payment reference and verified outcome
+   class. Method identity combines event/alias and method outcome. The donor
+   normalizer retains its original identity mapping; only factory glue adds the
+   neutral envelope identity. Fingerprints exclude receipt time and secrets.
+3. Receipt time participates only in signed notification freshness.
+
+CHARGEBACK is a `refunded` money observation with explicit `full-reversal`,
+`reason: "chargeback"`, original money and a stable operation ID. Missing original
+money or currency refuses. No M07 P2 disputed outcome is required.
+Donor source and tests retain behavior except import relocation and private
+identity removal: neutral aliases/labels/hosts/return paths and subject keys,
+explicit synthetic payer fixtures instead of a manufactured payer, and removal
+of the mapper's host environment reader. The synthetic certificate fixture adds
+root lifetime and signed issued-at controls for the named validity/freshness
+cases. Other donor outcomes outside M07 remain in one named refusal mapping;
+unrecognized alias lifecycle events refuse `unsupported-event`.
+
+O-P2 donor witnesses are moved-pending: OpenLup root source retires in O-P3 and
+the private donor suite in C5. New glue cases are counted separately in task
+evidence; no donor case is trimmed to satisfy the estimate. M07 P2 conformance
+remains a TODO without a stub. Git, staged inventory, full gates and native
+candidate review remain with Claude.

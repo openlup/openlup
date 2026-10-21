@@ -462,6 +462,15 @@ its no-write snapshot assertions inside a `try` and removes only the inserted
 tier-price rows in `finally`, so its fixture cannot affect later write cases.
 These changes retain the existing cases and assertion operators.
 
+The second opt-in payment example extends the existing narrow vendor allowance
+and permits its market currency token only in its own source/test directories.
+Paired real-scanner plants keep vendor and currency vocabulary outside those
+paths counted. Its offline witnesses retain all donor cases as moved-pending;
+new envelope/validity/freshness cases are counted separately. The packed payment
+consumer imports both optional subpaths with ambient I/O disabled and no SDK.
+Focused loopback transport tests fence every socket except their disposable
+local listener; they never establish provider-account readiness.
+
 Required root `test` accepts only success from all four `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.

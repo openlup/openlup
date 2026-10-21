@@ -33,6 +33,7 @@ or provider-account certification.
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
 | `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
+| `./payments/tpay` | Opt-in Node payment example with injected HTTP/certificate I/O, Model O aliases and verified observations; no default activation. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
@@ -1077,3 +1078,31 @@ refund creation and split authorization/capture are unsupported. Cancellation
 is enabled only when the injected client supplies it. See the
 [A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md) for the current
 preview boundary and the host's responsibilities.
+
+### Opt-in bank and code payment example
+
+Import `createTpayPaymentAdapter`, `type TpayPaymentAdapterConfig` and
+`tpayPaymentCapabilities` from `@openlup/platform/payments/tpay`. Supply `http`
+with explicit `baseUrl`, `clientId`, `clientSecret`, `fetchImpl` and optional
+`timeoutMs`; `urls` with `notificationUrl`, `successUrl`, `errorUrl`;
+`modelOActivationEnabled`, `mode`, and optional UTC-seconds `clock`.
+`notification` requires `rootCertificatePem`, `allowedCertificateUrlPrefix`
+(HTTPS directory ending in `/`) and `resolveCertificate`. The resolver owns
+redirect/egress policy. Both certificates must be valid at verification time.
+
+Verify certificate validity and notification freshness using original raw bytes.
+A signed protected-header `iat` supplies UTC-seconds provider time; absent time
+stays null. `maxNotificationAgeSeconds` defaults to seven days, a generous
+assumption pending confirmation of the provider retry schedule. Host dedupe
+uses exact event identity plus stable fingerprint when time is absent. Receipt
+time is used only for freshness. Transaction identity includes outcome class;
+method identity includes event/alias plus outcome.
+
+The adapter offers its declared market currency, bank redirects, one-time codes,
+Model O alias activation and unattended alias charging. Model M and unknown
+mandates refuse before dispatch; no recurring cards are offered. Account offers
+remain pending TEST verification. Chargeback observations carry full reversal,
+original money and stable operation identity; refunded/chargeback readback stays
+unknown for manual review. There is no close or exact-absence port. Refund
+creation and authorization/capture separation are unsupported. See the
+[A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p2-boundary-and-named-deltas).

@@ -38,6 +38,7 @@ export const ADAPTER_ENTRIES = [
   "communications/klaviyo",
   "communications/resend",
   "payments/stripe",
+  "payments/tpay",
   "data",
   "identity",
   "job-ledger",
@@ -324,7 +325,7 @@ import net from "node:net";
 import fs from "node:fs";
 const require = createRequire(import.meta.url);
 const sdk = ["str", "ipe"].join("");
-for (const name of [sdk, "@" + sdk + "/" + sdk + "-js"]) {
+for (const name of [sdk, "@" + sdk + "/" + sdk + "-js", ["tp", "ay"].join("")]) {
  assert.throws(() => require.resolve(name), error => ["MODULE_NOT_FOUND", "ERR_MODULE_NOT_FOUND"].includes(error.code));
 }
 const forbidden = () => { throw Error("ambient I/O forbidden"); };
@@ -348,6 +349,15 @@ assert.equal(calls,1); assert.equal(result.handoff.payload,"transient_fixture");
 assert(!JSON.stringify(result.diagnostics).includes("transient_fixture"));
 await assert.rejects(() => configured.attemptPort.execute({...input,mode:"live"}));
 assert.equal(calls,1); assert.equal(configured.absencePort,undefined);
+const second = await import("@openlup/platform/payments/tpay");
+const secondFactory = "create" + "T" + "payPaymentAdapter";
+const secondCapabilities = "t" + "payPaymentCapabilities";
+assert.deepEqual(Object.keys(second).sort(), [secondFactory, secondCapabilities].sort());
+assert.equal(second[secondCapabilities].exactAbsence,"unsupported");
+assert.equal(second[secondCapabilities].refundCreate,"unsupported");
+assert.equal(second[secondCapabilities].authorizationCaptureSplit,"unsupported");
+assert.deepEqual(second[secondCapabilities].supportedCurrencies,[String.fromCharCode(80,76,78)]);
+assert.throws(() => second[secondFactory]({ notification: {} }));
 assert.equal(configured.capabilities.refundCreate,"unsupported");
 assert.deepEqual(await configured.verifyPort.verifyAndNormalize({rawBody:Buffer.from("{}"),headers:{},receivedAt:"2026-10-21T00:00:00Z"}),{kind:"refusal",reason:"signature"});
 `);

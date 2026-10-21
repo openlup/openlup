@@ -53,6 +53,20 @@ metadata search never enables exact absence. Refund creation and a split
 between authorization and capture remain unsupported. Account-dependent offers
 remain pending TEST evidence; see [A2](plans/oss-a2-payment-adapters.md).
 
+The `payments/tpay` example uses asynchronous injected certificate resolution
+and original notification bytes. Verify certificate validity and notification
+freshness: both certificate windows use an injected clock; a signed issued-at
+assertion provides provider time, otherwise time remains null. Receipt time
+participates only in freshness. Transaction identities combine payment reference
+and outcome; method identities combine event/alias and lifecycle outcome. The
+host deduplicates identity plus stable fingerprint. Chargeback becomes an
+explicit full reversal with original money and operation ID. Missing reversal
+evidence refuses. Unknown alias lifecycle events refuse `unsupported-event`.
+Readback retains purpose, checks exact transaction identity/configured money,
+and leaves refunded/chargeback unknown for manual review. Only Model O mandates
+can charge unattended. Exact absence, close, refund creation and separate
+capture are unsupported; account-dependent offers remain verification_pending.
+
 ## Canonical status
 
 Each domain owns its canonical status vocabulary, allowed transitions, and
