@@ -171,7 +171,9 @@
         "test/catalog/bundleAvailability.test.ts",
         "test/catalog/bundleAvailabilityService.test.ts",
         "test/catalog/bundleCatalogReadPort.test.ts",
-        "test/catalog/sellableBundleHandler.test.ts"
+        "test/catalog/sellableBundleHandler.test.ts",
+        "test/catalog/catalogFoundationContracts.test.ts",
+        "test/catalog/catalogDraftContracts.test.ts"
       ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"

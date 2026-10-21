@@ -12,6 +12,17 @@ current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
 ## Owns
+The native SKU envelope reader, its mapper and the isolated draft store now
+have their package implementation under `packages/platform/src/catalog/`.
+The old store paths preserve factory identity through named package exports;
+no pool, SQL body, authority error or draft refusal changes. The old native
+mapper path was removed because nothing imported it; its implementation now
+lives only in the package. The managed envelope keeps its own mapper. No public
+helper export or package deep import is introduced. Rich catalog interpretation
+and native price-authority
+composition stay reference-owned. Sparse catalog units 1/8/58/59/61 are package
+projections of existing canonical SQL, not another migration history.
+
 
 The native bundle read store and query statements are implemented by
 `@openlup/platform/catalog`. The former PostgreSQL paths retain named exports;

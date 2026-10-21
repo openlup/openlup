@@ -6,8 +6,8 @@ import {
   requireCurrentCatalogDocumentAuthority,
   type CatalogSkuIdentifier,
   type NeutralSkuEnvelopeV1,
-} from "../../../src/domains/catalog/catalogFoundationContracts.js";
-import type { PgQueryExecutor } from "./queryBuilder.js";
+} from "./foundationSchemas.js";
+import type { PgQueryExecutor } from "../data/index.js";
 
 const IDENTIFIERS_SQL = `
   SELECT catalog_sku_id, issuer, identifier_kind, normalized_value,

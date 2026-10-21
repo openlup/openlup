@@ -505,6 +505,16 @@ For a separate integration artifact, follow the canonical
 Generic supported orchestration remains the platform's responsibility.
 
 ### Contributions, seams and readiness
+The M05 contribution is a structural declaration over supplied bound callables,
+not another domain or activation registry. Its three contributions retain the
+`catalog`, `pricing` and `promotions` identities. Ports and bundle routes retain
+actual function identity for the existing readiness checker. The reference binding
+selects native stores and delegates operator verification through the existing
+identity binding; no default dispatcher or authorization control changes. The
+package contribution imports readiness types only, so no new cross-module edge
+is needed. Missing selected callables or stock refuse, and incomplete/unknown
+schema observations cannot admit the candidate.
+
 
 The local outbox contribution implements these rules through the experimental
 `@openlup/core/readiness`, `./outbox` and `./standard-schema` subpaths.
