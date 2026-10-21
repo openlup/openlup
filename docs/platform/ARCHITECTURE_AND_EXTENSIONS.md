@@ -663,13 +663,19 @@ executor. Browser preview values remain reference-owned. See the
 
 ## Fulfillment contracts
 
-The internal `fulfillment/omnipack` transport contributes injected HTTP, per-request
-credential resolution, provider codecs and selected donor witnesses without adding
-a public subpath. Order preparation materializes canonical JSON once; its SHA-256
-fingerprint and transport use exactly those bytes. The transport installs no route,
-schedule or default binding. Root reference implementations remain unchanged;
-neutral-port glue, closed evidence projection and public registration are later
-phases in the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
+The opt-in `@openlup/platform/fulfillment/omnipack` example composes the contributed
+transport/codecs with the frozen ports. Its host supplies HTTP, per-call secrets,
+product metadata and explicit selection/readiness. Preparation keeps canonical
+bytes transient and returns closed fingerprint/contact/selection evidence;
+mismatched dispatch refuses before credentials or HTTP, and ambiguous POSTs stay
+unknown without retry. Observations authenticate before parsing and preserve
+nullable occurrence; positive readback never turns empty pages into exact absence.
+Label create/void and cancellation are unsupported; label reads remain host-owned.
+Sync projects collection identity and closed data, with product writes only on
+explicit invocation. No route, schedule or default binding is installed. Root
+reference implementations remain unchanged. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
+and [A3 ledger](plans/oss-a3-fulfillment-adapter.md); actual M08 conformance remains
+O-P3 work when its runner ships.
 
 Fulfillment P1 lives at the two existing-package subpaths
 `@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger

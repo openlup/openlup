@@ -96,6 +96,43 @@ raw bodies are excluded. Audit fields do not participate in event identity or
 fingerprints. Offline multi-subject M07 P2 conformance covers replay, chargeback,
 exact readback and verification refusals without establishing account activation.
 
+## Opt-in fulfillment example
+
+The experimental Node `@openlup/platform/fulfillment/omnipack` entry exposes only
+its factory, configuration type and capability descriptor. Construction installs
+no route, schedule or default binding. The host explicitly selects the adapter,
+attests account readiness and supplies HTTP, credentials and notification tokens
+per call, product metadata, clock, evidence references and tracking URL approval.
+Credentials never establish readiness. The descriptor starts unselected and not ready.
+
+Prepare retains serialized command bytes transiently and returns only the actual
+body fingerprint, full contact revision and separate provider/carrier/service
+references. Dispatch refuses absent or mismatched preparation before credentials
+or HTTP, consumes it once and never retries a POST. Definitive rejection is
+`not_dispatched`; lost/malformed acknowledgement and ambiguous submission are
+`unknown`. The frozen accepted shape carries empty host-key placeholders; the
+host worker must assign its own provider-attempt and label keys. No adapter key
+is an acceptance authority. The donor wire uses service in both carrier/service
+fields; durable evidence keeps the selected references separate. The donor
+codec does not transmit line2 or delivery/courier instructions.
+
+Token verification precedes parsing. Trusted route configuration supplies a
+missing event kind and rejects mismatches. Event identity includes event,
+provider/order identity, fulfillment and nullable occurrence, independently of
+receipt time. Token auth proves no freshness; missing occurrence stays null.
+Readback accepts only a unique positive identity match; empty, unmatched or
+unknown-status collections stay unknown. Exact absence, label create/void,
+cancellation and courier pickup remain unsupported; label reads belong to host
+storage. Raw bags, provider errors, command PII and secrets never enter durable
+outputs. Tracking URLs require query-free HTTPS without credentials and explicit
+host approval. Stock collections carry a run ID/time and nullable source revision;
+collection time is no provider ordering. Product reads are pull-only in scheduled
+composition; writes require explicit host invocation and metadata.
+
+Offline witnesses cover these boundaries. Conformance runs with M08's runner
+when it ships; this entry claims no conformance pass or provider-account proof.
+See the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
+
 ## Canonical status
 
 Each domain owns its canonical status vocabulary, allowed transitions, and
@@ -168,14 +205,19 @@ A payments (M07) adapter implements `PaymentAdapter` and declares
 `PaymentAdapterConformanceSubject` from `./payments/contracts` and verification
 fixtures. See the [opt-in payment example](#opt-in-payment-example).
 
-Fulfillment neutral ports are planned (M08); there is no API to implement yet. A
-fulfillment example adapter is planned for round A3. An adapter for another 3PL,
-marketplace fulfillment service or parcel network would then follow that example.
+A fulfillment (M08) adapter declares `FulfillmentCapabilityDescriptor` and
+implements `FulfillmentDispatchPort`, `FulfillmentObservationPort` and
+`FulfillmentReadbackPort` from `./fulfillment/contracts`; optional sync uses
+`FulfillmentStockSyncProvider` and `FulfillmentProductSyncProvider`. The
+[opt-in fulfillment example](#opt-in-fulfillment-example) is the template for
+another warehouse, marketplace fulfillment service or parcel adapter.
+Conformance runs with M08's runner when it ships; no pass is claimed here.
 
 | Class | Shipped example subpaths |
 | --- | --- |
 | Communications | `@openlup/platform/communications/resend`, `@openlup/platform/communications/klaviyo` |
 | Payments | `@openlup/platform/payments/stripe`, `@openlup/platform/payments/tpay` |
+| Fulfillment | `@openlup/platform/fulfillment/omnipack` |
 
 The examples are default-off and opt-in: the host selects an adapter for each
 port it needs, and default wiring includes none. To write another vendor's

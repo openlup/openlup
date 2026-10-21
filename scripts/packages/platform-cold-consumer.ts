@@ -41,6 +41,7 @@ export const ADAPTER_ENTRIES = [
   "communications/resend",
   "payments/stripe",
   "payments/tpay",
+  "fulfillment/omnipack",
   "data",
   "identity",
   "job-ledger",
@@ -374,6 +375,52 @@ assert.deepEqual(second[secondCapabilities].supportedCurrencies,[String.fromChar
 assert.throws(() => second[secondFactory]({ notification: {} }));
 assert.equal(configured.capabilities.refundCreate,"unsupported");
 assert.deepEqual(await configured.verifyPort.verifyAndNormalize({rawBody:Buffer.from("{}"),headers:{},receivedAt:"2026-10-21T00:00:00Z"}),{kind:"refusal",reason:"signature"});
+`);
+}
+
+/** Opt-in warehouse proof with absent SDK/peers and exclusively injected I/O. */
+export function proveWarehouseAdapterConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createRequire, syncBuiltinESMExports } from "node:module";
+import http from "node:http";
+import https from "node:https";
+import net from "node:net";
+const subpath = "fulfillment/omnipack";
+const provider = subpath.split("/")[1];
+assert.throws(() => createRequire(import.meta.url).resolve(provider), error => ["MODULE_NOT_FOUND", "ERR_MODULE_NOT_FOUND"].includes(error.code));
+const forbidden = () => { throw Error("ambient I/O forbidden"); };
+globalThis.fetch = forbidden; http.request = forbidden; https.request = forbidden; net.connect = forbidden;
+syncBuiltinESMExports();
+const entry = await import("@openlup/platform/" + subpath);
+const factory = "create" + provider[0].toUpperCase() + provider.slice(1) + "FulfillmentAdapter";
+const descriptor = provider + "FulfillmentCapabilities";
+assert.deepEqual(Object.keys(entry).sort(), [factory, descriptor].sort());
+assert.equal(entry[descriptor].defaultOff, true); assert.equal(entry[descriptor].selected, false);
+assert.equal(entry[descriptor].readiness.ready, false);
+let calls = 0, credentials = 0;
+const config = {http:{baseUrl:"https://warehouse.example.test", timeoutMs:1000, safeReadRetries:0, productPath:"/products",
+ credentials:()=>{credentials++;return {username:"example",password:"transient-placeholder"};},
+ fetchImpl:async(_,input)=>{calls++; assert.equal(input.method,"POST"); return new Response(JSON.stringify({orderId:"external-a",apiKey:"transient-placeholder"}));}},
+ resolveProduct:async()=>({}),notification:{token:()=>"transient-placeholder",expectedEvent:"order.delivered"},
+ clock:()=>"2026-10-21T10:00:00Z",mintSyncRunId:()=>"sync-a",mintEvidenceReference:()=>"evidence:00000000-0000-4000-8000-000000000001",approveTrackingUrl:()=>false};
+const dormant = entry[factory](config);
+const request = {requestKey:"request-a",fulfillmentRef:"fulfillment-a",orderRef:"order-a",orderNumber:"ORDER-A",parcelRef:null,
+ contactRevision:{schemaVersion:1,source:"checkout",revision:1},
+ recipient:{name:"Example Recipient",email:"recipient@example.test",phone:"+12025550123",line1:"123 Example Street",line2:null,city:"Example City",postalCode:"10001",country:"US",deliveryInstructions:null,courierInstructions:null},
+ lines:[{skuRef:"SKU-A",title:null,quantity:1,productRef:null,packRef:null}],
+ selection:{providerRef:provider,carrierRef:"carrier-a",serviceRef:"service-a",deliveryKind:"courier",pickupPoint:null}};
+assert.equal((await dormant.dispatch.prepare(request)).refusal.reason,"disabled");
+const adapter = entry[factory]({...config,selected:true,readiness:{ready:true}});
+const missing = await adapter.dispatch.dispatch(request,{});
+assert.equal(missing.kind,"not_dispatched"); assert.equal(missing.refusal.reason,"not_dispatchable");
+assert.equal(calls,0); assert.equal(credentials,0);
+const prepared = await adapter.dispatch.prepare(request); assert.equal(prepared.kind,"prepared");
+const result = await adapter.dispatch.dispatch(request,prepared.evidence); assert.equal(result.kind,"accepted");
+assert.equal(calls,1);assert.equal(credentials,1);
+assert(!JSON.stringify(result).includes("transient-placeholder"));assert(!JSON.stringify(result).includes("recipient@example.test"));
+assert.equal((await adapter.readback.read({providerRef:provider,requestKey:"request-a",fulfillmentRef:"fulfillment-a",externalRef:null,mode:"command"})).kind,"unsupported");
+assert.equal(calls,1);
 `);
 }
 
@@ -948,6 +995,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveCommunicationsConsumer(consumer);
     proveResendConsumer(consumer);
     provePaymentAdapterConsumer(consumer);
+    proveWarehouseAdapterConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);

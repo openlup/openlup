@@ -441,6 +441,17 @@
       ],
       "entrypoint": "dist/fulfillment/contracts/index.d.ts",
       "snapshot": "api/fulfillment-contracts.api.md"
+    },
+    "./fulfillment/omnipack": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/fulfillment/omnipack/factory.test.ts",
+        "test/fulfillment/omnipack/transportAdaptation.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/omnipack/index.d.ts",
+      "snapshot": "api/fulfillment-omnipack.api.md"
     }
   },
   "pack": {

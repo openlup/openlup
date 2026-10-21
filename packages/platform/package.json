@@ -205,6 +205,11 @@
       "types": "./dist/fulfillment/contracts/index.d.ts",
       "import": "./dist/fulfillment/contracts/index.js",
       "default": "./dist/fulfillment/contracts/index.js"
+    },
+    "./fulfillment/omnipack": {
+      "types": "./dist/fulfillment/omnipack/index.d.ts",
+      "import": "./dist/fulfillment/omnipack/index.js",
+      "default": "./dist/fulfillment/omnipack/index.js"
     }
   },
   "repository": {

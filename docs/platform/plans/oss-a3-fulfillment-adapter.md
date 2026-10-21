@@ -197,3 +197,135 @@ witnesses avoid wholesale duplication while retaining the relevant behaviors.
 Repair rethink/self-retro: weakened witnesses and unrestricted response codes →
 extend the existing cases and constrain the response extraction seam, preserving
 the donor fallback and avoiding a new error vocabulary or extra cases.
+
+## O-P2 public neutral-port glue
+
+Outcome: add only the opt-in `@openlup/platform/fulfillment/omnipack` entry on
+O-P1 `9593830c`, retaining the frozen M08 P1 contracts and all donor witnesses.
+The three public symbols are `createOmnipackFulfillmentAdapter`,
+`omnipackFulfillmentCapabilities` and `type OmnipackFulfillmentAdapterConfig`.
+The factory's inline return type uses the frozen dispatch, observation, readback
+and sync provider ports. No parent re-export, orchestration, default binding,
+route, schedule, SDK, dependency or account activation is added.
+
+Authority remains local implementation and focused offline checks only. Claude
+owns all git writes, committed native review, broad gates and delivery. No git
+write, install, credential-file read, network/vendor access or full suite is
+permitted here. O-P3 still owes the actual M08 conformance runner; local glue
+witnesses are not a conformance pass. The existing pending provider/account,
+release and adoption boundaries remain unchanged.
+
+Implementation/proof: retain the existing client and codecs, add one request-bound
+transient preparation cache and closed neutral projections. The cache is consumed
+before dispatch; mismatches refuse before credentials/HTTP. Host selection and
+readiness are independent of secrets. Provider bags/errors are discarded, unsafe
+tracking URLs dropped, occurrence remains nullable and empty reads stay unknown.
+The frozen accepted result requires string host keys; empty placeholders preserve
+host ownership until its worker supplies actual keys. Product writes require
+explicit invocation; no scheduled push is installed. Unsupported labels and cancel
+have no callable members; their descriptor states supported:false with reasons.
+
+STEP 0: focused package checker passed before edits. Actual packed docs/root class
+was **47,850 / 49,152 bytes**, 5 / 10 files, leaving **1,302 bytes**. The single
+95-byte README row projects docs to **47,877 bytes**, leaving **1,275 bytes**.
+Tarball 1,049,053 / 1,351,680; code 904,454 / 1,126,400; unpacked
+4,675,074 / 5,734,400; total files 1,470 / 2,100. No cap changes authorized.
+The initial pack attempt hit default npm-cache EPERM; a temporary cache resolved
+it without installation or changing the existing cache.
+
+### O-P2 case ledger
+
+| Destination | Cases | Status | O-P1 + O-P2 running total |
+| --- | ---: | --- | ---: |
+| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 19 | net-new glue/refusal/redaction | 43 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 44 |
+
+O-P2 is **20 net-new**, under its target of 30. O-P1 + O-P2 is **44**;
+private V-C1 18 + 44 + O-P3 projected 2 = **64 / 100**, leaving 36 cases
+(10 remain a planning reserve). Package-boundary generated rows are counted
+separately under ruling A; actual runtime is reported with final checks.
+
+Simplicity pre-check for Claude's committed reviews: reuse the contributed
+transport/codecs, keep preparation transient and project allowlisted fields;
+a second transport, durable command cache or generic sanitization framework is
+unnecessary. Native reviewers must review the committed stabilized tree, with
+two independent full reviews under the existing process, including simplicity.
+
+### O-P2 focused evidence and handoff
+
+- Glue obligation (1): factory tests “binds full contact revision”, “missing and
+  foreign preparation”, and “every request/evidence mismatch” prove exact body
+  hash, closed full revision, pre-credential refusal and fresh remap preparation.
+- Obligation (2): “definitive rejection” and “lost/malformed acknowledgements”
+  prove non-submission versus unknown, one POST and no invented host keys.
+- Obligation (3): “inert, unselected, unready”, four unsupported-operation cases,
+  “exact selection refusals” and “product reads pull-only” cover capability/default,
+  selection/ref separation and deliberate writes. Label/cancel cases exercise
+  explicit unsupported descriptor reasons and absent callable ports. The brief's
+  return shape excludes those members; adding refusal-only callables would need
+  the lead's bounded shape decision. No extra public export was introduced.
+- Obligation (4): “exact absence” and “positive correlated readback” reject empty,
+  unmatched, duplicate and unknown-status results without absence/delivery claims.
+- Obligation (5): “token before touching”, “event identity across receipts” and
+  “unknown/mismatched event taxonomy” cover authentication order, eventKey,
+  receipt/occurrence separation, correlation and unknown taxonomy refusal.
+- Obligation (6): closed output plants in dispatch, observation, URL, readback,
+  stock/product and error cases exclude response bags, secrets, signed URLs and
+  command PII. Product writes return only replay evidence or void; sync exceptions
+  are closed neutral refusal objects, never provider errors.
+
+Focused package witnesses + neutrality + package-boundary + cold-consumer run:
+**1,595 passed across 11 files**, 48.83 s wall time. Expanded groups: package
+40 (21 existing + 19 glue), neutrality 35, boundary 1,474 (9 new generated rows),
+cold-consumer 46 (1 new). O-P2 remains 20 authored net-new; whole-round projection
+remains 64 / 100. Hosted added duration remains unverified.
+
+Platform no-emit typecheck, requested ast-grep scan, API generation/check and
+full lint passed; lint reports 33 existing warnings and no errors. Existing API
+reports were regenerated with no byte changes; only the new report is added.
+Both adapter source/test directory gitleaks scans found no leaks. Tree-wide
+neutrality reports zero increases and the UI neutrality smoke passes.
+Registration diffs against `9593830c`: package.json **+5/-0**, release gates
+**+11/-0**. All previous export/surface/limit values remain unchanged.
+
+Serialized post-build artifact measurement through the shared `measurePack` /
+`checkPackBudget` functions passes all class and aggregate caps: docs **47,932 /
+49,152 bytes**, 5 / 10 files, **1,220 bytes headroom**; code 913,657 /
+1,126,400; tarball 1,059,534 / 1,351,680; unpacked 4,721,951 / 5,734,400;
+1,479 / 2,100 files. One earlier post-edit measurement overlapped lint's dist
+rebuild and was discarded; these numbers come from the completed build.
+
+The requested policy / docs-update / final policy sequence was attempted. Each
+CLI policy run refuses its tracked-only inventory because six new catalogue
+files are untracked; docs-update nevertheless refreshed navigation with no byte
+delta. The existing documentation-impact API evaluated the complete candidate
+against full O-P1 SHA: **3 obligations, 0 unanswered**, answered by the one README
+row, the A3-owned architecture paragraph and contribution-check explanation.
+The final official package checker refuses the dirty package, as designed.
+Neither refusal was bypassed with an alternate index or a git write. Claude must
+stage/commit, rerun the policy/artifact gates, complete its required reviews and
+broad checks, and retain all remaining release/account/adoption gates.
+
+Self-retro: concurrent rebuild/measurement produced a partial artifact → discard
+that result and serialize all consumers of mutable dist output. A tiny transient
+cache plus closed projections reused the donor semantics without a new durable
+command store or sanitizer framework. No full suite, git write, install,
+network/vendor access or credential-file read was performed.
+
+Final focused correction: neutrality caught a vendor token in CONTRIBUTING,
+which is outside the allowance; replaced it with neutral prose, leaving the
+allowance/baseline unchanged. Descriptor policy now pins C0's
+ownsDeliveredNotification:false and providerSpecificAdminActions:false /
+genericAdminActions:true in the existing default-profile test. Readback without
+an external identity explicitly returns unsupported for exact absence; empty
+positive lookup collections still return unknown. No cases added. Lesson:
+copying a representative port-fit fixture is not the frozen adapter policy;
+assert the exact C0 policy fields in the existing descriptor witness.
+
+Final corrected-candidate focused rerun: **1,595 / 11 passed**, 70.77 s wall time;
+counts remain unchanged. Final build/typecheck, API check, ast-grep and focused
+ESLint pass. Full lint previously passed with 33 existing warnings. Final neutrality
+returns zero increases; documentation-impact API remains 3 obligations / 0
+unanswered. All nine existing browser-entry budgets pass. Final measured caps
+above reflect the corrected descriptor/readback candidate. No review or repair
+budget was started or reset; committed reviews remain exclusively Claude-owned.
