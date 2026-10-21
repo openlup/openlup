@@ -46,3 +46,5 @@ export type {
   PaymentProviderReconciliationWorkerInput, SilenceWindowLookup,
   PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult,
 } from "./reconciliation.js";
+
+export type { PostgresPaymentTruthOptions } from "./truth.js";

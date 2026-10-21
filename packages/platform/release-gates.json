@@ -367,7 +367,8 @@
         "test/payments/refundEvidence.test.ts",
         "test/payments/truth.test.ts",
         "test/payments/reconciliation.test.ts",
-        "test/payments/adapterConformance.test.ts"
+        "test/payments/adapterConformance.test.ts",
+        "test/payments/postgresPaymentTruth.test.ts"
       ],
       "entrypoint": "dist/payments/index.d.ts",
       "snapshot": "api/payments.api.md"
@@ -383,7 +384,8 @@
         "test/payments/refundEvidence.test.ts",
         "test/payments/truth.test.ts",
         "test/payments/reconciliation.test.ts",
-        "test/payments/adapterConformance.test.ts"
+        "test/payments/adapterConformance.test.ts",
+        "test/payments/postgresPaymentTruth.test.ts"
       ],
       "entrypoint": "dist/payments/contracts/index.d.ts",
       "snapshot": "api/payments-contracts.api.md"

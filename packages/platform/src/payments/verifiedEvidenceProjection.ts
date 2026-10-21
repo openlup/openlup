@@ -94,8 +94,32 @@ function assertNever(value: never): never {
 }
 
 function auditPayload(evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence): Record<string, unknown> {
-  const { providerAuditPayload, fingerprint: _fingerprint, ...normalized } = evidence;
-  const payload: Record<string, unknown> = { ...providerAuditPayload };
+  // Explicit typed fields only: unknown envelope properties never enter storage.
+  const normalized = {
+    provider: evidence.provider, providerEventId: evidence.providerEventId,
+    providerOccurredAt: evidence.providerOccurredAt, kind: evidence.kind,
+    intentRef: evidence.intentRef, outcome: evidence.outcome,
+    ...(evidence.kind === "money" ? {
+      providerPaymentRef: evidence.providerPaymentRef, attemptRef: evidence.attemptRef,
+      money: evidence.money && money(evidence.money),
+      refusal: evidence.refusal && { code: evidence.refusal.code,
+        hints: [...evidence.refusal.hints], adviceCode: evidence.refusal.adviceCode },
+      refund: evidence.refund && refund(evidence.refund),
+    } : {
+      methodRef: evidence.methodRef, setupRef: evidence.setupRef,
+      methodLifecycle: evidence.methodLifecycle && {
+        kind: evidence.methodLifecycle.kind, providerKind: evidence.methodLifecycle.providerKind,
+        providerMethodRef: evidence.methodLifecycle.providerMethodRef,
+        providerEventId: evidence.methodLifecycle.providerEventId, occurredAt: evidence.methodLifecycle.occurredAt,
+        replacement: evidence.methodLifecycle.replacement && {
+          schemeLabel: evidence.methodLifecycle.replacement.schemeLabel,
+          lastDigits: evidence.methodLifecycle.replacement.lastDigits,
+          expiresAt: evidence.methodLifecycle.replacement.expiresAt,
+        },
+      },
+    }),
+  };
+  const payload: Record<string, unknown> = { ...evidence.providerAuditPayload };
   if (evidence.kind === "money") {
     // Host readers use the provider object reference and original payment money.
     payload.providerPaymentId = evidence.providerPaymentRef;
@@ -117,4 +141,17 @@ function auditPayload(evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence
   }
   payload.openlupEvidence = normalized;
   return payload;
+}
+
+function money(value: { amountMinor: number; currency: string }) {
+  return { amountMinor: value.amountMinor, currency: value.currency };
+}
+function refund(value: PaymentRefundObservation) {
+  const base = { operationId: value.operationId, originalPaymentMoney: value.originalPaymentMoney && money(value.originalPaymentMoney) };
+  switch (value.kind) {
+    case "full-reversal": return { ...base, kind: value.kind, reason: value.reason };
+    case "cumulative-snapshot": case "event-delta":
+      return { ...base, kind: value.kind, refundedMoney: value.refundedMoney && money(value.refundedMoney) };
+  }
+  return assertNever(value);
 }

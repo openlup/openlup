@@ -114,6 +114,46 @@ describe("adapter conformance suites", () => {
     const refused = await ingress.receive(f.verification[3].input);
     expect(refused.status).toBe(400); expect(prepare).not.toHaveBeenCalled();
   });
+  it("rejects payer leaks across execution, diagnostics and the whole stored evidence", async () => {
+    const f = subject("provider-a");
+    f.executionInput.methodSelection = { family: "bank-redirect", channelRef: "opaque-channel" };
+    f.executionInput.payer = { email: "payer@example.invalid", name: "Transient Person" };
+    await expect(runPaymentAdapterConformance([f])).resolves.toBeDefined();
+    const verified = f.verification[0].expected;
+    if (verified.kind !== "money") throw new Error("fixture money required");
+    for (const value of Object.values(f.executionInput.payer)) {
+      f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "attempt", status: "processing" },
+        dispatch: { kind: "unknown" }, diagnostics: { unexpected: value } });
+      await expect(runPaymentAdapterConformance([f])).rejects.toThrow("execution diagnostics and taxonomy");
+      f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "attempt", status: "processing" },
+        dispatch: { kind: "unknown" }, diagnostics: {}, handoff: { kind: "redirect", url: value } });
+      await expect(runPaymentAdapterConformance([f])).rejects.toThrow("execution payer redaction");
+      f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "attempt", status: "processing" }, dispatch: { kind: "unknown" }, diagnostics: {} });
+      verified.providerAuditPayload = { nested: { unexpected: value } };
+      await expect(runPaymentAdapterConformance([f])).rejects.toThrow("audit payload secret redaction");
+      delete verified.providerAuditPayload;
+      verified.providerPaymentRef = value;
+      await expect(runPaymentAdapterConformance([f])).rejects.toThrow("audit payload secret redaction");
+      verified.providerPaymentRef = "remote-original";
+    }
+    const stored = vi.fn(async () => ({ paymentEventId: "event-safe", paymentIntentId: null, paymentAttemptId: null, replayed: false }));
+    const extended = { ...verified, payer: f.executionInput.payer, extra: "unknown-extra", money: { ...verified.money!, extra: "unknown-nested" } };
+    await createVerifiedPaymentIngress({ provider: "provider-a", verifyPort: { verifyAndNormalize: async () => extended },
+      paymentControlPort: { ingestPaymentEvent: stored } }).receive(f.verification[0].input);
+    expect(stored).toHaveBeenCalledOnce();
+    expect(JSON.stringify(stored.mock.calls)).not.toContain("payer@example.invalid");
+    expect(JSON.stringify(stored.mock.calls)).not.toContain("unknown-extra");
+    expect(JSON.stringify(stored.mock.calls)).not.toContain("unknown-nested");
+  });
+  it("requires exact before-dispatch refusal for missing adapter-required payer input", async () => {
+    const f = subject("provider-a");
+    f.adapter.capabilities.payerContext.requiresPayerBlock = true;
+    await expect(runPaymentAdapterConformance([f])).rejects.toThrow("missing required input exact notDispatched");
+    const reason = { code: "payment_failed" as const, hints: [] };
+    f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "decline", refusal: reason },
+      dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} });
+    await expect(runPaymentAdapterConformance([f])).resolves.toBeDefined();
+  });
   it("composes framework-free execution validation with the unchanged durable event runner", async () => {
     const request = { idempotencyKey: "execution-key", providerIdempotencyKey: "provider-key", providerRequestFingerprint: "fingerprint",
       paymentIntentId: "intent-original", amountMinor: 9000, currency: "XXX", mode: "one_time" as const };

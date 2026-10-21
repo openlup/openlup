@@ -100,3 +100,9 @@ export type CanonicalPaymentSource = {
   occurredAt: string | null;
   payloadFingerprint: string;
 };
+
+export type PostgresPaymentTruthOptions = {
+  dunningTemplateSlug: string;
+  recoveryUrlPath: string;
+  recoveryTemplateSlug: string;
+};
