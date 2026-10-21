@@ -42,40 +42,52 @@ it("exposes exactly two runtime symbols and an inert, unselected, unready token 
   expect(Object.keys(entry).sort()).toEqual(["createOmnipackFulfillmentAdapter", "omnipackFulfillmentCapabilities"]);
   const f = fixture(undefined, { selected: false, readiness: undefined });
   expect(f.adapter.capabilities).toMatchObject({ defaultOff: true, selected: false, readiness: { ready: false }, authentication: "token", freshness: "not_available", labelReadOwner: "host_storage", ownsDeliveredNotification: false, actionPolicy: { providerSpecificAdminActions: false, genericAdminActions: true, mutationSurface: "provider_adapter" } });
+  expect(f.adapter.capabilities.operations.labelRead).toEqual({ supported: false, reason: "host_only" });
+  expect(f.adapter.capabilities.operations.courierPickup).toEqual({ supported: false, reason: "not_exposed" });
+  expect(f.adapter).not.toHaveProperty("courierPickup");
+  expect(await f.adapter.label.read({ objectRef: "object-a", mediaType: "application/pdf", externalRef: null })).toMatchObject({ kind: "refused", refusal: { reason: "unsupported" } });
   expect(entry.omnipackFulfillmentCapabilities.selected).toBe(false);
   expect((await f.adapter.dispatch.prepare(request())).kind).toBe("refused");
   const unready = fixture(undefined, { readiness: undefined });
   expect(await unready.adapter.dispatch.prepare(request())).toMatchObject({ kind: "refused", refusal: { reason: "not_ready" } });
   expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
-it("explicitly refuses label create through its unsupported declaration without offering a callable", () => {
-  expect(fixture().adapter.capabilities.operations.labelCreate).toEqual({ supported: false, reason: "not_exposed" });
-  expect(fixture().adapter).not.toHaveProperty("label");
+it("explicitly refuses label create without I/O", async () => {
+  const f = fixture();
+  expect(f.adapter.capabilities.operations.labelCreate).toEqual({ supported: false, reason: "not_exposed" });
+  expect(await f.adapter.label.create(request())).toEqual({ kind: "refused", refusal: { reason: "unsupported", phase: "dispatch", retryable: false } });
+  expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
-it("explicitly refuses label void through its unsupported declaration", () => {
-  expect(fixture().adapter.capabilities.operations.labelVoid).toEqual({ supported: false, reason: "not_exposed" });
+it("explicitly refuses label void without I/O", async () => {
+  const f = fixture();
+  expect(f.adapter.capabilities.operations.labelVoid).toEqual({ supported: false, reason: "not_exposed" });
+  expect(await f.adapter.label.void({ parcelRef: "parcel-a", document: null })).toEqual({ providerDeletion: "unconfirmed", labelDeleted: false, canProceed: false, refusal: { reason: "unsupported", phase: "dispatch", retryable: false } });
+  expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
 it("refuses exact absence, including an empty collection, without emitting absence proof", async () => {
   const f = fixture(() => jsonResponse({ _embedded: { fulfilments: [] } }));
   expect(f.adapter.capabilities.operations.exactAbsence).toEqual({ supported: false, reason: "not_exposed" });
   expect(await f.adapter.readback.read({ ...reading, externalRef: null })).toMatchObject({ kind: "unsupported", refusal: { reason: "unsupported" } });
+  expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
   expect(await f.adapter.readback.read(reading)).toMatchObject({ kind: "unknown" });
 });
 it("explicitly refuses cancellation through its unsupported declaration without offering a callable", () => {
-  expect(fixture().adapter.capabilities.operations.cancel).toEqual({ supported: false, reason: "not_exposed" });
-  expect(fixture().adapter).not.toHaveProperty("cancel");
+  const f = fixture();
+  expect(f.adapter.capabilities.operations.cancel).toEqual({ supported: false, reason: "not_exposed" });
+  expect(f.adapter).not.toHaveProperty("cancel");
+  expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
 it("binds full contact revision and the exact posted bytes while excluding command PII", async () => {
   const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
   expect(evidence.contactRevision).toEqual(req.contactRevision);
   expect(evidence).toMatchObject({ carrierRef: "CARRIER-A", serviceRef: "SERVICE-A", providerRef: "omnipack" });
   const result = await f.adapter.dispatch.dispatch(req, structuredClone(evidence));
-  expect(result).toMatchObject({ kind: "accepted", externalRef: "external-a", providerAttemptKey: "", labelKey: "" });
+  expect(result).toMatchObject({ kind: "accepted", externalRef: "external-a", providerAttemptKey: expect.stringMatching(/^attempt:[a-f0-9]{64}$/u), labelKey: expect.stringMatching(/^label:[a-f0-9]{64}$/u) });
   const body = f.fetchImpl.mock.calls[0]![1]!.body as string;
   expect(evidence.commandFingerprint).toBe(createHash("sha256").update(body).digest("hex"));
   expect(JSON.parse(body).shippingDetails).toMatchObject({ carrier: "SERVICE-A", service: "SERVICE-A" });
   safe(evidence); safe(result);
-  expect(await f.adapter.dispatch.dispatch(req, evidence)).toMatchObject({ kind: "not_dispatched" });
+  expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1);
 });
 it("refuses missing and foreign preparation before credentials or HTTP", async () => {
@@ -88,6 +100,7 @@ it("refuses missing and foreign preparation before credentials or HTTP", async (
 it("refuses every request/evidence mismatch and requires fresh prepare for a contact remap", async () => {
   for (const change of ["contact", "recipient", "line", "selection", "evidence"] as const) {
     const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
+    const original = structuredClone(req); const validEvidence = structuredClone(evidence);
     if (change === "contact") req.contactRevision.source = "remap";
     if (change === "recipient") req.recipient.line1 = "456 Other Street";
     if (change === "line") req.lines = [{ ...req.lines[0]!, quantity: 3 }];
@@ -95,6 +108,9 @@ it("refuses every request/evidence mismatch and requires fresh prepare for a con
     if (change === "evidence") evidence.commandFingerprint = "0".repeat(64);
     expect(await f.adapter.dispatch.dispatch(req, evidence)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
     expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
+    Object.assign(req, original);
+    expect((await f.adapter.dispatch.dispatch(req, validEvidence)).kind).toBe("accepted");
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1);
     const remapped = await prepare(f.adapter, req);
     expect((await f.adapter.dispatch.dispatch(req, remapped)).kind).toBe("accepted");
   }
@@ -142,7 +158,7 @@ it("preserves event identity across receipts, distinguishes occurrence/subject a
 });
 it("rejects unknown/mismatched event taxonomy, missing correlation, malformed JSON and invalid evidence pointers", async () => {
   const f = fixture();
-  for (const event of ["future.delivered", "__proto__", "order.shipped"]) expect(await f.adapter.observation.verifyAndNormalize(webhook({ event, orderId: "external-a" }))).toMatchObject({ kind: "refused", refusal: { reason: "unsupported_event" } });
+  for (const event of ["future.delivered", "__proto__", "order.shipped", 123, false, null, {}, [], ""]) expect(await f.adapter.observation.verifyAndNormalize(webhook({ event, orderId: "external-a" }))).toMatchObject({ kind: "refused", refusal: { reason: "unsupported_event" } });
   expect(await f.adapter.observation.verifyAndNormalize(webhook({}))).toMatchObject({ refusal: { reason: "missing_correlation" } });
   expect(await f.adapter.observation.verifyAndNormalize({ ...webhook({}), rawBody: Buffer.from("{") })).toMatchObject({ refusal: { reason: "malformed" } });
   expect(await fixture(undefined, { mintEvidenceReference: () => "evidence:bad" }).adapter.observation.verifyAndNormalize(webhook({ orderId: "external-a" }))).toMatchObject({ refusal: { reason: "malformed" } });
@@ -156,7 +172,7 @@ it("drops unsafe and unapproved tracking URLs while retaining host-approved quer
 });
 it("requires positive correlated readback and refuses unknown status, duplicates and provider mismatch", async () => {
   let rows: unknown[] = [];
-  const f = fixture(() => jsonResponse({ _embedded: { fulfilments: rows }, ...plants }));
+  const f = fixture(() => jsonResponse({ _embedded: { fulfilments: rows }, page: { number: 0, size: 100, totalPages: 1, totalElements: rows.length }, ...plants }));
   const row = { orderId: "external-a", fulfilmentNumber: "parcel-a", status: "delivered", updatedAt: now, ...plants };
   for (const invalid of [[], [{ ...row, orderId: "external-b" }], [{ ...row, status: "future_delivered" }], [row, row]]) {
     rows = invalid; expect((await f.adapter.readback.read(reading)).kind).toBe("unknown");
@@ -189,4 +205,54 @@ it("never leaks transport failures through sync or readback", async () => {
     await expect(invoke()).rejects.toEqual({ reason: "io_failure", phase: "sync", retryable: false });
   }
   const result = await f.adapter.readback.read(reading); expect(result.kind).toBe("unknown"); safe(result);
+});
+
+it("refuses unsafe host paths at construction before credentials or HTTP", () => {
+  const f = fixture();
+  for (const productPath of ["//other.example.test/products", "https://other.example.test/products", "//user:pass@other.example.test/products", "/\\other.example.test", "/../products", "/%2fother/products", "/products?token=a", "/products#fragment", "/products//packs"]) {
+    expect(() => entry.createOmnipackFulfillmentAdapter({ ...f.config, http: { ...f.config.http, productPath } })).toThrow("Invalid fulfillment configuration");
+  }
+  expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
+});
+it("classifies credential and request construction failures before POST as definitive non-submission", async () => {
+  for (const credentials of [() => { throw Error(secret); }, async () => { throw Error(secret); }, () => ({ get username(): string { throw Error(secret); }, password: secret })]) {
+    const f = fixture(); f.config.http.credentials = credentials;
+    const adapter = entry.createOmnipackFulfillmentAdapter(f.config), req = request();
+    const result = await adapter.dispatch.dispatch(req, await prepare(adapter, req));
+    expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } });
+    safe(result); expect(f.fetchImpl).not.toHaveBeenCalled();
+  }
+  const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
+  const invalidRequest = vi.spyOn(globalThis, "Request").mockImplementation(() => { throw Error(secret); });
+  let result;
+  try { result = await f.adapter.dispatch.dispatch(req, evidence); } finally { invalidRequest.mockRestore(); }
+  expect(result).toMatchObject({ kind: "not_dispatched", effectMayHaveSucceeded: false });
+  safe(result); expect(f.fetchImpl).not.toHaveBeenCalled();
+});
+it("keeps paginated, truncated and unproven readback collections unknown", async () => {
+  const row = { orderId: "external-a", fulfilmentNumber: "parcel-a", status: "delivered" };
+  for (const metadata of [{}, { page: { number: 0, size: 100, totalPages: 2, totalElements: 101 } },
+    { page: { number: 0, size: 100, totalPages: 1, totalElements: 2 } },
+    { page: { number: 0, size: 100, totalPages: 1, totalElements: 1 }, _links: { next: { href: "/fulfilments?page=1" } } },
+    { page: { number: 0, size: 100, totalPages: 1, totalElements: 1 }, incomplete: true }]) {
+    for (const rows of [[row], Array(100).fill(row), []]) {
+      const f = fixture(() => jsonResponse({ _embedded: { fulfilments: rows }, ...metadata }));
+      expect(await f.adapter.readback.read(reading)).toMatchObject({ kind: "unknown" });
+      expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+    }
+  }
+});
+it("fences overlapping preparations and shares in-flight and completed dispatch results", async () => {
+  const releases: (() => void)[] = [];
+  const f = fixture(undefined, { resolveProduct: () => new Promise(resolve => releases.push(() => resolve({ lotNumber: "LOT-A", expirationDate: "2027-01-01" }))) });
+  const req = request(); const older = f.adapter.dispatch.prepare(req); const newer = f.adapter.dispatch.prepare(req);
+  releases[1]!(); const current = await newer;
+  if (current.kind !== "prepared") throw Error("Expected preparation");
+  const [first, overlapping] = await Promise.all([f.adapter.dispatch.dispatch(req, current.evidence), f.adapter.dispatch.dispatch(req, current.evidence)]);
+  expect(first.kind).toBe("accepted"); expect(overlapping).toEqual(first);
+  releases[0]!(); expect(await older).toMatchObject({ kind: "refused" });
+  expect(await f.adapter.dispatch.dispatch(req, current.evidence)).toEqual(first);
+  expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
+  if (first.kind === "accepted") first.evidence.commandFingerprint = "mutated";
+  expect(await f.adapter.dispatch.dispatch(req, current.evidence)).toEqual(overlapping);
 });

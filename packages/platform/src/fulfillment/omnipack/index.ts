@@ -1,5 +1,5 @@
 import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest,
-  FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
+  FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { createOmnipackClient, OmnipackProviderError } from "./client.js";
 import { omnipackFulfillmentCapabilities } from "./capabilities.js";
 import { buildOmnipackDispatchCommand, stableDispatchHash } from "./omnipackDispatchPayload.js";
@@ -32,6 +32,7 @@ export interface OmnipackFulfillmentAdapterConfig {
 export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
   capabilities: FulfillmentCapabilityDescriptor;
   dispatch: FulfillmentDispatchPort;
+  label: FulfillmentLabelPort;
   observation: FulfillmentObservationPort;
   readback: FulfillmentReadbackPort;
   stockSync: FulfillmentStockSyncProvider;
@@ -42,7 +43,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     || typeof config.http.fetchImpl !== "function" || typeof config.http.credentials !== "function"
     || !Number.isSafeInteger(config.http.timeoutMs) || config.http.timeoutMs <= 0
     || !Number.isSafeInteger(config.http.safeReadRetries) || config.http.safeReadRetries < 0
-    || !/^\/[A-Za-z0-9/_-]+$/u.test(config.http.productPath)
+    || !/^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\/?$/u.test(config.http.productPath)
     || !eventKind(config.notification.expectedEvent)) throw new Error("Invalid fulfillment configuration");
   const client = createOmnipackClient({ ...config.http }, config.http.fetchImpl);
   // Copy the profile so host selection never mutates the exported default-off descriptor.
@@ -50,7 +51,8 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
   capabilities.selected = config.selected === true;
   capabilities.readiness = config.readiness?.ready === true ? { ready: true }
     : { ready: false, refusal: refusal("not_ready", "selection") };
-  const prepared = new WeakMap<FulfillmentDispatchRequest, { body: string; evidence: DispatchEvidence; requestDigest: string }>();
+  const prepared = new WeakMap<FulfillmentDispatchRequest, { body: string; evidence: DispatchEvidence; requestDigest: string; result?: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
+  const preparations = new WeakMap<FulfillmentDispatchRequest, object>();
   const selectionFailure = (request: FulfillmentDispatchRequest) => {
     if (!request.selection?.providerRef?.trim()) return refusal("selection_required", "selection");
     if (request.selection.providerRef !== capabilities.providerRef) return refusal("provider_mismatch", "selection");
@@ -72,6 +74,8 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     capabilities,
     dispatch: {
       async prepare(request) {
+        const generation = {};
+        preparations.set(request, generation);
         prepared.delete(request);
         try {
           const failed = selectionFailure(request);
@@ -98,31 +102,42 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           const evidence: DispatchEvidence = { commandFingerprint: command.requestFingerprint,
             contactRevision: { schemaVersion: request.contactRevision.schemaVersion, source: request.contactRevision.source, revision: request.contactRevision.revision },
             providerRef: capabilities.providerRef, carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef };
+          if (preparations.get(request) !== generation) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
           prepared.set(request, { body: command.body, evidence: structuredClone(evidence), requestDigest });
           return { kind: "prepared", evidence };
         } catch { return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") }; }
       },
       async dispatch(request, evidence) {
         const command = prepared.get(request);
-        prepared.delete(request); // A preparation can submit once. Ambiguity never retries a POST.
         try {
           if (!command || !evidence || stableDispatchHash(evidence) !== stableDispatchHash(command.evidence)
             || stableDispatchHash(request) !== command.requestDigest || selectionFailure(request)) {
             return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("not_dispatchable", "dispatch") };
           }
         } catch { return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("not_dispatchable", "dispatch") }; }
-        try {
-          const result = await client.createOrder(command.body);
-          const externalRef = reference(result.providerOrderId);
-          if (!externalRef) return { kind: "unknown", effectMayHaveSucceeded: true, refusal: refusal("malformed", "acknowledge") };
-          // Frozen P1 requires these strings; the host worker supplies their authoritative values.
-          return { kind: "accepted", externalRef, evidence: structuredClone(command.evidence), providerAttemptKey: "", labelKey: "" };
-        } catch (error) {
-          return error instanceof OmnipackProviderError && !error.mayHaveSucceeded
-            ? { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("io_failure", "dispatch") }
-            : { kind: "unknown", effectMayHaveSucceeded: true, refusal: refusal("io_failure", "dispatch") };
-        }
+        // Retain one in-flight/completed result, including ambiguous outcomes: never re-POST.
+        command.result ??= (async () => {
+          try {
+            const result = await client.createOrder(command.body);
+            const externalRef = reference(result.providerOrderId);
+            if (!externalRef) return { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("malformed", "acknowledge") };
+            // Opaque provider proof; the worker replaces these with authoritative host keys.
+            const proof = digest(JSON.stringify([externalRef, command.evidence.commandFingerprint]));
+            return { kind: "accepted" as const, externalRef, evidence: structuredClone(command.evidence),
+              providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` };
+          } catch (error) {
+            return error instanceof OmnipackProviderError && !error.mayHaveSucceeded
+              ? { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const, refusal: refusal("io_failure", "dispatch") }
+              : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch") };
+          } finally { command.body = ""; }
+        })();
+        return structuredClone(await command.result);
       },
+    },
+    label: {
+      async create() { return { kind: "refused", refusal: refusal("unsupported", "dispatch") }; },
+      async read() { return { kind: "refused", refusal: refusal("unsupported", "dispatch") }; },
+      async void() { return { providerDeletion: "unconfirmed", labelDeleted: false, canProceed: false, refusal: refusal("unsupported", "dispatch") }; },
     },
     observation: {
       async verifyAndNormalize(input) {
@@ -135,6 +150,8 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           const rawBody = Buffer.from(input.rawBody);
           const payload: unknown = JSON.parse(rawBody.toString("utf8"));
           if (!payload || typeof payload !== "object" || Array.isArray(payload)) return { kind: "refused", refusal: refusal("malformed", "normalize") };
+          if ("event" in payload && (typeof payload.event !== "string" || !eventKind(payload.event)))
+            return { kind: "refused", refusal: refusal("unsupported_event", "normalize") };
           const evidence = mapOmnipackWebhookPayload(payload, config.notification.expectedEvent);
           const event = eventKind(evidence.event);
           if (!event || event !== config.notification.expectedEvent) return { kind: "refused", refusal: refusal("unsupported_event", "normalize") };
@@ -151,7 +168,9 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         if (!capabilities.selected || !capabilities.readiness.ready) return { kind: "unsupported", refusal: refusal(capabilities.selected ? "not_ready" : "disabled", "readback") };
         if (!reference(input.externalRef)) return { kind: "unsupported", refusal: refusal("unsupported", "readback") };
         try {
-          const matches = (await client.getFulfilments({ page: 0, size: 100 })).filter(row => input.mode === "parcel"
+          const collection = await client.getFulfilmentsPage({ page: 0, size: 100 });
+          if (!collection.complete) return { kind: "unknown", refusal: refusal("local_missing", "readback") };
+          const matches = collection.rows.filter(row => input.mode === "parcel"
             ? row.fulfilmentNumber === input.externalRef : row.providerOrderId === input.externalRef);
           if (matches.length !== 1) return { kind: "unknown", refusal: refusal("local_missing", "readback") };
           const row = matches[0]!;

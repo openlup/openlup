@@ -47,6 +47,7 @@ export interface OmnipackClient {
   createProductPack(sku: string, payload: Record<string, unknown>, ean: string): Promise<OmnipackProductPackCreatedEvidence>;
   getStock(): Promise<OmnipackStockEvidence[]>;
   getStockMovements(params?: OmnipackQueryParams): Promise<OmnipackStockMovementEvidence[]>;
+  getFulfilmentsPage(params?: OmnipackQueryParams): Promise<{ rows: OmnipackFulfilmentEvidence[]; complete: boolean }>;
   getFulfilments(params?: OmnipackQueryParams): Promise<OmnipackFulfilmentEvidence[]>;
   getFulfilmentRequests(params?: OmnipackQueryParams): Promise<OmnipackFulfilmentRequestEvidence[]>;
 }
@@ -100,6 +101,18 @@ export function createOmnipackClient(
       ));
     },
 
+    async getFulfilmentsPage(params) {
+      const body = await requestJson(fetchImpl, config, "getFulfilments", withQuery("/fulfilments", params), { method: "GET" });
+      const rows = mapOmnipackFulfilmentsResponse(body);
+      // Only explicit single-page totals establish whole-collection uniqueness.
+      const record = body as { page?: { number?: unknown; size?: unknown; totalPages?: unknown; totalElements?: unknown }; _links?: { next?: unknown }; incomplete?: unknown; partial?: unknown } | null;
+      const page = record?.page;
+      const complete = page?.number === 0 && page.totalPages === 1 && page.totalElements === rows.length
+        && typeof page.size === "number" && Number.isSafeInteger(page.size) && page.size >= rows.length && page.size > 0
+        && !record?._links?.next && !record?.incomplete && !record?.partial;
+      return { rows, complete };
+    },
+
     async getFulfilments(params) {
       return mapOmnipackFulfilmentsResponse(await requestJson(
         fetchImpl,
@@ -134,8 +147,12 @@ async function requestJson(
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    let submitted = false;
     try {
-      const response = await fetchWithTimeout(fetchImpl, new URL(path, config.baseUrl), config, init);
+      const base = new URL(config.baseUrl);
+      const url = new URL(path, base);
+      if (url.origin !== base.origin || url.username || url.password || url.protocol !== "https:") throw new Error("Invalid fulfillment path");
+      const response = await fetchWithTimeout(fetchImpl, url, config, init, () => { submitted = true; });
       const body = await readJsonBody(response);
       if (response.ok) return body;
 
@@ -150,14 +167,14 @@ async function requestJson(
       if (!retryable || attempt === attempts) throw lastError;
     } catch (error) {
       const retryable = method === "GET" && attempt < attempts;
-      lastError = error instanceof OmnipackProviderError
+      lastError = submitted && error instanceof OmnipackProviderError
         ? error
         : new OmnipackProviderError({
           operation,
           status: null,
           code: "network_error",
           retryable,
-          mayHaveSucceeded: mayPostHaveSucceeded(method, null),
+          mayHaveSucceeded: submitted && mayPostHaveSucceeded(method, null),
         });
       if (!retryable) throw lastError;
     }
@@ -171,12 +188,13 @@ async function fetchWithTimeout(
   url: URL,
   config: OmnipackClientConfig,
   init: RequestInit,
+  onSubmit: () => void,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
   try {
     const credentials = await config.credentials();
-    return await fetchImpl(url, {
+    const requestInit = {
       ...init,
       signal: controller.signal,
       headers: {
@@ -185,7 +203,11 @@ async function fetchWithTimeout(
         Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`,
         ...(init.headers ?? {}),
       },
-    });
+    };
+    new Request(url, requestInit); // Validate construction before crossing the submission boundary.
+    controller.signal.throwIfAborted();
+    onSubmit();
+    return await fetchImpl(url, requestInit);
   } finally {
     clearTimeout(timeout);
   }

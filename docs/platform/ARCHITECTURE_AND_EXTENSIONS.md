@@ -667,10 +667,17 @@ The opt-in `@openlup/platform/fulfillment/omnipack` example composes the contrib
 transport/codecs with the frozen ports. Its host supplies HTTP, per-call secrets,
 product metadata and explicit selection/readiness. Preparation keeps canonical
 bytes transient and returns closed fingerprint/contact/selection evidence;
-mismatched dispatch refuses before credentials or HTTP, and ambiguous POSTs stay
-unknown without retry. Observations authenticate before parsing and preserve
-nullable occurrence; positive readback never turns empty pages into exact absence.
+mismatched dispatch refuses before credentials or HTTP without consuming valid
+state. One retained result serves concurrent and completed replays without I/O;
+superseded preparations cannot restore state. Proven pre-submission failures are
+non-submissions, and ambiguous POSTs stay unknown without retry. Accepted provider
+proof keys are opaque and deterministic; host keys remain worker-owned. Configured
+product paths cannot change the HTTPS origin or carry credentials. Observations
+authenticate before parsing and reject malformed explicit event kinds. Nullable
+occurrence is preserved; readback needs explicit complete single-page totals before
+a unique positive match, and incomplete or empty collections remain unknown.
 Label create/void and cancellation are unsupported; label reads remain host-owned.
+The frozen label port returns unsupported refusals without I/O for all its methods.
 Sync projects collection identity and closed data, with product writes only on
 explicit invocation. No route, schedule or default binding is installed. Root
 reference implementations remain unchanged. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)

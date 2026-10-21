@@ -586,7 +586,7 @@ export declare const omnipackFulfillmentCapabilities: FulfillmentCapabilityDescr
 ## dist/fulfillment/omnipack/index.d.ts
 
 ```ts
-import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
+import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
@@ -629,6 +629,7 @@ export interface OmnipackFulfillmentAdapterConfig {
 export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
     capabilities: FulfillmentCapabilityDescriptor;
     dispatch: FulfillmentDispatchPort;
+    label: FulfillmentLabelPort;
     observation: FulfillmentObservationPort;
     readback: FulfillmentReadbackPort;
     stockSync: FulfillmentStockSyncProvider;

@@ -108,22 +108,29 @@ Credentials never establish readiness. The descriptor starts unselected and not 
 Prepare retains serialized command bytes transiently and returns only the actual
 body fingerprint, full contact revision and separate provider/carrier/service
 references. Dispatch refuses absent or mismatched preparation before credentials
-or HTTP, consumes it once and never retries a POST. Definitive rejection is
-`not_dispatched`; lost/malformed acknowledgement and ambiguous submission are
-`unknown`. The frozen accepted shape carries empty host-key placeholders; the
-host worker must assign its own provider-attempt and label keys. No adapter key
+or HTTP without invalidating a valid preparation. Each preparation retains one
+submission result for identical replay without I/O; overlapping preparations
+cannot restore superseded state. Credential, validation and request-construction
+failures before submission and definitive rejection are `not_dispatched`;
+lost/malformed acknowledgement and ambiguous submission are `unknown`. Accepted
+results carry nonempty opaque proof keys derived from provider reference and
+command fingerprint; the host worker assigns its own authoritative keys. No adapter key
 is an acceptance authority. The donor wire uses service in both carrier/service
 fields; durable evidence keeps the selected references separate. The donor
 codec does not transmit line2 or delivery/courier instructions.
 
 Token verification precedes parsing. Trusted route configuration supplies a
-missing event kind and rejects mismatches. Event identity includes event,
+missing event kind and rejects malformed explicit values and mismatches. Event identity includes event,
 provider/order identity, fulfillment and nullable occurrence, independently of
 receipt time. Token auth proves no freshness; missing occurrence stays null.
-Readback accepts only a unique positive identity match; empty, unmatched or
-unknown-status collections stay unknown. Exact absence, label create/void,
+Readback accepts only a unique positive identity match from an explicitly complete
+single-page collection; missing totals, pagination, truncation, empty, unmatched
+or unknown-status collections stay unknown. Exact absence, label create/void,
 cancellation and courier pickup remain unsupported; label reads belong to host
-storage. Raw bags, provider errors, command PII and secrets never enter durable
+storage. The required label port returns explicit unsupported refusals without I/O
+for create, void and read. Configured product paths accept only single-leading-slash
+path segments; request URLs must retain the configured HTTPS origin and have no
+credentials. Raw bags, provider errors, command PII and secrets never enter durable
 outputs. Tracking URLs require query-free HTTPS without credentials and explicit
 host approval. Stock collections carry a run ID/time and nullable source revision;
 collection time is no provider ordering. Product reads are pull-only in scheduled
