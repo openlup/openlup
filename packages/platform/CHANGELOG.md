@@ -22,11 +22,12 @@ SemVer promise.
 - M05 adds catalog foundation/contracts, draft validation, product/lifecycle DTOs,
   authority/GTIN/quantity helpers, media and source-pack operations,
   fixed-bundle read/admin/feed logic, native envelope/draft stores and an inert
-  catalog contribution; pricing includes quote/offer projection, opt-in acquisition
-  terms and promise consent; promotions includes advisory, preview, acceptance,
+  catalog contribution; pricing adds the neutral quote foundation, authority,
+  subscription policy and assignment token, quote/offer projection, opt-in
+  acquisition terms and promise consent; promotions includes advisory, preview, acceptance,
   admin/native reads and sweep with explicit host bindings; lifecycle/publication
   contracts alone do not provide a publisher or native lifecycle writes.
-- Opt-in reference catalog, product, basket, builder and admin UI consumes explicit
+- Reference-application source: opt-in catalog, product, basket, builder and admin UI consumes explicit
   data/locale/media/lifecycle inputs; basket edits invalidate promise consent and
   minor-money display uses the currency exponent.
 - Shipped catalog SQL projects unchanged canonical positions 1/8/16/19/58/59/61,
@@ -35,11 +36,22 @@ SemVer promise.
 - A1 adds 17 neutral marketing/consent declarations, the three-function `communications/resend`
   entry, the `communications/klaviyo` marketing adapter and lazy opt-in reference bindings with
   invocation-time admission; default routes, schedules and handlers stay empty.
+  Existing providers remain assignable; neutral entries, the maintained reference
+  adapter and default wiring are unchanged.
   Authenticated raw webhooks and GET-only delivery reconciliation retain host
   ownership of persistence and admission; no SDK or default sender is added.
-  `communications/klaviyo` supports profile projection, negative consent readback, deletion
-  acknowledgement and authoritative consent push; deletion status is unsupported
-  and newsletter sync refuses.
+  `communications/klaviyo` profile projection, negative consent readback,
+  account-wide deletion acknowledgement and authoritative consent push stay
+  verification-pending until the host supplies owner TEST verification.
+  Audience-scoped deletion and deletion status are unsupported; newsletter sync
+  refuses. No flow control, historical import, suppression edits or automatic
+  mutation retry is added.
+- Consent push grants stay audience-scoped; only withdrawals may be account-wide.
+  The capability declares `grantEffect`; accepted/acknowledged results require
+  `reconcileRequired`. Conformance keeps grants unsettled until settlement and
+  fresh readback. Withdrawals bypass grant-caused fences/quarantine but retain
+  same-key withdrawal fences and account cooling. No push factory, activation,
+  callback, retry or subpath is added.
 - M06 in progress: inventory and shipping entries are early surfaces; module not complete
 - The merged M06 surfaces include inventory contracts/admin/native reads, injected
   new-purchase availability, reservation policy/maintenance and dated forecast
@@ -57,12 +69,18 @@ an explicit `AcquisitionFinancialPolicy` with no default; absence refuses with
 `acquisition_terms_policy_unconfigured`, and reference activation remains off.
 Bind resolved terms from the final optional issue/honor callback argument for
 acquisition-aware acceptance; existing callbacks remain assignable. Stop
-assigning `NegativeFeedback.kind` or `.outcome`, now readonly. Reference threshold
-classifiers require the host's explicit threshold. Generated enum declaration
-ordering changes preserve member values and runtime behavior. Catalog adds the
-two native store factories and `CATALOG_MIGRATIONS`; composition adds
+assigning `NegativeFeedback.kind` or `.outcome`, now readonly. Reference-application
+source threshold classifiers require the host's explicit threshold. Generated enum declaration
+ordering changes preserve member values and runtime behavior. Catalog adds
+`createPostgresBundleCatalogStore`, `createPostgresCatalogDraftStore` and
+`createPostgresCatalogSkuEnvelopeReadPort`, plus `BUNDLE_MIGRATIONS` (16/19) and
+`CATALOG_MIGRATIONS` (1/8/58/59/61); composition adds
 `createCatalogContribution` and `CatalogContributionInput`, with no public export
 removed or renamed. Existing named reference imports remain compatibility paths.
+The native writer, pooled transaction binding and transport remain reference-owned;
+browser schemas stay local. Core remains the promotions evaluator; no claim writer
+is added, and claim writing and mounted acceptance retain their owners. Reference
+shipping selection, pickup and stock UI mechanics and browser validation stay local.
 Install the complete canonical migration manifest, never sparse package SQL
 projections as an installation chain; this preparation adds no new SQL migration.
 A1 hosts retain credentials, identity/authority, atomic storage, environment,

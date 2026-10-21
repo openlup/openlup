@@ -786,17 +786,39 @@ Ast-grep, lint (8 structural cases; 0 errors / 33 warnings), five-project typech
 three-package manifest checks, size/content/browser policy and public neutrality
 (0 increases) pass. Full commands and failures remain in external S1 R2 evidence.
 
-Policy computes bindings successfully with the expected stale committed snapshot;
-four no-impact trailers remain for the supervisor's commit: core, outbox-rail,
-repository and tooling. The platform README answers its owner obligation. The
+R2 policy computed bindings with a then-stale committed snapshot; the four
+no-impact trailers are committed: core, outbox-rail, repository and tooling.
+The platform README answers its owner obligation. The
 source snapshot is generated and excluded from these fingerprints, so its sole
 later refresh does not change the four digests. Clean artifact/consumer proof
 remains a later supervisor gate; preliminary packs cannot substitute for it.
 
+Repair cycle 1 (2026-10-21): restore the dropped consent, adapter verification,
+compatibility and reference-ownership claims and correct the catalog factory/SQL
+inventory in both release bodies. Local Markdown and evidence-file edits and the
+specified focused checks are authorized; no Git writes, snapshot write, broad
+resource-gated checks or external mutation. Preserve the M06 label, ten limitations,
+growth line, history and caps; keep both dispatch copies identical. Acceptance is
+claim parity with the consumed base entries, passing focused checks and fresh size,
+policy/trailer and dispatch-hash evidence in the external cycle report. The
+supervisor retains commit, snapshot and native-review/delivery actions.
+Cycle result: the three focused release-tooling suites pass all 43 cases; the
+source snapshot is fresh, policy has no unanswered obligations and all four
+committed trailer digests remain unchanged. Platform root-docs gzip is 39,332 B
+against 40,960 B (1,628 B headroom); pack/browser policy and neutrality pass.
+Both dispatch copies match; the external cycle report records their hash and
+complete check evidence. Self-retro: restoring the distinct consumed claims costs
+445 gzip B; direct reuse of the measurement tool avoids a new release mechanism.
+
 ### S1 slot measured figures
 
 Published `0.17.0` tarballs were fetched read-only and matched npm dist SHA512
-integrity and SHA1 shasum; the external R1 report retains all artifact identities.
+integrity and SHA1 shasum:
+
+- `@openlup/core@0.17.0`: integrity `sha512-jbUxfd0Qt/rEZ9R+lGoPp5Ez0RleT9BSn9feBBp5mJxIQjIwvEpGhQCj0lFcK4KBFEcv0GENArGU20n0gNp7og==`; shasum `ee0d46d9e5703d677ad7e05a0a7bcf9d863eb4c7`.
+- `@openlup/outbox@0.17.0`: integrity `sha512-4O5IikEcoQieprCmj94f9/CkpptoFdxj5WK8oilVK9xrdXX0s5J/K4WAbAxxNEVhOoV8bUSKbfCaweMQhxTLww==`; shasum `c6426d52cae18d9dda2d309ac6c49bab48108e49`.
+- `@openlup/platform@0.17.0`: integrity `sha512-wgpm3yTzFaxkcUoa56JqLEm9lpdSKXkfJYqJ9m2gfJjXOHDnr2+jkMBc3J25mP5nWaYlRBkP4K+bM9aLQWGQDw==`; shasum `c88f6b5339328fbe8830223be5794d06c367c2ad`.
+
 Fresh R2 preliminary packs measure the bumped, consolidated working tree:
 
 | Package | Published 0.17.0 B | Candidate 0.18.0 B / cap B | Growth | Code gzip B / cap | Root docs gzip B / cap |
