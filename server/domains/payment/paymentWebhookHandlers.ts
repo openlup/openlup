@@ -47,6 +47,7 @@ export interface PaymentWebhookControlPort {
     paymentIntentId: string | null;
     paymentAttemptId: string | null;
     replayed: boolean;
+    occurredAt?: string;
   }>;
   applyPaymentResult?(input: {
     idempotencyKey: string;
@@ -173,6 +174,7 @@ export function createProviderPaymentWebhookHandler({
         : { paymentControlPort: paymentControlPort as PaymentWebhookControlPort, methodRefPort, afterProcessed };
       if (!ports.paymentControlPort) throw new Error("Provider webhook port unavailable");
       const ingested = await ports.paymentControlPort.ingestPaymentEvent(event);
+      if (ingested.occurredAt) event = { ...event, occurredAt: ingested.occurredAt };
       const resultStatus = mapResultStatus(event, refundEvidencePolicy);
       if (resultStatus && ingested.paymentIntentId && ports.paymentControlPort.applyPaymentResult) {
         await ports.paymentControlPort.applyPaymentResult({

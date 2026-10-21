@@ -50,3 +50,5 @@ export type {
 export type { PostgresPaymentTruthOptions } from "./truth.js";
 
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
+
+export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
