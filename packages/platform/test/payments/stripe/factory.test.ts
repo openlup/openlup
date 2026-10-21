@@ -79,9 +79,50 @@ describe("opt-in payment factory", () => {
     expect(await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded", {}, { livemode: true })))).toEqual({ kind: "refusal", reason: "unsupported-event" });
     expect(() => createStripePaymentAdapter({ ...config, toleranceSeconds: NaN })).toThrow();
   });
-  it("refuses disputed outcomes through the single current-union mapping", async () => {
+  it("preserves dispute outcome, payment linkage and original money", async () => {
     const { adapter } = subject();
-    expect(await adapter.verifyPort.verifyAndNormalize(signed(event("charge.dispute.created", { id: "dp_fixture", payment_intent: "pi_fixture" })))).toEqual({ kind: "refusal", reason: "unsupported-event" });
+    expect(await adapter.verifyPort.verifyAndNormalize(signed(event("charge.dispute.created", { id: "dp_fixture", payment_intent: "pi_fixture" })))).toMatchObject({
+      kind: "money", outcome: "disputed", providerEventId: "evt_fixture", providerPaymentRef: "pi_fixture",
+      money: { amountMinor: 2599, currency: "EUR" }, providerAuditPayload: { eventType: "charge.dispute.created" },
+    });
+  });
+  it("retains only donor-filtered audit facts and excludes them from event identity", async () => {
+    const { adapter } = subject();
+    const object = { latest_charge: "ch_fixture", payment_method: { id: "pm_fixture", type: "card" },
+      metadata: { providerFlow: "off_session_payment", customerAuthorization: "planted_authorization" },
+      last_payment_error: { type: "card_error", code: "card_declined", decline_code: "insufficient_funds", advice_code: "try_again_later",
+        charge: "ch_fixture", message: "planted_provider_prose" },
+      client_secret: "planted_secret", handoff: { payload: "planted_handoff" }, rawBody: "planted_raw_body" };
+    const failed = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.payment_failed", object)));
+    expect(failed).toMatchObject({ kind: "money", outcome: "failed" });
+    if (failed.kind === "refusal") throw new Error("expected verified evidence");
+    expect(failed.providerAuditPayload).toEqual({ provider: "stripe", eventId: "evt_fixture", eventType: "payment_intent.payment_failed",
+      providerPaymentId: "pi_fixture", amountMinor: 2599, currency: "EUR", failureEvidence: {
+        version: 1, source: "webhook", disposition: "present", refusalVerified: true, providerPaymentId: "pi_fixture",
+        providerChargeId: "ch_fixture", code: "card_declined", declineCode: "insufficient_funds", adviceCode: "try_again_later",
+        adviceOrigin: "provider", operation: "stored_method_payment", methodSource: "provider",
+        method: { kind: "card", recoveryMethodKey: "card", interaction: "stored_instrument" },
+      } });
+    const revised = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.payment_failed", {
+      ...object, latest_charge: "ch_other", last_payment_error: { ...object.last_payment_error, charge: "ch_other" },
+    })));
+    expect(revised).toMatchObject({ providerEventId: failed.providerEventId, fingerprint: failed.fingerprint,
+      providerAuditPayload: { failureEvidence: { providerChargeId: "ch_other" } } });
+    const refunded = await adapter.verifyPort.verifyAndNormalize(signed(event("charge.refunded", {
+      ...object, id: "ch_fixture", payment_intent: "pi_fixture", amount_refunded: 500,
+    })));
+    expect(refunded).toMatchObject({ providerAuditPayload: { eventType: "charge.refunded",
+      stripeRefundSnapshot: { chargeId: "ch_fixture", amountRefundedMinor: 500 } } });
+    if (refunded.kind === "refusal") throw new Error("expected refund evidence");
+    expect(refunded.providerAuditPayload).not.toHaveProperty("failureEvidence");
+    expect(refunded.providerAuditPayload).not.toHaveProperty("failureReason");
+    expect(refunded.providerAuditPayload).not.toHaveProperty("decline_code");
+    for (const evidence of [failed, revised, refunded]) {
+      for (const value of ["planted_authorization", "planted_provider_prose", "planted_secret", "planted_handoff", "planted_raw_body"]) {
+        expect(JSON.stringify(evidence)).not.toContain(value);
+        if (evidence.kind !== "refusal") expect(JSON.stringify(evidence.providerAuditPayload)).not.toContain(value);
+      }
+    }
   });
   it("observes explicit cumulative refunds and refuses missing evidence", async () => {
     const { adapter } = subject();

@@ -29,9 +29,10 @@ framework, account activation or release claim.
   outside vocabulary counted.
 - M07 requires refund evidence. Stripe `amount_refunded` is an explicit
   cumulative snapshot with the original payment money and stable charge ID.
-- Coordinator Decision 1 permits implementing against M07 P1: the single
-  `mapStripeOutcome` function refuses donor dispute events as `unsupported-event`
-  until M07 P2 adds their distinct outcome. The donor normalizer stays unchanged.
+- Coordinator Decision 1 permitted a temporary dispute refusal against M07 P1.
+  With M07 P2 integrated, `mapStripeOutcome` preserves the donor dispute outcome
+  as `disputed`, with the original payment identity and money. The donor
+  normalizer stays unchanged.
 - Coordinator Decision 2 makes currencies host-declared through the required
   `supportedCurrencies` config: a non-empty list of upper-case three-letter
   codes, validated at construction. The exported descriptor has an empty list;
@@ -87,7 +88,13 @@ execution and refusal boundary. No provider-account verification is claimed.
 Detailed per-file provenance, unchanged-versus-glue comparisons, exact case
 counts, timings and local check results belong to the existing task evidence.
 
-The second example adapter (O-P2), O-P3 account verification/reference binding, M07 P2
-conformance and the additive dispute outcome remain separate work. Committed
+The O-P1 offline conformance witness now runs the M07 P2 runner against two
+distinct intents and attempts, with replay, outcome changes, cumulative refunds
+and verification refusals. The adapter carries donor-filtered source event type,
+refund charge identity and failure provenance as audit facts outside the
+fingerprint; absent donor facts remain absent.
+
+The second example adapter (O-P2) and O-P3 account verification/reference binding
+remain separate work. Committed
 native review, broad gates, submission and any release remain with the active
 supervisor; these local checks grant none of that authority.
