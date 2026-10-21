@@ -8,111 +8,79 @@ SemVer promise.
 
 ## [Unreleased]
 
-- Import the flat-rate shipping handler with required host schemas and retain reference selection, pickup and stock UI mechanics.
+## [0.18.0]
 
-- Add address lookup, authenticated address-book handlers and row helpers to shipping with required host validation and canonicalization.
+- Publishable on the npm `latest` dist-tag as `0.18.0`, from tag
+  `openlup-platform-v0.18.0`.
 
-- Extract admin/native inventory reads and injected new-purchase stock projection.
-- Add experimental `ConsentPushRequest`, `ConsentPushResult` and `ConsentPushPort`
-  through both existing communications entries. Local grants remain audience-scoped;
-  only withdrawals allow account-wide scope. The push capability declares
-  `grantEffect`; accepted/acknowledged results require `reconcileRequired` and
-  never prove remote effect. Make the existing `NegativeFeedback` discriminant
-  union readonly, consistent with its other fields. Migration: callers must stop
-  assigning feedback `kind` or `outcome`; existing providers remain assignable.
-  No factory, activation, callback, retry or package subpath is added. Synthetic
-  conformance keeps accepted/acknowledged grants unsettled until settlement and
-  fresh readback. Withdrawals bypass grant-caused fences/quarantine while preserving
-  same-key withdrawal fences and account-level cooling, with honest recording
-  uncertainty and reconciliation.
-- Move the unchanged executor-backed native bundle read store and queries into
-  catalog, retaining named reference compatibility exports. Add sparse canonical
-  SQL 16/19 descriptors and byte-identical projections, with no new migration.
-  The writer, pooled transaction binding and transport remain reference-owned.
-- Deliberately classify catalog server as an adapter: its declarations now reach
-  optional pg types through the injected data executor. Runtime import and supplied
-  executor reads still work with optional peers absent; catalog/contracts stays
-  non-adapter. Select the existing peers for server declaration compilation.
+- M06 P4: retain named compatibility shims, restrict inventory smoke evidence to package-owned tests, neutralize synthetic transport fixtures and clarify inventory documentation; no runtime or API change.
 
-Migration: the native store is additive; existing reference imports keep their
-names. Install the full canonical manifest, never the sparse projections. Native
-actor-kind enforcement remains handler-only. Comment corrections distinguish the
-managed chain's 42501 publish_requires_human refusal from that native boundary.
-The catalog declaration snapshot reorders existing count enum members; their
-values and runtime behavior are unchanged.
-- Add inventory DTOs, ports and schemas with required injected forecast-provider validation; reference browser validation stays local.
+### 0.17.0 → 0.18.0 set scope
 
-- Add experimental opt-in Node `communications/resend` with exactly three
-  functions for guarded transport, authenticated webhook handling and GET-only
-  delivery reconciliation.
-  Hosts supply policy, environment selection and neutral persistence ports;
-  injectable fetch adds no SDK/dependency. Neutral entries and the maintained
-  reference adapter are unchanged. Protocol-only evidence; account verification
-  remains pending. No default sender, route, schedule or recovery send.
-- Move unchanged fixed-bundle rules, availability, semantic ports and admin/feed
-  application handlers into the existing catalog server entry. Reference bindings
-  retain schemas, shared admin kit/spec/flags, stock/lifecycle helpers, responder,
-  wire versions and RPC error identity. Catalog contracts add plain DTOs only;
-  browser schemas stay local. Native stores and SQL remain outside this slice.
-- Add experimental shipping ports, injected-schema handlers and type-only contracts.
+- Prepare the complete development-preview set at `0.18.0`: core and outbox are
+  unchanged republications; platform includes every change on main in this set.
+- M05 adds catalog foundation/contracts, draft validation, product/lifecycle DTOs,
+  authority/GTIN/quantity helpers, media and source-pack operations,
+  fixed-bundle read/admin/feed logic, native envelope/draft stores and an inert
+  catalog contribution; pricing includes quote/offer projection, opt-in acquisition
+  terms and promise consent; promotions includes advisory, preview, acceptance,
+  admin/native reads and sweep with explicit host bindings; lifecycle/publication
+  contracts alone do not provide a publisher or native lifecycle writes.
+- Opt-in reference catalog, product, basket, builder and admin UI consumes explicit
+  data/locale/media/lifecycle inputs; basket edits invalidate promise consent and
+  minor-money display uses the currency exponent.
+- Shipped catalog SQL projects unchanged canonical positions 1/8/16/19/58/59/61,
+  promotions projects 47/48 and inventory projects 27/33; native catalog factories
+  retain the existing store bodies and references preserve their named exports.
+- A1 adds 17 neutral marketing/consent declarations, the three-function `communications/resend`
+  entry, the `communications/klaviyo` marketing adapter and lazy opt-in reference bindings with
+  invocation-time admission; default routes, schedules and handlers stay empty.
+  Authenticated raw webhooks and GET-only delivery reconciliation retain host
+  ownership of persistence and admission; no SDK or default sender is added.
+  `communications/klaviyo` supports profile projection, negative consent readback, deletion
+  acknowledgement and authoritative consent push; deletion status is unsupported
+  and newsletter sync refuses.
+- M06 in progress: inventory and shipping entries are early surfaces; module not complete
+- The merged M06 surfaces include inventory contracts/admin/native reads, injected
+  new-purchase availability, reservation policy/maintenance and dated forecast
+  calculation with required provider injection, plus shipping selection, address
+  and rate handlers with required host validation.
+- @openlup/platform size growth: added M05 catalog, pricing and promotions implementations, native stores and SQL projections, A1 communications adapters and consent contracts, and the merged early M06 inventory/shipping surfaces with their declarations and documentation.
 
-Migration: existing reference imports remain named compatibility exports.
-Installed consumers bind the host dependencies explicitly. Bundle DTO additions
-are additive. Generated pricing/promotions snapshots reorder the existing bundle
-component enum member; communications snapshots reorder update/email_change; promotions also reorders
-the existing all member in status/scope enums.
-Members and runtime behavior are unchanged. No SQL, data or activation migration is introduced.
+Migration: upgrade the entire `@openlup/*` set from `0.17.0` to `0.18.0` for exact
+core peer pins; new module adoption remains explicit and experimental.
+Catalog and promotions server entries are adapters: their declarations require
+selected optional `pg` peers, while runtime imports and injected executors work
+without them and their contracts entries remain non-adapters. Supply host schemas, authorization,
+responders and policies through the documented bindings. Acquisition requires
+an explicit `AcquisitionFinancialPolicy` with no default; absence refuses with
+`acquisition_terms_policy_unconfigured`, and reference activation remains off.
+Bind resolved terms from the final optional issue/honor callback argument for
+acquisition-aware acceptance; existing callbacks remain assignable. Stop
+assigning `NegativeFeedback.kind` or `.outcome`, now readonly. Reference threshold
+classifiers require the host's explicit threshold. Generated enum declaration
+ordering changes preserve member values and runtime behavior. Catalog adds the
+two native store factories and `CATALOG_MIGRATIONS`; composition adds
+`createCatalogContribution` and `CatalogContributionInput`, with no public export
+removed or renamed. Existing named reference imports remain compatibility paths.
+Install the complete canonical migration manifest, never sparse package SQL
+projections as an installation chain; this preparation adds no new SQL migration.
+A1 hosts retain credentials, identity/authority, atomic storage, environment,
+egress and schedule ownership; acknowledged/accepted does not establish remote
+effect and local consent remains authoritative.
 
-- Add 14 experimental provider-neutral marketing-sync types through the existing
-  communications and communications/contracts entries: profile sync, negative
-  consent readback and erasure request/status. Existing M04 providers remain
-  assignable. This initial contract excluded positive consent writes; no adapter, callback,
-  activation or package subpath is added. Migration: none for existing callers.
-- Move promotion admin handlers/ports/DTOs/server schemas and native evaluator
-  read/sweep into promotions, preserving reference kit/error/currency bindings.
-  Project unchanged canonical SQL units 47/48 with descriptor hashes and positions;
-  no migration or claim writer. Prove the existing native lifecycle/read subset
-  on real PostgreSQL; native code and mounted parity outcomes remain pending.
+### Known limitations
 
-- Add experimental `./promotions` application, advisory read ports, preview,
-  money binding, acceptance and passive telemetry with explicit host bindings;
-  `./promotions/contracts` contains dependency-free preview DTOs. Core remains
-  the evaluator; reference shims retain existing behavior and managed transport.
-  Migration: reference imports remain named compatibility exports; installed
-  callers supply floor, classifier, eligibility, request projection and recorder.
-- Add server-resolved acquisition terms as the final optional argument to both
-  experimental quote acceptance callbacks (issue and honor). This deliberately
-  extends the unreleased opt-in signature; bind that argument in the acceptance
-  helper. Migration: existing callbacks remain assignable; inactive token bytes
-  and reference activation are unchanged.
-
-- Add an experimental opt-in acquisition selection, offer v3 and promise-consent
-  API with required host financial policy and no default. Reference activation
-  remains off. Migration: none for existing callers.
-
-- Move the existing quote computation, snapshot comparison, quote/batch handlers,
-  v1/v2 offer projection/handler/cache and readiness into the pricing module.
-  Reference bindings retain flat shipping, promotion application and rich policy.
-  Migration: existing reference paths remain compatibility bindings; installed
-  consumers use the pricing entries and inject schemas, responder and host policy.
-
-- Move the existing neutral quote foundation into pricing: money/tax/quote contracts, injected server validation, provenance, bounded catalog facts and tax refusal. Preserve reference browser/context validation and existing quote equations; Computation and offer behavior are preserved.
-
-- Add experimental `./pricing` and `./pricing/contracts` entries by moving the existing OpenLup authority, subscription policy, assignment token and refusal mapping unchanged. Named reference exports preserve identity; browser schemas and feature-flag/secret/readiness composition remain local. Acquisition selection was outside the initial authority move and is now available through the separately configured opt-in API.
-
-- Add experimental `catalog` and dependency-free `catalog/contracts` entries by
-  moving the existing public neutral foundation, product types, draft logic,
-  read ports and projections unchanged. Reference paths delegate; browser
-  sellable schemas and rich catalog interpretation remain application-owned.
-  Add unchanged provider-free media validation/resolution and bounded source-pack
-  transfer using the existing blob port. Add lifecycle/publication DTOs and ports
-  only; publication read, publish and lifecycle writes remain unsupported, with
-  no executor, upload route, activation, SQL or wire-status changes.
-
-Migration: existing consumers need no source or schema changes. The identity
-snapshot only reorders `inactive` in the emitted `customerLifecycleStageSchema`
-and `customerMeResponseSchema` enum declarations; members and runtime behavior
-are unchanged. Catalog adoption is opt-in through the new experimental entries.
+- D8-1: native advisory v2 promo-code candidates and rejection details are not supported on the native backend.
+- D8-2: native mounted v2 code issue/honor/fallback is not supported on the native backend.
+- D8-3: acquisition-only mounted issuance/honor is not supported on the native backend.
+- D8-4: full native/managed eligibility equivalence is not supported on the native backend.
+- Bundle-1: independent database human-only actor-kind enforcement is not supported on the native backend and is the first item of a future native-backend parity round.
+- Bundle-2: managed-equivalent actor-kind/email history is not supported on the native backend.
+- Bundle-3 is closed for M05 mounted admin/feed readback through the merged availability builder with an injected stock reader; the real native stock read remains M06 P5a work.
+- Bundle-4 establishes only incumbent real-PostgreSQL contention characterization and provides no exactly-once guarantee.
+- The managed baseline schema and its pgTAP tests retain the incumbent legacy value `44.404`; removing it needs a forward migration and an owner decision, while reference composition supplies that value to application code.
+- A1 evidence is offline only: account verification, hosted-time behaviour and owner TEST certification are not claimed, and the `communications/klaviyo` adapter's capabilities stay verification-pending.
 
 ## [0.17.0]
 

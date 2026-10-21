@@ -734,6 +734,127 @@ declarations before root typechecking. The stale pre-merge ledger is replaced by
 one fork-point classification; an importer-less mapper needs no compatibility
 copy. Only stale P7 prose/comments required repair in this slot check.
 
+## S1 — 0.18.0 set preparation, slot recreation
+
+Finite outcome: prepare the minor `0.18.0` set from main `590f15fa`, covering all
+merged M05, A1 and early M06 surfaces, with published `0.17.0` baselines and
+reviewable release/dispatch text. Core/outbox retain APIs/runtime/SQL; UI remains
+private `0.0.0`. The consolidated platform release text retains the adjacent-release
+migration summary, ten one-sentence limitations and every distinct later note.
+M06 in progress: inventory and shipping entries are early surfaces; module not complete
+
+Authority: the coordinator assigned Codex local pre-bump and POST-BUMP file edits,
+read-only registry downloads, preliminary pack measurement and the specified
+focused checks in the existing `claude/m05-a1-s1-0.18.0` task worktree. Git-writing
+fixtures are permitted only in their disposable temporary repositories. The
+supervisor ran the bump, which staged the five consumed tracked-fragment deletions,
+and retains source-snapshot write, staging, commits, native review and submission.
+Codex makes no Git/index writes in this worktree, source-snapshot write, external
+mutation, release dispatch, publication, secret use, provider certification or
+adopter-endpoint change. No merge or release-dispatch grant is supplied here.
+Preserve the merged A1 row-16 clarification (#253) and M06 P4 gate evidence (#257).
+
+This handoff's acceptance is consolidated release/dispatch text, exact published
+baselines, preliminary caps/growth evidence, the README/ledger companions, scoped
+tooling fixtures with unchanged assertions, fresh documentation-impact trailer
+proposals and the requested checks. Complete S1 acceptance still requires the
+supervisor's snapshot, committed trailers, clean-commit artifacts, API/installed
+consumers and native review before separately authorized delivery. No existing
+S1 obligation is waived. Reuse the fragment/bump/measurement tools; no new release
+mechanism or test cases are needed. Baseline growth and limited root-docs headroom
+remain the risks; all caps stay unchanged.
+
+Slot result (2026-10-21): the supervisor bumped all version carriers and exact
+internal pins to `0.18.0`, consuming eight fragments and staging only five tracked
+deletions. Exact covered-body consolidation passed once; the full M06 P4 named-
+shim, package-owned smoke evidence, neutral-fixture and documentation note remains
+in both the new platform section and dispatch body. History from `0.17.0` onward
+is byte-identical to main for all three changelogs. Release text retains the exact
+M06 label, ten limitations, six native refusals, explicit adapter classification,
+subpath-only vendor spellings and the identical platform growth line. Core/outbox
+sections describe unchanged API/runtime/SQL republication. Only `pack.baseline`
+changes in the gates; the README explains prepared-set adoption and its limits.
+
+The catalog guard scans the package implementation and moved adapter with every
+assertion unchanged. The source-release fixture owns its formatted `0.17.0` core
+manifest; #247 staging/literal-path tests and every assertion remain unchanged.
+The initial compact JSON fixture caused two bump-test failures; two-space JSON
+formatting fixed both without changing production release validation. Final
+focused evidence covers **218 distinct passing cases in seven files**: six files
+passed initially, and all seven source-preparation cases passed after repair.
+Ast-grep, lint (8 structural cases; 0 errors / 33 warnings), five-project typecheck,
+three-package manifest checks, size/content/browser policy and public neutrality
+(0 increases) pass. Full commands and failures remain in external S1 R2 evidence.
+
+Policy computes bindings successfully with the expected stale committed snapshot;
+four no-impact trailers remain for the supervisor's commit: core, outbox-rail,
+repository and tooling. The platform README answers its owner obligation. The
+source snapshot is generated and excluded from these fingerprints, so its sole
+later refresh does not change the four digests. Clean artifact/consumer proof
+remains a later supervisor gate; preliminary packs cannot substitute for it.
+
+### S1 slot measured figures
+
+Published `0.17.0` tarballs were fetched read-only and matched npm dist SHA512
+integrity and SHA1 shasum; the external R1 report retains all artifact identities.
+Fresh R2 preliminary packs measure the bumped, consolidated working tree:
+
+| Package | Published 0.17.0 B | Candidate 0.18.0 B / cap B | Growth | Code gzip B / cap | Root docs gzip B / cap |
+| --- | ---: | --- | --- | --- | --- |
+| core | 161,357 | 161,726 / 327,680 | 0.23% | 132,250 / 276,480 | 23,690 / 49,152 |
+| outbox | 39,202 | 39,310 / 81,920 | 0.28% | 20,930 / 43,008 | 13,366 / 26,624 |
+| platform | 414,220 | 778,693 / 1,351,680 | 87.99% | 656,484 / 1,126,400 | 38,887 / 40,960 |
+
+Platform: **1,157 / 2,100 files**, **3,513,725 / 5,734,400 unpacked B**,
+**1,128 / 2,000 code files**, **5 / 10 root-docs files**. Headroom is **572,987
+packed B**, **2,220,675 unpacked B**, **943 files**, **469,916 code gzip B**,
+**872 code files**, **2,073 root-docs gzip B** and **5 root-docs files**.
+Browser minified+gzip B / cap: communications/contracts **8,210 / 11,776**;
+identity/contracts **2,390 / 4,800**; catalog/contracts **3,281 / 4,096**;
+pricing/contracts **386 / 416**; promotions/contracts, inventory/contracts and
+shipping/contracts each **20 / 32**. All retain positive headroom. Only platform
+exceeds the 30% growth tripwire; its unchanged explanation appears byte-for-byte
+in the new changelog section and actual dispatch notes.
+
+### S1 final preparation paths
+
+Against main `590f15fa`, this local handoff has **20 paths: 15 modified and five
+deleted**. The supervisor's source-snapshot refresh adds the expected 21st path,
+`config/openlup-source-release-contract.json`; the resulting preparation has
+**16 modified and five deleted paths**, with no runtime/API/SQL change or new
+case. This complete path list includes bump outputs, companions and staged
+deletions; the snapshot path is planned, not claimed written by Codex:
+
+```text
+config/openlup-source-release-contract.json
+docs/platform/plans/oss-m05-catalog-offers-pricing.md
+package-lock.json
+packages/core/CHANGELOG.md
+packages/core/package-lock.json
+packages/core/package.json
+packages/core/release-gates.json
+packages/outbox/CHANGELOG.md
+packages/outbox/package.json
+packages/outbox/release-gates.json
+packages/platform/CHANGELOG.md
+packages/platform/README.md
+packages/platform/changes/a1-p2-p3-communications.md
+packages/platform/changes/m05-p6.md
+packages/platform/changes/m05-p7.md
+packages/platform/changes/m06-inventory-p2.md
+packages/platform/changes/m06-p4.md
+packages/platform/package.json
+packages/platform/release-gates.json
+scripts/catalog-document-boundary.test.ts
+scripts/source-release-preparation.test.ts
+```
+
+Self-retro: the first focused run spent 24.21 seconds exposing compact fixture
+JSON that the formatting-preserving bump writer rightly refuses. Moving release
+manifest → owned, formatted fixture is the simpler path; retain production
+validation and all assertions. Exact covered-note removal also preserves later
+M06 P4 claims without duplicating the release text or raising documentation caps.
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected
